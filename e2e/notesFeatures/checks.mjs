@@ -14,7 +14,15 @@
  *   - with the network master switch off, network-using embeds (YouTube) stay
  *     completely dark while the no-network GitHub info card still renders —
  *     the switch gates requests, not rendering (the render ladder's Rung 0,
- *     MAR-186).
+ *     MAR-186),
+ *   - backtick over a SELECTION wraps in inline code instead of replacing it:
+ *     a prop-level test can't say which registered handleTextInput wins a real
+ *     keystroke (the input-rule runner shares that prop), so the race is only
+ *     observable here,
+ *   - `[TK]` wears its chip, with a real painted background — a mistyped
+ *     --vscode-* token would still pass a class-only assertion,
+ *   - inline calc fires INSIDE an inline-code span, and a prose `(` before the
+ *     expression no longer breaks it.
  */
 
 /** The latest posted update's content once one matches, else "". */
@@ -73,6 +81,25 @@ export async function run({ page, check, baseUrl }) {
         (window.__posted ?? []).filter((m) => m.type === "resolveEmbedMeta").length);
     check("no embed metadata request leaves with network off", metaAsks === 0, `${metaAsks} asks`);
 
+    // ── The in-text note chip ──
+    // Asserted on the PAINTED background, not just the class: a mistyped
+    // --vscode-* token yields an empty background and would slip past a
+    // class-only check.
+    const tkChip = await page.evaluate(() => {
+        const el = [...document.querySelectorAll(".ProseMirror .note-marker")]
+            .find((n) => n.textContent === "[TK]");
+        if (!el) { return null; }
+        return { text: el.textContent, bg: getComputedStyle(el).backgroundColor };
+    });
+    check("[TK] wears the note chip", !!tkChip, "no .note-marker on [TK]");
+    check("the chip is actually painted",
+        !!tkChip && tkChip.bg !== "rgba(0, 0, 0, 0)" && tkChip.bg !== "transparent",
+        tkChip ? tkChip.bg : "");
+    const proseChips = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror .note-marker")].map((n) => n.textContent));
+    check("only the marker is chipped, not its line", proseChips.every((t) => t === "[TK]"),
+        JSON.stringify(proseChips));
+
     // ── Calc: trailing form, Tab confirm ──
     const para = page.locator(".ProseMirror p", { hasText: "some text" }).first();
     await para.click();
@@ -95,6 +122,18 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Tab");
     await page.waitForTimeout(300);
     check("Tab produces 12=5+7", (await paragraphTexts(page)).includes("12=5+7"));
+
+    // ── Calc: a prose paren before the expression ──
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("the formula (3+7=", { delay: 25 });
+    menu = await page.waitForSelector(".fm-suggest-menu", { timeout: 3000 }).catch(() => null);
+    check("'(3+7=' offers 10 (the unmatched paren is prose)",
+        !!menu && (await menu.textContent()).includes("10"),
+        menu ? await menu.textContent() : "no .fm-suggest-menu");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(300);
+    check("Tab answers past the paren, leaving it in place",
+        (await paragraphTexts(page)).includes("the formula (3+7= 10"));
 
     // ── Calc: auto-insert guards at runtime ──
     await page.evaluate(() => { window.__i18n.calcAutoInsert = true; });
@@ -155,4 +194,61 @@ export async function run({ page, check, baseUrl }) {
     const cleared = await latestDoc(page, (d) => !d.includes("[x]") && d.includes("[ ]"));
     check("Uncheck All clears every [x] (serialized)", cleared !== "",
         cleared ? "" : "no update matched the cleared state");
+
+    // ── Backtick wraps a selection in inline code ──
+    // A real range over "word", then a real keystroke: the backtick must toggle
+    // the mark rather than replace the selection with a literal character.
+    const selected = await page.evaluate(() => {
+        const p = [...document.querySelectorAll(".ProseMirror p")]
+            .find((n) => n.textContent.endsWith("wrap this word"));
+        // Not p.firstChild: the block's gutter chrome is rendered inside it.
+        const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+        let text = null;
+        while (walker.nextNode()) {
+            if (walker.currentNode.data.includes("word")) { text = walker.currentNode; break; }
+        }
+        const at = text.data.indexOf("word");
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + "word".length);
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return String(sel);
+    });
+    check("the selection really covers 'word'", selected === "word", selected);
+    await page.keyboard.type("`", { delay: 25 });
+    await page.waitForTimeout(200);
+    const wrapped = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror code")].map((c) => c.textContent));
+    check("backtick wraps the selection instead of replacing it",
+        wrapped.includes("word"), JSON.stringify(wrapped));
+    const wrapDoc = await latestDoc(page, (d) => d.includes("wrap this `word`"));
+    check("the wrapped word serializes with backticks", wrapDoc !== "",
+        wrapDoc ? "" : "no update matched 'wrap this `word`'");
+
+    // ── Inline calc inside an inline-code span ──
+    // The caret is dropped INSIDE the existing `2+3=` code text node, so the
+    // whole construct provably carries the code mark — the exact context the
+    // caret-suggest controller used to refuse outright.
+    await page.evaluate(() => {
+        const code = [...document.querySelectorAll(".ProseMirror code")]
+            .find((c) => c.textContent === "2+3=");
+        const range = document.createRange();
+        range.setStart(code.firstChild, code.firstChild.length);
+        range.collapse(true);
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    });
+    menu = await page.waitForSelector(".fm-suggest-menu", { timeout: 3000 }).catch(() => null);
+    check("calc offers 5 for '2+3=' inside inline code",
+        !!menu && (await menu.textContent()).includes("5"),
+        menu ? await menu.textContent() : "no .fm-suggest-menu");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(300);
+    const codeTexts = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror code")].map((c) => c.textContent));
+    check("the answer lands inside the code span", codeTexts.includes("2+3= 5"),
+        JSON.stringify(codeTexts));
 }

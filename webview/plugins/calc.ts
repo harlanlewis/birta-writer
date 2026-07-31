@@ -11,8 +11,12 @@
  * - Advisory mode reuses the shared caret-suggestion controller
  *   (caretSuggest.ts, the same machinery behind link/wikilink autocomplete):
  *   debounce, stale-reply generations, Escape suppression, capture-phase
- *   Enter/Tab handling, IME safety. The controller refuses code blocks and
- *   inline code, `autoActivate` pre-selects the lone result so Tab confirms
+ *   Enter/Tab handling, IME safety. The controller refuses code blocks; the
+ *   `=` spec asks it (`allowInlineCode`) to keep offering inside an INLINE-code
+ *   span, where a backticked expression is exactly where a writer puts
+ *   arithmetic and the answer is plain digits either way. The `=>` spec
+ *   deliberately does not — see the note on `calcArrowSpec`, which is the whole
+ *   argument. `autoActivate` pre-selects the lone result so Tab confirms
  *   it (Enter deliberately stays a newline), and accepting at a stale answer
  *   REPLACES the old number (staleResultLengthAfter). The `=` fetch is
  *   synchronous; the `=>` fetch awaits the lazy unit engine.
@@ -136,6 +140,8 @@ const calcSuggestSpec: CaretSuggestSpec = {
     // must not capture the user's first Enter) — see caretSuggest.ts's
     // autoActivate handling.
     autoActivate: true,
+    // `` `3+7=` `` computes: see the module header.
+    allowInlineCode: true,
 };
 
 /**
@@ -287,6 +293,20 @@ const calcArrowSpec: CaretSuggestSpec = {
     // Pre-select the lone advisory result so Tab confirms it; Enter keeps its
     // newline meaning (see caretSuggest.ts autoActivate handling).
     autoActivate: true,
+    // Deliberately NOT allowInlineCode, unlike the `=` path above. An accepted
+    // `=>` answer is a MAINTAINED artifact: the refresh engine keeps it true
+    // and calcStale cues it when it can't — and both read blockCalcText, which
+    // masks inline code, so neither can reach inside a code span. Offering here
+    // would plant an answer in the one place its premise can change behind the
+    // user's back with no update and no cue: "a stale number masquerading as
+    // live is the one lie a computed value must not tell"
+    // (docs/DESIGN_PRINCIPLES.md → Maintained dependencies).
+    //
+    // Unmasking code for those engines is not the fix either — it would make
+    // them read ordinary source as equations, and `=>` is a JS arrow function:
+    // `` `n => 1` `` would earn a broken-answer strikethrough on the `1`. The
+    // `=` path has neither problem: its answer's premise is its own visible
+    // text, so there is nothing to maintain and nothing that can go stale.
     // The `=>` construct can coincide with the structural list-merge advisory at
     // the same caret; the one the user is actively typing wins.
     yieldsToOpenMenus: true,

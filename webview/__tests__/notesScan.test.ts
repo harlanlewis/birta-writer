@@ -131,6 +131,21 @@ describe("scanNotes — document walk", () => {
         expect(items[0]!.label).toBe("rewrite this");
     });
 
+    it("source should separate text markers from comment atoms", () => {
+        // The in-text highlight decorates only `text` items, and `kind` cannot
+        // answer this on its own: a `<!-- TODO: … -->` classifies as kind
+        // `todo` exactly like a written `TODO:` does.
+        const doc = schema.node("doc", null, [
+            p("written [TK] marker"),
+            schema.node("paragraph", null, [schema.node("html", { value: "<!-- TODO: rewrite -->" })]),
+        ]);
+        const items = scanNotes(doc);
+        expect(items.map((i) => [i.kind, i.source])).toEqual([
+            ["placeholder", "text"],
+            ["todo", "html"],
+        ]);
+    });
+
     it("a bare HTML comment should be a plain note", () => {
         const doc = schema.node("doc", null, [
             schema.node("paragraph", null, [schema.node("html", { value: "<!-- ask the source -->" })]),

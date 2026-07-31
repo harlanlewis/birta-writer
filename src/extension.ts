@@ -525,12 +525,15 @@ export function activate(context: vscode.ExtensionContext) {
                     config: getToolbarConfig(),
                 });
             }
-            if (e.affectsConfiguration("birta.notes.customMarkers")) {
-                // Notes review tab: rescan with the new marker set in every open
-                // editor without a reload (mirrors the other read-at-use gates).
+            if (e.affectsConfiguration("birta.notes.customMarkers")
+                || e.affectsConfiguration("birta.notes.highlightMarkers")) {
+                // Notes review tab AND the in-text marker highlight: rescan with
+                // the new marker set / gate in every open editor without a
+                // reload (mirrors the other read-at-use gates).
                 MarkdownEditorProvider.current?.postToAll({
                     type: "notesConfig",
                     customMarkers: readBirtaSetting("notesCustomMarkers"),
+                    highlightMarkers: readBirtaSetting("notesHighlightMarkers"),
                 });
             }
             if (e.affectsConfiguration("birta.review.groupByType")) {

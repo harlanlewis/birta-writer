@@ -236,6 +236,116 @@ describe("advisory inline calc", () => {
     });
 });
 
+describe("inline calc inside an inline-code span", () => {
+    // The caret-suggest controller refuses inline code for the link/wikilink
+    // autocompletes — a `[text](partial` in backticks is source being shown,
+    // not a link being authored. Calc opts out of that refusal: a backticked
+    // expression is exactly where a writer puts arithmetic, and the answer is
+    // plain digits either way. (The link side's refusal stays pinned in
+    // linkUrlComplete.test.ts.)
+    let editor: Editor;
+    let v: EditorView;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        delete window.__i18n; // defaults: calc enabled, advisory
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    /** Caret at the END of the leading inline-code span, inside the mark. */
+    function caretInsideCode(len: number): void {
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1 + len)));
+        expect(v.state.selection.$from.marks().some((m) => m.type.spec.code)).toBe(true);
+    }
+
+    it("typing = inside inline code should offer the result", async () => {
+        vi.useRealTimers();
+        editor = await makeEditor("`2+3`\n");
+        vi.useFakeTimers();
+        v = view(editor);
+        caretInsideCode(3);
+
+        typeText(v, "=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual(["5"]);
+    });
+
+    it("Tab should write the answer INSIDE the code span, not beside it", async () => {
+        vi.useRealTimers();
+        editor = await makeEditor("`2+3`\n");
+        vi.useFakeTimers();
+        v = view(editor);
+        caretInsideCode(3);
+
+        typeText(v, "=");
+        await vi.advanceTimersByTimeAsync(250);
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        expect(v.state.doc.textContent).toBe("2+3= 5");
+        // Every character still carries the code mark: the result was written
+        // at a position inside the span, so it inherited it.
+        const para = v.state.doc.firstChild!;
+        para.forEach((child) => {
+            expect(child.marks.some((m) => m.type.spec.code)).toBe(true);
+        });
+    });
+
+    it("`=>` should still refuse inside inline code, unlike `=`", async () => {
+        // Not an oversight — the reason is a design constraint, so it is pinned.
+        // An accepted `=>` answer is MAINTAINED (calcRefresh updates it,
+        // calcStale cues it when it can't), and both engines read blockCalcText,
+        // which masks inline code. Offering here would plant an answer where its
+        // premise can change with no update and no cue. Unmasking those engines
+        // is not the alternative: `=>` is a JS arrow function, so `` `n => 1` ``
+        // would collect a broken-answer strikethrough on the `1`.
+        vi.useRealTimers();
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, "budget = 100\n\n`budget*2 `\n");
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .use(calcArrowSuggestPlugin)
+            .create();
+        vi.useFakeTimers();
+        v = view(editor);
+        // Caret at the end of the code text, inside the mark.
+        const codePara = v.state.doc.child(1);
+        const at = v.state.doc.content.size - 1 - (codePara.content.size - "budget*2 ".length);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, at)));
+        expect(v.state.selection.$from.marks().some((m) => m.type.spec.code)).toBe(true);
+
+        typeText(v, "=>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual([]);
+    });
+
+    it("a code BLOCK should still refuse (a formula there is source)", async () => {
+        vi.useRealTimers();
+        editor = await makeEditor("```\n2+3\n```\n");
+        vi.useFakeTimers();
+        v = view(editor);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 4)));
+
+        typeText(v, "=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual([]);
+    });
+});
+
 describe("`=>` living calculations (variables + units)", () => {
     async function makeArrowEditor(markdown: string): Promise<Editor> {
         const root = document.createElement("div");

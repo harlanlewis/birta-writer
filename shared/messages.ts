@@ -427,7 +427,7 @@ export type ToWebviewMessage =
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live update of the Notes-tab custom markers (birta.notes.customMarkers changed).
-    | { type: "notesConfig"; customMarkers: string[] }
+    | { type: "notesConfig"; customMarkers: string[]; highlightMarkers: boolean }
     // Live update of the review sidebar's By-type/In-order mode (birta.review.groupByType).
     | { type: "reviewConfig"; groupByType: boolean }
     // Live toolbar layout update (per-item placement settings changed).

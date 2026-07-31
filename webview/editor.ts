@@ -22,6 +22,7 @@ import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import {
     anchorSyncPlugin,
+    backtickWrapPlugin,
     calcArrowSuggestPlugin,
     calcAutoInsertPlugin,
     calcRefreshPlugin,
@@ -70,6 +71,7 @@ import {
     listLiftPlugin,
     listMergeSuggestPlugin,
     listSpreadNormalizePlugin,
+    noteMarkersPlugin,
     pendingRangePlugin,
     proofreadPlugin,
     selectionPlugin,
@@ -517,6 +519,10 @@ export async function createEditor(
         // mathInlineEdit is even earlier: its boundary keys (arrow into / backspace
         // against a formula) are narrowly guarded and must beat every other handler.
         .use(mathInlineEditPlugin)
+        // Backtick-over-a-selection wraps in inline code. Ahead of the presets
+        // for the same reason: it shares handleTextInput with the input-rule
+        // runner, and the first prop to return true wins.
+        .use(backtickWrapPlugin)
         .use(tableKeymapPlugin)
         // Smart-select chords beat native contenteditable selection keys;
         // insertParagraph's Mod-Enter beats the preset's (its commands return
@@ -711,6 +717,10 @@ export async function createEditor(
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)
         .use(trailingHrParagraphPlugin)
+        // Editor-note chips ([TK], TODO:, …). Beside proofreadPlugin because it
+        // is the same kind of thing: a view-only decoration layer that settles
+        // in after first paint and never reaches the serialized markdown.
+        .use(noteMarkersPlugin)
         .use(proofreadPlugin)
         .create();
     mark("create-end");

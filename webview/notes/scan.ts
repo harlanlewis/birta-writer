@@ -39,6 +39,16 @@ export interface NoteItem {
     marker: string;
     /** Display label — the trailing text after `:`, else a context snippet. */
     label: string;
+    /**
+     * Where the item came from: `text` for a marker matched in a block's
+     * characters (`[TK]`, `TODO:`, a custom string), `html` for an inline or
+     * block `<!-- … -->` atom. The in-text highlight (plugins/noteMarkers.ts)
+     * decorates only `text` items — a comment atom already renders as its own
+     * visibly distinct node, and layering a chip on top would spend a second
+     * visual channel saying the same thing. The kinds don't answer this on
+     * their own: a `<!-- TODO: x -->` comment classifies as kind `todo`.
+     */
+    source: "text" | "html";
 }
 
 /** A marker match within a single block's text, offsets local to that text. */
@@ -169,7 +179,7 @@ function htmlCommentItem(node: ProseNode, pos: number): NoteItem | null {
     const m = /^<!--([\s\S]*?)-->$/.exec(raw);
     if (!m) { return null; }
     const { kind, marker, label } = classifyComment(m[1].trim());
-    return { from: pos, to: pos + node.nodeSize, kind, marker, label };
+    return { from: pos, to: pos + node.nodeSize, kind, marker, label, source: "html" };
 }
 
 /**
@@ -186,7 +196,14 @@ export function scanTextblock(block: ProseNode, base: number, customMarkers: rea
     // Text markers. Inline HTML atoms are masked to MASK in maskedBlockText, so
     // a marker can never be read out of a comment's raw text.
     for (const t of findTextMarkers(maskedBlockText(block), customMarkers)) {
-        out.push({ from: base + t.start, to: base + t.end, kind: t.kind, marker: t.marker, label: t.label });
+        out.push({
+            from: base + t.start,
+            to: base + t.end,
+            kind: t.kind,
+            marker: t.marker,
+            label: t.label,
+            source: "text",
+        });
     }
     // Inline HTML-comment atoms, at their own child offsets.
     block.forEach((child, offset) => {

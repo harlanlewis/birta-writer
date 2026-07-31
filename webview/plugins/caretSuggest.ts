@@ -103,6 +103,19 @@ export interface CaretSuggestSpec {
      */
     queryChipClass?: string;
     /**
+     * Offer inside an inline-code span too. Off by default: a `[text](partial`
+     * or `[[partial` written in backticks is source being shown, not a link
+     * being authored, so the autocompletes must stay out. The `=` inline calc
+     * is the one opt-in — a backticked expression is exactly where a writer
+     * puts arithmetic (`` `3+7=` ``), and the answer is plain digits either
+     * way. Only the TRIGGER moves: inline code stays masked out of the variable
+     * scope (blockCalcText), so `` `x = 4` `` is still source, not a
+     * definition. The `=>` calc pointedly leaves this off, because its answers
+     * are maintained and the maintenance engines can't see into a code span —
+     * the reasoning is written out on `calcArrowSpec` in plugins/calc.ts.
+     */
+    allowInlineCode?: boolean;
+    /**
      * Never open while ANOTHER caret suggestion's menu is up. The
      * text-construct menus (calc, link, wikilink) are mutually exclusive by
      * grammar, but a STRUCTURAL suggestion (the list-merge advisory) can
@@ -217,7 +230,9 @@ class CaretSuggestController {
         const $from = selection.$from;
         if (!$from.parent.isTextblock) { return null; }
         if ($from.parent.type.spec.code) { return null; } // code block
-        if ($from.marks().some((m) => m.type.spec.code)) { return null; } // inline code
+        if (!this.spec.allowInlineCode && $from.marks().some((m) => m.type.spec.code)) {
+            return null; // inline code
+        }
         const textBefore = $from.parent.textBetween(
             Math.max(0, $from.parentOffset - CARET_CONTEXT_WINDOW),
             $from.parentOffset,
