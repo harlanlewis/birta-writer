@@ -15,10 +15,10 @@ The maintainer reads and writes **English only**. This project is being migrated
 
 ## Relationship to the origin project
 
-Birta Writer is a **hard fork** of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) and is now developed fully independently. The `upstream` git remote has been **removed on purpose** — the only live remote is `origin` (`harlanlewis/birta-writer`).
+Birta Writer began as a hard fork and is now developed fully independently. The `upstream` git remote has been **removed on purpose** — the only live remote is `origin` (`harlanlewis/birta-writer`). The origin project is named in `NOTICE` and `LICENSE-MIT`; that is where to look it up if you need it.
 
-- **Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to `git-xing/md-wysiwyg-editor`.** The fork diverged deliberately and permanently (including the Chinese→English migration and the rebrand); pulling from it would drag back exactly what this project is moving away from.
-- The original is retained as a reference for **attribution and licensing only** — see `README.md` ("Why this fork"), `NOTICE`, and `LICENSE-MIT`. That is the sole reason its name still appears anywhere in the repo (the brand-guard test in `shared/__tests__/noLegacyBrand.test.ts` deliberately allows the `git-xing/...` slug while banning our own former one).
+- **Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to the origin repository.** The fork diverged deliberately and permanently (including the Chinese→English migration and the rebrand); pulling from it would drag back exactly what this project is moving away from.
+- **Don't name the origin project anywhere new.** It is named only where attribution requires it — `NOTICE` and `LICENSE-MIT` — plus `docs/PROVENANCE.md`, whose entire subject is how much of it remains. Prose elsewhere refers to it obliquely ("the project this one forked from"). Don't reintroduce the slug into the README, the changelog, docs, comments, or test fixtures. The brand-guard test (`shared/__tests__/noLegacyBrand.test.ts`) bans our *own* former slug and id; it does not police the origin's, so this one is on you.
 
 ## Project basics
 
@@ -169,10 +169,10 @@ Keeping the backlog honest is as important as filing it. Close the loop when wor
 - **The CHANGELOG and Linear are complementary, not a single source of truth.** The CHANGELOG records what *shipped* (including untracked work); Linear tracks *planned* work and bugs. When you ship a tracked feature, do both: close the issue **and** add the CHANGELOG entry. "Not in Linear" never means "not shipped."
 - **Sequencing signal**: the `phase-*` labels are the roadmap spine (`phase-0-fidelity` is existential — round-trip trust — and comes first; then `phase-1-performance` — speed the user can feel, reusing the slot vacated by `phase-1-vscode-parity` (retired, shipped in 0.2.3) — then `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`). Within a phase, order by `priority`.
   - **`phase-5-surfaces` does NOT rank, and does NOT compete** (maintainer, 2026-07-26). The multi-surface work (MAR-225 and its children) created the label, and the question of where it sits relative to phases 0–4 is now answered: **it doesn't sit on the spine at all.** Phase-5 is exploration, not queued work. Its `priority` chips are meaningful only *within* the phase — a `High` there never compels a pick against the ranked spine, and never outranks a phase-0 fidelity bug. So the "first High-or-Urgent down the spine" rule simply skips phase-5. Do not silently promote it; if the exploration ever becomes committed scope, that is a roadmap change the owner makes explicitly. Recorded as resolved decision **D8** in the strategy corpus (maintained privately).
-  - **README's "Why this fork" 1–4 list is the founding rationale, not the live spine.** It still names VS Code parity as layer 2, which shipped in 0.2.3. When the two appear to disagree, the `phase-*` labels win.
+  - **`docs/WHY_THIS_FORK.md`'s 1–4 list is the founding rationale, not the live spine.** It still names VS Code parity as layer 2, which shipped in 0.2.3. When the two appear to disagree, the `phase-*` labels win. (It lived in `README.md` until the README was cut down to a storefront.)
 - **Periodically reconcile**: when asked what's next or to review the backlog, cross-check open issues against the CHANGELOG and git history, close anything already shipped, and re-scope tickets whose premise the code has outgrown.
 
-Project intent and ordering principles live in `README.md` ("Why this fork"); the brand brief and the Birta Writer naming decision are recorded in the private strategy corpus (full candidate/rejection record in Linear MAR-134).
+Project intent and ordering principles live in `docs/WHY_THIS_FORK.md`; the brand brief and the Birta Writer naming decision are recorded in the private strategy corpus (full candidate/rejection record in Linear MAR-134).
 
 ### Strategy documents (maintained privately)
 

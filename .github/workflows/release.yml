@@ -49,6 +49,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Both are for the build-provenance attestation below. id-token here is
+      # unrelated to the publish job's Entra login — it signs against Sigstore,
+      # and needs no environment, so it does not re-couple this job to one.
+      id-token: write
+      attestations: write
     outputs:
       release: ${{ steps.plan.outputs.release }}
       version: ${{ steps.plan.outputs.version }}
@@ -136,6 +141,38 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: mkdir -p releases && pnpm run package
 
+      # Supply chain (MAR-130). A source audit can only tell you what the source
+      # does; it cannot tell you the published binary was built from it. This
+      # signs a Sigstore-backed provenance statement binding the VSIX's digest to
+      # this repository, commit, and workflow run, so anyone can check the artifact
+      # without trusting — or rebuilding — this pipeline.
+      #
+      # The same file is what the publish job uploads to the Marketplace, so the
+      # attestation covers both distribution channels rather than just this one.
+      - name: Attest build provenance
+        if: steps.plan.outputs.release == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: releases/*.vsix
+
+      # A plain checksum for anyone who just wants to compare two files without
+      # installing tooling. NOTE: the VSIX is not yet byte-reproducible — vsce
+      # stamps each zip entry with the wall clock, so two builds of an identical
+      # tree differ in the archive even though their *contents* are identical.
+      # So this hash identifies THIS artifact; it is not something a third party
+      # can independently reproduce. See docs/RELEASING.md → Verifying a release.
+      - name: Record the VSIX checksum
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          cd releases
+          sha256sum *.vsix | tee SHA256SUMS.txt
+          {
+            printf '\n---\n\n### Verifying this release\n\n'
+            printf 'This release carries a signed build-provenance attestation. To confirm the `.vsix` was built by this repository from this commit:\n\n'
+            printf '```\ngh attestation verify <file>.vsix --repo %s\n```\n\n' "$GITHUB_REPOSITORY"
+            printf 'SHA-256:\n\n```\n%s```\n' "$(cat SHA256SUMS.txt)"
+          } >> ../RELEASE_NOTES.md
+
       # The release action creates the tag itself (at this run's commit) in the
       # same step that publishes the release. Tagging separately, earlier, would
       # risk an orphan tag if a later step failed — and that tag would then make
@@ -148,7 +185,9 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Birta Writer v${{ steps.plan.outputs.version }} (${{ steps.plan.outputs.display }})
           body_path: RELEASE_NOTES.md
-          files: releases/*.vsix
+          files: |
+            releases/*.vsix
+            releases/SHA256SUMS.txt
 
       - name: Hand the VSIX to the publish job
         if: steps.plan.outputs.release == 'true'

@@ -159,7 +159,7 @@ describe("githubId — recognized URL forms", () => {
             "microsoft/vscode/blob/main/src/vs/code/electron-main/main.ts",
         ],
         // Dots and hyphens are legal in owners, repos, refs, and paths.
-        ["https://github.com/git-xing/md-wysiwyg-editor", "git-xing/md-wysiwyg-editor"],
+        ["https://github.com/some-owner/a-hyphenated-repo", "some-owner/a-hyphenated-repo"],
         ["https://github.com/o/r.js/blob/v1.0/lib/a.min.js", "o/r.js/blob/v1.0/lib/a.min.js"],
     ];
     for (const [url, expected] of cases) {

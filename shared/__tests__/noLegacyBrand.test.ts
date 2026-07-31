@@ -13,9 +13,10 @@
  * missing, which is exactly the failure this guard exists to prevent, yet it
  * sat outside the scan. CHANGELOG.md is intentionally NOT scanned — it is
  * point-in-time history and names settings/commands as they shipped. The
- * upstream fork reference `git-xing/md-wysiwyg-editor` is legitimate
- * attribution (in README/NOTICE, which are also unscanned) and, by design, is
- * not matched by the patterns below — only our own former slug is.
+ * patterns below match only OUR former owner/slug and id — another owner's
+ * repository that happens to share the old name is not our brand and is not
+ * matched, which is what keeps the required attribution in NOTICE/LICENSE-MIT
+ * (both unscanned) from tripping a guard aimed at ourselves.
  */
 import { describe, it, expect } from "vitest";
 import * as path from "path";
@@ -29,7 +30,8 @@ const CONTRIB_FILES = ["package.json", "package.nls.json", "l10n/bundle.l10n.jso
 const LEGACY: { label: string; re: RegExp }[] = [
     { label: "old settings/command namespace `markdownWysiwyg.*`", re: /markdownWysiwyg/ },
     { label: 'old display name "WYSIWYG Markdown Editor"', re: /WYSIWYG Markdown Editor/ },
-    // Only our own former slug is banned; `git-xing/md-wysiwyg-editor` (upstream) is allowed.
+    // Only our own former owner/slug pair is banned — another owner's repository
+    // of the same name is somebody else's, and is deliberately not matched.
     { label: "old repository slug `harlanlewis/md-wysiwyg-editor`", re: /harlanlewis\/md-wysiwyg-editor/ },
     // The publisher moved to the Birta Labs org (`BirtaLabs.birta-writer`).
     // Only the DOT-qualified extension ids are banned — the slash form
@@ -58,7 +60,7 @@ describe("rebrand guard", () => {
         expect(LEGACY[0].re.test("markdownWysiwyg.smartLinks")).toBe(true);
         expect(LEGACY[1].re.test("Birta Writer")).toBe(false);
         expect(LEGACY[1].re.test("WYSIWYG Markdown Editor")).toBe(true);
-        expect(LEGACY[2].re.test("github.com/git-xing/md-wysiwyg-editor")).toBe(false);
+        expect(LEGACY[2].re.test("github.com/someone-else/md-wysiwyg-editor")).toBe(false);
         expect(LEGACY[2].re.test("github.com/harlanlewis/md-wysiwyg-editor")).toBe(true);
         expect(LEGACY[3].re.test("github.com/harlanlewis/birta-writer")).toBe(false);
         expect(LEGACY[3].re.test("BirtaLabs.birta-writer")).toBe(false);

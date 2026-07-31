@@ -1,6 +1,6 @@
 # Provenance — how much of the origin project remains
 
-Birta Writer is a hard fork of [`git-xing/md-wysiwyg-editor`](https://github.com/git-xing/md-wysiwyg-editor). `README.md` ("Why this fork") covers **why** the fork happened. This file covers a different question — **how much of the origin project is still here** — and answers it with measurements rather than assertions.
+Birta Writer is a hard fork of [`git-xing/md-wysiwyg-editor`](https://github.com/git-xing/md-wysiwyg-editor). [`WHY_THIS_FORK.md`](WHY_THIS_FORK.md) covers **why** the fork happened. This file covers a different question — **how much of the origin project is still here** — and answers it with measurements rather than assertions.
 
 **This is an append-only log, not a refined document.** It is the `CHANGELOG.md` kind of file, not the `docs/BENEFITS.md` kind: entries are **never revised in place**. Each snapshot is stamped with its date and pinned to exact commit SHAs, so it stays true forever as a statement about that moment. To report a newer figure, **add a snapshot** above the previous one — do not edit an older one, even if its number is now wrong. An old snapshot going stale is the point; the series is the signal.
 

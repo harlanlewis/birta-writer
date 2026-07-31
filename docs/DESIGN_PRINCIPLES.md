@@ -2,7 +2,7 @@
 
 The rules of thumb this editor is built on. They exist so a change can be checked against intent, not just "does it work" — when a new affordance fights one of these, that's a signal to rethink the affordance, not the principle. This is a living document; add to it when a decision turns out to be load-bearing.
 
-Product intent and ordering ("Why this fork") live in `README.md`; agent/build conventions live in `AGENTS.md`. This file is specifically about **how the UI communicates** and **how much it's allowed to interrupt**.
+Product intent and ordering live in `WHY_THIS_FORK.md`; agent/build conventions live in `AGENTS.md`. This file is specifically about **how the UI communicates** and **how much it's allowed to interrupt**.
 
 ---
 
