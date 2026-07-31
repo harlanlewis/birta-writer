@@ -222,4 +222,36 @@ export async function run({ page, check, baseUrl }) {
         "a real click on Add metadata opens the metadata table",
         (await page.locator("#frontmatter-panel .frontmatter-table").count()) === 1,
     );
+
+    // ── 11. The shipped default (birta.frontmatterAddButton off) reclaims the row ──
+    // The point of the default is geometry, not just a hidden button: the
+    // document must start where it would with no panel feature at all. jsdom
+    // can assert the panel is absent but not that the inset actually went with
+    // it, so the measurement belongs here.
+    await page.goto(`${baseUrl}/index.html?empty=1&addBtn=0`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForTimeout(200);
+    check(
+        "gate off renders no frontmatter panel on a metadata-less document",
+        (await page.locator("#frontmatter-panel").count()) === 0,
+    );
+    const gatedTop = await page
+        .locator(".milkdown .ProseMirror > *")
+        .first()
+        .evaluate((el) => el.getBoundingClientRect().top);
+    const gatedBarBottom = await page
+        .locator(".editor-topbar")
+        .evaluate((el) => el.getBoundingClientRect().bottom);
+    // Measured against the SAME gap with the gate on, rather than a magic
+    // ceiling: the whole row the button occupied must be reclaimed, so the
+    // toolbar→content gap has to shrink by at least the button's own height.
+    // A hardcoded threshold could pass without discriminating if the two
+    // layouts ever converged; this cannot.
+    const onGap = firstBlockTop - barBottom;
+    const offGap = gatedTop - gatedBarBottom;
+    check(
+        "gate off reclaims the whole button row above the first block",
+        btnBox !== null && offGap <= onGap - btnBox.height,
+        `offGap=${offGap} onGap=${onGap} buttonHeight=${btnBox?.height}`,
+    );
 }

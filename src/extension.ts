@@ -328,6 +328,13 @@ export function activate(context: vscode.ExtensionContext) {
         "Birta: checked tasks move to the bottom of their list",
         "Birta: checked tasks stay in place",
     );
+    registerGateToggle(
+        "birta.toggleFrontmatterAddButton",
+        "frontmatterAddButton",
+        "frontmatterAddButton",
+        "Birta: Add-metadata button on — documents without metadata offer it below the toolbar",
+        "Birta: Add-metadata button off — Edit Frontmatter still starts the same flow",
+    );
 
     // TEST-ONLY hook: registered ONLY outside Production (i.e. the
     // @vscode/test-electron Development/Test host), so the shipped extension never
