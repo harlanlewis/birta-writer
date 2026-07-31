@@ -10,7 +10,7 @@ Built on one promise: **editing one part of a file never rewrites another.** Unt
 
 **Your file stays yours.** Most WYSIWYG Markdown editors reformat on save — re-wrapping tables, swapping `*` for `_`, dropping syntax they don't recognize. One such surprise sends a writer back to raw text for good. Birta serializes your document and merges only the lines that actually changed, so the formatting you chose survives edits elsewhere in the file.
 
-**Private by default.** No network requests of any kind out of the box. Images save into your workspace and are never uploaded, proofreading runs on your machine, and the two features that *can* reach the network sit behind a master switch that ships off. There is no usage tracking to opt out of, because none exists.
+**Private by default.** Out of the box the extension makes no outbound request at all. Images save into your workspace and are never uploaded, proofreading runs on your machine, and the two features that *can* reach the network sit behind a master switch that ships off. There is no usage tracking to opt out of, because none exists.
 
 **Fast to open, fast to use.** Launch time is treated as a feature and guarded by CI on every change. Heavy things — diagram and math renderers, syntax grammars — load only when a document actually needs them.
 
@@ -49,7 +49,7 @@ Install the extension and open any `.md` or `.markdown` file — it opens in WYS
 
 macOS shown; Ctrl on Windows/Linux, and everything is rebindable in VS Code's Keyboard Shortcuts. The full list is in the toolbar's ⌄ menu under *Show Keyboard Shortcuts*.
 
-Requires VS Code 1.80.0 or later.
+Requires VS Code 1.95 or later.
 
 ***
 

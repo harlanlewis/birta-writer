@@ -40,10 +40,40 @@ const tableRows = [...features.matchAll(/^\| `(birta\.[A-Za-z0-9.]+)` \| (.+?) \
     (m) => ({ key: m[1], defaultCell: m[2].trim() }),
 );
 
+/**
+ * The minimum VS Code version each user-facing document states. Both name it in
+ * prose ("Requires VS Code 1.95 or later"), so match the number after the words.
+ */
+const statedEngines = [
+    { file: "README.md", text: readme },
+    { file: "docs/FEATURES.md", text: features },
+].flatMap(({ file, text }) =>
+    [...text.matchAll(/VS Code \*{0,2}(\d+\.\d+(?:\.\d+)?)\*{0,2} or later/g)].map((m) => ({
+        file,
+        stated: m[1],
+    })),
+);
+
 describe("user-facing settings docs stay true to package.json", () => {
     it("docs/FEATURES.md should still carry the settings table", () => {
         expect(tableRows.length).toBeGreaterThanOrEqual(10);
     });
+
+    // Both documents advertised 1.80 for some time after engines.vscode moved to
+    // ^1.95 — and the README is the Marketplace listing, so that told shoppers a
+    // minimum fifteen releases too low. Prose is where a version silently rots.
+    it("both documents should state a minimum VS Code version", () => {
+        expect(statedEngines.map((e) => e.file).sort()).toEqual(["README.md", "docs/FEATURES.md"]);
+    });
+
+    for (const { file, stated } of statedEngines) {
+        it(`${file}'s stated VS Code minimum should match engines.vscode`, () => {
+            const contributedMin = /(\d+\.\d+(?:\.\d+)?)/.exec(pkg.engines.vscode)?.[1];
+            const norm = (v: string) => v.replace(/(\.0)+$/, "");
+            expect(norm(stated), `${file} advertises ${stated}, package.json requires ${pkg.engines.vscode}`)
+                .toBe(norm(contributedMin!));
+        });
+    }
 
     for (const key of mentionedKeys) {
         it(`mentioned key ${key} should exist in contributes (or prefix a family)`, () => {

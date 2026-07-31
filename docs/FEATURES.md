@@ -151,7 +151,7 @@ See [`BENEFITS.md`](BENEFITS.md#compatibility-with-other-markdown-tools) for the
 
 ## Requirements
 
-VS Code **1.80.0** or later.
+VS Code **1.95** or later — the minimum `package.json` contributes (`engines.vscode`), raised from 1.80 by the Language Model Tool integration.
 
 ## Known limitations
 

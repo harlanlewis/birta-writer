@@ -89,7 +89,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 **Platform**
 
 - **Remote workspaces** — works in Remote-SSH, WSL, and Codespaces.
-- **Fast launch** — heavy dependencies (the KaTeX stylesheet, ~68 syntax-highlighting grammars, the Mermaid engine, the inline-HTML sanitizer) load on demand rather than at every open; a document with no math, code, or diagrams loads a fraction of what it used to, and proofreading and fidelity checks settle in after first paint rather than blocking it.
+- **Fast launch** — heavy dependencies (the KaTeX stylesheet, ~70 syntax-highlighting grammars, the Mermaid engine, the inline-HTML sanitizer) load on demand rather than at every open; a document with no math, code, or diagrams loads a fraction of what it used to, and proofreading and fidelity checks settle in after first paint rather than blocking it.
 - **A hard fork, in English** — all Chinese content removed and English established as the source and base language across code, UI, and docs (a CI guard prevents regressions). Source-available under the Functional Source License (FSL-1.1-ALv2) — free to read, run, modify, and self-host for any non-competing purpose, converting to Apache-2.0 two years after each release; portions derived from the MIT-licensed project this one forked from remain under that license — see `LICENSE`, `NOTICE`, and `LICENSE-MIT`.
 
 ### Fixed
