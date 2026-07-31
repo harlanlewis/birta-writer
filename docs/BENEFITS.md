@@ -43,7 +43,7 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
 While superficially a single-document editor, Birta Writer has deceptively-deep system awareness and broad compatibility:
 
-- Display and edit both basic Markdown and extended syntax used by [Obsidian](https://obsidian.md), [Confluence](https://confluence.atlassian.com/doc/confluence-wiki-markup-251003035.html), [Github](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax), [Notion exports](https://www.notion.com/help/export-your-content), and others.
+- Display and edit both basic Markdown and extended syntax used by [Obsidian](https://obsidian.md), [Foam](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), [Github](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax), [Notion exports](https://www.notion.com/help/export-your-content), and others.
 - Crosslink local documents with Markdown links, [wikilinks](https://obsidian.md/help/links), or even [Logseq](https://www.markdownguide.org/tools/logseq/) with an inline file browser UI.
 - Interactive [Mermaid](https://mermaid.js.org) diagrams, [LaTeX](https://en.wikipedia.org/wiki/LaTeX) rendering, images, and a full-featured visual table editor with drag-and-drop rows and columns.
 - Optionally display rich link previews or embedded documents and videos.
@@ -86,7 +86,7 @@ I'm tired of:
 
 Every new feature, interaction, and presentation decision must satisfy my bar for quality:
 
-1. Data fidelity first. Preserve, rather than "correct", unexpected syntax that the editor can't handle. Bonus: broad interoperability with Obsidian, [FOAM](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), Logseq, and the rest is a happy side effect of non-destructive tolerance.
+1. Data fidelity first. Preserve, rather than "correct", unexpected syntax that the editor can't handle. Bonus: broad interoperability with Obsidian, [Foam](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), Logseq, and the rest is a happy side effect of non-destructive tolerance.
 2. Natively support the Markdown that people and tools actually write. [CommonMark](https://commonmark.org/help/) is a great starting point, but there are _at least_ three different widely-adopted formats for callouts, none of which are in the essential set. Breadth is a virtue.
 3. Ergonomic and capable in every sense. Must be fast (to open and use), keyboard-first, feature rich, and get out of your way so you can _just write_.
 4. Fully integrate with VS Code. Embrace infinite customizability and inherit existing preferences, while establishing calm, opinionated defaults.
