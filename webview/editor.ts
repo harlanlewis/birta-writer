@@ -56,7 +56,7 @@ import {
     linkUrlCompletePlugin,
     pasteLinkPlugin,
     pasteMarkdownPlugin,
-    pasteTableCellPlugin,
+    pasteContainerFitPlugin,
     imageUploadProgressPlugin,
     imagePastePlugin,
     mathInlineEditPlugin,
@@ -597,7 +597,7 @@ export async function createEditor(
         // A GFM cell is inline-only: whatever either paste path produced,
         // flatten it to inline content when it lands in one, so the table
         // keeps its shape instead of gaining columns or splitting apart.
-        .use(pasteTableCellPlugin)
+        .use(pasteContainerFitPlugin)
         // A pasted/dropped image saves through the extension host; show that
         // it is running (and any failure) as decoration at the paste
         // position, so the document is never touched by a save that fails.

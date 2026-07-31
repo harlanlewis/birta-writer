@@ -1,5 +1,6 @@
 /**
- * plugins/pasteTableCell.ts — pasting block content into a table cell (MAR-274).
+ * plugins/pasteContainerFit.ts — fitting a paste to the container it lands in
+ * (MAR-274, MAR-277, MAR-278).
  *
  * A GFM table cell holds INLINE content only: there is no syntax for a list, a
  * heading, or a nested table inside one. Pasting anything block-shaped into a
@@ -40,6 +41,24 @@ export function isInTableCell($pos: { depth: number; node(d: number): ProseNode 
     for (let d = $pos.depth; d > 0; d--) {
         const name = $pos.node(d).type.name;
         if (name === "table_cell" || name === "table_header") { return true; }
+    }
+    return false;
+}
+
+/**
+ * Containers whose Markdown form is ONE LINE, so a raw newline inside them ends
+ * the construct rather than wrapping within it: a table row is terminated by
+ * it, and an ATX heading simply stops. Both can still carry an explicit `<br>`.
+ *
+ * The table cell was found first (MAR-277); the heading is the same defect in a
+ * different container — `## A⏎B` reopens as a heading followed by a paragraph —
+ * and was found by the paste matrix precisely because the matrix enumerates
+ * contexts instead of relying on anyone remembering this one.
+ */
+function isSingleLineContainer($pos: { depth: number; node(d: number): ProseNode }): boolean {
+    if (isInTableCell($pos)) { return true; }
+    for (let d = $pos.depth; d > 0; d--) {
+        if ($pos.node(d).type.name === "heading") { return true; }
     }
     return false;
 }
@@ -139,12 +158,21 @@ function isPlainInlinePaste(slice: Slice): boolean {
         && slice.openStart > 0 && slice.openEnd > 0;
 }
 
-export const pasteTableCellPlugin = $prose(() =>
+export const pasteContainerFitPlugin = $prose(() =>
     new Plugin({
         props: {
             transformPasted(slice, view) {
                 const { selection } = view.state;
                 if (selection instanceof CellSelection) { return slice; }
+                // Every single-line container needs its breaks made safe; only a
+                // table CELL additionally needs block content flattened, since a
+                // heading's own schema already refuses blocks.
+                if (isSingleLineContainer(selection.$from) && !isInTableCell(selection.$from)) {
+                    const safe = withCellBreaks(slice.content);
+                    return safe === slice.content
+                        ? slice
+                        : new Slice(safe, slice.openStart, slice.openEnd);
+                }
                 if (!isInTableCell(selection.$from)) { return slice; }
                 // Even a paste that needs no flattening needs its breaks made
                 // cell-safe: a single newline between two pasted lines is a

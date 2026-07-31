@@ -248,6 +248,15 @@ __mocks__/vscode.ts         — Central vscode API mock
 2. Confirm it fails before the fix and passes after.
 3. Run `pnpm test` and confirm the whole suite passes before committing.
 
+#### Choosing what to assert (two ways tests have been green while the editor was broken)
+
+Both of these shipped bugs in 2026-07-30's paste work, and neither was a coverage gap — the broken lines were executed by passing tests.
+
+- **An expected-output assertion can only confirm what you already believe.** `expect(md).toBe("| one<br>two |")` passed while pasting plain multi-line text into a cell produced `| line1⏎line2 |` — a raw newline that terminates the row, so the result was not a table (MAR-277). The author picked the payload that exercised the code path they had just written (a bullet list) rather than the one a user would paste (plain lines), and then asserted their own model of the output. **Prefer invariants** — schema-valid, round-trip stable, structure preserved, nothing dropped — which hold regardless of what the author expects; see `webview/__tests__/pasteMatrix.test.ts`, whose first run found three real defects the hand-picked cases had missed. Where a space is combinatorial (payload × destination, block × target), enumerate it rather than sampling by hand: that is the same reasoning as `corpusMoveSampling`.
+- **A prop-level test cannot catch a handler race.** Image paste was tested by calling `someProp("handlePaste", …)` directly, which bypasses event dispatch entirely — the layer the bug lived in. The real defect was that a `document`-level listener bubbled *after* ProseMirror's own handler on the editor element, so one paste inserted two images (MAR-277). Anything registering `handlePaste` / `handleDrop` / `handleKeyDown`, or otherwise depending on **which listener wins**, needs an `e2e/` check dispatching a real event (`e2e/pasteImage` is the worked example). Gotcha while writing one: a bare `.ProseMirror img` selector reports a phantom image, because ProseMirror renders its own `<img class="ProseMirror-separator">` into contenteditable — query `img:not(.ProseMirror-separator)`.
+
+A known-but-unfixed combination is marked `it.fails` with its issue id, never skipped: `it.fails` errors the moment the bug is fixed, so the list must shrink (`KNOWN_GAPS` in `pasteMatrix.test.ts`).
+
 #### Before `git push`
 - You **must** run `pnpm test`; push only if everything passes.
 - **Run `pnpm typecheck` too.** Neither esbuild (`pnpm build`) nor vitest typechecks — both transpile with types erased — so an interface/annotation error passes every local test and build, then fails CI's `unit-test` job at its `pnpm typecheck` step (2026-07-26: a method added to a controller but not its declared interface shipped exactly this way).
