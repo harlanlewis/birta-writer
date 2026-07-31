@@ -204,7 +204,11 @@ function createSwitchItem(label: string, iconHtml?: string): CheckItem {
     const el = document.createElement("div");
     el.className = "ui-menu-row tb-fmt-item tb-switch-item";
     el.setAttribute("role", "switch");
-    el.setAttribute("aria-checked", "true");
+    // Off until a caller paints it — the aria state has to agree with the
+    // visuals, and the --on class starts unset (a default of "true" told a
+    // screen reader "on" while the track rendered off, for the window before
+    // the first repaint).
+    el.setAttribute("aria-checked", "false");
     const labelEl = document.createElement("span");
     labelEl.className = "tb-switch-item-label";
     labelEl.textContent = label;
