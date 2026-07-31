@@ -118,6 +118,9 @@ It's so *fun* to think about this same problem from a new vantage of experience 
 ## Crosslinks
 
 - [`README.md`](../README.md)
+- [`FEATURES.md`](FEATURES.md)
+- [`WHY_THIS_FORK.md`](WHY_THIS_FORK.md)
+- [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - [`DESIGN_PRINCIPLES.md`](DESIGN_PRINCIPLES.md)
 - [RELEASING.md](RELEASING.md)
 - [../CHANGELOG.md](../CHANGELOG.md)
