@@ -1,7 +1,7 @@
 {
     "name": "birta-writer",
     "displayName": "Birta Writer",
-    "description": "Birta Writer: your favorite place to write Markdown.",
+    "description": "Your favorite place to write Markdown. A rich, visual, modern editor.",
     "version": "0.0.0",
     "publisher": "BirtaLabs",
     "author": {
@@ -18,15 +18,19 @@
         "ui"
     ],
     "categories": [
-        "Formatters",
-        "Other"
+        "Programming Languages", "Visualization", "Notebooks", "Education"
     ],
     "keywords": [
         "markdown",
-        "wysiwyg",
         "editor",
-        "table",
-        "milkdown"
+        "obsidian",
+        "typora",
+        "wikilinks",
+        "notes",
+        "pkm",
+        "second brain",
+        "mermaid",
+        "context"
     ],
     "repository": {
         "type": "git",
