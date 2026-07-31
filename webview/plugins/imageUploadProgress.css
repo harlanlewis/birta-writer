@@ -1,0 +1,53 @@
+/**
+ * Image-save progress and failure chrome (MAR-21 item 4).
+ *
+ * Both states are inline widgets sitting at the paste position, so they flow
+ * with the text rather than floating over it. The progress pill is deliberately
+ * quiet — this is chrome reporting on work the user already asked for, not an
+ * alert. The error pill composes the shared `.ui-notice` recipe and only adds
+ * the inline-flow overrides the primitive's absolute positioning would fight.
+ */
+.img-upload-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ui-space-s);
+    padding: 0 var(--ui-space-m);
+    border-radius: var(--ui-radius-m);
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-descriptionForeground);
+    font-size: var(--ui-fs-s);
+    user-select: none;
+    vertical-align: baseline;
+}
+
+.img-upload-pill__spinner {
+    width: 0.85em;
+    height: 0.85em;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: img-upload-spin 0.7s linear infinite;
+}
+
+@keyframes img-upload-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Respect the OS "reduce motion" preference: the pill still reads as busy from
+   its text, so the spin is decoration we can drop entirely. */
+@media (prefers-reduced-motion: reduce) {
+    .img-upload-pill__spinner { animation: none; opacity: 0.6; }
+}
+
+/* The failure state: `.ui-notice` is an absolutely-positioned floating card,
+   but this one lives inline at the paste position, so position/max-width are
+   restated. Colour comes from the theme's own error tokens. */
+.img-upload-pill--error {
+    position: static;
+    max-width: none;
+    padding: 0 var(--ui-space-s) 0 var(--ui-space-m);
+    border-color: var(--vscode-inputValidation-errorBorder);
+    background: var(--vscode-inputValidation-errorBackground);
+    color: var(--vscode-inputValidation-errorForeground);
+    box-shadow: none;
+}

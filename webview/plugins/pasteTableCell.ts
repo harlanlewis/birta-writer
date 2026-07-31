@@ -45,6 +45,46 @@ export function isInTableCell($pos: { depth: number; node(d: number): ProseNode 
 }
 
 /**
+ * A hard break that a table cell can actually hold.
+ *
+ * A `hardbreak` carries `isInline` (MAR-17): true means "a SOFT break in the
+ * source" and serializes as a literal newline; false means the `<br>` form. A
+ * raw newline cannot exist inside a GFM table row — it terminates the row — so
+ * a soft break pasted into a cell produced `| line1⏎line2 |`, which is not a
+ * table at all. Inside a cell every break must therefore be the `<br>` form,
+ * whatever it was in the source it came from.
+ */
+function cellBreak(node: ProseNode): ProseNode {
+    return node.attrs["isInline"]
+        ? node.type.create({ ...node.attrs, isInline: false }, node.content, node.marks)
+        : node;
+}
+
+/** Rewrites every hardbreak in a fragment to the cell-safe `<br>` form. */
+function withCellBreaks(fragment: Fragment): Fragment {
+    const mapped: ProseNode[] = [];
+    let changed = false;
+    fragment.forEach((node) => {
+        if (node.type.name === "hardbreak") {
+            const safe = cellBreak(node);
+            if (safe !== node) { changed = true; }
+            mapped.push(safe);
+            return;
+        }
+        if (node.content.size > 0) {
+            const inner = withCellBreaks(node.content);
+            if (inner !== node.content) {
+                changed = true;
+                mapped.push(node.copy(inner));
+                return;
+            }
+        }
+        mapped.push(node);
+    });
+    return changed ? Fragment.fromArray(mapped) : fragment;
+}
+
+/**
  * Collects the inline content of every textblock in `fragment`, in document
  * order, with one hard break between consecutive non-empty blocks. Containers
  * (lists, quotes, nested tables) are walked through; their markers are
@@ -56,12 +96,13 @@ function inlineRuns(fragment: Fragment, out: ProseNode[][]): void {
             // Bare inline content (an open slice's loose text) continues the
             // run in progress rather than starting a new line.
             if (out.length === 0) { out.push([]); }
-            out[out.length - 1]!.push(node);
+            out[out.length - 1]!.push(node.type.name === "hardbreak" ? cellBreak(node) : node);
             return;
         }
         if (node.isTextblock) {
             const run: ProseNode[] = [];
-            node.content.forEach((child) => run.push(child));
+            node.content.forEach((child) =>
+                run.push(child.type.name === "hardbreak" ? cellBreak(child) : child));
             if (run.length > 0) { out.push(run); }
             return;
         }
@@ -105,7 +146,16 @@ export const pasteTableCellPlugin = $prose(() =>
                 const { selection } = view.state;
                 if (selection instanceof CellSelection) { return slice; }
                 if (!isInTableCell(selection.$from)) { return slice; }
-                if (isPlainInlinePaste(slice)) { return slice; }
+                // Even a paste that needs no flattening needs its breaks made
+                // cell-safe: a single newline between two pasted lines is a
+                // SOFT break, which serializes as a raw newline and would
+                // terminate the table row.
+                if (isPlainInlinePaste(slice)) {
+                    const safe = withCellBreaks(slice.content);
+                    return safe === slice.content
+                        ? slice
+                        : new Slice(safe, slice.openStart, slice.openEnd);
+                }
                 return flattenSliceToInline(slice, view.state.schema) ?? slice;
             },
         },

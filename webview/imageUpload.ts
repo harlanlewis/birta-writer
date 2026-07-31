@@ -10,12 +10,17 @@
  * - Inserting/updating image nodes in the ProseMirror editor
  */
 
-import type { Editor } from "@milkdown/core";
-import { getView } from "./pm";
+import type { EditorView } from "./pm";
 import {
     notifyUploadImage,
     notifyGetProjectImages,
 } from "./messaging";
+import {
+    beginImageUpload,
+    failImageUpload,
+    settleImageUpload,
+    uploadInsertPos,
+} from "./plugins/imageUploadProgress";
 
 // ── Image upload: pending promise map ────────────────────
 type UploadCallbacks = {
@@ -99,21 +104,39 @@ export async function handleImageFile(file: File, altText: string): Promise<stri
     });
 }
 
-export function insertImageNode(currentEditor: Editor | null, src: string, alt: string): void {
-    if (!currentEditor) {
-        return;
-    }
-    currentEditor.action((ctx) => {
-        const view = getView(ctx);
-        const { state } = view;
-        const imageType = state.schema.nodes["image"];
-        if (!imageType) {
-            return;
-        }
-        const node = imageType.create({ src, alt, title: "" });
-        view.dispatch(state.tr.replaceSelectionWith(node));
-        view.focus();
-    });
+/**
+ * The whole pasted/dropped-image flow, with its chrome (MAR-21 item 4): show
+ * that a save is running at the paste position, then insert the image THERE —
+ * not at the live caret, which may have moved while the save was in flight —
+ * or surface the failure in place.
+ *
+ * The progress/error chrome is decoration only (plugins/imageUploadProgress),
+ * so a failed save leaves the document exactly as it was, with nothing to
+ * clean up and no junk step in the undo history.
+ */
+export function saveAndInsertImageAt(
+    view: EditorView,
+    file: File,
+    altText: string,
+    at: number,
+): void {
+    const token = beginImageUpload(view, at);
+    handleImageFile(file, altText)
+        .then((url) => {
+            const pos = uploadInsertPos(view, token);
+            settleImageUpload(view, token);
+            // Null when the paste position was deleted while the save ran.
+            // The bytes are on disk either way; we just have nowhere honest
+            // to put the reference, so we don't guess.
+            if (pos === null) { return; }
+            const imageType = view.state.schema.nodes["image"];
+            if (!imageType) { return; }
+            view.dispatch(
+                view.state.tr.insert(pos, imageType.create({ src: url, alt: altText, title: "" })),
+            );
+            view.focus();
+        })
+        .catch((err: Error) => failImageUpload(view, token, err.message));
 }
 
 /** Handle the image upload response */
