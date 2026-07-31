@@ -17,41 +17,85 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { editorViewCtx } from "@milkdown/core";
 import { Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { altFromHtmlFlavor, imageFileFrom, imagePastePlugin } from "../plugins/imagePaste";
+import { altFromHtmlFlavor, imageFilesFrom, imagePastePlugin } from "../plugins/imagePaste";
 import { makeCorpusEditor } from "./helpers/moveFuzz";
 import type { EditorView } from "../pm";
 
-/** A DataTransfer stand-in: jsdom's has no working items/files. */
-function transfer(opts: { file?: File; html?: string; text?: string }): DataTransfer {
-    const files = opts.file ? [opts.file] : [];
+/**
+ * A DataTransfer stand-in: jsdom's has no working items/files. A real one
+ * exposes the SAME files through both lists, which is what `itemsOnly` /
+ * `filesOnly` exist to vary — reading both would double every dragged file.
+ */
+function transfer(opts: {
+    file?: File;
+    files?: File[];
+    html?: string;
+    text?: string;
+    /** Only `items` is populated (a pasted screenshot, on some platforms). */
+    itemsOnly?: boolean;
+    /** Only `files` is populated (`items` is empty mid-drag). */
+    filesOnly?: boolean;
+}): DataTransfer {
+    const files = opts.files ?? (opts.file ? [opts.file] : []);
     const data: Record<string, string> = {};
     if (opts.html !== undefined) { data["text/html"] = opts.html; }
     if (opts.text !== undefined) { data["text/plain"] = opts.text; }
     return {
-        items: files.map((f) => ({ kind: "file", type: f.type, getAsFile: () => f })),
-        files,
+        items: opts.filesOnly
+            ? []
+            : files.map((f) => ({ kind: "file", type: f.type, getAsFile: () => f })),
+        files: opts.itemsOnly ? [] : files,
         getData: (t: string) => data[t] ?? "",
     } as unknown as DataTransfer;
 }
 
-const png = () => new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" });
+const png = (name = "a.png") => new File([new Uint8Array([1, 2, 3])], name, { type: "image/png" });
+const names = (fs: File[]) => fs.map((f) => f.name);
 
-describe("imageFileFrom", () => {
+describe("imageFilesFrom", () => {
     it("an image item should be found", () => {
-        expect(imageFileFrom(transfer({ file: png() }))?.type).toBe("image/png");
+        expect(imageFilesFrom(transfer({ file: png() }))[0]?.type).toBe("image/png");
     });
 
-    it("a payload with no file should yield null", () => {
-        expect(imageFileFrom(transfer({ html: "<p>hi</p>", text: "hi" }))).toBeNull();
+    it("a payload with no file should yield nothing", () => {
+        expect(imageFilesFrom(transfer({ html: "<p>hi</p>", text: "hi" }))).toEqual([]);
     });
 
-    it("a null payload should yield null", () => {
-        expect(imageFileFrom(null)).toBeNull();
+    it("a null payload should yield nothing", () => {
+        expect(imageFilesFrom(null)).toEqual([]);
     });
 
     it("a non-image file should be ignored", () => {
         const txt = new File(["x"], "a.txt", { type: "text/plain" });
-        expect(imageFileFrom(transfer({ file: txt }))).toBeNull();
+        expect(imageFilesFrom(transfer({ file: txt }))).toEqual([]);
+    });
+
+    // MAR-281: the whole point — a three-file drag is one gesture carrying
+    // three images, and the singular predecessor kept only the first.
+    it("every image on a multi-file payload should be returned in payload order", () => {
+        const dt = transfer({ files: [png("a.png"), png("b.png"), png("c.png")] });
+        expect(names(imageFilesFrom(dt))).toEqual(["a.png", "b.png", "c.png"]);
+    });
+
+    it("files present in BOTH items and files should not be counted twice", () => {
+        const dt = transfer({ files: [png("a.png"), png("b.png")] });
+        expect(names(imageFilesFrom(dt))).toEqual(["a.png", "b.png"]);
+    });
+
+    it("a payload carrying only items should be read", () => {
+        const dt = transfer({ files: [png("a.png"), png("b.png")], itemsOnly: true });
+        expect(names(imageFilesFrom(dt))).toEqual(["a.png", "b.png"]);
+    });
+
+    it("a payload carrying only files should be read", () => {
+        const dt = transfer({ files: [png("a.png"), png("b.png")], filesOnly: true });
+        expect(names(imageFilesFrom(dt))).toEqual(["a.png", "b.png"]);
+    });
+
+    it("non-image members of a mixed payload should be dropped, keeping the rest", () => {
+        const txt = new File(["x"], "notes.md", { type: "text/markdown" });
+        const dt = transfer({ files: [png("a.png"), txt, png("c.png")] });
+        expect(names(imageFilesFrom(dt))).toEqual(["a.png", "c.png"]);
     });
 });
 

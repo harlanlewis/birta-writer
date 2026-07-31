@@ -42,15 +42,19 @@ export const imageUploadProgressKey = new PluginKey<UploadState>("birta-image-up
  */
 export const UPLOAD_PILL_DELAY_MS = 250;
 
-/** One in-flight (or just-failed) image save. */
+/** One in-flight (or just-failed) image save — or one BATCH of them. */
 interface PendingUpload {
     readonly id: string;
     /** Document position the paste happened at; mapped through every step. */
     pos: number;
+    /** How many files this one pill stands for (MAR-281); 1 for a paste. */
+    readonly count: number;
     /** Whether the save has outlived UPLOAD_PILL_DELAY_MS and earned a pill. */
     shown: boolean;
     /** Set once the save fails — the pill switches from progress to error. */
     error?: string;
+    /** How many of `count` failed. Only meaningful alongside `error`. */
+    failedCount?: number;
 }
 
 interface UploadState {
@@ -59,17 +63,24 @@ interface UploadState {
 }
 
 type UploadAction =
-    | { kind: "begin"; id: string; pos: number }
+    | { kind: "begin"; id: string; pos: number; count: number }
     | { kind: "show"; id: string }
     | { kind: "settle"; id: string }
-    | { kind: "fail"; id: string; error: string };
+    | { kind: "fail"; id: string; error: string; failedCount: number };
 
-function progressWidget(): HTMLElement {
+/** "3" substituted into a whole translatable sentence, house `{0}` style. */
+function withCount(key: string, count: number): string {
+    return t(key).replace("{0}", String(count));
+}
+
+function progressWidget(upload: PendingUpload): HTMLElement {
     const el = document.createElement("span");
     el.className = "img-upload-pill";
     el.setAttribute("aria-live", "polite");
     el.append(Object.assign(document.createElement("span"), { className: "img-upload-pill__spinner" }));
-    el.append(document.createTextNode(t("Saving image…")));
+    el.append(document.createTextNode(upload.count > 1
+        ? withCount("Saving {0} images…", upload.count)
+        : t("Saving image…")));
     return el;
 }
 
@@ -77,7 +88,12 @@ function errorWidget(upload: PendingUpload, view: EditorView): HTMLElement {
     const el = document.createElement("span");
     el.className = "ui-notice img-upload-pill img-upload-pill--error";
     el.setAttribute("role", "alert");
-    el.append(document.createTextNode(t("Image not saved: ") + upload.error));
+    // A batch reports how many of it failed — the rest were inserted, so
+    // "Image not saved" alone would misdescribe what just happened.
+    const failed = upload.failedCount ?? 1;
+    el.append(document.createTextNode(
+        (failed > 1 ? withCount("{0} images not saved: ", failed) : t("Image not saved: "))
+        + upload.error));
     const dismiss = document.createElement("button");
     dismiss.className = "ui-btn ui-btn--icon ui-notice__dismiss";
     dismiss.setAttribute("aria-label", t("Dismiss"));
@@ -102,7 +118,7 @@ function buildDecorations(uploads: readonly PendingUpload[], view: EditorView | 
         // the save ran); drop rather than throw.
         .filter((u) => u.pos >= 0 && u.pos <= doc.content.size)
         .map((u) =>
-            Decoration.widget(u.pos, () => (u.error ? errorWidget(u, view) : progressWidget()), {
+            Decoration.widget(u.pos, () => (u.error ? errorWidget(u, view) : progressWidget(u)), {
                 side: 1,
                 key: `${u.id}:${u.error ?? ""}`,
             }),
@@ -127,7 +143,7 @@ export const imageUploadProgressPlugin = $prose(() => {
                     uploads = uploads.map((u) => ({ ...u, pos: tr.mapping.map(u.pos, 1) }));
                 }
                 if (action?.kind === "begin") {
-                    uploads = [...uploads, { id: action.id, pos: action.pos, shown: false }];
+                    uploads = [...uploads, { id: action.id, pos: action.pos, count: action.count, shown: false }];
                 } else if (action?.kind === "show") {
                     uploads = uploads.map((u) =>
                         u.id === action.id ? { ...u, shown: true } : u);
@@ -135,7 +151,9 @@ export const imageUploadProgressPlugin = $prose(() => {
                     uploads = uploads.filter((u) => u.id !== action.id);
                 } else if (action?.kind === "fail") {
                     uploads = uploads.map((u) =>
-                        u.id === action.id ? { ...u, error: action.error } : u);
+                        u.id === action.id
+                            ? { ...u, error: action.error, failedCount: action.failedCount }
+                            : u);
                 }
                 if (uploads === prev.uploads && !tr.docChanged) { return prev; }
                 return { uploads, decorations: buildDecorations(uploads, liveView, newState.doc) };
@@ -163,10 +181,13 @@ function dispatchIfLive(view: EditorView, action: UploadAction): void {
 /**
  * Marks an image save as started at the current selection and returns its
  * token. Never throws: a failure to show progress must not abort the save.
+ *
+ * `count` is how many files the token stands for — one drop of several images
+ * is ONE pill, not a stack of identical ones over the same position.
  */
-export function beginImageUpload(view: EditorView, at?: number): string {
+export function beginImageUpload(view: EditorView, at?: number, count = 1): string {
     const id = `upl${++counter}`;
-    dispatchIfLive(view, { kind: "begin", id, pos: at ?? view.state.selection.from });
+    dispatchIfLive(view, { kind: "begin", id, pos: at ?? view.state.selection.from, count });
     // The position is tracked from NOW (that is the whole point — it must
     // follow edits made while the save runs), but the pill only appears if the
     // save is slow enough to be worth a report.
@@ -184,9 +205,17 @@ export function settleImageUpload(view: EditorView, id: string): void {
     dispatchIfLive(view, { kind: "settle", id });
 }
 
-/** Turns an upload's progress pill into a dismissable error pill. */
-export function failImageUpload(view: EditorView, id: string, error: string): void {
-    dispatchIfLive(view, { kind: "fail", id, error });
+/**
+ * Turns an upload's progress pill into a dismissable error pill.
+ * `failedCount` is how many of the batch failed — the remainder still land.
+ */
+export function failImageUpload(
+    view: EditorView,
+    id: string,
+    error: string,
+    failedCount = 1,
+): void {
+    dispatchIfLive(view, { kind: "fail", id, error, failedCount });
 }
 
 /**
