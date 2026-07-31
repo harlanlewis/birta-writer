@@ -10,7 +10,7 @@
  * - Inserting/updating image nodes in the ProseMirror editor
  */
 
-import type { EditorView } from "./pm";
+import type { EditorView, Node as PMNode } from "./pm";
 import {
     notifyUploadImage,
     notifyGetProjectImages,
@@ -105,38 +105,118 @@ export async function handleImageFile(file: File, altText: string): Promise<stri
 }
 
 /**
+ * `image` is an INLINE node, so a standalone image is really an image-only
+ * paragraph (see plugins/imageBlocks). At a block boundary — which is what a
+ * drop aims at — each image therefore gets a paragraph of its own, so three
+ * dropped files become three stacked image blocks rather than one paragraph
+ * holding a row of them. At an inline position (the fallback when a drop had
+ * no aim, and where a paste lands) they stay inline, where the caret is.
+ *
+ * Doing this explicitly rather than leaving it to ProseMirror's fitting
+ * algorithm is what makes the multi-image shape predictable; for a single
+ * image the two agree.
+ */
+function imageContentFor(view: EditorView, at: number, images: PMNode[]): PMNode[] {
+    const paragraph = view.state.schema.nodes["paragraph"];
+    if (!paragraph) { return images; }
+    const $at = view.state.doc.resolve(at);
+    // Inline landing, or a container the schema won't let hold a paragraph:
+    // hand back the bare images and let the fitting algorithm place them.
+    if ($at.parent.inlineContent
+        || !$at.parent.canReplaceWith($at.index(), $at.index(), paragraph)) {
+        return images;
+    }
+    return images.map((img) => paragraph.create(null, img));
+}
+
+/** An Error's message, or whatever the rejection actually was. */
+function reasonText(reason: unknown): string {
+    return String((reason as Error | undefined)?.message ?? reason);
+}
+
+/**
  * The whole pasted/dropped-image flow, with its chrome (MAR-21 item 4): show
- * that a save is running at the paste position, then insert the image THERE —
- * not at the live caret, which may have moved while the save was in flight —
+ * that a save is running at the paste position, then insert the images THERE —
+ * not at the live caret, which may have moved while the saves were in flight —
  * or surface the failure in place.
  *
  * The progress/error chrome is decoration only (plugins/imageUploadProgress),
  * so a failed save leaves the document exactly as it was, with nothing to
  * clean up and no junk step in the undo history.
+ *
+ * **Why the whole batch waits (MAR-281).** The saves resolve independently and
+ * out of order, so inserting each as it lands would put the images in
+ * COMPLETION order rather than drag order — the load-bearing reason, and the
+ * one a fast machine never reveals. Collecting them first costs the batch the
+ * latency of its slowest file (a local write, single-digit milliseconds, with
+ * the progress pill covering the wait) and buys drag order back.
+ *
+ * It also makes "one gesture, one undo step" unconditional. Note that this is
+ * a *smaller* win than it looks: ProseMirror's history already groups
+ * transactions less than its `newGroupDelay` (500 ms) apart, so per-file
+ * inserts would usually collapse into one step anyway — measured, not assumed
+ * (a per-file mutant passes an undo assertion that doesn't space its saves
+ * out). What batching adds is the case where it matters: saves slow enough to
+ * straddle that window, where a naive loop leaves the user undoing one image
+ * at a time.
+ *
+ * A partial failure degrades rather than aborting: the files that saved are
+ * inserted, and the pill reports how many didn't.
  */
-export function saveAndInsertImageAt(
+export function saveAndInsertImagesAt(
     view: EditorView,
-    file: File,
+    files: readonly File[],
     altText: string,
     at: number,
 ): void {
-    const token = beginImageUpload(view, at);
-    handleImageFile(file, altText)
-        .then((url) => {
+    if (files.length === 0) { return; }
+    const token = beginImageUpload(view, at, files.length);
+    // The alt is lifted off the payload's FIRST `<img>`, which describes the
+    // first file; the rest of a multi-file drag carries no description at all.
+    const altFor = (i: number): string => (i === 0 ? altText : "");
+    void Promise.allSettled(files.map((file, i) => handleImageFile(file, altFor(i))))
+        .then((results) => {
+            // Read before anything is dispatched. Null when the paste position
+            // was deleted while the saves ran: the bytes are on disk either
+            // way, we just have nowhere honest to put the references.
             const pos = uploadInsertPos(view, token);
-            settleImageUpload(view, token);
-            // Null when the paste position was deleted while the save ran.
-            // The bytes are on disk either way; we just have nowhere honest
-            // to put the reference, so we don't guess.
-            if (pos === null) { return; }
+            const rejected = results.filter((r) => r.status === "rejected");
+            let failedCount = rejected.length;
+            let reason = failedCount > 0
+                ? reasonText((rejected[0] as PromiseRejectedResult).reason)
+                : "";
+
             const imageType = view.state.schema.nodes["image"];
-            if (!imageType) { return; }
-            view.dispatch(
-                view.state.tr.insert(pos, imageType.create({ src: url, alt: altText, title: "" })),
-            );
-            view.focus();
+            const images = imageType
+                ? results.flatMap((r, i) =>
+                    r.status === "fulfilled"
+                        ? [imageType.create({ src: r.value, alt: altFor(i), title: "" })]
+                        : [])
+                : [];
+            if (pos !== null && images.length > 0) {
+                try {
+                    view.dispatch(view.state.tr.insert(pos, imageContentFor(view, pos, images)));
+                    view.focus();
+                } catch (e) {
+                    // The document refused the landing. Say so where the user
+                    // dropped, rather than letting the whole batch disappear
+                    // into an unhandled rejection.
+                    failedCount = files.length;
+                    reason = reasonText(e);
+                }
+            }
+
+            // Last, so the insert above has already carried the pill's tracked
+            // position past the images it made room for.
+            if (failedCount === 0) {
+                settleImageUpload(view, token);
+            } else {
+                failImageUpload(view, token, reason, failedCount);
+            }
         })
-        .catch((err: Error) => failImageUpload(view, token, err.message));
+        // Nothing above should reject, but a save that vanishes without a word
+        // is the bug this whole path exists to prevent — so it gets a net.
+        .catch((e: unknown) => failImageUpload(view, token, reasonText(e), files.length));
 }
 
 /** Handle the image upload response */

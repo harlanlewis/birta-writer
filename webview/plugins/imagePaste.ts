@@ -23,25 +23,38 @@
  * available answer is `posAtCoords`, an INLINE position — so an image dropped
  * onto a paragraph landed inside the sentence under the pointer rather than as
  * a block of its own.
+ *
+ * A payload can also carry MORE THAN ONE image — three files selected in
+ * Finder and dragged in together is an ordinary gesture — so detection is
+ * plural (MAR-281) and the whole batch lands as one edit; see
+ * `saveAndInsertImagesAt`.
  */
 import { $prose } from "@milkdown/utils";
 import { Plugin } from "@/pm";
 import type { EditorView } from "@/pm";
-import { saveAndInsertImageAt } from "../imageUpload";
+import { saveAndInsertImagesAt } from "../imageUpload";
 import { aimedDropPos, clearDropAim } from "../editing/fileDrop";
 
-/** The first image file on a clipboard/drag payload, or null. */
-export function imageFileFrom(data: DataTransfer | null | undefined): File | null {
-    if (!data) { return null; }
+/**
+ * Every image file on a clipboard/drag payload, in payload order (MAR-281).
+ *
+ * Plural because a drag routinely is: selecting three files in Finder and
+ * dragging them in is one gesture carrying three images, and the singular
+ * predecessor of this function read only the first — the other two were
+ * discarded with no message, so the drop looked like it had succeeded.
+ */
+export function imageFilesFrom(data: DataTransfer | null | undefined): File[] {
+    if (!data) { return []; }
     // `items` carries a pasted screenshot (which has no entry in `files` on
-    // some platforms); `files` carries a dragged-in file. Check both.
-    for (const item of Array.from(data.items ?? [])) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-            const file = item.getAsFile();
-            if (file) { return file; }
-        }
-    }
-    return Array.from(data.files ?? []).find((f) => f.type.startsWith("image/")) ?? null;
+    // some platforms); `files` carries dragged-in files. The two OVERLAP, so
+    // `files` is a fallback for when `items` yielded nothing — never an
+    // addition to it, which would insert every dragged file twice.
+    const fromItems = Array.from(data.items ?? [])
+        .filter((i) => i.kind === "file" && i.type.startsWith("image/"))
+        .map((i) => i.getAsFile())
+        .filter((f): f is File => f !== null);
+    if (fromItems.length > 0) { return fromItems; }
+    return Array.from(data.files ?? []).filter((f) => f.type.startsWith("image/"));
 }
 
 /**
@@ -63,15 +76,19 @@ export const imagePastePlugin = $prose(() =>
     new Plugin({
         props: {
             handlePaste(view: EditorView, event: ClipboardEvent) {
-                const file = imageFileFrom(event.clipboardData);
-                if (!file) { return false; }
+                // Usually one file — a browser image copy, a screenshot. But
+                // copying several files in a file manager and pasting is the
+                // same multi-file payload a drag carries, so it takes the same
+                // plural path rather than silently keeping the first.
+                const files = imageFilesFrom(event.clipboardData);
+                if (files.length === 0) { return false; }
                 const alt = altFromHtmlFlavor(event.clipboardData?.getData("text/html"));
-                saveAndInsertImageAt(view, file, alt, view.state.selection.from);
+                saveAndInsertImagesAt(view, files, alt, view.state.selection.from);
                 return true; // handled: PM must not also paste the HTML flavor
             },
             handleDrop(view: EditorView, event: DragEvent) {
-                const file = imageFileFrom(event.dataTransfer);
-                if (!file) { return false; }
+                const files = imageFilesFrom(event.dataTransfer);
+                if (files.length === 0) { return false; }
                 const alt = altFromHtmlFlavor(event.dataTransfer?.getData("text/html"));
                 // Land on the line the drag was showing. It falls back to the
                 // inline position under the pointer when there is no aim — a
@@ -81,7 +98,7 @@ export const imagePastePlugin = $prose(() =>
                     ?? view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
                     ?? view.state.selection.from;
                 clearDropAim();
-                saveAndInsertImageAt(view, file, alt, at);
+                saveAndInsertImagesAt(view, files, alt, at);
                 return true;
             },
         },

@@ -126,6 +126,27 @@ describe("imageUploadProgressPlugin", () => {
         expect(pillCount(v)).toBe(0);
     });
 
+    // MAR-281: one drop of several files is ONE save with one pill, so the
+    // pill has to say so rather than describe a single image.
+    it("a batch's pill should name how many images are being saved", () => {
+        beginImageUpload(v, undefined, 3);
+        waitForPill();
+        expect(pillCount(v)).toBe(1);
+        expect(pills()[0]?.textContent).toContain("Saving 3 images…");
+    });
+
+    it("a partly-failed batch's pill should say how many did not save", () => {
+        const id = beginImageUpload(v, undefined, 3);
+        failImageUpload(v, id, "disk full", 2);
+        expect(pills()[0]?.textContent).toContain("2 images not saved: disk full");
+    });
+
+    it("a single failed save should keep the singular wording", () => {
+        const id = beginImageUpload(v);
+        failImageUpload(v, id, "disk full");
+        expect(pills()[0]?.textContent).toContain("Image not saved: disk full");
+    });
+
     // The bug this fixes: the old flow inserted at the LIVE caret when the save
     // resolved, so typing (or clicking) meanwhile put the image in the wrong
     // place. The tracked position follows the edit instead.
