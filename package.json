@@ -1,7 +1,7 @@
 {
     "name": "birta-writer",
     "displayName": "Birta Writer",
-    "description": "Birta Writer: a WYSIWYG Markdown editor for VS Code with live table editing",
+    "description": "Birta Writer: your favorite place to write Markdown.",
     "version": "0.0.0",
     "publisher": "BirtaLabs",
     "author": {

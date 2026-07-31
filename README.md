@@ -1,20 +1,26 @@
-# Birta Writer
-
 Birta Writer is a visual editor for Markdown documents.
 
-It strives to be a pleasant place to be, and your favorite way to write.
+It strives to be your favorite place to write.
 
-1. Birta Writer is fast and responsive, with modern ergonomics including `/` slash menus and draggable blocks.
-2. Embraces the many flavors of Markdown that people and tools actually write. Natively supports Obsidian wikilinks and highlights, frontmatter, Github callouts, and the Confluence Frankenstein. Tables are easy to edit. It even handles Logseq.
-3. Fully integrates with and supports everything you'd expect of a VS Code extension, including a huge theme library and your own AI assistant in the sidebar. Pairs well with the [Claude Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code), so you can use a Claude subscription instead of API keys.
+> _**birta**_ (Icelandic)
+>
+> To publish and make public, to reveal, to make manifest, to brighten.
 
-Birta Writer has calm and minimal defaults, but with many features and thoughtful details not found in most Markdown editors:
+1. Birta Writer is fast and responsive, with modern ergonomics like `/` slash menus and draggable blocks.
+2. Embraces the many flavors of Markdown that people (and tools) actually write. Natively supports Obsidian wikilinks and highlights, frontmatter, Github callouts, and the Confluence Frankenstein. Tables are easy to edit. It even handles Logseq.
+3. Fully integrates with and supports everything you'd expect of a VS Code extension, including a huge theme library and your own AI assistant in the sidebar.
+4. Pairs well with your own AI assistant, such as the [Claude Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) (so you can use your Claude subscription instead of API keys).
+5. Offline by default, no tracking of any kind. Your private data stays private.
 
-- Offline by default, no tracking of any kind. Your private data stays private.
-- Opt-in for interactive Figma embeds, playable Loom or Youtube videos, and rich link previews.
-- Mermaid diagrams, LaTeX rendering, images, and more.
-- Autocompletes inline and advanced math.
-- Offline proofreading through the [Harper Grammar Library](https://writewithharper.com), extended to highlight common _"AI tells"_. Just because people research and outline with LLMs doesn't mean we have to write like one.
+While Birta Writer's core experience is calm and minimal by default, it has many powerful features when you need them:
+
+- Opt-in interactive Figma embeds, playable Loom and Youtube videos, and rich link previews.
+- Renders Mermaid diagrams, LaTeX, images, inline HTML, and more.
+- Autocompletes inline and advanced math:
+    - 3+7= 10
+    - 3+log(2²+3²\*2.3303)/π^2=> 3.141593
+- Offline proofreading through the [Harper Grammar Library](https://writewithharper.com/docs/rules), extended to highlight common _"AI tells"_. Just because people research and outline with LLMs doesn't mean we have to write like one.
+- Editor and revision tools, like lists of `[TK]` and `TODO` annotations and inventories of all links in a document.
 - A large number of display options to customize your space, including page width, size, fonts, line numbers, and a live/editable table of contents. These are all safe to ignore, the defaults are intentional and sophisticated.
 
 Everything above is deeply customizable through VS Code settings and is downstream of existing keyboard shortcuts where applicable.
