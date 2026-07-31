@@ -30,8 +30,11 @@ The `Release` workflow (`.github/workflows/release.yml`) runs **nightly at 04:00
 
 1. If nothing has landed since the last tag, it stops — no empty releases.
 2. It writes end-user highlights (see below), packages the `.vsix`, tags the commit, and publishes a GitHub Release with the `.vsix` attached.
+3. A second job, `publish`, then pushes that same `.vsix` to the Marketplace.
 
 That's the whole loop. It is fully automatic; nothing is pushed to `main`.
+
+Publishing is a separate job because it is the only part that needs the `marketplace-publish` environment, and an environment is a policy surface — a required reviewer or a deployment branch rule added to it would stall every job that declares it. Splitting keeps the tag, the GitHub Release, and the downloadable `.vsix` out of reach of a policy only publishing cares about, and means a broken credential costs one skipped job rather than the whole release.
 
 > **DST note:** GitHub cron is UTC-only. `0 11 * * *` is 04:00 during PDT and 03:00 during PST. Change it to `0 12 * * *` to anchor 04:00 to standard time.
 
@@ -62,9 +65,27 @@ A **first release** is the special case: with no prior public version, every obs
 | Secret              | Effect when set                                   | Today            |
 | ------------------- | ------------------------------------------------- | ---------------- |
 | `ANTHROPIC_API_KEY` | AI-written highlights instead of a commit list    | recommended      |
-| `VSCE_PAT`          | Also publishes to the VS Code Marketplace         | leave unset      |
+| `AZURE_CLIENT_ID`   | Also publishes to the VS Code Marketplace         | set to publish   |
+| `AZURE_TENANT_ID`   | Required alongside `AZURE_CLIENT_ID`              | set to publish   |
 
-Until `VSCE_PAT` exists, a release builds the downloadable `.vsix` and stops — the "build it, don't publish yet" phase.
+Until `AZURE_CLIENT_ID` exists, a release builds the downloadable `.vsix` and stops — the "build it, don't publish yet" phase.
+
+Neither value is a secret in the usual sense: they are identifiers, not credentials, and nothing here expires. They are stored as secrets only to keep the tenant out of public logs.
+
+## Marketplace authentication (one-time setup)
+
+Publishing uses **Microsoft Entra ID workload identity federation**, so no token is stored anywhere. GitHub mints a short-lived OIDC token for the release job, Azure trades it for an Entra credential, and `vsce publish --azure-credential` presents that. There is nothing to rotate and nothing to leak.
+
+This is deliberately *not* the flow VS Code's own docs describe. Those instruct you to create an Azure DevOps PAT scoped to **All accessible organizations** — which is exactly what Azure DevOps calls a *global* PAT, and **global PATs are decommissioned on 2026-12-01**. Whether an org-scoped PAT can publish instead is unresolved upstream ([microsoft/vscode#322741](https://github.com/microsoft/vscode/issues/322741)), so the documented path leads to a credential with a known death date.
+
+The setup, once:
+
+1. **A user-assigned managed identity** in the Azure portal — **not an App Registration**. An App Registration is free and needs no subscription, so it looks like the obvious choice; it reportedly authenticates successfully and then fails the publish itself with `InvalidAccessException: The requested operation is not allowed`. (Reported by others, not reproduced here — Microsoft documents this flow only for Azure Pipelines, so the GitHub Actions shape of it is community knowledge. Treat the whole section as verified-by-use once the first publish succeeds, not before.)
+2. **A federated credential** on that identity, scenario *GitHub Actions deploying Azure resources*, **entity type Environment**, environment name `marketplace-publish`. Branch or Tag bindings match one literal ref and break on the next release; the release job declares this environment for exactly this reason.
+3. **`AZURE_CLIENT_ID` and `AZURE_TENANT_ID`** copied from the identity's *Properties* into repo secrets.
+4. **The identity added to the Marketplace publisher as a Contributor.** Its Azure object ID will not be found by the publisher's member search — the only id that search accepts comes from querying `https://app.vssps.visualstudio.com/_apis/profile/profiles/me` *as the identity*, which is what `.github/workflows/entra-identity-probe.yml` exists to do. Run it once by hand, take the `id`, then delete the workflow.
+
+Because the identity lives inside an Azure subscription, **the subscription has to stay active** or it disappears and publishing breaks. The identity itself is free; a pay-as-you-go subscription holding nothing else should bill nothing, but confirm that against current Azure terms rather than trusting this sentence — a lapsed free trial is the one way this otherwise non-expiring setup can still expire.
 
 ## Channels, later
 

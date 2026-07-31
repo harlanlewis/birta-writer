@@ -13,7 +13,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 const VSIX = "releases/birta-writer-0.0.0.vsix";
-const CURRENT_ID = "birtalabs.birta-writer";
+// Casing matches the Marketplace publisher id exactly (`BirtaLabs`). VS Code
+// resolves extension ids case-insensitively, so this is about staying honest to
+// the registry, not about the CLI caring.
+const CURRENT_ID = "BirtaLabs.birta-writer";
 // Pre-org / pre-rebrand ids. Removing these guarantees VS Code never runs two
 // copies of this editor over the same .md files.
 const LEGACY_IDS = ["harlanlewis.birta-writer", "harlanlewis.md-wysiwyg-editor"];
@@ -94,8 +97,11 @@ const copies = listing
     .map((l) => l.trim())
     .filter((l) => /birta|wysiwyg/i.test(l));
 
-if (copies.length === 1 && copies[0] === CURRENT_ID) {
-    console.log(`  OK — only ${CURRENT_ID} is installed.`);
+// Compare case-insensitively: extension ids are case-insensitive to VS Code, and
+// `--list-extensions` prints them lowercased regardless of the publisher's own
+// casing — so an exact match against `BirtaLabs.birta-writer` always fails here.
+if (copies.length === 1 && copies[0].toLowerCase() === CURRENT_ID.toLowerCase()) {
+    console.log(`  OK — only ${CURRENT_ID} is installed (listed as ${copies[0]}).`);
 } else {
     console.error(
         `install-local: expected only ${CURRENT_ID}, but found: ${

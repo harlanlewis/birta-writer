@@ -74,7 +74,7 @@ These come from shipped work (MAR-179, MAR-199) and MAR-198's directed design. T
 **This is the part no document had.** Every mechanism above that handles a credential is VS Code's:
 
 - `SecretStorage` — Electron `safeStorage`, OS-keychain-backed
-- `registerUriHandler` — the `vscode://birtalabs.birta-writer/auth/{provider}` OAuth callback
+- `registerUriHandler` — the `vscode://BirtaLabs.birta-writer/auth/{provider}` OAuth callback
 - `vscode.authentication.getSession` — the built-in GitHub provider, which makes GitHub's rung-2 nearly free
 - `"scope": "application"` — the guarantee a shared workspace config cannot flip a consent key
 
