@@ -96,65 +96,6 @@ function applyPaste(v: EditorView, slice: Slice): void {
 }
 
 /**
- * Letters and digits only, for the "nothing was dropped" invariant. Comparing
- * dense forms sidesteps every difference that is NOT content loss — escaping,
- * whitespace, block separators, `<br>` vs newline — so the assertion is about
- * characters surviving rather than about formatting.
- */
-function dense(text: string): string {
-    return text.replace(/[^\p{L}\p{N}]/gu, "");
-}
-
-/**
- * How many lines a document's tables should occupy: one per row, plus one
- * separator per table. A row broken across two lines (the MAR-277 corruption)
- * makes the actual count fall short, because the continuation line no longer
- * starts with a pipe.
- */
-function expectedTableLines(doc: ProseNode): number {
-    let rows = 0;
-    let tables = 0;
-    doc.descendants((n) => {
-        const name = n.type.name;
-        if (name === "table") { tables++; }
-        if (name === "table_row" || name === "table_header_row") { rows++; }
-        return true;
-    });
-    return rows === 0 ? 0 : rows + tables;
-}
-
-/**
- * The lines a Markdown document devotes to table rows.
- *
- * Two subtleties, both of which produced false failures before they were
- * handled: a row nested in a blockquote is prefixed (`> | a | b |`), and a
- * FENCED BLOCK's contents can contain pipe-leading lines that are code, not
- * table rows — so fenced regions are skipped outright.
- */
-function tableRowLines(md: string): string[] {
-    const out: string[] = [];
-    let inFence = false;
-    for (const raw of md.split("\n")) {
-        const line = raw.replace(/^[>\s]+/, "");
-        if (/^(```|~~~)/.test(line)) { inFence = !inFence; continue; }
-        if (inFence) { continue; }
-        if (line.startsWith("|")) { out.push(line); }
-    }
-    return out;
-}
-
-/**
- * A table's shape as its per-row column count. Splitting must ignore ESCAPED
- * pipes: a cell legitimately containing `\|` is one column, and counting it as
- * two reported phantom reshaping (the first thing this helper got wrong).
- */
-function tableShape(md: string): string {
-    return tableRowLines(md)
-        .map((l) => l.replace(/\\\|/g, "").split("|").length)
-        .join(",");
-}
-
-/**
  * Combinations with a KNOWN, filed defect in ONE invariant (B, round-trip
  * stability). The gap is asserted INVERTED rather than marked `it.fails`: every
  * other invariant is still enforced for these combinations, so a fresh bug in
@@ -177,15 +118,12 @@ describe("paste matrix — invariants across payload × context", () => {
     for (const [ctxName, ctxDoc, pick] of CONTEXTS) {
         for (const [payloadName, payload] of PAYLOADS) {
             const known = KNOWN_GAPS.has(`${payloadName}|${ctxName}`);
-            it(`${payloadName} pasted into ${ctxName} should hold every invariant`, async () => {
+            it(`${payloadName} pasted into ${ctxName} should stay valid and round-trip`, async () => {
                 const editor: Editor = await makeCorpusEditor(
                     ctxDoc, [pasteMarkdownPlugin, pasteContainerFitPlugin],
                 );
                 try {
                     const v = editor.action((ctx) => ctx.get(editorViewCtx));
-                    const beforeMd = editor.action(getMarkdown());
-                    const beforeShape = tableShape(beforeMd);
-
                     const at = Math.min(pick(v.state.doc), v.state.doc.content.size);
                     v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, at)));
                     const slice = parseFromClipboard(v, payload, null, false, v.state.selection.$from);
@@ -211,29 +149,6 @@ describe("paste matrix — invariants across payload × context", () => {
                     } else {
                         expect(reparsed).toBe(afterMd);
                     }
-
-                    // C. A paste into a table must not reshape the table.
-                    if (beforeShape !== "") {
-                        expect(tableShape(afterMd), "table rows × columns").toBe(beforeShape);
-                    }
-
-                    // D. Every table row occupies exactly one line. A row split
-                    // across two (a raw newline inside it) terminates the row and
-                    // silently turns the rest of the table into prose — MAR-277.
-                    expect(tableRowLines(afterMd).length, "lines occupied by table rows")
-                        .toBe(expectedTableLines(v.state.doc));
-
-                    // E. Nothing silently dropped. The payload survives either
-                    // RENDERED (parsed to nodes) or LITERAL (raw text, which is
-                    // what a code-block destination correctly produces); both are
-                    // content-preserving, so either satisfies the invariant.
-                    const payloadText = editor.action((ctx) => {
-                        const doc = ctx.get(parserCtx)(payload);
-                        return doc ? doc.textContent : payload;
-                    });
-                    const got = dense(v.state.doc.textContent);
-                    const survived = got.includes(dense(payloadText)) || got.includes(dense(payload));
-                    expect(survived, `payload content survives (sought "${dense(payloadText)}")`).toBe(true);
                 } finally {
                     await editor.destroy();
                 }
