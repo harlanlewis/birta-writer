@@ -300,7 +300,7 @@ Two switches govern all of this. `birta.embeds.enabled` is the feature itself â€
 
 - [ ] Incomplete task
 - [x] Completed task
-- [ ] Task with **formatting** and a [link](https://example.com)
+- [ ] Task with ***formatting*** and a [link](https://example.com)
 
 Checking a box only toggles the `[x]`; with `birta.checklist.sinkChecked` (off by default) a checked task also sinks below its unchecked siblings.
 
