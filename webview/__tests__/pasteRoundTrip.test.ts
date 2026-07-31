@@ -22,7 +22,7 @@ import { describe, it, expect } from "vitest";
 import { editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { pasteMarkdownPlugin } from "../plugins/pasteMarkdown";
-import { pasteTableCellPlugin } from "../plugins/pasteTableCell";
+import { pasteContainerFitPlugin } from "../plugins/pasteContainerFit";
 import { parseFromClipboard, Slice, TextSelection } from "../pm";
 import { loadCorpusFixtures, makeCorpusEditor } from "./helpers/moveFuzz";
 
@@ -33,7 +33,7 @@ const fixtures = loadCorpusFixtures();
  * would, and returns the Markdown that would be saved.
  */
 async function pasteIntoEmpty(source: string): Promise<{ md: string; text: string }> {
-    const editor = await makeCorpusEditor("", [pasteMarkdownPlugin, pasteTableCellPlugin]);
+    const editor = await makeCorpusEditor("", [pasteMarkdownPlugin, pasteContainerFitPlugin]);
     try {
         const v = editor.action((ctx) => ctx.get(editorViewCtx));
         // Inside the empty document's paragraph (1), not before it (0): at 0

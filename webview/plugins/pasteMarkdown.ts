@@ -42,7 +42,7 @@ import type { Node as ProseNode } from "@/pm";
  * null to defer to ProseMirror's literal-text default.
  *
  * A paste landing inside a table cell needs no special case HERE: whatever
- * blocks this produces, plugins/pasteTableCell.ts flattens to inline content
+ * blocks this produces, plugins/pasteContainerFit.ts flattens to inline content
  * afterwards in `transformPasted` (MAR-274), which is also what keeps the
  * literal path from widening the table.
  */

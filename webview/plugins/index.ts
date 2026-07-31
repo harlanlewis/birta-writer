@@ -38,7 +38,7 @@ export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 export { pasteMarkdownPlugin } from "./pasteMarkdown";
-export { pasteTableCellPlugin } from "./pasteTableCell";
+export { pasteContainerFitPlugin } from "./pasteContainerFit";
 export { altFromHtmlFlavor, imageFileFrom, imagePastePlugin } from "./imagePaste";
 export {
     beginImageUpload,

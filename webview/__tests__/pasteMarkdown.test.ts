@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Editor, editorViewCtx, rootCtx, defaultValueCtx, parserCtx, serializerCtx } from "@milkdown/core";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { markdownSliceFromText, pasteMarkdownPlugin } from "../plugins/pasteMarkdown";
-import { pasteTableCellPlugin } from "../plugins/pasteTableCell";
+import { pasteContainerFitPlugin } from "../plugins/pasteContainerFit";
 import { parseFromClipboard, Slice, TextSelection } from "../pm";
 import type { EditorView, Node as ProseNode } from "../pm";
 
@@ -28,7 +28,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfmFidelity)
         .use(pasteMarkdownPlugin)
-        .use(pasteTableCellPlugin)
+        .use(pasteContainerFitPlugin)
         .create();
 }
 
@@ -202,6 +202,29 @@ describe("pasteMarkdownPlugin — clipboardTextParser", () => {
         const md = pasteAndSerialize(editor, v, "\n# not a heading");
         expect(md).toContain("# not a heading");
         expect(outline(v.state.doc)).toBe("code_block");
+    });
+
+    // An ATX heading is the OTHER single-line container: a raw newline simply
+    // ends it, so `## A⏎B` reopens as a heading followed by a paragraph. Same
+    // defect as the table cell (MAR-277) in a different container — found by
+    // the paste matrix, which enumerates contexts rather than relying on anyone
+    // remembering this one. Named here too, because a generic invariant failure
+    // says "round-trip broke" while this says which construct and why.
+    it("multi-line text pasted into a heading should stay one heading", async () => {
+        await editor.destroy();
+        editor = await makeEditor("## A heading\n");
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        v.dispatch(v.state.tr.setSelection(
+            TextSelection.create(v.state.doc, v.state.doc.content.size - 1),
+        ));
+        // The lines join with a SPACE: a heading cannot hold a line break at
+        // all — not even the `<br>` a table cell accepts — so joining is the
+        // only stable rendering. What matters is that the heading stays ONE
+        // heading and the document reopens identically.
+        const md = pasteAndSerialize(editor, v, "alpha\nbravo");
+        expect(md).toBe("## A headingalpha bravo\n");
+        expect(md).not.toContain("\n\n");
+        expect(outline(v.state.doc)).toBe("heading");
     });
 
     // A GFM cell is inline-only, so block structure parsed into one cannot
