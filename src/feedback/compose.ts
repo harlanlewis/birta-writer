@@ -18,9 +18,6 @@
  * at all, by construction: this module is never given them.
  */
 
-/** What the user says the feedback is. Drives the title prefix and the label. */
-export type FeedbackKind = "bug" | "idea" | "other";
-
 /**
  * The disappointment question (Vohra's product/market-fit instrument, see
  * `docs/research/superhuman-case-study.md` §6). Always optional — it must
@@ -45,8 +42,7 @@ export interface Diagnostics {
 }
 
 export interface FeedbackDraft {
-    kind: FeedbackKind;
-    /** One line; becomes the issue title. Required. */
+    /** One line; becomes the issue title verbatim. Required. */
     summary: string;
     /** Free text; may be empty (the browser form is a fine place to continue). */
     details: string;
@@ -55,23 +51,10 @@ export interface FeedbackDraft {
     diagnostics: Diagnostics;
 }
 
-const KIND_LABELS: Record<FeedbackKind, string> = {
-    bug: "Bug",
-    idea: "Idea",
-    other: "Feedback",
-};
-
 const DISAPPOINTMENT_LABELS: Record<Disappointment, string> = {
     very: "Very disappointed",
     somewhat: "Somewhat disappointed",
     not: "Not disappointed",
-};
-
-/** The GitHub label applied to a prefilled issue, per kind. */
-export const KIND_ISSUE_LABELS: Record<FeedbackKind, string> = {
-    bug: "bug",
-    idea: "enhancement",
-    other: "feedback",
 };
 
 /**
@@ -157,8 +140,8 @@ export function composeFeedback(draft: FeedbackDraft): { title: string; body: st
 
     sections.push(formatDiagnostics(draft.diagnostics));
 
-    return {
-        title: `${KIND_LABELS[draft.kind]}: ${summary}`,
-        body: sections.join("\n\n"),
-    };
+    // The title is the summary, unadorned. A "Bug: " prefix duplicated the
+    // label the issue was already asking for and spent title width on a
+    // classification the maintainer re-makes on triage anyway.
+    return { title: summary, body: sections.join("\n\n") };
 }

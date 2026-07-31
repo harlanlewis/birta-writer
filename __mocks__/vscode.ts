@@ -406,7 +406,11 @@ export const workspace = {
 
 export const env = {
     language: "en",
-    openExternal: vi.fn(),
+    // Resolves `true` by default because the real API resolves a boolean and
+    // callers branch on it — a bare `vi.fn()` returns undefined, which reads
+    // as "the browser refused to open" and would send every test down the
+    // failure path. `vi.clearAllMocks()` keeps the implementation.
+    openExternal: vi.fn().mockResolvedValue(true),
     /**
      * Clipboard writes (the feedback command's always-available channel), and
      * reads — the Paste as Plain Text command's payload, since a webview is not
