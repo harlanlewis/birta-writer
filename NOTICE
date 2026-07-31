@@ -10,6 +10,3 @@ Portions of this software are derived from md-wysiwyg-editor
 (https://github.com/git-xing/md-wysiwyg-editor), Copyright (c) 2025 Chance Liu,
 originally licensed under the MIT License. The full text of that license is
 reproduced in LICENSE-MIT and continues to apply to those portions.
-
-A dated measurement of how much upstream-derived code remains is kept in
-docs/PROVENANCE.md.
