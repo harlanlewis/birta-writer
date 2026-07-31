@@ -87,6 +87,22 @@ The setup, once:
 
 Because the identity lives inside an Azure subscription, **the subscription has to stay active** or it disappears and publishing breaks. The identity itself is free; a pay-as-you-go subscription holding nothing else should bill nothing, but confirm that against current Azure terms rather than trusting this sentence — a lapsed free trial is the one way this otherwise non-expiring setup can still expire.
 
+## Verifying a release
+
+A source audit tells you what the *source* does. It cannot tell you that the published binary was built from that source. Every release closes that gap with a [Sigstore](https://www.sigstore.dev/)-backed **build-provenance attestation** binding the VSIX's digest to this repository, the exact commit, and the workflow run that produced it:
+
+```
+gh attestation verify birta-writer-<version>.vsix --repo harlanlewis/birta-writer
+```
+
+The Marketplace upload and the GitHub Release asset are the *same file* — the release job packages once and the publish job uploads that artifact rather than rebuilding — so one attestation covers both channels. A `SHA256SUMS.txt` is attached alongside for anyone who just wants to compare two files.
+
+### What is not yet true: byte-reproducibility
+
+**You cannot currently rebuild a tag and get a byte-identical VSIX**, and the published hash is therefore an identifier for that artifact rather than something a third party can independently derive. Measured 2026-07-30: two `pnpm run package` runs from an identical tree produced different archive hashes, with **identical extracted contents and identical entry order** — the only difference was the zip entry mtimes (`…173236` vs `…173240`).
+
+That locates the problem precisely. The *build* is already deterministic; the *container* is not, because `vsce package` stamps each zip entry with the wall clock and exposes no `SOURCE_DATE_EPOCH`-style override. Closing it means normalizing timestamps in the archive after `vsce` writes it, which is real work and is tracked in MAR-130 — don't claim reproducibility until that lands. Until then, provenance answers "did this pipeline build it from that commit", which is the question most people actually have, but not "can I derive these bytes myself".
+
 ## Channels, later
 
 There is one channel today. If a pre-release ("insiders") stream is ever wanted, it is a **flag, not a number**: add `--pre-release` to the marketplace publish step for those builds. The CalVer scheme is unchanged — the timestamp keeps stable and pre-release builds correctly ordered on their own, and VS Code routes users by the flag. Do not encode the channel into the version.
