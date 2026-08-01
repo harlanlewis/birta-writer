@@ -17,12 +17,26 @@
 export const FEEDBACK_REPO = "harlanlewis/birta-writer";
 
 /**
- * Practical ceiling for a prefilled URL. Browsers and servers both impose
- * limits well above this, but GitHub starts rejecting long prefills before the
- * theoretical maximum, and a truncated report the user can repair beats a
- * page that will not load.
+ * Destination for the mail channel.
+ *
+ * This is what makes the destination step a real question rather than a
+ * preference toll. **A GitHub issue needs a GitHub account**, and a user who
+ * doesn't have one meets a login wall instead of the form they were promised —
+ * having just written their report. Mail asks nothing of them.
+ */
+export const FEEDBACK_EMAIL: string | null = "harlan@birtalabs.com";
+
+export type FeedbackChannel = "github" | "mail" | "clipboard";
+
+/**
+ * Practical ceilings for a prefilled URL. Browsers and servers both impose
+ * limits well above the GitHub figure, but GitHub starts rejecting long
+ * prefills before the theoretical maximum, and a truncated report the user can
+ * repair beats a page that will not load. Mail clients are far stricter, hence
+ * the separate (much smaller) budget.
  */
 export const GITHUB_URL_BUDGET = 6000;
+export const MAILTO_URL_BUDGET = 1800;
 
 /** Appended when a body had to be cut to fit a URL budget. */
 export const TRUNCATION_NOTE =
@@ -54,23 +68,58 @@ export function fitToBudget(body: string, overheadChars: number, budget: number)
 }
 
 /**
+ * A prefilled URL, plus whether the body had to be cut to fit it. `truncated`
+ * is returned rather than left for the caller to sniff out of the body,
+ * because it is the only thing the caller needs the clipboard for: a report
+ * that fit needs no copy, and copying anyway silently destroys whatever the
+ * user had on their clipboard.
+ */
+export interface Prefill {
+    url: string;
+    truncated: boolean;
+}
+
+/**
  * A prefilled "new issue" URL. The user still has to press Submit.
  *
  * Every parameter is escaped with `encodeURIComponent`, deliberately **not**
  * `URLSearchParams` — the latter is form-encoding, which writes a space as
- * `+`, and a `+` a user actually typed would then arrive as a space.
- *
- * `truncated` is returned rather than left for the caller to sniff out of the
- * body, because it is the only thing the caller needs the clipboard for: a
- * report that fit needs no copy, and copying anyway silently destroys whatever
- * the user had on their clipboard.
+ * `+`. A `+` a user actually typed would then arrive as a space, and in a
+ * `mailto:` a `+` is a literal plus, so one escaping rule serves both.
  */
-export function githubIssueUrl(options: { repo?: string; title: string; body: string }): {
-    url: string;
-    truncated: boolean;
-} {
+export function githubIssueUrl(options: { repo?: string; title: string; body: string }): Prefill {
     const repo = options.repo ?? FEEDBACK_REPO;
     const prefix = `https://github.com/${repo}/issues/new?title=${encodeURIComponent(options.title)}&body=`;
     const body = fitToBudget(options.body, prefix.length, GITHUB_URL_BUDGET);
     return { url: `${prefix}${encodeURIComponent(body)}`, truncated: body !== options.body };
+}
+
+/**
+ * A prefilled mail draft. Returns `null` when no destination is configured —
+ * callers use that to hide the channel rather than to show a broken one.
+ *
+ * The much smaller budget means a report of any length is usually truncated
+ * here, which is exactly why `truncated` is reported: the clipboard carries
+ * the whole thing, and the draft says so.
+ */
+export function mailtoUrl(options: {
+    to?: string | null;
+    subject: string;
+    body: string;
+}): Prefill | null {
+    const to = options.to === undefined ? FEEDBACK_EMAIL : options.to;
+    if (!to) return null;
+    const prefix = `mailto:${to}?subject=${encodeURIComponent(options.subject)}&body=`;
+    const body = fitToBudget(options.body, prefix.length, MAILTO_URL_BUDGET);
+    return { url: `${prefix}${encodeURIComponent(body)}`, truncated: body !== options.body };
+}
+
+/**
+ * The destinations offered, in the order they should appear. GitHub is first
+ * because it is where the work happens; the clipboard is always available and
+ * always last, because it is the one that needs no account, no mail client,
+ * and no network of any kind.
+ */
+export function availableChannels(email: string | null = FEEDBACK_EMAIL): FeedbackChannel[] {
+    return email ? ["github", "mail", "clipboard"] : ["github", "clipboard"];
 }

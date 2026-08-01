@@ -1,11 +1,54 @@
 import { describe, it, expect } from "vitest";
 import {
+    availableChannels,
     fitToBudget,
     githubIssueUrl,
+    mailtoUrl,
+    FEEDBACK_EMAIL,
     FEEDBACK_REPO,
     GITHUB_URL_BUDGET,
+    MAILTO_URL_BUDGET,
     TRUNCATION_NOTE,
 } from "../feedback/channels";
+
+describe("availableChannels", () => {
+    it("a configured address should offer mail between GitHub and the clipboard", () => {
+        expect(FEEDBACK_EMAIL).toBe("harlan@birtalabs.com");
+        expect(availableChannels()).toEqual(["github", "mail", "clipboard"]);
+    });
+
+    it("no address should hide the mail channel rather than show a broken one", () => {
+        expect(availableChannels(null)).toEqual(["github", "clipboard"]);
+    });
+
+    it("the clipboard should always be offered last, as the no-network fallback", () => {
+        for (const email of [null, "hello@birtalabs.com"]) {
+            expect(availableChannels(email).at(-1)).toBe("clipboard");
+        }
+    });
+});
+
+describe("mailtoUrl", () => {
+    it("no destination should return null so the caller can hide the channel", () => {
+        expect(mailtoUrl({ to: null, subject: "s", body: "b" })).toBeNull();
+    });
+
+    it("a destination should produce a prefilled draft within the mail budget", () => {
+        const prefill = mailtoUrl({ subject: "a thing broke", body: "y".repeat(9000) });
+        expect(prefill).not.toBeNull();
+        expect(prefill!.url.startsWith("mailto:harlan@birtalabs.com?")).toBe(true);
+        expect(prefill!.url.length).toBeLessThanOrEqual(MAILTO_URL_BUDGET);
+        expect(prefill!.truncated).toBe(true);
+    });
+
+    it("a short draft should round-trip its subject and body, and report no truncation", () => {
+        const prefill = mailtoUrl({ to: "a@b.com", subject: "A & B #2", body: "c+d 100%" })!;
+        const parsed = new URL(prefill.url);
+        expect(parsed.searchParams.get("subject")).toBe("A & B #2");
+        expect(parsed.searchParams.get("body")).toBe("c+d 100%");
+        expect(prefill.truncated).toBe(false);
+    });
+});
 
 describe("githubIssueUrl", () => {
     it("a short report should round-trip title and body into the query", () => {

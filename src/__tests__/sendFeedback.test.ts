@@ -9,9 +9,16 @@ const openExternal = vscode.env.openExternal as unknown as ReturnType<typeof vi.
 const writeText = vscode.env.clipboard.writeText as unknown as ReturnType<typeof vi.fn>;
 const showErrorMessage = vscode.window.showErrorMessage as unknown as ReturnType<typeof vi.fn>;
 
-/** Answer the three prompts in order: summary, disappointment, detail. */
-function answer(options: { summary?: string; mood?: string; details?: string | undefined }): void {
-    showQuickPick.mockResolvedValueOnce({ mood: options.mood ?? "skip" });
+/** Answer the four prompts in order: summary, disappointment, detail, destination. */
+function answer(options: {
+    summary?: string;
+    mood?: string;
+    details?: string | undefined;
+    channel?: string;
+}): void {
+    showQuickPick
+        .mockResolvedValueOnce({ mood: options.mood ?? "skip" })
+        .mockResolvedValueOnce({ channel: options.channel ?? "github" });
     showInputBox
         .mockResolvedValueOnce("summary" in options ? options.summary : "a summary")
         .mockResolvedValueOnce("details" in options ? options.details : "some details");
@@ -106,11 +113,66 @@ describe("runSendFeedback", () => {
         expect(sentUrl().searchParams.get("title")).toBe("a summary");
     });
 
-    it("three prompts should be the whole flow", async () => {
+    it("four prompts should be the whole flow", async () => {
         answer({});
         await runSendFeedback("0.0.0");
         expect(showInputBox).toHaveBeenCalledTimes(2);
-        expect(showQuickPick).toHaveBeenCalledTimes(1);
+        expect(showQuickPick).toHaveBeenCalledTimes(2);
+    });
+
+    it("no prompt should spell out the Enter/Escape hint that VS Code appends itself", async () => {
+        answer({});
+        await runSendFeedback("0.0.0");
+        for (const [options] of showInputBox.mock.calls) {
+            expect(String(options.prompt)).not.toMatch(/Enter.*(confirm|submit)|Escape|Esc\b/i);
+        }
+    });
+
+    it("every answer on the disappointment scale should name what it is about", async () => {
+        answer({});
+        await runSendFeedback("0.0.0");
+        const rows = showQuickPick.mock.calls[0][0] as Array<{ mood: string; label: string }>;
+        // Asked at the end of a bug report, a bare "Not disappointed" reads as
+        // a verdict on the issue rather than on the editor. The rows are what
+        // people read, so the rows carry the subject.
+        for (const row of rows.filter((r) => r.mood !== "skip")) {
+            expect(row.label).toMatch(/—/);
+        }
+        expect(rows.at(-1)).toEqual({ mood: "skip", label: "Skip this question" });
+    });
+
+    it("the destination step should say what each channel costs", async () => {
+        answer({});
+        await runSendFeedback("0.0.0");
+        const rows = showQuickPick.mock.calls[1][0] as Array<{ channel: string; detail: string }>;
+        expect(rows.map((r) => r.channel)).toEqual(["github", "mail", "clipboard"]);
+        // The whole reason this step exists: someone without a GitHub account
+        // must find out here, not at a login wall holding their report.
+        expect(rows[0].detail).toMatch(/GitHub account/i);
+        expect(rows[1].detail).toMatch(/no account/i);
+    });
+
+    it("the mail channel should open a prefilled draft to the Birta Labs address", async () => {
+        answer({ channel: "mail" });
+        await runSendFeedback("0.0.0");
+        const sent = asOpenerSends(openExternal.mock.calls[0][0]);
+        expect(sent.startsWith("mailto:harlan@birtalabs.com?")).toBe(true);
+        expect(sent).not.toContain("%25");
+    });
+
+    it("the clipboard channel should make no outbound call at all", async () => {
+        answer({ channel: "clipboard" });
+        await runSendFeedback("0.0.0");
+        expect(openExternal).not.toHaveBeenCalled();
+        expect(writeText).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancelling the destination step should send nowhere", async () => {
+        showInputBox.mockResolvedValueOnce("a summary").mockResolvedValueOnce("d");
+        showQuickPick.mockResolvedValueOnce({ mood: "skip" }).mockResolvedValueOnce(undefined);
+        await runSendFeedback("0.0.0");
+        expect(openExternal).not.toHaveBeenCalled();
+        expect(writeText).not.toHaveBeenCalled();
     });
 
     it("a report that fits should leave the clipboard alone", async () => {
@@ -186,7 +248,7 @@ describe("runSendFeedback", () => {
 
     it("escaping the optional detail step should abort, but an empty answer should continue", async () => {
         showInputBox.mockResolvedValueOnce("a summary").mockResolvedValueOnce(undefined);
-        showQuickPick.mockResolvedValueOnce({ mood: "skip" });
+        showQuickPick.mockResolvedValueOnce({ mood: "skip" }).mockResolvedValueOnce({ channel: "github" });
         await runSendFeedback("0.0.0");
         expect(openExternal).not.toHaveBeenCalled();
 
