@@ -15,7 +15,7 @@ Every network capability sits on one rung. The rungs are ordered by **what leave
 | Rung | What leaves | Status | Examples |
 |---|---|---|---|
 | **0 — nothing** | No outbound request at all | **Shipped, and the default.** `birta.network.enabled` ships `false`; with it off the editor makes no outbound request | Everything, out of the box |
-| **0b — a URL you send yourself** | Nothing, *from Birta*. It composes text and hands a URL to the host; the request is the user's browser, under their identity, against a form they can still edit | **Shipped** (2026-07-27) | **Send Feedback** (`birta.sendFeedback`); following a link in a document |
+| **0b — a URL you send yourself** | Nothing, *from Birta*. It composes text and hands a URL to the host; the request is the user's browser or mail client, under their identity, against a draft they can still edit | **Shipped** (2026-07-27) | **Send Feedback** (`birta.sendFeedback`); following a link in a document |
 | **1 — a URL you typed** | The URL, to its own host | **Shipped** | Paste-unfurl (fetches a page title, *offers* it); URL embeds (renders a card, and — 2026-07-27 — asks the provider's **own oEmbed endpoint** for the title shown on the card's caption: extension-side, request URL rebuilt from validated parts, session-cached, render-only) |
 | **2 — a URL + your credential** | The URL and a per-provider token, to that provider's pinned hosts | **Directed, not built** (MAR-198) | Jira/Asana/Figma/private-GitHub cards |
 | **3 — your document content** | The document itself | **Not decided, not designed** — gated on an open scope question | The publish loop (MAR-232), any cloud/sync surface |
@@ -33,15 +33,16 @@ Two things this ladder makes visible that the per-document treatments did not:
 | Initiates | The software, continuously | The user, once, deliberately |
 | Payload | Whatever the vendor chose | Exactly what they typed, and they read all of it |
 | Visible before sending | No | It **is** the form they are looking at |
-| Identity | Install or device ID | Their own GitHub account, under their control |
+| Identity | Install or device ID | None — or their own GitHub account or mail address, by their choice |
 | Default | On, with an opt-out | Absent until invoked |
 | Network actor | The software | The user's browser |
 
-Three invariants keep it on that side of the line, and all three are enforced in `src/feedback/sendFeedback.ts` and pinned by `src/__tests__/sendFeedback.test.ts`:
+Four invariants keep it on that side of the line, and all four are enforced in `src/feedback/sendFeedback.ts` and pinned by `src/__tests__/sendFeedback.test.ts`:
 
 10. **It never solicits.** No prompt, no nag, no after-N-days toast, no rating request. The command is reachable from the palette and nowhere else. Solicitation is what turns opt-in back into telemetry, and a "quick survey?" popup would breach this rung as surely as a `fetch` would.
 11. **Document content, file paths, and workspace names never enter the payload** — by construction, because the composer is never given them. Settings are reported by key; a *value* is included only when its shape proves it cannot carry a path or a sentence (`compose.ts` `isReportableValue`), and anything else reads "customized".
-12. **Nothing the user wrote can be lost on the way out, and nothing opens unannounced.** The last prompt says a browser is about to open and that nothing is sent until they press Submit. The clipboard is the fallback, not the default: if the browser cannot be opened, or the report was too long to fit in a URL, the full text is copied there and Birta says so — but it is *not* written on an ordinary report, because copying every time would silently destroy whatever the user had on their clipboard. (Until 2026-07-31 the clipboard was also an offered destination, which made the feature usable with no browser at all. Restoring that path means a separate command, not a step every reporter pays for.)
+12. **The clipboard is always offered**, so the whole feature works with no browser, no account, and no network of any kind. It is also the fallback for the other two: if a draft cannot be opened, or the report was too long to fit in a URL, the full text is copied there and Birta says so — but it is *not* written when a destination the user chose worked, because copying every time would silently destroy whatever they had on their clipboard.
+13. **Nothing opens unannounced, and no destination costs more than it says.** The last step names each destination and what it asks of the user — a GitHub issue needs a GitHub account, mail needs none, the clipboard needs nothing at all. Someone without a GitHub account learns that here, rather than at a login wall holding the report they just wrote.
 
 ---
 
