@@ -32,14 +32,34 @@
  * round-trips exactly as if the digits had been typed by hand (the phase-0
  * fidelity line: no new node type, no marker).
  *
+ * PORTABILITY IS THE OTHER HALF OF THE POINT. An equation lives in a plain
+ * `.md` file, so a reader will paste it into some other calculator sooner or
+ * later — and it must answer the same there. Where the world's calculators
+ * genuinely DISAGREE about what a notation means, this engine does not pick a
+ * side quietly: it either follows the overwhelming majority, or it refuses to
+ * answer at all and asks the writer to say which they meant (see
+ * AMBIGUOUS_FUNCTIONS). A wrong number that looks right is the worst thing a
+ * calculator can produce; no number is recoverable, a wrong one is not.
+ *
  * Operator semantics worth pinning down:
- * - `%` is the REMAINDER operator (binary infix, same precedence as `*` and
- *   `/`; JS `%`, truncated toward zero): `10 % 3` is `1` and `-10 % 3` is `-1`
- *   — not percent, and not the always-positive mathematical modulo.
- *   Percent-as-postfix is ambiguous with remainder, so we take the
- *   unambiguous, deterministic reading.
- * - `^` (and `**`) is exponentiation, right-associative, binding TIGHTER than
- *   unary minus — `-2 ^ 2` is `-(2 ^ 2)` = `-4`, matching ordinary math.
+ * - `%` is MODULO, floored — the result takes the sign of the DIVISOR, so
+ *   `-10 % 3` is `2` and `10 % -3` is `-2` (binary infix, same precedence as
+ *   `*` and `/`). Not percent: percent-as-postfix is ambiguous with modulo, so
+ *   we take the unambiguous reading. Floored rather than JS's truncated `%`
+ *   because every calculator a reader is likely to paste into floors —
+ *   Excel/Sheets `MOD`, Python, Ruby, Wolfram `Mod`, and mathjs (whose `%` IS
+ *   `mod`) all answer `2`; only the C-family languages answer `-1`.
+ * - `^` (and `**`) is exponentiation, right-associative (`2^3^2` is `2^(3^2)`
+ *   = 512), binding TIGHTER than unary minus — `-2 ^ 2` is `-(2 ^ 2)` = `-4`.
+ *   Both match ordinary math notation, Python, Wolfram, and Google's
+ *   calculator; spreadsheets are the outlier on both counts.
+ * - Trig is in RADIANS (`sin(pi/2)` is 1; `sin(30)` is -0.988, NOT 0.5). Every
+ *   text-entry calculator agrees — it is the pocket-calculator DEG button that
+ *   is the odd one out, and it has no notation here to disagree about.
+ * - `round` rounds halves AWAY FROM ZERO: `round(2.5)` is 3 and `round(-2.5)`
+ *   is -3, so `round(-x)` is always `-round(x)`. This is the spreadsheet /
+ *   pocket-calculator / C `round()` rule; JS's own `Math.round` breaks the
+ *   symmetry (it rounds halves toward +∞, making `round(-2.5)` -2).
  * - No scientific notation: `1e3` contains a letter and is rejected. This is a
  *   deliberate choice — it keeps the accepted grammar something a reader can
  *   see is pure arithmetic, and avoids surprising a user who typed `1e3` as
@@ -57,18 +77,30 @@
 import { calcUnitsReady, convertUnit, isKnownUnit, unitsCompatible } from "./calcUnits";
 
 /**
+ * Rounds halves AWAY FROM ZERO (`2.5` → 3, `-2.5` → -3), so `round(-x)` is
+ * always `-round(x)`. JS's `Math.round` rounds halves toward +∞ instead,
+ * which silently disagrees with spreadsheets, pocket calculators, and C's
+ * `round()` on every negative half — see the header's portability note.
+ */
+function roundHalfAwayFromZero(x: number): number {
+    return Math.sign(x) * Math.round(Math.abs(x));
+}
+
+/**
  * The function table for the identifier-allowing path — a FIXED map of pure
  * numeric functions, matched case-insensitively. This is the whole call
  * surface: a name not in this map is a parse error, so `alert(1)` (rejected
  * at the tokenizer on the `=` path, an unknown function here) can never
- * become a call. `log` is base-10, the note-taking convention; `ln` is the
- * natural log.
+ * become a call.
+ *
+ * Every name here means ONE thing everywhere a reader might paste it. The
+ * logarithms are spelled explicitly (`ln`, `log10`, `log2`) for exactly that
+ * reason; bare `log` is deliberately absent — see AMBIGUOUS_FUNCTIONS.
  */
 const FUNCTIONS = new Map<string, (x: number) => number>([
     ["sqrt", Math.sqrt],
     ["abs", Math.abs],
     ["ln", Math.log],
-    ["log", Math.log10],
     ["log10", Math.log10],
     ["log2", Math.log2],
     ["exp", Math.exp],
@@ -78,10 +110,109 @@ const FUNCTIONS = new Map<string, (x: number) => number>([
     ["asin", Math.asin],
     ["acos", Math.acos],
     ["atan", Math.atan],
-    ["round", Math.round],
+    ["round", roundHalfAwayFromZero],
     ["floor", Math.floor],
     ["ceil", Math.ceil],
 ]);
+
+/**
+ * Names the world cannot agree on, mapped to the explicit spellings that
+ * settle them. Such a name is RECOGNIZED by the grammar — it parses, the
+ * ledger can cue it, the `=>` menu can offer each reading — but it never
+ * produces a value. The engine does not guess.
+ *
+ * `log` is the whole list, and it is a genuine 50/50 split, not a rare corner:
+ *   - base 10 in Excel/Sheets, Desmos, Google's calculator, macOS Calculator,
+ *     and every pocket-calculator LOG key;
+ *   - natural in Python, JavaScript, R, Julia, Mathematica, and mathjs.
+ * So `log(100)` is 2 for half the world and 4.60517 for the other half — a
+ * disagreement no answer of ours can survive being pasted somewhere else, and
+ * one that is invisible in the result (both are plausible numbers). Refusing
+ * costs one keystroke; guessing costs the reader a wrong answer they cannot
+ * see is wrong. Write `log10(…)`, `ln(…)`, or `log2(…)` and the meaning
+ * travels with the equation — which is the point of keeping notes in plain
+ * text at all.
+ */
+const AMBIGUOUS_FUNCTIONS = new Map<string, readonly string[]>([
+    ["log", ["log10", "ln"]],
+]);
+
+/** Every explicit spelling offered for some ambiguous name (`log10`, `ln`). */
+const DISAMBIGUATIONS = new Set<string>(
+    [...AMBIGUOUS_FUNCTIONS.values()].flat(),
+);
+
+/**
+ * Whether `name` is a CALL name — a real function or a recognized-but-refused
+ * ambiguous one. The difference matters only at evaluation; everywhere else
+ * (is this a variable? does this line read as a formula?) an ambiguous name is
+ * a function like any other, and treating it as a variable would make
+ * `log(100) =>` look like it depends on a definition named `log`.
+ */
+function isCallName(name: string): boolean {
+    const lower = name.toLowerCase();
+    return FUNCTIONS.has(lower) || AMBIGUOUS_FUNCTIONS.has(lower);
+}
+
+/** The explicit spellings that settle `name`, or `[]` when it isn't ambiguous. */
+export function ambiguousReadings(name: string): readonly string[] {
+    return AMBIGUOUS_FUNCTIONS.get(name.toLowerCase()) ?? [];
+}
+
+/** Whether `name` is one of the explicit spellings offered for an ambiguous
+ * name — the "the user picked a reading" test on the suggestion path. */
+export function isDisambiguation(name: string): boolean {
+    return DISAMBIGUATIONS.has(name);
+}
+
+/**
+ * The ambiguous names used CALL-SHAPED in `expr` (lowercased, de-duplicated,
+ * in first-use order). `log(100)` yields `["log"]`; a variable that merely
+ * happens to be called `log` yields nothing, because only `name(` is a call.
+ */
+export function ambiguousCallsIn(expr: string): string[] {
+    const tokens = tokenize(expr, true);
+    if (!tokens) { return []; }
+    const names: string[] = [];
+    tokens.forEach((tok, i) => {
+        if (tok.kind !== "ident" || tokens[i + 1]?.kind !== "lparen") { return; }
+        const lower = tok.name.toLowerCase();
+        if (AMBIGUOUS_FUNCTIONS.has(lower) && !names.includes(lower)) { names.push(lower); }
+    });
+    return names;
+}
+
+/**
+ * Rewrites every CALL-shaped `name(` in `text` to `replacement(`, so a picked
+ * reading can be written back into the document itself — the equation, not
+ * just its answer, stops being ambiguous. Matches whole names only, so
+ * `log10(` and `mylog(` are untouched. `name` comes from AMBIGUOUS_FUNCTIONS
+ * (a fixed table), never from user text, so the built pattern is a constant.
+ */
+export function rewriteAmbiguousCall(text: string, name: string, replacement: string): string {
+    return text.replace(new RegExp(`\\b${name}(?=\\s*\\()`, "gi"), replacement);
+}
+
+/**
+ * `text` with every ambiguous call that `reading` can settle rewritten to it
+ * (`disambiguate("log(100)", "ln")` → `"ln(100)"`). A name `reading` does not
+ * belong to is left alone — the result then still refuses to evaluate, which
+ * is the honest outcome.
+ *
+ * Deliberately text-level rather than token-level: the pick path applies this
+ * to a document REGION, which carries the trailing `=>` and so does not
+ * tokenize at all. (It used to derive the names via ambiguousCallsIn, which
+ * returned nothing for the region and silently left the `log` in place while
+ * writing the answer — the exact half-settled equation the whole feature
+ * exists to prevent. Caught by e2e/calcAmbiguous.)
+ */
+export function disambiguate(text: string, reading: string): string {
+    let out = text;
+    for (const [name, readings] of AMBIGUOUS_FUNCTIONS) {
+        if (readings.includes(reading)) { out = rewriteAmbiguousCall(out, name, reading); }
+    }
+    return out;
+}
 
 /**
  * Constants, matched case-insensitively — resolved only AFTER the caller's
@@ -291,8 +422,11 @@ class Parser {
                 if (right === 0 && !this.structural) { throw new CalcError("division by zero"); }
                 left = right === 0 ? 0 : left / right;
             } else {
-                if (right === 0 && !this.structural) { throw new CalcError("remainder by zero"); }
-                left = right === 0 ? 0 : left % right;
+                if (right === 0 && !this.structural) { throw new CalcError("modulo by zero"); }
+                // FLOORED modulo — the sign follows the divisor, as in every
+                // calculator a reader is likely to paste into (see the header).
+                // JS's own `%` truncates, so `-10 % 3` must not be `left % right`.
+                left = right === 0 ? 0 : ((left % right) + right) % right;
             }
         }
     }
@@ -330,7 +464,8 @@ class Parser {
             // syntax there is; an unknown name before `(` falls through to the
             // variable path, whose leftover `(…)` then fails the parse (no
             // implicit multiplication, no surprise calls).
-            const fn = FUNCTIONS.get(tok.name.toLowerCase());
+            const lower = tok.name.toLowerCase();
+            const fn = FUNCTIONS.get(lower);
             if (fn && this.peek()?.kind === "lparen") {
                 this.pos++;
                 const arg = this.parseExpr();
@@ -338,6 +473,20 @@ class Parser {
                 if (!close || close.kind !== "rparen") { throw new CalcError("unbalanced parentheses"); }
                 this.pos++;
                 return fn(arg);
+            }
+            // An AMBIGUOUS name parses as a call — the shape is real, and every
+            // surface that asks "is this an equation?" must say yes so the
+            // refusal can be EXPLAINED (a ledger cue, a menu offering each
+            // reading) instead of the line silently reading as prose. It just
+            // never yields a value: see AMBIGUOUS_FUNCTIONS.
+            if (AMBIGUOUS_FUNCTIONS.has(lower) && this.peek()?.kind === "lparen") {
+                this.pos++;
+                this.parseExpr();
+                const close = this.peek();
+                if (!close || close.kind !== "rparen") { throw new CalcError("unbalanced parentheses"); }
+                this.pos++;
+                if (this.structural) { return 1; }
+                throw new CalcError(`ambiguous function: ${tok.name}`);
             }
             if (this.structural) { return 1; } // any name is resolvable in shape-land
             const value = this.resolve?.(tok.name) ?? CONSTANTS.get(tok.name.toLowerCase());
@@ -915,7 +1064,7 @@ export function expressionUsesVariables(expr: string): boolean {
     return tokens.some(
         (tok, i) =>
             tok.kind === "ident" &&
-            !(FUNCTIONS.has(tok.name.toLowerCase()) && tokens[i + 1]?.kind === "lparen"),
+            !(isCallName(tok.name) && tokens[i + 1]?.kind === "lparen"),
     );
 }
 
@@ -931,7 +1080,7 @@ export function unresolvedVariables(expr: string, scope: Map<string, number>): s
     const names: string[] = [];
     tokens.forEach((tok, i) => {
         if (tok.kind !== "ident") { return; }
-        if (FUNCTIONS.has(tok.name.toLowerCase()) && tokens[i + 1]?.kind === "lparen") { return; }
+        if (isCallName(tok.name) && tokens[i + 1]?.kind === "lparen") { return; }
         if (scope.has(tok.name) || CONSTANTS.has(tok.name.toLowerCase())) { return; }
         names.push(tok.name);
     });
@@ -1056,6 +1205,13 @@ export interface CalcBlockLine {
      * ledger offers this as a hover tooltip so the rounding is inspectable.
      */
     value?: number;
+    /**
+     * The ambiguous names (`log`) that stopped an `error` line from computing.
+     * Present only when they are the REASON — the ledger turns this into a
+     * specific explanation, so a refusal the reader can fix reads as an
+     * instruction rather than a dead end.
+     */
+    ambiguous?: readonly string[];
 }
 
 /** A calc-block comment/annotation line: `#` or `//`, so prose can sit inline. */
@@ -1098,7 +1254,7 @@ function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
     return tokens.some(
         (tok) =>
             tok.kind === "num" ||
-            (tok.kind === "ident" && (scope.has(tok.name) || FUNCTIONS.has(tok.name.toLowerCase()))),
+            (tok.kind === "ident" && (scope.has(tok.name) || isCallName(tok.name))),
     );
 }
 
@@ -1126,6 +1282,13 @@ const HAS_FUNCTION_CALL = /[A-Za-zπτ_][\wπτ]*\s*\(/u;
  */
 export function evaluateCalcBlock(source: string): CalcBlockLine[] {
     const scope = new Map<string, number>();
+    /** An `error` row, naming the ambiguity when that is why it has no value. */
+    const errorLine = (raw: string, inspect: string): CalcBlockLine => {
+        const ambiguous = ambiguousCallsIn(inspect);
+        return ambiguous.length > 0
+            ? { raw, result: null, kind: "error", ambiguous }
+            : { raw, result: null, kind: "error" };
+    };
     return source.split("\n").map((raw): CalcBlockLine => {
         if (!raw.trim() || CALC_COMMENT.test(raw)) { return { raw, result: null, kind: "silent" }; }
 
@@ -1147,7 +1310,7 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
                 const formatted = formatCalcResult(value);
                 if (formatted !== null && formatted !== def.rhs) { shown.push(formatted); }
             }
-            if (!allApplied) { return { raw, result: null, kind: "error" }; }
+            if (!allApplied) { return errorLine(raw, line); }
             return shown.length > 0
                 ? { raw, result: shown.join(", "), kind: "value" }
                 : { raw, result: null, kind: "silent" };
@@ -1155,7 +1318,7 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
         const def = defs[0];
         if (def) {
             const value = applyDefinition(def, scope);
-            if (value === null) { return { raw, result: null, kind: "error" }; }
+            if (value === null) { return errorLine(raw, def.rhs); }
             // A literal RHS already spells its value — nothing to display, and
             // nothing wrong, even when the value itself is unprintable
             // (`x = 0.0000001` defines fine and shows no echo; an error dash
@@ -1174,7 +1337,9 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
         if (!expr || isBareNumber(expr)) { return { raw, result: null, kind: "silent" }; }
         const value = evaluateCalc(expr, scope);
         if (value === null) {
-            return { raw, result: null, kind: looksLikeFormula(expr, scope) ? "error" : "silent" };
+            return looksLikeFormula(expr, scope)
+                ? errorLine(raw, expr)
+                : { raw, result: null, kind: "silent" };
         }
         const formatted = formatCalcResult(value);
         if (formatted === null) { return { raw, result: null, kind: "error" }; }

@@ -20,6 +20,10 @@ import {
     findRefreshEquations,
     expressionUsesVariables,
     unresolvedVariables,
+    ambiguousCallsIn,
+    ambiguousReadings,
+    disambiguate,
+    isDisambiguation,
 } from "../utils/calc";
 
 // The unit engine is a lazy chunk in production (callers await it); tests
@@ -932,10 +936,130 @@ describe("functions and constants (the identifier path)", () => {
     });
 });
 
-describe("remainder semantics (%)", () => {
-    it("negative operands should follow JS remainder (truncate toward zero), as documented", () => {
-        expect(evaluateExpression("-10 % 3")).toBe(-1);
-        expect(evaluateExpression("10 % -3")).toBe(1);
+describe("modulo semantics (%)", () => {
+    it("negative operands should follow the FLOORED convention (sign of the divisor)", () => {
+        // Excel/Sheets MOD, Python, Ruby, Wolfram, and mathjs all answer this
+        // way; JS's own truncating `%` (-1 and 1) is what we deliberately do
+        // NOT do, because pasting the equation elsewhere would disagree.
+        expect(evaluateExpression("-10 % 3")).toBe(2);
+        expect(evaluateExpression("10 % -3")).toBe(-2);
+        expect(evaluateExpression("-10 % -3")).toBe(-1);
+    });
+
+    it("a positive-operand modulo should be unchanged, and never percent", () => {
+        expect(evaluateExpression("10 % 3")).toBe(1);
+        expect(evaluateExpression("10 % 3")).not.toBe(10);
+    });
+
+    it("the result should always carry the divisor's sign", () => {
+        for (const a of [-7.5, -7, -1, 0, 1, 7, 7.5]) {
+            for (const b of [-4, -1.5, 1.5, 4]) {
+                const got = evaluateExpression(`${a} % ${b}`);
+                expect(got).not.toBeNull();
+                // Sign agreement, and |result| < |divisor| — the two invariants
+                // that separate floored modulo from a truncated remainder.
+                expect(got! === 0 || Math.sign(got!) === Math.sign(b)).toBe(true);
+                expect(Math.abs(got!)).toBeLessThan(Math.abs(b));
+            }
+        }
+    });
+});
+
+describe("round: halves go away from zero", () => {
+    it("a negative half should round away from zero, not toward +infinity", () => {
+        // JS's Math.round would give -2 here, disagreeing with spreadsheets,
+        // pocket calculators, and C's round() on every negative half.
+        expect(evaluateCalc("round(-2.5)")).toBe(-3);
+        expect(evaluateCalc("round(2.5)")).toBe(3);
+        expect(evaluateCalc("round(-0.5)")).toBe(-1);
+    });
+
+    it("rounding should be symmetric about zero for every value", () => {
+        // `-0` is not a distinction the feature can express (formatCalcResult
+        // normalizes it), so compare the values, not their zero signs.
+        const norm = (v: number | null) => (Object.is(v, -0) ? 0 : v);
+        for (const x of [0, 0.4, 0.5, 0.6, 1.5, 2.5, 2.49, 100.5]) {
+            const positive = evaluateCalc(`round(${x})`) as number;
+            expect(norm(evaluateCalc(`round(0-${x})`))).toBe(norm(-positive));
+        }
+    });
+
+    it("floor and ceil should be unchanged (they never disagreed)", () => {
+        expect(evaluateCalc("floor(-2.5)")).toBe(-3);
+        expect(evaluateCalc("ceil(-2.5)")).toBe(-2);
+    });
+});
+
+describe("`log` is ambiguous — the engine refuses rather than guessing", () => {
+    it("a bare log( call should never produce a value, in any form", () => {
+        // Base 10 in Excel/Sheets/Desmos/pocket calculators, natural in
+        // Python/JS/R/Mathematica/mathjs: no answer here survives the paste.
+        expect(evaluateCalc("log(100)")).toBeNull();
+        expect(evaluateCalc("log(100) + 1")).toBeNull();
+        expect(evaluateCalc("LOG(100)")).toBeNull();
+        expect(evaluateCalc("2 * log(8)")).toBeNull();
+        expect(evaluateCalcBlock("log(100)")[0].result).toBeNull();
+    });
+
+    it("the explicit spellings should all still compute", () => {
+        expect(evaluateCalc("log10(100)")).toBe(2);
+        expect(evaluateCalc("ln(100)")).toBeCloseTo(Math.log(100), 12);
+        expect(evaluateCalc("log2(1024)")).toBe(10);
+    });
+
+    it("an ambiguous call should stay RECOGNIZED as a call, not read as a variable", () => {
+        // Everything downstream keys on this: the shape must parse so the
+        // refusal can be explained, and `log` must not look like a variable
+        // (which would drag the equation into the definition cascade).
+        expect(isCalcStructurallyValid("log(100)")).toBe(true);
+        expect(expressionUsesVariables("log(100)")).toBe(false);
+        expect(detectArrowExpression("log(4/3*pi) =>")?.expr).toBe("log(4/3*pi)");
+    });
+
+    it("a calc-block line should earn the error cue and NAME the ambiguity", () => {
+        const [row] = evaluateCalcBlock("log(100)");
+        expect(row.kind).toBe("error");
+        expect(row.ambiguous).toEqual(["log"]);
+        // A definition whose right-hand side is ambiguous reports it too.
+        expect(evaluateCalcBlock("x = log(100)")[0].ambiguous).toEqual(["log"]);
+        // An ordinary failure still carries no ambiguity claim.
+        expect(evaluateCalcBlock("log10(mystery)")[0].ambiguous).toBeUndefined();
+    });
+
+    it("ambiguousCallsIn should see call shapes only, and de-duplicate", () => {
+        expect(ambiguousCallsIn("log(2) + log(3)")).toEqual(["log"]);
+        expect(ambiguousCallsIn("LOG(2)")).toEqual(["log"]);
+        expect(ambiguousCallsIn("log10(2)")).toEqual([]);
+        expect(ambiguousCallsIn("mylog(2)")).toEqual([]);
+        expect(ambiguousCallsIn("log * 2")).toEqual([]); // a variable named log
+    });
+
+    it("disambiguate should rewrite every call of the name it settles, and nothing else", () => {
+        expect(disambiguate("log(2) + log(3)", "ln")).toBe("ln(2) + ln(3)");
+        expect(disambiguate("log (100)", "log10")).toBe("log10 (100)");
+        expect(disambiguate("log10(2) + mylog(3)", "ln")).toBe("log10(2) + mylog(3)");
+        // Applied to a document REGION, which carries the `=>` tail and does
+        // not tokenize — the pick path's actual input.
+        expect(disambiguate("note log(100) =>", "log10")).toBe("note log10(100) =>");
+        // A rewritten expression is exactly what the pick then evaluates.
+        expect(evaluateCalc(disambiguate("log(100)", "log10"))).toBe(2);
+        expect(evaluateCalc(disambiguate("log(100)", "ln"))).toBeCloseTo(Math.log(100), 12);
+    });
+
+    it("isDisambiguation should name the readings and nothing else", () => {
+        expect(ambiguousReadings("log")).toEqual(["log10", "ln"]);
+        expect(ambiguousReadings("sqrt")).toEqual([]);
+        expect(isDisambiguation("log10")).toBe(true);
+        expect(isDisambiguation("ln")).toBe(true);
+        expect(isDisambiguation("log")).toBe(false);
+        expect(isDisambiguation("42")).toBe(false); // never collides with a result
+    });
+
+    it("an ambiguous name should not withdraw or stale an existing answer", () => {
+        // `log(100) => 2` already in a document depends on no definition, so
+        // the maintenance engine leaves the reader's own text alone.
+        expect(expressionUsesVariables("log(100)")).toBe(false);
+        expect(unresolvedVariables("log(100)", new Map())).toEqual([]);
     });
 });
 

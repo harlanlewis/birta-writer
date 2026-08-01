@@ -131,6 +131,10 @@ sqrt(2) * π =>
 
 budget² - rent² =>
 
+log(100) =>
+
+That last one won't answer, on purpose. `log` means base 10 in spreadsheets and pocket calculators, and the natural log in Python, R, and most other programming languages — so any answer here would be wrong for half the people who paste the equation somewhere else, with nothing in the number to show it. Instead the menu offers both readings with their values, and picking one rewrites the equation to say `log10` or `ln`. The same principle sets the rest of the grammar: `%` is modulo with the sign of the divisor (as in `MOD`, Python, and Wolfram, not JavaScript's `%`), trig is in radians, `round` sends halves away from zero, `^` is right-associative, and `-2 ^ 2` is `-4`.
+
 Accepted `=>` answers stay **alive**: edit the expression — or a definition above it — and the number updates in place. Editing the answer itself is your override; the editor never fights it. Try it: change `rent = 1500` above after accepting a result below.
 
 Maintenance stops at the editor's own edits, and where it stops you get a **cue** instead of a silent wrong number. Move an answer above its definition, edit the file in the raw editor or a `git checkout`, or just open a file whose answers no longer hold, and the result span picks up a faint warning tint — **stale** when the expression now computes something different, tint plus a strikethrough for **broken** when it no longer computes at all (a vanished definition, `1/0`, an impossible conversion). Click the cue for **Update**, **Remove answer**, or **Ignore**; nothing touches the file until you pick one, and each is a single undo step. Only answers whose premises live outside their own text are ever cued — a plain `=` result or a constant-only arrow like `2+3 => 5` is your prose, and the editor doesn't second-guess it. To see one: accept an answer below, then change `budget = 5000` from the raw editor (Cmd+Shift+P → "Edit Raw Markdown") and switch back.
@@ -563,7 +567,7 @@ share = rent / income * 100
 
 // misc — either comment marker works
 typo * 2
-log(400+π^2)
+log10(400+π^2)
 3 km in mi
 180 lb to kg
 ```

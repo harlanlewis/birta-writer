@@ -76,7 +76,7 @@ export function createCalcLedger(opts: {
         if (lastCalcRendered !== code || !isActive()) { return; }
         const rows = evaluateCalcBlock(code);
         calcRender.replaceChildren();
-        for (const { raw, result, kind, value } of rows) {
+        for (const { raw, result, kind, value, ambiguous } of rows) {
             const row = document.createElement("div");
             row.className = "calc-row";
             const src = document.createElement("span");
@@ -109,7 +109,13 @@ export function createCalcLedger(opts: {
                 const res = document.createElement("span");
                 res.className = "calc-row-result calc-row-result--error";
                 res.textContent = "—";
-                res.title = t("This line looks like a formula but has no value");
+                // An ambiguous name is a refusal the reader can FIX, so say
+                // which name and what to write instead — a bare "no value"
+                // would read as a dead end on a line that computes fine
+                // everywhere else.
+                res.title = ambiguous?.length
+                    ? t("log means base 10 in some calculators and natural log in others, so the answer would not survive being pasted elsewhere — write log10(…), ln(…), or log2(…)")
+                    : t("This line looks like a formula but has no value");
                 row.appendChild(res);
             }
             calcRender.appendChild(row);
