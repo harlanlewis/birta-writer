@@ -1,17 +1,12 @@
 /**
- * The Checks menu's Notes section — the in-text editor-note highlight
- * (birta.notes.highlightMarkers) surfaced as a switch beside the proofreading
- * checks (MAR-283).
+ * The Checks menu's "Highlight notes" row — the in-text editor-note highlight
+ * (birta.notes.highlightMarkers) surfaced as a switch.
  *
- * Two things are structural rather than cosmetic, and both are asserted here:
- *
- *   1. The row sits OUTSIDE the gated body. Note markers are the writer's own
- *      content, not findings, so the master Proofreading gate must not silence
- *      them — with proofreading off the menu still offers this switch.
- *   2. Because something is now pinned BELOW the body, the gate's re-attach has
- *      to insert rather than append. An append would leave the menu reordered
- *      (checks under the Notes header) after one gate off→on cycle — invisible
- *      to any assertion that only counts rows.
+ * Its POSITION is the design, and that is what these assert: it leads the menu
+ * as a sibling of the master Proofreading gate — same rank, same emphasis, and
+ * outside the body that gate governs. Note markers are the writer's own content,
+ * not findings, so turning proofreading off must leave them alone; the row
+ * staying put through a gate cycle is the observable form of that.
  *
  * The gate's own behavior (what gets decorated) is covered by noteMarkers.test.ts.
  */
@@ -37,7 +32,7 @@ function switchLabels(topbar: HTMLElement): string[] {
 }
 
 function notesRow(topbar: HTMLElement): HTMLElement {
-    return topbar.querySelector<HTMLElement>(`${MENU} .tb-checks-notes .tb-switch-item`)!;
+    return topbar.querySelectorAll<HTMLElement>(`${MENU} .tb-switch-item`)[0]!;
 }
 
 /**
@@ -62,36 +57,45 @@ afterEach(() => {
 });
 
 describe("Checks menu — Notes section", () => {
-    it("the menu should end with a Notes header and its highlight switch", () => {
+    it("the highlight switch should lead the menu, above the Proofreading gate", () => {
         const topbar = buildToolbar();
 
-        const headers = Array.from(
-            topbar.querySelectorAll<HTMLElement>(`${MENU} .tb-fmt-header`),
-        ).map((el) => el.textContent);
-        expect(headers.at(-1)).toBe("Notes");
+        expect(switchLabels(topbar).slice(0, 2)).toEqual(["Highlight notes", "Proofreading"]);
 
         const row = notesRow(topbar);
-        expect(row.querySelector(".tb-switch-item-label")?.textContent).toBe("Highlight notes");
         expect(row.getAttribute("role")).toBe("switch");
         // Highlighting ships on, so the switch must open showing "on" — a row
         // that reads off while chips are painted is worse than no row at all.
         expect(row.getAttribute("aria-checked")).toBe("true");
     });
 
-    it("the Notes row should live outside the body the Proofreading gate governs", () => {
+    it("the highlight switch should carry the same rank as the gate, not a section header", () => {
+        const topbar = buildToolbar();
+
+        // Same emphasis class as the master gate: the two read as peers.
+        expect(notesRow(topbar).classList.contains("tb-checks-master")).toBe(true);
+        // Peers, not a titled section — a header would read as something the
+        // gate below opens.
+        const headers = Array.from(
+            topbar.querySelectorAll<HTMLElement>(`${MENU} .tb-fmt-header`),
+        ).map((el) => el.textContent);
+        expect(headers).not.toContain("Notes");
+    });
+
+    it("the highlight switch should live outside the body the Proofreading gate governs", () => {
         const topbar = buildToolbar();
         const body = topbar.querySelector<HTMLElement>(`${MENU} .tb-checks-body`)!;
 
         expect(body.contains(notesRow(topbar))).toBe(false);
     });
 
-    it("turning Proofreading off should keep the Notes switch offered", () => {
+    it("turning Proofreading off should keep the highlight switch offered", () => {
         const topbar = buildToolbar();
 
         setGate(false);
 
         // The checks collapse away; the writer's own notes are not a check.
-        expect(switchLabels(topbar)).toEqual(["Proofreading", "Highlight notes"]);
+        expect(switchLabels(topbar)).toEqual(["Highlight notes", "Proofreading"]);
     });
 
     it("cycling the Proofreading gate should not reorder the menu", () => {
@@ -103,12 +107,11 @@ describe("Checks menu — Notes section", () => {
         setGate(false);
         setGate(true);
 
-        // Re-attaching the body must put it back ABOVE the notes section.
         expect(switchLabels(topbar)).toEqual(before);
-        expect(switchLabels(topbar).at(-1)).toBe("Highlight notes");
+        expect(switchLabels(topbar)[0]).toBe("Highlight notes");
     });
 
-    it("clicking the Notes switch should flip the gate, the row, and persist it", () => {
+    it("clicking the highlight switch should flip the gate, the row, and persist it", () => {
         window.__i18n = { translations: {}, isMac: false, notesHighlightMarkers: true };
         const topbar = buildToolbar();
         const row = notesRow(topbar);

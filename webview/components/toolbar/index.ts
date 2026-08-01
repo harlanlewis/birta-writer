@@ -1627,21 +1627,13 @@ export function initToolbar(
     // The master "Proofreading" gate switch (handled separately from checkRows
     // because its config field name differs from its option key).
     let masterItem: CheckItem | null = null;
-    // The "Highlight notes" switch and the section holding it. Both live BELOW
-    // the gated body and outside it, because the note highlight is not a
-    // proofreading check: the master gate must not silence it (see the section
-    // comment where it is built).
-    let notesSectionEl: HTMLElement | null = null;
+    // The "Highlight notes" switch — a sibling of the master gate, leading the
+    // menu, governed by nothing (see where it is built).
     let notesHighlightItem: CheckItem | null = null;
 
-    /**
-     * Attach `child` into `parent` iff `show`, else detach it. `before` is the
-     * sibling to insert ahead of — required whenever anything is pinned BELOW
-     * the toggled child, since a re-attach would otherwise append past it and
-     * silently reorder the menu (the notes section sits below the body).
-     */
-    const setAttached = (parent: HTMLElement, child: HTMLElement, show: boolean, before?: HTMLElement | null): void => {
-        if (show && !child.isConnected) { parent.insertBefore(child, before ?? null); }
+    /** Attach `child` into `parent` iff `show`, else detach it. */
+    const setAttached = (parent: HTMLElement, child: HTMLElement, show: boolean): void => {
+        if (show && !child.isConnected) { parent.appendChild(child); }
         else if (!show && child.isConnected) { child.remove(); }
     };
 
@@ -1655,10 +1647,10 @@ export function initToolbar(
         // text, so dim the button to say "proofreading is off" without opening
         // the menu. (A domain being off is a per-check choice, not shown here.)
         checksBtn.classList.toggle("tb-checks-btn--off", !cfg.proofreadingEnabled);
-        // Gate: the whole body shows only while the master switch is on. It goes
-        // back ABOVE the notes section, which is pinned to the menu's foot.
+        // Gate: the whole body shows only while the master switch is on. It is
+        // the menu's last child, so a re-attach appends it straight back.
         if (checksMenuEl && bodyEl) {
-            setAttached(checksMenuEl, bodyEl, cfg.proofreadingEnabled, notesSectionEl);
+            setAttached(checksMenuEl, bodyEl, cfg.proofreadingEnabled);
         }
         // Nested: style sub-checks show only while Check style is on (and, since
         // they live inside the body, only when the gate is on too).
@@ -1738,6 +1730,27 @@ export function initToolbar(
             parent.appendChild(header);
         };
 
+        // ── "Highlight notes" (birta.notes.highlightMarkers) ────────────────
+        // The in-text chips on `[TK]`, `TODO:`, `FIXME:` and custom markers.
+        // It leads the menu as a SIBLING of the Proofreading gate below — same
+        // rank, same emphasis, governing nothing but itself. Sibling rather than
+        // child because the two are independent: proofreading findings are the
+        // editor's opinion about your prose, and turning them off must not take
+        // away the markers you left yourself, which are your own content. A
+        // separator, not a header, carries that — a header would read as a
+        // section the gate opens.
+        notesHighlightItem = createSwitchItem(t("Highlight notes"));
+        notesHighlightItem.el.classList.add("tb-checks-master");
+        notesHighlightItem.setChecked(noteMarkersEnabled());
+        notesHighlightItem.el.title = t("Mark [TK], TODO:, FIXME: and your custom markers where they sit in the text (birta.notes.highlightMarkers)");
+        notesHighlightItem.el.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleNoteHighlights();
+        });
+        menu.appendChild(notesHighlightItem.el);
+        menu.appendChild(makeSep());
+
         // Master "Proofreading" gate — the top-level switch that governs
         // everything below. Flipping it off silences spelling, grammar, and style
         // at once and hides the rest of the menu; flipping it on brings back
@@ -1805,30 +1818,6 @@ export function initToolbar(
         }
         body.appendChild(children); // repaintChecks detaches it when Check style is off
         menu.appendChild(body); // repaintChecks detaches it when the gate is off
-
-        // ── Notes section (birta.notes.highlightMarkers) ────────────────────
-        // The in-text chips on `[TK]`, `TODO:`, `FIXME:` and custom markers.
-        // It belongs in this menu — it's the same kind of thing as the checks
-        // above, an advisory annotation painted over your own prose — but it is
-        // NOT governed by the Proofreading gate, so it sits OUTSIDE the body:
-        // silencing the prose checks must not silence the writer's own notes,
-        // which are document content, not findings. Its own header says so
-        // without a sentence of explanation.
-        const notesSection = document.createElement("div");
-        notesSection.className = "tb-checks-notes";
-        notesSectionEl = notesSection;
-        notesSection.appendChild(makeSep());
-        addHeader(notesSection, t("Notes"));
-        notesHighlightItem = createSwitchItem(t("Highlight notes"));
-        notesHighlightItem.setChecked(noteMarkersEnabled());
-        notesHighlightItem.el.title = t("Mark [TK], TODO:, FIXME: and your custom markers where they sit in the text (birta.notes.highlightMarkers)");
-        notesHighlightItem.el.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleNoteHighlights();
-        });
-        notesSection.appendChild(notesHighlightItem.el);
-        menu.appendChild(notesSection);
 
         closeChecksMenu = wireHoverMenu(wrapEl, checksBtn, menu, {
             onOpen: () => {
