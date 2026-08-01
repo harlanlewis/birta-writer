@@ -40,6 +40,7 @@ import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, no
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { isChecklistSinkEnabled, setChecklistSinkEnabled } from "@/editing/checklistSink";
+import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
 import { createButton } from "@/ui/dom";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
@@ -1626,10 +1627,21 @@ export function initToolbar(
     // The master "Proofreading" gate switch (handled separately from checkRows
     // because its config field name differs from its option key).
     let masterItem: CheckItem | null = null;
+    // The "Highlight notes" switch and the section holding it. Both live BELOW
+    // the gated body and outside it, because the note highlight is not a
+    // proofreading check: the master gate must not silence it (see the section
+    // comment where it is built).
+    let notesSectionEl: HTMLElement | null = null;
+    let notesHighlightItem: CheckItem | null = null;
 
-    /** Attach `child` into `parent` iff `show`, else detach it. */
-    const setAttached = (parent: HTMLElement, child: HTMLElement, show: boolean): void => {
-        if (show && !child.isConnected) { parent.appendChild(child); }
+    /**
+     * Attach `child` into `parent` iff `show`, else detach it. `before` is the
+     * sibling to insert ahead of — required whenever anything is pinned BELOW
+     * the toggled child, since a re-attach would otherwise append past it and
+     * silently reorder the menu (the notes section sits below the body).
+     */
+    const setAttached = (parent: HTMLElement, child: HTMLElement, show: boolean, before?: HTMLElement | null): void => {
+        if (show && !child.isConnected) { parent.insertBefore(child, before ?? null); }
         else if (!show && child.isConnected) { child.remove(); }
     };
 
@@ -1643,15 +1655,19 @@ export function initToolbar(
         // text, so dim the button to say "proofreading is off" without opening
         // the menu. (A domain being off is a per-check choice, not shown here.)
         checksBtn.classList.toggle("tb-checks-btn--off", !cfg.proofreadingEnabled);
-        // Gate: the whole body shows only while the master switch is on.
+        // Gate: the whole body shows only while the master switch is on. It goes
+        // back ABOVE the notes section, which is pinned to the menu's foot.
         if (checksMenuEl && bodyEl) {
-            setAttached(checksMenuEl, bodyEl, cfg.proofreadingEnabled);
+            setAttached(checksMenuEl, bodyEl, cfg.proofreadingEnabled, notesSectionEl);
         }
         // Nested: style sub-checks show only while Check style is on (and, since
         // they live inside the body, only when the gate is on too).
         if (bodyEl && styleChildrenEl) {
             setAttached(bodyEl, styleChildrenEl, cfg.styleCheck);
         }
+        // The note highlight is its own gate, unrelated to `cfg` — repaint it
+        // from its own source of truth on every pass that touches this menu.
+        notesHighlightItem?.setChecked(noteMarkersEnabled());
     };
 
     /** Flip one proofread toggle — shared by the Checks rows and slash menu. */
@@ -1681,6 +1697,16 @@ export function initToolbar(
         const value = !cfg.proofreadingEnabled;
         setProofreadConfig(view, { ...cfg, proofreadingEnabled: value });
         notifySetProofreadOption("proofreading", value);
+    }
+
+    /**
+     * Flip the in-text editor-note highlight — shared by the Checks menu's Notes
+     * row, the review sidebar's Notes tab, the palette, and the slash menu. The
+     * plugin owns the gate (it applies the flip in this webview and persists it);
+     * every mirroring switch repaints off the event it fires.
+     */
+    function toggleNoteHighlights(): void {
+        setNoteMarkersEnabled(getEditorView(), !noteMarkersEnabled());
     }
 
     function createChecksControl(): HTMLElement {
@@ -1780,10 +1806,37 @@ export function initToolbar(
         body.appendChild(children); // repaintChecks detaches it when Check style is off
         menu.appendChild(body); // repaintChecks detaches it when the gate is off
 
+        // ── Notes section (birta.notes.highlightMarkers) ────────────────────
+        // The in-text chips on `[TK]`, `TODO:`, `FIXME:` and custom markers.
+        // It belongs in this menu — it's the same kind of thing as the checks
+        // above, an advisory annotation painted over your own prose — but it is
+        // NOT governed by the Proofreading gate, so it sits OUTSIDE the body:
+        // silencing the prose checks must not silence the writer's own notes,
+        // which are document content, not findings. Its own header says so
+        // without a sentence of explanation.
+        const notesSection = document.createElement("div");
+        notesSection.className = "tb-checks-notes";
+        notesSectionEl = notesSection;
+        notesSection.appendChild(makeSep());
+        addHeader(notesSection, t("Notes"));
+        notesHighlightItem = createSwitchItem(t("Highlight notes"));
+        notesHighlightItem.setChecked(noteMarkersEnabled());
+        notesHighlightItem.el.title = t("Mark [TK], TODO:, FIXME: and your custom markers where they sit in the text (birta.notes.highlightMarkers)");
+        notesHighlightItem.el.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleNoteHighlights();
+        });
+        notesSection.appendChild(notesHighlightItem.el);
+        menu.appendChild(notesSection);
+
         closeChecksMenu = wireHoverMenu(wrapEl, checksBtn, menu, {
             onOpen: () => {
                 const view = getEditorView();
                 if (view) { repaintChecks(getProofreadConfig(view)); }
+                // The notes switch has no view dependency — paint it even
+                // before the editor exists, so it is never shown stale-off.
+                else { notesHighlightItem?.setChecked(noteMarkersEnabled()); }
             },
         }).close;
 
@@ -1794,6 +1847,13 @@ export function initToolbar(
 
     window.addEventListener("proofread-config-changed", (e) => {
         repaintChecks((e as CustomEvent<ProofreadConfig>).detail);
+    });
+    // The note-highlight gate is flippable from three other places (the Notes
+    // tab, the palette/slash command, and the Settings UI in any window), all of
+    // which land on the plugin's re-gate. Mirror it here so the row is never
+    // stale when the menu opens — including while it is already open.
+    window.addEventListener(NOTE_HIGHLIGHT_EVENT, () => {
+        notesHighlightItem?.setChecked(noteMarkersEnabled());
     });
     {
         // Paint the initial state if the editor already exists at build time.
@@ -2145,6 +2205,7 @@ export function initToolbar(
         },
         stepFontSize: (delta) => pickFontSize(stepFontSizePercent(currentFontSize, delta)),
         toggleProofread,
+        toggleNoteHighlights,
         toggleToolbar: () => setToolbarVisible(!toolbarVisible),
     });
 

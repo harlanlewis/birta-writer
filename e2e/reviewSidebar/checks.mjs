@@ -130,6 +130,31 @@ export async function run({ page, check, baseUrl }) {
         notes.some((n) => n.tag === "TODO" && /background section/.test(n.label || "")),
         JSON.stringify(notes.map((n) => n.label)));
 
+    // ── The tab's Highlight toggle drives the in-text chips ────────────────
+    // The list is where a writer deals with their notes, so it carries the
+    // switch for whether those notes are also marked up in the prose. This is
+    // the cross-surface path: a click in the panel has to reach the decoration
+    // plugin in the editor, not just repaint the pill.
+    const hl = page.locator(".review-list--notes .review-trailing");
+    const chips = () => page.$$eval(".ProseMirror .note-marker", (els) => els.length);
+    const pressed = () => hl.getAttribute("aria-pressed");
+    check("the Notes tab carries a Highlight toggle, on by default", (await pressed()) === "true", await pressed());
+    const chipsOn = await chips();
+    check("the in-text chips are painted while it is on", chipsOn > 0, `chips=${chipsOn}`);
+
+    await hl.click();
+    await page.waitForTimeout(150);
+    check("clicking it clears every in-text chip", (await chips()) === 0, `chips=${await chips()}`);
+    check("…and the pill reads off", (await pressed()) === "false", await pressed());
+    const rowsWhileOff = await page.$$eval(".review-list--notes .review-item", (e) => e.length);
+    check("turning the highlight off leaves the Notes list itself alone",
+        rowsWhileOff === beforeCollapse, `rows=${rowsWhileOff} expected=${beforeCollapse}`);
+
+    await hl.click();
+    await page.waitForTimeout(400); // the rescan is debounced
+    check("clicking it again repaints the chips", (await chips()) === chipsOn, `chips=${await chips()}`);
+    check("…and the pill reads on", (await pressed()) === "true", await pressed());
+
     // ── Proofreading tab: a live style finding ────────────────────────────
     await switchTab(page, "Proofread");
     await page.waitForSelector(".review-list--proofread:not(.toc-view--hidden)", { timeout: 5000 });

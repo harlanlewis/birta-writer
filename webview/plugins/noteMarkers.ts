@@ -29,6 +29,7 @@ import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";
 import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { incrementalScanNotes, scanNotes, type NoteItem } from "../notes/scan";
+import { notifySetNoteHighlight } from "../messaging";
 import { requestIdle } from "../utils/idle";
 import "./noteMarkers.css";
 
@@ -46,6 +47,25 @@ export const noteMarkersKey = new PluginKey<{ set: DecorationSet }>("MD_NOTE_MAR
 export function noteMarkersEnabled(): boolean {
     return window.__i18n?.notesHighlightMarkers ?? true;
 }
+
+/**
+ * Flip the highlight from a UI control (the toolbar's Checks menu, the review
+ * sidebar's Notes tab, the palette/slash command). The in-session gate applies
+ * immediately in THIS webview — chips appear or clear on the same frame as the
+ * click, rather than after the settings round trip — and the write-back
+ * persists it. The extension's config-change listener echoes `notesConfig` to
+ * every open editor, which re-gates them (and re-gates this one idempotently).
+ */
+export function setNoteMarkersEnabled(view: EditorView | null, on: boolean): void {
+    if (window.__i18n) {
+        window.__i18n.notesHighlightMarkers = on;
+    }
+    regateNoteMarkers(view);
+    notifySetNoteHighlight(on);
+}
+
+/** Fired on `window` whenever the highlight gate is re-read (see regateNoteMarkers). */
+export const NOTE_HIGHLIGHT_EVENT = "note-highlight-changed";
 
 /** The custom marker set, read at scan time (birta.notes.customMarkers). */
 function customMarkers(): readonly string[] {
@@ -73,12 +93,20 @@ let openGate: (() => void) | null = null;
  * so the rescan it forces is what makes a new marker light up on an unchanged
  * document (the notesList cache-invalidation lesson, notesMarkerCache.test.ts).
  */
-export function regateNoteMarkers(view: EditorView): void {
-    if (noteMarkersEnabled()) {
-        openGate?.();
-    } else if ((noteMarkersKey.getState(view.state)?.set ?? DecorationSet.empty) !== DecorationSet.empty) {
-        view.dispatch(view.state.tr.setMeta(noteMarkersKey, { set: DecorationSet.empty }));
+export function regateNoteMarkers(view: EditorView | null): void {
+    if (view) {
+        if (noteMarkersEnabled()) {
+            openGate?.();
+        } else if ((noteMarkersKey.getState(view.state)?.set ?? DecorationSet.empty) !== DecorationSet.empty) {
+            view.dispatch(view.state.tr.setMeta(noteMarkersKey, { set: DecorationSet.empty }));
+        }
     }
+    // The one announcement point for the gate's new value: BOTH ways it can
+    // change (a UI control here, or a settings echo from another editor /
+    // the Settings UI) funnel through this function, so the switches that
+    // mirror it — the toolbar's Checks menu, the Notes tab's toggle — stay
+    // truthful without either one polling. Mirrors `proofread-config-changed`.
+    window.dispatchEvent(new CustomEvent(NOTE_HIGHLIGHT_EVENT));
 }
 
 export const noteMarkersPlugin = $prose(() =>

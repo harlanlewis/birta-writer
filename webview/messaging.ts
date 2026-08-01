@@ -208,6 +208,11 @@ export function notifySetChecklistSink(enabled: boolean): void {
     vscode.postMessage({ type: "setChecklistSink", enabled });
 }
 
+/** The "Highlight notes" switch → persist birta.notes.highlightMarkers. */
+export function notifySetNoteHighlight(enabled: boolean): void {
+    vscode.postMessage({ type: "setNoteHighlight", enabled });
+}
+
 export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }
