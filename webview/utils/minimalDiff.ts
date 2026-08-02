@@ -889,6 +889,15 @@ const SETEXT_RULE_RE = /^ {0,3}(?:-+|=+)[ \t]*$/;
 /** Headings, fences and `:::` runs: their own block ends with the line. */
 const CLOSES_OWN_BLOCK_RE = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,})/;
 
+/** Visual width of a whole string, tabs expanding to the CommonMark tab stop. */
+function columnWidth(text: string): number {
+    let col = 0;
+    for (const ch of text) {
+        col += ch === "\t" ? 4 - (col % 4) : 1;
+    }
+    return col;
+}
+
 /**
  * The content a line contributes to its innermost container — blockquote
  * markers and at most one list marker stripped off — plus whether any marker
@@ -907,15 +916,6 @@ const CLOSES_OWN_BLOCK_RE = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,})/;
  * there and MAR-289 stayed broken for exactly the outlines most likely to hit
  * it.
  */
-/** Visual width of a whole string, tabs expanding to the CommonMark tab stop. */
-function columnWidth(text: string): number {
-    let col = 0;
-    for (const ch of text) {
-        col += ch === "\t" ? 4 - (col % 4) : 1;
-    }
-    return col;
-}
-
 function containerContent(line: string): {
     content: string;
     inContainer: boolean;
