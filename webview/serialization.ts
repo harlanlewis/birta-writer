@@ -329,6 +329,232 @@ function listItemGapJoin(left: unknown, right: unknown, parent: unknown): number
     return typeof r.blankBefore === "boolean" ? (r.blankBefore ? 1 : 0) : undefined;
 }
 
+type FlowNode = {
+    type?: string;
+    marker?: unknown;
+    setext?: unknown;
+    depth?: number;
+    children?: unknown[];
+};
+
+/**
+ * An EMPTY paragraph — the schema artifact `list_item` (`paragraph block*`)
+ * fills in when an item's real first block is not a paragraph.
+ *
+ * It matters twice, and both times for the same reason: it is not a paragraph
+ * LINE. `itemContentForMarkdown` (plugins/list.ts) normally drops it so the real
+ * content rides the marker (`* ## Head`), but it deliberately keeps it before an
+ * `hr`, because `* ---` would be a thematic break. The item is then written as a
+ * BARE MARKER line, and CommonMark gives an item that begins with a blank line
+ * at most that one blank — so forcing such an item loose orphans everything
+ * after it out of the list entirely. There is no hazard to trade against: an
+ * empty paragraph has no text for a dash run to underline.
+ *
+ * `leavesParagraphOpen` in webview/utils/minimalDiff.ts carries the same rule at
+ * the line level ("bare marker: an empty item"). Dropping it here was a real
+ * regression, caught by the `a thematic break` rows of tightItemSpacing.test.ts.
+ */
+const isEmptyParagraph = (node: FlowNode): boolean =>
+    node.type === "paragraph" && (node.children?.length ?? 0) === 0;
+
+/**
+ * mdast types whose LAST source line leaves a construct open, so a line written
+ * directly beneath them — with no blank between — is read as more of that
+ * construct instead of as a new block.
+ *
+ *   - `table` — a GFM table runs to the first blank line or interrupting block,
+ *     so any line that cannot interrupt it becomes another ROW.
+ *   - `blockquote` / `callout` / `list` — their last paragraph is still open and
+ *     sits in a DEEPER container than the item, so a line at the item's own
+ *     indent reaches it only as lazy continuation, and laziness cannot start a
+ *     block. (A second `>` line under a quote is worse: the two quotes fuse.)
+ *   - `containerDirective` — its closing `:::` is an ordinary paragraph line to
+ *     the parser (plugins/directives.ts models directives as fence-shaped
+ *     paragraphs), so it leaves a paragraph open exactly like prose does.
+ *   - `footnoteDefinition` — `[^1]: text` is a container whose content is an
+ *     open paragraph, so it absorbs exactly like the others here.
+ *
+ * `paragraph` is deliberately absent: mdast's own join already blank-separates
+ * a paragraph from another paragraph, a definition, and a setext heading, and
+ * every other construct genuinely interrupts a paragraph — including a GFM
+ * table, whose delimiter row promotes only its own header line. The two cases
+ * that are left are named in `gapMustBeBlank`'s second group.
+ *
+ * `notionCallout` is NOT here, and its absence is the easy thing to get wrong —
+ * it needs the STRONGER rule at the top of `gapMustBeBlank`, not this one.
+ */
+const ABSORBING_TYPES = new Set([
+    "table", "blockquote", "callout", "list", "containerDirective", "footnoteDefinition",
+]);
+
+/** The two mdast types this editor uses for a `>` quote block. Two of them
+ * glued with no blank between parse back as ONE quote. */
+const QUOTE_TYPES = new Set(["blockquote", "callout"]);
+
+/**
+ * Does this node's FIRST source line begin with prose — carrying no marker that
+ * could start a block from an absorbed position?
+ *
+ * The complement of "can interrupt a paragraph": an ATX heading, a code fence,
+ * a `$$` math fence, a `>` quote and a list marker all can, so they are safe
+ * glued; a paragraph, a table row, a `[ref]:` definition, a `:::` directive run
+ * and a setext underline all cannot, so glued they are swallowed. This is the
+ * same fact `glueChangesConstruct` reads at the line level in
+ * webview/utils/minimalDiff.ts, asked here of an mdast node instead of bytes.
+ *
+ * A `thematicBreak` belongs on the safe side of that list with one exception,
+ * which is why it is not answered here at all: a DASH-spelled break interrupts
+ * everything except a paragraph line, where it is read as a setext underline
+ * instead. `gapMustBeBlank`'s second group carries that case.
+ */
+function beginsWithProseLine(node: FlowNode): boolean {
+    switch (node.type) {
+        case "paragraph":
+        case "table":
+        case "definition":
+        case "containerDirective":
+            return true;
+        // A setext heading's first line is its TEXT; only the underline beneath
+        // identifies it, and an absorbed underline is not read as one.
+        case "heading":
+            return node.setext === true && (node.depth ?? 1) < 3;
+        default:
+            return false;
+    }
+}
+
+/**
+ * Must this gap between two of a list item's flow children carry a blank line —
+ * i.e. would gluing the two change what the file reparses as?
+ *
+ * Three groups. The first two are the same fact asked from either side of the
+ * gap — `left` leaves a construct open, and `right`'s first line carries no
+ * marker that can begin a block from inside it — and the third restates the gaps
+ * mdast's own default join already separates, which the whole-item question
+ * above has to know about.
+ */
+function gapMustBeBlank(left: FlowNode, right: FlowNode, state: unknown): boolean {
+    // 0. A Notion `<aside>` is a raw HTML BLOCK, and an HTML block ends only at
+    //    a blank line — not at a heading, a fence, a list marker, or anything
+    //    else that would interrupt an open paragraph. So it absorbs whatever
+    //    follows it REGARDLESS of that block's own first line, and it is the one
+    //    left type here that needs an unconditional answer.
+    //
+    //    Both halves of this were measured, and the asymmetry is the part worth
+    //    keeping: putting `notionCallout` in `ABSORBING_TYPES` instead fixes
+    //    only its `+ paragraph` and `+ table` gaps and leaves `+ heading`,
+    //    `+ list`, `+ fence` and `+ <aside>` corrupt, because those heads are
+    //    not prose-shaped; and answering `footnoteDefinition` unconditionally
+    //    here would fire on gaps that were never broken. Neither rule covers
+    //    both types. Do not "simplify" them into one.
+    if (left.type === "notionCallout") return true;
+    // 1. An open construct swallows a prose-shaped line; two `>` blocks fuse.
+    if (ABSORBING_TYPES.has(left.type ?? "")) {
+        if (beginsWithProseLine(right)) return true;
+        if (QUOTE_TYPES.has(left.type ?? "") && QUOTE_TYPES.has(right.type ?? "")) return true;
+    }
+    // 2. A left whose LAST source line is an ordinary paragraph line, in the
+    //    item's own container — prose, and a directive's closing `:::`. Both
+    //    arms are ones `glueChangesConstruct` already names at the merge layer:
+    //    a `:::` run cannot interrupt a paragraph, so glued under one it becomes
+    //    lazy continuation text and the directive is lost; and a solid dash run
+    //    glued under a paragraph is a SETEXT UNDERLINE rather than a thematic
+    //    break, so `- alpha\n  ---` reopens as a heading. The dash arm is
+    //    restricted to a dash-SPELLED rule (`***`/`___` underline nothing) and
+    //    to a paragraph-line left for the same reason the merge's arm excludes
+    //    quote, list and table lines: under those the run interrupts and parses
+    //    as an hr either way.
+    if ((left.type === "paragraph" && !isEmptyParagraph(left))
+        || left.type === "containerDirective") {
+        if (right.type === "containerDirective") return true;
+        if (right.type === "thematicBreak" && emitsDashRule(right, state)) return true;
+        // 3. Gaps mdast's own default join blank-separates. Restated here
+        //    rather than inferred, because the question below is about the
+        //    WHOLE item and a gap this one cannot see would make the answer
+        //    wrong in the direction that costs bytes.
+        if (left.type === "paragraph" && (
+            right.type === "paragraph" ||
+            right.type === "definition" ||
+            (right.type === "heading" && right.setext === true && (right.depth ?? 1) < 3)
+        )) return true;
+    }
+    // NOT an arm: two sibling lists of the same orderedness. They look like the
+    // obvious fourth case — glued, they would be one list — but upstream already
+    // keeps them apart by ALTERNATING the bullet marker (`- one` then `* two`),
+    // and that round-trips. Probed directly, because two sibling lists cannot be
+    // authored in Markdown and so no parse-then-tighten fixture can reach the
+    // case: a rule here would be one no test could fail.
+    return false;
+}
+
+/**
+ * Space a LIST ITEM's flow children so the file reparses as the document the
+ * editor holds (MAR-279).
+ *
+ * `spread: false` on an item is a claim about RENDERING — "my content needs no
+ * `<p>` wrappers" — and mdast-util-to-markdown's default join takes it as a
+ * licence to glue arbitrary flow children together. For the shape tightness is
+ * actually defined for, a paragraph plus sublists, that is correct and must
+ * stay: `- item\n  - sub` is the ordinary outline, and gaining a blank there
+ * would turn every nested list in every file loose.
+ *
+ * Everywhere else the licence is false, because the blank is not spacing — it is
+ * the only thing making the second block a block. Pasting a table into the
+ * middle of a tight item's text is the easy way to reach it: the item then holds
+ * `[paragraph, table, paragraph]` with nothing between them, and reopening
+ * absorbs the trailing paragraph as another table ROW. Content changes shape on
+ * a save/reopen cycle — a phase-0 fidelity break.
+ *
+ * The question is asked of the ITEM, not of the gap, and that is the whole
+ * design. Markdown has no per-gap spacing inside an item: one blank anywhere in
+ * it makes the ITEM loose, so a reopen gives every gap a blank and the next save
+ * writes lines the user never touched. Answering per gap produced exactly that —
+ * `- it\n  <table>\n\n  em one` on the first save and a blank after `- it` on the
+ * second. So if any gap must be blank, they all are; if none must, the item
+ * keeps whatever spacing `spread` and mdast's defaults give it, which is what
+ * leaves ordinary outlines untouched.
+ *
+ * DELIBERATELY NOT COVERED, and re-scoped rather than guessed at: a `paragraph`
+ * whose TEXT opens an HTML block (`<div>…`, `<table>…`) swallows every following
+ * line to the next blank, exactly as `notionCallout` does. That one cannot be
+ * answered here, because it is a property of the paragraph's serialized content
+ * rather than of its node type — and a first-child-is-html heuristic would fire
+ * on ordinary inline HTML (`<span>x</span> then prose`, which opens no block)
+ * against every right-hand type, turning `paragraph` into an absorbing tail for
+ * the whole matrix. Filed as MAR-296. `notionCallout` is the same hazard with a
+ * node type attached, which is why it IS fixed above.
+ *
+ * Returning `1` forces the blank; returning `undefined` defers to mdast's
+ * default, so an item this cannot judge keeps exactly the behaviour it had.
+ *
+ * The whole-item scan makes this O(k²) in one item's flow children, since the
+ * hook is called once per gap. That is deliberate and not on any hot path:
+ * serialization runs on the sync scheduler — typing pause, max-wait, or save —
+ * never per keystroke (see AGENTS.md, "View→document sync invariant"), and it is
+ * already O(document size) when it does run.
+ */
+function itemContentGapJoin(
+    _left: unknown, _right: unknown, parent: unknown, state: unknown,
+): number | undefined {
+    const item = parent as { type?: string; children?: FlowNode[] } | null;
+    if (item?.type !== "listItem" || !Array.isArray(item.children)) {
+        return undefined;
+    }
+    for (let i = 1; i < item.children.length; i++) {
+        if (gapMustBeBlank(item.children[i - 1], item.children[i], state)) return 1;
+    }
+    return undefined;
+}
+
+/** Would this thematic break be written with `-`? Mirrors the marker choice in
+ * `serializeThematicBreak` (plugins/sourceStyle.ts): the node's preserved source
+ * marker, or the configured `rule` for one the editor created. */
+function emitsDashRule(node: FlowNode, state: unknown): boolean {
+    const marker = node.marker;
+    if (marker === "*" || marker === "_" || marker === "-") return marker === "-";
+    return (state as { options?: { rule?: unknown } } | null)?.options?.rule === "-";
+}
+
 /**
  * Apply the stringify options that keep serializer output close to the
  * original file formatting: `-` bullets, `---` rules (instead of `***`), the
@@ -339,7 +565,7 @@ export function configureSerialization(ctx: EditorCtx): void {
         ...prev,
         bullet: "-" as const,
         rule: "-" as const,
-        join: [...(prev.join ?? []), listItemGapJoin],
+        join: [...(prev.join ?? []), listItemGapJoin, itemContentGapJoin],
         handlers: {
             ...(prev.handlers ?? {}),
             ...sourceStyleHandlers,

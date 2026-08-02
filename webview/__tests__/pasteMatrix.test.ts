@@ -103,16 +103,12 @@ function applyPaste(v: EditorView, slice: Slice): void {
  * whenever the test throws for any reason at all. And because the inverted
  * assertion breaks the moment the defect is fixed, the list cannot rot.
  *
- * MAR-279 — a table followed by another block inside a TIGHT list item
- * serializes with no blank line between them, so reopening absorbs the trailing
- * block as a table row. Not paste-specific (hand-authoring the same structure
- * loose round-trips fine); the fix belongs in the serializer's list-join logic,
- * which MAR-124/MAR-194 tuned and which deserves its own pass.
+ * Empty since MAR-279 was fixed — the two entries it held (a table, and a mixed
+ * document, pasted into a list item) both round-trip now. Kept rather than
+ * deleted: the mechanism is what lets a newly found gap be recorded without
+ * weakening the other invariants for that cell.
  */
-const KNOWN_GAPS = new Set([
-    "a table|a list item",
-    "a mixed document|a list item",
-]);
+const KNOWN_GAPS = new Set<string>([]);
 
 describe("paste matrix — invariants across payload × context", () => {
     for (const [ctxName, ctxDoc, pick] of CONTEXTS) {
@@ -144,7 +140,7 @@ describe("paste matrix — invariants across payload × context", () => {
                     expect(reparsed, "reparse of the saved document").not.toBeNull();
                     if (known) {
                         expect(reparsed,
-                            "MAR-279: this gap is expected — delete the KNOWN_GAPS entry once it is fixed",
+                            "this gap is expected — delete the KNOWN_GAPS entry once it is fixed",
                         ).not.toBe(afterMd);
                     } else {
                         expect(reparsed).toBe(afterMd);

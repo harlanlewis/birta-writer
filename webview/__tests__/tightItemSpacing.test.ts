@@ -1,0 +1,197 @@
+/**
+ * Blank-line spacing inside a TIGHT list item: every ordered pair of block
+ * constructs, checked against structural invariants (MAR-279).
+ *
+ * Why the space has to be enumerated rather than sampled. A list item marked
+ * `spread: false` is serialized with its flow children GLUED — no blank line
+ * between them — and whether that survives a reopen depends on the pair: a
+ * paragraph under a table becomes another table ROW, a paragraph under a nested
+ * list becomes lazy continuation text of its last item, a dash rule under a
+ * paragraph becomes a setext underline. The ticket was filed for the table case
+ * and guessed that a table was "likely the only case"; the first enumeration
+ * found 53 broken pairs across eight distinct absorbing/absorbed combinations,
+ * including the second one the paste matrix had already recorded (a nested list
+ * followed by a table). Hand-picking would have fixed the headline and left the
+ * rest — and the two types added to `BLOCKS` after that first run went on to
+ * prove the same point a second time, against this file.
+ *
+ * Why the fixture has to be BUILT rather than written. The broken structure is
+ * not authorable: `- it\n  | x | y |\n  |---|---|\n  em one` already parses with
+ * `em one` as a table row, so a hand-written tight item can never hold two
+ * blocks in the first place. Only editing reaches it — pasting a table into the
+ * middle of a tight item's text is the shortest route (`pasteMatrix.test.ts`
+ * carries that end-to-end case). So each fixture here is parsed LOOSE, where the
+ * two blocks are expressible, and then rebuilt with `spread: false`.
+ *
+ * The invariants are answered by the production parser and serializer, never by
+ * re-parsing Markdown in the test (the `pasteMatrix` lesson):
+ *
+ *   B. Round-trip stable — serialize, reopen, serialize again, same bytes.
+ *   C. The item still holds the same sequence of blocks after the reopen. B
+ *      alone is not enough here: two glued blockquotes fuse into one and the
+ *      fused form re-serializes to itself, so the corruption is stable.
+ */
+import { describe, it, expect } from "vitest";
+import { Editor, parserCtx, serializerCtx } from "@milkdown/core";
+import type { Node as ProseNode } from "../pm";
+import { makeCorpusEditor } from "./helpers/moveFuzz";
+
+/** Every block construct the editor can put inside a list item, written at the
+ * item's content indent so the loose fixture below parses as item content.
+ *
+ * Keep this exhaustive. The two types added last — a Notion `<aside>` and a
+ * footnote definition — were omitted from the first version of this file, and
+ * both turned out to be broken as left siblings while the suite reported
+ * "every ordered pair": the aside swallowed all six heads tried against it. A
+ * matrix that names its own completeness has to earn it. */
+const BLOCKS: Array<[name: string, source: string]> = [
+    ["a paragraph", "  alpha text"],
+    ["a table", "  | x | y |\n  | - | - |\n  | 9 | 8 |"],
+    ["a bullet list", "  - sub one\n  - sub two"],
+    ["an ordered list", "  1. sub one\n  2. sub two"],
+    ["a task list", "  - [ ] todo\n  - [x] done"],
+    ["a blockquote", "  > quoted"],
+    ["a callout", "  > [!NOTE]\n  > careful"],
+    ["an ATX heading", "  ## Head"],
+    ["a setext heading", "  Head\n  ===="],
+    ["a fenced code block", "  ```js\n  const x = 1;\n  ```"],
+    ["an unlabelled code block", "  ```\n  plain code\n  ```"],
+    ["a thematic break", "  ---"],
+    ["a math block", "  $$\n  a=b\n  $$"],
+    ["raw HTML", "  <div>raw</div>"],
+    ["a Notion aside", "  <aside>\n  note body\n  </aside>"],
+    ["a link definition", "  [ref]: https://x.com"],
+    ["a footnote definition", "  [^1]: a footnote"],
+    ["a container directive", "  :::note\n  body\n  :::"],
+];
+
+/**
+ * The outer bullet is `*`, not `-`, for one reason: `- ---` is a THEMATIC BREAK
+ * (three dashes with spaces between them), so an item whose first block is a
+ * dash rule dissolved into a top-level `hr` and the fixture held no list at all.
+ * `itemShape` then compared `"<no item>"` to itself and sixteen cells asserted
+ * nothing. `* ---` mixes marker characters, so it is a bullet holding a rule.
+ *
+ * A `*` bullet is otherwise inert here: the list's `marker` attr is preserved
+ * through serialization (MAR-16), so it round-trips as itself, and nothing under
+ * test is about the marker.
+ */
+const OUTER_BULLET = "*";
+
+/**
+ * What precedes the pair inside the item. Both are needed, and the second is
+ * the one that pins the design: Markdown has no per-gap spacing inside an item,
+ * so the serializer has to answer for the ITEM rather than for the gap it was
+ * asked about. With only two blocks the two answers coincide — a three-block
+ * item is the smallest fixture that can tell them apart, and it is also the
+ * exact shape MAR-279 was reported in (a table pasted into the middle of an
+ * item's text, splitting its paragraph around the table).
+ */
+const LEADS: Array<[name: string, source: string]> = [
+    ["alone in the item", ""],
+    ["after a paragraph", "  lead text\n\n"],
+];
+
+/**
+ * Pairs with a KNOWN, filed defect, asserted INVERTED so the list cannot rot —
+ * the same discipline as `pasteMatrix.test.ts`, and for the same reason: every
+ * other invariant stays enforced for these cells, which `it.fails` would have
+ * switched off.
+ *
+ * MAR-296 — a PARAGRAPH whose text opens an HTML block (`<div>…`) swallows every
+ * following line up to the next blank, whatever construct that line belongs to.
+ * The hazard is a property of the paragraph's CONTENT, not of its node type, so
+ * the serializer's join hook (which sees nodes, not their serialized bytes)
+ * cannot judge it. The `a Notion aside` rows are the same hazard WITH a node
+ * type attached, and are fixed rather than listed here.
+ *
+ * Only in the two-block item: a leading paragraph makes the item loose for an
+ * unrelated reason, and the blank that follows from that closes the HTML block
+ * as a side effect.
+ */
+const KNOWN_GAPS = new Set([
+    "alone in the item|raw HTML|a callout",
+    "alone in the item|raw HTML|an unlabelled code block",
+    "alone in the item|raw HTML|a fenced code block",
+    "alone in the item|raw HTML|an ATX heading",
+    "alone in the item|raw HTML|a bullet list",
+    "alone in the item|raw HTML|a math block",
+    "alone in the item|raw HTML|an ordered list",
+    "alone in the item|raw HTML|a blockquote",
+    "alone in the item|raw HTML|a table",
+    "alone in the item|raw HTML|a task list",
+    "alone in the item|raw HTML|a Notion aside",
+    "alone in the item|raw HTML|a footnote definition",
+]);
+
+/** Rebuild a document with every list and list item forced tight, so the pair
+ * under test sits in an item whose `spread` is false. `blankBefore` is cleared
+ * with it: that attr pins the gap BETWEEN items to what the source had
+ * (MAR-194), and the loose fixture would otherwise carry it in. */
+function forceTight(node: ProseNode): ProseNode {
+    if (node.isText) return node;
+    const children: ProseNode[] = [];
+    node.content.forEach((child) => children.push(forceTight(child)));
+    const name = node.type.name;
+    const attrs = name === "bullet_list" || name === "ordered_list" || name === "list_item"
+        ? { ...node.attrs, spread: false, blankBefore: null }
+        : node.attrs;
+    return node.type.create(attrs, children.length ? children : null, node.marks);
+}
+
+/** The type names of the first list item's flow children. */
+function itemShape(doc: ProseNode): string {
+    const item = doc.firstChild?.firstChild;
+    if (!item) return "<no item>";
+    const names: string[] = [];
+    item.content.forEach((child) => names.push(child.type.name));
+    return names.join(",");
+}
+
+describe("blank-line spacing inside a tight list item", () => {
+    for (const [leadName, lead] of LEADS)
+    for (const [firstName, first] of BLOCKS) {
+        for (const [secondName, second] of BLOCKS) {
+            const known = KNOWN_GAPS.has(`${leadName}|${firstName}|${secondName}`);
+            it(`${firstName} followed by ${secondName}, ${leadName}, should survive a reopen`, async () => {
+                // Arrange: the blocks, authored loose (the only form Markdown
+                // can express), then rebuilt tight.
+                const body = `${lead}${first}\n\n${second}\n`;
+                const loose = `${OUTER_BULLET}${body.slice(1)}`;
+                const editor: Editor = await makeCorpusEditor("");
+                try {
+                    // Act.
+                    const result = editor.action((ctx) => {
+                        const parsed = ctx.get(parserCtx)(loose);
+                        if (!parsed) return null;
+                        const tight = forceTight(parsed);
+                        const serialized = ctx.get(serializerCtx)(tight);
+                        const reopened = ctx.get(parserCtx)(serialized);
+                        return {
+                            serialized,
+                            reserialized: reopened ? ctx.get(serializerCtx)(reopened) : null,
+                            want: itemShape(tight),
+                            got: reopened ? itemShape(reopened) : "<reparse failed>",
+                        };
+                    });
+
+                    // Assert.
+                    expect(result, "the fixture should parse").not.toBeNull();
+                    const { serialized, reserialized, want, got } = result!;
+                    if (known) {
+                        expect(got,
+                            "this gap is expected — delete the KNOWN_GAPS entry once it is fixed",
+                        ).not.toBe(want);
+                        return;
+                    }
+                    // C. The reopened item holds the same blocks.
+                    expect(got, `blocks in the item, from ${JSON.stringify(serialized)}`).toBe(want);
+                    // B. Round-trip stable.
+                    expect(reserialized, "reserialization of the saved document").toBe(serialized);
+                } finally {
+                    await editor.destroy();
+                }
+            });
+        }
+    }
+});
