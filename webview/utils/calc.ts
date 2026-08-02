@@ -137,9 +137,31 @@ const AMBIGUOUS_FUNCTIONS = new Map<string, readonly string[]>([
     ["log", ["log10", "ln"]],
 ]);
 
+/** Every ambiguous name, in table order — the list a surface iterates when it
+ * has to speak about the refusal in general rather than about one line. */
+export const AMBIGUOUS_FUNCTION_NAMES: readonly string[] = [...AMBIGUOUS_FUNCTIONS.keys()];
+
 /** Every explicit spelling offered for some ambiguous name (`log10`, `ln`). */
 const DISAMBIGUATIONS = new Set<string>(
     [...AMBIGUOUS_FUNCTIONS.values()].flat(),
+);
+
+/**
+ * `name` used CALL-SHAPED (`name(`), whole-word and case-insensitive — the ONE
+ * pattern behind both finding an ambiguous call and rewriting it, so detection
+ * and settlement can never disagree about what counts as one. `log10(` and
+ * `mylog(` are untouched (no word boundary / a longer name).
+ *
+ * Built once from AMBIGUOUS_FUNCTIONS, a fixed table — never from user text,
+ * so these are constants, not dynamic patterns. Two copies per name because a
+ * `g` regex carries `lastIndex` across calls: `find` is for searching, `all`
+ * for replacing.
+ */
+const AMBIGUOUS_CALL = new Map<string, { find: RegExp; all: RegExp }>(
+    [...AMBIGUOUS_FUNCTIONS.keys()].map((name) => [name, {
+        find: new RegExp(`\\b${name}(?=\\s*\\()`, "i"),
+        all: new RegExp(`\\b${name}(?=\\s*\\()`, "gi"),
+    }]),
 );
 
 /**
@@ -166,50 +188,39 @@ export function isDisambiguation(name: string): boolean {
 }
 
 /**
- * The ambiguous names used CALL-SHAPED in `expr` (lowercased, de-duplicated,
+ * The ambiguous names used CALL-SHAPED in `text` (lowercased, de-duplicated,
  * in first-use order). `log(100)` yields `["log"]`; a variable that merely
  * happens to be called `log` yields nothing, because only `name(` is a call.
+ *
+ * TEXT-LEVEL, deliberately — and this is the whole reason the two functions
+ * share AMBIGUOUS_CALL. Callers do NOT hand this a clean expression: the
+ * calc-block ledger inspects a whole line (`a = 1, b = log(2)`) and the pick
+ * path inspects a document region carrying the trailing `=>`. Neither
+ * tokenizes, so a token-level scan returned `[]` for both — reporting "not
+ * ambiguous" about text that plainly is, which is exactly the half-settled
+ * outcome this feature exists to prevent. Over-reporting is the safe
+ * direction: the worst a false positive costs is an offer to make an
+ * already-unambiguous line explicit.
  */
-export function ambiguousCallsIn(expr: string): string[] {
-    const tokens = tokenize(expr, true);
-    if (!tokens) { return []; }
-    const names: string[] = [];
-    tokens.forEach((tok, i) => {
-        if (tok.kind !== "ident" || tokens[i + 1]?.kind !== "lparen") { return; }
-        const lower = tok.name.toLowerCase();
-        if (AMBIGUOUS_FUNCTIONS.has(lower) && !names.includes(lower)) { names.push(lower); }
-    });
-    return names;
-}
-
-/**
- * Rewrites every CALL-shaped `name(` in `text` to `replacement(`, so a picked
- * reading can be written back into the document itself — the equation, not
- * just its answer, stops being ambiguous. Matches whole names only, so
- * `log10(` and `mylog(` are untouched. `name` comes from AMBIGUOUS_FUNCTIONS
- * (a fixed table), never from user text, so the built pattern is a constant.
- */
-export function rewriteAmbiguousCall(text: string, name: string, replacement: string): string {
-    return text.replace(new RegExp(`\\b${name}(?=\\s*\\()`, "gi"), replacement);
+export function ambiguousCallsIn(text: string): string[] {
+    return [...AMBIGUOUS_CALL]
+        .map(([name, { find }]) => ({ name, at: text.search(find) }))
+        .filter(({ at }) => at >= 0)
+        .sort((a, b) => a.at - b.at)
+        .map(({ name }) => name);
 }
 
 /**
  * `text` with every ambiguous call that `reading` can settle rewritten to it
- * (`disambiguate("log(100)", "ln")` → `"ln(100)"`). A name `reading` does not
- * belong to is left alone — the result then still refuses to evaluate, which
- * is the honest outcome.
- *
- * Deliberately text-level rather than token-level: the pick path applies this
- * to a document REGION, which carries the trailing `=>` and so does not
- * tokenize at all. (It used to derive the names via ambiguousCallsIn, which
- * returned nothing for the region and silently left the `log` in place while
- * writing the answer — the exact half-settled equation the whole feature
- * exists to prevent. Caught by e2e/calcAmbiguous.)
+ * (`disambiguate("log(100)", "ln")` → `"ln(100)"`), so a picked reading is
+ * written back into the document itself — the equation, not just its answer,
+ * stops being ambiguous. A name `reading` does not belong to is left alone —
+ * the result then still refuses to evaluate, which is the honest outcome.
  */
 export function disambiguate(text: string, reading: string): string {
     let out = text;
     for (const [name, readings] of AMBIGUOUS_FUNCTIONS) {
-        if (readings.includes(reading)) { out = rewriteAmbiguousCall(out, name, reading); }
+        if (readings.includes(reading)) { out = out.replace(AMBIGUOUS_CALL.get(name)!.all, reading); }
     }
     return out;
 }

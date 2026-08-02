@@ -24,6 +24,7 @@ import {
     ambiguousReadings,
     disambiguate,
     isDisambiguation,
+    AMBIGUOUS_FUNCTION_NAMES,
 } from "../utils/calc";
 
 // The unit engine is a lazy chunk in production (callers await it); tests
@@ -1020,10 +1021,15 @@ describe("`log` is ambiguous — the engine refuses rather than guessing", () =>
         const [row] = evaluateCalcBlock("log(100)");
         expect(row.kind).toBe("error");
         expect(row.ambiguous).toEqual(["log"]);
-        // A definition whose right-hand side is ambiguous reports it too.
+        // A definition whose right-hand side is ambiguous reports it too —
+        // single and MULTI (`a=1, b=…`) alike. The multi form is the line the
+        // token-based scan used to miss: the `=`/`,` make it untokenizable, so
+        // it silently fell back to the generic "no value" tooltip.
         expect(evaluateCalcBlock("x = log(100)")[0].ambiguous).toEqual(["log"]);
+        expect(evaluateCalcBlock("a = 1, b = log(100)")[0].ambiguous).toEqual(["log"]);
         // An ordinary failure still carries no ambiguity claim.
         expect(evaluateCalcBlock("log10(mystery)")[0].ambiguous).toBeUndefined();
+        expect(evaluateCalcBlock("a = 1, b = mystery")[0].ambiguous).toBeUndefined();
     });
 
     it("ambiguousCallsIn should see call shapes only, and de-duplicate", () => {
@@ -1060,6 +1066,64 @@ describe("`log` is ambiguous — the engine refuses rather than guessing", () =>
         // the maintenance engine leaves the reader's own text alone.
         expect(expressionUsesVariables("log(100)")).toBe(false);
         expect(unresolvedVariables("log(100)", new Map())).toEqual([]);
+    });
+
+    // ── Invariants over the whole ambiguity table ────────────────────────────
+    // The three tests below hold for every entry, present and future. Each of
+    // them fails on a defect that the example-by-example tests above execute
+    // without noticing, because they only ever assert what `log` does today.
+
+    it("every offered reading should be a name the engine can actually compute", () => {
+        // The table promises the menu two escape hatches; if one is misspelled
+        // (`ln2`), `readingRows` silently drops the row and the user is left
+        // with a refusal and no way out — no error anywhere.
+        for (const name of AMBIGUOUS_FUNCTION_NAMES) {
+            const readings = ambiguousReadings(name);
+            expect(readings.length).toBeGreaterThan(1); // one reading is not a disagreement
+            for (const reading of readings) {
+                expect(isDisambiguation(reading)).toBe(true);
+                expect(evaluateCalc(`${reading}(100)`)).not.toBeNull();
+                // …and it must actually settle the name it is offered for.
+                expect(evaluateCalc(disambiguate(`${name}(100)`, reading))).not.toBeNull();
+            }
+            // The readings must DISAGREE — an entry whose readings answer the
+            // same number is not ambiguous, it is a synonym.
+            const answers = readings.map((r) => evaluateCalc(disambiguate(`${name}(100)`, r)));
+            expect(new Set(answers).size).toBe(answers.length);
+        }
+    });
+
+    it("an ambiguous name should never also be evaluable", () => {
+        // The two tables are consulted in order, so an overlap would silently
+        // resolve to the FUNCTIONS entry and the refusal would never happen.
+        for (const name of AMBIGUOUS_FUNCTION_NAMES) {
+            expect(evaluateCalc(`${name}(100)`)).toBeNull();
+            expect(evaluateCalc(`1 + ${name}(100)`)).toBeNull();
+            expect(evaluateCalcBlock(`${name}(100)`)[0].result).toBeNull();
+        }
+    });
+
+    it("detecting an ambiguity and settling it should agree on every input", () => {
+        // The bug this catches: `ambiguousCallsIn` used to tokenize, so any
+        // text the grammar rejects — a whole calc-block line (`a = 1, b =
+        // log(2)`), a document region carrying its `=>` tail — reported "not
+        // ambiguous" about text `disambiguate` would happily rewrite. The
+        // ledger then showed the generic "no value" tooltip on exactly the
+        // line whose refusal it exists to explain.
+        const corpus = [
+            "log(100)", "LOG(100)", "log (100)", "1 + log(2) * log(3)",
+            "a = 1, b = log(2)",          // a multi-definition line: has `=`
+            "note log(100) =>",           // a document region: has `=>`
+            "x = log(y) + log10(z),",     // both, plus punctuation
+            "log10(2)", "mylog(2)", "blog(2)", "log * 2", "plain prose", "",
+        ];
+        const everyReading = AMBIGUOUS_FUNCTION_NAMES.flatMap((n) => [...ambiguousReadings(n)]);
+        for (const text of corpus) {
+            const detected = ambiguousCallsIn(text);
+            // Settling with SOME reading changes the text iff a call was found.
+            const changed = everyReading.some((r) => disambiguate(text, r) !== text);
+            expect([text, changed]).toEqual([text, detected.length > 0]);
+        }
     });
 });
 

@@ -20,7 +20,30 @@
  * in the NodeView and reaches this module as `isActive`.
  */
 import { t } from "@/i18n";
-import { ensureCalcUnits, evaluateCalcBlock } from "@/utils/calc";
+import { ambiguousReadings, ensureCalcUnits, evaluateCalcBlock } from "@/utils/calc";
+
+/**
+ * The error dash's tooltip. A line that merely failed says so; a line the
+ * engine REFUSED (an ambiguous name — see AMBIGUOUS_FUNCTIONS) says which name
+ * and what to write instead, because that refusal is one the reader can fix
+ * and a bare "no value" would read as a dead end on a line that computes fine
+ * everywhere else (docs/DESIGN_PRINCIPLES.md → every finding says what to do).
+ *
+ * Both the name and the spellings come from the engine's own table, so a
+ * second ambiguous name can never leave this sentence naming the wrong one.
+ * (Asserted through the rendered row in calcBlock.test.ts — a hardcoded name
+ * here is invisible to any test that only checks the row's `ambiguous` data.)
+ */
+function calcErrorTitle(ambiguous?: readonly string[]): string {
+    if (!ambiguous?.length) { return t("This line looks like a formula but has no value"); }
+    return ambiguous
+        .map((name) =>
+            t("{0} means different things in different calculators, so an answer here would not survive being pasted into one — write {1} instead")
+                .replace("{0}", `${name}(…)`)
+                .replace("{1}", ambiguousReadings(name).map((r) => `${r}(…)`).join(" or ")),
+        )
+        .join(" ");
+}
 
 export type CalcLedger = {
     /** The pane element; the NodeView owns its placement and visibility. */
@@ -109,13 +132,7 @@ export function createCalcLedger(opts: {
                 const res = document.createElement("span");
                 res.className = "calc-row-result calc-row-result--error";
                 res.textContent = "—";
-                // An ambiguous name is a refusal the reader can FIX, so say
-                // which name and what to write instead — a bare "no value"
-                // would read as a dead end on a line that computes fine
-                // everywhere else.
-                res.title = ambiguous?.length
-                    ? t("log means base 10 in some calculators and natural log in others, so the answer would not survive being pasted elsewhere — write log10(…), ln(…), or log2(…)")
-                    : t("This line looks like a formula but has no value");
+                res.title = calcErrorTitle(ambiguous);
                 row.appendChild(res);
             }
             calcRender.appendChild(row);

@@ -155,6 +155,29 @@ describe("calc code-block preview", () => {
         expect(err?.textContent).toBe("—");
     });
 
+    it("a line REFUSED for an ambiguous name should say which name and what to write", async () => {
+        // Same dash as any other failure — one meaning per decoration
+        // (docs/DESIGN_PRINCIPLES.md) — but the tooltip has to distinguish a
+        // refusal the reader can fix from a dead end, or the quiet cue reads
+        // as "this editor can't do logarithms".
+        const { nv } = await makeCodeBlockView(
+            "```calc\nlog(100)\nmystery * 2\na = 1, b = log(2)\n```\n",
+        );
+        await wait();
+        const titles = Array.from(nv.dom.querySelectorAll(".calc-row-result--error"))
+            .map((el) => (el as HTMLElement).title);
+        expect(titles).toHaveLength(3);
+        // The refused lines name the ambiguity and both explicit spellings…
+        for (const title of [titles[0], titles[2]]) {
+            expect(title).toContain("log(…)");
+            expect(title).toContain("log10(…)");
+            expect(title).toContain("ln(…)");
+        }
+        // …and an ordinary failure keeps the generic wording, claiming nothing.
+        expect(titles[1]).not.toContain("log10");
+        expect(titles[1]).toContain("no value");
+    });
+
     it("a source line already ending in => should not double the = lead-in", async () => {
         const { nv } = await makeCodeBlockView("```calc\n2 + 3 =>\n```\n");
         await wait();

@@ -503,6 +503,87 @@ describe("`=>` living calculations (variables + units)", () => {
         v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
         expect(v.state.doc.firstChild?.textContent).toBe("2+3 => 5"); // not "2+3 => 5 99"
     });
+
+    // ── A name the world reads two ways (`log`): offer, never guess ──────────
+    // e2e/calcAmbiguous drives the same flow in a real browser, but CI does not
+    // run e2e — so the branch that decides between "one answer" and "one row
+    // per reading", and the rewrite that a pick performs, are guarded here.
+
+    async function arrowMenu(markdown: string, typed: string): Promise<void> {
+        editor = await makeArrowEditor(markdown);
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, typed);
+        await vi.advanceTimersByTimeAsync(250);
+    }
+
+    /** Row labels paired with their right-aligned hint (the reading's answer). */
+    function optionHints(): Array<[string, string]> {
+        return Array.from(
+            document.querySelectorAll(".fm-suggest-menu .fm-suggest-item:not(.fm-suggest-item--action)"),
+        ).map((li) => [
+            li.querySelector(".fm-suggest-item__label")?.textContent ?? "",
+            li.querySelector(".fm-suggest-item__hint")?.textContent ?? "",
+        ]);
+    }
+
+    it("an ambiguous `log` should offer one row per reading, each with its own answer", async () => {
+        await arrowMenu("x\n", " log(100) =>");
+        const rows = optionHints();
+        expect(rows.map(([label]) => label)).toEqual(["log10", "ln"]);
+        // The two numbers sit side by side, so the choice is made against them
+        // rather than in the abstract — this is the whole point of refusing.
+        expect(rows[0][1]).toBe("2");
+        expect(rows[1][1]).toMatch(/^4\.60517/);
+        expect(rows[0][1]).not.toBe(rows[1][1]);
+    });
+
+    it("the disambiguation menu should name the ambiguity and say how to confirm", async () => {
+        await arrowMenu("x\n", " log(100) =>");
+        const footer = document.querySelector(".fm-suggest-menu .fm-suggest-footer");
+        // Named from the engine's table, not hardcoded; and the row hints are
+        // spent on the answers, so the footer is the only place "Tab" can be.
+        expect(footer?.textContent).toContain("log");
+        expect(footer?.textContent).toContain("Tab");
+        expect(footer?.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("picking a reading should rewrite the EQUATION as well as write the answer", async () => {
+        await arrowMenu("x\n", " log(100) =>");
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        // Both halves, or the document keeps an answer whose expression still
+        // reads two ways — the exact thing the refusal exists to prevent.
+        expect(v.state.doc.textContent).toBe("x log10(100) => 2");
+        expect(v.state.doc.textContent).not.toContain("log(");
+    });
+
+    it("arrowing to the second reading should write THAT name and THAT answer", async () => {
+        await arrowMenu("x\n", " log(100) =>");
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        expect(v.state.doc.textContent).toMatch(/^x ln\(100\) => 4\.60517/);
+    });
+
+    it("every ambiguous call in the expression should be settled, not just the first", async () => {
+        await arrowMenu("x\n", " log(100) + log(10) =>");
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        expect(v.state.doc.textContent).toBe("x log10(100) + log10(10) => 3");
+    });
+
+    it("an unambiguous expression should still get the ordinary single answer row", async () => {
+        await arrowMenu("x\n", " log10(1000) =>");
+        expect(optionTexts()).toEqual(["3"]);
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        expect(v.state.doc.textContent).toBe("x log10(1000) => 3");
+    });
+
+    it("an ambiguous expression no reading can answer should offer nothing", async () => {
+        // `log(0)` is -Infinity either way: there is no reading to choose
+        // between, so the menu stays shut rather than offering a dead row.
+        await arrowMenu("x\n", " log(0) =>");
+        expect(optionTexts()).toEqual([]);
+        expect(document.querySelector(".fm-suggest-menu")).toBeNull();
+    });
 });
 
 describe("auto-insert inline calc", () => {

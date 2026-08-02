@@ -53,10 +53,10 @@ export async function run({ page, check, baseUrl }) {
     check("each reading shows the number IT would answer",
         rows?.[0]?.hint === "2" && rows?.[1]?.hint?.startsWith("4.60517"),
         JSON.stringify(rows));
-    check("the menu explains why it will not guess",
-        (await page.$eval(".fm-suggest-menu .fm-suggest-footer", (el) => el.textContent)
-            .catch(() => "")).includes("base 10"),
-        "footer");
+    const footer = await page.$eval(".fm-suggest-menu .fm-suggest-footer", (el) => el.textContent)
+        .catch(() => "");
+    check("the menu names the ambiguity and says how to confirm",
+        footer.includes("log") && footer.includes("Tab"), footer);
 
     // Tab confirms the pre-highlighted first row — and must rewrite the CALL,
     // not just append a number.
