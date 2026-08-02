@@ -1120,6 +1120,12 @@ export class MarkdownEditorProvider
                         // as calc.autoInsert.
                         updateSettingRespectingScope("checklist.sinkChecked", message.enabled);
                         break;
+                    case "setNoteHighlight":
+                        // The "Highlight notes" switch (Checks menu / Notes tab /
+                        // palette). The config-change listener broadcasts
+                        // `notesConfig`, which re-gates every open webview.
+                        updateSettingRespectingScope("notes.highlightMarkers", message.enabled);
+                        break;
                     case "spellAddWord":
                         addUserWord(message.word);
                         break;

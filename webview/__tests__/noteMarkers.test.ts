@@ -11,7 +11,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { noteMarkersKey, noteMarkersPlugin, regateNoteMarkers } from "../plugins/noteMarkers";
+import {
+    NOTE_HIGHLIGHT_EVENT,
+    noteMarkersEnabled,
+    noteMarkersKey,
+    noteMarkersPlugin,
+    regateNoteMarkers,
+    setNoteMarkersEnabled,
+} from "../plugins/noteMarkers";
+import { mockVscodeApi } from "./setup";
 
 let editors: Editor[] = [];
 
@@ -172,6 +180,59 @@ describe("note-marker highlighting", () => {
         await settle();
 
         expect(chips(v)).toEqual(["DRAFT", "[TK]"]);
+    });
+
+    it("flipping the gate from a UI control should paint, persist, and announce", async () => {
+        setNotesFlags({ enabled: false });
+        const editor = await makeEditor("has [TK] here\n");
+        const v = view(editor);
+        await settle();
+        expect(chips(v)).toEqual([]);
+
+        const announced: boolean[] = [];
+        const onChange = (): void => { announced.push(noteMarkersEnabled()); };
+        window.addEventListener(NOTE_HIGHLIGHT_EVENT, onChange);
+        try {
+            setNoteMarkersEnabled(v, true);
+            await settle();
+
+            // …applies here without waiting for the settings round trip,
+            expect(chips(v)).toEqual(["[TK]"]);
+            // …persists (the extension echoes it to every other open editor),
+            expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+                type: "setNoteHighlight",
+                enabled: true,
+            });
+            // …and tells the switches that mirror it.
+            expect(announced).toEqual([true]);
+
+            setNoteMarkersEnabled(v, false);
+            expect(chips(v)).toEqual([]);
+            expect(announced).toEqual([true, false]);
+        } finally {
+            window.removeEventListener(NOTE_HIGHLIGHT_EVENT, onChange);
+        }
+    });
+
+    it("a settings echo re-gating this editor should announce too", async () => {
+        // The Settings UI (or another editor's flip) arrives as `notesConfig`,
+        // which lands on regateNoteMarkers — no local setter involved. A switch
+        // listening for the event has to hear that one as well.
+        const editor = await makeEditor("has [TK] here\n");
+        const v = view(editor);
+        await settle();
+
+        const announced: boolean[] = [];
+        const onChange = (): void => { announced.push(noteMarkersEnabled()); };
+        window.addEventListener(NOTE_HIGHLIGHT_EVENT, onChange);
+        try {
+            setNotesFlags({ enabled: false });
+            regateNoteMarkers(v);
+            expect(announced).toEqual([false]);
+            expect(chips(v)).toEqual([]);
+        } finally {
+            window.removeEventListener(NOTE_HIGHLIGHT_EVENT, onChange);
+        }
     });
 
     it("a marker inside inline code should not be chipped (it is source)", async () => {

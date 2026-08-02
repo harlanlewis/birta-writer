@@ -377,6 +377,13 @@ body.toc-resizing {
     color: var(--vscode-list-activeSelectionForeground);
 }
 
+/* A tab-specific control at the toolbar's trailing edge (the Notes tab's
+   in-text highlight toggle) — same pill as the sort segments, pushed away
+   from them so the two never read as one three-way choice. */
+.review-trailing {
+    margin-inline-start: auto;
+}
+
 .review-body {
     flex: 1;
     overflow-y: auto;

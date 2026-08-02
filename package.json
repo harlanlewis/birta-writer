@@ -494,6 +494,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.toggleNoteHighlights",
+                "title": "%command.editor.toggleNoteHighlights.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.toggleToolbar",
                 "title": "%command.editor.toggleToolbar.title%",
                 "category": "Birta Writer"
@@ -1081,6 +1086,10 @@
                 },
                 {
                     "command": "birta.editor.toggleStyleCheck",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.toggleNoteHighlights",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

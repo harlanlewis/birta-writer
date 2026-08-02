@@ -438,8 +438,7 @@ export function createMessageHandlers(
                 window.__i18n.notesCustomMarkers = msg.customMarkers;
                 window.__i18n.notesHighlightMarkers = msg.highlightMarkers;
             }
-            const view = getEditorView();
-            if (view) { regateNoteMarkers(view); }
+            regateNoteMarkers(getEditorView());
         },
         reviewConfig(msg) {
             setReviewGroupByType(msg.groupByType);

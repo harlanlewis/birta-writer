@@ -96,7 +96,13 @@ function groupByTag(rows: readonly ReviewRowModel[]): Array<{ tag: string; rows:
 export function initReviewList(
     className: string,
     getView: () => EditorView | null,
-    opts: { initialGroupByType: boolean; onToggleGroupByType: (grouped: boolean) => void },
+    opts: {
+        initialGroupByType: boolean;
+        onToggleGroupByType: (grouped: boolean) => void;
+        /** A tab-specific control pinned to the toolbar's trailing edge (the
+         *  Notes tab's in-text highlight toggle). Owned by the adapter. */
+        trailing?: HTMLElement;
+    },
 ): ReviewListRenderer {
     const element = document.createElement("div");
     element.className = className;
@@ -118,6 +124,7 @@ export function initReviewList(
     const segInOrder = makeSeg(t("In order"), false);
     segGroup.append(segByType, segInOrder);
     toolbar.append(segGroup);
+    if (opts.trailing) { toolbar.append(opts.trailing); }
     const bodyEl = document.createElement("div");
     bodyEl.className = "review-body";
     bodyEl.setAttribute("role", "listbox");

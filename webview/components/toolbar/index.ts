@@ -40,6 +40,7 @@ import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, no
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { isChecklistSinkEnabled, setChecklistSinkEnabled } from "@/editing/checklistSink";
+import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
 import { createButton } from "@/ui/dom";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
@@ -1626,6 +1627,9 @@ export function initToolbar(
     // The master "Proofreading" gate switch (handled separately from checkRows
     // because its config field name differs from its option key).
     let masterItem: CheckItem | null = null;
+    // The "Highlight notes" switch — a sibling of the master gate, leading the
+    // menu, governed by nothing (see where it is built).
+    let notesHighlightItem: CheckItem | null = null;
 
     /** Attach `child` into `parent` iff `show`, else detach it. */
     const setAttached = (parent: HTMLElement, child: HTMLElement, show: boolean): void => {
@@ -1643,7 +1647,8 @@ export function initToolbar(
         // text, so dim the button to say "proofreading is off" without opening
         // the menu. (A domain being off is a per-check choice, not shown here.)
         checksBtn.classList.toggle("tb-checks-btn--off", !cfg.proofreadingEnabled);
-        // Gate: the whole body shows only while the master switch is on.
+        // Gate: the whole body shows only while the master switch is on. It is
+        // the menu's last child, so a re-attach appends it straight back.
         if (checksMenuEl && bodyEl) {
             setAttached(checksMenuEl, bodyEl, cfg.proofreadingEnabled);
         }
@@ -1652,6 +1657,8 @@ export function initToolbar(
         if (bodyEl && styleChildrenEl) {
             setAttached(bodyEl, styleChildrenEl, cfg.styleCheck);
         }
+        // Deliberately NOT the notes row: it is not part of `cfg`, and it has
+        // exactly one paint path (the NOTE_HIGHLIGHT_EVENT listener below).
     };
 
     /** Flip one proofread toggle — shared by the Checks rows and slash menu. */
@@ -1683,6 +1690,16 @@ export function initToolbar(
         notifySetProofreadOption("proofreading", value);
     }
 
+    /**
+     * Flip the in-text editor-note highlight — shared by the Checks menu's Notes
+     * row, the review sidebar's Notes tab, the palette, and the slash menu. The
+     * plugin owns the gate (it applies the flip in this webview and persists it);
+     * every mirroring switch repaints off the event it fires.
+     */
+    function toggleNoteHighlights(): void {
+        setNoteMarkersEnabled(getEditorView(), !noteMarkersEnabled());
+    }
+
     function createChecksControl(): HTMLElement {
         const wrapEl = document.createElement("div");
         wrapEl.className = "tb-fmt-wrap tb-checks-wrap";
@@ -1711,6 +1728,27 @@ export function initToolbar(
             header.textContent = title;
             parent.appendChild(header);
         };
+
+        // ── "Highlight notes" (birta.notes.highlightMarkers) ────────────────
+        // The in-text chips on `[TK]`, `TODO:`, `FIXME:` and custom markers.
+        // It leads the menu as a SIBLING of the Proofreading gate below — same
+        // rank, same emphasis, governing nothing but itself. Sibling rather than
+        // child because the two are independent: proofreading findings are the
+        // editor's opinion about your prose, and turning them off must not take
+        // away the markers you left yourself, which are your own content. A
+        // separator, not a header, carries that — a header would read as a
+        // section the gate opens.
+        notesHighlightItem = createSwitchItem(t("Highlight notes"));
+        notesHighlightItem.el.classList.add("tb-checks-master");
+        notesHighlightItem.setChecked(noteMarkersEnabled());
+        notesHighlightItem.el.title = t("Mark [TK], TODO:, FIXME: and your custom markers where they sit in the text (birta.notes.highlightMarkers)");
+        notesHighlightItem.el.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleNoteHighlights();
+        });
+        menu.appendChild(notesHighlightItem.el);
+        menu.appendChild(makeSep());
 
         // Master "Proofreading" gate — the top-level switch that governs
         // everything below. Flipping it off silences spelling, grammar, and style
@@ -1782,6 +1820,11 @@ export function initToolbar(
 
         closeChecksMenu = wireHoverMenu(wrapEl, checksBtn, menu, {
             onOpen: () => {
+                // Proofread state lives in the editor's plugin state, so it is
+                // read fresh on open. The notes row is not repainted here: it
+                // is already correct (see its listener below), and a defensive
+                // repaint on open would hide a missing announcement in this one
+                // surface while the sidebar's pill went quietly stale.
                 const view = getEditorView();
                 if (view) { repaintChecks(getProofreadConfig(view)); }
             },
@@ -1794,6 +1837,15 @@ export function initToolbar(
 
     window.addEventListener("proofread-config-changed", (e) => {
         repaintChecks((e as CustomEvent<ProofreadConfig>).detail);
+    });
+    // THE paint path for the notes row, and the only one after the row is built.
+    // The gate is flippable from three other places (the Notes tab, the
+    // palette/slash command, and the Settings UI in any window) and every one of
+    // them lands on the plugin's re-gate, which announces — so this keeps the row
+    // truthful even while the menu is already open, without polling and without a
+    // second site that could disagree with the sidebar's pill.
+    window.addEventListener(NOTE_HIGHLIGHT_EVENT, () => {
+        notesHighlightItem?.setChecked(noteMarkersEnabled());
     });
     {
         // Paint the initial state if the editor already exists at build time.
@@ -2145,6 +2197,7 @@ export function initToolbar(
         },
         stepFontSize: (delta) => pickFontSize(stepFontSizePercent(currentFontSize, delta)),
         toggleProofread,
+        toggleNoteHighlights,
         toggleToolbar: () => setToolbarVisible(!toolbarVisible),
     });
 

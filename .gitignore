@@ -15,6 +15,9 @@ releases/
 .docs
 .idea
 .claude/settings.local.json
+# Agent worktrees are created under the repo root; without this they show up as
+# untracked files in the main checkout's `git status`.
+.claude/worktrees/
 .env
 .env.*
 .e2e-shots/

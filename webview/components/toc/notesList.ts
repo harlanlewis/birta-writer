@@ -14,7 +14,9 @@
  */
 import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "@/i18n";
+import { bindActivate } from "@/ui/dom";
 import { notifyReviewGroupByType } from "@/messaging";
+import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
 import { scanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
 import { initReviewList, type ReviewResult } from "./reviewList";
 import type { ReviewListView } from "./proofreadingList";
@@ -49,9 +51,35 @@ function noteRank(item: NoteItem): number {
 }
 
 export function initNotesList(getView: () => EditorView | null): NotesListView {
+    // The in-text highlight toggle (birta.notes.highlightMarkers), pinned to the
+    // trailing edge of this tab's sort row. This list is where a writer comes to
+    // deal with their notes, so it is where the question "should these be marked
+    // up in the prose too?" actually arises — the same flip as the toolbar's
+    // Checks menu row, one click from the rows it affects. It wears the sort
+    // toggle's own pill idiom (`.review-seg`), pressed = highlighting on, so it
+    // reads as chrome of the same rank rather than a second kind of control.
+    const highlightBtn = document.createElement("button");
+    highlightBtn.className = "ui-btn review-seg review-trailing";
+    highlightBtn.textContent = t("Highlight");
+    highlightBtn.tabIndex = -1;
+    highlightBtn.title = t("Mark these notes where they sit in the text (birta.notes.highlightMarkers)");
+    const paintHighlight = (): void => {
+        const on = noteMarkersEnabled();
+        highlightBtn.classList.toggle("review-seg--active", on);
+        highlightBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    };
+    paintHighlight();
+    bindActivate(highlightBtn, () => {
+        setNoteMarkersEnabled(getView(), !noteMarkersEnabled());
+    });
+    // Repaint from the plugin's re-gate, so this stays truthful when the flip
+    // came from the Checks menu, the palette, or the Settings UI.
+    window.addEventListener(NOTE_HIGHLIGHT_EVENT, paintHighlight);
+
     const list = initReviewList("review-list review-list--notes", getView, {
         initialGroupByType: window.__i18n?.reviewGroupByType ?? true,
         onToggleGroupByType: notifyReviewGroupByType,
+        trailing: highlightBtn,
     });
 
     let markers: readonly string[] = window.__i18n?.notesCustomMarkers ?? [];

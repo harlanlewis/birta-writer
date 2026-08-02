@@ -1,0 +1,16 @@
+#!/bin/sh
+# Worktree isolation backstop. The logic lives in one place so it cannot drift
+# between repos; this file exists only because git requires the hook to live in
+# the repository's own hooks path. Inert unless isolated worktrees are live.
+#
+# If the shared guard is missing this WARNS rather than failing silently. A
+# guard that disappears without a sound is worse than no guard, because the
+# repo still looks protected. It does not block the commit -- refusing every
+# commit because a helper moved would be its own outage.
+GUARD="${WORKTREE_GUARD:-$HOME/Code/harlanlewis-skills/tools/worktree-hooks/pre-commit-guard}"
+if [ -x "$GUARD" ]; then
+  "$GUARD" || exit 1
+else
+  printf "warning: worktree isolation backstop not found at %s -- commits in the primary checkout are UNGUARDED. Set \$WORKTREE_GUARD or restore the path.\n" "$GUARD" >&2
+fi
+exit 0
