@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- e2e harness: turning a list item into a paragraph (MAR-289). The document
+     is taken from the `?doc=` query parameter when one is present, so a check
+     can REOPEN the bytes a previous edit saved and assert the editor shows the
+     same thing — the round trip that the dropped blank line broke. It must be
+     the QUERY, not the hash: navigating to a URL that differs only in its hash
+     is a same-document navigation, so the page never reloads and the check
+     silently re-reads the state it just edited (it passed against the bug that
+     way). Mirrors the provider template with acquireVsCodeApi stubbed. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const DEFAULT_DOC = [
+    "bar",
+    "",
+    "- one",
+    "- two",
+    "- three",
+    "",
+    "foo",
+    "",
+  ].join("\n");
+  const DOC = new URLSearchParams(location.search).get("doc") || DEFAULT_DOC;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
