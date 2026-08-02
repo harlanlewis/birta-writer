@@ -8,6 +8,14 @@
  * not findings, so turning proofreading off must leave them alone; the row
  * staying put through a gate cycle is the observable form of that.
  *
+ * The order assertion is a structural guard, not a re-test of a live bug: with
+ * the row first and the gated body last, the gate's detach/re-attach cannot
+ * reorder anything today. It pins that arrangement, because the re-attach is an
+ * `appendChild` — the moment anything is added to the menu *after* the body, an
+ * off→on cycle would silently sort it above the checks, and a row count would
+ * still read correct. (An earlier draft placed this row at the foot and hit
+ * exactly that; the fix was the placement, not an `insertBefore`.)
+ *
  * The gate's own behavior (what gets decorated) is covered by noteMarkers.test.ts.
  */
 import { describe, it, expect, afterEach } from "vitest";

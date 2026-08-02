@@ -155,6 +155,66 @@ export async function run({ page, check, baseUrl }) {
     check("clicking it again repaints the chips", (await chips()) === chipsOn, `chips=${await chips()}`);
     check("…and the pill reads on", (await pressed()) === "true", await pressed());
 
+    // ── One bit, four surfaces: whichever one flips it, they all agree ─────
+    // The design claim is that the Checks-menu switch, the Notes-tab pill, the
+    // in-text chips, and the persisted setting are ONE bit with one announcement
+    // point. Each surface is exercised alone above and in e2e/checksMenu; what
+    // only the real bundle can show is that a flip in one of them moves the
+    // others — the toolbar and the sidebar never touch each other directly, they
+    // both listen to the plugin. So assert the invariant (every representation
+    // agrees) rather than each surface's expected value in isolation: it holds
+    // whichever surface did the flipping, and it is what actually breaks if a
+    // control ever grows a private copy of the state.
+    const CHECKS_MENU = ".tb-checks-menu";
+    const openChecksMenu = async () => {
+        // Keyboard, not hover — hover-opening is flaky headless (e2e/checksMenu).
+        await page.locator('button[aria-label="Checks"]').focus();
+        await page.keyboard.press("ArrowDown");
+        await page.waitForSelector(CHECKS_MENU, { state: "visible", timeout: 5000 });
+        await page.waitForTimeout(100);
+    };
+    const closeChecksMenu = async () => {
+        // Only if it is still open — moving the pointer to the sidebar may have
+        // closed it already, and a stray Escape would reach the editor instead.
+        if (await page.locator(CHECKS_MENU).isVisible()) {
+            await page.keyboard.press("Escape");
+            await page.waitForTimeout(100);
+        }
+    };
+    /** Read every representation of the bit at once. */
+    const noteHighlight = async () => ({
+        // The notes row leads the menu (pinned by e2e/checksMenu).
+        menuRow: await page.$eval(`${CHECKS_MENU} .tb-switch-item`,
+            (el) => el.getAttribute("aria-checked") === "true"),
+        pill: (await pressed()) === "true",
+        chips: (await chips()) > 0,
+        persisted: await page.evaluate(() => {
+            const posts = window.__posted.filter((m) => m.type === "setNoteHighlight");
+            return posts.length ? posts[posts.length - 1].enabled : null;
+        }),
+    });
+    const agree = (s) => s.menuRow === s.chips && s.pill === s.chips && s.persisted === s.chips;
+
+    await openChecksMenu();
+    let s = await noteHighlight();
+    check("menu row, sidebar pill, chips and setting agree at rest", agree(s) && s.chips, JSON.stringify(s));
+
+    // Flip from the TOOLBAR; the sidebar has to follow.
+    await page.locator(`${CHECKS_MENU} .tb-switch-item`, { hasText: "Highlight notes" }).first().click();
+    await page.waitForTimeout(200);
+    s = await noteHighlight();
+    check("a flip in the Checks menu carries the sidebar pill and the chips with it",
+        agree(s) && !s.chips, JSON.stringify(s));
+
+    // Flip back from the SIDEBAR. The row has to follow on the announcement
+    // alone — the menu is not reopened, and nothing repaints it on open.
+    await hl.click();
+    await page.waitForTimeout(400); // the rescan is debounced
+    s = await noteHighlight();
+    check("a flip in the sidebar repaints the Checks row without reopening the menu",
+        agree(s) && s.chips, JSON.stringify(s));
+    await closeChecksMenu();
+
     // ── Proofreading tab: a live style finding ────────────────────────────
     await switchTab(page, "Proofread");
     await page.waitForSelector(".review-list--proofread:not(.toc-view--hidden)", { timeout: 5000 });

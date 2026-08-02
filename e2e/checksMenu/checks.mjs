@@ -10,7 +10,8 @@
  * editor-note highlight, a SIBLING of the Proofreading gate rather than one of
  * the things it governs. So it must survive the gate being turned off, and it
  * must stay first: the checks collapsing and returning below it is the visible
- * form of the two being independent.
+ * form of the two being independent. (The order check also pins the arrangement
+ * the gate's `appendChild` re-attach depends on — see toolbarChecksNotes.test.ts.)
  */
 export async function run({ page, check, baseUrl }) {
     const MENU = ".tb-checks-menu";

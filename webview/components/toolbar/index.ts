@@ -1657,9 +1657,8 @@ export function initToolbar(
         if (bodyEl && styleChildrenEl) {
             setAttached(bodyEl, styleChildrenEl, cfg.styleCheck);
         }
-        // The note highlight is its own gate, unrelated to `cfg` — repaint it
-        // from its own source of truth on every pass that touches this menu.
-        notesHighlightItem?.setChecked(noteMarkersEnabled());
+        // Deliberately NOT the notes row: it is not part of `cfg`, and it has
+        // exactly one paint path (the NOTE_HIGHLIGHT_EVENT listener below).
     };
 
     /** Flip one proofread toggle — shared by the Checks rows and slash menu. */
@@ -1821,11 +1820,13 @@ export function initToolbar(
 
         closeChecksMenu = wireHoverMenu(wrapEl, checksBtn, menu, {
             onOpen: () => {
+                // Proofread state lives in the editor's plugin state, so it is
+                // read fresh on open. The notes row is not repainted here: it
+                // is already correct (see its listener below), and a defensive
+                // repaint on open would hide a missing announcement in this one
+                // surface while the sidebar's pill went quietly stale.
                 const view = getEditorView();
                 if (view) { repaintChecks(getProofreadConfig(view)); }
-                // The notes switch has no view dependency — paint it even
-                // before the editor exists, so it is never shown stale-off.
-                else { notesHighlightItem?.setChecked(noteMarkersEnabled()); }
             },
         }).close;
 
@@ -1837,10 +1838,12 @@ export function initToolbar(
     window.addEventListener("proofread-config-changed", (e) => {
         repaintChecks((e as CustomEvent<ProofreadConfig>).detail);
     });
-    // The note-highlight gate is flippable from three other places (the Notes
-    // tab, the palette/slash command, and the Settings UI in any window), all of
-    // which land on the plugin's re-gate. Mirror it here so the row is never
-    // stale when the menu opens — including while it is already open.
+    // THE paint path for the notes row, and the only one after the row is built.
+    // The gate is flippable from three other places (the Notes tab, the
+    // palette/slash command, and the Settings UI in any window) and every one of
+    // them lands on the plugin's re-gate, which announces — so this keeps the row
+    // truthful even while the menu is already open, without polling and without a
+    // second site that could disagree with the sidebar's pill.
     window.addEventListener(NOTE_HIGHLIGHT_EVENT, () => {
         notesHighlightItem?.setChecked(noteMarkersEnabled());
     });
