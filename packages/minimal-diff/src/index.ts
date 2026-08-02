@@ -906,7 +906,40 @@ export function applyMinimalChanges(
     const effective = protection ? repairSerialized(matched, protection, profile, eol) : matched;
     const { edits, savedLines, serialLines } = computeEditScript(saved, effective, profile);
 
-    if (!edits.some((e) => e.op !== "keep")) return saved;
+    // NOTE: there is deliberately no "every edit is a keep, so return `saved`"
+    // fast path here. An all-keeps script does not mean nothing changed — it
+    // means nothing changed AMONG THE SIGNIFICANT LINES, and the blank runs
+    // between them are exactly where this format's block structure lives. A
+    // pure paragraph split (`alpha\nbeta` → `alpha\n\nbeta`) and its mirror, a
+    // pure join, change no significant line at all, so such a fast path
+    // discarded both edits silently — the user saw two paragraphs, saved, and
+    // reopened one (MAR-290). The rebuild below is the only code that consults
+    // the profile's blank-run structure predicates, and it must be reached.
+    //
+    // No bytes are at risk in the ordinary case: for an all-keeps script the
+    // rebuild emits each saved significant line with the saved blank run before
+    // it and the saved remainder after, which reconstructs `saved` byte for
+    // byte, and the identity return at the end hands back the same reference so
+    // callers still see "nothing changed". The ONLY way its output can differ
+    // is a `gapBefore` substitution, and that fires only where a structure
+    // predicate says the blank run is block structure rather than spacing
+    // style. (Asserted across the whole suite while developing MAR-290: no
+    // all-keeps rebuild ever differed from `saved` without one firing.) What it
+    // does cost is the rebuild itself — one O(lines) pass that the fast path
+    // used to skip on a save that changed nothing. It is off the keystroke path
+    // (see webview/editor.ts) and small beside the serialization and LCS that
+    // precede it on the same save.
+    //
+    // Which makes corpus invariant A — a zero-edit save is byte-identical — a
+    // soundness test for those predicates, where before it was blind to them: a
+    // predicate that misjudges a construct now rewrites the file on a save that
+    // changed nothing, and can also cost the file its round-trip protection
+    // outright, since `computeRoundTripProtection` keeps a protection only if
+    // replaying it reproduces the baseline exactly. That cascade is how a `$$`
+    // misjudgement surfaced as `$$x$$` → `$x$` in `math-variants.md`. All of
+    // that is the point, not a hazard: the same lie already corrupted every
+    // save that touched anything ELSE in the document, and the fast path only
+    // hid it from the one case a test looks at.
 
     // What this file's own untouched lines say about how it spells what the
     // serializer renders canonically — the evidence an inserted line is written
