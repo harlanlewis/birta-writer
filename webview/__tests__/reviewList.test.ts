@@ -13,13 +13,23 @@ function row(over: Partial<ReviewRowModel>): ReviewRowModel {
 }
 
 /** A list in a given mode; onToggle spies the persistence callback. */
-function mk(grouped: boolean) {
+function mk(grouped: boolean, trailing?: HTMLElement) {
     const onToggle = vi.fn();
     const view = initReviewList("review-list", () => null, {
         initialGroupByType: grouped,
         onToggleGroupByType: onToggle,
+        ...(trailing ? { trailing } : {}),
     });
+    // Focus only works on an element in the document (the roving tests below).
+    document.body.appendChild(view.element);
     return { ...view, onToggle };
+}
+
+/** Press a key on whatever currently has focus, as the roving handler sees it. */
+function press(key: string): void {
+    document.activeElement!.dispatchEvent(
+        new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+    );
 }
 
 const items = (el: HTMLElement) => el.querySelectorAll<HTMLElement>(".review-item");
@@ -165,6 +175,97 @@ describe("initReviewList — By-type (grouped) mode", () => {
         (groups(element)[0] as HTMLElement).dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
         expect(groups(element)[0]!.classList.contains("review-group--collapsed")).toBe(true);
         expect(items(element)).toHaveLength(1); // only TODO's row remains
+    });
+});
+
+/**
+ * MAR-291: the sort/Highlight row used to be built entirely at tabIndex -1 and
+ * left out of the roving group, so no keyboard could reach it. It is now its own
+ * horizontal roving group (role=toolbar).
+ *
+ * These pin the CONTRACT — roles, the single tab stop, and arrow movement WITHIN
+ * the group. Tab ORDER between regions, :focus-visible, and which listener wins
+ * are only observable in a real browser (e2e/reviewSidebar).
+ */
+describe("initReviewList — the toolbar row is a keyboard region", () => {
+    beforeEach(() => { document.body.innerHTML = ""; });
+
+    const toolbar = (el: HTMLElement) => el.querySelector<HTMLElement>(".review-toolbar")!;
+    const rowButtons = (el: HTMLElement) => [...toolbar(el).querySelectorAll<HTMLElement>("button")];
+
+    it("a rendered row should expose role=toolbar over a labelled sort group", () => {
+        const { element, render } = mk(true);
+        render({ rows: [row({})] });
+        expect(toolbar(element).getAttribute("role")).toBe("toolbar");
+        expect(toolbar(element).getAttribute("aria-label")).toBeTruthy();
+        // NOT a radiogroup — see the comment at the segGroup construction.
+        expect(element.querySelector(".review-segmented")!.getAttribute("role")).toBe("group");
+    });
+
+    it("the row should carry exactly ONE tabbable control, not one per button", () => {
+        const { element, render } = mk(true);
+        render({ rows: [row({})] });
+        expect(rowButtons(element)).toHaveLength(2);
+        expect(rowButtons(element).filter((b) => b.tabIndex === 0)).toHaveLength(1);
+    });
+
+    it("an adapter's trailing control should join the row's group without extra wiring", () => {
+        const trailing = document.createElement("button");
+        trailing.className = "review-trailing";
+        trailing.textContent = "Highlight";
+        const { element, render } = mk(true, trailing);
+        render({ rows: [row({})] });
+        expect(rowButtons(element).map((b) => b.textContent)).toEqual(["By type", "In order", "Highlight"]);
+        expect(rowButtons(element).filter((b) => b.tabIndex === 0)).toHaveLength(1);
+    });
+
+    it("ArrowRight/ArrowLeft should walk the row and clamp at both ends", () => {
+        const trailing = document.createElement("button");
+        trailing.textContent = "Highlight";
+        const { element, render } = mk(true, trailing);
+        render({ rows: [row({})] });
+        const [byType, inOrder, hl] = rowButtons(element);
+
+        byType!.focus();
+        press("ArrowRight");
+        expect(document.activeElement).toBe(inOrder);
+        press("ArrowRight");
+        expect(document.activeElement).toBe(hl);
+        press("ArrowRight");
+        expect(document.activeElement).toBe(hl); // clamps, never wraps
+        press("ArrowLeft");
+        expect(document.activeElement).toBe(inOrder);
+        press("ArrowLeft");
+        press("ArrowLeft");
+        expect(document.activeElement).toBe(byType); // clamps at the start too
+    });
+
+    it("moving focus across the row should carry the single tabbable slot with it", () => {
+        const { element, render } = mk(true);
+        render({ rows: [row({})] });
+        const [byType, inOrder] = rowButtons(element);
+        byType!.focus();
+        press("ArrowRight");
+        expect(inOrder!.tabIndex).toBe(0);
+        expect(byType!.tabIndex).toBe(-1);
+    });
+
+    it("arrowing past a segment should NOT switch the mode (arrows move, Enter acts)", () => {
+        const { element, render, onToggle } = mk(true);
+        render({ rows: [row({ tag: "TK" })] });
+        rowButtons(element)[0]!.focus();
+        press("ArrowRight");
+        expect(onToggle).not.toHaveBeenCalled();
+        expect(groups(element)).toHaveLength(1); // still grouped
+    });
+
+    it("the segments should announce the current mode through aria-pressed", () => {
+        const { element, render, setGroupByType } = mk(true);
+        render({ rows: [row({})] });
+        const pressed = () => rowButtons(element).map((b) => b.getAttribute("aria-pressed"));
+        expect(pressed()).toEqual(["true", "false"]);
+        setGroupByType(false);
+        expect(pressed()).toEqual(["false", "true"]);
     });
 });
 

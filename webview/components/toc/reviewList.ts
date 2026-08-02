@@ -116,10 +116,25 @@ export function initReviewList(
     let renderedSignature: string | null = null;
 
     // ── The sort toggle (persistent chrome, built once) ───────────────────
+    // role=toolbar + roving tabindex is the APG toolbar pattern verbatim: one Tab
+    // stop for the whole row, Left/Right walk it, Enter/Space activate. It is the
+    // same shape the tab strip above and the list below already use — one group
+    // per region rather than one tab stop per button (MAR-291).
     const toolbar = document.createElement("div");
     toolbar.className = "review-toolbar";
+    toolbar.setAttribute("role", "toolbar");
+    toolbar.setAttribute("aria-orientation", "horizontal");
+    toolbar.setAttribute("aria-label", t("Review list options"));
     const segGroup = document.createElement("div");
     segGroup.className = "review-segmented";
+    // A plain grouping, deliberately NOT role=radiogroup: a radiogroup's arrows
+    // are expected to SELECT as they move, which would fight the toolbar's
+    // move-then-activate contract and flip the whole list on the way past to the
+    // trailing switch. The price, paid knowingly: two aria-pressed toggle buttons
+    // don't announce that they're mutually EXCLUSIVE — a reader learns that by
+    // pressing one. Worth it to keep one arrow contract across the whole row.
+    segGroup.setAttribute("role", "group");
+    segGroup.setAttribute("aria-label", t("Sort order"));
     const segByType = makeSeg(t("By type"), true);
     const segInOrder = makeSeg(t("In order"), false);
     segGroup.append(segByType, segInOrder);
@@ -134,6 +149,7 @@ export function initReviewList(
         const btn = document.createElement("button");
         btn.className = "ui-btn review-seg";
         btn.textContent = label;
+        // Tabbability is the roving group's to hand out (wireRoving below).
         btn.tabIndex = -1;
         bindActivate(btn, () => {
             setMode(grouped, true);
@@ -143,8 +159,20 @@ export function initReviewList(
     function updateSegActive(): void {
         segByType.classList.toggle("review-seg--active", groupByType);
         segInOrder.classList.toggle("review-seg--active", !groupByType);
+        // The active-state channel a screen reader reads; the class is only paint.
+        segByType.setAttribute("aria-pressed", String(groupByType));
+        segInOrder.setAttribute("aria-pressed", String(!groupByType));
     }
     updateSegActive();
+
+    // The toolbar row's own group: every <button> in it, in DOM (= visual) order,
+    // so an adapter's trailing control joins without knowing this exists.
+    wireRoving({
+        container: toolbar,
+        items: () => [...toolbar.querySelectorAll<HTMLElement>("button")],
+        orientation: "horizontal",
+        onEscape: () => getView()?.focus(),
+    });
 
     // Keyboard navigation: arrow through the group headers, rows, and show-more
     // toggles; Enter activates (all are <button>s); Escape returns to the editor.

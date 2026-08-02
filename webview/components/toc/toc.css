@@ -368,6 +368,11 @@ body.toc-resizing {
     opacity: 0.55;
 
     &:hover { opacity: 0.85; }
+
+    /* A resting segment sits at 0.55, which would dim the global focus ring
+       (style.css, --vscode-focusBorder) along with the label — a keyboard user
+       must see exactly where they are, so focus lifts the whole control. */
+    &:focus-visible { opacity: 1; }
 }
 
 .review-seg--active,
