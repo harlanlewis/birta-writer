@@ -860,9 +860,141 @@ function reconcileReplacement(saved: string, serial: string, facts: unknown): st
 // code block, where a leading `>` is literal text, not quote structure.
 const isQuoteLine = (s: string): boolean => /^ {0,3}>/.test(s);
 
+// ── Lazy continuation (MAR-289) ─────────────────────────────────────────────
+//
+// The general fact the `:::` arm below is one instance of. A non-blank line
+// that cannot START a block is paragraph CONTINUATION text: glued under a
+// line that leaves a paragraph open, CommonMark absorbs it into that
+// paragraph — and laziness reaches through container boundaries, so a plain
+// line glued under `- two` joins item two rather than following the list.
+//
+// That is why "turn the last list item into a paragraph" could not produce a
+// paragraph: the serializer emits `- two\n\nthree`, the saved bytes have no
+// blank there, and the merge (an in-place replacement, so the saved spacing
+// wins) wrote `- two\nthree` — which reparses as ONE list item. The blank the
+// serializer emitted is not spacing style, it is the only thing making the
+// paragraph a paragraph.
+//
+// Both predicates are deliberately CONSERVATIVE: every line they cannot
+// classify from its own bytes (indented ≥4, HTML, tables, definitions,
+// anything that might be fence content) answers "no" and the merge keeps its
+// existing behaviour. Answering "yes" wrongly is the expensive direction —
+// it would insert a blank into bytes the user never touched, and a zero-edit
+// save must stay byte-identical (corpus invariant A).
+
+/** A link reference definition — a block of its own, never paragraph text. */
+const DEFINITION_RE = /^ {0,3}\[[^\]]*\]:/;
+/** A setext underline, either flavour. */
+const SETEXT_RULE_RE = /^ {0,3}(?:-+|=+)[ \t]*$/;
+/** Headings, fences and `:::` runs: their own block ends with the line. */
+const CLOSES_OWN_BLOCK_RE = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,})/;
+
+/**
+ * The content a line contributes to its innermost container — blockquote
+ * markers and at most one list marker stripped off — plus whether any marker
+ * was there. The content is what decides whether the container has an open
+ * paragraph; the flag says whether the line's indentation is container
+ * structure rather than a possible indented-code run.
+ *
+ * The marker prefixes accept ANY leading whitespace, matching `LIST_MARKER_RE`
+ * rather than CommonMark's ` {0,3}`, and for the same reason it does: a
+ * 4-space or tab-indented sublist is a nested item in every outline this
+ * editor is asked to keep (Logseq indents its whole block tree with tabs —
+ * MAR-131), and the classifier already resolves that ambiguity the same way
+ * ("list context wins for indent-candidates following a list-marker line").
+ * Bounding it at 3 columns instead left every sublist indented 4+ columns
+ * reading as indented code, so the lazy-continuation rule below never fired
+ * there and MAR-289 stayed broken for exactly the outlines most likely to hit
+ * it.
+ */
+/** Visual width of a whole string, tabs expanding to the CommonMark tab stop. */
+function columnWidth(text: string): number {
+    let col = 0;
+    for (const ch of text) {
+        col += ch === "\t" ? 4 - (col % 4) : 1;
+    }
+    return col;
+}
+
+function containerContent(line: string): {
+    content: string;
+    inContainer: boolean;
+    /** Column the content starts at — the container's own content indent. */
+    contentColumn: number;
+} {
+    let s = line;
+    let inContainer = false;
+    for (;;) {
+        const quote = /^[ \t]*> ?/.exec(s);
+        if (!quote) break;
+        s = s.slice(quote[0].length);
+        inContainer = true;
+    }
+    const marker = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$)/.exec(s);
+    if (marker) {
+        s = s.slice(marker[0].length);
+        inContainer = true;
+    }
+    return {
+        content: s,
+        inContainer,
+        contentColumn: columnWidth(line.slice(0, line.length - s.length)),
+    };
+}
+
+/** Does `line` end with a paragraph still open — one a following continuation
+ * line would join? True for prose and for the prose content of a list item or
+ * blockquote; false for anything whose block the line itself closes, and for
+ * every line these regexes cannot judge. Takes the already-split line so the
+ * caller, which also needs the content column, parses it once: this runs per
+ * blank-line gap on every save. */
+function leavesParagraphOpen(
+    { content, inContainer }: ReturnType<typeof containerContent>,
+): boolean {
+    if (content.trim() === "") return false; // bare marker: an empty item
+    // Indented code — unless a container marker accounts for the indent, in
+    // which case the depth is structure and the content starts at column 0.
+    if (!inContainer && leadingColumns(content) >= 4) return false;
+    return !(
+        CLOSES_OWN_BLOCK_RE.test(content) ||
+        THEMATIC_BREAK_RE.test(content) ||
+        SETEXT_RULE_RE.test(content) ||
+        DEFINITION_RE.test(content) ||
+        TABLE_ROW_RE.test(content.trim()) ||
+        /^ {0,3}</.test(content)
+    );
+}
+
+/**
+ * Would `line` be swallowed as paragraph continuation text under a paragraph
+ * whose content starts at `hostColumn`? True only for plain prose — every
+ * construct that CAN interrupt a paragraph, and every line whose construct is
+ * not decidable from its bytes, answers false.
+ *
+ * The indent test is RELATIVE to the host, because indented code is four
+ * columns past the enclosing container's content indent, not past column 0.
+ * Measuring from 0 read every line of a tab-indented outline as code, so
+ * un-bulleting a nested item — which leaves its prose indented to the item's
+ * content column — fell straight back into the MAR-289 bug.
+ */
+function isParagraphContinuation(line: string, hostColumn: number): boolean {
+    if (line.trim() === "") return false;
+    if (leadingColumns(line) >= hostColumn + 4) return false;
+    return !(
+        CLOSES_OWN_BLOCK_RE.test(line) ||
+        THEMATIC_BREAK_RE.test(line) ||
+        SETEXT_RULE_RE.test(line) ||
+        DEFINITION_RE.test(line) ||
+        QUOTE_MARKER_RE.test(line) ||
+        LIST_MARKER_RE.test(line) ||
+        TABLE_ROW_RE.test(line.trim()) ||
+        /^ {0,3}</.test(line)
+    );
+}
+
 // Would gluing `next` directly under `prev` change next's block-level
 // construct? Only then is a serializer-emitted separating blank structure
-// rather than style. Two arms (both verified against the real parser):
+// rather than style. Three arms (all verified against the real parser):
 //   - a `:::` run cannot interrupt a paragraph, so glued to ANY
 //     absorbing line (paragraph, quote content, list-item content) it
 //     becomes a lazy continuation instead of a fence/inert prose;
@@ -871,27 +1003,31 @@ const isQuoteLine = (s: string): boolean => /^ {0,3}>/.test(s);
 //     quote line, list-marker line, or table row cannot be underlined
 //     (the run after them parses as an hr either way), and firing there
 //     would churn legitimately glued saved bytes.
+//   - the general case the first arm is an instance of: ordinary prose
+//     cannot interrupt a paragraph either, so glued under an open one it
+//     becomes lazy continuation text (MAR-289 — see the block above).
 // Lines that terminate their own block (ATX headings, fence lines,
 // thematic breaks) absorb nothing; legitimate saved files DO glue there
-// (a heading directly above a directive), so neither arm may fire on
+// (a heading directly above a directive), so no arm may fire on
 // them: a zero-edit save must keep those bytes verbatim. Solid
 // `***`/`___` runs, backtick fences, headings, and list markers all
 // interrupt a paragraph, so their attachment never depends on the blank.
 // This is the M1 dual rule (MAR-161).
 const glueChangesConstruct = (prev: string, next: string): boolean => {
-    if (
-        /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,})/.test(prev) ||
-        THEMATIC_BREAK_RE.test(prev)
-    ) {
+    if (CLOSES_OWN_BLOCK_RE.test(prev) || THEMATIC_BREAK_RE.test(prev)) {
         return false;
     }
     if (/^ {0,3}:{3,}/.test(next)) return true;
-    return (
+    if (
         /^ {0,3}-+[ \t]*$/.test(next) &&
         !isQuoteLine(prev) &&
         !LIST_MARKER_RE.test(prev) &&
         !TABLE_ROW_RE.test(prev.trim())
-    );
+    ) {
+        return true;
+    }
+    const host = containerContent(prev);
+    return leavesParagraphOpen(host) && isParagraphContinuation(next, host.contentColumn);
 };
 
 // ─── The markdown FormatProfile, and the profile-bound public API ───────────
@@ -912,6 +1048,15 @@ export const markdownProfile: FormatProfile = {
     // the serializer kept the two lines contiguous, the blank was a block
     // separator the edit dissolved (e.g. a block moving between callouts
     // merges two quotes into one) — MAR-122.
+    //
+    // The mirror of MAR-289's arm belongs here too — a saved blank between an
+    // open paragraph and its continuation text splits that paragraph — but is
+    // deliberately NOT added: no edit currently reaches it. The pure join
+    // (two paragraphs merged into one) changes no significant line at all, so
+    // the merge takes its all-keeps early return and this predicate is never
+    // consulted (MAR-290). Adding it now would ship a rule no test can fail,
+    // in the destructive direction — removing a blank the user has. It goes in
+    // with MAR-290, where a failing case will exist to justify it.
     blankSplitsBlock: (prev, next) => isQuoteLine(prev) && isQuoteLine(next),
     reconcileReplacement,
     baselineFacts: baselineIndents,
