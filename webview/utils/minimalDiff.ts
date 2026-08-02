@@ -860,7 +860,7 @@ function reconcileReplacement(saved: string, serial: string, facts: unknown): st
 // code block, where a leading `>` is literal text, not quote structure.
 const isQuoteLine = (s: string): boolean => /^ {0,3}>/.test(s);
 
-// ── Lazy continuation (MAR-289) ─────────────────────────────────────────────
+// ── Lazy continuation (MAR-289 / MAR-290) ───────────────────────────────────
 //
 // The general fact the `:::` arm below is one instance of. A non-blank line
 // that cannot START a block is paragraph CONTINUATION text: glued under a
@@ -875,19 +875,63 @@ const isQuoteLine = (s: string): boolean => /^ {0,3}>/.test(s);
 // serializer emitted is not spacing style, it is the only thing making the
 // paragraph a paragraph.
 //
+// The relation is SYMMETRIC, which is why one predicate (`joinsAsLazyContinuation`)
+// answers both of the profile's blank-line hooks. Where it holds, the blank
+// between the two lines is the entire difference between one block and two:
+// present, `next` is its own paragraph; absent, it is continuation text inside
+// `prev`'s. So whichever spacing the serializer emits is the structure the
+// document actually has, and the saved bytes' spacing is not a style to
+// preserve — it is a claim about the parse that the editor has overruled.
+// `glueChangesConstruct` reads that in the additive direction (the serializer
+// separates, the saved bytes glue: a paragraph was SPLIT), `blankSplitsBlock`
+// in the destructive one (the serializer glues, the saved bytes separate: two
+// paragraphs were JOINED).
+//
 // Both predicates are deliberately CONSERVATIVE: every line they cannot
-// classify from its own bytes (indented ≥4, HTML, tables, definitions,
-// anything that might be fence content) answers "no" and the merge keeps its
-// existing behaviour. Answering "yes" wrongly is the expensive direction —
-// it would insert a blank into bytes the user never touched, and a zero-edit
-// save must stay byte-identical (corpus invariant A).
+// classify from its own bytes (indented ≥4, HTML, tables, definitions, math
+// fences, anything that might be fence content) answers "no" and the merge
+// keeps its existing behaviour. Firing wrongly is expensive in BOTH
+// directions now — it inserts a blank into bytes the user never touched, or
+// deletes one they wrote — and a zero-edit save must stay byte-identical
+// (corpus invariant A), which since MAR-290 is what actually gates these two
+// functions: an all-keeps merge no longer short-circuits, so a predicate that
+// misjudges a construct rewrites the file on a save that changed nothing.
+// That is how `$$` was caught. Deleting is the worse direction; when in
+// doubt, answer no.
 
 /** A link reference definition — a block of its own, never paragraph text. */
 const DEFINITION_RE = /^ {0,3}\[[^\]]*\]:/;
 /** A setext underline, either flavour. */
 const SETEXT_RULE_RE = /^ {0,3}(?:-+|=+)[ \t]*$/;
-/** Headings, fences and `:::` runs: their own block ends with the line. */
-const CLOSES_OWN_BLOCK_RE = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,})/;
+/**
+ * A line that delimits a block and is therefore never paragraph text: an ATX
+ * heading, a ``` / `~~~` code fence, a `:::` directive run, or a `$$` math
+ * fence. Not all of them CLOSE a block — a fence opener starts one — but none
+ * of them can be absorbed as continuation text, and none leaves a paragraph
+ * open behind it, which is the only thing the two predicates below ask.
+ *
+ * `$$` is here because leaving it out was a silent lie in both directions
+ * (MAR-290). Math flow is fence-like in this editor's dialect (remark-math):
+ * it interrupts a paragraph, so `para` + `$$` parses as a paragraph plus a math
+ * block and the serializer separates them — reading `$$` as prose made the
+ * merge insert a blank the user never wrote. Worse, the empty math block
+ * `$$\n\n$$` reads as two prose lines around a blank, so the JOIN rule deleted
+ * the blank between the delimiters and destroyed the block. That is the corpus
+ * fixture `math-variants.md`, and it is why this set has to name every block
+ * delimiter the parser knows, not just CommonMark's.
+ *
+ * Its arm is the only one anchored to end-of-line, and the asymmetry is real
+ * rather than tidiness: a fence or directive opener legitimately carries an
+ * info string (```` ```js ````, `:::note`), but `$$` followed by anything is
+ * not a delimiter at all — `$$x$$` is INLINE math, so `$$x$$ and more` is
+ * ordinary paragraph text that does leave a paragraph open and can be absorbed
+ * as continuation. Verified against the real parser, which gives `$$x$$` a
+ * `math_inline` node inside a paragraph and keeps `para` + `$$x$$ and more`
+ * glued as ONE paragraph. Matching it here would have refused both predicates
+ * on a line that is prose — harmless (refusing only ever costs a fix, never
+ * bytes) but a lie, and the kind that outlives the person who wrote it.
+ */
+const BLOCK_DELIMITER_RE = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,}|\${2,}[ \t]*$)/;
 
 /** Visual width of a whole string, tabs expanding to the CommonMark tab stop. */
 function columnWidth(text: string): number {
@@ -956,7 +1000,7 @@ function leavesParagraphOpen(
     // which case the depth is structure and the content starts at column 0.
     if (!inContainer && leadingColumns(content) >= 4) return false;
     return !(
-        CLOSES_OWN_BLOCK_RE.test(content) ||
+        BLOCK_DELIMITER_RE.test(content) ||
         THEMATIC_BREAK_RE.test(content) ||
         SETEXT_RULE_RE.test(content) ||
         DEFINITION_RE.test(content) ||
@@ -981,7 +1025,7 @@ function isParagraphContinuation(line: string, hostColumn: number): boolean {
     if (line.trim() === "") return false;
     if (leadingColumns(line) >= hostColumn + 4) return false;
     return !(
-        CLOSES_OWN_BLOCK_RE.test(line) ||
+        BLOCK_DELIMITER_RE.test(line) ||
         THEMATIC_BREAK_RE.test(line) ||
         SETEXT_RULE_RE.test(line) ||
         DEFINITION_RE.test(line) ||
@@ -990,6 +1034,23 @@ function isParagraphContinuation(line: string, hostColumn: number): boolean {
         TABLE_ROW_RE.test(line.trim()) ||
         /^ {0,3}</.test(line)
     );
+}
+
+/**
+ * Is the blank run between `prev` and `next` the only thing keeping them two
+ * blocks — i.e. would gluing them absorb `next` as lazy continuation text of
+ * the paragraph `prev` leaves open?
+ *
+ * One relation, both directions. The engine asks it twice with opposite
+ * expectations (see the MAR-289 / MAR-290 block above): when the serializer
+ * separates and the saved bytes glue, a paragraph was split; when the
+ * serializer glues and the saved bytes separate, two were joined. Either way
+ * the answer here is the same fact about the two lines, and the serializer's
+ * spacing is the structure the document has.
+ */
+function joinsAsLazyContinuation(prev: string, next: string): boolean {
+    const host = containerContent(prev);
+    return leavesParagraphOpen(host) && isParagraphContinuation(next, host.contentColumn);
 }
 
 // Would gluing `next` directly under `prev` change next's block-level
@@ -1006,15 +1067,15 @@ function isParagraphContinuation(line: string, hostColumn: number): boolean {
 //   - the general case the first arm is an instance of: ordinary prose
 //     cannot interrupt a paragraph either, so glued under an open one it
 //     becomes lazy continuation text (MAR-289 — see the block above).
-// Lines that terminate their own block (ATX headings, fence lines,
-// thematic breaks) absorb nothing; legitimate saved files DO glue there
-// (a heading directly above a directive), so no arm may fire on
+// Lines that delimit their own block (ATX headings, fence lines, `$$` math
+// fences, thematic breaks) absorb nothing; legitimate saved files DO glue
+// there (a heading directly above a directive), so no arm may fire on
 // them: a zero-edit save must keep those bytes verbatim. Solid
 // `***`/`___` runs, backtick fences, headings, and list markers all
 // interrupt a paragraph, so their attachment never depends on the blank.
 // This is the M1 dual rule (MAR-161).
 const glueChangesConstruct = (prev: string, next: string): boolean => {
-    if (CLOSES_OWN_BLOCK_RE.test(prev) || THEMATIC_BREAK_RE.test(prev)) {
+    if (BLOCK_DELIMITER_RE.test(prev) || THEMATIC_BREAK_RE.test(prev)) {
         return false;
     }
     if (/^ {0,3}:{3,}/.test(next)) return true;
@@ -1026,8 +1087,7 @@ const glueChangesConstruct = (prev: string, next: string): boolean => {
     ) {
         return true;
     }
-    const host = containerContent(prev);
-    return leavesParagraphOpen(host) && isParagraphContinuation(next, host.contentColumn);
+    return joinsAsLazyContinuation(prev, next);
 };
 
 // ─── The markdown FormatProfile, and the profile-bound public API ───────────
@@ -1043,21 +1103,25 @@ export const markdownProfile: FormatProfile = {
         );
     },
     glueChangesConstruct,
-    // A blank line between two quote-context (`>`-prefixed) lines SPLITS the
-    // quote block. When the saved spacing would introduce such a split yet
-    // the serializer kept the two lines contiguous, the blank was a block
-    // separator the edit dissolved (e.g. a block moving between callouts
-    // merges two quotes into one) — MAR-122.
+    // Two arms:
+    //   - a blank line between two quote-context (`>`-prefixed) lines SPLITS
+    //     the quote block. When the saved spacing would introduce such a split
+    //     yet the serializer kept the two lines contiguous, the blank was a
+    //     block separator the edit dissolved (e.g. a block moving between
+    //     callouts merges two quotes into one) — MAR-122.
+    //   - the mirror of MAR-289's lazy-continuation arm: a saved blank between
+    //     an open paragraph and text that would continue it is what makes them
+    //     two paragraphs, so when the serializer emits them glued the user
+    //     JOINED them and the blank has to go (MAR-290).
     //
-    // The mirror of MAR-289's arm belongs here too — a saved blank between an
-    // open paragraph and its continuation text splits that paragraph — but is
-    // deliberately NOT added: no edit currently reaches it. The pure join
-    // (two paragraphs merged into one) changes no significant line at all, so
-    // the merge takes its all-keeps early return and this predicate is never
-    // consulted (MAR-290). Adding it now would ship a rule no test can fail,
-    // in the destructive direction — removing a blank the user has. It goes in
-    // with MAR-290, where a failing case will exist to justify it.
-    blankSplitsBlock: (prev, next) => isQuoteLine(prev) && isQuoteLine(next),
+    // The second arm was deliberately left out of MAR-289: no edit reached it
+    // then, because a pure join changes no significant line and the merge took
+    // an all-keeps early return before ever consulting this hook — it would
+    // have been an untestable rule in the destructive direction. Removing that
+    // early return is the other half of MAR-290, and is what gives this arm
+    // both its failing case and its guard (corpus invariant A).
+    blankSplitsBlock: (prev, next) =>
+        (isQuoteLine(prev) && isQuoteLine(next)) || joinsAsLazyContinuation(prev, next),
     reconcileReplacement,
     baselineFacts: baselineIndents,
     mergeFacts: mergeIndents,
