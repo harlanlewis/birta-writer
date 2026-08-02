@@ -2204,5 +2204,10 @@
         "refractor": "^5.0.0",
         "remark-math": "6",
         "unist-util-visit": "^5.1.0"
+    },
+    "pnpm": {
+        "overrides": {
+            "postcss": ">=8.5.18"
+        }
     }
 }
