@@ -227,6 +227,10 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "spellCheck", group: "actions", label: t("Check spelling"), icon: IconSpellCheck, keywords: ["spell", "spelling", "spellcheck", "proofread", "toggle"], commandId: "toggleSpellCheck", searchOnly: true },
     { id: "grammarCheck", group: "actions", label: t("Check grammar"), icon: IconSpellCheck, keywords: ["grammar", "proofread", "toggle"], commandId: "toggleGrammarCheck", searchOnly: true },
     { id: "styleCheck", group: "actions", label: t("Check style"), icon: IconStyleCheck, keywords: ["style", "prose", "checks", "proofread", "toggle"], commandId: "toggleStyleCheck", searchOnly: true },
+    // The Checks menu's Notes row. It wears the Checks icon rather than the
+    // highlighter (which is the `==` formatting mark, one row apart in a search
+    // result) — the family it belongs to is the annotation toggles, not marks.
+    { id: "noteHighlights", group: "actions", label: t("Highlight notes"), icon: IconStyleCheck, keywords: ["notes", "highlight", "tk", "todo", "fixme", "marker", "markers", "toggle"], commandId: "toggleNoteHighlights", searchOnly: true },
 ];
 
 /**

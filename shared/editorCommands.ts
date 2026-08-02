@@ -165,6 +165,11 @@ export const EDITOR_COMMANDS = [
     { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [] },
     { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [] },
     { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [] },
+    // The in-text editor-note highlight (birta.notes.highlightMarkers). It sits
+    // beside the three check toggles because it is the same kind of thing — an
+    // advisory in-text annotation the user turns on and off — even though the
+    // proofreading master gate does not govern it.
+    { id: "toggleNoteHighlights", title: "Highlight Notes", palette: true, sections: [] },
     // A single toggle each for the toolbar and the TOC — the state is binary,
     // so two idempotent show/hide palette entries would always leave one that
     // does nothing. `toggleToc` (above) covers TOC visibility; these cover the

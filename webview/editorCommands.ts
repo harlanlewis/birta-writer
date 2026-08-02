@@ -113,6 +113,9 @@ export interface EditorCommandHost {
     chooseFontPreset(preset: FontPreset): void;
     stepFontSize(delta: 1 | -1): void;
     toggleProofread(key: ProofreadOptionKey): void;
+    /** The in-text editor-note highlight (birta.notes.highlightMarkers) — not a
+     *  proofread option, so it has its own hook rather than a key. */
+    toggleNoteHighlights(): void;
     toggleToolbar(): void;
     swapTocSide(): void;
     // The shortcuts-help overlay (read-only cheatsheet — distinct from
@@ -713,6 +716,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleSpellCheck: () => host.toggleProofread?.("spellCheck"),
     toggleGrammarCheck: () => host.toggleProofread?.("grammarCheck"),
     toggleStyleCheck: () => host.toggleProofread?.("styleCheck"),
+    toggleNoteHighlights: () => host.toggleNoteHighlights?.(),
     toggleToolbar: () => host.toggleToolbar?.(),
     swapTocSide: () => host.swapTocSide?.(),
     // Keyboard canon: same commands the hardcoded ProseMirror keymaps run
