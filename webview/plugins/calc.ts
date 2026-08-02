@@ -35,14 +35,18 @@ import { createSuggestMenuFromRows } from "../components/pathLink/linkTargetComp
 import { CARET_CONTEXT_WINDOW, caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
 import {
     ARITHMETIC_CLASS,
+    ambiguousCallsIn,
+    ambiguousReadings,
     buildScopeFromLines,
     detectArrowExpression,
     detectCalcExpression,
+    disambiguate,
     ensureCalcUnits,
     evaluateCalc,
     evaluateExpression,
     formatCalcResult,
     isCalcStructurallyValid,
+    isDisambiguation,
 } from "../utils/calc";
 import { notifySetCalcAutoInsert } from "../messaging";
 import { t } from "../i18n";
@@ -238,6 +242,45 @@ export function scopeUpTo(state: EditorState, upTo: number): Map<string, number>
 }
 
 /**
+ * One row the `=>` menu can offer. Normally there is exactly one, carrying the
+ * answer. When the expression used a name the world reads two ways (`log`), it
+ * carries one row PER READING instead: `reading` is the explicit spelling
+ * (`log10`, `ln`) and picking it rewrites the equation to say so — so the
+ * document, not just the answer, stops being ambiguous.
+ */
+interface ArrowRow {
+    /** The formatted answer this row would write. */
+    result: string;
+    /** The explicit function name, on a disambiguation row only. */
+    reading?: string;
+    /** The ambiguous name this row settles, on a disambiguation row only. */
+    name?: string;
+}
+
+/**
+ * The readings on offer for an expression that refused to compute: one row per
+ * explicit spelling of its ambiguous name, each showing what THAT reading
+ * answers, so the choice is made against the two numbers rather than in the
+ * abstract. Empty when the expression is not ambiguous (it simply has no
+ * value) or when no reading computes either — nothing is offered over a guess.
+ */
+function readingRows(query: string, scope?: Map<string, number>): ArrowRow[] {
+    const names = ambiguousCallsIn(query);
+    if (names.length === 0) { return []; }
+    const rows: ArrowRow[] = [];
+    // One ambiguous name exists today; with two, only the reading's OWN name is
+    // rewritten, the other stays ambiguous, and the row drops out below —
+    // degrading to "no offer", never to a half-settled equation.
+    const name = names[0];
+    for (const reading of ambiguousReadings(name)) {
+        const value = evaluateCalc(disambiguate(query, reading), scope);
+        const result = value === null ? null : formatCalcResult(value);
+        if (result !== null) { rows.push({ result, reading, name }); }
+    }
+    return rows;
+}
+
+/**
  * The `=>` advisory suggestion: typing `<expr> =>` offers the computed value,
  * confirmed with Tab (Enter stays a newline, like the `=` path). The expression
  * may reference variables defined anywhere in the document and use offline unit
@@ -269,24 +312,60 @@ const calcArrowSpec: CaretSuggestSpec = {
         void ensureCalcUnits().catch(() => undefined).then(() => {
             const scope = ctx ? scopeUpToCaret(ctx.state) : undefined;
             const value = evaluateCalc(query, scope);
-            if (value === null) { cb([]); return; }
+            // No value can still mean "we refuse to guess" rather than "this
+            // isn't arithmetic": offer each reading instead of falling silent.
+            if (value === null) { cb(readingRows(query, scope)); return; }
             const result = formatCalcResult(value);
-            cb(result === null ? [] : [result]);
+            cb(result === null ? [] : [{ result } satisfies ArrowRow]);
         });
     },
 
     buildMenu(items, match, anchor, onPick) {
-        const results = items as string[];
-        if (results.length === 0) { return null; }
-        const result = results[0];
+        const rows = items as ArrowRow[];
+        if (rows.length === 0) { return null; }
+        if (rows[0].reading === undefined) {
+            const { result } = rows[0];
+            return createSuggestMenuFromRows(
+                [{ text: result, title: `${match.query} => ${result}`, hint: "Tab" }],
+                anchor,
+                onPick,
+            );
+        }
+        // Disambiguation: the row's LABEL is the reading (that is what is being
+        // chosen) and its answer sits in the hint slot, so the two numbers are
+        // side by side. The pick value is the reading's name — `pick` recomputes
+        // from it, and a name can never collide with a formatted number. The
+        // hint slot is spent on the answer, so the footer — not a per-row
+        // "Tab" — is what says how to confirm.
         return createSuggestMenuFromRows(
-            [{ text: result, title: `${match.query} => ${result}`, hint: "Tab" }],
+            rows.map(({ result, reading }) => ({
+                text: reading!,
+                hint: result,
+                title: `${disambiguate(match.query, reading!)} => ${result}`,
+            })),
             anchor,
             onPick,
+            {
+                // Named from the ROW, never a hardcoded `log`: a second entry
+                // in the engine's ambiguity table must not leave this sentence
+                // explaining a name that isn't on screen.
+                footer: t("{0} reads two ways here — Tab writes your choice into the equation itself")
+                    .replace("{0}", rows[0].name ?? ""),
+            },
         );
     },
 
     pick(view, match, picked) {
+        if (isDisambiguation(picked)) {
+            // Recompute rather than trusting the row: the offer is up to a
+            // debounce old, and writing a stale number is the failure mode the
+            // whole feature exists to avoid.
+            const value = evaluateCalc(disambiguate(match.query, picked), scopeUpToCaret(view.state));
+            const result = value === null ? null : formatCalcResult(value);
+            if (result === null) { return; } // the offer went stale — write nothing
+            applyArrowResult(view, match.start, match.caret, result, picked);
+            return;
+        }
         applyArrowResult(view, match.start, match.caret, picked);
     },
 
@@ -319,9 +398,24 @@ const calcArrowSpec: CaretSuggestSpec = {
  * answer sitting just AFTER the caret (`expr =>| stale` — the caret parked at
  * the arrow of an already-answered equation) is consumed, so re-accepting
  * REPLACES the stale number instead of inserting beside it.
+ *
+ * With `reading`, the region's ambiguous calls are rewritten to that explicit
+ * spelling in the SAME transaction as the answer. Both halves matter: writing
+ * only the answer would leave a number whose expression still reads two ways —
+ * the ambiguity the refusal exists to prevent — and one transaction means one
+ * undo puts the `log` back. The rewrite is applied to the document REGION
+ * (which carries the trailing `=>`), not to the parsed expression, so it
+ * survives text the tokenizer would reject.
  */
-function applyArrowResult(view: EditorView, start: number, caret: number, result: string): void {
-    const region = view.state.doc.textBetween(start, caret);
+function applyArrowResult(
+    view: EditorView,
+    start: number,
+    caret: number,
+    result: string,
+    reading?: string,
+): void {
+    const text = view.state.doc.textBetween(start, caret);
+    const region = reading === undefined ? text : disambiguate(text, reading);
     const replacement = region.replace(/=>[ \t]*$/, `=> ${result}`);
     const end = caret + staleResultLengthAfter(view.state, caret);
     view.dispatch(view.state.tr.insertText(replacement, start, end).scrollIntoView());

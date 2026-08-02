@@ -15,7 +15,7 @@ While Birta Writer's core experience is calm and minimal by default, many powerf
 - Renders Mermaid diagrams, LaTeX, images, inline HTML, and more.
 - Autocompletes inline and advanced math:
     - 3+7= `10`
-    - 3+log(2²+3²\*2.3303)/π^2=> `3.141593`
+    - 3+log10(2²+3²\*2.3303)/π^2=> `3.141593`
 - Offline proofreading through the [Harper Grammar Library](https://writewithharper.com/docs/rules), extended to highlight common _"AI tells"_. Just because people research and outline with LLMs doesn't mean we have to write like one.
 - Editor and revision tools, such as `[TK]`, `TODO`, HTML comments, and user-defined annotation highlighting.
 - Customizable display including page width, size, fonts, optional line numbers, and a live/editable table of contents. Safe to ignore, the defaults are intentional and sophisticated.

@@ -25,7 +25,7 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
         - Construct formulas…
             - a=2, b=4
             - c=sqrt(a²+b²) => 4.472136
-            - log(c\*100+π^2) => 2.659995
+            - log10(c\*100+π^2) => 2.659995
 
         - … for something useful…
             - budget=3000, rent=700, food=600
@@ -36,6 +36,8 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
             - 24901 mile in km => 40074.274944
             - t = 24\*60\*60\*1000ms in days => 1
             - t\*365 days in weeks => 52.142857
+
+    - The answers are portable, because the equation stays plain text and any calculator can be handed it. Where notations disagree, Birta follows the overwhelming majority (`%` is modulo carrying the divisor's sign, `round` sends halves away from zero, trig is in radians, `-2 ^ 2` is `-4`) — and where there is no majority, it declines to answer rather than guess. A bare `log(…)` is base 10 in spreadsheets and natural in Python, so it computes as neither: the menu offers both readings with their values, and picking one rewrites the equation to `log10` or `ln` so the meaning travels with the file.
 
 - It's private.
     - By default, it makes no network requests of any kind. Even rich link previews are opt-in.
