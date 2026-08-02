@@ -177,8 +177,13 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     const tabsSelect = document.createElement("button");
     tabsSelect.className = "ui-btn toc-tabs-select";
+    // Tabbable ONLY in select mode (syncTabOverflow flips it). In list mode the
+    // real tab buttons carry the strip's single Tab stop; in select mode THEY are
+    // visibility:hidden — which is unfocusable — so without this the whole tab
+    // strip was keyboard-dead in the default docked 260px panel (MAR-291).
     tabsSelect.tabIndex = -1;
     tabsSelect.setAttribute("aria-haspopup", "menu");
+    tabsSelect.setAttribute("aria-expanded", "false");
     const tabsSelectLabel = document.createElement("span");
     const tabsSelectCaret = document.createElement("span");
     tabsSelectCaret.className = "toc-tabs-select__caret";
@@ -195,13 +200,21 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         [tabContents, "contents"], [tabLinks, "links"], [tabNotes, "notes"], [tabProofread, "proofreading"],
     ];
 
-    function closeTabsMenu(): void { tabsMenu.hidden = true; }
+    function closeTabsMenu(): void {
+        // Hand focus back to the button that opened it, so closing never strands
+        // the keyboard on the hidden menu.
+        const hadFocus = tabsMenu.contains(document.activeElement);
+        tabsMenu.hidden = true;
+        tabsSelect.setAttribute("aria-expanded", "false");
+        if (hadFocus) { tabsSelect.focus(); }
+    }
     function openTabsMenu(): void {
         tabsMenu.replaceChildren(...ALL_TABS.filter(([btn]) => !btn.hidden).map(([btn, tab]) => {
             const item = document.createElement("button");
             item.className = "ui-menu-row toc-tabs-menu__item";
             item.textContent = btn.textContent;
-            item.tabIndex = -1;
+            item.setAttribute("role", "menuitem");
+            item.tabIndex = -1; // the menu's roving group hands out the tabbable slot
             item.classList.toggle("toc-tabs-menu__item--active", tab === activeTab);
             bindActivate(item, () => {
                 closeTabsMenu();
@@ -210,7 +223,19 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             return item;
         }));
         tabsMenu.hidden = false;
+        tabsSelect.setAttribute("aria-expanded", "true");
+        // Open ON the current tab, the menu-button convention — arrows then walk
+        // from where you already are rather than from the top.
+        tabsMenu.querySelector<HTMLElement>(".toc-tabs-menu__item--active")?.focus();
     }
+    // The overflow menu's own vertical roving group: Up/Down walk the rows, Enter
+    // activates (bindActivate handles the synthesized click), Escape closes and
+    // hands focus back to the select button.
+    wireRoving({
+        container: tabsMenu,
+        items: () => [...tabsMenu.querySelectorAll<HTMLElement>(".toc-tabs-menu__item")],
+        onEscape: () => closeTabsMenu(),
+    });
     bindActivate(tabsSelect, () => {
         if (tabsMenu.hidden) { openTabsMenu(); } else { closeTabsMenu(); }
     });
@@ -239,6 +264,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             const active = ALL_TABS.find(([, tab]) => tab === activeTab)?.[0];
             tabsSelectLabel.textContent = active?.textContent ?? "";
         }
+        // Exactly one Tab stop for the strip in either mode: the select button
+        // when it is the visible control, the active tab button otherwise.
+        tabsSelect.tabIndex = wrapped ? 0 : -1;
     }
 
     const proofreadView = initProofreadingList(getEditorView);
@@ -269,6 +297,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // jump to the ends, Enter/Space activate the focused tab. Hidden tabs (the
     // Proofreading tab when the master switch is off) are skipped.
     tabStrip.addEventListener("keydown", (e) => {
+        // ONLY the tab buttons. The strip also hosts the overflow select, its
+        // menu, and the flip/hide controls — the select runs the menu-button
+        // model instead, and this handler used to preventDefault its Enter and
+        // switch to Contents, so opening the menu from the keyboard was
+        // impossible (MAR-291).
+        if (!(e.target instanceof HTMLElement) || !e.target.classList.contains("toc-tab")) { return; }
         const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
         const isActivate = e.key === "Enter" || e.key === " ";
         if (!isArrow && !isActivate) { return; }

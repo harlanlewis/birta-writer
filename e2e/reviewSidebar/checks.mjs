@@ -137,7 +137,9 @@ export async function run({ page, check, baseUrl }) {
     // plugin in the editor, not just repaint the pill.
     const hl = page.locator(".review-list--notes .review-trailing");
     const chips = () => page.$$eval(".ProseMirror .note-marker", (els) => els.length);
-    const pressed = () => hl.getAttribute("aria-pressed");
+    // role=switch/aria-checked, matching the Checks menu's "Highlight notes" row
+    // (createSwitchItem) — one bit, one announcement on every surface wearing it.
+    const pressed = () => hl.getAttribute("aria-checked");
     check("the Notes tab carries a Highlight toggle, on by default", (await pressed()) === "true", await pressed());
     const chipsOn = await chips();
     check("the in-text chips are painted while it is on", chipsOn > 0, `chips=${chipsOn}`);
@@ -154,6 +156,161 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(400); // the rescan is debounced
     check("clicking it again repaints the chips", (await chips()) === chipsOn, `chips=${await chips()}`);
     check("…and the pill reads on", (await pressed()) === "true", await pressed());
+
+    // ── The sort / Highlight row is a KEYBOARD region (MAR-291) ───────────
+    // It used to be built entirely at tabIndex -1 and left out of the roving
+    // group, so Tab never landed on it and the arrows never reached it: every
+    // control in the row was mouse-only. It is now its own horizontal roving
+    // group (role=toolbar), one Tab stop, sitting between the tab strip and the
+    // list. These drive REAL keys — focus order and which listener wins are
+    // exactly what a jsdom or prop-level test cannot see.
+    const focusedText = () => page.evaluate(() => (document.activeElement?.textContent || "").trim());
+    // Focus the row's roving slot. Falls back to its first button so a REGRESSION
+    // (the row losing its tab stop) reports as a failed check rather than
+    // aborting the suite on a null and hiding the 45 checks after it.
+    const focusRowTabStop = (p) => p.evaluate(() => {
+        const row = document.querySelector(".review-list--notes .review-toolbar");
+        (row.querySelector("button[tabindex='0']") ?? row.querySelector("button"))?.focus();
+    });
+    const focusedIn = (sel) => page.evaluate((s) => !!document.activeElement?.closest(s), sel);
+
+    const rowAria = await page.evaluate(() => {
+        const tb = document.querySelector(".review-list--notes .review-toolbar");
+        return {
+            role: tb.getAttribute("role"),
+            group: tb.querySelector(".review-segmented")?.getAttribute("role"),
+            switchRole: tb.querySelector(".review-trailing")?.getAttribute("role"),
+            tabbable: [...tb.querySelectorAll("button")].filter((b) => b.tabIndex === 0).length,
+            buttons: tb.querySelectorAll("button").length,
+        };
+    });
+    check("the sort/Highlight row is a role=toolbar with exactly ONE tab stop for its 3 controls",
+        rowAria.role === "toolbar" && rowAria.switchRole === "switch"
+        && rowAria.tabbable === 1 && rowAria.buttons === 3,
+        JSON.stringify(rowAria));
+
+    // Tab order: … → the toolbar row → the list body. Proven from the row
+    // outward, so it holds whether the strip is in list or select mode.
+    await focusRowTabStop(page);
+    await page.keyboard.press("Tab");
+    check("Tab from the sort row moves INTO the list body (the row precedes the list)",
+        await focusedIn(".review-body"), await focusedText());
+    await page.keyboard.press("Shift+Tab");
+    check("Shift+Tab from the list body comes back to the sort row (it is a real tab stop)",
+        await focusedIn(".review-toolbar"), await focusedText());
+
+    // Arrows walk the row horizontally, and clamp at the trailing end.
+    await page.keyboard.press("ArrowRight");
+    const seg2 = await focusedText();
+    await page.keyboard.press("ArrowRight");
+    const seg3 = await focusedText();
+    await page.keyboard.press("ArrowRight");
+    check("ArrowRight walks the row By type → In order → Highlight and clamps at the end",
+        seg2 === "In order" && seg3 === "Highlight" && (await focusedText()) === "Highlight",
+        `${seg2} / ${seg3} / ${await focusedText()}`);
+    await page.keyboard.press("ArrowLeft");
+    check("ArrowLeft walks back", (await focusedText()) === "In order", await focusedText());
+
+    // Keyboard ACTIVATION, not a synthesized click: Space on the focused switch
+    // has to reach the decoration plugin in the editor.
+    await page.keyboard.press("ArrowRight"); // → Highlight
+    await page.keyboard.press(" ");
+    await page.waitForTimeout(200);
+    const chipsAfterSpace = await chips();
+    check("Space on the focused Highlight switch clears the in-text chips",
+        chipsAfterSpace === 0 && (await pressed()) === "false", `chips=${chipsAfterSpace} checked=${await pressed()}`);
+    await page.keyboard.press(" ");
+    await page.waitForTimeout(400);
+    check("…and Space again repaints them", (await chips()) === chipsOn, `chips=${await chips()}`);
+
+    // Enter on a focused sort segment switches the mode (arrows MOVE, Enter acts
+    // — deliberately not a radiogroup's select-as-you-arrow).
+    await page.keyboard.press("ArrowLeft"); // → In order
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const flatAfterEnter = await page.$$eval(".review-list--notes .review-group", (e) => e.length);
+    const segState = await page.$$eval(".review-list--notes .review-segmented .review-seg",
+        (els) => els.map((e) => e.getAttribute("aria-pressed")).join(","));
+    check("Enter on the focused 'In order' segment flattens the list and moves aria-pressed",
+        flatAfterEnter === 0 && segState === "false,true", `groups=${flatAfterEnter} pressed=${segState}`);
+    // Arrowing PAST a segment must not have switched anything on the way.
+    check("arrowing across the row did not activate anything on the way past",
+        segState === "false,true", segState);
+
+    // A resting segment sits at opacity .55, which would dim its own focus ring
+    // along with the label. Focus must lift the whole control. "In order" is the
+    // active one after the Enter above, so ArrowLeft lands on a RESTING "By type"
+    // — and by real keypress, so :focus-visible genuinely applies.
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForTimeout(300); // .review-seg transitions opacity — let it land
+    const ringStyle = await page.evaluate(() => {
+        const el = document.activeElement;
+        const cs = getComputedStyle(el);
+        return {
+            text: el.textContent,
+            resting: !el.classList.contains("review-seg--active"),
+            focusVisible: el.matches(":focus-visible"),
+            opacity: cs.opacity,
+            outline: `${cs.outlineStyle} ${cs.outlineColor}`,
+        };
+    });
+    check("a keyboard-focused RESTING segment lifts to full opacity so its focus ring reads",
+        ringStyle.resting && ringStyle.focusVisible
+        && ringStyle.opacity === "1" && ringStyle.outline.startsWith("solid"),
+        JSON.stringify(ringStyle));
+
+    await page.locator(".review-list--notes .review-seg", { hasText: "By type" }).click();
+    await page.waitForTimeout(150);
+
+    // Escape from the row hands focus back to the editor, same as from the list.
+    await focusRowTabStop(page);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(120);
+    check("Escape from the sort row returns focus to the editor",
+        await focusedIn(".ProseMirror"), await focusedText());
+
+    // ── The overflow tab SELECT is keyboard-drivable (MAR-291) ────────────
+    // At the docked 260px default the tab strip collapses to a select — and the
+    // real tab buttons go visibility:hidden, which is unfocusable, so with the
+    // select button at tabIndex -1 the ENTIRE tab strip was keyboard-dead in the
+    // default configuration.
+    const stripCollapsed = await page.evaluate(() =>
+        document.querySelector(".toc-tabs").classList.contains("toc-tabs--select"));
+    if (stripCollapsed) {
+        const selBtn = page.locator(".toc-tabs-select");
+        check("in select mode the tab select carries the strip's tab stop",
+            (await selBtn.getAttribute("tabindex")) === "0", await selBtn.getAttribute("tabindex"));
+        await page.evaluate(() => document.querySelector(".toc-tabs-select").focus());
+        await page.keyboard.press("Enter");
+        await page.waitForTimeout(200);
+        check("Enter opens the tab menu focused on the CURRENT tab",
+            (await page.evaluate(() => !document.querySelector(".toc-tabs-menu").hidden))
+            && (await focusedIn(".toc-tabs-menu__item--active"))
+            && (await selBtn.getAttribute("aria-expanded")) === "true",
+            await focusedText());
+        const menuBefore = await focusedText();
+        await page.keyboard.press("ArrowDown");
+        const menuMoved = await focusedText();
+        await page.keyboard.press("Enter");
+        await page.waitForTimeout(300);
+        const selLabel = await page.locator(".toc-tabs-select span").first().textContent();
+        // menuMoved !== menuBefore is load-bearing: without it a no-op ArrowDown
+        // still "passes" by activating the tab that was already current.
+        check("ArrowDown + Enter in the menu moves to a DIFFERENT tab, switches to it, and returns focus to the select",
+            menuMoved !== menuBefore && selLabel === menuMoved && (await focusedIn(".toc-tabs-select")),
+            `${menuBefore} -[ArrowDown]-> ${menuMoved} -[Enter]-> ${selLabel}`);
+        await page.keyboard.press("Enter"); // reopen
+        await page.waitForTimeout(150);
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(120);
+        check("Escape closes the tab menu and hands focus back to the select button",
+            (await page.evaluate(() => document.querySelector(".toc-tabs-menu").hidden))
+            && (await focusedIn(".toc-tabs-select")),
+            await focusedText());
+        await switchTab(page, "Notes"); // restore for the checks below
+    } else {
+        check("in select mode the tab select carries the strip's tab stop", true, "strip not in select mode here");
+    }
 
     // ── One bit, four surfaces: whichever one flips it, they all agree ─────
     // The design claim is that the Checks-menu switch, the Notes-tab pill, the

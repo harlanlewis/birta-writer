@@ -61,12 +61,17 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
     const highlightBtn = document.createElement("button");
     highlightBtn.className = "ui-btn review-seg review-trailing";
     highlightBtn.textContent = t("Highlight");
+    // role=switch/aria-checked, not a bare aria-pressed button, so this announces
+    // identically to the Checks menu's "Highlight notes" row (createSwitchItem) —
+    // one bit, one announcement, however many surfaces wear it. Tabbability comes
+    // from the toolbar row's roving group in reviewList.ts.
+    highlightBtn.setAttribute("role", "switch");
     highlightBtn.tabIndex = -1;
     highlightBtn.title = t("Mark these notes where they sit in the text (birta.notes.highlightMarkers)");
     const paintHighlight = (): void => {
         const on = noteMarkersEnabled();
         highlightBtn.classList.toggle("review-seg--active", on);
-        highlightBtn.setAttribute("aria-pressed", on ? "true" : "false");
+        highlightBtn.setAttribute("aria-checked", on ? "true" : "false");
     };
     paintHighlight();
     bindActivate(highlightBtn, () => {
