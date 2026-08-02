@@ -21,4 +21,6 @@ releases/
 .env
 .env.*
 .e2e-shots/
-.vscode-test/
+# No trailing slash: the integration harness can leave a SYMLINK named
+# `.vscode-test`, and a directory-only pattern does not match one.
+.vscode-test
