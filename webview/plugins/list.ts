@@ -54,21 +54,27 @@ import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
 // decides the separator BETWEEN two items.
 //
 // Items with no recorded value (editor-created, or any path that doesn't set
-// it) leave `blankBefore` undefined on the mdast node, and the join defers to
-// mdast's default.
+// it) leave `blankBefore` undefined on the mdast node.
 //
-// KNOWN LIMITATION — deferring is not neutral (MAR-210). The default it falls
-// back to is the LIST-level `spread`, which for a partly-loose list is `true`.
-// The first item never has a gap recorded (there is nothing before it), so if a
-// reorder lands it mid-list its gap is drawn from that default and a blank line
-// appears that the author never wrote: `- a\n- b\n- c\n\n- d` with `a` moved
-// down one emits `- b\n\n- a\n- c\n\n- d`. This is strictly better than the
-// pre-fix behaviour (which loosened every gap) and re-parses stably, but it is
-// the same class of bug. There is no obviously correct value to record for the
-// first item — `false` would wrongly tighten a real gap in a fully loose list —
-// so the fix needs a rule for what a MOVED item's gap should be, which is a
-// design decision rather than an oversight. A recorded gap otherwise travels
-// with its item, so moving an item away and back restores the source bytes.
+// THE FIRST ITEM IS ALWAYS ONE OF THEM (MAR-210) — the loop below starts at
+// index 1, because nothing precedes the first item to measure against. That
+// used to mean its gap fell through to mdast's default, and DEFERRING IS NOT
+// NEUTRAL: the default is the LIST-level `spread`, the very whole-list boolean
+// this annotation exists to stop trusting, and a single interior blank line
+// makes it `true`. So a reorder that landed the first item mid-list drew its
+// gap from the whole list and invented a blank line — `- a\n- b\n- c\n\n- d`
+// with `a` moved down one emitted `- b\n\n- a\n- c\n\n- d`.
+//
+// There is still no correct value to RECORD for the first item at parse time —
+// `false` would wrongly tighten a real gap in a fully loose list, and the honest
+// answer depends on where the item ends up. So the answer is made observational
+// instead, at the only point that knows where it ended up: `listItemGapJoin`
+// (serialization.ts) reads the gap off the item's NEIGHBOURS when it has none
+// of its own. That covers every path that can strand a gapless item mid-list —
+// a block move, an item inserted above the first one, a paste, an undo — rather
+// than only the block-move primitive. A recorded gap still travels with its
+// item, so moving an item away and back restores the source bytes exactly
+// (enumerated over every item and direction in listSpread.test.ts).
 
 // ── Source marker style (MAR-218) ───────────────────────────────────────────
 //
@@ -139,7 +145,8 @@ function spreadBool(node: ListMdastNode, fallback: boolean): boolean {
  * from the previous item in the SOURCE (MAR-194). Only the parent sees the
  * sibling geometry, so the annotation is written here and read by the list_item
  * parse runner. The first item has no preceding gap inside the list, and an
- * item without usable position info is left undefined (→ mdast's default).
+ * item without usable position info is left undefined — the serializer's join
+ * then reads a gap off that item's neighbours instead (MAR-210).
  */
 function annotateItemGaps(children: unknown): void {
     if (!Array.isArray(children)) {
@@ -366,9 +373,10 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                 ...base.attrs,
                 spread: { default: false, validate: "boolean" },
                 // Whether the SOURCE put a blank line before this item (MAR-194).
-                // `null` = unknown (editor-created); the serializer's join then
-                // defers to mdast's list-level default instead of pinning a gap
-                // this item never had one recorded for.
+                // `null` = unknown — an editor-created item, and ALWAYS the
+                // first item of a list; the serializer's join then reads the gap
+                // off this item's neighbours (MAR-210) rather than pinning one
+                // it never had recorded.
                 blankBefore: { default: null },
             },
             // PASTE fidelity (MAR-21 item 2): GFM's own rule reads `checked`
@@ -415,7 +423,8 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                     const spread = attrSpreadBool(node.attrs["spread"]);
                     const blankBefore = node.attrs["blankBefore"];
                     // Only pass a real boolean through; anything else leaves the
-                    // prop absent so `listItemGapJoin` defers (MAR-194).
+                    // prop absent, which is what tells `listItemGapJoin` to read
+                    // the gap off this item's neighbours (MAR-194/MAR-210).
                     const gap =
                         typeof blankBefore === "boolean" ? { blankBefore } : undefined;
                     const content = itemContentForMarkdown(node.content);

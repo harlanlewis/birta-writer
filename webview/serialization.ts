@@ -313,20 +313,75 @@ function serializeTableNoAlign(node: any, _parent: any, state: any): string {
  * `blankBefore`; this reads it back.
  *
  * Returning `0`/`1` overrides the separator for that ONE gap. Returning
- * `undefined` — for any item without a recorded boolean, i.e. anything the
- * editor created — defers to mdast's default, so this can only ever pin a gap
- * the author wrote and never invents tightness for new content.
+ * `undefined` defers to mdast's default.
+ *
+ * AN ITEM WITH NO RECORDED GAP READS ONE OFF ITS NEIGHBOURS (MAR-210). Deferring
+ * is not neutral: mdast's default is the LIST-level `spread`, which a single
+ * interior blank line makes `true` for the whole list — the very conflation
+ * MAR-194 exists to undo. The first item of every list has nothing before it, so
+ * its `blankBefore` is never recorded (`annotateItemGaps` starts at index 1), and
+ * a reorder that lands it mid-list therefore drew its gap from that whole-list
+ * default and INVENTED a blank line: `- a\n- b\n- c\n\n- d` with `a` moved down
+ * one emitted `- b\n\n- a\n- c\n\n- d`.
+ *
+ * An item is inserted INTO a gap, so it should keep that gap's spacing on both
+ * sides: the gap between its new neighbours is exactly the FOLLOWER's own
+ * `blankBefore`, which is why the follower is asked first. At the end of a list
+ * there is no follower and no gap to land in, so the nearest evidence is the last
+ * recorded gap of the run it joined — the predecessor's own `blankBefore`.
+ * Neither neighbour recording one means the list has no observed spacing at all
+ * (a list built entirely in the editor, or one the Loosen/Tighten command just
+ * cleared), and the default is then the honest answer.
+ *
+ * This only ever reads gaps the author wrote; it never invents one. In a
+ * UNIFORM list the neighbour and the list-level default agree by construction,
+ * so nothing changes for a list that was tight or loose throughout — only the
+ * partly-loose list, where the default was never a fact about this gap.
  */
 function listItemGapJoin(left: unknown, right: unknown, parent: unknown): number | undefined {
-    const l = left as { type?: string } | null;
+    const l = left as ({ type?: string; blankBefore?: unknown }) | null;
     const r = right as { type?: string; blankBefore?: unknown } | null;
-    if ((parent as { type?: string } | null)?.type !== "list") {
+    const list = parent as { type?: string; children?: unknown[] } | null;
+    if (list?.type !== "list") {
         return undefined;
     }
     if (l?.type !== "listItem" || r?.type !== "listItem") {
         return undefined;
     }
-    return typeof r.blankBefore === "boolean" ? (r.blankBefore ? 1 : 0) : undefined;
+    const gap = recordedGap(r) ?? observedGap(l, r, list);
+    return gap === undefined ? undefined : (gap ? 1 : 0);
+}
+
+/** An item's own source-recorded gap, or `undefined` when it has none. */
+function recordedGap(item: { blankBefore?: unknown } | null): boolean | undefined {
+    return typeof item?.blankBefore === "boolean" ? item.blankBefore : undefined;
+}
+
+/**
+ * The gap `right` landed in, read off its neighbours (see `listItemGapJoin`):
+ * the follower's recorded gap — the one the insertion split in two — else the
+ * predecessor's, the last recorded gap of the run it joined at the end.
+ *
+ * The `indexOf` is O(k) in the list's items, but it is reached only for an item
+ * with NO recorded gap of its own, which for a parsed list is just the first
+ * one; the caller's `??` short-circuits every other gap. A list built entirely
+ * in the editor has no recorded gaps anywhere and does pay O(k²) — the same
+ * deliberate trade `itemContentGapJoin` documents below, and for the same
+ * reason: serialization runs on the sync scheduler, never per keystroke, and is
+ * already O(document size) when it runs.
+ */
+function observedGap(
+    left: { blankBefore?: unknown },
+    right: unknown,
+    list: { children?: unknown[] },
+): boolean | undefined {
+    const children = list.children;
+    if (!Array.isArray(children)) {
+        return recordedGap(left);
+    }
+    const index = children.indexOf(right);
+    const follower = index < 0 ? null : (children[index + 1] as { blankBefore?: unknown } | null);
+    return recordedGap(follower) ?? recordedGap(left);
 }
 
 type FlowNode = {
