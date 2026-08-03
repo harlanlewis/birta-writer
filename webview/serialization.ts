@@ -504,7 +504,14 @@ function opensRawHtmlBlock(node: FlowNode, item: unknown, state: unknown): boole
     const cached = paragraphOpensBlock.get(node as object);
     if (cached !== undefined) return cached;
     const handle = (state as SerializerState | null)?.handle;
-    if (typeof handle !== "function") return false;
+    // Unreachable — mdast-util-to-markdown's `State` always carries `handle` —
+    // but the two answers are not equally safe, so the fallback takes the side
+    // that cannot lose bytes. Answering false here would silently restore
+    // MAR-296 itself: the following block gets absorbed as HTML content and is
+    // gone on reopen. Answering true costs at most one item's tightness, and
+    // only for a paragraph that already begins with a raw `<` (the gate above).
+    // Spacing is recoverable; a swallowed block is not.
+    if (typeof handle !== "function") return true;
     const bytes = handle(node, item, state, {
         before: "\n", after: "\n", now: { line: 1, column: 1 }, lineShift: 0,
     });
