@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView, Node as ProseNode } from "../pm";
+import { TextSelection, type EditorView, type Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { moveBlockAt } from "../components/blockMenu";
 
@@ -85,6 +85,35 @@ async function moveItem(markdown: string, text: string, ...dirs: (-1 | 1)[]): Pr
             throw new Error(`move ${step} of "${text}" (${dir}) was refused`);
         }
     });
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
+}
+
+/**
+ * Raw serializer output after pressing Enter with the caret at offset 0 of the
+ * document's first list item — the gesture that pushes a brand-new empty item
+ * in front of it. Driven through the real keymap (`handleKeyDown`), not by
+ * calling a command, so the plugin stack decides what Enter means here.
+ */
+async function enterAtFirstItemStart(markdown: string): Promise<string> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    // bullet_list at 0, its first list_item at 1, that item's paragraph at 2 —
+    // so 3 is the first INLINE position. Resolving to the paragraph is asserted
+    // rather than assumed: pos 2 lands on the list_item, where Enter means
+    // something else entirely and the check would silently test that instead.
+    const caret = view.state.doc.resolve(3);
+    if (caret.parent.type.name !== "paragraph" || caret.parentOffset !== 0) {
+        throw new Error(
+            `caret landed in ${caret.parent.type.name} at offset ${caret.parentOffset}, not a paragraph start`,
+        );
+    }
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    if (!view.someProp("handleKeyDown", (f) => f(view, event))) {
+        throw new Error("Enter was not handled");
+    }
     const out = editor.action(getMarkdown());
     await editor.destroy();
     return out;
@@ -273,6 +302,18 @@ describe("a reordered item takes the gap it landed in (MAR-210)", () => {
     it("moving the first item of a TIGHT list down should keep it tight", async () => {
         expect(await moveItem("- a\n- b\n- c\n", "a", 1)).toBe("- b\n- a\n- c\n");
         expect(await moveItem("- a\n- b\n- c\n", "a", 1, 1)).toBe("- b\n- c\n- a\n");
+    });
+
+    it("an item typed IN FRONT of the first one should not invent a blank line either", async () => {
+        // Not a move at all: Enter at the head of the first item pushes a new
+        // empty item in front of it, which strands the old first item mid-list
+        // with nothing recorded — the same hole reached without going anywhere
+        // near the block-move primitive. Before the fix: `-\n\n- a\n- b\n…`.
+        // This is why the rule lives in the serializer rather than in
+        // editing/moveBlocks.ts, where it would have missed this entirely.
+        expect(await enterAtFirstItemStart("- a\n- b\n- c\n\n- d\n")).toBe(
+            "-\n- a\n- b\n- c\n\n- d\n",
+        );
     });
 
     // A recorded gap travels with its item, so a hop and its reverse must land
