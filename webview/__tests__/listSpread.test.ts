@@ -21,8 +21,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { Node as ProseNode } from "../pm";
+import { TextSelection, type EditorView, type Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
+import { moveBlockAt } from "../components/blockMenu";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -53,6 +54,69 @@ async function parseDoc(markdown: string): Promise<ProseNode> {
     const doc = editor.action((ctx) => ctx.get(editorViewCtx)).state.doc as ProseNode;
     await editor.destroy();
     return doc;
+}
+
+/** Position of the one `list_item` whose whole text is `text`. */
+function itemPosOf(doc: ProseNode, text: string): number {
+    const hits: number[] = [];
+    doc.descendants((node, pos) => {
+        if (node.type.name === "list_item" && node.textContent === text) {
+            hits.push(pos);
+        }
+        return true;
+    });
+    if (hits.length !== 1) {
+        throw new Error(`expected exactly one list item reading "${text}", found ${hits.length}`);
+    }
+    return hits[0]!;
+}
+
+/**
+ * Raw serializer output after reordering the item reading `text` by `dirs` —
+ * one sibling hop per entry, so `(…, 1, -1)` is "move it down, then put it
+ * back". Re-locates the item by its text between hops and throws when the
+ * primitive refuses, so a test can never pass by having moved nothing.
+ */
+async function moveItem(markdown: string, text: string, ...dirs: (-1 | 1)[]): Promise<string> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    dirs.forEach((dir, step) => {
+        if (!moveBlockAt(view, itemPosOf(view.state.doc, text), dir)) {
+            throw new Error(`move ${step} of "${text}" (${dir}) was refused`);
+        }
+    });
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
+}
+
+/**
+ * Raw serializer output after pressing Enter with the caret at offset 0 of the
+ * document's first list item — the gesture that pushes a brand-new empty item
+ * in front of it. Driven through the real keymap (`handleKeyDown`), not by
+ * calling a command, so the plugin stack decides what Enter means here.
+ */
+async function enterAtFirstItemStart(markdown: string): Promise<string> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    // bullet_list at 0, its first list_item at 1, that item's paragraph at 2 —
+    // so 3 is the first INLINE position. Resolving to the paragraph is asserted
+    // rather than assumed: pos 2 lands on the list_item, where Enter means
+    // something else entirely and the check would silently test that instead.
+    const caret = view.state.doc.resolve(3);
+    if (caret.parent.type.name !== "paragraph" || caret.parentOffset !== 0) {
+        throw new Error(
+            `caret landed in ${caret.parent.type.name} at offset ${caret.parentOffset}, not a paragraph start`,
+        );
+    }
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    if (!view.someProp("handleKeyDown", (f) => f(view, event))) {
+        throw new Error("Enter was not handled");
+    }
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
 }
 
 /** typeof the `spread` attr of the first node of `typeName`, or "" if absent. */
@@ -180,6 +244,104 @@ describe("partly-loose lists keep each gap as authored (MAR-194)", () => {
         expect(await roundTrip("- a\n- b\n- c\n")).toBe("- a\n- b\n- c\n");
         expect(await roundTrip("- a\n\n- b\n\n- c\n")).toBe("- a\n\n- b\n\n- c\n");
     });
+});
+
+describe("a reordered item takes the gap it landed in (MAR-210)", () => {
+    // The residue of MAR-194. `annotateItemGaps` starts at index 1, so the FIRST
+    // item of every list has no recorded gap — there is nothing before it to
+    // measure. Deferring to mdast's default for it is not neutral: that default
+    // is the LIST-level `spread`, which one interior blank line makes true for
+    // the whole list, so a reorder that landed the first item mid-list drew its
+    // gap from the whole list and wrote a blank line the author never typed.
+    // The serializer's join now reads the gap off the item's new neighbours.
+
+    it("moving the first item of a partly-loose list down should not invent a blank line", async () => {
+        // The ticket's repro. The authored blank sits between `c` and `d` and
+        // nowhere else; before the fix this emitted `- b\n\n- a\n- c\n\n- d\n`.
+        expect(await moveItem("- a\n- b\n- c\n\n- d\n", "a", 1)).toBe("- b\n- a\n- c\n\n- d\n");
+    });
+
+    it("moving the last item of a partly-loose list to the front should not invent one either", async () => {
+        // The other end of the same hole: `d`'s own recorded blank travels with
+        // it and then evaporates (a first item's gap is never emitted), which
+        // leaves `a` mid-list with nothing recorded. Before the fix: an invented
+        // blank before `a`.
+        expect(await moveItem("- a\n- b\n- c\n\n- d\n", "d", -1, -1, -1)).toBe(
+            "- d\n- a\n- b\n- c\n",
+        );
+    });
+
+    it("moving the first item of a partly-loose list to the end should join the run it lands in", async () => {
+        // No follower to read, so the nearest evidence is the last recorded gap
+        // of the run it joined — `d`'s. The loose tail stays loose.
+        expect(await moveItem("- a\n- b\n- c\n\n- d\n", "a", 1, 1, 1)).toBe(
+            "- b\n- c\n\n- d\n\n- a\n",
+        );
+    });
+
+    it("a first item moved into a tight run should keep that run tight", async () => {
+        // The predecessor fallback in the other direction: the blank the author
+        // wrote belonged to `b`, which is now first, so it is gone and the run
+        // `a` joins is tight.
+        expect(await moveItem("- a\n\n- b\n- c\n", "a", 1, 1)).toBe("- b\n- c\n- a\n");
+    });
+
+    it("a partly-loose ordered list should behave the same", async () => {
+        expect(await moveItem("1. a\n2. b\n3. c\n\n4. d\n", "a", 1)).toBe(
+            "1. b\n2. a\n3. c\n\n4. d\n",
+        );
+    });
+
+    it("moving the first item of a FULLY LOOSE list down should keep the blank line", async () => {
+        // The over-correction the ticket warns about: recording `false` for the
+        // first item would tighten a gap the author really did write.
+        expect(await moveItem("- a\n\n- b\n\n- c\n", "a", 1)).toBe("- b\n\n- a\n\n- c\n");
+        expect(await moveItem("- a\n\n- b\n\n- c\n", "a", 1, 1)).toBe("- b\n\n- c\n\n- a\n");
+    });
+
+    it("moving the first item of a TIGHT list down should keep it tight", async () => {
+        expect(await moveItem("- a\n- b\n- c\n", "a", 1)).toBe("- b\n- a\n- c\n");
+        expect(await moveItem("- a\n- b\n- c\n", "a", 1, 1)).toBe("- b\n- c\n- a\n");
+    });
+
+    it("an item typed IN FRONT of the first one should not invent a blank line either", async () => {
+        // Not a move at all: Enter at the head of the first item pushes a new
+        // empty item in front of it, which strands the old first item mid-list
+        // with nothing recorded — the same hole reached without going anywhere
+        // near the block-move primitive. Before the fix: `-\n\n- a\n- b\n…`.
+        // This is why the rule lives in the serializer rather than in
+        // editing/moveBlocks.ts, where it would have missed this entirely.
+        expect(await enterAtFirstItemStart("- a\n- b\n- c\n\n- d\n")).toBe(
+            "-\n- a\n- b\n- c\n\n- d\n",
+        );
+    });
+
+    // A recorded gap travels with its item, so a hop and its reverse must land
+    // back on the source bytes — the property that makes "travel with the item"
+    // defensible in the first place, and the one an observational rule for the
+    // gapless first item could quietly break. Enumerated over every item and
+    // both directions rather than sampled, since the first and last items are
+    // exactly the ones with an edge case.
+    const REVERSIBLE: Array<{ name: string; doc: string; items: string[] }> = [
+        { name: "tight", doc: "- a\n- b\n- c\n", items: ["a", "b", "c"] },
+        { name: "fully loose", doc: "- a\n\n- b\n\n- c\n", items: ["a", "b", "c"] },
+        { name: "partly loose, gap late", doc: "- a\n- b\n- c\n\n- d\n", items: ["a", "b", "c", "d"] },
+        { name: "partly loose, gap early", doc: "- a\n\n- b\n- c\n- d\n", items: ["a", "b", "c", "d"] },
+        { name: "ordered, partly loose", doc: "1. a\n2. b\n3. c\n\n4. d\n", items: ["a", "b", "c", "d"] },
+    ];
+    for (const shape of REVERSIBLE) {
+        for (const [index, text] of shape.items.entries()) {
+            for (const dir of [-1, 1] as const) {
+                // Skip the hop that does not exist at the list's edges.
+                if (dir === -1 && index === 0) continue;
+                if (dir === 1 && index === shape.items.length - 1) continue;
+                const way = dir === 1 ? "down" : "up";
+                it(`${shape.name}: moving "${text}" ${way} and back should restore the source bytes`, async () => {
+                    expect(await moveItem(shape.doc, text, dir, -dir as -1 | 1)).toBe(shape.doc);
+                });
+            }
+        }
+    }
 });
 
 describe("freshly parsed lists carry a boolean spread attr (MAR-124)", () => {
