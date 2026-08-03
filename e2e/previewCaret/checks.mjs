@@ -152,10 +152,12 @@ export async function run({ page, check, baseUrl }) {
         ["language pill", ".lang-picker-btn", false,
             () => getComputedStyle(document.querySelector(".lang-picker-dropdown")).display !== "none"],
         ["resize handle", ".code-block-resize-handle", false, null],
-        // No entry for the float row itself: measured, it is exactly the
-        // pill's box (84.4px wide, and its center hit-tests to
-        // `.lang-picker-label`), so a "row background" case would be the pill
-        // case again — passing for the pill's reason, not its own.
+        // No entry for the float row itself: measured on an EXPANDED block it
+        // is exactly the pill's box (both 84.4px, and the row's center
+        // hit-tests to `.lang-picker-label`) — the row's only other child,
+        // the fold ellipsis, is hidden unless the block is collapsed. So a
+        // "row background" case here would be the pill case again, passing
+        // for the pill's reason rather than its own.
         // Word wrap is chrome only a CODE-mode block shows, so this one
         // leaves preview first (via the toggle, itself a covered affordance).
         ["word-wrap button", ".code-wrap-toggle-btn", true,
@@ -206,6 +208,40 @@ export async function run({ page, check, baseUrl }) {
             after.paras === before.paras && typed < 0,
             `paras ${before.paras}→${after.paras}; zz at ${typed}` +
             (typed < 0 ? "" : ` — ${JSON.stringify(after.text.slice(Math.max(0, typed - 40), typed + 40))}`));
+    }
+
+    // ── An aborted chrome gesture must not blur the NEXT click ──────────
+    // Going inert is armed on a chrome mousedown and fired on the mouseup
+    // that ends it — but a mouseup is not guaranteed to arrive: press on
+    // chrome, release outside the window, and the page never sees it. The arm
+    // then outlives its gesture, and the next click anywhere fires it,
+    // blurring the editor the user had just clicked INTO. The resize handle
+    // is the probe: its mousedown opens nothing, so a synthetic one (with no
+    // mouseup, standing in for the release off-window) leaves only the arm.
+    await page.goto(`${baseUrl}/index.html`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForSelector(".mermaid-preview svg", { timeout: 20000 });
+    await page.waitForTimeout(300);
+
+    await revealChrome(page);
+    const armed = await page.evaluate(() => {
+        const handle = document.querySelector(".code-block-resize-handle");
+        if (!handle) return false;
+        handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        return true;
+    });
+    check("aborted gesture: the resize handle was armed", armed);
+
+    const back = await proseCoords(page, "alpha prose");
+    check("aborted gesture: prose paragraph found", back != null);
+    if (back) {
+        await page.mouse.click(back.x, back.y);
+        await page.waitForTimeout(120);
+        await page.keyboard.type("QQ");
+        await page.waitForTimeout(200);
+        const typed = await page.evaluate(() =>
+            (document.querySelector(".ProseMirror")?.textContent ?? "").includes("QQ"));
+        check("aborted gesture: the next click into prose still types", typed);
     }
 
     // ── The severe case: typing behind an open fullscreen lightbox ───────
