@@ -17,8 +17,8 @@
  *   depth cue, not palette, and reads correctly on any theme. A tinted shadow
  *   is still flagged.
  * Comments are stripped before scanning, so prose mentioning colors never trips
- * the guard. The scan is line-based (declaration values in this codebase are
- * single-line).
+ * the guard. The scan is DECLARATION-based, so a value wrapped across lines is
+ * still read (see DECLARATION_RE).
  *
  * Rule 1 details:
  * Inside VS Code the webview always receives the full resolved `--vscode-*`
@@ -149,27 +149,83 @@ function stripCssComments(text: string): string {
     return text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
 }
 
+/**
+ * One CSS declaration — `prop:` then a value running to `;` or the closing `}`.
+ *
+ * The value class spans NEWLINES, which is the entire point (MAR-261): the scan
+ * used to walk one line at a time and skip any line without a `:`, so a value
+ * broken across lines was invisible to it, and the guard's own header asserted
+ * "declaration values in this codebase are single-line" — already false in five
+ * places, three of them `box-shadow`, the exact construct the shadow carve-out
+ * below exists for. A prettier config or one wrapped declaration would have
+ * disarmed the rule silently, on files nobody edited.
+ *
+ * Excluding `{` from the value is what keeps NON-declarations out, without a
+ * selector parser: `.tb-x:hover {`, `&:hover {` and `@media (min-width: 500px) {`
+ * all reach a `{` before any terminator, so none can match. Custom properties
+ * (`--ui-card-shadow:`) are declarations and are matched deliberately.
+ */
+const DECLARATION_RE = /(--[\w-]+|[a-zA-Z][\w-]*)\s*:([^;{}]*)(?=[;}])/g;
+
+/** 1-based line number of an offset, via the file's newline positions. */
+function lineNumberAt(newlineOffsets: number[], offset: number): number {
+    let lo = 0, hi = newlineOffsets.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (newlineOffsets[mid] < offset) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo + 1;
+}
+
 /** Scan one CSS file's text; returns "<line-number>  <matched literal>" hits. */
 function scanCssTextForColorLiterals(text: string): string[] {
     const hits: string[] = [];
-    const rawLines = text.split("\n");
-    const lines = stripCssComments(text).split("\n");
-    lines.forEach((line, i) => {
-        // The annotation lives in a comment, so test the RAW line for it.
-        if (EXEMPT_ANNOTATION_RE.test(rawLines[i])) return;
-        // Only declaration values can hold colors; skip pure-selector lines.
-        const colon = line.indexOf(":");
-        if (colon === -1) return;
-        let value = line.slice(colon + 1);
-        if (SHADOW_DECL_RE.test(line) || line.includes("drop-shadow(")) {
+    // Comments are blanked in place (same length, same newlines), so every
+    // offset below indexes both the stripped and the RAW text identically.
+    const stripped = stripCssComments(text);
+    const newlineOffsets: number[] = [];
+    for (let i = 0; i < text.length; i++) { if (text[i] === "\n") newlineOffsets.push(i); }
+
+    // Annotations live in comments, so they are read off the RAW text.
+    const annotations = [...text.matchAll(new RegExp(EXEMPT_ANNOTATION_RE.source, "g"))]
+        .map((m) => m.index ?? 0);
+
+    for (const decl of stripped.matchAll(DECLARATION_RE)) {
+        const [, prop, rawValue] = decl;
+        const declStart = decl.index ?? 0;
+        const valueStart = declStart + decl[0].length - rawValue.length;
+        const declEnd = declStart + decl[0].length;
+
+        // An annotation exempts the declaration it sits INSIDE, or the one it
+        // directly follows on the same line — which is the shape every existing
+        // annotation has (`color: #fff; /* color-literal-ok: … */`). Deliberately
+        // not "anywhere on a line the declaration touches": that would let an
+        // annotation leak onto the next declaration of a multi-line rule, and
+        // the non-leak guarantee has its own test below.
+        const exempt = annotations.some((a) =>
+            (a >= declStart && a < declEnd)
+            || (a >= declEnd && lineNumberAt(newlineOffsets, a) === lineNumberAt(newlineOffsets, declEnd)),
+        );
+        if (exempt) continue;
+
+        let value = rawValue;
+        // The shadow carve-out now asks the PROPERTY, not the line — a wrapped
+        // `box-shadow:` used to take its own value out of scope by accident.
+        if (SHADOW_DECL_RE.test(`;${prop}:`) || value.includes("drop-shadow(")) {
             value = value.replace(MONO_RGBA_RE, (m, r, g, b) =>
                 r === g && g === b ? " ".repeat(m.length) : m,
             );
         }
         for (const re of [HEX_COLOR_RE, COLOR_FN_RE, NAMED_COLOR_RE]) {
-            for (const m of value.matchAll(re)) hits.push(`${i + 1}  ${m[0]}`);
+            // Report the line the LITERAL is on, not the line the declaration
+            // opens on — for a wrapped value those differ, and the literal's is
+            // the one you need to go fix.
+            for (const m of value.matchAll(re)) {
+                hits.push(`${lineNumberAt(newlineOffsets, valueStart + (m.index ?? 0))}  ${m[0]}`);
+            }
         }
-    });
+    }
     return hits;
 }
 
@@ -252,12 +308,56 @@ describe("no bare color literals in webview CSS", () => {
         expect(
             scanCssTextForColorLiterals("a { color: #fff; /* color-literal-ok: */ }"),
         ).toHaveLength(1);
-        // The annotation is line-scoped: the next line is still guarded.
+        // The annotation exempts one declaration, not a region: the next one is
+        // still guarded, wherever the line breaks fall.
         expect(
             scanCssTextForColorLiterals(
                 "a { color: #fff; /* color-literal-ok: chrome */\n  background: #000; }",
             ),
         ).toHaveLength(1);
+        // ...including when the exempted declaration is itself wrapped, so the
+        // annotation sits inside it rather than after it.
+        expect(
+            scanCssTextForColorLiterals(
+                "a {\n  background:\n    #fff; /* color-literal-ok: chrome */\n  color: #000;\n}",
+            ),
+        ).toEqual(["4  #000"]);
+    });
+
+    // MAR-261. The scan used to walk lines and skip any without a `:`, so a
+    // value on a continuation line was invisible — and the precondition for that
+    // ("declaration values in this codebase are single-line") was a property of
+    // the current FORMATTING, not of the rule. Five declarations in the tree
+    // already wrap, three of them `box-shadow`.
+    it("a color literal on a value's continuation line should be flagged, not skipped", () => {
+        expect(
+            scanCssTextForColorLiterals("a {\n  background:\n    #ff0000;\n}"),
+        ).toEqual(["3  #ff0000"]);
+        // The line reported is the LITERAL's, not the declaration's opening line.
+        expect(
+            scanCssTextForColorLiterals("a {\n  box-shadow:\n    0 1px 2px rgba(255, 0, 0, 0.3);\n}"),
+        ).toEqual(["3  rgba("]);
+        // A wrapped shadow keeps its monochrome carve-out — the old scan gave it
+        // one only by accident, having skipped the continuation line entirely.
+        expect(
+            scanCssTextForColorLiterals(
+                "a {\n  box-shadow:\n    0 1px 3px rgba(0, 0, 0, 0.1),\n    0 5px 14px rgba(0, 0, 0, 0.11);\n}",
+            ),
+        ).toEqual([]);
+        // A wrapped named color counts too.
+        expect(
+            scanCssTextForColorLiterals("a {\n  border:\n    1px solid crimson;\n}"),
+        ).toEqual(["3  crimson"]);
+    });
+
+    it("selectors, at-rule preludes, and nesting should never be read as declarations", () => {
+        // Each of these holds a `:` and a color-ish word outside any value.
+        expect(scanCssTextForColorLiterals(".red:hover {\n  color: var(--vscode-foreground);\n}")).toEqual([]);
+        expect(scanCssTextForColorLiterals("@media (min-width: 500px) {\n  a { color: var(--x); }\n}")).toEqual([]);
+        expect(scanCssTextForColorLiterals("a {\n  &:hover { color: var(--x); }\n}")).toEqual([]);
+        // ...and a real declaration inside them is still scanned.
+        expect(scanCssTextForColorLiterals(".red:hover {\n  color: #fff;\n}")).toEqual(["2  #fff"]);
+        expect(scanCssTextForColorLiterals("a {\n  &:hover { color: #fff; }\n}")).toEqual(["2  #fff"]);
     });
 
     it("translucent monochrome rgba() in shadows should be exempt, tinted or opaque ones should not", () => {
