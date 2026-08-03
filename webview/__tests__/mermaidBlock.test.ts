@@ -84,6 +84,24 @@ async function makeCodeBlockView(
 
 const wait = (ms = 0): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Poll until `predicate` holds, or give up after `timeoutMs`.
+ *
+ * For the cases that wait on the mermaid render PLUS a `requestAnimationFrame`,
+ * a fixed sleep is a bet on how busy the machine is: `await wait(50)` passed
+ * alone and on an idle laptop, and failed — same test, both runs — with two
+ * full suites competing for the cores. Polling makes the wait proportional to
+ * what actually has to happen instead of to a guess, so it is fast when the
+ * machine is idle and patient when it is not.
+ */
+async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!predicate()) {
+        if (Date.now() > deadline) return; // let the assertion report the failure
+        await wait(5);
+    }
+}
+
 const renderedCodes = (): string[] => mermaidMock.state.calls.map((c) => c.code);
 
 /** Replace the code block's full text content and feed the node to update(). */
@@ -236,7 +254,13 @@ describe("mermaid code-block rendering", () => {
         // fit blew the diagram up (scale 3.2); the cap holds it at 1.0.
         Object.defineProperty(preview, "clientWidth", { value: 1000, configurable: true });
         Object.defineProperty(preview, "clientHeight", { value: 800, configurable: true });
-        await wait(50); // mount render + fitToView's requestAnimationFrame
+        // Mount render + fitToView's requestAnimationFrame. Polled rather than
+        // slept: a fixed 50ms was enough alone and not enough under load.
+        await waitUntil(() =>
+            Boolean(
+                nv.dom.querySelector<HTMLElement>(".mermaid-svg-container")?.style.transform,
+            ),
+        );
         const svgContainer = nv.dom.querySelector<HTMLElement>(".mermaid-svg-container")!;
         expect(svgContainer.style.transform).toBe("translate(0px, 0px) scale(1)");
     });

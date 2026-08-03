@@ -14,6 +14,16 @@ export default defineConfig({
         // out/**) runs in a real Extension Host via Mocha — never under Vitest.
         // It uses bare Mocha globals and the real `vscode` API, so exclude it here.
         exclude: [...configDefaults.exclude, "src/test/**", "out/**"],
+        // Pinned, not inherited. `"stack"` runs after-hooks in reverse
+        // registration order, which is what puts the timer-clearing `afterAll`
+        // in `webview/__tests__/setup.ts` (registered first, so it runs last)
+        // AFTER a test file's own `afterAll`. Several files destroy a shared
+        // editor there, and destroying arms nine fresh Milkdown timers — under
+        // `list`/`parallel` the clear would already have run and those nine
+        // would outlive teardown, which is the random CI failure MAR-298 fixed.
+        // This is the default today, but vitest's own CLI help advertises
+        // `parallel`, so it is spelled out rather than relied upon.
+        sequence: { hooks: "stack" },
         coverage: {
             provider: "v8",
             reporter: ["text", "lcov", "html"],
