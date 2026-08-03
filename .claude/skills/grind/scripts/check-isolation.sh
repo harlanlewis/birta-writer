@@ -20,6 +20,14 @@
 #   { isolated, path, branch, registered, is_main_checkout, main_toplevel, reason }
 #
 # Exit: 0 isolated | 1 NOT isolated (the agent is in your checkout) | 3 input error
+#
+# Canonical source: harlanlewis-skills/tools/lane-scripts/, exercised by its
+# test.sh in CI. Copies under a repo's .claude/skills/grind/scripts/ are
+# vendored on purpose — an agent skill has to be self-contained, and the plugin
+# cache path is $HOME-absolute and content-hashed, so pointing at it would rot
+# on the next plugin update. Edit HERE and re-sync (tools/lane-scripts/sync.sh);
+# a fix made in a vendored copy reaches one repo only. Measured: three of these
+# four scripts were already stale in a sibling repo within an hour of shipping.
 
 set -euo pipefail
 

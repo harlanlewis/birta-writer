@@ -23,11 +23,19 @@
 # arrays.
 #
 # Output: one JSON object on stdout.
-#   { worktrees_removed[], preserved[], branches_deleted[], branches_kept[],
-#     errors[], dry_run }
+#   { worktrees_removed[], preserved[], skipped[], branches_deleted[],
+#     branches_kept[], errors[], dry_run }
 #
 # Exit: 0 complete (even with nothing to do) | 1 completed with errors
 #       3 refused (running from inside a worktree) or input error
+#
+# Canonical source: harlanlewis-skills/tools/lane-scripts/, exercised by its
+# test.sh in CI. Copies under a repo's .claude/skills/grind/scripts/ are
+# vendored on purpose — an agent skill has to be self-contained, and the plugin
+# cache path is $HOME-absolute and content-hashed, so pointing at it would rot
+# on the next plugin update. Edit HERE and re-sync (tools/lane-scripts/sync.sh);
+# a fix made in a vendored copy reaches one repo only. Measured: three of these
+# four scripts were already stale in a sibling repo within an hour of shipping.
 
 set -euo pipefail
 
@@ -68,7 +76,7 @@ is_preserved() { # is_preserved <worktree-dir-name>
   return 1
 }
 
-removed="[]"; preserved="[]"; deleted="[]"; kept="[]"; errors="[]"
+removed="[]"; preserved="[]"; deleted="[]"; kept="[]"; skipped="[]"; errors="[]"
 push() { printf '%s' "$1" | jq --arg v "$2" '. + [$v]'; }
 
 git worktree prune 2>/dev/null || true
@@ -89,9 +97,15 @@ while IFS= read -r wt; do
   [ -n "$wt" ] || continue
   [ -d "$wt" ] || continue
   name=$(basename "$wt")
-  case "$name" in agent-*) : ;; *) continue ;; esac
+  # Report what was considered and passed over, rather than passing over it in
+  # silence. Enumerating from git fixed *location* blindness; selection is still
+  # by the `agent-*` name, so a worktree the harness names differently is still
+  # skipped — and the old output said only `worktrees_removed: []`, which reads
+  # as "nothing to clean" rather than "I did not look at that one". Measured: a
+  # `claude-abc123` worktree was invisible in the output, with no errors.
+  case "$name" in agent-*) : ;; *) skipped=$(push "$skipped" "$wt (not an agent-* worktree)"); continue ;; esac
   # Never the main checkout, whatever it happens to be named.
-  [ "$(cd "$wt" && pwd -P)" != "$repo_root_real" ] || continue
+  [ "$(cd "$wt" && pwd -P)" != "$repo_root_real" ] || { skipped=$(push "$skipped" "$wt (the main checkout)"); continue; }
 
   if is_preserved "$name"; then
     preserved=$(push "$preserved" "$wt")
@@ -138,7 +152,7 @@ if $DELETE_BRANCHES; then
       continue
     fi
     if $DRY_RUN; then
-      kept=$(push "$kept" "$branch (dry run)")
+      kept=$(push "$kept" "$branch (dry run — would delete)")
       continue
     fi
     if git branch -d "$branch" >/dev/null 2>&1; then
@@ -154,8 +168,9 @@ fi
 jq -n \
   --argjson removed "$removed" --argjson preserved "$preserved" \
   --argjson deleted "$deleted" --argjson kept "$kept" \
+  --argjson skipped "$skipped" \
   --argjson errors "$errors" --argjson dry "$DRY_RUN" \
-  '{worktrees_removed: $removed, preserved: $preserved,
+  '{worktrees_removed: $removed, preserved: $preserved, skipped: $skipped,
     branches_deleted: $deleted, branches_kept: $kept,
     errors: $errors, dry_run: $dry}'
 

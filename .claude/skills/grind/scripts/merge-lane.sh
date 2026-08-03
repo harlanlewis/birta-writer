@@ -17,6 +17,9 @@
 #      own uncommitted edits — that is how a lane's changes end up inside your
 #      commit or lost in a conflict resolution.
 #   3. The lane branch exists and carries commits.
+#   4. HEAD is on a branch. A merge onto a detached HEAD moves no branch, so
+#      the "merge" survives only in the reflog — success reported, target
+#      untouched, the same shape as guard 1.
 #
 # If --gate is given, it runs after the merge; a failing gate reverts to the
 # exact pre-merge SHA (not HEAD~N, which is wrong for a merge commit).
@@ -27,8 +30,22 @@
 #   { status, branch, into, commits, files[], conflict_files[],
 #     pre_merge_sha, merged_sha, gate_output, reason }
 #
-# Exit: 0 merged | 1 conflict (aborted) | 2 gate failed (reverted)
-#       3 refused or input error | 4 nothing to merge
+# Statuses: merged | conflict | merge_failed | gate_failed | dirty | refused |
+#   empty. `conflict` means git produced conflicted paths and they are listed;
+#   `merge_failed` means git refused without conflicts (an untracked file in the
+#   way is the usual cause) and its message is in `reason` — the two need
+#   different responses, which is why they are not one status.
+#
+# Exit: 0 merged | 1 conflict or merge_failed (both leave the tree untouched)
+#       2 gate failed (reverted) | 3 refused or input error | 4 nothing to merge
+#
+# Canonical source: harlanlewis-skills/tools/lane-scripts/, exercised by its
+# test.sh in CI. Copies under a repo's .claude/skills/grind/scripts/ are
+# vendored on purpose — an agent skill has to be self-contained, and the plugin
+# cache path is $HOME-absolute and content-hashed, so pointing at it would rot
+# on the next plugin update. Edit HERE and re-sync (tools/lane-scripts/sync.sh);
+# a fix made in a vendored copy reaches one repo only. Measured: three of these
+# four scripts were already stale in a sibling repo within an hour of shipping.
 
 set -euo pipefail
 
@@ -105,6 +122,16 @@ else
   INTO=$(git rev-parse --abbrev-ref HEAD)
 fi
 
+# --- Guard 4: HEAD is on a branch --------------------------------------------
+# A merge onto a detached HEAD succeeds, prints nothing unusual, and moves no
+# branch: the integration branch stays where it was and the merge is reachable
+# only from the reflog once anything checks out. That is the same failure shape
+# as merging from inside a worktree (Guard 1) — success reported, target
+# untouched — so it is refused the same way. Measured before adding this: with
+# a detached HEAD the script returned `{"status":"merged","into":"HEAD"}` while
+# main did not move.
+git symbolic-ref -q HEAD >/dev/null || emit "refused" 3 "Refusing to merge: HEAD is detached, so a merge would move no branch and be reachable only from the reflog. Check out the integration branch (or pass --into <branch>) first."
+
 COMMITS=$(git rev-list --count "HEAD..$BRANCH")
 FILES_JSON=$(git diff --name-only "HEAD...$BRANCH" | jq -R . | jq -s .)
 
@@ -115,10 +142,24 @@ fi
 
 PRE_MERGE_SHA=$(git rev-parse HEAD)
 
-if ! git merge --no-edit "$BRANCH" >/dev/null 2>&1; then
+# Not every failed merge is a conflict, and the difference decides what the
+# agent should do next. git also refuses a merge that would clobber an untracked
+# file — the very case Guard 2 leaves open on purpose — and that refusal
+# produces NO conflicted paths. Reporting it as `conflict` handed the agent an
+# empty `conflict_files` and told it to "resolve by hand" something with nothing
+# to resolve, while git's own message (which names the file) was thrown away by
+# `2>&1` into /dev/null. Keep git's stderr and classify on the conflict list.
+set +e
+merge_out=$(git merge --no-edit "$BRANCH" 2>&1)
+merge_ec=$?
+set -e
+if [ $merge_ec -ne 0 ]; then
   CONFLICT_JSON=$(git diff --name-only --diff-filter=U | jq -R . | jq -s .)
   git merge --abort 2>/dev/null || true
-  emit "conflict" 1 "Merge aborted. Resolve by hand (both sides are yours), or rebrief the lane to sync and finish it. Either way this is a lane-plan finding: say which prediction was wrong and rebrief every queued lane sharing these files."
+  if [ "$(printf '%s' "$CONFLICT_JSON" | jq 'length')" -gt 0 ]; then
+    emit "conflict" 1 "Merge aborted. Resolve by hand (both sides are yours), or rebrief the lane to sync and finish it. Either way this is a lane-plan finding: say which prediction was wrong and rebrief every queued lane sharing these files."
+  fi
+  emit "merge_failed" 1 "git refused the merge and produced no conflicts, so there is nothing to resolve by hand — read its message and clear what it names (an untracked file in the way is the common one; it was left intact). Nothing in the tree was changed. git said: $(printf '%s' "$merge_out" | tail -c 1000)"
 fi
 
 MERGED_SHA=$(git rev-parse HEAD)
