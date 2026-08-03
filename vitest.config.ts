@@ -10,6 +10,40 @@ export default defineConfig({
         },
     },
     test: {
+        // The two suites, formerly `vitest.workspace.ts`. `defineWorkspace` is
+        // deprecated in Vitest 3 and removed in 4; `test.projects` is the same
+        // thing in the main config, so the split lives here now.
+        //
+        // Each project re-`extends` this file, which is what pulls in the
+        // `resolve.alias` above (the `vscode` mock) plus `exclude` and
+        // `sequence` — a project does NOT inherit them otherwise.
+        projects: [
+            {
+                extends: "./vitest.config.ts",
+                test: {
+                    name: "extension",
+                    environment: "node",
+                    include: [
+                        "src/__tests__/**/*.test.ts",
+                        "shared/__tests__/**/*.test.ts",
+                        "packages/*/src/__tests__/**/*.test.ts",
+                        // Pure e2e helper logic (the launch-A/B gate's decision
+                        // math) — NOT the browser-driving runners, which stay
+                        // Vitest-excluded.
+                        "e2e/**/*.test.mjs",
+                    ],
+                },
+            },
+            {
+                extends: "./vitest.config.ts",
+                test: {
+                    name: "webview",
+                    environment: "jsdom",
+                    include: ["webview/__tests__/**/*.test.ts"],
+                    setupFiles: ["./webview/__tests__/setup.ts"],
+                },
+            },
+        ],
         // The @vscode/test-electron integration suite (src/test/**, compiled to
         // out/**) runs in a real Extension Host via Mocha — never under Vitest.
         // It uses bare Mocha globals and the real `vscode` API, so exclude it here.

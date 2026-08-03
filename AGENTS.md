@@ -190,8 +190,8 @@ The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which stays in
 ### Stack
 | Layer | Framework | Scope |
 |-------|-----------|-------|
-| Extension unit tests | **Vitest 2.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
-| WebView unit tests | **Vitest 2.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
+| Extension unit tests | **Vitest 3.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
+| WebView unit tests | **Vitest 3.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
 | Integration tests | **@vscode/test-electron + Mocha** | `src/test/` — real Extension Host: activation, `onWillSaveTextDocument`/`waitUntil` reaching disk, the custom-editor save cycle with a live webview |
 
 The `vscode` module is mocked centrally via `__mocks__/vscode.ts`, injected by `resolve.alias` in `vitest.config.ts`. Do not `vi.mock("vscode")` in individual test files.
@@ -290,6 +290,8 @@ Test fails
 - Call `vi.clearAllMocks()` in `beforeEach` for each `describe` block.
 - Mock filesystem operations via `vscode.workspace.fs` (never write to the real disk).
 - For time-dependent logic use `vi.useFakeTimers()` / `vi.useRealTimers()`; never wait on a real `setTimeout`.
+  - **`vi.useFakeTimers()` fakes `performance` too (Vitest 3), and a faked `performance.now()` starts at 0.** Code that *sleeps* via `setTimeout` but *reads time* via `performance.now()` — `webview/syncScheduler.ts`, whose every window is a `now() - mark` comparison — therefore boots into a state no real webview is ever in, and an elapsed-window check reads `0 - 0 >= 300` as false. Vitest 2 left `performance` real, so a large real `now()` accidentally modelled production and these tests passed by luck. If a test depends on a scheduler window, wind the clock past it first (`useFakeClockPastIdle` in `savePipeline.test.ts` is the worked example) rather than trusting the default.
+  - **Vitest 2 did not always enforce `testTimeout`; Vitest 3 does.** Three corpus tests had been running 5.3–6.6 s against the 5 s default while reporting green. If a test starts failing on time after a runner upgrade, measure it on the old runner before assuming the new one made it slower — it may simply have started enforcing a limit that was always being exceeded. Prefer a per-`describe` timeout with the measured cost in a comment over raising the project-wide default.
 - Don't test `private` methods; verify behavior through the public interface.
 
 ---

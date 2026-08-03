@@ -2175,7 +2175,7 @@
         "@types/mocha": "^10.0.10",
         "@types/node": "^18.19.130",
         "@types/vscode": "1.95.0",
-        "@vitest/coverage-v8": "^2.1.9",
+        "@vitest/coverage-v8": "^3.2.7",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^2.32.0",
         "esbuild": "^0.24.2",
@@ -2183,7 +2183,7 @@
         "mocha": "^11.8.0",
         "playwright": "^1.62.1",
         "typescript": "^5.9.3",
-        "vitest": "^2.1.9",
+        "vitest": "^3.2.7",
         "vscode-uri": "^3.1.0"
     },
     "dependencies": {
@@ -2204,10 +2204,5 @@
         "refractor": "^5.0.0",
         "remark-math": "^6.0.0",
         "unist-util-visit": "^5.1.0"
-    },
-    "pnpm": {
-        "overrides": {
-            "postcss": ">=8.5.18"
-        }
     }
 }

@@ -114,19 +114,18 @@ function countSerializations(ed: Editor): () => number {
 
 /**
  * Fake timers WITH `performance` on the same fake timeline, plus the clock wound
- * past the scheduler's idle window.
+ * past the scheduler's idle window. **This is the posture the whole file runs
+ * on** — `beforeEach` installs it, and tests that reinstall a clock mid-test
+ * call it again rather than `vi.useFakeTimers()`.
  *
- * syncScheduler SLEEPS via setTimeout but READS time via performance.now(), and
- * Vitest's default useFakeTimers() fakes the timers and Date but NOT
- * performance. That leaves a fake timer queue driven by a real clock: advancing
- * fake time by 2s moves performance.now() by ~0. Every scheduler window is a
- * `now() - mark` comparison, so under the default those windows can only elapse
+ * syncScheduler SLEEPS via setTimeout but READS time via performance.now(), so
+ * the two must sit on ONE timeline. Every scheduler window is a `now() - mark`
+ * comparison: with a fake timer queue driven by a real clock, advancing fake
+ * time by 2 s moves performance.now() by ~0, and those windows can only elapse
  * via real wall-clock time that incidentally passes while the test runs — making
  * any multi-window assertion a race against machine speed. (Measured: a max-wait
  * assertion passed alone on a cold, slow serializer and failed in-file on a warm
- * one — same code, opposite results.) Only tests that need a scheduler WINDOW to
- * elapse need this; the rest are fine on the default, where a large real
- * performance.now() faithfully models a webview that has been alive a while.
+ * one — same code, opposite results.)
  *
  * The wind-forward is load-bearing. Faked performance.now() always starts at 0
  * (sinon measures it from clock start; the `now` option shifts only Date), and
@@ -136,14 +135,24 @@ function countSerializations(ed: Editor): () => number {
  * performance.now() is far past idleMs by the time a user can type. Winding past
  * idleMs restores the production posture. mark/measure survive the fake, so
  * webview/perf.ts still works.
+ *
+ * WHY IT IS NOW THE FILE-WIDE DEFAULT (Vitest 3): this helper used to be opt-in,
+ * on the reasoning that "the rest are fine on the default, where a large REAL
+ * performance.now() models a webview that has been alive a while". Vitest 3
+ * added `performance` to the default `toFake` set, so a bare
+ * `vi.useFakeTimers()` now boots performance.now() at 0 — and that reasoning
+ * inverted: the default became the zero-clock case this helper exists to escape.
+ * The leading-edge test below failed on exactly that, and every other test that
+ * depends on a leading edge was one scheduling change away from the same thing.
+ * Winding the clock in `beforeEach` makes the production posture the default
+ * rather than something each test has to remember.
  */
 async function useFakeClockPastIdle(): Promise<void> {
-    // Uninstall beforeEach's clock FIRST. Calling useFakeTimers() while fake
-    // timers are already installed does not re-apply `toFake`, so `performance`
-    // would silently stay real — which is precisely the failure this helper
-    // exists to prevent, and it fails in the direction that looks like a pass
-    // (the first test in a file is slow enough for the real clock to cross the
-    // max-wait on its own).
+    // Uninstall any existing clock FIRST. Calling useFakeTimers() while fake
+    // timers are already installed does not re-apply `toFake`, and it does not
+    // rewind the clock either — so without this the wind-forward below would
+    // stack onto an already-advanced timeline instead of establishing a known
+    // one.
     vi.useRealTimers();
     vi.useFakeTimers({
         toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"],
@@ -177,7 +186,7 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         document.dispatchEvent(
             new KeyboardEvent("keydown", { key: "x", bubbles: true }),
         );
-        vi.useFakeTimers();
+        await useFakeClockPastIdle();
     });
 
     afterEach(async () => {
@@ -352,7 +361,7 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         document.body.appendChild(container);
         const silentUpdate = vi.fn();
         editor = await createEditor(container, "hello\n", silentUpdate);
-        vi.useFakeTimers();
+        await useFakeClockPastIdle();
 
         // Act — a programmatic transaction (e.g. some plugin normalization)
         const v = view(editor);
@@ -388,7 +397,7 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         document.body.appendChild(container);
         const update = vi.fn();
         editor = await createEditor(container, "hello\n", update);
-        vi.useFakeTimers();
+        await useFakeClockPastIdle();
 
         // Act — composition starts (lifting the interaction gate AND raising
         // _isComposing), and the candidate lands in the doc mid-composition.
@@ -415,7 +424,7 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         document.body.appendChild(container);
         const update = vi.fn();
         editor = await createEditor(container, "hello\n", update);
-        vi.useFakeTimers();
+        await useFakeClockPastIdle();
 
         // Act — dictation/soft keyboard: beforeinput precedes the mutation, with
         // no keydown anywhere in the sequence.
