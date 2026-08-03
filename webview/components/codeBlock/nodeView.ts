@@ -417,16 +417,36 @@ export function createCodeBlockView(
         }
     };
 
-    const onGestureEnd = (): void => {
+    const disarm = (): void => {
         document.removeEventListener("mouseup", onGestureEnd);
+        document.removeEventListener("mousedown", onForeignMouseDown, true);
+    };
+    const onGestureEnd = (): void => {
+        disarm();
         makeEditorInert();
     };
+    /**
+     * Cancel the arm when a gesture starts somewhere else.
+     *
+     * A mouseup is not guaranteed to arrive: press on chrome, release outside
+     * the window, and the page never sees it — the arm outlives its gesture.
+     * The next click ANYWHERE would then fire it, blurring the editor the user
+     * had just clicked into: probe-confirmed as a click into prose that leaves
+     * the editor inert and swallows what the user types next.
+     *
+     * Capture phase, on the document, so it is seen before the wrapper's own
+     * arming listener below — a chrome mousedown re-arms rather than cancels.
+     */
+    function onForeignMouseDown(e: MouseEvent): void {
+        if (!inChrome(e.target)) { disarm(); }
+    }
     wrapper.addEventListener("mousedown", (e) => {
         if (!inChrome(e.target)) { return; }
-        // Re-arm rather than stack: removing first keeps this to one listener
-        // however many chrome mousedowns arrive before a mouseup.
-        document.removeEventListener("mouseup", onGestureEnd);
+        // Re-arm rather than stack: disarming first keeps this to one pair of
+        // listeners however many chrome mousedowns arrive before a mouseup.
+        disarm();
         document.addEventListener("mouseup", onGestureEnd);
+        document.addEventListener("mousedown", onForeignMouseDown, true);
     }, true);
 
     // ── Drag handle ────────────────────────────────────────
@@ -691,9 +711,9 @@ export function createCodeBlockView(
 
         destroy(): void {
             // A view can die between a chrome mousedown and its mouseup
-            // (external sync replacing the node): drop the armed listener so
-            // it can't blur through a dead view.
-            document.removeEventListener("mouseup", onGestureEnd);
+            // (external sync replacing the node): drop the armed listeners so
+            // they can't blur through a dead view.
+            disarm();
             mermaidPane.destroy();
             picker.destroy();
             if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
