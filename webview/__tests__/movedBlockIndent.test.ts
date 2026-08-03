@@ -279,6 +279,30 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toContain("\t- # Heading item");
     });
 
+    it("a moved item whose content is a table should keep the table (MAR-241)", async () => {
+        // The same family as the fence case above, reached the other way. A
+        // table is several source lines, and its rows key WITHOUT their indent
+        // (`normalizeSepRow` / `normalizeTableDataRow` both trim), so a row at
+        // depth 1 keyed equal to the same row at depth 0. The merge called that
+        // a `keep` and emitted the saved bytes verbatim — carrying `\t  `, the
+        // indent of the nesting the item had just left — while the marker line
+        // moved to column 0. Six columns of leading space under a top-level
+        // item is not the table's continuation, so every table node was lost
+        // and the user got three lines of literal pipe text.
+        //
+        // Note it is the SAVED indent that lands, not the serializer's: the
+        // merged bytes carried the saved `| --- | --- |` spelling, which only a
+        // keep can produce. That is what identifies the layer.
+        const source = "- root\n\t- | a | b |\n\t  | --- | --- |\n\t  | 1 | 2 |\n\t- plain\n";
+        const { live, reparsed, merged } = await moveAndSave(source, "ab", "root");
+
+        expect(reparsed).toEqual(live);
+        // The rows re-base to the moved item's new depth...
+        expect(merged).toContain("\n  |---|---|\n");
+        // ...and the outline the move did NOT touch keeps its tab.
+        expect(merged).toContain("\t- plain");
+    });
+
     it("a heading item nested under a sibling should round-trip with no move at all", async () => {
         // The same defect without any move: the serializer's own canonical
         // output for this shape does not survive its own reparse, because a

@@ -525,8 +525,17 @@ function normLineForCompare(line: string, cls: LineClass): string {
     if (cls === "code") return "\x00C" + line;
     line = normalizeOutlineIndent(line);
     const t = line.trim();
-    if (SEP_ROW_RE.test(t)) return normalizeSepRow(line);
-    if (TABLE_ROW_RE.test(t)) return normalizeTableDataRow(line);
+    // The two table normalizers both `trim()`, which would throw away the
+    // depth the line above just normalized — and every other branch here keeps
+    // it. Restoring it is what stops a row pairing with a row at a DIFFERENT
+    // depth (MAR-241): a table's rows are ordinary lines to the diff, and a
+    // depth-blind key let the merge call a moved row a `keep` and emit its
+    // saved bytes verbatim, carrying the indent of the nesting it just left.
+    // Keeping it costs nothing where the depth genuinely has not moved — a tab
+    // and the serializer's two spaces normalize to the same string, which is
+    // exactly how the outline's own lines stay `keep`s across canonicalization.
+    if (SEP_ROW_RE.test(t)) return indentOf(line) + normalizeSepRow(line);
+    if (TABLE_ROW_RE.test(t)) return indentOf(line) + normalizeTableDataRow(line);
     if (cls !== "setext" && THEMATIC_BREAK_RE.test(line)) {
         // Preserve the marker CHARACTER: `***` and `---` are interchangeable
         // as thematic breaks, but a `-` run is also a setext-heading
