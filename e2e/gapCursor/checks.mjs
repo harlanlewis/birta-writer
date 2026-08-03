@@ -65,19 +65,21 @@ export async function run({ page, check, baseUrl }) {
         return ok;
     };
 
-    /** The markdown the webview posted, once it reflects the whole marker. */
-    const docWithMarker = async () => {
+    /** The markdown the webview posted, once it satisfies `pred` (or times out). */
+    const docWhere = async (pred) => {
         let last = null;
         for (let i = 0; i < 30; i++) {
             last = await page.evaluate(() => {
                 const u = window.__posted.filter((m) => m.type === "update");
                 return u.length ? u[u.length - 1].content : null;
             });
-            if (last?.includes(MARK)) return last;
+            if (last != null && pred(last)) return last;
             await page.waitForTimeout(100);
         }
         return last;
     };
+    /** The markdown the webview posted, once it reflects the whole marker. */
+    const docWithMarker = () => docWhere((md) => md.includes(MARK));
 
     const gapVisible = () => page.evaluate(() => !!document.querySelector(".ProseMirror-gapcursor"));
     /** The marker sits on a line of its own — i.e. in a real paragraph. */
@@ -384,4 +386,69 @@ export async function run({ page, check, baseUrl }) {
         hrSel.hide && hrSel.ring && hrSel.marked && hrSel.bg === "rgba(0, 0, 0, 0)" &&
             hrSel.tailBg !== "rgba(0, 0, 0, 0)",
         JSON.stringify(hrSel));
+
+    // ── 11. Both selectable block leaves wear the SAME painted ring (MAR-256) ─
+    // `hr` and `link_definition` are the schema's only two selectable block
+    // leaves — the only nodes a single vertical arrow can land on as a
+    // NodeSelection (a table, image, code block, math block and blockquote all
+    // take the caret instead). They therefore reach the same state by the same
+    // gesture and must cue it at the same weight.
+    //
+    // The ring has to be measured as PAINTED, not merely declared: `hr`'s rule
+    // set `outline-color` alone, leaving the style to the base `hr` rule, which
+    // `.milkdown .editor .ProseMirror-selectednode { outline: none }`
+    // (imageView.css, 0,3,0) outranked — so computed `outline-style` was `none`
+    // and the declaration did nothing. `outlineStyle !== "none"` is the half of
+    // this that a color-only assertion cannot see.
+    const ringOf = async (doc, selector) => {
+        await boot(doc);
+        await placeCaret("p", "end", 0);
+        await page.keyboard.press("ArrowDown");
+        await page.waitForTimeout(150);
+        return page.evaluate((selector) => {
+            const el = document.querySelector(`.ProseMirror ${selector}`);
+            if (!el?.classList.contains("ProseMirror-selectednode")) return { selected: false };
+            const cs = getComputedStyle(el);
+            // The accent as the browser resolves it, so the comparison survives
+            // any theme: --vscode-focusBorder is a hex, outlineColor an rgb().
+            const swatch = document.createElement("span");
+            swatch.style.color = "var(--vscode-focusBorder)";
+            document.body.appendChild(swatch);
+            const accent = getComputedStyle(swatch).color;
+            swatch.remove();
+            return { selected: true, style: cs.outlineStyle, width: cs.outlineWidth, color: cs.outlineColor, accent };
+        }, selector);
+    };
+    const hrRing = await ringOf("lead paragraph\n\n---\n\ntail paragraph\n", "hr");
+    const defRing = await ringOf("lead paragraph\n\n[ref]: https://example.com\n\ntail paragraph\n", ".link-definition");
+    check("one ArrowDown selects each of the two block leaves",
+        hrRing.selected && defRing.selected, JSON.stringify({ hrRing, defRing }));
+    check("a selected block leaf's ring is actually painted, in the theme accent",
+        hrRing.style !== "none" && hrRing.color === hrRing.accent &&
+            defRing.style !== "none" && defRing.color === defRing.accent,
+        JSON.stringify({ hrRing, defRing }));
+    check("both block leaves paint the same ring — same style and width",
+        hrRing.style === defRing.style && hrRing.width === defRing.width,
+        JSON.stringify({ hrRing, defRing }));
+
+    // ── 12. Typing replaces the selected rule; ONE undo restores it (MAR-256) ─
+    // The decided behaviour, pinned so a future "fix" cannot flip it silently:
+    // a selected block leaf is typing-replaceable like any other selection —
+    // the universal rule, not a leaf-shaped exception. What makes that
+    // affordable is the pair of cues above plus a single-keystroke undo, so the
+    // undo half is as load-bearing as the replacement half ("one gesture is one
+    // undo step", DESIGN_PRINCIPLES).
+    await boot("lead paragraph\n\n---\n\ntail paragraph\n");
+    check("ArrowDown-onto-the-rule — caret placed", await placeCaret("p", "end", 0));
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(150);
+    await page.keyboard.type(MARK, { delay: 30 });
+    const replaced = await docWhere((md) => md.includes(MARK));
+    check("typing against the arrow-selected rule replaces it, as typing replaces any selection",
+        ownLine(replaced) && !replaced.split("\n").includes("---"), `doc=${JSON.stringify(replaced)}`);
+    await page.keyboard.press("Meta+z");
+    const undone = await docWhere((md) => !md.includes(MARK));
+    check("one undo brings the rule back and takes the typing with it",
+        undone?.split("\n").includes("---") === true && !undone.includes(MARK),
+        `doc=${JSON.stringify(undone)}`);
 }

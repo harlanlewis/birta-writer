@@ -31,10 +31,35 @@
  *      alone is not enough here: two glued blockquotes fuse into one and the
  *      fused form re-serializes to itself, so the corruption is stable.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Editor, parserCtx, serializerCtx } from "@milkdown/core";
 import type { Node as ProseNode } from "../pm";
 import { makeCorpusEditor } from "./helpers/moveFuzz";
+
+/**
+ * ONE editor for the whole file, used only as a host for `parserCtx` and
+ * `serializerCtx`. Every case here parses a string, rebuilds it, and serializes
+ * it — none of them touches editor state, so a fresh editor per case bought
+ * nothing and cost a great deal.
+ *
+ * It has to be shared rather than merely tidy: `Editor.create()` arms a timer
+ * inside `@milkdown/ctx` that `destroy()` does not clear, so each case left a
+ * pending `setTimeout` behind. Fired after the file's jsdom environment is torn
+ * down, that timer throws `ReferenceError: removeEventListener is not defined`
+ * — a vitest UNHANDLED error, which fails the run with every test passing and
+ * no failing test named. Six hundred and fifty-six arms of that timer put CI
+ * reliably over the line while an idle laptop stayed under it, so the local
+ * suite was green and CI was not.
+ */
+let editor: Editor;
+
+beforeAll(async () => {
+    editor = await makeCorpusEditor("");
+});
+
+afterAll(async () => {
+    await editor.destroy();
+});
 
 /** Every block construct the editor can put inside a list item, written at the
  * item's content indent so the loose fixture below parses as item content.
@@ -92,37 +117,15 @@ const LEADS: Array<[name: string, source: string]> = [
     ["after a paragraph", "  lead text\n\n"],
 ];
 
-/**
- * Pairs with a KNOWN, filed defect, asserted INVERTED so the list cannot rot —
- * the same discipline as `pasteMatrix.test.ts`, and for the same reason: every
- * other invariant stays enforced for these cells, which `it.fails` would have
- * switched off.
- *
- * MAR-296 — a PARAGRAPH whose text opens an HTML block (`<div>…`) swallows every
- * following line up to the next blank, whatever construct that line belongs to.
- * The hazard is a property of the paragraph's CONTENT, not of its node type, so
- * the serializer's join hook (which sees nodes, not their serialized bytes)
- * cannot judge it. The `a Notion aside` rows are the same hazard WITH a node
- * type attached, and are fixed rather than listed here.
- *
- * Only in the two-block item: a leading paragraph makes the item loose for an
- * unrelated reason, and the blank that follows from that closes the HTML block
- * as a side effect.
- */
-const KNOWN_GAPS = new Set([
-    "alone in the item|raw HTML|a callout",
-    "alone in the item|raw HTML|an unlabelled code block",
-    "alone in the item|raw HTML|a fenced code block",
-    "alone in the item|raw HTML|an ATX heading",
-    "alone in the item|raw HTML|a bullet list",
-    "alone in the item|raw HTML|a math block",
-    "alone in the item|raw HTML|an ordered list",
-    "alone in the item|raw HTML|a blockquote",
-    "alone in the item|raw HTML|a table",
-    "alone in the item|raw HTML|a task list",
-    "alone in the item|raw HTML|a Notion aside",
-    "alone in the item|raw HTML|a footnote definition",
-]);
+// No pair is currently expected to fail, so there is no KNOWN_GAPS set. The
+// twelve `raw HTML` cells that used to live here — asserted INVERTED, the
+// `pasteMatrix.test.ts` discipline — were MAR-296: a PARAGRAPH whose text opens
+// an HTML block swallows every following line up to the next blank, whatever
+// construct that line belongs to. The serializer now answers that from the
+// paragraph's serialized BYTES rather than from its node type
+// (`opensRawHtmlBlock` in webview/serialization.ts), and the second describe
+// block below pins the other half of the fix: a paragraph that merely CONTAINS
+// inline HTML must still keep its item tight.
 
 /** Rebuild a document with every list and list item forced tight, so the pair
  * under test sits in an item whose `spread` is false. `blankBefore` is cleared
@@ -152,14 +155,12 @@ describe("blank-line spacing inside a tight list item", () => {
     for (const [leadName, lead] of LEADS)
     for (const [firstName, first] of BLOCKS) {
         for (const [secondName, second] of BLOCKS) {
-            const known = KNOWN_GAPS.has(`${leadName}|${firstName}|${secondName}`);
             it(`${firstName} followed by ${secondName}, ${leadName}, should survive a reopen`, async () => {
                 // Arrange: the blocks, authored loose (the only form Markdown
                 // can express), then rebuilt tight.
                 const body = `${lead}${first}\n\n${second}\n`;
                 const loose = `${OUTER_BULLET}${body.slice(1)}`;
-                const editor: Editor = await makeCorpusEditor("");
-                try {
+                {
                     // Act.
                     const result = editor.action((ctx) => {
                         const parsed = ctx.get(parserCtx)(loose);
@@ -178,20 +179,86 @@ describe("blank-line spacing inside a tight list item", () => {
                     // Assert.
                     expect(result, "the fixture should parse").not.toBeNull();
                     const { serialized, reserialized, want, got } = result!;
-                    if (known) {
-                        expect(got,
-                            "this gap is expected — delete the KNOWN_GAPS entry once it is fixed",
-                        ).not.toBe(want);
-                        return;
-                    }
                     // C. The reopened item holds the same blocks.
                     expect(got, `blocks in the item, from ${JSON.stringify(serialized)}`).toBe(want);
                     // B. Round-trip stable.
                     expect(reserialized, "reserialization of the saved document").toBe(serialized);
-                } finally {
-                    await editor.destroy();
                 }
             });
         }
+    }
+});
+
+/**
+ * The other half of MAR-296, which the matrix above cannot see.
+ *
+ * Every one of these parses to the SAME node shape — a paragraph whose first
+ * child is an `html` node — so the heuristic the serializer could have used
+ * ("first child is html") does not tell them apart. Only the serialized first
+ * line does: `<div>…` and a lone `<span>` open a CommonMark HTML block that runs
+ * to the next blank, while `<span>x</span> then text`, `<pre>x</pre>` and
+ * `<!-- c -->` open none that survives the line.
+ *
+ * Both directions are asserted, and each pins a different half of the fix:
+ * an OPENING paragraph must gain the blank (the matrix's twelve `raw HTML`
+ * cells, restated here for the shapes the matrix has no `BLOCKS` entry for), and
+ * a non-opening one must NOT — an over-fire would turn every item with inline
+ * HTML plus a sublist loose, which is a far larger blast radius than the bug.
+ */
+const HTML_PARAGRAPHS: Array<[name: string, source: string, opensBlock: boolean]> = [
+    // Condition 6 — a block-level tag name. Ends only at a blank line, so the
+    // closing `</div>` on the same line does not help.
+    ["a div block", "<div>raw</div>", true],
+    // Condition 7 — a complete tag alone on the line. It cannot INTERRUPT a
+    // paragraph, but a paragraph's first line is a block start, not an
+    // interruption, so it opens one here.
+    ["a lone unknown tag", "<span>", true],
+    ["a lone closing tag", "</section>", true],
+    // Condition 1, met on its own start line.
+    ["a closed raw-text element", "<pre>x</pre>", false],
+    // Condition 2, likewise.
+    ["a closed comment", "<!-- c -->", false],
+    // Condition 4, likewise (`>` is its end condition).
+    ["a declaration", "<!DOCTYPE html>", false],
+    // No condition at all: `span` and `b` are not block tags, and neither line
+    // is a lone tag.
+    ["inline html then prose", "<span>x</span> then text", false],
+    ["an inline bold lead-in", "<b>bold</b> lead-in", false],
+];
+
+describe("a paragraph whose text opens an HTML block", () => {
+    for (const [name, source, opensBlock] of HTML_PARAGRAPHS) {
+        it(`${name} should ${opensBlock ? "force the item loose" : "keep the item tight"}`, async () => {
+            // Arrange.
+            const loose = `${OUTER_BULLET} ${source}\n\n  ## Head\n`;
+            {
+                // Act.
+                const result = editor.action((ctx) => {
+                    const parsed = ctx.get(parserCtx)(loose);
+                    if (!parsed) return null;
+                    const tight = forceTight(parsed);
+                    const serialized = ctx.get(serializerCtx)(tight);
+                    const reopened = ctx.get(parserCtx)(serialized);
+                    return {
+                        serialized,
+                        reserialized: reopened ? ctx.get(serializerCtx)(reopened) : null,
+                        want: itemShape(tight),
+                        got: reopened ? itemShape(reopened) : "<reparse failed>",
+                    };
+                });
+
+                // Assert.
+                expect(result, "the fixture should parse").not.toBeNull();
+                const { serialized, reserialized, want, got } = result!;
+                expect(want, "the fixture should hold two blocks in one item")
+                    .toBe("paragraph,heading");
+                expect(got, `blocks in the item, from ${JSON.stringify(serialized)}`).toBe(want);
+                expect(reserialized, "reserialization of the saved document").toBe(serialized);
+                expect(
+                    serialized.includes("\n\n"),
+                    `blank line inside the item, from ${JSON.stringify(serialized)}`,
+                ).toBe(opensBlock);
+            }
+        });
     }
 });

@@ -23,6 +23,12 @@
  * reopen. B could not see it — no original line was lost, they were merely
  * reclassified as code. C asserts the shape, which is what "lost" actually
  * means to a reader.
+ *
+ * Two sections follow the four invariants, both added by MAR-237: a fixture-
+ * integrity guard (a fixture whose subject is *bytes* can be silently defused
+ * by a formatter, and every invariant above stays green when it is), and one
+ * pinned repro for an edit shape — the SPLIT — that none of the four tiers
+ * performs. Each carries its own reasoning at the section.
  */
 import { describe, it, expect } from "vitest";
 import { editorViewCtx } from "@milkdown/core";
@@ -134,7 +140,47 @@ async function reparsedShape(md: string): Promise<string[]> {
  */
 const INVARIANT_C_KNOWN_FAILURES: Record<string, string> = {};
 
+/**
+ * At most `budget` entries of `items`, spread EVENLY across the whole array
+ * (first and last always included) rather than taken from the front.
+ *
+ * C types into a bounded number of paragraphs — the budget is what keeps this
+ * gate affordable on every PR. Taking the first N made that budget a function
+ * of where a fixture's prose sits: a file with a long non-subject preamble
+ * spent all twelve edits inside the preamble and never reached its own subject,
+ * so the gate read as coverage while testing nothing the fixture was written
+ * for (MAR-141's board guide names this trap; MAR-237 hit it while adding
+ * fixtures with realistic preambles — `reference-heavy-with-preamble.md` has 36
+ * targets and its first 12 are all preamble). A stride costs exactly the same
+ * twelve edits and cannot be defeated by document layout.
+ */
+function stridedSample<T>(items: readonly T[], budget: number): T[] {
+    if (items.length <= budget) {
+        return [...items];
+    }
+    const step = (items.length - 1) / (budget - 1);
+    const picked = new Set<number>();
+    for (let i = 0; i < budget; i++) {
+        picked.add(Math.round(i * step));
+    }
+    return [...picked].map((i) => items[i]!);
+}
+
 describe("corpus invariant C — typing inside a block never restructures the document", () => {
+    // The stride is the point: a budget taken from the FRONT is a budget a
+    // fixture's own layout can spend before the gate reaches its subject. This
+    // case fails the moment the sampler goes back to `slice(0, budget)`.
+    it("a budget smaller than the target list should still reach the end of it", () => {
+        const items = Array.from({ length: 100 }, (_, i) => i);
+        const picked = stridedSample(items, 12);
+        expect(picked.length).toBe(12);
+        expect(picked[0]).toBe(0);
+        expect(picked.at(-1)).toBe(99);
+        expect(picked).not.toEqual(items.slice(0, 12));
+        // A list at or under budget is taken whole, unchanged.
+        expect(stridedSample([1, 2, 3], 12)).toEqual([1, 2, 3]);
+    });
+
     for (const { name, content } of fixtures) {
         const known = INVARIANT_C_KNOWN_FAILURES[name];
         const label = known
@@ -158,7 +204,7 @@ describe("corpus invariant C — typing inside a block never restructures the do
             });
             await editor0.destroy();
 
-            for (const at of targets.slice(0, 12)) {
+            for (const at of stridedSample(targets, 12)) {
                 const editor = await makeEditor(content);
                 const serialized0 = editor.action(getMarkdown());
                 const protection = computeRoundTripProtection(content, serialized0);
@@ -252,4 +298,88 @@ describe("corpus invariant D — an edit never introduces a line ending the file
             ).toEqual(before);
         });
     }
+});
+
+// ── Fixture integrity (MAR-237) ─────────────────────────────────────────────
+//
+// Same reasoning as invariant D's CRLF guard above: some fixtures carry their
+// subject in bytes an editor, a formatter, or a `.gitattributes` rule would
+// happily "fix" on the way past — and every invariant here would stay green
+// afterwards while proving nothing. These cases fail instead.
+
+describe("corpus fixture integrity — the bytes a fixture exists FOR must still be in it", () => {
+    const fixture = (name: string): string =>
+        fixtures.find((f) => f.name === name)?.content ?? "";
+
+    it("encoding-and-scripts.md should still carry its whitespace conventions verbatim", () => {
+        const content = fixture("encoding-and-scripts.md");
+        expect(content, "fixture missing").not.toBe("");
+        const lines = content.split("\n");
+        expect(lines.some((l) => /[^ ]  $/.test(l)), "no two-space hard break left").toBe(true);
+        expect(lines.some((l) => /[^ ] $/.test(l)), "no single trailing space left").toBe(true);
+        expect(lines.some((l) => /[^\\]\\$/.test(l)), "no backslash hard break left").toBe(true);
+        expect(lines.some((l) => !l.startsWith("|") && l.includes("\t")), "no hard tab in prose left").toBe(true);
+        expect(lines.some((l) => l.startsWith("|") && l.includes("\t")), "no hard tab in a table cell left").toBe(true);
+    });
+
+    it("outline-tables.md should still be indented with TABS", () => {
+        const content = fixture("outline-tables.md");
+        expect(content, "fixture missing").not.toBe("");
+        // Its whole subject is a table whose rows sit at a TAB-indented block's
+        // content column; respelled with spaces it becomes a duplicate of the
+        // coverage tables-and-code.md already has, and the MAR-241 net is gone.
+        expect(content.split("\n").filter((l) => l.startsWith("\t")).length).toBeGreaterThan(4);
+        expect(content).toContain("\t  |");
+    });
+});
+
+// ── Pinned edit-tier repro the corpus tiers cannot express (MAR-237) ─────────
+//
+// A–D drive three edits: none, a paragraph inserted at position 0, and one
+// typed character (corpusMoveSampling adds a fourth, the block move). A SPLIT —
+// pressing Enter mid-paragraph — is none of those, and a corpus-wide split
+// sweep run while growing this file found losses all four tiers are blind to.
+// The one below is pinned because it is small, deterministic, and entirely
+// inside the serializer.
+//
+// The sweep itself is deliberately NOT shipped: splitting at a word boundary
+// legitimately moves a space across the split, which the content fingerprint
+// reads as a changed text node, so most of its findings were that noise. A
+// split gate needs a whitespace-insensitive oracle before it can be a gate.
+
+describe("pinned edit-tier repro — splitting inside an inline mark", () => {
+    /** Split `src` between its two words and return what would be saved. */
+    async function splitBetweenWords(src: string): Promise<string> {
+        const editor = await makeEditor(src);
+        editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            view.dispatch(view.state.tr.split(view.state.doc.textContent.indexOf("two") + 1));
+        });
+        const out = editor.action(getMarkdown());
+        await editor.destroy();
+        return out;
+    }
+
+    // The control, and the reason the case below is a bug rather than a quirk:
+    // for a BUILT-IN mark remark-stringify moves the boundary space OUTSIDE the
+    // delimiters, which keeps the mark valid.
+    it("a split inside bold should leave the space outside the delimiters", async () => {
+        expect(await splitBetweenWords("Unicode **one two** survives.\n"))
+            .toBe("Unicode **one** \n\n**two** survives.\n");
+    });
+
+    // MAR-237-found. `==` is a paired inline delimiter with the same flanking
+    // rule, so a closer preceded by whitespace does not close: `==one ==`
+    // reopens as LITERAL TEXT and the highlight is gone from the file. Note
+    // what does NOT catch this — the corrupt output is a round-trip FIXED POINT
+    // (`==one ==` re-serializes to itself, since `==` in prose is not escaped),
+    // so serialize→parse→serialize stability, the invariant this repo otherwise
+    // prefers, is green on it. The delimiters have to be asserted directly.
+    it.fails(
+        "a split inside a highlight should leave the space outside the delimiters [MAR-237-found]",
+        async () => {
+            expect(await splitBetweenWords("Unicode ==one two== survives.\n"))
+                .toBe("Unicode ==one== \n\n==two== survives.\n");
+        },
+    );
 });

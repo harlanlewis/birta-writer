@@ -151,6 +151,14 @@ const SHAPES: Array<{ name: string; doc: string }> = [
     { name: "the whole document", doc: "alpha\nbeta\n" },
     { name: "tight bullet item", doc: "bar\n\n- one\n- alpha\n  beta\n- three\n\nfoo\n" },
     { name: "loose bullet item", doc: "bar\n\n- one\n\n- alpha\n  beta\n\n- three\n\nfoo\n" },
+    // Partly loose: mdast has ONE `spread` boolean per list, so this parses as
+    // loose and the item the split creates has no recorded gap of its own to
+    // replay (plugins/list.ts, MAR-194/MAR-210). It is the shape where the
+    // sibling rule below has to choose a gap rather than copy one.
+    {
+        name: "partly-loose bullet item",
+        doc: "bar\n\n- one\n- alpha\n  beta\n- three\n\n- four\n\nfoo\n",
+    },
     { name: "ordered item", doc: "bar\n\n1. one\n2. alpha\n   beta\n3. three\n\nfoo\n" },
     { name: "last item of a list", doc: "bar\n\n- one\n- alpha\n  beta\n\nfoo\n" },
     { name: "sublist item indented four spaces", doc: "bar\n\n- one\n    - alpha\n      beta\n- three\n\nfoo\n" },
@@ -166,19 +174,12 @@ const SHAPES: Array<{ name: string; doc: string }> = [
  * `it.fails`, never skipped, so the entry errors the moment its bug is fixed
  * and the list can only shrink (AGENTS.md; `KNOWN_GAPS` in pasteMatrix).
  *
- * MAR-293: splitting inside a LOOSE list item creates a new list ITEM, so the
- * blank that must arrive with it is the list's looseness — a property of the
- * container, not of either line's construct, which is why neither structure
- * predicate sees it. It is pre-existing and reproduces byte-for-byte on the
- * commit before MAR-290's fix; a rule for it would churn the blank runs of
- * every list in every file if it fired wrongly, so it is its own ticket rather
- * than a widening of this one. Its third gesture already passes, which is why
- * these are keyed per gesture rather than per shape.
+ * Empty since MAR-293, whose two entries (`loose bullet item`, the first and
+ * third gestures) came out when `areListSiblings` gave the merge a rule for
+ * list SPREAD. Keys are `shape: gesture`, not `shape` — MAR-293's middle
+ * gesture passed while the other two failed, and that asymmetry is real.
  */
-const KNOWN_GAPS: Record<string, string> = {
-    "loose bullet item: Enter at the start of the wrapped line": "MAR-293",
-    "loose bullet item: Enter over the selected line break": "MAR-293",
-};
+const KNOWN_GAPS: Record<string, string> = {};
 
 describe("splitting a soft-wrapped paragraph", () => {
     let splits = 0;
