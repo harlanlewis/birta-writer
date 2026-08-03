@@ -94,7 +94,13 @@ function leadingColumns(line: string): number {
     return col;
 }
 
-const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+/**
+ * A list-item marker. The groups carry the two facts that decide which LIST an
+ * item belongs to — the marker's indent, and its bullet character or ordered
+ * delimiter — and are read only by `listMarkerAt`; every other use here is a
+ * bare `.test()` or `[0]`.
+ */
+const LIST_MARKER_RE = /^([ \t]*)(?:([-*+])|\d{1,9}([.)]))(?:[ \t]|$)/;
 const SETEXT_DASH_RE = /^ {0,3}-+[ \t]*$/;
 const ATX_HEADING_RE = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 const QUOTE_MARKER_RE = /^ {0,3}>/;
@@ -519,8 +525,17 @@ function normLineForCompare(line: string, cls: LineClass): string {
     if (cls === "code") return "\x00C" + line;
     line = normalizeOutlineIndent(line);
     const t = line.trim();
-    if (SEP_ROW_RE.test(t)) return normalizeSepRow(line);
-    if (TABLE_ROW_RE.test(t)) return normalizeTableDataRow(line);
+    // The two table normalizers both `trim()`, which would throw away the
+    // depth the line above just normalized — and every other branch here keeps
+    // it. Restoring it is what stops a row pairing with a row at a DIFFERENT
+    // depth (MAR-241): a table's rows are ordinary lines to the diff, and a
+    // depth-blind key let the merge call a moved row a `keep` and emit its
+    // saved bytes verbatim, carrying the indent of the nesting it just left.
+    // Keeping it costs nothing where the depth genuinely has not moved — a tab
+    // and the serializer's two spaces normalize to the same string, which is
+    // exactly how the outline's own lines stay `keep`s across canonicalization.
+    if (SEP_ROW_RE.test(t)) return indentOf(line) + normalizeSepRow(line);
+    if (TABLE_ROW_RE.test(t)) return indentOf(line) + normalizeTableDataRow(line);
     if (cls !== "setext" && THEMATIC_BREAK_RE.test(line)) {
         // Preserve the marker CHARACTER: `***` and `---` are interchangeable
         // as thematic breaks, but a `-` run is also a setext-heading
@@ -1053,9 +1068,49 @@ function joinsAsLazyContinuation(prev: string, next: string): boolean {
     return leavesParagraphOpen(host) && isParagraphContinuation(next, host.contentColumn);
 }
 
+/**
+ * The two facts that decide whether a marker line could be the SIBLING of
+ * another: the column the marker starts at, and its kind. The kind has to carry
+ * the character itself rather than just "bullet vs ordered", because CommonMark
+ * starts a new list whenever the bullet character or the ordered delimiter
+ * changes — `- a` followed by `* b` is two lists, and a blank between two lists
+ * is not either one's spread.
+ *
+ * Null for a line carrying no marker, and for a thematic break that merely
+ * looks like one: `- - -` matches the marker shape but is a block of its own,
+ * and a break takes precedence over an item, so it is nobody's sibling.
+ */
+function listMarkerAt(line: string): { column: number; kind: string } | null {
+    if (THEMATIC_BREAK_RE.test(line)) return null;
+    const m = LIST_MARKER_RE.exec(line);
+    // The bullet characters and the ordered delimiters are disjoint sets, so
+    // the raw character identifies the kind on its own.
+    return m ? { column: columnWidth(m[1]), kind: m[2] ?? m[3] } : null;
+}
+
+/**
+ * Are `prev` and `next` consecutive item markers of ONE list — the case where
+ * the blank line between them is the list's SPREAD?
+ *
+ * This is the granularity `joinsAsLazyContinuation` cannot reach (MAR-293). It
+ * asks whether gluing changes NEXT's own construct, and it does not: `- beta`
+ * is a list item either way, so `isParagraphContinuation` rightly refuses a
+ * line carrying a marker. What the blank decides here is a property of the
+ * CONTAINER — a loose list wraps every item's content in a paragraph, a tight
+ * one does not — so gluing one pair of a loose list changes the shape of both
+ * items' content without changing either line's construct.
+ */
+function areListSiblings(prev: string, next: string): boolean {
+    const a = listMarkerAt(prev);
+    if (a === null) return false;
+    const b = listMarkerAt(next);
+    return b !== null && b.column === a.column && b.kind === a.kind;
+}
+
 // Would gluing `next` directly under `prev` change next's block-level
-// construct? Only then is a serializer-emitted separating blank structure
-// rather than style. Three arms (all verified against the real parser):
+// construct — or, in the last arm, its container's? Only then is a
+// serializer-emitted separating blank structure rather than style. Four arms
+// (all verified against the real parser):
 //   - a `:::` run cannot interrupt a paragraph, so glued to ANY
 //     absorbing line (paragraph, quote content, list-item content) it
 //     becomes a lazy continuation instead of a fence/inert prose;
@@ -1066,7 +1121,11 @@ function joinsAsLazyContinuation(prev: string, next: string): boolean {
 //     would churn legitimately glued saved bytes.
 //   - the general case the first arm is an instance of: ordinary prose
 //     cannot interrupt a paragraph either, so glued under an open one it
-//     becomes lazy continuation text (MAR-289 — see the block above).
+//     becomes lazy continuation text (MAR-289 — see the block above);
+//   - and the one arm that is NOT about next's own construct: between two
+//     sibling item markers the blank is the list's SPREAD, a property of the
+//     container that changes both items' content shape (MAR-293 — the
+//     reasoning, and why it cannot over-fire, is at the arm itself).
 // Lines that delimit their own block (ATX headings, fence lines, `$$` math
 // fences, thematic breaks) absorb nothing; legitimate saved files DO glue
 // there (a heading directly above a directive), so no arm may fire on
@@ -1087,6 +1146,15 @@ const glueChangesConstruct = (prev: string, next: string): boolean => {
     ) {
         return true;
     }
+    // A serializer-emitted blank between two SIBLING item markers is the list's
+    // spread, which is structure (MAR-293). Safe to fire because the serializer
+    // does not guess this gap: `listItemGapJoin` (serialization.ts) replays the
+    // gap each item recorded from the source at parse time, so for an untouched
+    // pair the serializer re-emits exactly the saved bytes and this arm's own
+    // precondition — saved glues, serializer separates — never holds. It can
+    // only hold where the serializer has no recorded gap to replay, i.e. an
+    // item the EDIT created, whose gap is then drawn from the list's spread.
+    if (areListSiblings(prev, next)) return true;
     return joinsAsLazyContinuation(prev, next);
 };
 
