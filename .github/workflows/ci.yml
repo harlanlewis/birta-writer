@@ -119,8 +119,10 @@ jobs:
       #
       # Same determinism argument as above: the metafile is a pure function of
       # the lockfile, so this can never be flaky.
-      # `notices:check`, not `licenses:check` — `pnpm licenses` is a pnpm builtin,
-      # and a script by that name is shadowed and silently never runs.
+      # The script is invoked directly rather than via `pnpm notices:check`,
+      # which would build a SECOND time — the step above already produced the
+      # production metafiles this reads. (Locally, prefer `pnpm notices:check`;
+      # it builds them for you.)
       - name: Check the third-party attribution appendix is current
         run: node scripts/generate-third-party-notices.mjs --check
 

@@ -33,8 +33,17 @@
  * writes, so a stale dist/ silently attributes a stale bundle.
  *
  * USAGE
- *   node scripts/generate-third-party-notices.mjs           # write the file
- *   node scripts/generate-third-party-notices.mjs --check    # verify it is current
+ *   pnpm notices          # production build + write the file
+ *   pnpm notices:check    # production build + verify it is current
+ *
+ *   node scripts/generate-third-party-notices.mjs [--check]   # reuse an existing build
+ *
+ * HEADS UP: the `pnpm` forms run a PRODUCTION build, which wipes `dist/` and
+ * rebuilds it minified. If you are mid-session with a dev build loaded in an
+ * Extension Development Host, that swaps the bundle under it — re-run
+ * `pnpm build` afterwards. The bare `node` form touches nothing, and is the
+ * right one when a production build with `--metafile` already exists (that is
+ * what CI's `perf-bundle` job uses, since it has just built one).
  */
 
 import fs from "node:fs";
@@ -51,19 +60,21 @@ const METAFILES = ["dist/webview.meta.json", "dist/extension.meta.json"];
  * whole bundle, and source-availability terms (MPL/EPL/CDDL) impose duties the
  * appendix alone does not discharge. The generator refuses rather than quietly
  * writing a file that implies the question was considered.
+ *
+ * This lists ONLY what the bundle actually contains today — deliberately, and it
+ * is why the entries below are five rather than a dozen. An allowlist padded
+ * with plausible-looking permissive licenses nobody has read (CC0's
+ * public-domain dedication, Python-2.0's attribution quirks) pre-answers exactly
+ * the question the paragraph above says must be answered, and does it for
+ * licenses that are not even present. Adding one when a dependency needs it,
+ * having read what it asks of a bundled redistribution, is the whole mechanism.
  */
 export const ALLOWED_LICENSES = new Set([
     "MIT",
     "ISC",
     "Apache-2.0",
-    "BSD-2-Clause",
     "BSD-3-Clause",
-    "0BSD",
     "Unlicense",
-    "CC0-1.0",
-    "MIT-0",
-    "Python-2.0",
-    "BlueOak-1.0.0",
 ]);
 
 /**
@@ -193,7 +204,6 @@ function readLicenseHeaderFromSource(dir, manifest) {
                 .join("\n\n")
                 .replace(/^[ \t]*\/\*+/gm, "")
                 .replace(/\*+\/[ \t]*$/gm, "")
-                .replace(/^[ \t]*\*ptr?[ \t]?/gm, "")
                 .replace(/^[ \t]*\* ?/gm, "")
                 .trim();
             if (text) return { file: rel, text, source: "header" };
@@ -458,17 +468,39 @@ function render(packages) {
             );
             out.push("");
         }
+        // The license body is pushed as ONE array element, and the fence is
+        // widened to clear any backtick run inside it. Both matter: this file's
+        // whole contract is that the text between the fences is what the package
+        // ships, so the renderer must not be able to alter it. An earlier version
+        // rewrote ``` to ''' inside the body to protect the fence — safe against
+        // today's dependencies (none contain a fence) and silently corrupting on
+        // the first one that does.
+        const fence = "`".repeat(Math.max(3, longestBacktickRun(p.licenseText) + 1));
         out.push("<details><summary>License text</summary>");
         out.push("");
-        out.push("```");
-        // Fence-safe: a license file containing ``` would break the block.
-        out.push(p.licenseText.replace(/```/g, "'''"));
-        out.push("```");
+        out.push(fence);
+        out.push(p.licenseText);
+        out.push(fence);
         out.push("");
         out.push("</details>");
         out.push("");
     }
-    return out.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
+    // Collapse runs of blank SCAFFOLDING lines only — by de-duplicating empty
+    // ARRAY entries, never by regex over the joined string. A `/\n{3,}/` pass on
+    // the output would reach inside the license bodies (each of which is a single
+    // multi-line entry) and quietly reflow text this file promises to reproduce
+    // verbatim. Ten license files in the current tree contain 3+ consecutive
+    // newlines; none is bundled today, which is exactly why the bug would have
+    // shipped unnoticed until the dependency that changed it.
+    const lines = out.filter((line, i) => line !== "" || out[i - 1] !== "");
+    return lines.join("\n").replace(/\n+$/, "") + "\n";
+}
+
+/** Longest run of consecutive backticks in `text` (0 if none). */
+function longestBacktickRun(text) {
+    let longest = 0;
+    for (const match of text.matchAll(/`+/g)) longest = Math.max(longest, match[0].length);
+    return longest;
 }
 
 function main() {
