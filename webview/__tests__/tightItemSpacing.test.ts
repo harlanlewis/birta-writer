@@ -31,10 +31,35 @@
  *      alone is not enough here: two glued blockquotes fuse into one and the
  *      fused form re-serializes to itself, so the corruption is stable.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Editor, parserCtx, serializerCtx } from "@milkdown/core";
 import type { Node as ProseNode } from "../pm";
 import { makeCorpusEditor } from "./helpers/moveFuzz";
+
+/**
+ * ONE editor for the whole file, used only as a host for `parserCtx` and
+ * `serializerCtx`. Every case here parses a string, rebuilds it, and serializes
+ * it — none of them touches editor state, so a fresh editor per case bought
+ * nothing and cost a great deal.
+ *
+ * It has to be shared rather than merely tidy: `Editor.create()` arms a timer
+ * inside `@milkdown/ctx` that `destroy()` does not clear, so each case left a
+ * pending `setTimeout` behind. Fired after the file's jsdom environment is torn
+ * down, that timer throws `ReferenceError: removeEventListener is not defined`
+ * — a vitest UNHANDLED error, which fails the run with every test passing and
+ * no failing test named. Six hundred and fifty-six arms of that timer put CI
+ * reliably over the line while an idle laptop stayed under it, so the local
+ * suite was green and CI was not.
+ */
+let editor: Editor;
+
+beforeAll(async () => {
+    editor = await makeCorpusEditor("");
+});
+
+afterAll(async () => {
+    await editor.destroy();
+});
 
 /** Every block construct the editor can put inside a list item, written at the
  * item's content indent so the loose fixture below parses as item content.
@@ -135,8 +160,7 @@ describe("blank-line spacing inside a tight list item", () => {
                 // can express), then rebuilt tight.
                 const body = `${lead}${first}\n\n${second}\n`;
                 const loose = `${OUTER_BULLET}${body.slice(1)}`;
-                const editor: Editor = await makeCorpusEditor("");
-                try {
+                {
                     // Act.
                     const result = editor.action((ctx) => {
                         const parsed = ctx.get(parserCtx)(loose);
@@ -159,8 +183,6 @@ describe("blank-line spacing inside a tight list item", () => {
                     expect(got, `blocks in the item, from ${JSON.stringify(serialized)}`).toBe(want);
                     // B. Round-trip stable.
                     expect(reserialized, "reserialization of the saved document").toBe(serialized);
-                } finally {
-                    await editor.destroy();
                 }
             });
         }
@@ -209,8 +231,7 @@ describe("a paragraph whose text opens an HTML block", () => {
         it(`${name} should ${opensBlock ? "force the item loose" : "keep the item tight"}`, async () => {
             // Arrange.
             const loose = `${OUTER_BULLET} ${source}\n\n  ## Head\n`;
-            const editor: Editor = await makeCorpusEditor("");
-            try {
+            {
                 // Act.
                 const result = editor.action((ctx) => {
                     const parsed = ctx.get(parserCtx)(loose);
@@ -237,8 +258,6 @@ describe("a paragraph whose text opens an HTML block", () => {
                     serialized.includes("\n\n"),
                     `blank line inside the item, from ${JSON.stringify(serialized)}`,
                 ).toBe(opensBlock);
-            } finally {
-                await editor.destroy();
             }
         });
     }
