@@ -1390,13 +1390,24 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             background: linear-gradient(var(--hr-line), var(--hr-line)) 50% 50% / 100% 1px no-repeat;
             margin: 0 0 var(--content-flow-gap);
             cursor: pointer;
-            outline: 1px solid transparent;
-            outline-offset: 2px;
 
+            /* Selected — a NodeSelection, which one ArrowDown from the
+               paragraph above lands on, and which the next printable key
+               replaces like any other selection (MAR-256). The rule and the
+               reference-link definition above are the schema's only two
+               selectable block leaves, so they wear the same ring.
+
+               The `outline` SHORTHAND is load-bearing: this rule set
+               `outline-color` alone, leaving the style to the base `hr` rule
+               (0,2,1) — which `.milkdown .editor .ProseMirror-selectednode
+               { outline: none }` in imageView.css (0,3,0) outranks. Computed
+               `outline-style` was `none`, so nothing but a faint box-shadow
+               painted and the two leaves cued one state at two weights by
+               accident. The shorthand is (0,3,1) and wins outright; pinned in
+               e2e/gapCursor. */
             &.ProseMirror-selectednode {
                 --hr-line: var(--vscode-focusBorder);
-                outline-color: var(--vscode-focusBorder);
-                box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
+                outline: 2px solid var(--vscode-focusBorder);
             }
         }
 

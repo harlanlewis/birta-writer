@@ -64,7 +64,16 @@
  * rule, because the position between a paragraph and an hr is not a gap (the
  * paragraph's own text position is adjacent) and `isGapCursorPosition` rejects
  * it.
- * That is stock ProseMirror behaviour and is tracked separately.
+ *
+ * That is stock ProseMirror behaviour, and MAR-256 settled that it stays: the
+ * next printable key replaces the rule exactly as it replaces any selection,
+ * one undo brings it back, and the schema has only two selectable block leaves
+ * (`hr` and `link_definition`) for the rule to apply to — a table, image, code
+ * block, math block and blockquote all take the caret instead, so there is no
+ * general "selected block leaf" hazard to guard against. What MAR-256 did fix
+ * was the CUE: the rule's selected-state outline was dead (see the specificity
+ * note in style.css), leaving the two leaves cueing the same state at very
+ * different weights. Both halves are pinned in `e2e/gapCursor/`.
  *
  * The caret is drawn by a widget decoration with class `.ProseMirror-gapcursor`;
  * it is themed in `webview/style.css` rather than by importing the package's
