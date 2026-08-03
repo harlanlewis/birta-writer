@@ -4,8 +4,9 @@
  * sourceLineCoverage.test.ts guards the mapping layer (which source line a
  * position means). This guards the layer ABOVE it: where a user's selection
  * can LIVE. A NodeView can create a selection island — an editable
- * `role="textbox"` span (a callout/directive title), or read-only chrome
- * made selectable with `user-select: text` (the calc ledger) — where the
+ * `role="textbox"` span (a callout/directive title), read-only chrome
+ * made selectable with `user-select: text` (the calc ledger), or a
+ * `<textarea>`, which is one by construction — where the
  * live selection exists only in the DOM and ProseMirror's own selection is
  * parked elsewhere, stale. getSwitchTarget must read such islands through
  * domChromeTarget (webview/index.ts), or a switch silently drops the user's
@@ -37,9 +38,21 @@ const ISLAND_REGISTRY: Record<string, string> = {
     "components/linkPopup/linkPopup.css":
         "link popup URL text — mounted on document.body, OUTSIDE view.dom; not a switch surface",
     "components/frontmatter/index.ts":
-        "metadata table cells and list chips (role=\"textbox\" + contenteditable) — the panel is " +
+        "metadata table cells and list chips (role=\"textbox\" + contenteditable), plus the raw-YAML " +
+        "textarea (createRawEditor → panel.appendChild) — the panel is " +
         "inserted BEFORE #editor (renderFmContent's insertBefore(panel, editorEl)), so it lives " +
         "OUTSIDE view.dom and domChromeTarget bails at its view.dom.contains check; not a switch surface",
+    "ui/clipboard.ts":
+        "the execCommand copy fallback's hidden textarea — created on document.body, focused, " +
+        "copied and removed synchronously inside one call, so no selection outlives it; " +
+        "not a switch surface",
+    "components/codeBlock/nodeView.ts":
+        "the copy button's execCommand fallback textarea — the same transient document.body " +
+        "pattern as ui/clipboard.ts; not a switch surface",
+    "components/codeBlock/lightbox.ts":
+        "the fullscreen code editor's textarea, and the diagram lightbox's code-pane twin — both " +
+        "live in an overlay mounted by document.body.appendChild(overlay), OUTSIDE view.dom, so " +
+        "domChromeTarget bails at its view.dom.contains check; not a switch surface",
 };
 
 /**
@@ -66,6 +79,17 @@ const ISLAND_PATTERNS: Array<{ kind: string; re: RegExp; ext: string }> = [
         re: /contentEditable\s*=\s*(['"])(?:true|plaintext-only)\1|setAttribute\(\s*(['"])contenteditable\2\s*,\s*(['"])(?:true|plaintext-only)\3\s*\)/,
         ext: ".ts",
     },
+    {
+        kind: "textarea island",
+        // A <textarea> is a selection island by construction: the live
+        // selection is native and held by the element, and ProseMirror's own
+        // selection is parked elsewhere. No pattern above can see one — a
+        // textarea sets no role, no contentEditable, and needs no
+        // `user-select` — so all five creation sites went unregistered while
+        // this guard read green (MAR-262).
+        re: /createElement\(\s*(['"])textarea\1\s*\)/,
+        ext: ".ts",
+    },
     { kind: "selectable chrome", re: /user-select:\s*text/, ext: ".css" },
 ];
 
@@ -83,7 +107,7 @@ describe("every selection island has a mode-switch story", () => {
     // The sweep is only as wide as its patterns, and a pattern pinned to one
     // quote style is a silent hole (see the ISLAND_PATTERNS header). Prove each
     // spelling of the same DOM write is seen, and that read-only chrome is not.
-    it("the island patterns should match both quote styles and both contenteditable spellings", () => {
+    it("the island patterns should match both quote styles, both contenteditable spellings, and a textarea", () => {
         const textbox = ISLAND_PATTERNS[0]!.re;
         expect(textbox.test('el.setAttribute("role", "textbox");')).toBe(true);
         expect(textbox.test("el.setAttribute('role', 'textbox');")).toBe(true);
@@ -98,6 +122,13 @@ describe("every selection island has a mode-switch story", () => {
         // Read-only chrome (contenteditable="false") is not a selection island.
         expect(editable.test('el.contentEditable = "false";')).toBe(false);
         expect(editable.test("el.setAttribute('contenteditable', 'false');")).toBe(false);
+
+        const textarea = ISLAND_PATTERNS[2]!.re;
+        expect(textarea.test('const ta = document.createElement("textarea");')).toBe(true);
+        expect(textarea.test("const ta = document.createElement('textarea');")).toBe(true);
+        // Other elements are not selection islands of their own accord.
+        expect(textarea.test('document.createElement("input");')).toBe(false);
+        expect(textarea.test('document.createElement("div");')).toBe(false);
     });
 
     it("island-creating sites are registered with a mapping story", () => {
@@ -128,6 +159,9 @@ describe("every selection island has a mode-switch story", () => {
         expect(found).toContain(path.join("components", "codeBlock", "codeBlock.css"));
         // Single-quoted island writes are seen too — the case the patterns missed.
         expect(found).toContain(path.join("components", "frontmatter", "index.ts"));
+        // …and textareas, which no other pattern can see (MAR-262).
+        expect(found).toContain(path.join("ui", "clipboard.ts"));
+        expect(found).toContain(path.join("components", "codeBlock", "lightbox.ts"));
         // No registry entry goes stale: every registered file still trips a pattern.
         expect([...Object.keys(ISLAND_REGISTRY)].filter((rel) => !found.has(rel))).toEqual([]);
     });
