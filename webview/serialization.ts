@@ -391,6 +391,135 @@ const ABSORBING_TYPES = new Set([
  * glued with no blank between parse back as ONE quote. */
 const QUOTE_TYPES = new Set(["blockquote", "callout"]);
 
+// ── Does a paragraph's own TEXT open an HTML block? (MAR-296) ────────────────
+//
+// A raw HTML block round-trips through this editor as a PARAGRAPH holding an
+// `html` phrasing child (`<div>raw</div>` parses to `paragraph > html`), so the
+// join hook — which is handed node TYPES — sees `paragraph` and lets the
+// serializer glue the next block under it. But an HTML block ends only at a
+// blank line, so the glued block is swallowed as raw HTML content and the item
+// reopens holding one paragraph where the editor held two blocks. That is
+// exactly the `notionCallout` hazard above without a node type to read it off.
+//
+// The heuristic that suggests itself — "the paragraph's first child is an `html`
+// node" — is only a NECESSARY condition, and firing on it alone over-fires
+// badly. Measured against the real parser: `<span>x</span> then text`,
+// `<b>bold</b> lead-in`, `<pre>x</pre>`, `<!-- c -->` and `<!DOCTYPE html>` all
+// have an `html` first child and all open NO block that survives the line, so a
+// blank there would make ordinary items with inline HTML go loose against every
+// right-hand type. It is a necessary condition, though, and a cheap one: an
+// `html` node's bytes are emitted verbatim while a text node's leading `<` is
+// escaped (`\<div>`), so no other phrasing child can put a raw `<` at the start
+// of the line. That is what gates the byte-level test below.
+//
+// Conditions 1–5 can be MET on their own start line (`<pre>x</pre>`,
+// `<!-- c -->`), which is why each is asked for its end condition rather than
+// treated as opening unconditionally. Condition 7 does not interrupt a
+// paragraph — but a paragraph's FIRST line is a block start, not an
+// interruption, so it applies here and is reachable: a lone `<span>` swallows
+// the block after it just like `<div>` does (verified against the parser).
+
+/** Condition 6's block-level tag names, verbatim from the CommonMark spec. */
+const HTML_BLOCK_TAGS = new Set([
+    "address", "article", "aside", "base", "basefont", "blockquote", "body",
+    "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
+    "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+    "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
+    "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
+    "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
+    "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
+    "title", "tr", "track", "ul",
+]);
+
+/** Condition 1: raw-text elements, which end at their own closing tag. */
+const RAW_TEXT_START = /^ {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)/i;
+const RAW_TEXT_END = /<\/(?:script|pre|style|textarea)>/i;
+/** Conditions 2–5: comment, processing instruction, declaration, CDATA. */
+const COMMENT_START = /^ {0,3}<!--/;
+const INSTRUCTION_START = /^ {0,3}<\?/;
+const DECLARATION_START = /^ {0,3}<![A-Za-z]/;
+const CDATA_START = /^ {0,3}<!\[CDATA\[/;
+/** Condition 6: any tag, open or closing, from the list above. */
+const BLOCK_TAG_START = /^ {0,3}<\/?([A-Za-z][A-Za-z0-9-]*)(?:[ \t]|\/?>|$)/;
+/** Condition 7: a complete open or closing tag, alone on the line. */
+const TAG_ATTRIBUTE =
+    "(?:\\s+[a-zA-Z_:][a-zA-Z0-9_.:-]*(?:\\s*=\\s*(?:[^\"'=<>`\\s]+|'[^']*'|\"[^\"]*\"))?)";
+const COMPLETE_TAG_ALONE = new RegExp(
+    `^ {0,3}(?:<[A-Za-z][A-Za-z0-9-]*${TAG_ATTRIBUTE}*\\s*/?>|</[A-Za-z][A-Za-z0-9-]*\\s*>)[ \\t]*$`,
+);
+
+/**
+ * Does this line open a CommonMark HTML block that is STILL OPEN at the line's
+ * end — so the next line, whatever it is, is absorbed as HTML content?
+ *
+ * Conditions in the spec's order, first match winning. 1–5 answer their own end
+ * condition on the same line; 6 and 7 end only at a blank line, so they always
+ * answer yes.
+ */
+function opensHtmlBlock(line: string): boolean {
+    if (RAW_TEXT_START.test(line)) return !RAW_TEXT_END.test(line);
+    if (COMMENT_START.test(line)) return !line.includes("-->");
+    if (INSTRUCTION_START.test(line)) return !line.includes("?>");
+    if (DECLARATION_START.test(line)) return !line.includes(">");
+    if (CDATA_START.test(line)) return !line.includes("]]>");
+    const tag = BLOCK_TAG_START.exec(line);
+    if (tag && HTML_BLOCK_TAGS.has(tag[1].toLowerCase())) return true;
+    return COMPLETE_TAG_ALONE.test(line);
+}
+
+type SerializerState = {
+    handle?: (node: unknown, parent: unknown, state: unknown, info: unknown) => string;
+};
+
+/**
+ * Memoised per paragraph NODE. `gapMustBeBlank` is asked once per gap and
+ * `itemContentGapJoin` re-scans the whole item each time, so a k-child item asks
+ * about the same left node O(k) times; the mdast tree is rebuilt on every
+ * serialization, so nothing is retained across saves.
+ */
+const paragraphOpensBlock = new WeakMap<object, boolean>();
+
+/**
+ * Does this node serialize to a first line that leaves an HTML block open?
+ *
+ * The cheap type gate above rules out everything but a paragraph whose bytes
+ * genuinely start with a raw `<`; only then is the paragraph serialized (by the
+ * serializer's own handler, so the bytes are the ones that will be written) and
+ * its first line put to `opensHtmlBlock`. The gap this answers is the only place
+ * the decision can be made: `postSerialize` sees the finished document, by which
+ * point the item is already glued and telling one item's gap from a fenced-code
+ * line would mean re-parsing Markdown in a post-pass.
+ *
+ * The handler is given the SAME `(parent, state)` the real serialization gives
+ * it — `containerFlow` calls it with the list item as parent — so no handler can
+ * see a context here it would not see there. `info` carries the tracker's
+ * start-of-line position rather than the paragraph's real one, which is why only
+ * the FIRST line of the result is read: the item's own indent is applied later,
+ * by the list-item handler, and does not change what the line opens.
+ */
+function opensRawHtmlBlock(node: FlowNode, item: unknown, state: unknown): boolean {
+    if (node.type !== "paragraph") return false;
+    const first = node.children?.[0] as { type?: string } | undefined;
+    if (first?.type !== "html") return false;
+    const cached = paragraphOpensBlock.get(node as object);
+    if (cached !== undefined) return cached;
+    const handle = (state as SerializerState | null)?.handle;
+    // Unreachable — mdast-util-to-markdown's `State` always carries `handle` —
+    // but the two answers are not equally safe, so the fallback takes the side
+    // that cannot lose bytes. Answering false here would silently restore
+    // MAR-296 itself: the following block gets absorbed as HTML content and is
+    // gone on reopen. Answering true costs at most one item's tightness, and
+    // only for a paragraph that already begins with a raw `<` (the gate above).
+    // Spacing is recoverable; a swallowed block is not.
+    if (typeof handle !== "function") return true;
+    const bytes = handle(node, item, state, {
+        before: "\n", after: "\n", now: { line: 1, column: 1 }, lineShift: 0,
+    });
+    const answer = opensHtmlBlock(String(bytes ?? "").split("\n", 1)[0] ?? "");
+    paragraphOpensBlock.set(node as object, answer);
+    return answer;
+}
+
 /**
  * Does this node's FIRST source line begin with prose — carrying no marker that
  * could start a block from an absorbed position?
@@ -433,7 +562,9 @@ function beginsWithProseLine(node: FlowNode): boolean {
  * mdast's own default join already separates, which the whole-item question
  * above has to know about.
  */
-function gapMustBeBlank(left: FlowNode, right: FlowNode, state: unknown): boolean {
+function gapMustBeBlank(
+    left: FlowNode, right: FlowNode, item: unknown, state: unknown,
+): boolean {
     // 0. A Notion `<aside>` is a raw HTML BLOCK, and an HTML block ends only at
     //    a blank line — not at a heading, a fence, a list marker, or anything
     //    else that would interrupt an open paragraph. So it absorbs whatever
@@ -448,6 +579,13 @@ function gapMustBeBlank(left: FlowNode, right: FlowNode, state: unknown): boolea
     //    here would fire on gaps that were never broken. Neither rule covers
     //    both types. Do not "simplify" them into one.
     if (left.type === "notionCallout") return true;
+    // 0b. The same hazard with no node type to read it off (MAR-296): a
+    //     PARAGRAPH whose own first line opens an HTML block. Unconditional for
+    //     the same reason — an HTML block ends only at a blank line — and asked
+    //     of the paragraph's BYTES, since `<div>raw</div>` and
+    //     `<span>x</span> then text` are the same node shape and only the first
+    //     opens anything. See the block above `opensHtmlBlock`.
+    if (opensRawHtmlBlock(left, item, state)) return true;
     // 1. An open construct swallows a prose-shaped line; two `>` blocks fuse.
     if (ABSORBING_TYPES.has(left.type ?? "")) {
         if (beginsWithProseLine(right)) return true;
@@ -514,15 +652,12 @@ function gapMustBeBlank(left: FlowNode, right: FlowNode, state: unknown): boolea
  * keeps whatever spacing `spread` and mdast's defaults give it, which is what
  * leaves ordinary outlines untouched.
  *
- * DELIBERATELY NOT COVERED, and re-scoped rather than guessed at: a `paragraph`
- * whose TEXT opens an HTML block (`<div>…`, `<table>…`) swallows every following
- * line to the next blank, exactly as `notionCallout` does. That one cannot be
- * answered here, because it is a property of the paragraph's serialized content
- * rather than of its node type — and a first-child-is-html heuristic would fire
- * on ordinary inline HTML (`<span>x</span> then prose`, which opens no block)
- * against every right-hand type, turning `paragraph` into an absorbing tail for
- * the whole matrix. Filed as MAR-296. `notionCallout` is the same hazard with a
- * node type attached, which is why it IS fixed above.
+ * A `paragraph` whose TEXT opens an HTML block (`<div>…`, a lone `<span>`) is
+ * the one gap here that node types cannot judge, and it is answered from the
+ * paragraph's BYTES instead (MAR-296 — `opensRawHtmlBlock` above). It stays a
+ * gap question like every other one: the item-wide rule below then decides the
+ * item, so an item containing such a paragraph goes loose as a whole rather than
+ * gaining one stray blank.
  *
  * Returning `1` forces the blank; returning `undefined` defers to mdast's
  * default, so an item this cannot judge keeps exactly the behaviour it had.
@@ -541,7 +676,7 @@ function itemContentGapJoin(
         return undefined;
     }
     for (let i = 1; i < item.children.length; i++) {
-        if (gapMustBeBlank(item.children[i - 1], item.children[i], state)) return 1;
+        if (gapMustBeBlank(item.children[i - 1], item.children[i], item, state)) return 1;
     }
     return undefined;
 }
