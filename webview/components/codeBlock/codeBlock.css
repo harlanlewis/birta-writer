@@ -469,6 +469,9 @@ body.mermaid-canvas-dark {
     display: flex;
     flex-direction: column;
     animation: lb-open 0.18s ease;
+    /* The overlay takes focus on open so the editor behind it stops receiving
+       keystrokes (MAR-267). It is a surface, not a control — no focus ring. */
+    outline: none;
 }
 
 .mermaid-lightbox.lb-closing {

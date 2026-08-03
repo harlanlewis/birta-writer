@@ -113,7 +113,13 @@ export function createCodeBlockView(
         view.dispatch(
             view.state.tr.setNodeMarkup(pos, null, { ...node.attrs, language: newLang }),
         );
-        view.focus();
+        // Chrome, so the same inert rule as every other affordance (MAR-267):
+        // this used to call `view.focus()`, which handed focus back to
+        // whatever caret the user had before opening the picker — invisible,
+        // and the next keystroke edited there. Opening the picker already
+        // moved focus to its search box, so this is belt-and-braces; it is
+        // also what makes the rule hold if that ever stops being true.
+        view.dom.blur();
     });
 
     // ── Mermaid state ─────────────────────────────────────
@@ -344,42 +350,84 @@ export function createCodeBlockView(
     const previewEl = (): HTMLElement =>
         isCalc ? calcPreview : isLatex ? latexPreview : mermaidPreview;
 
-    /** Is this node part of the preview the user can currently see? */
-    const inVisiblePreview = (node: EventTarget | Node | null): boolean =>
-        node instanceof Node && isPreviewMode && previewEl().contains(node);
+    /**
+     * Is this node part of the block's read-only chrome? Everything the user
+     * can click that is NOT the code area: the three preview panes, the float
+     * row (language pill), the control column, and the resize handle. A hidden
+     * pane can't contain a click target, so no mode gate is needed.
+     *
+     * `pre` is deliberately excluded — the code and its line gutter are where
+     * clicking INTO the block belongs, and so is the wrapper's own padding.
+     */
+    const inChrome = (target: EventTarget | Node | null): boolean =>
+        target instanceof Node && (
+            floatRow.contains(target) ||
+            controlsCol.contains(target) ||
+            resizeHandle.contains(target) ||
+            mermaidPreview.contains(target) ||
+            latexPreview.contains(target) ||
+            calcPreview.contains(target)
+        );
 
-    // A click on a preview pane must leave the editor INERT (MAR-200).
+    // A click on this block's chrome must leave the editor INERT (MAR-200 for
+    // the preview panes; MAR-267 widened it to the rest of the chrome).
     //
-    // None of the three panes moves ProseMirror's selection: the mermaid pane
+    // Nothing here moves ProseMirror's selection. The panes: the mermaid one
     // swallows its own mousedown for the pan drag, the ledger is kept out of
     // PM's mouse handling by `stopEvent`, and even the plain LaTeX pane — no
     // handler at all — leaves the caret untouched, because a click on
     // contentEditable=false chrome inside a NodeView never lands anywhere PM
-    // can map. So PM keeps whatever caret it had, and the user's next Enter
-    // runs the keymap *somewhere else in the document*: probe-confirmed to
-    // split a paragraph they weren't looking at. Clicking read-only chrome
-    // should therefore leave the editor inert until the user clicks back into
-    // content, which refocuses it through PM's own mousedown.
+    // can map. The buttons: every one of them calls `preventDefault()` on
+    // mousedown, precisely so the caret does NOT move. Either way PM keeps
+    // whatever caret it had, and the user's next Enter runs the keymap
+    // *somewhere else in the document*: probe-confirmed to split a paragraph
+    // they weren't looking at. Clicking read-only chrome should therefore
+    // leave the editor inert until the user clicks back into content, which
+    // refocuses it through PM's own mousedown.
     //
-    // On `click` (not mousedown) so it runs AFTER the browser's own focus
-    // settling, which would otherwise hand focus straight back — and because
-    // blurring the host collapses the DOM selection, a selection inside the
-    // pane (a drag that just ended there) is captured first and re-asserted
-    // after: inert editor, intact copy.
-    wrapper.addEventListener("click", (e) => {
-        if (!inVisiblePreview(e.target)) { return; }
+    // Armed on mousedown, fired on the mouseup that ends the gesture — NOT on
+    // `click`, and not on mousedown itself. Three constraints pin that down:
+    //
+    //  * Not mousedown: a pane that doesn't preventDefault (the LaTeX one)
+    //    still gets the browser's own focus settling afterwards, which would
+    //    hand focus straight back.
+    //  * Not click: for the toggle and width buttons NO CLICK EVENT EXISTS.
+    //    Both rewrite the button's `innerHTML` from their own mousedown
+    //    handler, which detaches the node the mousedown landed on, so the
+    //    browser never computes a click target (probe-confirmed: mousedown and
+    //    mouseup on the icon `<svg>`, no click at all).
+    //  * Arming in the CAPTURE phase: every button here calls
+    //    `stopPropagation()` on mousedown, so a bubble-phase listener on the
+    //    wrapper would never see them.
+    //
+    // Because blurring the host collapses the DOM selection, a selection
+    // inside the chrome (a drag that just ended in the calc ledger) is
+    // captured first and re-asserted after: inert editor, intact copy.
+    const makeEditorInert = (): void => {
         if (!view.hasFocus()) { return; }
         const sel = window.getSelection();
-        const paneRanges =
-            sel && !sel.isCollapsed && inVisiblePreview(sel.anchorNode)
+        const chromeRanges =
+            sel && !sel.isCollapsed && inChrome(sel.anchorNode)
                 ? Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i).cloneRange())
                 : [];
         view.dom.blur();
-        if (sel && paneRanges.length > 0) {
+        if (sel && chromeRanges.length > 0) {
             sel.removeAllRanges();
-            for (const range of paneRanges) { sel.addRange(range); }
+            for (const range of chromeRanges) { sel.addRange(range); }
         }
-    });
+    };
+
+    const onGestureEnd = (): void => {
+        document.removeEventListener("mouseup", onGestureEnd);
+        makeEditorInert();
+    };
+    wrapper.addEventListener("mousedown", (e) => {
+        if (!inChrome(e.target)) { return; }
+        // Re-arm rather than stack: removing first keeps this to one listener
+        // however many chrome mousedowns arrive before a mouseup.
+        document.removeEventListener("mouseup", onGestureEnd);
+        document.addEventListener("mouseup", onGestureEnd);
+    }, true);
 
     // ── Drag handle ────────────────────────────────────────
     const resizeHandle = document.createElement("div");
@@ -642,6 +690,10 @@ export function createCodeBlockView(
         },
 
         destroy(): void {
+            // A view can die between a chrome mousedown and its mouseup
+            // (external sync replacing the node): drop the armed listener so
+            // it can't blur through a dead view.
+            document.removeEventListener("mouseup", onGestureEnd);
             mermaidPane.destroy();
             picker.destroy();
             if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
