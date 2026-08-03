@@ -185,11 +185,24 @@ export interface FormatProfile {
      * context — so a profile can consult the classification it has already made
      * (which lines are verbatim content rather than structure) instead of
      * re-deriving it from a line in isolation, which it cannot do correctly.
+     *
+     * `baselineFacts` is `baselineFacts`' opaque result for this file — the same
+     * value `reconcileReplacement` receives — or null when the file carries no
+     * protection. It is here because `preceding`, and the run's own lines, can
+     * arrive wearing bytes the SERIALIZER never wrote: `repairSerialized` runs
+     * before the diff, so a protected construct reaches this hook spelled the
+     * way the saved file spells it, inside a stream that is otherwise canonical.
+     * A profile reasoning about which convention a neighbouring line is in
+     * therefore cannot answer from this merge's keeps alone — the baseline round
+     * trip is the only record of what the file's own spellings are (MAR-297).
+     * Same caveat as everywhere else it is used: it is distilled ONCE at load
+     * and the saved text moves under it, so it may only ever GRANT, never veto.
      */
     reconcileInsertion?(
         lines: readonly InsertedLine[],
         preceding: string | null,
         facts: unknown,
+        baselineFacts: unknown,
     ): readonly string[];
 }
 
@@ -329,6 +342,7 @@ function reconcileInsertedRun(
     lastSerialIdx: number,
     preceding: string | null,
     facts: unknown,
+    baselineFacts: unknown,
 ): string[] {
     const raw = run.map((l) => l.text);
     if (!profile.reconcileInsertion) return raw;
@@ -339,7 +353,7 @@ function reconcileInsertedRun(
     }));
     let out: readonly string[];
     try {
-        out = profile.reconcileInsertion(lines, preceding, facts);
+        out = profile.reconcileInsertion(lines, preceding, facts, baselineFacts);
     } catch {
         return raw;
     }
@@ -1089,6 +1103,7 @@ export function applyMinimalChanges(
                 serialLines.length - 1,
                 prevLineText === null ? null : stripEol(prevLineText),
                 mergeFacts,
+                protection?.baselineFacts ?? null,
             );
             for (let r = 0; r < run.length; r++) {
                 // As in the replacement branch, everything downstream must see
