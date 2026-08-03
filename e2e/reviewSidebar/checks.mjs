@@ -137,7 +137,7 @@ export async function run({ page, check, baseUrl }) {
     // plugin in the editor, not just repaint the pill.
     const hl = page.locator(".review-list--notes .review-trailing");
     const chips = () => page.$$eval(".ProseMirror .note-marker", (els) => els.length);
-    // role=switch/aria-checked, matching the Checks menu's "Highlight notes" row
+    // role=switch/aria-checked, matching the Checks menu's "Highlight note markers" row
     // (createSwitchItem) — one bit, one announcement on every surface wearing it.
     const pressed = () => hl.getAttribute("aria-checked");
     check("the Notes tab carries a Highlight toggle, on by default", (await pressed()) === "true", await pressed());
@@ -357,7 +357,7 @@ export async function run({ page, check, baseUrl }) {
     check("menu row, sidebar pill, chips and setting agree at rest", agree(s) && s.chips, JSON.stringify(s));
 
     // Flip from the TOOLBAR; the sidebar has to follow.
-    await page.locator(`${CHECKS_MENU} .tb-switch-item`, { hasText: "Highlight notes" }).first().click();
+    await page.locator(`${CHECKS_MENU} .tb-switch-item`, { hasText: "Highlight note markers" }).first().click();
     await page.waitForTimeout(200);
     s = await noteHighlight();
     check("a flip in the Checks menu carries the sidebar pill and the chips with it",

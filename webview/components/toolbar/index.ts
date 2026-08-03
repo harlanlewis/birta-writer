@@ -1627,8 +1627,8 @@ export function initToolbar(
     // The master "Proofreading" gate switch (handled separately from checkRows
     // because its config field name differs from its option key).
     let masterItem: CheckItem | null = null;
-    // The "Highlight notes" switch — a sibling of the master gate, leading the
-    // menu, governed by nothing (see where it is built).
+    // The "Highlight note markers" switch — a sibling of the master gate,
+    // leading the menu, governed by nothing (see where it is built).
     let notesHighlightItem: CheckItem | null = null;
 
     /** Attach `child` into `parent` iff `show`, else detach it. */
@@ -1729,8 +1729,18 @@ export function initToolbar(
             parent.appendChild(header);
         };
 
-        // ── "Highlight notes" (birta.notes.highlightMarkers) ────────────────
+        // ── "Highlight note markers" (birta.notes.highlightMarkers) ─────────
         // The in-text chips on `[TK]`, `TODO:`, `FIXME:` and custom markers.
+        //
+        // It names the MARKERS rather than the notes, because three other
+        // things in this editor answer to a shorter label: `==highlight==` is
+        // an inline mark with its own "Highlight" command, a footnote and a
+        // `> [!NOTE]` callout are both notes, and in a menu whose other half is
+        // Proofreading, "editor notes" reads as the editor's notes about your
+        // prose — the exact opposite of what this switch governs. "Marker" is
+        // already the vocabulary the settings teach (birta.notes.customMarkers
+        // lists "text markers"), and the marker is literally what gets tinted:
+        // never its line, never the note's prose.
         // It leads the menu as a SIBLING of the Proofreading gate below — same
         // rank, same emphasis, governing nothing but itself. Sibling rather than
         // child because the two are independent: proofreading findings are the
@@ -1738,7 +1748,7 @@ export function initToolbar(
         // away the markers you left yourself, which are your own content. A
         // separator, not a header, carries that — a header would read as a
         // section the gate opens.
-        notesHighlightItem = createSwitchItem(t("Highlight notes"));
+        notesHighlightItem = createSwitchItem(t("Highlight note markers"));
         notesHighlightItem.el.classList.add("tb-checks-master");
         notesHighlightItem.setChecked(noteMarkersEnabled());
         notesHighlightItem.el.title = t("Mark [TK], TODO:, FIXME: and your custom markers where they sit in the text (birta.notes.highlightMarkers)");
