@@ -710,3 +710,49 @@ describe("applyMinimalChanges — a CRLF file with no trailing newline (MAR-223)
         expect(merged).toBe("# Title\r\n\r\nalpha\r\n\r\nomega X");
     });
 });
+
+describe("applyMinimalChanges — list spread is structure, not spacing (MAR-293)", () => {
+    // The merge's other two structure predicates ask whether a blank changes
+    // the NEXT LINE's construct. Between two item markers it does not — `- b`
+    // is a list item either way — but it changes the list's SPREAD, and a
+    // loose list wraps every item's content in a paragraph while a tight one
+    // does not. So the serializer's separating blank is structure here, and
+    // the saved bytes' glue is a claim about the parse the editor overruled.
+    it("a new sibling item in a loose list should keep the blank the serializer emits", () => {
+        const saved = "bar\n\n- one\n\n- alpha\n  beta\n\n- three\n\nfoo\n";
+        // The user split `alpha`/`beta` into two items. Only one significant
+        // line changed (`  beta` → `- beta`), so this is an in-place
+        // replacement and the saved spacing would otherwise win.
+        const serialized = "bar\n\n- one\n\n- alpha\n\n- beta\n\n- three\n\nfoo\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    // The split is on the LAST item deliberately. Splitting mid-list renumbers
+    // every item below it, which changes more than one significant line and
+    // marks the region dirty — and a dirty region takes the serializer's
+    // spacing whatever the predicates say, so that shape passes with this rule
+    // removed and pins nothing.
+    it("the same shape with an ordered list should behave identically", () => {
+        const saved = "bar\n\n1. one\n\n2. alpha\n   beta\n\nfoo\n";
+        const serialized = "bar\n\n1. one\n\n2. alpha\n\n3. beta\n\nfoo\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    // The conservatism the rule is built around: it fires only between lines
+    // that could be consecutive items of ONE list. Everything below carries a
+    // marker and is NOT a sibling, so the saved bytes must survive untouched —
+    // firing on any of them would churn blank runs in files the user never
+    // edited there.
+    it.each([
+        ["a different bullet character starts a new list", "- a\n* b\n", "- a\n\n* b\n"],
+        ["a sublist is a different list", "- a\n  - b\n", "- a\n\n  - b\n"],
+        ["a different ordered delimiter starts a new list", "1. a\n2) b\n", "1. a\n\n2) b\n"],
+        // `- - -` matches the marker shape but a thematic break takes
+        // precedence over an item, so it is nobody's sibling.
+        ["a thematic break is not an item", "- a\n- - -\n", "- a\n\n- - -\n"],
+    ])("%s, so the saved glue should survive", (_name, saved, serialized) => {
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+});
