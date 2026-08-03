@@ -23,6 +23,14 @@
 #
 # Exit: 0 no overlap / no unexpected files | 1 overlap or unexpected files found
 #       3 input error
+#
+# Canonical source: harlanlewis-skills/tools/lane-scripts/, exercised by its
+# test.sh in CI. Copies under a repo's .claude/skills/grind/scripts/ are
+# vendored on purpose — an agent skill has to be self-contained, and the plugin
+# cache path is $HOME-absolute and content-hashed, so pointing at it would rot
+# on the next plugin update. Edit HERE and re-sync (tools/lane-scripts/sync.sh);
+# a fix made in a vendored copy reaches one repo only. Measured: three of these
+# four scripts were already stale in a sibling repo within an hour of shipping.
 
 set -euo pipefail
 

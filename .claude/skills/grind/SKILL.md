@@ -3,7 +3,7 @@ name: grind
 description: 'Autonomous backlog loop — groom Linear so the queue holds the right work, prioritize, then fill parallel worktree lanes and ship them end-to-end with iterative self-critique, reconciliation, tracking, and cleanup. Triggers: /grind, "review the backlog and get after it", "pick something and ship it", "work the backlog autonomously".'
 compatibility: Requires git, jq, pnpm, and the Linear MCP tools. Bundled scripts are bash (macOS /bin/bash 3.2 compatible).
 metadata:
-  version: '1.8.1'
+  version: '1.8.2'
 ---
 
 # Grind — autonomous backlog loop
@@ -164,17 +164,21 @@ Lanes converge on **one integration branch** (`lewish/<session-slug>`), cut from
   --into lewish/<session-slug> --ticket MAR-NN --gate "pnpm test && pnpm typecheck"
 ```
 
-It refuses to run from inside a linked worktree, refuses a dirty working tree, reports what the lane *actually* touched, and on a failing gate reverts to the exact pre-merge SHA. Read its JSON and act on `status`:
+It refuses to run from inside a linked worktree or on a detached HEAD (both merge into nothing while reporting success), refuses a dirty working tree, reports what the lane *actually* touched, and on a failing gate reverts to the exact pre-merge SHA. Read its JSON and act on `status`:
 
 | `status` | exit | what it means, and what you do |
 |---|---|---|
 | `merged` | 0 | Merged and gated. Refill the lane. |
-| `conflict` | 1 | Merge aborted, tree untouched; `conflict_files` lists them. Resolve by hand — both sides are yours and the context is hot — or, if the right resolution isn't obvious, rebrief that lane to sync and finish it. Either way it is **a lane-plan finding**: say which prediction was wrong and rebrief every queued lane sharing those files (§1). |
+| `conflict` | 1 | git produced conflicted paths and aborted; tree untouched, `conflict_files` lists them. Resolve by hand — both sides are yours and the context is hot — or, if the right resolution isn't obvious, rebrief that lane to sync and finish it. Either way it is **a lane-plan finding**: say which prediction was wrong and rebrief every queued lane sharing those files (§1). |
+| `merge_failed` | 1 | git refused **without** conflicts — usually an untracked file in the way, named in `reason`, left intact. Nothing to resolve by hand: clear what git names, then re-run. (These were one status until a test proved the difference: an empty `conflict_files` with instructions to resolve it.) |
 | `gate_failed` | 2 | Merge reverted. The failure belongs to the lane that caused it — rebrief with `gate_output`, don't patch over it here. A red integration branch blocks every lane behind it. |
 | `dirty` | 3 | Your own lane has uncommitted work. Commit it (or stash deliberately) and re-run — a completion can arrive mid-edit, and merging onto a dirty tree is how a lane's changes get attributed to your commit. |
-| `refused` | 3 | You are inside a worktree, or the branch doesn't exist. A merge from inside a worktree merges into *that* branch, reports success, and leaves the integration branch untouched — this check is in code because in the sibling repos prose alone did not stop it. |
+| `refused` | 3 | You are inside a worktree, HEAD is detached, or the branch doesn't exist. A merge from inside a worktree merges into *that* branch, reports success, and leaves the integration branch untouched — this check is in code because in the sibling repos prose alone did not stop it. |
 | `empty` | 4 | The lane committed nothing, whatever its report said. Re-read the handoff (§2: a report is a description, not a result). |
-- **Then critique the seam, on the combined diff.** Run `/constructive-critique` over `git diff main...<integration-branch>` — the whole session's change, read as one change, which is the only place the lane seams are visible: two lanes solving the same problem twice, an abstraction one lane added that another duplicated, idioms that diverged, a test one lane deleted and another relied on, a fix whose premise a later lane invalidated. **Every lane's diff is new to you here** — you did not write most of it, and its author's own critique passed inside a context that couldn't see the others. `/simplify` over the same combined diff belongs in this pass, before the PR, and its changes get the gates re-run (`pnpm test`, `pnpm typecheck`, `pnpm build`; `pnpm test:e2e` if `webview/` moved).
+
+### Critique the seam — this is what reconciliation is for
+
+- **Run `/constructive-critique` over the combined diff.** `git diff main...<integration-branch>` — the whole session's change, read as one change, which is the only place the lane seams are visible: two lanes solving the same problem twice, an abstraction one lane added that another duplicated, idioms that diverged, a test one lane deleted and another relied on, a fix whose premise a later lane invalidated. **Every lane's diff is new to you here** — you did not write most of it, and its author's own critique passed inside a context that couldn't see the others. `/simplify` over the same combined diff belongs in this pass, before the PR, and its changes get the gates re-run (`pnpm test`, `pnpm typecheck`, `pnpm build`; `pnpm test:e2e` if `webview/` moved).
 - §3.6's disposition buckets bind here too — **fixed** is still the default, and "a different lane wrote it" is not a reason to file instead of fix.
 - **Write the CHANGELOG once, now**, over the reconciled diff (§4's gate: observability, not effort), plus `docs/BENEFITS.md` if a capability's story changed. Every claim in it is one you verified yourself against the tree — a lane's report is not a verification (§2), and this is the document that describes the product to someone who can't read the diff.
 - **One PR for the session** (`gh pr create`) with a summary, every ticket, and the verification done — including which lanes ran and what the seam critique changed. **Wait for CI green** (`gh pr checks <n> --watch`), then **squash** (`gh pr merge <n> --squash --delete-branch`). Pull `main`.
