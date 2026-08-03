@@ -6,7 +6,7 @@
  * the menu to just the three masters (spelling / grammar / style); toggling it
  * back on restores the full grouped list.
  *
- * Leading the menu, above all of that, is "Highlight notes" — the in-text
+ * Leading the menu, above all of that, is "Highlight note markers" — the in-text
  * editor-note highlight, a SIBLING of the Proofreading gate rather than one of
  * the things it governs. So it must survive the gate being turned off, and it
  * must stay first: the checks collapsing and returning below it is the visible
@@ -33,7 +33,7 @@ export async function run({ page, check, baseUrl }) {
 
     // Rows are on/off switches (createSwitchItem) since 338f8c9; the menu also
     // gained a 16th row — the master "Proofreading" gate above the body — and a
-    // 17th, "Highlight notes", leading the menu as that gate's sibling.
+    // 17th, "Highlight note markers", leading the menu as that gate's sibling.
     const labels = () => page.$$eval(`${MENU} .tb-switch-item-label`, (els) => els.map((e) => e.textContent));
     const rowCount = () => page.$$eval(`${MENU} .tb-switch-item`, (els) => els.length);
     const hasChildren = () => page.locator(`${MENU} .tb-checks-children`).count().then((n) => n > 0);
@@ -51,7 +51,25 @@ export async function run({ page, check, baseUrl }) {
     check("sub-checks live in the nested children container", await hasChildren());
     check("full menu has all 17 rows (notes + gate + 15 checks)", (await rowCount()) === 17, String(await rowCount()));
     check("the notes highlight leads the menu, above the gate",
-        JSON.stringify(l.slice(0, 2)) === JSON.stringify(["Highlight notes", "Proofreading"]), JSON.stringify(l));
+        JSON.stringify(l.slice(0, 2)) === JSON.stringify(["Highlight note markers", "Proofreading"]), JSON.stringify(l));
+
+    // The rule between the notes switch and the gate is the ONLY thing saying
+    // the two are siblings rather than parent and child (DESIGN_PRINCIPLES), and
+    // it is a 1px flex item in a column menu that shrinks to zero once the menu
+    // overflows its max-height — which is the default state, with every check
+    // on. It was invisible exactly here and returned when turning proofreading
+    // off shortened the menu. Layout-only, so no jsdom test can see it.
+    const sepMetrics = () => page.evaluate((sel) => {
+        const menu = document.querySelector(sel);
+        const sep = menu.querySelector(":scope > .tb-menu-sep");
+        return { h: sep ? sep.getBoundingClientRect().height : -1, scrollH: menu.scrollHeight, clientH: menu.clientHeight };
+    }, MENU);
+    let m = await sepMetrics();
+    // Pin the precondition too: if the menu ever stops overflowing, the height
+    // assertion below still passes while testing nothing at all.
+    check("the full menu really does overflow its cap (else the next check is vacuous)",
+        m.scrollH > m.clientH, JSON.stringify(m));
+    check("the divider under the notes switch survives an overflowing menu", m.h >= 1, JSON.stringify(m));
 
     // ── 2. Toggle Check Style OFF → collapses to gate + 3 masters ─────
     await clickRow("Check style");
@@ -73,20 +91,22 @@ export async function run({ page, check, baseUrl }) {
     await clickRow("Proofreading");
     l = await labels();
     check("gate off collapses the checks away", (await rowCount()) === 2, String(await rowCount()));
-    check("gate off leaves the notes switch and the gate", JSON.stringify(l) === JSON.stringify(["Highlight notes", "Proofreading"]), JSON.stringify(l));
+    check("gate off leaves the notes switch and the gate", JSON.stringify(l) === JSON.stringify(["Highlight note markers", "Proofreading"]), JSON.stringify(l));
+    m = await sepMetrics();
+    check("the divider is there in the short menu too", m.h >= 1 && m.scrollH <= m.clientH, JSON.stringify(m));
 
     // ── 5. Gate back ON → prior mix restored, IN ORDER ───────────────
     await clickRow("Proofreading");
     l = await labels();
     check("gate back on restores all 17 rows", (await rowCount()) === 17, String(await rowCount()));
-    check("the notes highlight still leads after the gate cycles", l[0] === "Highlight notes", JSON.stringify(l));
+    check("the notes highlight still leads after the gate cycles", l[0] === "Highlight note markers", JSON.stringify(l));
 
     // ── 6. The notes switch flips itself, independent of the gate ────
     const notesState = () => page.$eval(`${MENU} .tb-switch-item`, (el) => el.getAttribute("aria-checked"));
     check("the notes highlight ships on", (await notesState()) === "true", await notesState());
-    await clickRow("Highlight notes");
+    await clickRow("Highlight note markers");
     check("clicking the notes switch turns it off", (await notesState()) === "false", await notesState());
     check("turning the highlight off leaves every other row alone", (await rowCount()) === 17, String(await rowCount()));
-    await clickRow("Highlight notes");
+    await clickRow("Highlight note markers");
     check("clicking it again turns it back on", (await notesState()) === "true", await notesState());
 }

@@ -1,5 +1,5 @@
 /**
- * The Checks menu's "Highlight notes" row — the in-text editor-note highlight
+ * The Checks menu's "Highlight note markers" row — the in-text editor-note highlight
  * (birta.notes.highlightMarkers) surfaced as a switch.
  *
  * Its POSITION is the design, and that is what these assert: it leads the menu
@@ -68,7 +68,7 @@ describe("Checks menu — Notes section", () => {
     it("the highlight switch should lead the menu, above the Proofreading gate", () => {
         const topbar = buildToolbar();
 
-        expect(switchLabels(topbar).slice(0, 2)).toEqual(["Highlight notes", "Proofreading"]);
+        expect(switchLabels(topbar).slice(0, 2)).toEqual(["Highlight note markers", "Proofreading"]);
 
         const row = notesRow(topbar);
         expect(row.getAttribute("role")).toBe("switch");
@@ -103,7 +103,7 @@ describe("Checks menu — Notes section", () => {
         setGate(false);
 
         // The checks collapse away; the writer's own notes are not a check.
-        expect(switchLabels(topbar)).toEqual(["Highlight notes", "Proofreading"]);
+        expect(switchLabels(topbar)).toEqual(["Highlight note markers", "Proofreading"]);
     });
 
     it("cycling the Proofreading gate should not reorder the menu", () => {
@@ -116,7 +116,7 @@ describe("Checks menu — Notes section", () => {
         setGate(true);
 
         expect(switchLabels(topbar)).toEqual(before);
-        expect(switchLabels(topbar)[0]).toBe("Highlight notes");
+        expect(switchLabels(topbar)[0]).toBe("Highlight note markers");
     });
 
     it("clicking the highlight switch should flip the gate, the row, and persist it", () => {

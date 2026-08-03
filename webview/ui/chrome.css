@@ -292,8 +292,20 @@
     user-select: none;
 }
 
-/* ── Menu group divider ── */
+/* ── Menu group divider ──
+   `flex: none` is load-bearing, not tidiness. Menus are column flex containers
+   (.tb-fmt-menu) with a max-height, so once the content overflows, every child
+   is a flex item shrinking from its default `flex-shrink: 1`. Rows survive on
+   their text's min-content height; a 1px rule has no content to floor it and
+   shrinks to ZERO — the divider silently disappears at exactly the sizes a menu
+   is long enough to need dividers. The Checks menu showed it: with every check
+   on it runs 583px past a 520px cap, and the rule between "Highlight note
+   markers" and "Proofreading" vanished, coming back only when turning
+   proofreading off shortened the menu under the cap. Pinned by the "divider ...
+   survives an overflowing menu" check in e2e/checksMenu, which asserts the
+   overflow precondition too — without it the check passes vacuously. */
 .ui-menu-divider {
+    flex: none;
     height: 1px;
     margin: var(--ui-space-2) 0;
     background: var(--ui-card-border);

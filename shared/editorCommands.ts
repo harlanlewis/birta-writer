@@ -169,7 +169,10 @@ export const EDITOR_COMMANDS = [
     // beside the three check toggles because it is the same kind of thing — an
     // advisory in-text annotation the user turns on and off — even though the
     // proofreading master gate does not govern it.
-    { id: "toggleNoteHighlights", title: "Highlight Notes", palette: true, sections: [] },
+    // Titled after the markers, not the notes: "Highlight" alone is already the
+    // `==mark==` command two rows up, and a palette search for "highlight" must
+    // not offer two entries that read the same.
+    { id: "toggleNoteHighlights", title: "Highlight Note Markers", palette: true, sections: [] },
     // A single toggle each for the toolbar and the TOC — the state is binary,
     // so two idempotent show/hide palette entries would always leave one that
     // does nothing. `toggleToc` (above) covers TOC visibility; these cover the

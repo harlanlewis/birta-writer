@@ -251,7 +251,7 @@ export type ToExtensionMessage =
     // The "Move checked tasks to bottom" toggle (toolbar Lists menu / task-list
     // block menu): persist birta.checklist.sinkChecked.
     | { type: "setChecklistSink"; enabled: boolean }
-    // The "Highlight notes" switch (toolbar Checks menu / review sidebar's Notes
+    // The "Highlight note markers" switch (toolbar Checks menu / review sidebar's Notes
     // tab / palette): persist birta.notes.highlightMarkers. The config-change
     // listener echoes it back as `notesConfig`, so every open editor re-gates.
     | { type: "setNoteHighlight"; enabled: boolean }

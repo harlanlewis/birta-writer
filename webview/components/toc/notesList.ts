@@ -62,7 +62,7 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
     highlightBtn.className = "ui-btn review-seg review-trailing";
     highlightBtn.textContent = t("Highlight");
     // role=switch/aria-checked, not a bare aria-pressed button, so this announces
-    // identically to the Checks menu's "Highlight notes" row (createSwitchItem) —
+    // identically to the Checks menu's "Highlight note markers" row (createSwitchItem) —
     // one bit, one announcement, however many surfaces wear it. Tabbability comes
     // from the toolbar row's roving group in reviewList.ts.
     highlightBtn.setAttribute("role", "switch");
