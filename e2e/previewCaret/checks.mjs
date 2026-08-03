@@ -58,6 +58,31 @@ async function paneCoords(page, selector) {
     return { x: box.x + Math.min(60, box.w / 3), y: box.y + box.h / 2 };
 }
 
+/** Center of the first VISIBLE match, after revealing the block's chrome. */
+async function chromeCoords(page, selector) {
+    const box = await page.evaluate((sel) => {
+        for (const el of document.querySelectorAll(sel)) {
+            const r = el.getBoundingClientRect();
+            const vis = getComputedStyle(el).display !== "none" && r.width > 0 && r.height > 0;
+            if (vis) return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        }
+        return null;
+    }, selector);
+    return box;
+}
+
+/** Hover the mermaid block so its control column is interactive. */
+async function revealChrome(page) {
+    const box = await page.evaluate(() => {
+        const w = document.querySelector(".code-block-wrapper");
+        if (!w) return null;
+        const r = w.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + 8 };
+    });
+    if (box) await page.mouse.move(box.x, box.y);
+    await page.waitForTimeout(60);
+}
+
 export async function run({ page, check, baseUrl }) {
     for (const [label, selector, ready] of [
         ["mermaid", ".mermaid-preview", ".mermaid-preview svg"],
@@ -104,5 +129,123 @@ export async function run({ page, check, baseUrl }) {
         const back = await docState(page);
         check(`${label}: clicking back into prose restores normal typing`,
             back.text.includes("Q"), JSON.stringify(back.text.slice(0, 120)));
+    }
+
+    // ── The rest of the block's chrome (MAR-267) ─────────────────────────
+    // MAR-200 covered the pane. Every other affordance of the same block
+    // swallows its own mousedown (preventDefault), so the caret stays live
+    // somewhere the user isn't looking, and the next keystroke edits there.
+    // Same assertion as above: the DOCUMENT, not the mechanism.
+    // `did` is what the button was FOR: going inert must not cost the action,
+    // so each case asserts the affordance still fired. Read in the page, off
+    // the first code block (the mermaid one). Two have no observable of their
+    // own here — copy's target is the clipboard, and a click on the resize
+    // handle without a drag changes nothing — so they carry none.
+    const AFFORDANCES = [
+        ["copy button", ".copy-btn", false,
+            () => !!document.querySelector(".copy-btn.copy-btn--done")],
+        ["view-toggle button", ".code-view-toggle-btn", false,
+            (w) => !w.querySelector("pre").classList.contains("code-pre--preview-hidden")],
+        ["width button", ".code-width-toggle-btn", false, (w) => w.classList.contains("bw-full")],
+        ["fullscreen button", ".code-block-fullscreen-btn", false,
+            () => document.querySelectorAll(".mermaid-lightbox").length === 1],
+        ["language pill", ".lang-picker-btn", false,
+            () => getComputedStyle(document.querySelector(".lang-picker-dropdown")).display !== "none"],
+        ["resize handle", ".code-block-resize-handle", false, null],
+        // No entry for the float row itself: measured, it is exactly the
+        // pill's box (84.4px wide, and its center hit-tests to
+        // `.lang-picker-label`), so a "row background" case would be the pill
+        // case again — passing for the pill's reason, not its own.
+        // Word wrap is chrome only a CODE-mode block shows, so this one
+        // leaves preview first (via the toggle, itself a covered affordance).
+        ["word-wrap button", ".code-wrap-toggle-btn", true,
+            (w) => w.classList.contains("code-block-wrapper--word-wrap")],
+    ];
+
+    for (const [label, selector, needsCodeMode, did] of AFFORDANCES) {
+        await page.goto(`${baseUrl}/index.html`);
+        await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+        await page.waitForSelector(".mermaid-preview svg", { timeout: 20000 });
+        await page.waitForTimeout(300);
+
+        if (needsCodeMode) {
+            await revealChrome(page);
+            const toggle = await chromeCoords(page, ".code-view-toggle-btn");
+            if (toggle) await page.mouse.click(toggle.x, toggle.y);
+            await page.waitForTimeout(120);
+        }
+
+        const alpha = await proseCoords(page, "alpha prose");
+        if (!alpha) { check(`${label}: prose paragraph found`, false); continue; }
+        await page.mouse.click(alpha.x, alpha.y);
+        await page.waitForTimeout(80);
+        const before = await docState(page);
+
+        await revealChrome(page);
+        const target = await chromeCoords(page, selector);
+        check(`${label}: affordance is visible`, target != null);
+        if (!target) continue;
+        await page.mouse.click(target.x, target.y);
+        await page.waitForTimeout(120);
+
+        if (did) {
+            const fired = await page.evaluate(
+                (src) => new Function(`return (${src})`)()(
+                    document.querySelector(".code-block-wrapper")),
+                did.toString());
+            check(`${label}: still does what it is for`, fired === true, `${fired}`);
+        }
+
+        await page.keyboard.press("Enter");
+        await page.keyboard.type("zz");
+        await page.waitForTimeout(150);
+
+        const after = await docState(page);
+        const typed = after.text.indexOf("zz");
+        check(`${label}: a click on it leaves the document unedited`,
+            after.paras === before.paras && typed < 0,
+            `paras ${before.paras}→${after.paras}; zz at ${typed}` +
+            (typed < 0 ? "" : ` — ${JSON.stringify(after.text.slice(Math.max(0, typed - 40), typed + 40))}`));
+    }
+
+    // ── The severe case: typing behind an open fullscreen lightbox ───────
+    // The diagram lightbox focuses nothing, so the editor keeps focus while
+    // the user looks at an overlay — every keystroke edits the document they
+    // cannot see.
+    await page.goto(`${baseUrl}/index.html`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForSelector(".mermaid-preview svg", { timeout: 20000 });
+    await page.waitForTimeout(300);
+
+    const alpha = await proseCoords(page, "alpha prose");
+    check("lightbox: prose paragraph found", alpha != null);
+    if (alpha) {
+        await page.mouse.click(alpha.x, alpha.y);
+        await page.waitForTimeout(80);
+        const before = await docState(page);
+
+        await revealChrome(page);
+        const fs = await chromeCoords(page, ".code-block-fullscreen-btn");
+        check("lightbox: fullscreen button found", fs != null);
+        if (fs) {
+            await page.mouse.click(fs.x, fs.y);
+            await page.waitForTimeout(400);
+            const open = await page.evaluate(() =>
+                document.querySelectorAll(".mermaid-lightbox").length);
+            check("lightbox: the diagram lightbox opened", open === 1, `count ${open}`);
+
+            const editorFocused = await page.evaluate(() =>
+                document.activeElement?.classList?.contains("ProseMirror") ?? false);
+            check("lightbox: the editor is not still focused behind it", !editorFocused);
+
+            await page.keyboard.press("Enter");
+            await page.keyboard.type("zz");
+            await page.waitForTimeout(150);
+            const after = await docState(page);
+            const typed = after.text.indexOf("zz");
+            check("lightbox: keystrokes do not edit the document behind it",
+                after.paras === before.paras && typed < 0,
+                `paras ${before.paras}→${after.paras}; zz at ${typed}`);
+        }
     }
 }

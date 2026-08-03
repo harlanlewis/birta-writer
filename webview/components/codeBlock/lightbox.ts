@@ -321,6 +321,14 @@ export function openDiagramLightbox(ctx: LightboxContext & {
     lbBody.append(lbPreviewPane, lbCodePane);
     overlay.append(lbHeader, lbBody);
     document.body.appendChild(overlay);
+    // Take focus off the editor (MAR-267). This overlay covers the document
+    // and — unlike the code lightbox, whose textarea focuses itself — nothing
+    // in it is focusable while it shows the diagram, so the caret stayed live
+    // BEHIND it and every keystroke edited a document the user couldn't see.
+    // The overlay is the focus home for the rest of its life; Escape is
+    // unaffected, since `bindLightboxDismiss` listens on the document.
+    overlay.tabIndex = -1;
+    overlay.focus();
     lockBodyScroll();
     host.active = overlay;
 
