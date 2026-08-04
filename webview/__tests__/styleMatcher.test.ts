@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileStyleMatcher, findRepeatedWords, parseEntry, type StyleCategory } from "../utils/styleMatcher";
+import {
+    compileList,
+    compileStyleMatcher,
+    findRepeatedWords,
+    leftmostLongest,
+    parseEntry,
+    MAX_ALTERNATIVES_PER_REGEX,
+    type StyleCategory,
+} from "../utils/styleMatcher";
 import { DEFAULT_CONFIG } from "../plugins/proofread";
 import {
     AI_ARTIFACTS,
@@ -184,6 +192,86 @@ describe("compileStyleMatcher", () => {
 
         expect(matches).toHaveLength(1);
         expect(text.slice(matches[0].start, matches[0].end)).toBe("all in a day’s work");
+    });
+});
+
+/**
+ * MAR-305: the phrase lists are compiled as several capped alternations rather
+ * than one per category, because V8 compiles a large alternation superlinearly
+ * (2.4 s of one-time work on the shipped lists under Node 22 / V8 12.4, paid by
+ * whichever scan runs first). These pin the two halves of that: the chunking
+ * itself, and the leftmost-longest merge that keeps chunking invisible.
+ */
+describe("phrase-list chunking", () => {
+    it("a list longer than the cap should compile into several regexes", () => {
+        const phrases = Array.from(
+            { length: MAX_ALTERNATIVES_PER_REGEX * 2 + 1 },
+            (_, i) => `zzq${i} alpha`,
+        );
+
+        expect(compileList(phrases)).toHaveLength(3);
+    });
+
+    it("a list at or below the cap should compile into one regex", () => {
+        expect(compileList(["one phrase", "another phrase"])).toHaveLength(1);
+        expect(compileList(
+            Array.from({ length: MAX_ALTERNATIVES_PER_REGEX }, (_, i) => `zzq${i}`),
+        )).toHaveLength(1);
+    });
+
+    it("an empty list should compile into no regexes", () => {
+        expect(compileList([])).toEqual([]);
+    });
+
+    it("the largest shipped category should actually be chunked", () => {
+        // Guards the cap against being raised back over the compile cliff:
+        // the cost is negligible below ~400 alternatives and seconds above ~800.
+        const phrases = CLICHES.map((entry) => parseEntry(entry).phrase);
+
+        expect(phrases.length).toBeGreaterThan(MAX_ALTERNATIVES_PER_REGEX);
+        expect(compileList(phrases).length).toBeGreaterThan(1);
+    });
+
+    it("a longer phrase should still win over a shorter one in another chunk", () => {
+        // compileList sorts longest-first, so a full cap's worth of
+        // intermediate-length padding forces "pretty much" and "pretty" into
+        // different chunks — the case a single alternation resolved for free.
+        const padding = Array.from(
+            { length: MAX_ALTERNATIVES_PER_REGEX },
+            (_, i) => `zzq${String(i).padStart(4, "0")}`, // 7 chars: between the two
+        );
+        const matcher = compileStyleMatcher(
+            { fillers: ["pretty much", ...padding, "pretty"] },
+            { fillers: true },
+        );
+        const text = "This is pretty much done.";
+
+        const matches = matcher(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("pretty much");
+    });
+});
+
+describe("leftmostLongest", () => {
+    it("a hit contained in a longer one should be dropped", () => {
+        expect(leftmostLongest([{ start: 0, end: 6 }, { start: 0, end: 11 }]))
+            .toEqual([{ start: 0, end: 11 }]);
+    });
+
+    it("a partially overlapping later hit should be dropped", () => {
+        expect(leftmostLongest([{ start: 4, end: 9 }, { start: 0, end: 6 }]))
+            .toEqual([{ start: 0, end: 6 }]);
+    });
+
+    it("non-overlapping hits should all survive, in document order", () => {
+        expect(leftmostLongest([{ start: 8, end: 12 }, { start: 0, end: 4 }, { start: 4, end: 8 }]))
+            .toEqual([{ start: 0, end: 4 }, { start: 4, end: 8 }, { start: 8, end: 12 }]);
+    });
+
+    it("a single hit should pass through unchanged", () => {
+        expect(leftmostLongest([{ start: 3, end: 7 }])).toEqual([{ start: 3, end: 7 }]);
+        expect(leftmostLongest([])).toEqual([]);
     });
 });
 
