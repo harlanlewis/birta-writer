@@ -693,6 +693,17 @@ describe("an emptied item holding a rule, through the real save merge", () => {
         expect(await reparsedItemShape(merged)).toBe("paragraph,hr");
     });
 
+    it("should carry MAR-309's glued paragraph all the way to disk", async () => {
+        // The seam between the two fixes, driven end to end because neither
+        // layer's own tests cross it: MAR-309 made the SERIALIZER glue
+        // `-\n  world\n`, and MAR-313 is the MERGE reinstating the blank the
+        // saved file had. A green `getMarkdown()` proves only the first half —
+        // that is precisely how MAR-313 came to exist.
+        const merged = await saveThroughMerge("- hello\n\n  world\n", "hello");
+        expect(merged).toBe("-\n  world\n");
+        expect(await reparsedItemShape(merged)).toBe("paragraph");
+    });
+
     it("should keep a plain bullet's rule inside the item too", async () => {
         // Not checkbox-specific: MAR-306 is how the shape was found, not what
         // causes it. This case fails identically on the pre-fix merge.
