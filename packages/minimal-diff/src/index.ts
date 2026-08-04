@@ -110,9 +110,12 @@ export interface FormatProfile {
      * concession the profile would otherwise refuse, and scope them to
      * something checkable on the line in front of you.
      *
-     * Only lines the round trip PAIRED appear (unchanged lines and in-place
-     * rewrites); a construct the serializer drops outright has no counterpart
-     * and is omitted. Lines arrive as content, without their line endings.
+     * Only lines the round trip PAIRED appear — unchanged lines, in-place
+     * rewrites, and runs it merely re-indented line by line; a construct the
+     * serializer drops outright has no counterpart and is omitted, and so does
+     * a run it rewrote deeply enough that no correspondence is visible in the
+     * bytes (`pairBaselineLines`). Lines arrive as content, without their line
+     * endings.
      */
     baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
     /**
@@ -533,7 +536,12 @@ export function computeRoundTripProtection(
     // runs (e.g. a dropped construct sharing a run with a construct whose
     // canonical form has a different line count) — repairing with wrong
     // bytes is worse than canonicalization, so fall back to the fused
-    // region. Suppression regions get the same discipline: if including them
+    // region. `allowSplit` governs the finer per-line split as well, so both
+    // granularities share this one retreat. Note what it can and cannot
+    // catch: a mis-paired split that still reproduces the baseline passes
+    // here and only misbehaves once the user edits one of its lines, which is
+    // why the splits are gated on evidence rather than on this check.
+    // Suppression regions get the same discipline: if including them
     // fails the self-check, retry without them (never worse than the
     // pre-suppression engine), and if nothing can reproduce the baseline,
     // ship no protection at all.
@@ -559,15 +567,21 @@ export function computeRoundTripProtection(
  *   - a run consisting of EXACTLY one `del` and one `ins`, the same isolated
  *     adjacency the merge itself calls an in-place replacement.
  *
+ *   - a run whose two sides correspond LINE BY LINE, in the narrow sense
+ *     `positionalRunPairs` defines: same number of dels and inses, and each
+ *     i-th pair identical apart from its leading whitespace.
+ *
  * Everything else in a non-keep run is left unpaired on purpose. A `del` with
  * no `ins` is a construct the serializer dropped outright, so no counterpart
- * exists. And a LONGER run does not interleave: the LCS emits all its dels and
+ * exists. And a longer run does not interleave: the LCS emits all its dels and
  * then all its inses, so "a del immediately followed by an ins" would pair the
  * run's LAST saved line with its FIRST serialized one — lines that have nothing
- * to do with each other. Positionally re-pairing such a run is the same
- * temptation `buildProtectedRegions` resists just below, and the stakes here are
- * higher: an absent fact costs a profile nothing (it falls back to whatever it
- * did before), while a WRONG one is a confident lie about the file.
+ * to do with each other. Pairing such a run by ADJACENCY is the temptation
+ * `buildProtectedRegions` resists just below, and the stakes here are higher: an
+ * absent fact costs a profile nothing (it falls back to whatever it did before),
+ * while a WRONG one is a confident lie about the file. What makes the third
+ * shape admissible is that it does not guess the correspondence — it declines
+ * unless the bytes exhibit one (see `positionalRunPairs`).
  *
  * `lastSavedIdx` is the saved split's final segment, whose trailing `\r` is
  * content rather than an ending (see "Line endings" above); every other line is
@@ -584,7 +598,7 @@ function pairBaselineLines(edits: Edit[], lastSavedIdx: number): BaselineLinePai
             continue;
         }
         // Walk the whole non-keep run, then take it only if it is a lone
-        // del/ins couple.
+        // del/ins couple or corresponds line by line.
         const start = i;
         while (i < edits.length && edits[i].op !== "keep") i++;
         const run = edits.slice(start, i);
@@ -594,7 +608,61 @@ function pairBaselineLines(edits: Edit[], lastSavedIdx: number): BaselineLinePai
                 saved: savedContent((run[0] as Extract<Edit, { op: "del" }>).saved),
                 serial: stripEol((run[1] as Extract<Edit, { op: "ins" }>).serial.text),
             });
+            continue;
         }
+        for (const pair of positionalRunPairs(run, lastSavedIdx) ?? []) {
+            pairs.push({
+                saved: savedContent(pair.saved),
+                serial: stripEol(pair.serial.text),
+            });
+        }
+    }
+    return pairs;
+}
+
+/** A line's content with its leading whitespace removed — everything the
+ *  serializer preserved verbatim when all it changed was the indentation. */
+function bodyOf(line: string): string {
+    return line.replace(/^[ \t]+/, "");
+}
+
+/**
+ * The line-by-line correspondence of a non-keep run, or null when the run does
+ * not exhibit one.
+ *
+ * A run's dels and its inses are, by construction, the same contiguous span of
+ * the document before and after the round trip, so IF each saved line has
+ * exactly one serialized counterpart, that counterpart is the one at the same
+ * position — a serializer re-emits a span, it does not reorder it. The whole
+ * question is the "if": a span where one construct was dropped and another
+ * expanded has equal line counts on both sides and no line-wise correspondence
+ * at all, and pairing it positionally teaches a confident lie (MAR-222's first
+ * cut mispaired one such run, taught the dictionary that six spaces render as
+ * two, and corrupted an unrelated list).
+ *
+ * So this does not infer the correspondence from the line COUNTS, which is the
+ * step that goes wrong. It requires the bytes to show one: every pair identical
+ * apart from its leading whitespace, meaning the round trip changed nothing
+ * about those lines except how far in they sit. That is both the strongest
+ * witness available (a differing body could be anything) and exactly the case
+ * the missing facts are about — two adjacent lines sharing an unusual indent,
+ * which collapse into one 2-del/2-ins run and so teach nothing (MAR-231).
+ *
+ * Order within the run is not consulted: dels and inses are collected
+ * separately, each in document order, so an interleaved run pairs the same way
+ * a grouped one does.
+ */
+function positionalRunPairs(
+    run: readonly Edit[],
+    lastSavedIdx: number,
+): { saved: SigLine; serial: SigLine }[] | null {
+    const dels = run.filter((e): e is Extract<Edit, { op: "del" }> => e.op === "del");
+    const inses = run.filter((e): e is Extract<Edit, { op: "ins" }> => e.op === "ins");
+    if (dels.length === 0 || dels.length !== inses.length) return null;
+    const pairs = dels.map((d, i) => ({ saved: d.saved, serial: inses[i].serial }));
+    for (const pair of pairs) {
+        const saved = pair.saved.lineIdx === lastSavedIdx ? pair.saved.text : stripEol(pair.saved.text);
+        if (bodyOf(saved) !== bodyOf(stripEol(pair.serial.text))) return null;
     }
     return pairs;
 }
@@ -604,8 +672,8 @@ function pairBaselineLines(edits: Edit[], lastSavedIdx: number): BaselineLinePai
  * now being performed — `mergeFacts`' evidence.
  *
  * Deliberately narrower than `pairBaselineLines`, which also accepts a lone
- * del/ins couple: see `mergeFacts` for why only a `keep` is a witness strong
- * enough to spell an inserted line from.
+ * del/ins couple and a run that corresponds line by line: see `mergeFacts` for
+ * why only a `keep` is a witness strong enough to spell an inserted line from.
  */
 function pairKeptLines(edits: Edit[], lastSavedIdx: number): BaselineLinePair[] {
     const pairs: BaselineLinePair[] = [];
@@ -667,12 +735,25 @@ function buildProtectedRegions(
         // = one construct). Two rewritten constructs changed in one run
         // otherwise become an all-or-nothing region: editing one would
         // unprotect both.
+        //
+        // ADJACENT LINES ARE ONE GROUP, which is as far as that goes on its
+        // own: two neighbouring lines the round trip merely re-indented are
+        // consecutive on both sides, so they form a single region and editing
+        // either one canonicalizes the other's indentation as collateral
+        // damage (MAR-231). Where the run corresponds line by line —
+        // `positionalRunPairs`' narrow test, not "the counts match" — each
+        // line's canonical form is exactly its own counterpart, so the region
+        // can be split that far and an edit unprotects only the line it
+        // touched.
+        const perLine = allowSplit ? positionalRunPairs(run, savedLines.length - 1) : null;
         const delGroups = groupByAdjacency(dels.map((d) => d.saved));
         const insGroups = inses.length > 0 ? groupByAdjacency(inses.map((i) => i.serial)) : [];
         const pairable = allowSplit && insGroups.length > 0 && delGroups.length === insGroups.length;
-        const subRegions = pairable
-            ? delGroups.map((dg, gi) => ({ delSpan: dg, insSpan: insGroups[gi] }))
-            : [{ delSpan: dels.map((d) => d.saved), insSpan: inses.map((i) => i.serial) }];
+        const subRegions = perLine
+            ? perLine.map((p) => ({ delSpan: [p.saved], insSpan: [p.serial] }))
+            : pairable
+                ? delGroups.map((dg, gi) => ({ delSpan: dg, insSpan: insGroups[gi] }))
+                : [{ delSpan: dels.map((d) => d.saved), insSpan: inses.map((i) => i.serial) }];
 
         for (let gi = 0; gi < subRegions.length; gi++) {
             const sub = subRegions[gi];
