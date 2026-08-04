@@ -615,3 +615,60 @@ describe("emptying a task item that holds another block", () => {
         expect(await saveUnedited("- [ ] a\n- [x] b\n")).toBe("- [ ] a\n- [x] b\n");
     });
 });
+
+// ── What actually reaches DISK, which is not what the serializer wrote ──────
+//
+// Every case above ends at `getMarkdown()`. The save path does not: the
+// serializer's bytes go through `applyMinimalChanges`, and the merge preserves
+// blank lines the saved file already had. So a fix that REMOVES a blank line —
+// which is exactly what MAR-306's bare-marker glue does — is correct in the
+// serializer and undone on the way to disk.
+//
+// Found by critiquing the session diff as one change, not by any lane: the
+// merge belonged to a different lane, and neither side's tests crossed the seam.
+//
+// The reported symptoms are still fixed end to end — no invented heading, and
+// bytes the parser can read — which is what the first two cases pin. What is
+// NOT fixed is the rule's NESTING: the merge reinstates the blank line, and an
+// item beginning with a blank gives up everything after it, so the rule reopens
+// as a top-level sibling. The third case pins that gap deliberately, so it
+// cannot be mistaken for working. Fixing it means changing how the merge sources
+// blank runs, and there is direct evidence that is dangerous: MAR-303's lane
+// tried it in its first cut and collapsed `\n\n---\n` to `\n---\n` in
+// fence-edges.md, turning a thematic break into a setext underline. Tracked
+// separately rather than forced in here.
+describe("an emptied item holding a rule, through the real save merge", () => {
+    /** Serialize, then merge exactly as the sync pipeline does. */
+    async function saveThroughMerge(content: string, deleteText: string): Promise<string> {
+        const editor = await makeEditor(content);
+        const baseline = editor.action(getMarkdown());
+        const protection = computeRoundTripProtection(content, baseline);
+        const v = view(editor);
+        const to = posAfterText(v, deleteText);
+        v.dispatch(v.state.tr.delete(to - deleteText.length, to));
+        const merged = applyMinimalChanges(content, editor.action(getMarkdown()), protection);
+        await editor.destroy();
+        return merged;
+    }
+
+    it("should never write bytes that invent a heading", async () => {
+        const merged = await saveThroughMerge("- [x] alpha\n\n  ---\n", "alpha");
+        expect(await reparsedKinds(merged)).not.toContain("heading");
+    });
+
+    it("should write bytes that reopen at all", async () => {
+        // The shape whose pre-fix bytes the PARSER THREW on. `reparsedKinds`
+        // opens a real editor, so a throw fails here.
+        const merged = await saveThroughMerge("- [x] hello\n\n  world\n", "hello");
+        expect(await reparsedKinds(merged)).toContain("paragraph");
+    });
+
+    it.fails("should keep the rule inside the item once the merge stops reinstating the blank", async () => {
+        // KNOWN GAP. The serializer writes `-\n  ---\n`; the merge writes
+        // `-\n\n  ---\n`, and the rule reopens outside the list. Asserted as
+        // `it.fails` rather than pinned to today's bytes so it turns red the
+        // moment the merge is fixed, instead of quietly outliving the gap.
+        const merged = await saveThroughMerge("- [x] alpha\n\n  ---\n", "alpha");
+        expect(await reparsedItemShape(merged)).toBe("paragraph,hr");
+    });
+});
