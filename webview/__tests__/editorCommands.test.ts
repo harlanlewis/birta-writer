@@ -24,7 +24,6 @@ import {
     wrapInOrderedListCommand,
     wrapInBlockquoteCommand,
     createCodeBlockCommand,
-    insertHrCommand,
 } from "@milkdown/preset-commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import { parseFromClipboard, TextSelection } from "../pm";
@@ -32,7 +31,7 @@ import type { EditorView } from "../pm";
 import { CellSelection, TableMap } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { editorCommands, runEditorCommand, setEditorCommandHost } from "../editorCommands";
-import { insertCalloutCommand, pasteMarkdownPlugin } from "../plugins";
+import { insertCalloutCommand, insertHorizontalRuleCommand, pasteMarkdownPlugin } from "../plugins";
 import { mockVscodeApi } from "./setup";
 
 /** A lightweight fake editor whose action() hands back a mock ctx. */
@@ -67,7 +66,12 @@ describe("editorCommands registry — Milkdown command entries", () => {
         ["toggleStrikethrough", toggleStrikethroughCommand],
         ["setParagraph", turnIntoTextCommand],
         ["insertCodeBlock", createCodeBlockCommand],
-        ["insertHorizontalRule", insertHrCommand],
+        // Routes to our own command, not Milkdown's: `insertHrCommand` deleted
+        // the list item it was invoked in (MAR-304). Note what this test could
+        // NOT see — it asserts the command KEY, so it stayed green through a
+        // content-losing bug and a RangeError alike. The behavior is pinned in
+        // horizontalRuleInsert.test.ts.
+        ["insertHorizontalRule", insertHorizontalRuleCommand],
     ] as const)("%s should call its command key", (id, command) => {
         // Arrange
         const { editor, call } = fakeEditor();

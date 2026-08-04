@@ -435,9 +435,12 @@ describe("a marker fact is only recorded when the source actually states it", ()
 //
 // This drives the editor's own Tab handler rather than calling the serializer
 // with a hand-built document, because "can a user get here" is what decides
-// whether the bullet is worth flipping at all. (The published
-// `insertHorizontalRule` command does NOT get here: it replaces the nested item
-// rather than filling it, so the sublist is gone before the save.)
+// whether the bullet is worth flipping at all. Tab is no longer the ONLY way
+// here: `insertHorizontalRule` used to destroy the nested item before the save
+// could see it, which is what this note originally recorded — that was its own
+// bug (MAR-304) and it is fixed, so the command now fills the item and reaches
+// this shape too. The Tab path is kept as the gesture under test because it is
+// the one that creates an unmarked sublist.
 
 /** An editor with the Tab handler wired, as the real webview has it. */
 async function makeEditorWithTab(markdown: string): Promise<Editor> {
