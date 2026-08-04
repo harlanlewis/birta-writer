@@ -981,8 +981,8 @@ function depthPrefixOf(savedWs: string, serialWs: string): string | undefined {
  *      carry NO baseline facts to consult, because a tab keys equal to the two
  *      spaces it renders as (`normalizeOutlineIndent`), so the file round-trips
  *      under the profile's own keys and `computeRoundTripProtection` returns
- *      null. Measured on the shapes below, arm 2 alone fixes one loss of twenty-
- *      two; with this arm, sixteen.
+ *      null. Of the seven losses this rule closed across the swept shapes, six
+ *      are this arm's and only one is arm 2's.
  *   2. THE FILE'S OWN TESTIMONY, read backwards (`sourceSpellingOf`). Rule 1
  *      cannot see a unit the serializer does not use: a four-space outline
  *      writes depth 1 as four spaces where the serializer writes two, and no
@@ -1011,6 +1011,18 @@ function depthPrefixOf(savedWs: string, serialWs: string): string | undefined {
  *     be told a level is written `\t`, and writing one back is four columns
  *     where two were meant. Arm 1 needs no such check: its answer IS this
  *     line's own current bytes.
+ *
+ * WHAT IS STILL EXPOSED, stated plainly because the marker gate is a guess about
+ * a line's ROLE and not a reading of it: fence content compares raw, so a
+ * whitespace-only edit inside a top-level fence reaches this hook, and a fence
+ * line reading `- item` is indistinguishable here from an outline bullet. The
+ * depth gate covers the case that matters — a pure convention conversion at the
+ * same column count is left alone — but an edit inside a fence that changes the
+ * column count AND happens to land on a marker-shaped line is re-spelled. The
+ * hook is handed two bare strings; `reconcileInsertion`'s sibling gets each
+ * line's KEY, which already encodes whether the line is verbatim content, and
+ * that asymmetry is the real gap. Closing it is an engine-signature change, not
+ * a profile one.
  */
 function respellMovedIndent(
     saved: string,
