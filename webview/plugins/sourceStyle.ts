@@ -469,6 +469,43 @@ function bulletNeedsFlipForRule(node: any, bullet: string, parent: any, state: a
 }
 
 /**
+ * Clear a bullet/rule collision by re-spelling the RULES instead of the bullet
+ * (MAR-307), where every colliding rule is one the editor created.
+ *
+ * `bulletNeedsFlipForRule` above resolves the collision by changing the bullet,
+ * which is correct and also the most expensive answer available: a bullet is a
+ * property of the LIST, so flipping it rewrites the marker of every item in it.
+ * Inserting a rule into an emptied nested item wrote
+ * `- a\n  * ---\n  * keep\n  * keep2\n` from a file spelled with `-` throughout —
+ * two of those three re-spelled lines the user had never touched, and the live
+ * document still recorded `bullet_list{marker: "-"}`, so the file disagreed with
+ * the document's own attribute. That is the churn MAR-16 exists to prevent.
+ *
+ * A rule character is per-NODE, so re-spelling it costs exactly the one line the
+ * rule is on. The trade is only sound when that line has no source bytes to
+ * preserve: a break carrying a recorded `marker` was read from the file (MAR-16),
+ * and rewriting it would be the same churn one line at a time. So this fires
+ * only for breaks the editor created (`marker == null`, which is what
+ * `ruleMarkerFor` resolves through the global `rule` option) — the shape the
+ * reported gesture produces, since `insertHorizontalRule` has no source to
+ * carry.
+ *
+ * All-or-nothing, and checked before anything is mutated: a list holding both a
+ * created rule and a recorded one still needs the flip for the recorded one, and
+ * a rule re-spelled to the character the flip is about to ADOPT would collide
+ * all over again.
+ */
+function respellCreatedRules(node: any, bullet: string, state: any): boolean {
+    const colliding = itemsLedByRule(node).filter(
+        (led) => ruleMarkerFor(led.rule, state) === bullet,
+    );
+    if (colliding.some((led) => RULE_MARKERS.has(led.rule.marker))) return false;
+    const replacement = bullet === "*" ? "-" : "*";
+    for (const led of colliding) led.rule.marker = replacement;
+    return true;
+}
+
+/**
  * List handler honoring the per-list `marker` (bullet character or ordered
  * delimiter) and `incrementMarker` recorded by the visitor above (MAR-218).
  *
@@ -581,7 +618,22 @@ function serializeList(node: any, parent: any, state: any, info: any): string {
         // A rule this bullet cannot carry (MAR-240) — the live form of the
         // hazard above, reached through the artifact paragraph rather than
         // through a break in first position.
-        if (bulletNeedsFlipForRule(node, bullet, parent, state)) useDifferentMarker = true;
+        //
+        // Asked of the bullet that will PRINT, not of the one chosen above: a
+        // flip decided by either branch already changes the character the rule
+        // has to differ from, which is the same reason `hoistRulesOntoMarkerLine`
+        // runs after the flip rather than before.
+        //
+        // Re-spelling the rules is tried FIRST and costs one line each; the flip
+        // rewrites every marker in the list, so it is the fallback rather than
+        // the answer (MAR-307).
+        const printed = useDifferentMarker ? bulletOther : bullet;
+        if (
+            bulletNeedsFlipForRule(node, printed, parent, state) &&
+            !respellCreatedRules(node, printed, state)
+        ) {
+            useDifferentMarker = true;
+        }
     }
 
     if (useDifferentMarker) bullet = bulletOther;

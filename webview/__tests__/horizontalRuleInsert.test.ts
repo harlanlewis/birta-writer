@@ -335,3 +335,86 @@ describe("inserting a horizontal rule", () => {
         expect(texts(view.state.doc)).toEqual(["a", "b"]);
     });
 });
+
+// ── The rule's own line is the only one that may change (MAR-307) ──────────
+//
+// The command's fix above is correct — no content is lost — but the shape it
+// now leaves behind made the SERIALIZER re-spell lines the user never touched.
+// With the item's leading paragraph empty, the rule collapses onto the marker
+// line; `- ---` would reparse as a thematic break, so MAR-240's bullet switch
+// fired and flipped the character for the WHOLE list, since a bullet belongs to
+// a list rather than to an item:
+//
+//     - a          ->    - a
+//       - x                * ---
+//       - keep             * keep      <- never edited
+//       - keep2            * keep2     <- never edited
+//
+// A rule character is per-node, so re-spelling the RULE instead costs exactly
+// the line the rule is on — and that is the line the user just created.
+// `respellCreatedRules` (plugins/sourceStyle.ts) does that when every colliding
+// break is one the editor made; a break carrying source bytes still takes the
+// flip, because re-spelling it would be the same churn one line at a time.
+describe("inserting a rule into an emptied nested item", () => {
+    /** The bullet character of every list line in `md`, in order. */
+    const bullets = (md: string): string[] =>
+        md.split("\n").flatMap((line) => {
+            const m = /^\s*([-*+])(?: |$)/.exec(line);
+            return m ? [m[1]!] : [];
+        });
+
+    it("should leave untouched sibling items spelled exactly as the file had them", () => {
+        // Arrange
+        const src = "- a\n  - x\n  - keep\n  - keep2\n";
+        const view = load(src);
+        caretAt(view, "x", true);
+
+        // Act
+        insertRule();
+        const saved = serialize();
+
+        // Assert — three `-` bullets on the untouched lines, plus the rule's own
+        // marker line. Asserted as the FULL bullet sequence rather than as a
+        // count, so a flip that happened to preserve the number of markers
+        // cannot pass.
+        expect(bullets(saved)).toEqual(["-", "-", "-", "-"]);
+        expect(saved).toContain("  - keep\n");
+        expect(saved).toContain("  - keep2\n");
+        // …and the rule still nests, which is what the flip was protecting.
+        const reopened = editor.ctx.get(parserCtx)(saved) as Node;
+        expect(kinds(reopened).filter((k) => k === "bullet_list")).toHaveLength(2);
+        expect(kinds(reopened)).toContain("hr");
+        expect(kinds(reopened)).not.toContain("heading");
+    });
+
+    it("should write bytes that are stable across a second save", () => {
+        // A spelling that oscillates rewrites the file every time the user
+        // saves, which is the failure mode a per-node re-spelling could
+        // introduce if the choice were not deterministic.
+        const view = load("- a\n  - x\n  - keep\n");
+        caretAt(view, "x", true);
+        insertRule();
+        const once = serialize();
+
+        load(once);
+        expect(serialize()).toBe(once);
+    });
+
+    it("should still flip the bullet when the colliding rule came from the file", () => {
+        // The fallback, and the reason the re-spelling is all-or-nothing: a
+        // break with recorded source bytes is MAR-16's to preserve, so the list
+        // pays the flip rather than the rule paying a rewrite. No command here —
+        // `-\n    ---` is the only way to author this shape (`- ---` is a
+        // thematic break, not an item holding one), and it reaches the flip on a
+        // ZERO-EDIT save.
+        load("- a\n  - x\n  - keep\n  -\n    ---\n");
+        const saved = serialize();
+
+        // The recorded `---` still forces the list onto `*`.
+        expect(bullets(saved)).toEqual(["-", "*", "*", "*"]);
+        expect(saved).toContain("---");
+        const reopened = editor.ctx.get(parserCtx)(saved) as Node;
+        expect(kinds(reopened)).not.toContain("heading");
+        expect(kinds(reopened).filter((k) => k === "bullet_list")).toHaveLength(2);
+    });
+});
