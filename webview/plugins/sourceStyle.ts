@@ -388,29 +388,84 @@ function serializeHeading(node: any, _parent: any, state: any, info: any): strin
  * nesting loss (`1. normal\n   1. ***` reopened as one item holding a hardbreak
  * and a rule), reached through the same bare marker.
  *
- * What is left unfixed is the case where the two characters DO collide and the
- * item is nested (a `*` list whose rule is `***`, or the editor's own `-`
- * defaults for both). Neither spelling survives, and the third option — flipping
- * this list's bullet so they differ — would rewrite the marker on every item of
- * a list the user wrote, on files that round-trip byte-for-byte today. That
- * trade is not obviously worth making, so the item keeps the bare marker it has
- * always had.
+ * When the two characters DO collide, `bulletNeedsFlipForRule` below asks
+ * whether the bare marker this leaves behind is somewhere it survives, and
+ * flips the bullet if it is not.
  */
 function hoistRulesOntoMarkerLine(node: any, bullet: string, state: any): void {
+    for (const led of itemsLedByRule(node)) {
+        if (!node.ordered && ruleMarkerFor(led.rule, state) === bullet) continue;
+        led.children.shift();
+    }
+}
+
+/**
+ * The items of this list whose real first block is a THEMATIC BREAK — the ones
+ * `itemContentForMarkdown` held back — as their own children array (so a caller
+ * can drop the artifact) and the break itself.
+ *
+ * The leading empty paragraph is the artifact `list_item` (`paragraph block*`)
+ * fills in when an item's real first block is not a paragraph. An item that
+ * genuinely begins with a paragraph never matches, because a real one is not
+ * empty — and `- ***` / `-\n\n  ***` parse to this same node, so there is no
+ * authored blank line being dropped either.
+ */
+function itemsLedByRule(node: any): Array<{ children: any[]; rule: any }> {
+    const led: Array<{ children: any[]; rule: any }> = [];
     for (const item of node.children ?? []) {
         if (item?.type !== "listItem") continue;
         const children = item.children;
         if (!Array.isArray(children) || children.length < 2) continue;
-        // The empty paragraph `list_item` (`paragraph block*`) fills in when an
-        // item's real first block is not a paragraph. An item that genuinely
-        // begins with a paragraph never reaches here, because a real one is not
-        // empty and `- ***` / `-\n\n  ***` parse to this same node.
         const first = children[0];
         if (first?.type !== "paragraph" || (first.children?.length ?? 0) !== 0) continue;
         if (children[1]?.type !== "thematicBreak") continue;
-        if (!node.ordered && ruleMarkerFor(children[1], state) === bullet) continue;
-        children.shift();
+        led.push({ children, rule: children[1] });
     }
+    return led;
+}
+
+/**
+ * Must this list print a different bullet so a rule it holds can ride the
+ * marker line (MAR-240)?
+ *
+ * When the bullet and the rule are the SAME character the rule cannot be
+ * hoisted, and the bare marker line left instead is fatal ONE LEVEL DOWN: glued
+ * directly under a paragraph line, a lone `-` is read as a SETEXT UNDERLINE and
+ * a lone `*`/`+` as lazy continuation text. Measured, both destroy the item —
+ * `- first\n  -\n    ---` reopens as a heading and a rule with the nested list
+ * gone, and the star spelling as a paragraph with a hardbreak. Tab-indenting an
+ * item that holds a rule reaches it with the editor's own defaults, since a
+ * sublist `sinkListItem` creates has no recorded marker and takes the global
+ * `-` — the same character as the global `rule`.
+ *
+ * Flipping costs one character on this list's markers and removes the bare
+ * marker entirely, so it is only worth doing where the bare marker actually
+ * dies. Three conditions, each of which was measured to matter:
+ *
+ *   - a SUBLIST (`parent` is a `listItem`) — a top-level bare marker has no
+ *     paragraph line above it to be absorbed into, and `*\n  ***` round-trips
+ *     byte-for-byte today;
+ *   - whose parent item is TIGHT — a blank line before the marker makes it a
+ *     list start rather than an underline, and `- normal\n\n  -\n    ---` also
+ *     round-trips byte-for-byte today;
+ *   - and directly after a NON-EMPTY PARAGRAPH — the thing that does the
+ *     absorbing. A sublist that is its item's first block sits under a bare
+ *     marker, not a paragraph line.
+ *
+ * The remaining over-fire is an item that `itemContentGapJoin`
+ * (webview/serialization.ts) will blank-separate for some OTHER gap's sake,
+ * which no longer needs the flip; predicting that would mean re-deriving that
+ * module's whole answer here, and the cost of being wrong is one marker
+ * character rather than a lost list.
+ */
+function bulletNeedsFlipForRule(node: any, bullet: string, parent: any, state: any): boolean {
+    if (parent?.type !== "listItem" || parent.spread === true) return false;
+    const siblings = parent.children;
+    if (!Array.isArray(siblings)) return false;
+    const index = siblings.indexOf(node);
+    const previous = index > 0 ? siblings[index - 1] : undefined;
+    if (previous?.type !== "paragraph" || (previous.children?.length ?? 0) === 0) return false;
+    return itemsLedByRule(node).some((led) => ruleMarkerFor(led.rule, state) === bullet);
 }
 
 /**
@@ -522,6 +577,11 @@ function serializeList(node: any, parent: any, state: any, info: any): string {
                 }
             }
         }
+
+        // A rule this bullet cannot carry (MAR-240) — the live form of the
+        // hazard above, reached through the artifact paragraph rather than
+        // through a break in first position.
+        if (bulletNeedsFlipForRule(node, bullet, parent, state)) useDifferentMarker = true;
     }
 
     if (useDifferentMarker) bullet = bulletOther;
