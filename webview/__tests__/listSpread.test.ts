@@ -299,6 +299,17 @@ describe("a list inside a footnote definition keeps its gaps (MAR-211)", () => {
         expect(await roundTrip(doc)).toBe(doc);
     });
 
+    it("a multi-LINE item should be measured from its last line, not its first", async () => {
+        // The gap is now read from the item's last content line, so an item
+        // whose own text runs over two source lines is the shape that would
+        // break a naive "first line + 1" reading. Both spacings, so neither
+        // answer can be right by accident.
+        const loose = "[^1]: n\n\n    - line one\\\n      line two\n\n    - b\n";
+        const tight = "[^1]: n\n\n    - line one\\\n      line two\n    - b\n";
+        expect(await roundTrip(loose)).toBe(loose);
+        expect(await roundTrip(tight)).toBe(tight);
+    });
+
     it("a definition with a multi-paragraph item in a loose list should keep every blank", async () => {
         const doc = "[^1]: n\n\n    - a\n\n      two\n\n    - b\n\n    - c\n";
         expect(await roundTrip(doc)).toBe(doc);

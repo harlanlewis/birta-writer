@@ -147,20 +147,24 @@ function spreadBool(node: ListMdastNode, fallback: boolean): boolean {
  *
  * AN ITEM'S OWN `position.end.line` IS NOT THAT LINE inside a footnote
  * definition (MAR-211). There, micromark ends each item on the line the NEXT
- * item STARTS on, so the two positions overlap and the blank between them is
- * swallowed by the earlier item:
+ * item STARTS on, so consecutive items OVERLAP and the blank between them is
+ * swallowed by the earlier one:
  *
- *     [^1]: n            listItem "a"  position 3-5   ← ends on b's start line
- *                        listItem "b"  position 5-7
- *         - a            listItem "c"  position 7-7
+ *     1  [^1]: n
+ *     2
+ *     3      - a      listItem "a"     position 3-5  ← ends on b's START line
+ *     4               listItem "b"     position 5-7
+ *     5      - b      listItem "c"     position 7-7
+ *     6
+ *     7      - c      paragraph in a   position 3-3  ← the line `a` really ends on
  *
- *         - b            paragraph "a" position 3-3   ← the real last line
- *
- *         - c
+ * `next.start.line - prev.end.line` is then 0 across a blank the author wrote,
+ * so the measurement below read `blankBefore: false` for every gap and the
+ * per-gap join pinned the list TIGHT — worse than deferring, because it agreed
+ * with the wrong answer confidently.
  *
  * Descending to the last descendant reads the last line the author actually
- * WROTE in that item, which the container shift does not touch — so the gap
- * measurement below is a fact about the source in both shapes. It is not a
+ * WROTE in that item, which the container shift does not move. It is not a
  * footnote special case: for every other shape probed the two agree, because
  * outside that container an item already ends on its own last content line.
  *
@@ -170,12 +174,17 @@ function spreadBool(node: ListMdastNode, fallback: boolean): boolean {
  * no gap at all before the next item.
  *
  * The descent stops at the LAST child and does not step back over a sibling it
- * cannot place. A remark transformer may hand back a synthesized node carrying
- * no `position` (directives and callouts are rebuilt that way), and skipping
- * one to reach an earlier sibling would report a line ABOVE the content that
- * follows it — measuring a blank the author never wrote, which is the one
- * failure direction that costs bytes rather than spacing. Falling back to the
- * node's own end line there is exactly the behaviour this replaced.
+ * cannot place. Position is not guaranteed on every node the parse runner sees
+ * — a remark transformer can rebuild children without it, as plugins/callouts.ts
+ * records the preset's `remarkLineBreak` doing to a paragraph's inlines — and
+ * skipping a positionless node to reach an earlier sibling would report a line
+ * ABOVE the content that follows it, measuring a blank the author never wrote.
+ * That is the one failure direction that costs bytes rather than spacing, so an
+ * unplaceable last child falls back to the node's own end line, which is exactly
+ * the behaviour this replaced.
+ *
+ * Cost is one walk down the last-child chain per gap — bounded by nesting depth,
+ * at parse time, on a path that is already O(document size).
  */
 function lastContentLine(node: unknown): number | undefined {
     const n = node as ListMdastNode | null;
