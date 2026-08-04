@@ -736,11 +736,30 @@ function gapMustBeBlank(
  * already O(document size) when it does run.
  */
 function itemContentGapJoin(
-    _left: unknown, _right: unknown, parent: unknown, state: unknown,
+    left: unknown, _right: unknown, parent: unknown, state: unknown,
 ): number | undefined {
     const item = parent as { type?: string; children?: FlowNode[] } | null;
     if (item?.type !== "listItem" || !Array.isArray(item.children)) {
         return undefined;
+    }
+    // The FIRST gap of an item that opens with an empty paragraph is decided
+    // here, never by the whole-item scan below.
+    //
+    // That scan answers for the item as a unit: if any gap must be blank it
+    // returns `1` for every gap. Right for the gaps it reasons about, fatal for
+    // this one — a blank here does not merely loosen the item, it orphans the
+    // item's ENTIRE content, since CommonMark gives an item beginning with a
+    // blank at most that one blank. A raw HTML block anywhere in the item is
+    // enough to force it: `- hello` / `<div>raw</div>` / `body` with `hello`
+    // deleted reopens as an empty item with both blocks at the top level.
+    //
+    // The two rules are not in competition — the scan protects a gap BETWEEN
+    // two real blocks, this protects the item's grip on all of them — and
+    // gluing here costs the scan nothing, because the empty paragraph being
+    // glued away contributes no source line for a later block to be absorbed
+    // into.
+    if (isEmptyParagraph(item.children[0]) && left === item.children[0]) {
+        return 0;
     }
     for (let i = 1; i < item.children.length; i++) {
         if (gapMustBeBlank(item.children[i - 1], item.children[i], item, state)) return 1;
@@ -757,25 +776,23 @@ function itemContentGapJoin(
     // loose, `-\n\n  ---\n` already parses with the rule outside the list.
     //
     // Applies to ANY item whose first child is an empty paragraph, including
-    // one whose second child is a real paragraph (MAR-309). Markdown cannot
-    // write an empty paragraph, so both available spellings lose something and
-    // this is a policy call, decided by the maintainer 2026-08-04:
+    // one whose second child is a real paragraph (MAR-309). Markdown has no
+    // spelling for an empty paragraph, so both options lose something:
     //
-    //   `-\n\n  world\n` (was)  the empty paragraph survives as a node, but
-    //                           CommonMark orphans `world` OUT of the list and
-    //                           the item reopens EMPTY.
-    //   `-\n  world\n`  (now)   `world` stays the item's own paragraph; the
-    //                           empty one is gone.
+    //   `-\n\n  world\n`  the empty paragraph survives as a node, but
+    //                     CommonMark orphans `world` OUT of the list and the
+    //                     item reopens EMPTY.
+    //   `-\n  world\n`    `world` stays the item's own paragraph; the empty
+    //                     one is gone.  ← chosen
     //
-    // Chosen on least-surprise grounds: no editor in any ecosystem relocates
-    // content out of the container the user put it in as a side effect of
-    // deleting adjacent text. Losing an invisible empty paragraph reads as
-    // tidying; losing a visible block's list membership reads as a bug, and it
-    // only shows up on reopen.
+    // A policy call (maintainer, 2026-08-04), on least-surprise grounds: no
+    // editor relocates content out of the container the user put it in as a
+    // side effect of deleting adjacent text. Losing an invisible empty
+    // paragraph reads as tidying; losing a visible block's list membership
+    // reads as a bug, and only surfaces on reopen.
     //
-    // The shape is reachable ONLY by editing — measured, authored
-    // `-\n\n  world\n` already parses with `world` outside the list — so no
-    // existing file is being re-spelled by this.
+    // Reachable only by EDITING — authored `-\n\n  world\n` already parses with
+    // `world` outside the list — so no existing file is re-spelled by this.
     //
     // Reached only after the loop has cleared every gap, so an item that
     // genuinely needs a blank still gets one.

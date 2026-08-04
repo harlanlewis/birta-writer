@@ -59,3 +59,33 @@ describe("bundle-baseline.json", () => {
         expect(eagerBudget).toBeGreaterThan(500_000);
     });
 });
+
+/**
+ * `baseline.json` is the same trap one file over, and worse: nothing reads it at
+ * all, so its numbers could only ever be quoted by a human, and they described
+ * fixtures that MAR-310 had since reseeded out of existence. Annotating them did
+ * not help — the note said "nothing reads this file, re-measure" directly above
+ * the stale figures. Same resolution as above: the figures are gone, and this is
+ * what keeps them gone.
+ */
+const LAUNCH_BASELINE = join(__dirname, "baseline.json");
+
+describe("baseline.json", () => {
+    it("should carry provenance only, with no measured figures", () => {
+        const baseline = JSON.parse(readFileSync(LAUNCH_BASELINE, "utf8"));
+        expect(Object.keys(baseline).sort()).toEqual([
+            "aggregation", "build", "lastLanded", "note", "runsPerFixture",
+        ]);
+    });
+
+    it("should carry no per-fixture timings or byte counts", () => {
+        const baseline = JSON.parse(readFileSync(LAUNCH_BASELINE, "utf8"));
+        const present = ["fixtures", "bundle"].filter((f) => f in baseline);
+        expect(
+            present,
+            `${present.join(", ")} is a measurement, not a record. Nothing reads this file, so a ` +
+                "number here can only ever be quoted by a human — and it stops being true at the next " +
+                "merge. Run `pnpm perf` for current figures instead.",
+        ).toEqual([]);
+    });
+});

@@ -238,21 +238,39 @@ function scanCssTextForColorLiterals(text: string): string[] {
     return hits;
 }
 
-function findBareColorLiterals(): string[] {
-    const violations: string[] = [];
+/**
+ * Every unit the bare-literal rule scans: `.css` files, plus the CSS authored
+ * in `.ts`.
+ *
+ * Extracted so the sweep's REACH can be asserted. The rule reports violations
+ * by returning an empty array and the tree is clean, so disconnecting the `.ts`
+ * half is entirely silent — a test over the returned violations cannot tell a
+ * clean scan from an absent one. A test over the INPUTS can.
+ */
+function colorScanUnits(): { label: string; text: string; startLine: number }[] {
+    const units: { label: string; text: string; startLine: number }[] = [];
     for (const file of collectFiles(webviewRoot)) {
         if (!file.endsWith(".css")) continue;
-        for (const hit of scanCssTextForColorLiterals(readFileSync(file, "utf8"))) {
-            violations.push(`${relative(webviewRoot, file)}:${hit}`);
-        }
+        units.push({ label: relative(webviewRoot, file), text: readFileSync(file, "utf8"), startLine: 1 });
     }
-    // The same rule over CSS authored in TypeScript. `scanCssTextForColorLiterals`
-    // reports a line number relative to the text it was handed, so it is rebased
-    // onto the source file — a hit has to name a line you can go and edit.
+    // `scanCssTextForColorLiterals` reports a line number relative to the text
+    // it was handed, so `startLine` rebases it onto the source file — a hit has
+    // to name a line you can go and edit.
     for (const source of cssSourcesInTypeScript(webviewRoot)) {
-        for (const hit of scanCssTextForColorLiterals(source.text)) {
+        units.push({ label: source.file, text: source.text, startLine: source.startLine });
+    }
+    return units;
+}
+
+function findBareColorLiterals(): string[] {
+    const violations: string[] = [];
+    for (const unit of colorScanUnits()) {
+        for (const hit of scanCssTextForColorLiterals(unit.text)) {
+            // One rebasing path for both kinds: a `.css` unit has `startLine`
+            // 1, and `line + 1 - 1` is the identity, so a `.css` hit comes out
+            // exactly as it did before this was unified.
             const [, line, literal] = /^(\d+)  (.*)$/.exec(hit) ?? [];
-            violations.push(`${source.file}:${Number(line) + source.startLine - 1}  ${literal}`);
+            violations.push(`${unit.label}:${Number(line) + unit.startLine - 1}  ${literal}`);
         }
     }
     return violations.sort();
@@ -267,6 +285,21 @@ describe("no literal --vscode-* color fallbacks in webview", () => {
         const files = collectFiles(webviewRoot);
         expect(files.filter((f) => f.endsWith(".css")).length).toBeGreaterThan(10);
         expect(files.filter((f) => f.endsWith(".ts")).length).toBeGreaterThan(50);
+    });
+
+    it("the BARE-LITERAL rule should reach CSS authored in .ts, not only .css files", () => {
+        // The rule above pins `collectFiles`, which is only the `.css` half.
+        // The `.ts` half is the one that can vanish silently — remove it and
+        // every case in this file still passes — so it is asserted over the
+        // scan's INPUTS rather than its output.
+        //
+        // Containment, not an exact list: a third injected stylesheet must be
+        // picked up and guarded automatically rather than registered here first.
+        const labels = colorScanUnits().map((u) => u.label);
+        expect(labels).toEqual(expect.arrayContaining([
+            "components/findBar/highlightStyles.ts",
+            "components/lineNumbers/styles.ts",
+        ]));
     });
 
     it("the matcher should flag a literal color fallback but not a chain, keyword, or font var", () => {

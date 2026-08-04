@@ -13,6 +13,11 @@
  *      merged bytes reparse to the same node tree, modulo the edited text.
  *   D. An edit never introduces a line-ending style the saved file did not
  *      already use.
+ *   E. A save carrying edits in SEVERAL blocks — including fenced-code content,
+ *      which C never touches — restructures nothing either. C types one
+ *      character into one paragraph and saves after each; that pair of limits
+ *      is what let MAR-312 corrupt two fixtures sitting in this corpus while C
+ *      ran over both and stayed green.
  *
  * Why C exists (2026-07-25): A and B between them never performed an in-place
  * text edit — B only inserts a fresh paragraph at position 0 — so the entire
@@ -236,29 +241,21 @@ describe("corpus invariant C — typing inside a block never restructures the do
 /**
  * Invariant E — one save carrying edits in SEVERAL blocks.
  *
- * C types one character and saves, into paragraph text only. Both limits
- * matter, and together they made the corpus structurally blind to MAR-312 for
- * as long as the fixture written FOR it sat in the corpus: `fence-edges.md` and
- * `fence-tilde-after-escape.md` were both present, C ran over both, and the
- * gate was 155/155 green on the engine that still corrupted them.
+ * Differs from C on both axes at once: it types into fenced-code content as
+ * well as paragraphs, and saves ONCE at the end. Edits go back to front so an
+ * insertion cannot shift a position still to come.
  *
- * The shape C cannot reach: round-trip protection repairs a canonicalized line
- * back to its saved bytes, and each region is anchored to its neighbouring
- * lines. A tilde fence's two marker lines are two separate regions. Editing the
- * prose above the fence AND inside the fence's content, in ONE save,
- * invalidates both anchors of the OPEN line while the CLOSE line's following
- * anchor survives — so one end repairs to the saved `~~~` and the other keeps
- * the serializer's ``` ``` ```. The fence never terminates and every block after
- * it is swallowed as code on reopen.
+ * Both axes are load-bearing. The shape C cannot reach: round-trip protection
+ * repairs a canonicalized line back to its saved bytes, one region per line,
+ * each anchored to its neighbours. A tilde fence's two marker lines are two
+ * regions — edit the prose above the fence AND inside its content in one save,
+ * and the open line's anchors are both invalidated while the close line's
+ * following anchor survives. One end repairs to `~~~`, the other keeps ```, the
+ * fence never terminates, and the rest of the document is swallowed as code.
  *
  * A save carries every edit made since the last one (MAR-303), so "several
- * edits, one save" is an ordinary sitting's work rather than an exotic gesture
- * — which is exactly why a gate that saves after every keystroke overstates its
- * own coverage.
- *
- * E therefore differs from C on both axes at once: it types into fenced-code
- * content as well as paragraphs, and it saves ONCE at the end. Edits are
- * applied back to front so an insertion cannot shift a position still to come.
+ * edits, one save" is an ordinary sitting's work — which is why a gate that
+ * saves after every keystroke overstates its coverage.
  */
 const INVARIANT_E_TIMEOUT_MS = 30_000;
 
@@ -286,7 +283,15 @@ describe("corpus invariant E — one save carrying several edits never restructu
             });
 
             const picked = stridedSample(targets, 12).sort((a, b) => b - a);
-            if (picked.length < 2) return; // nothing multi-block to say here
+            // A fixture with fewer than two eligible blocks has nothing
+            // multi-block to say. Asserted rather than returned silently: a
+            // bare `return` here reports green, so a change that stopped
+            // FINDING targets — a renamed node type, a moved directory — would
+            // empty this gate across every fixture at once and look like a pass.
+            expect(
+                picked.length,
+                `${name}: fewer than two editable blocks, so this fixture exercises nothing`,
+            ).toBeGreaterThan(1);
 
             editor.action((ctx) => {
                 const view = ctx.get(editorViewCtx);

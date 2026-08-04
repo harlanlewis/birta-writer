@@ -187,21 +187,14 @@ describe("an item's real first block rides on the marker line", () => {
     });
 
     it("emptying an item's first paragraph should keep the second one INSIDE the item", async () => {
-        // MAR-309, a fidelity-policy call (maintainer, 2026-08-04). Emptying the
-        // first paragraph of an item that holds a second leaves
+        // MAR-309, a fidelity-policy call (maintainer, 2026-08-04). Emptying an
+        // item's first paragraph when it holds a second leaves
         // `paragraph(empty), paragraph("world")` — a shape Markdown cannot
-        // write, because there is no spelling for an empty paragraph. Both
-        // options lose something and the item's CONTENT was chosen over the
-        // empty node: `-\n  world\n` keeps `world` as the item's paragraph,
-        // where `-\n\n  world\n` orphaned it to the top level and reopened the
-        // item empty.
+        // write. Both spellings lose something; the item's CONTENT wins.
         //
-        // This case previously asserted the opposite, and did so by counting
-        // paragraphs across the WHOLE document — which the old bytes satisfied
-        // precisely BECAUSE `world` escaped the list and was still counted
-        // there. Asserting the item's own children is what makes that
-        // impossible: an escape now shows up as a missing child, not as a
-        // paragraph found somewhere else.
+        // Asserted on the ITEM's children, not on a document-wide paragraph
+        // count. A count is satisfied by the bug: when `world` escapes to the
+        // top level it is still there to be counted. A missing child is not.
         const editor = await makeEditor("- hello\n\n  world\n");
         const v = view(editor);
         v.dispatch(v.state.tr.delete(posAfterText(v, "hello") - "hello".length, posAfterText(v, "hello")));
@@ -642,23 +635,16 @@ describe("emptying a task item that holds another block", () => {
 // Found by critiquing the session diff as one change, not by any lane: the
 // merge belonged to a different lane, and neither side's tests crossed the seam.
 //
-// All three symptoms are now fixed end to end: no invented heading, bytes the
-// parser can read, and — since MAR-313 — the rule's NESTING.
+// Three symptoms, all pinned end to end: no invented heading, bytes the parser
+// can read, and the rule's NESTING.
 //
-// The nesting case was an `it.fails` for one session. MAR-306 made the
-// serializer glue an item led by the artifact empty paragraph, which
-// `getMarkdown()` proved; but the save path is serializer → applyMinimalChanges
-// → disk, and the merge reinstated the blank line the saved file had, undoing
-// it. An item beginning with a blank gives up everything after it, so the rule
-// reopened as a top-level sibling.
-//
-// Fixed by an arm on the profile's `blankSplitsBlock` — a saved blank between a
-// BARE list marker and the item's own indented content is structure the
-// serializer has overruled, not spacing the user chose. Deliberately not the
-// change MAR-303's lane tried and reverted: that one let the corrected PAIRING
-// decide blank runs generally and collapsed `\n\n---\n` onto prose in
-// fence-edges.md, turning a thematic break into a setext underline. This arm
-// requires prev to be a bare marker, so prose can never be its left operand.
+// Nesting is the one that needs the whole save path to prove. The serializer
+// glues an item led by the artifact empty paragraph (MAR-306) and
+// `getMarkdown()` shows it — but bytes reach disk through
+// `applyMinimalChanges`, which used to reinstate the blank the saved file had.
+// An item beginning with a blank gives up everything after it, so the rule
+// reopened as a top-level sibling (MAR-313). A test that stops at
+// `getMarkdown()` cannot see any of that.
 describe("an emptied item holding a rule, through the real save merge", () => {
     /** Serialize, then merge exactly as the sync pipeline does. */
     async function saveThroughMerge(content: string, deleteText: string): Promise<string> {
@@ -693,12 +679,32 @@ describe("an emptied item holding a rule, through the real save merge", () => {
         expect(await reparsedItemShape(merged)).toBe("paragraph,hr");
     });
 
+    it("should glue the first gap even when a LATER gap must stay blank", async () => {
+        // `gapMustBeBlank`'s whole-item scan answers for the item as a unit: if
+        // any gap must be blank it returns 1 for EVERY gap. A raw HTML block
+        // forces exactly that — and a blank in the FIRST gap does not merely
+        // loosen the item, it orphans all of its content, since CommonMark
+        // gives an item beginning with a blank at most that one blank. Let the
+        // scan decide this gap and the item reopens empty with both blocks
+        // lifted to the top level.
+        const merged = await saveThroughMerge("- hello\n\n  <div>raw</div>\n\n  body\n", "hello");
+        expect(await reparsedItemShape(merged)).toBe("paragraph,paragraph");
+        // Nothing beside the list — the whole point. (The `html` node sits
+        // INSIDE the item's first paragraph, which is why the item shape above
+        // reads two paragraphs while this reads five nodes.)
+        expect(await reparsedKinds(merged)).toEqual([
+            "bullet_list", "list_item", "paragraph", "html", "paragraph",
+        ]);
+        // The later gap still gets its blank: gluing there would let the HTML
+        // block absorb `body`, which is what the scan exists to prevent.
+        expect(merged).toContain("</div>\n\n  body");
+    });
+
     it("should carry MAR-309's glued paragraph all the way to disk", async () => {
         // The seam between the two fixes, driven end to end because neither
-        // layer's own tests cross it: MAR-309 made the SERIALIZER glue
-        // `-\n  world\n`, and MAR-313 is the MERGE reinstating the blank the
-        // saved file had. A green `getMarkdown()` proves only the first half —
-        // that is precisely how MAR-313 came to exist.
+        // layer's own tests cross it: MAR-309 is the SERIALIZER gluing
+        // `-\n  world\n`, MAR-313 is the MERGE not reinstating the blank. A
+        // green `getMarkdown()` proves only the first half.
         const merged = await saveThroughMerge("- hello\n\n  world\n", "hello");
         expect(merged).toBe("-\n  world\n");
         expect(await reparsedItemShape(merged)).toBe("paragraph");
@@ -712,25 +718,24 @@ describe("an emptied item holding a rule, through the real save merge", () => {
     });
 
     // The arm's GUARD — that `prev` must be a bare marker — is asserted on the
-    // predicate directly rather than through a save, and deliberately so.
+    // predicate directly rather than through a save.
     //
-    // Reaching it end to end is impossible today: `gapBefore` only consults
-    // `blankSplitsBlock` when the saved bytes have a blank and the serializer
-    // does NOT, and for every shape below the serializer emits the blank too,
-    // so its answer is discarded. That is exactly why a save-level test of the
-    // guard is decoration — one was written here first, and removing the whole
-    // bare-marker check left all 6157 tests green.
+    // A save-level test of it is decoration: `gapBefore` consults
+    // `blankSplitsBlock` only when the saved bytes have a blank and the
+    // serializer does not, and for every shape below the serializer emits one
+    // too, so its answer is discarded. Remove the bare-marker check entirely
+    // and the whole suite stays green.
     //
-    // Every pair below is a real line pair lifted from the corpus (the fixture
-    // is named), found by diffing the guarded arm against an unguarded one
-    // across all fixtures. Each is a blank the unguarded rule would be free to
-    // delete the moment the serializer glued that shape — gluing an item's
-    // fence onto its own text, or merging two paragraphs of a footnote.
+    // Each pair is a real line pair from the named fixture, found by diffing
+    // the guarded arm against an unguarded one across the corpus — a blank the
+    // unguarded rule would be free to delete the moment the serializer glued
+    // that shape, gluing an item's fence onto its own text or merging two
+    // paragraphs of a footnote.
     //
     // `partly-loose-lists.md`'s `- first paragraph` / `  second paragraph` is
-    // deliberately NOT here: the whole predicate answers true for it through
-    // the pre-existing lazy-continuation arm, with or without this fix, and
-    // correctly so — glued, the second line really is continuation text.
+    // deliberately absent: the predicate answers true there through the
+    // lazy-continuation arm, with or without this fix, and correctly so —
+    // glued, the second line really is continuation text.
     it("should refuse every corpus pair whose prev is not a bare marker", () => {
         const cases: [string, string, string][] = [
             ["fence-tilde-after-escape.md", "- item with a fence", "  ~~~"],

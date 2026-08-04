@@ -50,10 +50,14 @@ const match = compileStyleMatcher(
 /** The fixtures whose job is realistic prose. The rest isolate other paths. */
 const PROSE_FIXTURES = ["tiny", "medium", "large"];
 
-// The seeded fixtures land one phrase hit per ~181 source characters (measured
-// 2026-08-04: medium 89/16149, large 700/126638, xlarge 2200/400471). The floor
-// sits at less than half that, so a word-list edit that drops one seeded phrase
-// does not turn this red, while halving the seeding does.
+// The seeded fixtures land one phrase hit per ~181 source characters (2026-08-04:
+// medium 69/12526, large 540/97452, xlarge 1713/311884). The floor sits at less
+// than half that, so a word-list edit that drops one seeded phrase does not turn
+// this red, while halving the seeding does.
+//
+// The counts above are a record, not a reading — re-measure before quoting them.
+// The ratio is what this gate rests on, and it survives a fixture resize, so
+// stale absolute figures here go unnoticed by every assertion in the file.
 const MAX_CHARS_PER_HIT = 400;
 
 describe("launch-perf prose fixtures", () => {

@@ -143,7 +143,14 @@ describe("chrome design tokens (ui/chrome.css)", () => {
         // A CONTAINMENT check, not an exact list: a third injected stylesheet
         // should be picked up and guarded automatically, which is the entire
         // point — it must not have to be registered here first.
-        const stylesheets = fromTs.filter((s) => s.kind === "stylesheet").map((s) => s.file);
+        // Asserted over `units` — what the rules below actually iterate — not
+        // over `fromTs`. Asserting the extractor only proves extraction works
+        // and leaves the WIRING unpinned: drop the `...fromTs` spread and every
+        // rule here still passes, because they all report an empty array when
+        // they find nothing and the tree is clean. The guard would be silently
+        // disconnected while `AGENTS.md` and two source files tell the next
+        // author to rely on it instead of writing a per-file guard.
+        const stylesheets = units.map((u) => u.label);
         expect(stylesheets).toEqual(expect.arrayContaining([
             "components/findBar/highlightStyles.ts",
             "components/lineNumbers/styles.ts",
@@ -271,8 +278,12 @@ describe("chrome design tokens (ui/chrome.css)", () => {
 
 // MAR-260. The repo-wide rules above are clean today and would have stayed
 // clean on their first run with the `.ts` sweep added — which would have told
-// nobody anything. These cases pin the matcher itself: each was verified to
-// FAIL with the `cssSourcesInTypeScript` entry removed from `units`.
+// nobody anything. These cases pin the MATCHER: they feed synthetic TypeScript
+// to `cssSourcesInFile` and assert what comes back.
+//
+// They do NOT pin that the matcher is wired into the repo-wide sweep, and
+// cannot: they never call `cssSourcesInTypeScript`. The wiring is pinned by the
+// reach case above, which asserts over `units`.
 describe("chrome design tokens in CSS authored from TypeScript", () => {
     /** Values of one property that a chunk of TypeScript declares. */
     const declared = (ts: string, prop: string) =>

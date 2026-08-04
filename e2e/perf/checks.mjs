@@ -74,10 +74,14 @@ export async function run({ page, check, baseUrl }) {
     await load(page, baseUrl, FIXTURES.large, { expect: ["rtp-end", "proofread-end"] });
     const m = await readMarks(page);
 
-    // MAR-310's exact failing observation was `styleHits === 0`. The floor is
-    // deliberately far below the ~980 the seeded fixture produces (measured
-    // 2026-08-04): this pins "the decoration path runs at a realistic density",
-    // not a phrase count that a word-list edit would churn.
+    // MAR-310's exact failing observation was `styleHits === 0`. The floor sits
+    // far below the 756 the seeded fixture produces (2026-08-04): it pins "the
+    // decoration path runs at a realistic density", not a count a word-list edit
+    // would churn.
+    //
+    // 756 counts `.pf-style-hit` ELEMENTS; `fixtures.test.mjs` counts 540 phrase
+    // matches in the same fixture. Different metrics — one match can decorate
+    // several nodes — so don't reconcile them.
     check("large fixture trips the style check", m.styleHits >= 300, `${m.styleHits} .pf-style-hit`);
 
     check("proofread first pass is marked", m.pfStart != null && m.pfEnd != null,

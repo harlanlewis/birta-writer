@@ -547,24 +547,22 @@ function normLineForCompare(line: string, cls: LineClass): string {
     // matches an identical underline in an identical attachment context.
     const fence = FENCE_LINE_RE.exec(t);
     if (fence) {
-        // Key a fence marker line by its INFO STRING alone, dropping the marker
-        // run itself. The serializer canonicalizes `~~~` to ``` ``` ```, so a
-        // tilde fence's two marker lines would otherwise both be recorded as
-        // round-trip protection regions — and protection is anchored to
-        // neighbouring lines, so an edit beside ONE end invalidates that end's
-        // anchors while the other end still repairs. That writes a MISMATCHED
-        // pair (open ``` ``` ```, close `~~~`): the fence never terminates and
-        // the entire rest of the document is swallowed as code on reopen
-        // (MAR-312). Keying the two spellings equal makes both marker lines
-        // ordinary `keep`s, so the saved spelling survives on BOTH ends and no
-        // protection region — hence no anchor — is involved at all.
+        // Key a fence marker line by its INFO STRING alone, so `~~~` and ```
+        // compare equal and both of a fence's marker lines stay ordinary
+        // `keep`s carrying the saved spelling.
         //
-        // Safe in the way the thematic-break branch above is not: `-` doubles
-        // as a setext underline, but a backtick or tilde run is only ever a
-        // fence, so no second construct can be repaired into one. The marker
-        // LENGTH is dropped with the character for the same reason — ```` and
-        // ``` differ only in what they can nest, which is a property of the
-        // content between them, not of how the pair should be spelled.
+        // Keying them apart makes each marker line its own round-trip
+        // protection region, and regions are anchored to their neighbouring
+        // lines: an edit beside one end invalidates that end's anchors while
+        // the other end still repairs, writing a mismatched pair (open ```,
+        // close `~~~`). The fence never terminates and the rest of the document
+        // is swallowed as code on reopen (MAR-312).
+        //
+        // Safe where the thematic-break branch above is not: `-` doubles as a
+        // setext underline, but a backtick or tilde run is only ever a fence, so
+        // no second construct can be repaired into one. Marker LENGTH drops for
+        // the same reason — ```` vs ``` is about what the fence can nest, not
+        // how the pair is spelled.
         return indentOf(line) + "\x00Q" + t.slice(fence[1].length).trim();
     }
     return normalizeWrappedLinkEmphasis(normalizeSplitStrong(normalizeOrgCookieEscape(line)));
@@ -1450,14 +1448,12 @@ const BARE_LIST_MARKER_RE = /^([ \t]*)(?:[-*+]|\d{1,9}[.)])(?:[ \t]+\[[ xX]\])?[
  * the lazy-continuation arm beside it. Keeping it reopens the item empty with
  * its rule or paragraph promoted to a top-level sibling (MAR-313).
  *
- * Narrow in both operands on purpose. `prev` must have nothing after the
+ * Narrow in both operands on purpose: `prev` must have nothing after the
  * marker, and `next` must sit at or past the item's content column, so the only
- * blank this can delete is one that provably orphans the line after it.
- *
- * It cannot reach the shape MAR-303's lane broke — a `---` collapsing onto
- * ordinary prose and reparsing as a setext underline. That prev is prose, which
- * fails the bare-marker test, and that direction (saved glues, serializer
- * separates) is `glueChangesConstruct`'s, not this predicate's at all.
+ * blank this can delete is one that provably orphans the line after it. Prose
+ * can never be the left operand, which is what keeps it clear of a `---`
+ * collapsing onto a paragraph and reparsing as a setext underline — and that
+ * direction belongs to `glueChangesConstruct` regardless.
  */
 const blankOrphansItemContent = (prev: string, next: string): boolean => {
     const marker = BARE_LIST_MARKER_RE.exec(prev);
