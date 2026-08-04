@@ -23,11 +23,14 @@
  * Neither is this ticket's call, hence a plain test file: it pins the typing
  * fix without taking a position on the move gate.
  *
- * NOTE the coverage boundary, which is real and not just caution: the fix
- * learns a file's indent conventions from lines the zero-edit round trip
- * paired one-to-one, so two NEIGHBOURING lines sharing an unusual indent
- * teach it nothing and editing one of them still shifts it. The last test
- * here pins that, so the gap is visible rather than assumed closed.
+ * NOTE what the fix learns from, because it bounds what it can do: a file's
+ * indent conventions come from the lines the zero-edit round trip put in
+ * correspondence — the ones it kept, replaced one-for-one, or re-indented in
+ * place as a block (MAR-231, the third test here, which was a known gap until
+ * runs corresponding line by line started teaching too). A construct the
+ * serializer rewrites more deeply than that still teaches nothing about its
+ * indent, and refusing to guess is the safe direction: a missing fact costs a
+ * respelling, a wrong one rewrites bytes.
  */
 import { describe, it, expect } from "vitest";
 import { getMarkdown } from "@milkdown/utils";
@@ -98,23 +101,23 @@ describe("mixed indent units in one outline (MAR-222)", () => {
         );
     });
 
-    // KNOWN GAP (MAR-231). Asserted as the DESIRED outcome via `it.fails`, not
-    // as the current one: a test that asserts today's wrong bytes would certify
-    // the bug, which is exactly how logseqRoundTrip's old "blast radius is
-    // LOCAL" assertion kept MAR-131 alive. When this starts passing, delete the
-    // `.fails` — do not weaken the assertion.
-    //
-    // The fix learns an indent's meaning only from lines the zero-edit round
-    // trip paired ONE-TO-ONE. Two neighbouring lines that share an unusual
-    // indent form a single multi-line run instead, which pairs nothing, so the
-    // file teaches nothing about `\t   ` and the edited line still shifts.
-    it.fails("typing into one of TWO adjacent mixed-unit lines should not restructure", async () => {
-        const { live, reparsed } = await typeAndSave(
+    // MAR-231, the coverage boundary this file used to pin as a known gap.
+    // Two neighbouring lines sharing an unusual indent collapse into ONE
+    // 2-del/2-ins run at baseline, and that shape used to be refused twice
+    // over: it taught `baselineIndents` nothing about `\t   `, and its two
+    // lines shared one protected region, so editing either canonicalized the
+    // other. Both refusals lift where the run corresponds line by line —
+    // identical bodies, differing only in indentation.
+    it("typing into one of TWO adjacent mixed-unit lines should not restructure", async () => {
+        const { live, reparsed, merged } = await typeAndSave(
             "- a\n\t- b\n\t   - c\n\t   - d\n",
             "c",
         );
 
         expect(reparsed).toEqual(live);
+        // The UNTOUCHED sibling keeps its bytes too: `d` shares the run and
+        // used to be canonicalized along with the line the user typed into.
+        expect(merged).toBe("- a\n\t- b\n\t   - cZ\n\t   - d\n");
     });
 
     it("typing into a plain-tab item should not restructure it either", async () => {
