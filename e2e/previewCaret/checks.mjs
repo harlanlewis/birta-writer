@@ -33,12 +33,41 @@ async function proseCoords(page, word) {
     }, word);
 }
 
-/** What the user would lose: paragraph count + the whole editor's text. */
+/**
+ * What the user would lose: paragraph count + the editor's CONTENT text.
+ *
+ * `.textContent` on its own is not that (MAR-308). A rendered mermaid diagram
+ * injects its own generated stylesheet as a `<style>` element *inside* the
+ * editor DOM, and `textContent` concatenates it: of the 5099 characters this
+ * used to search, 4838 were mermaid's CSS and 261 were the document. That
+ * stylesheet is keyed on a per-render random id — `mmid-${Math.random()
+ * .toString(36).slice(2, 9)}` in `webview/components/codeBlock/mermaidRuntime.ts`
+ * — so roughly one render in 220 emits an id containing the substring "zz",
+ * which is exactly the marker these checks type and then search for. The check
+ * then failed with nothing typed at all, naming whichever affordance happened
+ * to draw the unlucky id.
+ *
+ * That is the whole of the intermittency: each case reloads the page and gets a
+ * fresh id, so ~6% of full-suite runs failed on a uniformly random one of them,
+ * and an isolated re-run passed. Reproduced deterministically by pinning
+ * `Math.random` to a value yielding `mmid-0053qzz`, which reproduces the
+ * reported artifact almost character for character.
+ *
+ * Non-content DOM is therefore removed before reading the text. The code
+ * block's hidden `<pre>` source stays — typing into that IS a document edit and
+ * these checks must still catch it.
+ */
 async function docState(page) {
-    return page.evaluate(() => ({
-        paras: document.querySelectorAll(".ProseMirror p").length,
-        text: document.querySelector(".ProseMirror")?.textContent ?? "",
-    }));
+    return page.evaluate(() => {
+        const pm = document.querySelector(".ProseMirror");
+        if (!pm) return { paras: 0, text: "" };
+        const content = pm.cloneNode(true);
+        for (const el of content.querySelectorAll("style, script")) el.remove();
+        return {
+            paras: document.querySelectorAll(".ProseMirror p").length,
+            text: content.textContent ?? "",
+        };
+    });
 }
 
 /**
@@ -239,9 +268,11 @@ export async function run({ page, check, baseUrl }) {
         await page.waitForTimeout(120);
         await page.keyboard.type("QQ");
         await page.waitForTimeout(200);
-        const typed = await page.evaluate(() =>
-            (document.querySelector(".ProseMirror")?.textContent ?? "").includes("QQ"));
-        check("aborted gesture: the next click into prose still types", typed);
+        // Through docState like every other read here: this one asserts the
+        // marker is PRESENT, so a stray match in the diagram's injected
+        // stylesheet would show up as a false pass rather than a false failure.
+        const { text } = await docState(page);
+        check("aborted gesture: the next click into prose still types", text.includes("QQ"));
     }
 
     // ── The severe case: typing behind an open fullscreen lightbox ───────
