@@ -53,6 +53,7 @@ import {
     horizontalRulePlugin,
     insertCalloutCommand,
     insertFootnoteCommand,
+    insertHorizontalRuleCommand,
     linkInputRule,
     linkUrlCompletePlugin,
     pasteLinkPlugin,
@@ -571,6 +572,7 @@ export async function createEditor(
         .use(listEnterPlugin)
         .use(horizontalRulePlugin)
         .use(horizontalRuleKeymapPlugin)
+        .use(insertHorizontalRuleCommand)
         .use(codeBlockBackspacePlugin)
         .use(codeBlockSelectAllPlugin)
         .use(headingEmptyDeletePlugin)

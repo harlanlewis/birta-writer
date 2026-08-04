@@ -33,6 +33,7 @@ export { historyKeymapPlugin, historyPlugin } from "./history";
 export {
     horizontalRuleKeymapPlugin,
     horizontalRulePlugin,
+    insertHorizontalRuleCommand,
     trailingHrParagraphPlugin,
 } from "./horizontalRule";
 export { linkInputRule } from "./linkInputRule";

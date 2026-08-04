@@ -224,6 +224,80 @@ function annotateItemGaps(children: unknown): void {
     }
 }
 
+/**
+ * Whether a blank line sits between two of this item's OWN children — which is
+ * what `spread` on an item is supposed to mean. `undefined` when the geometry
+ * cannot be read (a child with no position; see `lastContentLine`).
+ */
+function hasInternalBlank(item: unknown): boolean | undefined {
+    const children = (item as ListMdastNode | null)?.children;
+    if (!Array.isArray(children)) {
+        return undefined;
+    }
+    for (let i = 1; i < children.length; i++) {
+        const prevEnd = lastContentLine(children[i - 1]);
+        const start = (children[i] as ListMdastNode)?.position?.start?.line;
+        if (typeof prevEnd !== "number" || typeof start !== "number") {
+            return undefined;
+        }
+        if (start - prevEnd > 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Lower an item's `spread` when the source shows no blank line inside it
+ * (MAR-302) — the second consumer of the same container shift MAR-211 fixed for
+ * the gap BETWEEN items, and one its fix does not close: the raw output is
+ * identical before and after it.
+ *
+ * Inside a footnote definition micromark cannot find the item's trailing line
+ * endings (`prepareList`'s backwards walk stops at the definition's continuation
+ * prefix), so the blank line that separates the item from the NEXT one falls
+ * inside the item's own range and is recorded as an INTERNAL blank —
+ * `listItem._spread = true`. mdast-util-to-markdown's default join then
+ * blank-separates that item's CHILDREN, so
+ *
+ *     [^1]: n
+ *
+ *         - a
+ *           - x
+ *
+ *         - b
+ *
+ * came back with a blank line between `a` and its own sublist that nobody wrote.
+ * Only the item BEFORE a gap is affected, and only when it has a second child
+ * for the join to sit between — so a tight footnote list is clean, and so is a
+ * loose one whose items hold a single paragraph (enumerated in
+ * listSpread.test.ts over container x marker x outer spacing x sublist).
+ *
+ * Only ever LOWERED, and only against a fully readable geometry. Raising would
+ * invent a blank line, the failure direction that costs bytes; refusing to
+ * answer leaves exactly the behaviour this replaced. Not a footnote special
+ * case — everywhere else micromark and the geometry already agree, measured by
+ * diffing the raw serializer output of every corpus fixture with this pass on
+ * and off: nothing moved, which is also why footnotes-variants.md now carries
+ * the shape.
+ *
+ * `spread` is also the Tighten/Loosen row's state probe (`listTreeIsLoose`), and
+ * inside these containers the LIST-level `spread` is false for the same reason,
+ * so this artifact was the only thing left there saying "loose". The probe
+ * therefore reads the recorded gap (`blankBefore`) as looseness too — see there.
+ */
+function correctItemSpread(children: unknown): void {
+    if (!Array.isArray(children)) {
+        return;
+    }
+    for (const child of children) {
+        const item = child as ListMdastNode;
+        if (item?.spread === true && hasInternalBlank(item) === false) {
+            item.spread = false;
+        }
+    }
+}
+
 /** A PM `spread` attr as a real boolean, tolerating the legacy string form. */
 function attrSpreadBool(spread: unknown): boolean {
     return spread === true || spread === "true";
@@ -243,6 +317,7 @@ export const bulletListSpreadBoolSchema = bulletListSchema.extendSchema((prev) =
             runner: (state, node, type) => {
                 const n = node as ListMdastNode;
                 annotateItemGaps(node.children);
+                correctItemSpread(node.children);
                 state
                     .openNode(type, {
                         spread: spreadBool(n, false),
@@ -289,6 +364,7 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
             runner: (state, node, type) => {
                 const n = node as ListMdastNode;
                 annotateItemGaps(node.children);
+                correctItemSpread(node.children);
                 state
                     .openNode(type, {
                         spread: spreadBool(n, true),
@@ -928,18 +1004,35 @@ function itemRequiresSpread(item: any): boolean {
 }
 
 /** Whether the list tree at `listPos` serializes loose anywhere — any list
- * or item in it carrying spread. The Tighten/Loosen row's state probe. */
+ * or item in it carrying spread, or any recorded source gap. The Tighten/Loosen
+ * row's state probe. */
 export function listTreeIsLoose(doc: any, listPos: number): boolean {
     const list = doc.nodeAt(listPos);
     if (!list || !isListNode(list)) {
         return false;
     }
     let loose = attrSpreadBool(list.attrs.spread);
-    list.descendants((n: any) => {
+    list.descendants((n: any, _pos: number, _parent: any, index: number) => {
         if (
             (isListNode(n) || n.type.name === "list_item") &&
             attrSpreadBool(n.attrs.spread)
         ) {
+            loose = true;
+        }
+        // A RECORDED SOURCE GAP IS LOOSENESS TOO (MAR-302). `spread` alone is
+        // not the whole answer inside a container the list-spread inference
+        // cannot see through: both a footnote definition and a blockquote leave
+        // the LIST-level `spread` false for a list the author spaced with blank
+        // lines between its items, so the row offered "Loosen List" on an
+        // already-loose blockquote list — and for a footnote one the only thing
+        // answering "loose" was the very item-`spread` artifact
+        // `correctItemSpread` now clears.
+        //
+        // The FIRST item's gap is skipped, exactly as `listItemGapJoin`
+        // (serialization.ts) skips it: nothing precedes it, so a `blankBefore`
+        // it still carries describes a position in the list it LEFT, and this
+        // list never emits it.
+        if (n.type.name === "list_item" && index >= 1 && n.attrs.blankBefore === true) {
             loose = true;
         }
         return !loose;

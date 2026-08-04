@@ -17,7 +17,6 @@
 import { commandsCtx, serializerCtx } from "@milkdown/core";
 import {
     createCodeBlockCommand,
-    insertHrCommand,
     toggleEmphasisCommand,
     toggleInlineCodeCommand,
     toggleStrongCommand,
@@ -37,6 +36,7 @@ import {
     foldAtCaret,
     insertCalloutCommand,
     insertFootnoteCommand,
+    insertHorizontalRuleCommand,
     insertParagraphAfter,
     insertParagraphBefore,
     joinLinesCommand,
@@ -638,7 +638,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // Optional string arg = fence language ("mermaid" from the slash menu)
     insertCodeBlock: (getEditor, args) =>
         callCmd(getEditor, createCodeBlockCommand, typeof args === "string" ? args : undefined),
-    insertHorizontalRule: (getEditor) => callCmd(getEditor, insertHrCommand),
+    insertHorizontalRule: (getEditor) => callCmd(getEditor, insertHorizontalRuleCommand),
     insertTable: (getEditor) => callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
     insertLink: () => host.openLinkPrompt?.(),
     // With a caret (no selection): insert the `#` trigger and let the heading
