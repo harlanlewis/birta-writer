@@ -33,6 +33,7 @@ import {
     type BaselineLinePair,
     type FormatProfile,
     type InsertedLine,
+    type ReplacementKeys,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
 
@@ -860,21 +861,218 @@ function reconcileInsertion(
 // exactly such a pair, and dropping it was the MAR-161 data loss — pinned by "a
 // whitespace-only tab→space edit inside a top-level fence should register as an
 // edit" in minimalDiff.test.ts.
+//
+// That refusal stands. What changed (MAR-299) is what happens INSTEAD of the
+// carry: refusing to write the saved bytes is not the same as being obliged to
+// write the serializer's, and for a moved list item the file's own spelling of
+// the NEW depth is the right third answer. See `respellMovedIndent`.
 function carrySavedIndent(
     saved: string,
     serial: string,
     baseline: Map<string, string> | null,
+    structural: boolean,
 ): string {
     const savedWs = indentOf(saved);
     const serialWs = indentOf(serial);
     if (savedWs === serialWs) return serial;
-    if (saved.slice(savedWs.length) === serial.slice(serialWs.length)) return serial;
+    if (saved.slice(savedWs.length) === serial.slice(serialWs.length)) {
+        return respellMovedIndent(saved, savedWs, serial, serialWs, baseline, structural);
+    }
     const unmoved =
         normalizeOutlineIndent(savedWs) === normalizeOutlineIndent(serialWs) ||
         (LIST_MARKER_RE.test(saved) &&
             LIST_MARKER_RE.test(serial) &&
             baseline?.get(savedWs) === serialWs);
     return unmoved ? savedWs + serial.slice(serialWs.length) : serial;
+}
+
+/**
+ * `baselineIndents` READ BACKWARDS: which source indent this file writes for a
+ * given canonical one. Same discipline as every other fact here — a canonical
+ * indent that two source spellings render to is AMBIGUOUS and is dropped rather
+ * than guessed, so a lookup either hands back a spelling the file demonstrably
+ * uses at that width or nothing at all.
+ *
+ * Derived on demand rather than distilled alongside the forward map, because the
+ * forward map is what the engine stores on the protection and hands back
+ * (`baselineFacts`) — inverting here keeps that stored value one shape with one
+ * owner. Memoized per map: `reconcileReplacement` runs once per edited line and
+ * the protection object outlives a merge.
+ *
+ * The roles `indentFamily` keeps apart (`m` marker / `c` continuation) are NOT
+ * separated here, because the forward map does not record them. The cost is
+ * self-limiting rather than dangerous: an outline whose continuation lines
+ * collide with a deeper marker width simply makes that width ambiguous, and
+ * ambiguity refuses.
+ */
+const invertedBaselines = new WeakMap<Map<string, string>, Map<string, string>>();
+function sourceSpellingOf(
+    baseline: Map<string, string>,
+    canonical: string,
+): string | undefined {
+    let inverted = invertedBaselines.get(baseline);
+    if (inverted === undefined) {
+        inverted = new Map<string, string>();
+        const ambiguous = new Set<string>();
+        for (const [source, rendered] of baseline) {
+            if (ambiguous.has(rendered)) continue;
+            const prev = inverted.get(rendered);
+            if (prev === undefined) {
+                inverted.set(rendered, source);
+            } else if (prev !== source) {
+                inverted.delete(rendered);
+                ambiguous.add(rendered);
+            }
+        }
+        invertedBaselines.set(baseline, inverted);
+    }
+    return inverted.get(canonical);
+}
+
+/**
+ * The prefix of `savedWs` that renders to exactly `serialWs` — the depth the
+ * serializer is now naming, spelled in the bytes THIS LINE was already wearing
+ * on its way down to it. `\t\t` passes through `\t` on its way to nothing, so an
+ * item that outdents one level from `\t\t` is spelled `\t` by its own evidence,
+ * with no map consulted and nothing invented.
+ *
+ * "Renders to" is `normalizeOutlineIndent` and nothing else, deliberately: it is
+ * already this profile's definition of "the same depth" (rule 1), and a second
+ * definition here would be a second answer to the same question. At most one
+ * prefix can match, since it maps each character to one or two and prefix length
+ * → rendered length is therefore strictly increasing — which also bounds the
+ * scan at `serialWs.length + 1` steps rather than the saved indent's length,
+ * however long that is.
+ *
+ * The full length is excluded by the caller's depth gate, not here: a saved
+ * indent that already renders to `serialWs` is a re-spelling, not a move.
+ */
+function depthPrefixOf(savedWs: string, serialWs: string): string | undefined {
+    for (let i = 0; i <= savedWs.length; i++) {
+        const prefix = savedWs.slice(0, i);
+        const rendered = normalizeOutlineIndent(prefix);
+        if (rendered === serialWs) return prefix;
+        if (rendered.length > serialWs.length) return undefined;
+    }
+    return undefined;
+}
+
+/**
+ * RULE 3 (MAR-299), and the answer to the pair the two rules above refuse.
+ *
+ * Refusing to CARRY there is right, and stays: if the leading whitespace is the
+ * only difference then the whitespace is the edit, and writing the saved bytes
+ * back would discard it (MAR-161). But "don't carry the saved indent" was taken
+ * to mean "write the serializer's", and those are not the same answer. A moved
+ * item lands at a depth the SERIALIZER names canonically and the FILE spells its
+ * own way, so the canonical spelling drops two-space bytes into a tab outline —
+ * the untouched sibling below is still four columns in, so it reparses as the
+ * moved item's CHILD and the document gains a list level nobody made. A plain
+ * tab outline (`- alpha` / `\t- beta` / `\t\t- gamma` / `\t- delta`, no mixed
+ * units anywhere) loses one of its thirteen executable moves exactly this way.
+ *
+ * So the depth still comes from the serializer and only the SPELLING is
+ * translated. Two arms answer "how does this file spell that depth", mirroring
+ * rules 1 and 2 above, and either suffices:
+ *
+ *   1. THE LINE'S OWN BYTES (`depthPrefixOf`). The prefix of the saved indent
+ *      that renders to the serializer's canonical indent — the file's spelling
+ *      of that depth as witnessed by this very line, which is current by
+ *      construction and needs no facts at all. This is the arm that matters:
+ *      the documents most exposed to the bug are plain tab outlines, and they
+ *      carry NO baseline facts to consult, because a tab keys equal to the two
+ *      spaces it renders as (`normalizeOutlineIndent`), so the file round-trips
+ *      under the profile's own keys and `computeRoundTripProtection` returns
+ *      null. Of the seven losses this rule closed across the swept shapes, six
+ *      are this arm's and only one is arm 2's.
+ *   2. THE FILE'S OWN TESTIMONY, read backwards (`sourceSpellingOf`). Rule 1
+ *      cannot see a unit the serializer does not use: a four-space outline
+ *      writes depth 1 as four spaces where the serializer writes two, and no
+ *      prefix of `        ` renders to `  ` except `  ` itself. The baseline
+ *      round trip recorded that mapping and inverting it recovers the spelling.
+ *
+ * Four gates. Each one is the difference between this rule and a data loss:
+ *
+ *   - BOTH LINES MUST BE STRUCTURAL, i.e. neither key is `\x00`-tagged. This is
+ *     the gate the first cut of this rule did not have, and its absence is why
+ *     that cut was reverted: the marker test below guesses a line's ROLE from
+ *     its bytes, and fence content compares raw, so `- item` inside a ```yaml
+ *     fence passed it and a two-column edit came back four. The keys already
+ *     hold the classification (see `isStructuralPair`), so the guess is no
+ *     longer load-bearing — the reading is.
+ *   - BOTH LINES MUST CARRY A LIST MARKER — rule 2's scope rule, for rule 2's
+ *     reason: indentation is outline depth here and content everywhere else.
+ *     It is also what keeps MAR-161's case out, a Makefile recipe line inside a
+ *     top-level fence being no kind of list marker.
+ *   - THE DEPTH MUST ACTUALLY HAVE MOVED, i.e. the saved indent must not already
+ *     render to the serializer's. This is the whole discrimination the hook was
+ *     missing — "the user re-spelled this line's whitespace" against "a move
+ *     re-spelled it" — and two bare strings do answer it: a saved indent that
+ *     renders to exactly what the serializer emitted is at the serializer's
+ *     depth already, so nothing structural moved and the difference is the
+ *     user's own bytes. Without this gate a deliberate `\t\t` → `    `
+ *     conversion (same four columns, different convention) is reverted on the
+ *     next save, which is MAR-161's loss reintroduced through the new door.
+ *   - ARM 2'S SPELLING MUST BE PREFIX-COMPATIBLE with this line's saved indent
+ *     (one a prefix of the other). `baselineFacts` is distilled once at load and
+ *     the saved text moves under it, so a stale fact can name a convention the
+ *     file has since abandoned — a tab outline converted to spaces would still
+ *     be told a level is written `\t`, and writing one back is four columns
+ *     where two were meant. Arm 1 needs no such check: its answer IS this
+ *     line's own current bytes.
+ *
+ * WHAT THIS COST, since the rule shipped once and was backed out: the first cut
+ * had only the last three gates and rated the fence exposure narrow. It was not
+ * narrow — indenting a list inside a fenced code block is an ordinary gesture,
+ * and `\x00`-tagged keys were already sitting in the engine one argument away.
+ * The lesson is not about fences: a gate that infers a line's role from its
+ * bytes is a guess, and this file already computes the answer once, in context,
+ * for exactly this reason (see the classifier header). Prefer the reading.
+ *
+ * WHAT IS STILL EXPOSED, and what the measurement behind it does NOT cover:
+ *
+ *   - SETEXT. It is the one class that is both untagged by `normLineForCompare`
+ *     (it falls through to the prose path deliberately, so an underline can
+ *     never key-match a saved hr — MAR-161 M2) and marker-shaped: a bare `-`
+ *     passes LIST_MARKER_RE. Probed, not merely reasoned about — the shapes
+ *     tried produced byte-identical output with the gate removed, meaning they
+ *     never reached this rule at all, so no arm had an answer. That makes it an
+ *     UNVERIFIED residual rather than a known-safe one. The direction to fear is
+ *     a re-spelling that writes a tab: four columns turns an underline into
+ *     indented code and dissolves the heading.
+ *   - A line the CLASSIFIER itself misreads, since the keys approximate the
+ *     block parser rather than replicate it. Its known deliberate gap is
+ *     indented code nested deep inside a list item classifying as prose.
+ *
+ * The 2471-move sweep says nothing about either. It drives the MOVE path only,
+ * and both residuals live on the EDIT path — the sweep could not have reached
+ * them whether or not they are real. What covers the edit path is this file's
+ * unit tests, which is a smaller net. Saying otherwise is how the first cut of
+ * this rule shipped: it rated its fence exposure narrow on reasoning, and
+ * indenting a list inside a fence turned out to be an ordinary gesture.
+ */
+function respellMovedIndent(
+    saved: string,
+    savedWs: string,
+    serial: string,
+    serialWs: string,
+    baseline: Map<string, string> | null,
+    structural: boolean,
+): string {
+    if (!structural) return serial;
+    if (!LIST_MARKER_RE.test(saved) || !LIST_MARKER_RE.test(serial)) return serial;
+    if (normalizeOutlineIndent(savedWs) === serialWs) return serial;
+    // An arm that answers with the serializer's own indent has not answered:
+    // writing it back is the behaviour this rule exists to change, and letting
+    // it stand would stop arm 2 from being consulted at all.
+    const spells = (source: string | undefined): source is string =>
+        source !== undefined && source !== serialWs;
+    const local = depthPrefixOf(savedWs, serialWs);
+    if (spells(local)) return local + serial.slice(serialWs.length);
+    const witnessed = baseline ? sourceSpellingOf(baseline, serialWs) : undefined;
+    if (!spells(witnessed)) return serial;
+    if (!witnessed.startsWith(savedWs) && !savedWs.startsWith(witnessed)) return serial;
+    return witnessed + serial.slice(serialWs.length);
 }
 
 // Keep the SAVED bytes of every table cell the user did not touch. A row is
@@ -909,15 +1107,50 @@ function carrySavedTableCells(saved: string, serial: string): string {
     return indentOf(serial) + "|" + merged.join("|") + "|";
 }
 
+/**
+ * Does this replacement pair consist of two lines whose indentation is OUTLINE
+ * STRUCTURE, rather than bytes the user authored?
+ *
+ * `normLineForCompare` tags every verbatim and non-prose class with a `\x00`
+ * prefix — fence content (`\x00F`), indented code (`\x00C`), a thematic break
+ * (`\x00B`) — so the classification the keys already carry answers this without
+ * re-deriving it. That matters because it CANNOT be re-derived from a line in
+ * isolation: `- item` is an outline bullet in prose and verbatim content inside
+ * a fence, and `- - -` passes `LIST_MARKER_RE` while being a thematic break.
+ *
+ * Both keys are required to be untagged, not just the saved one. The pair's keys
+ * always differ (an equal pair merges as a `keep`), so either side may be the
+ * verbatim one — a bullet the user wrapped in a fence arrives as prose→fence,
+ * and re-spelling the serializer's fence bytes from the saved line's outline
+ * convention corrupts exactly as the reverse does.
+ *
+ * Refusing is the safe direction here, as it is everywhere else in this file:
+ * a false negative leaves an indent canonicalized (cosmetic, and the status quo
+ * before rule 3), a false positive writes invented whitespace into bytes the
+ * user typed. Measured free: over 2471 executable move pairs across thirteen
+ * outline shapes and six corpus fixtures, rule 3 closes the same 5 losses with
+ * this gate as without it.
+ */
+const isStructuralPair = (keys: ReplacementKeys): boolean =>
+    !keys.saved.startsWith("\x00") && !keys.serial.startsWith("\x00");
+
 /** Markdown's `FormatProfile.reconcileReplacement`. Pure and total: every
  * branch falls back to the serializer's line, and neither pass can introduce a
  * newline. `facts` arrives typed `unknown` because the engine only stores and
  * returns it, so the shape is checked here rather than asserted — cheap, and it
  * is what keeps a protection built by some OTHER profile from being read as
  * this one's map once a second format exists. */
-function reconcileReplacement(saved: string, serial: string, facts: unknown): string {
+function reconcileReplacement(
+    saved: string,
+    serial: string,
+    facts: unknown,
+    keys: ReplacementKeys,
+): string {
     const baseline = facts instanceof Map ? (facts as Map<string, string>) : null;
-    return carrySavedTableCells(saved, carrySavedIndent(saved, serial, baseline));
+    return carrySavedTableCells(
+        saved,
+        carrySavedIndent(saved, serial, baseline, isStructuralPair(keys)),
+    );
 }
 
 // ─── Blank-line structure predicates (merge hooks) ──────────────────────────

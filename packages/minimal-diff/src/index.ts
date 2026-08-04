@@ -84,8 +84,21 @@ export interface FormatProfile {
      * no protection was computed. A profile MUST treat it as untrusted (it
      * round-trips through the caller's cache) and MUST behave correctly without
      * it.
+     *
+     * `keys` carries both lines' comparison keys, exactly as `keyLines` produced
+     * them in full document context — the same fact `reconcileInsertion` already
+     * receives per line, and for the same reason: a profile cannot classify a
+     * line from its bytes in isolation. A line reading `- item` is an outline
+     * bullet in prose and verbatim content inside a fence, and only the key can
+     * tell them apart. Passing it is what lets a profile refuse to reason about
+     * structure on a line that has none (MAR-299).
      */
-    reconcileReplacement(saved: string, serial: string, facts: unknown): string;
+    reconcileReplacement(
+        saved: string,
+        serial: string,
+        facts: unknown,
+        keys: ReplacementKeys,
+    ): string;
     /**
      * Distill whatever the zero-edit baseline round trip teaches about how THIS
      * file is written, for `reconcileReplacement` to consult on every later
@@ -229,6 +242,14 @@ export interface InsertedLine {
     key: string;
 }
 
+/** The comparison keys of the two lines in an in-place replacement — see
+ *  `reconcileReplacement`. They always differ: a pair that keyed equal would
+ *  have merged as a `keep` and never reached the hook. */
+export interface ReplacementKeys {
+    saved: string;
+    serial: string;
+}
+
 /** One saved line beside its zero-edit serialization — see `baselineFacts`. */
 export interface BaselineLinePair {
     saved: string;
@@ -319,13 +340,14 @@ function reconcileLine(
     serial: string,
     savedTerminated: boolean,
     facts: unknown,
+    keys: ReplacementKeys,
 ): string {
     const eol = savedTerminated ? eolOf(saved) : "";
     const savedContent = savedTerminated ? stripEol(saved) : saved;
     const fallback = stripEol(serial) + eol;
     let out: string;
     try {
-        out = profile.reconcileReplacement(savedContent, stripEol(serial), facts);
+        out = profile.reconcileReplacement(savedContent, stripEol(serial), facts, keys);
     } catch {
         return fallback;
     }
@@ -1158,6 +1180,7 @@ export function applyMinimalChanges(
                 next.serial.text,
                 edit.saved.lineIdx !== lastSavedIdx,
                 protection?.baselineFacts ?? null,
+                { saved: edit.saved.norm, serial: next.serial.norm },
             );
             // Everything downstream must see the line actually written, not
             // the raw serializer line: gapBefore's structure predicates reason

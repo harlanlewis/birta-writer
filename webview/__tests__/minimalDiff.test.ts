@@ -692,6 +692,116 @@ describe("applyMinimalChanges — outlines that mix indent units (MAR-222)", () 
     });
 });
 
+describe("applyMinimalChanges — a moved item takes the file's spelling of its NEW depth (MAR-299)", () => {
+    // The pair the two carry rules refuse — whitespace the only difference — had
+    // one answer too few. Refusing to write the SAVED bytes there is right
+    // (MAR-161: the whitespace is the edit), but it was silently taken to mean
+    // writing the SERIALIZER's, and a depth is named canonically by the
+    // serializer and spelled its own way by the file. `respellMovedIndent` keeps
+    // the depth and translates the spelling. movedBlockIndent.test.ts drives the
+    // same two shapes through the real move gesture and the real save pipeline;
+    // these are the distilled string-level pins, plus the two gates, which no
+    // ordinary gesture reaches.
+
+    it("an item outdented to a shallower depth should be spelled from its own saved bytes", () => {
+        // A plain tab outline. It gets NO protection at all — a tab keys equal
+        // to the two spaces it renders as, so the file round-trips under the
+        // profile's own keys — which is exactly why the first arm consults no
+        // facts: on this shape there are none to consult.
+        const saved = "- alpha\n\t- beta\n\t\t- gamma\n\t- delta\n";
+        expect(computeRoundTripProtection(saved, "- alpha\n  - beta\n    - gamma\n  - delta\n")).toBeNull();
+
+        expect(applyMinimalChanges(saved, "- alpha\n  - beta\n  - gamma\n  - delta\n")).toBe(
+            "- alpha\n\t- beta\n\t- gamma\n\t- delta\n",
+        );
+    });
+
+    it("a file whose indent unit is wider than the serializer's should be spelled from the baseline", () => {
+        // Four spaces per level. No prefix of the saved eight renders to the
+        // serializer's two except two itself, so the line's own bytes cannot
+        // answer and the baseline round trip, read backwards, has to.
+        const saved = "- alpha\n    - beta\n        - gamma\n    - delta\n";
+        const protection = computeRoundTripProtection(
+            saved,
+            "- alpha\n  - beta\n    - gamma\n  - delta\n",
+        );
+        expect(protection).not.toBeNull();
+
+        expect(
+            applyMinimalChanges(saved, "- alpha\n  - beta\n  - gamma\n  - delta\n", protection),
+        ).toBe("- alpha\n    - beta\n    - gamma\n    - delta\n");
+    });
+
+    it("a re-spelling that does NOT move the depth is the user's own edit and must land", () => {
+        // The gate that keeps MAR-161 closed against the new rule. Fence content
+        // compares raw, so a whitespace-only edit inside a top-level fence
+        // reaches the replacement hook — and unlike the Makefile line above,
+        // `- item` looks exactly like a list marker, so the marker gate lets it
+        // through. What refuses is the depth test: `\t` renders to precisely the
+        // two spaces the serializer emitted, so nothing structural moved and the
+        // difference is the user's own bytes.
+        const saved = "```yaml\n\t- item\n```\n";
+        const serialized = "```yaml\n  - item\n```\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    it("a baseline naming a convention the file has abandoned should not be written back", () => {
+        // The third gate, and the one the baseline arm cannot do without: those
+        // facts are distilled ONCE at load and the saved text moves on after
+        // every save, so the map can name a convention that is no longer in the
+        // file at all. Here the document loaded as a tab outline — teaching that
+        // the serializer's `  ` is written `\t` — and the user has since
+        // converted the whole thing to spaces. Writing that `\t` back is four
+        // columns where two are meant, which re-nests the outline exactly as the
+        // bug this rule fixes does.
+        //
+        // The saved line's own indent is current by construction and settles it:
+        // `    ` and `\t` share no prefix in either direction, so the fact is not
+        // about this line and is declined.
+        const protection = computeRoundTripProtection("- a\n\t- b\n\t   - c\n", "- a\n  - b\n    - c\n");
+        expect(protection).not.toBeNull();
+
+        expect(applyMinimalChanges("- a\n  - b\n    - c\n", "- a\n  - b\n  - c\n", protection)).toBe(
+            "- a\n  - b\n  - c\n",
+        );
+    });
+
+    it("a column-changing edit inside a fence must land verbatim, not be re-spelled (MAR-299)", () => {
+        // The gate the first cut of rule 3 did not have, and the reason it was
+        // reverted. Every other gate lets this through: `- item` passes the
+        // marker test (fence content compares raw, so it reaches the hook at
+        // all), the depth genuinely moved (no saved indent renders to the
+        // serializer's two spaces), and the baseline arm has an answer ready —
+        // the outline above teaches that two canonical columns are written
+        // four. So the user's two spaces came back as four, inside a YAML block,
+        // where the indent is what the document MEANS.
+        //
+        // Pinned line: the `if (!structural) return serial` gate in
+        // `respellMovedIndent`. Delete it and this test reddens on its own.
+        const saved = "- alpha\n    - beta\n\n```yaml\n- item\n```\n";
+        const protection = computeRoundTripProtection(saved, "- alpha\n  - beta\n\n```yaml\n- item\n```\n");
+        expect(protection).not.toBeNull();
+
+        // The user typed two spaces before `- item`, inside the fence.
+        expect(
+            applyMinimalChanges(saved, "- alpha\n  - beta\n\n```yaml\n  - item\n```\n", protection),
+        ).toBe("- alpha\n    - beta\n\n```yaml\n  - item\n```\n");
+    });
+
+    it("a whitespace-only outdent on a line that is not a list marker keeps the serializer's bytes", () => {
+        // The other gate, and the reason `- item` above needed the depth test to
+        // save it: this line's saved indent DOES pass through `\t` on its way
+        // down to two columns, so the first arm has an answer ready. It is a
+        // Makefile recipe, not an outline, and its leading whitespace is content
+        // (MAR-161) — the marker gate is what declines to touch it.
+        const saved = "```make\n\t\tgcc x\n```\n";
+        const serialized = "```make\n  gcc x\n```\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+});
+
 describe("applyMinimalChanges — a CRLF file with no trailing newline (MAR-223)", () => {
     // The corpus fixture ends with a newline, so the whole "unterminated final
     // segment" class is only covered by the engine's synthetic profile. These
