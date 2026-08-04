@@ -261,8 +261,9 @@ describe("a list inside a footnote definition keeps its gaps (MAR-211)", () => {
     // every consumer that does not go through the merge.
 
     it("a loose list inside a footnote definition should keep its blank lines", async () => {
-        // The ticket's repro. Before the fix: `- a\n    - b\n    - c` — every
-        // authored blank dropped, which renders the items tight downstream.
+        // The ticket's repro. Before the fix this emitted
+        // `[^1]: n\n\n    - a\n    - b\n    - c\n` — every authored blank
+        // dropped, which renders the items tight downstream.
         const doc = "[^1]: n\n\n    - a\n\n    - b\n\n    - c\n";
         expect(await roundTrip(doc)).toBe(doc);
     });
@@ -293,17 +294,17 @@ describe("a list inside a footnote definition keeps its gaps (MAR-211)", () => {
         // The reason the fix cannot read the previous item's own `spread`: the
         // container shift makes an item spread when the blank is BETWEEN items,
         // but an item is equally spread when the blank is between two of its own
-        // paragraphs and there is no gap at all before the next item. Both items
-        // here carry `spread: true`; only one of them is followed by a blank.
+        // paragraphs and no gap at all follows it. Item `a` here carries
+        // `spread: true` and is followed by no blank — so a `spread` rule would
+        // invent one, which is why the measurement stays geometric.
         const doc = "[^1]: n\n\n    - a\n\n      cont\n    - b\n";
         expect(await roundTrip(doc)).toBe(doc);
     });
 
     it("a multi-LINE item should be measured from its last line, not its first", async () => {
-        // The gap is now read from the item's last content line, so an item
-        // whose own text runs over two source lines is the shape that would
-        // break a naive "first line + 1" reading. Both spacings, so neither
-        // answer can be right by accident.
+        // The descent has to land on the paragraph's END line, not its start:
+        // an item whose own text runs over two source lines is where those two
+        // differ. Both spacings, so neither answer can be right by accident.
         const loose = "[^1]: n\n\n    - line one\\\n      line two\n\n    - b\n";
         const tight = "[^1]: n\n\n    - line one\\\n      line two\n    - b\n";
         expect(await roundTrip(loose)).toBe(loose);
