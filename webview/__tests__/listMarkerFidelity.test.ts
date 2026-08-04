@@ -186,11 +186,22 @@ describe("an item's real first block rides on the marker line", () => {
         expect(kinds).not.toContain("hr");
     });
 
-    it("a blank line the author wrote inside an item should survive the save", async () => {
-        // Here the leading empty paragraph is NOT an artifact — an item may
-        // legally start with a paragraph, so nothing was filled in and the empty
-        // one is a node the document really has. Dropping it deleted a paragraph
-        // the user could see (`-\n\n  world` came back as `- world`).
+    it("emptying an item's first paragraph should keep the second one INSIDE the item", async () => {
+        // MAR-309, a fidelity-policy call (maintainer, 2026-08-04). Emptying the
+        // first paragraph of an item that holds a second leaves
+        // `paragraph(empty), paragraph("world")` — a shape Markdown cannot
+        // write, because there is no spelling for an empty paragraph. Both
+        // options lose something and the item's CONTENT was chosen over the
+        // empty node: `-\n  world\n` keeps `world` as the item's paragraph,
+        // where `-\n\n  world\n` orphaned it to the top level and reopened the
+        // item empty.
+        //
+        // This case previously asserted the opposite, and did so by counting
+        // paragraphs across the WHOLE document — which the old bytes satisfied
+        // precisely BECAUSE `world` escaped the list and was still counted
+        // there. Asserting the item's own children is what makes that
+        // impossible: an escape now shows up as a missing child, not as a
+        // paragraph found somewhere else.
         const editor = await makeEditor("- hello\n\n  world\n");
         const v = view(editor);
         v.dispatch(v.state.tr.delete(posAfterText(v, "hello") - "hello".length, posAfterText(v, "hello")));
@@ -198,9 +209,13 @@ describe("an item's real first block rides on the marker line", () => {
         const serialized = editor.action(getMarkdown());
         await editor.destroy();
 
-        const kinds = await reparsedKinds(serialized);
         expect(before).toBe(2); // an empty paragraph and a real one
-        expect(kinds.filter((k) => k === "paragraph")).toHaveLength(2);
+        expect(serialized).toBe("-\n  world\n");
+        expect(await reparsedItemShape(serialized)).toBe("paragraph");
+        // The point of the whole case: nothing sits BESIDE the list. The old
+        // bytes reparsed to a trailing top-level paragraph — that extra entry
+        // is exactly the escape, and it is what this equality forbids.
+        expect(await reparsedKinds(serialized)).toEqual(["bullet_list", "list_item", "paragraph"]);
     });
 });
 
