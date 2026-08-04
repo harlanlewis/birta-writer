@@ -4,6 +4,7 @@ import {
     orderedListSchema,
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
+import type { Node as ProseNode } from "../pm";
 import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { joinTextblockBackward, liftListItem } from "../pm";
@@ -368,22 +369,20 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
  *   2. A THEMATIC BREAK re-lexes when a marker joins it. The marker character
  *      runs into the rule's own characters and the whole line becomes ONE
  *      thematic break — `*` above `***` becomes `* ***` — so the list is gone.
- *   3. A NESTED LIST WITH NO TEXT is the same collision reached through the
- *      markers themselves. Hoisting puts its marker on this line too, and three
- *      or more bullets alone ARE a thematic break: an outline branch whose
- *      three lines have all been emptied serialized to `- - -` and reopened as
- *      a horizontal rule, with the branch destroyed. A nested list that carries
- *      text (`- - child`) puts a non-marker character on the line and is safe.
- *
- * Read clause 3's predicate literally — `textContent === ""` is "no TEXT", not
- * "empty". A sublist holding only an image, a rule, an empty fence or an empty
- * quote has real content and no text, so it is refused too, and refusing leaves
- * the bare marker line in place with its original hazard intact (`- normal`
- * above `  - - ![](a.png)` still loses the nesting on reopen). That is a
- * deliberate under-reach, not an oversight: it is the pre-existing behaviour, so
- * it costs nothing that was working, and narrowing the predicate to a genuinely
- * empty list would need a rule for which of those contents can safely ride a
- * marker line — the same question clause 2 answers "no" to for rules.
+ *      Held back UNCONDITIONALLY here, and released one level up by
+ *      `hoistRulesOntoMarkerLine` (plugins/sourceStyle.ts) for the half of the
+ *      case that is provably safe: the collision needs the bullet and the rule
+ *      to be the same character, and neither the printed bullet nor the flip
+ *      that can change it is decided until `serializeList` runs (MAR-240).
+ *   3. A NESTED LIST THAT WOULD CONTRIBUTE ONLY MARKERS is the same collision
+ *      reached through the markers themselves. Hoisting puts its marker on this
+ *      line too, and three or more bullets alone ARE a thematic break: an
+ *      outline branch whose three lines have all been emptied serialized to
+ *      `- - -` and reopened as a horizontal rule, with the branch destroyed.
+ *      A nested list that puts any other character on the line — text, an
+ *      image, a heading, a fence — is safe; `ridesMarkerLineSafely` below is
+ *      that question, and its own header explains why it is asked of the
+ *      first-item chain rather than of the whole subtree.
  *
  * Cases 2 and 3 are one hazard (a line that re-lexes as a rule) and case 1 is a
  * different one (a node that isn't ours to drop); they are kept as separate
@@ -405,8 +404,53 @@ function itemContentForMarkdown(content: Fragment): Fragment {
     const next = content.child(1);
     if (next.type.name === "paragraph") return content;
     if (next.type.name === "hr") return content;
-    if (isListNode(next) && next.textContent === "") return content;
+    if (isListNode(next) && !ridesMarkerLineSafely(next)) return content;
     return content.cut(first.nodeSize);
+}
+
+/**
+ * Would hoisting this nested list onto its parent's marker line put a character
+ * on that line which a run of markers or rule characters cannot absorb?
+ *
+ * Clause 3 above used to ask `textContent === ""`, which is "holds no TEXT" —
+ * and a sublist holding only an image, a rule, an empty fence or an empty quote
+ * answers that too, so it was refused with the bare-marker hazard left intact
+ * (`- normal` above `  - - ![](a.png)` lost the nesting on reopen — MAR-240).
+ *
+ * The hazard clause 3 exists for is narrower than "no text": a line becomes a
+ * THEMATIC BREAK only when every character on it is the SAME marker/rule
+ * character (`- - -`). One `!`, `#`, `>`, backtick or letter anywhere on it
+ * settles the question for good, whatever the markers turn out to be — which
+ * matters, because the bullet each level prints is not decided until
+ * `serializeList` runs (plugins/sourceStyle.ts), long after this.
+ *
+ * So this walks the FIRST-item chain, which is the only part of the sublist that
+ * can reach the marker line, and answers `true` only on reaching a block that is
+ * certain to print such a character. The three ways down are all refusals:
+ *
+ *   - no first item, or a first block that is an empty paragraph — the sublist
+ *     contributes a BARE MARKER, which is what makes `- - -` in the first place
+ *     (an emptied three-deep branch reopened as an `<hr>`, pinned in
+ *     `listMarkerFidelity.test.ts`);
+ *   - a thematic break — its characters may be the markers' own (`- - ---` is
+ *     five dashes). `serializeList` releases the safe half of that case one
+ *     level up, where the two characters are finally both known; here they are
+ *     not, so this refuses rather than guessing;
+ *   - a deeper list — recurse, since the same question applies to it.
+ *
+ * `itemContentForMarkdown` is asked for the inner item's content rather than
+ * reading its children directly, so this sees the same hoisting the serializer
+ * will do. The mutual recursion terminates: each step descends one list level.
+ */
+function ridesMarkerLineSafely(list: ProseNode): boolean {
+    const item = list.firstChild;
+    if (!item) return false;
+    const first = itemContentForMarkdown(item.content).firstChild;
+    if (!first) return false;
+    if (first.type.name === "hr") return false;
+    if (isListNode(first)) return ridesMarkerLineSafely(first);
+    if (first.type.name === "paragraph") return first.content.size > 0;
+    return true;
 }
 
 /**
