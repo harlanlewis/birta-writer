@@ -191,13 +191,26 @@ export interface FormatProfile {
      *
      * `baselineFacts` is `baselineFacts`' opaque result for this file — the same
      * value `reconcileReplacement` receives — or null when the file carries no
-     * protection. It is here because `preceding`, and the run's own lines, can
-     * arrive wearing bytes the SERIALIZER never wrote: `repairSerialized` runs
-     * before the diff, so a protected construct reaches this hook spelled the
-     * way the saved file spells it, inside a stream that is otherwise canonical.
-     * A profile reasoning about which convention a neighbouring line is in
-     * therefore cannot answer from this merge's keeps alone — the baseline round
-     * trip is the only record of what the file's own spellings are (MAR-297).
+     * protection.
+     *
+     * WHY the fact is needed: `preceding`, and the run's own lines, can arrive
+     * wearing bytes the SERIALIZER never wrote. `repairSerialized` runs before
+     * the diff, so a protected construct reaches this hook spelled the way the
+     * saved file spells it, inside a stream that is otherwise canonical. A
+     * profile reasoning about which convention a neighbouring line is in cannot
+     * answer that from this merge's keeps alone — the baseline round trip is the
+     * only record of what the file's own spellings are (MAR-297).
+     *
+     * WHY it is a PARAMETER rather than something the profile closes over: only
+     * for symmetry with `reconcileReplacement`, which already receives it this
+     * way. Passing it here is NOT forced — a profile-bound wrapper closing over
+     * `protection.baselineFacts` was built and measured byte-identical on every
+     * probe, since that field is already public and already threaded to the
+     * wrapper. MAR-297's commit message claims the widening was forced; that is
+     * wrong, and the honest reason is that one fact reaching two sibling hooks
+     * by two different mechanisms is worse than one extra argument. If these
+     * hooks are ever reworked, this is a free choice, not a constraint.
+     *
      * Same caveat as everywhere else it is used: it is distilled ONCE at load
      * and the saved text moves under it, so it may only ever GRANT, never veto.
      */
