@@ -1004,6 +1004,28 @@ function countTrailingBlanks(lines: string[]): number {
 // ─── Minimal-diff merge ─────────────────────────────────────────────────────
 
 /**
+ * The contiguous non-keep run starting at `from` — its two sides collected
+ * SEPARATELY, each in document order, plus the index just past it. Collecting
+ * rather than walking is what lets the merge pair the sides positionally
+ * without depending on the order the LCS backtrack happens to emit them in.
+ */
+function runAt(
+    edits: Edit[],
+    from: number,
+): { dels: SigLine[]; inses: SigLine[]; end: number } {
+    const dels: SigLine[] = [];
+    const inses: SigLine[] = [];
+    let end = from;
+    while (end < edits.length && edits[end].op !== "keep") {
+        const edit = edits[end];
+        if (edit.op === "del") dels.push(edit.saved);
+        else if (edit.op === "ins") inses.push(edit.serial);
+        end++;
+    }
+    return { dels, inses, end };
+}
+
+/**
  * Merge `serialized` (the full serializer output) into `saved` (the file as
  * last written), applying only real content changes:
  *
@@ -1158,7 +1180,6 @@ export function applyMinimalChanges(
     let e = 0;
     while (e < edits.length) {
         const edit = edits[e];
-        const next = edits[e + 1];
         if (edit.op === "keep") {
             out.push(...gapBefore(edit.saved.lineIdx, edit.serial.lineIdx, edit.saved.text));
             out.push(edit.saved.text);
@@ -1168,69 +1189,130 @@ export function applyMinimalChanges(
             prevLineText = edit.saved.text;
             dirty = false;
             e++;
-        } else if (edit.op === "del" && next?.op === "ins") {
-            // del immediately followed by ins = an in-place replacement: the
-            // line changed but its surroundings did not, so the saved spacing
-            // around it is kept (modulo the block-split guard in gapBefore).
-            // The profile gets the last word on the BYTES too — it may carry
-            // source-only facts the serializer canonicalized away.
-            const text = reconcileLine(
-                profile,
-                edit.saved.text,
-                next.serial.text,
-                edit.saved.lineIdx !== lastSavedIdx,
-                protection?.baselineFacts ?? null,
-                { saved: edit.saved.norm, serial: next.serial.norm },
-            );
-            // Everything downstream must see the line actually written, not
-            // the raw serializer line: gapBefore's structure predicates reason
-            // about the emitted neighbours, so feeding them a line that was
-            // never written would decide the blank run on fiction.
-            out.push(...gapBefore(edit.saved.lineIdx, next.serial.lineIdx, text));
-            out.push(text);
-            if (edit.saved.lineIdx === lastSavedIdx) unterminatedAt = out.length - 1;
-            prevSavedIdx = edit.saved.lineIdx;
-            prevSerialIdx = next.serial.lineIdx;
-            prevLineText = text;
-            dirty = false;
-            e += 2;
-        } else if (edit.op === "del") {
-            dirty = true;
-            e++;
         } else {
+            // A contiguous run of dels and inses: the same span of the
+            // document before and after the edit. Its two sides are paired
+            // POSITIONALLY — i-th saved line beside i-th serialized one — and
+            // each pair is an in-place replacement, offered to the profile,
+            // which may carry source-only facts the serializer canonicalized
+            // away. Whatever is left over on the longer side is a plain
+            // deletion (no serialized counterpart) or a plain insertion (no
+            // saved one).
+            //
+            // Position is the correspondence, for `positionalRunPairs`'
+            // reason: a serializer re-emits a span rather than reordering it.
+            // Unlike that function this does not demand the bytes exhibit the
+            // correspondence first, because the stakes are opposite. There a
+            // mispaired guess becomes a file-wide fact that outlives the merge
+            // and is consulted for lines it never saw, so an absent pair is
+            // cheap and a wrong one is a lie. Here the pairing is per line and
+            // per merge, the profile re-checks every carry against the two
+            // lines in front of it, and declining to pair is not "no answer" —
+            // it is the answer this walk used to give, which was wrong.
+            //
+            // WHAT IT USED TO GIVE (MAR-303): the walk read adjacency, `del`
+            // immediately followed by `ins`, as the replacement. The LCS
+            // backtrack emits a run's dels and THEN its inses (the fact
+            // `pairBaselineLines` states about itself), so on any run longer
+            // than one couple that test found the LAST saved line beside the
+            // FIRST serialized one — two lines with nothing to do with each
+            // other — and every other serialized line in the run fell through
+            // to the insertion path, which has no saved counterpart to consult
+            // at all. Editing two adjacent table rows in ONE save was enough
+            // to reach it: the second row lost the cell bytes the serializer
+            // cannot reproduce, and the first row was handed the second's.
+            //
+            // Collecting the two sides separately also makes the walk
+            // independent of the order the backtrack emits them in, which is a
+            // property of the DP rather than of this engine's contract.
+            const { dels, inses, end } = runAt(edits, e);
+            e = end;
+
+            // SPACING is deliberately carried over from the walk this
+            // replaced, byte for byte, so that this change is about pairing
+            // and nothing else. Two rules reproduce it exactly:
+            //   • a saved line with no serialized counterpart takes the blank
+            //     run around it away, so a run with more than one del — or
+            //     with none at all to pair against — is `dirty` from the
+            //     start and every line it emits is spaced by the serializer;
+            //   • after the run, `dirty` is false only for the isolated
+            //     couple whose surroundings demonstrably did not move.
+            // (The second rule is stated in terms of the SERIALIZED side
+            // because that is what the old walk's branch order made it depend
+            // on. That is an accident of that shape rather than a reasoned
+            // rule, and it is worth its own look — but not from inside a fix
+            // to the pairing, where any spacing change would be unmeasurable
+            // against it.)
+            if (dels.length > 1 || inses.length === 0) dirty = true;
+
+            const paired = Math.min(dels.length, inses.length);
+            for (let k = 0; k < paired; k++) {
+                const savedLine = dels[k];
+                const serialLine = inses[k];
+                const text = reconcileLine(
+                    profile,
+                    savedLine.text,
+                    serialLine.text,
+                    savedLine.lineIdx !== lastSavedIdx,
+                    protection?.baselineFacts ?? null,
+                    { saved: savedLine.norm, serial: serialLine.norm },
+                );
+                // Everything downstream must see the line actually written,
+                // not the raw serializer line: gapBefore's structure
+                // predicates reason about the emitted neighbours, so feeding
+                // them a line that was never written would decide the blank
+                // run on fiction.
+                out.push(...gapBefore(dels[dels.length - 1].lineIdx, serialLine.lineIdx, text));
+                out.push(text);
+                if (savedLine.lineIdx === lastSavedIdx) unterminatedAt = out.length - 1;
+                prevSerialIdx = serialLine.lineIdx;
+                prevLineText = text;
+            }
+            if (paired > 0) {
+                // The saved side is consumed through the run's LAST del, not
+                // through the last one this pairing reached: the surplus are
+                // DELETIONS, and leaving `prevSavedIdx` short of them would
+                // let the next `savedGap` slice their still-significant lines
+                // back into the output. (Assigned after the loop, not during:
+                // the only reader is `gapBefore`'s saved branch, which a run
+                // of more than one del never takes — see the spacing note
+                // above.)
+                prevSavedIdx = dels[dels.length - 1].lineIdx;
+            }
+
             // Pure insertions: they have no position in the saved file, so
             // their spacing (before and after) can only come from the
             // serializer. Their BYTES get the profile's last word — inserted
             // lines land among saved ones, and a convention the serializer
             // canonicalized can carry meaning there (see `reconcileInsertion`).
             //
-            // The whole consecutive run goes to the profile at once, because
-            // it is one block of content and its interior indentation is
+            // The whole leftover run goes to the profile at once, because it
+            // is one block of content and its interior indentation is
             // relative. Blank lines between them are not part of the run: they
             // are insignificant to the diff and are emitted from the
             // serializer's gaps, exactly as before.
-            const runStart = e;
-            while (e < edits.length && edits[e].op === "ins") e++;
-            const run = edits
-                .slice(runStart, e)
-                .map((ins) => (ins as Extract<Edit, { op: "ins" }>).serial);
-            const texts = reconcileInsertedRun(
-                profile,
-                run,
-                serialLines.length - 1,
-                prevLineText === null ? null : stripEol(prevLineText),
-                mergeFacts,
-                protection?.baselineFacts ?? null,
-            );
-            for (let r = 0; r < run.length; r++) {
-                // As in the replacement branch, everything downstream must see
-                // the line actually written, not the raw serializer line.
-                out.push(...serialGap(run[r].lineIdx));
-                out.push(texts[r]);
-                prevSerialIdx = run[r].lineIdx;
-                prevLineText = texts[r];
+            const inserted = inses.slice(paired);
+            if (inserted.length > 0) {
+                const texts = reconcileInsertedRun(
+                    profile,
+                    inserted,
+                    serialLines.length - 1,
+                    prevLineText === null ? null : stripEol(prevLineText),
+                    mergeFacts,
+                    protection?.baselineFacts ?? null,
+                );
+                for (let r = 0; r < inserted.length; r++) {
+                    // As in the replacement branch, everything downstream must
+                    // see the line actually written, not the raw serializer
+                    // line.
+                    out.push(...serialGap(inserted[r].lineIdx));
+                    out.push(texts[r]);
+                    prevSerialIdx = inserted[r].lineIdx;
+                    prevLineText = texts[r];
+                }
             }
-            dirty = true;
+
+            dirty = dels.length === 0 || inses.length !== 1;
         }
     }
 
