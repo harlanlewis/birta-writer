@@ -1,5 +1,5 @@
 {
-  "note": "Historical reference only, NOT the loop gate. Absolute ms are machine-specific (maintainer laptop, production build). The loop gates on a same-session A/B via `pnpm perf --compare`; this file advances only inside accepted-optimization commits.",
+  "note": "Historical reference only, NOT the loop gate. Absolute ms are machine-specific (maintainer laptop, production build). The loop gates on a same-session A/B via `pnpm perf --compare`; this file advances only inside accepted-optimization commits. NOT COMPARABLE TO ANY CURRENT RUN: these figures predate MAR-310, which reseeded the prose fixtures to trip the style check (section counts cut to hold byte sizes), so the documents behind these numbers no longer exist. Nothing reads this file — re-measure.",
   "lastLanded": "MAR-67 (extract sampleDocPosition; selectionToolbar leaves the bundle)",
   "build": "production (node esbuild.mjs --production --metafile)",
   "runsPerFixture": 10,

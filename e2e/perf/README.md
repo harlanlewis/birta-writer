@@ -25,12 +25,24 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 | `eager` | `eval-start` → `ready-posted` | eager module eval + UI construction |
 | `roundtrip` | `ready-posted` → `init-received` | the `ready`→`init` postMessage hop |
 | `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc) |
-| `rtp` | `rtp-start` → `rtp-end` | `computeRoundTripProtection` (re-serializes the doc) |
 | `toc` / `toolbar` | `*-start` → `*-end` | those two components' construction |
+| `rtp` | `rtp-start` → `rtp-end` | **post-paint**: `computeRoundTripProtection` (re-serializes the doc) |
+| `proofread` | `proofread-start` → `proofread-end` | **post-paint**: the first whole-document style/lint pass |
 
-`launch` minus the sum of the measured spans is the browser's bundle fetch+parse cost (the eager JS/CSS download before `eval-start`).
+`launch` minus the sum of the launch spans is the browser's bundle fetch+parse cost (the eager JS/CSS download before `eval-start`).
 
 **`paint` (`create-end` → `editor-painted`) is the easiest span to overlook** — it is ProseMirror's first DOM build plus style/layout/paint, *including any work a plugin schedules from its `view()` onto the frames before that paint*. Work moved in front of first paint is invisible to every other span, so if a plugin schedules its own rAF at mount, suspect this one.
+
+### The post-paint spans (`POST_PAINT_SPANS`)
+
+`rtp` and `proofread` fall **after** `editor-painted`, so they are not part of `launch` and a move in one can never explain a launch delta. They are measured anyway, because **deferring work past the last mark does not make it free**: on `large` the two together block the main thread for ~130 ms starting ~60 ms after first paint — squarely the window a user's first keystroke or scroll lands in.
+
+`rtp` was worse than unmeasured. It sat in this table and in `SPANS` the whole time, reading `–` on every run, because its marks were deleted along with the eager call site when round-trip protection moved off the mount path. **A dash reads exactly like "cheap".** That is what the unattributed post-paint longtask turned out to be (MAR-311) — not new work, work whose attribution had been removed.
+
+Two consequences for anyone touching this:
+
+- **Measure mode waits for these marks; the A/B does not.** The A/B's verdict is `launch`, fixed at the paint mark, and its base bundle is an arbitrary merge-base that may predate a mark entirely — waiting there would add the timeout to every one of its ~108 samples per pass for context it cannot compare. `pnpm perf` prints a `⚠` naming any post-paint mark that never arrived, so an unstamped span is loud rather than a dash.
+- **`checks.mjs` is the real guard.** `pnpm test:e2e` drives this page and fails if either span stops being stamped, or lands before first paint, or if the fixtures stop tripping the style check. Nothing in CI catches those.
 
 ## The A/B gate (how the optimization loop decides)
 
@@ -52,7 +64,7 @@ node e2e/perf-bundle.mjs --compare bundle-before.json bundle-after.json  # eager
 
 Removing eager bytes therefore produces **no CI signal on its own**: `--check` just passes with more room, and the space is immediately re-spendable. Finish a bytes win with `--set-budget` so the ratchet sticks.
 
-`baseline.json` is a checked-in historical reference, **not** the gate. It records a measurement; it is not one. Rebuild and re-run before quoting anything from it, and refresh it whenever you move the ceiling.
+`baseline.json` is a checked-in historical reference, **not** the gate, and nothing reads it. It records a measurement; it is not one. Its figures also predate MAR-310's fixture reseeding, so the documents behind them no longer exist — rebuild and re-run rather than quoting it.
 
 ## Automated launch gate (`pnpm perf:ab`, CI job `launch-perf`)
 
@@ -81,6 +93,12 @@ Generated deterministically (no `Date`/`Math.random`) in `fixtures.mjs`, so a ru
 Injected by the runner as `window.__perfInit` before any script runs, so fixture I/O never pollutes the `roundtrip` measurement.
 
 **`large` and `xlarge` repeat a section that contains a table and a code block.** Worth knowing before designing a probe: a caret walked blindly into one of those fixtures lands in a table cell or a code block about as often as in prose, and those have very different costs.
+
+**The prose fixtures deliberately trip the style check** (`STYLE_SENTENCES`); the non-prose ones deliberately do not. `birta.proofreading.enabled` defaults to `true`, so every measured launch has always paid a proofread scan — but until MAR-310 no fixture contained a phrase the shipped word lists match, and `medium` produced **0** `.pf-style-hit` elements. The harness was measuring the matcher's traversal of prose that matches nothing, and never the decoration build, which is the half that scales with how much a document actually trips. **A green gate over that fixture set was evidence of non-interference, not of coverage.** `code-heavy`, `math` and `link-heavy` stay unseeded: they exist to isolate the highlighter, the KaTeX path and the embed recognizer, and prose seeded into them would blur what they isolate.
+
+Seeding grew each section by ~215 characters, so the section counts were cut (`medium` 18→14, `large` 140→108, `xlarge` 440→343) to hold the documented byte sizes within 1%. **A fixture's identity is its size** — and the typing job, the most expensive check in the repo, is dominated by its largest fixture.
+
+`index.html` reads two flags from the query string so a default-valued feature can be A/B'd against an otherwise identical bundle: `?lineNumbers=1` turns the (default-off) gutter on, `?proofreading=0` turns proofreading off. Without them a default-off feature is never measured and a default-on one can never be isolated.
 
 # Typing-cost harness (`e2e/perf-typing.mjs`)
 

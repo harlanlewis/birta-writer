@@ -77,8 +77,10 @@ const dirs = (await readdir(e2eDir, { withFileTypes: true }))
     .filter((d) => d.isDirectory() && (!only || d.name === only))
     .map((d) => d.name);
 // A directory is a pass/fail suite only if it has a checks.mjs. The perf
-// harness (e2e/perf/) has none — it is a measurement runner (node e2e/perf.mjs),
-// not a checks suite — so it is skipped here.
+// harness (e2e/perf/) is mostly a measurement runner (node e2e/perf.mjs), but it
+// carries a checks.mjs of its own that asserts its INSTRUMENTATION — that the
+// spans it reports are actually stamped and its fixtures actually exercise what
+// they claim. Nothing else can catch a span that silently reads `–`.
 const suites = [];
 for (const name of dirs) {
     try {

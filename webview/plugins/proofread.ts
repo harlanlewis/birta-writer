@@ -41,6 +41,7 @@ import {
 import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { requestIdle } from "../utils/idle";
+import { mark, measure } from "../perf";
 import { t } from "../i18n";
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -621,6 +622,8 @@ export const proofreadPlugin = $prose(() => {
             // opens it, so a transaction fired during mount can't run it early.
             let firstPassReady = false;
             let firstPassIdle: { cancel: () => void } | null = null;
+            // One-shot latch for the launch-time `proofread` measure below.
+            let firstScanMarked = false;
 
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
@@ -648,6 +651,15 @@ export const proofreadPlugin = $prose(() => {
                 lastDoc = view.state.doc;
                 lastConfig = state.config;
 
+                // The FIRST completed scan is the launch-time cost: a whole-document
+                // walk plus the decoration build and its dispatch, landing on the
+                // frames just after first paint where no launch span reaches. Marked
+                // once so `pnpm perf` can attribute it — the harness's fixtures
+                // tripped zero checks until MAR-310, so this pass was only ever
+                // measured finding nothing, which is the cheap half of it.
+                const firstPass = !firstScanMarked;
+                if (firstPass) { firstScanMarked = true; mark("proofread-start"); }
+
                 const styleDecos = computeDecorations(view.state.doc, state.config);
                 if (styleDecos !== DecorationSet.empty || state.styleSet !== DecorationSet.empty) {
                     const meta: ProofreadMeta = { type: "style", decorations: styleDecos };
@@ -661,6 +673,11 @@ export const proofreadPlugin = $prose(() => {
                 } else if (state.lintSet !== DecorationSet.empty) {
                     const meta: ProofreadMeta = { type: "lints", decorations: DecorationSet.empty };
                     view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
+                }
+
+                if (firstPass) {
+                    mark("proofread-end");
+                    measure("proofread", "proofread-start", "proofread-end");
                 }
             };
 
