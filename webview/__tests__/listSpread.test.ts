@@ -25,6 +25,7 @@ import { TextSelection, type EditorView, type Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { moveBlockAt } from "../components/blockMenu";
 import { moveBlocks } from "../editing/moveBlocks";
+import { listTreeIsLoose } from "../plugins/list";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -141,6 +142,54 @@ async function enterAtFirstItemStart(markdown: string): Promise<string> {
     const out = editor.action(getMarkdown());
     await editor.destroy();
     return out;
+}
+
+/** Position of the document's first list node, or -1. */
+function firstListPos(doc: ProseNode): number {
+    let found = -1;
+    doc.descendants((node, pos) => {
+        if (found === -1 && (node.type.name === "bullet_list" || node.type.name === "ordered_list")) {
+            found = pos;
+        }
+        return found === -1;
+    });
+    return found;
+}
+
+/**
+ * What the block menu's Tighten/Loosen row would read off the document's first
+ * list — the outermost one, which is what `outermostListAt` hands the row.
+ */
+async function looseAtFirstList(markdown: string): Promise<boolean> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    const pos = firstListPos(view.state.doc);
+    if (pos < 0) {
+        throw new Error("no list in the document");
+    }
+    const loose = listTreeIsLoose(view.state.doc, pos);
+    await editor.destroy();
+    return loose;
+}
+
+/** `looseAtFirstList` after reordering the item reading `text` by `dirs`. */
+async function looseAfterMove(
+    markdown: string, text: string, ...dirs: (-1 | 1)[]
+): Promise<boolean> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    dirs.forEach((dir, step) => {
+        if (!moveBlockAt(view, itemPosOf(view.state.doc, text), dir)) {
+            throw new Error(`move ${step} of "${text}" (${dir}) was refused`);
+        }
+    });
+    const pos = firstListPos(view.state.doc);
+    if (pos < 0) {
+        throw new Error("no list in the document");
+    }
+    const loose = listTreeIsLoose(view.state.doc, pos);
+    await editor.destroy();
+    return loose;
 }
 
 /** typeof the `spread` attr of the first node of `typeName`, or "" if absent. */
@@ -357,6 +406,128 @@ describe("a list inside a footnote definition keeps its gaps (MAR-211)", () => {
             "utf8",
         );
         expect(await roundTrip(fixture)).toBe(fixture);
+    });
+});
+
+describe("an item inside a footnote definition keeps its own spacing (MAR-302)", () => {
+    // The SECOND consumer of the container shift MAR-211 fixed above, and its
+    // fix does not close this one: the raw output is identical before and after
+    // it. Micromark cannot find the item's trailing line endings inside a
+    // footnote definition, so the blank line that separates it from the NEXT
+    // item lands inside its own range and is recorded as an INTERNAL blank —
+    // `listItem._spread = true`. mdast-util-to-markdown's default join then
+    // blank-separates that item's CHILDREN, so a blank appears between the item
+    // and its own sublist that nobody wrote. `correctItemSpread`
+    // (plugins/list.ts) lowers `spread` when the geometry shows no blank inside
+    // the item; it never raises one.
+    //
+    // Raw serializer output, for the same reason as the MAR-211 block above —
+    // and here it is a MEASURED reason, not an assumed one: driven through the
+    // real merge (`computeRoundTripProtection` + `applyMinimalChanges`, typing a
+    // character into each of the document's paragraphs in turn), every one of
+    // the 24 combinations below wrote back the authored bytes — 80 merged
+    // saves, none of which carried the invented blank, plus a zero-edit save on
+    // the repro. Protection is non-null here — unlike MAR-211, where it is
+    // null — but the blank falls inside a protected region either way, so
+    // nothing reached disk. What is wrong is the output every consumer that does
+    // not go through the merge sees.
+
+    it("the ticket's repro should not gain a blank line before the sublist", async () => {
+        // The literal reproduction, with the sublist indented four columns.
+        // The output re-spells that indent as two columns — the deliberate
+        // normalization owned by the minimal-diff merge layer (MAR-213/214),
+        // which the control below shows is not specific to this container —
+        // and, with the fix, invents no blank line beside it.
+        const doc = "[^1]: n\n\n    - a\n        - x\n\n    - b\n";
+        expect(await roundTrip(doc)).toBe("[^1]: n\n\n    - a\n      - x\n\n    - b\n");
+    });
+
+    it("the same nested list OUTSIDE a footnote definition should be the control", async () => {
+        // Same re-spelling of the indent, no invented blank — on `main` too.
+        expect(await roundTrip("- a\n    - x\n\n- b\n")).toBe("- a\n  - x\n\n- b\n");
+    });
+
+    it("an AUTHORED blank before a sublist should survive", async () => {
+        // The over-correction control. Lowering `spread` must be gated on the
+        // geometry, not on the container: here the blank really is inside the
+        // item, so `spread` stays true and the blank is re-emitted.
+        const doc = "[^1]: n\n\n    - a\n\n      - x\n\n    - b\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    // Enumerated rather than sampled: which container the list sits in, whether
+    // the outer list is loose, and whether the item has a second child are the
+    // three facts that decide the bug, and only their COMBINATION reaches it —
+    // a footnote definition with a tight outer list is clean, and so is a loose
+    // one whose items hold a single paragraph. The top-level rows are controls
+    // (they pass on `main`); every source is written in the serializer's own
+    // canonical indent, so a failure is a spacing defect and never a re-spelling.
+    const CONTAINERS = [
+        { key: "top level", pad: "", head: "" },
+        { key: "footnote definition", pad: "    ", head: "[^1]: n\n\n" },
+    ];
+    const KINDS = [
+        { key: "bullet", marker: () => "- ", indent: "  " },
+        { key: "ordered", marker: (i: number) => `${i}. `, indent: "   " },
+    ];
+    const NESTS = [
+        { key: "no sublist", sub: null },
+        { key: "a tight sublist", sub: "tight" },
+        { key: "a loose sublist", sub: "loose" },
+    ] as const;
+    for (const container of CONTAINERS) {
+        for (const kind of KINDS) {
+            for (const outer of ["tight", "loose"] as const) {
+                for (const nest of NESTS) {
+                    let body = `${container.pad}${kind.marker(1)}a\n`;
+                    if (nest.sub) {
+                        const inner = nest.sub === "loose" ? "\n" : "";
+                        body += `${container.pad}${kind.indent}${kind.marker(1)}x\n`;
+                        body += `${inner}${container.pad}${kind.indent}${kind.marker(2)}y\n`;
+                    }
+                    body += `${outer === "loose" ? "\n" : ""}${container.pad}${kind.marker(2)}b\n`;
+                    const doc = container.head + body;
+                    const name = `a ${outer} ${kind.key} list with ${nest.key} at ${container.key}`;
+                    it(`${name} should round-trip byte-identically`, async () => {
+                        expect(await roundTrip(doc)).toBe(doc);
+                    });
+                }
+            }
+        }
+    }
+});
+
+describe("the Tighten/Loosen state probe reads recorded gaps (MAR-302)", () => {
+    // `listTreeIsLoose` names the block-menu row: loose → "Tighten List".
+    // It used to read `spread` alone, and inside a container the list-spread
+    // inference cannot see through, the LIST-level `spread` is false for a list
+    // the author spaced with blank lines. In a footnote definition the only
+    // thing left saying "loose" was the very item `spread` artifact MAR-302
+    // clears — so the fix above would have mislabelled the row without this.
+    // The blockquote row below was already mislabelled before either change.
+
+    it("a loose list inside a footnote definition should read loose", async () => {
+        expect(await looseAtFirstList("[^1]: n\n\n    - a\n      - x\n\n    - b\n")).toBe(true);
+        expect(await looseAtFirstList("[^1]: n\n\n    - a\n\n    - b\n")).toBe(true);
+    });
+
+    it("a loose list inside a blockquote should read loose", async () => {
+        expect(await looseAtFirstList("> - a\n>   - x\n>\n> - b\n")).toBe(true);
+    });
+
+    it("a tight list inside a footnote definition should read tight", async () => {
+        expect(await looseAtFirstList("[^1]: n\n\n    - a\n      - x\n    - b\n")).toBe(false);
+    });
+
+    it("a first item still carrying a gap from the list it LEFT should not read loose", async () => {
+        // The same rule `listItemGapJoin` follows (MAR-210): nothing precedes a
+        // first item, so a `blankBefore` it arrived with describes a position in
+        // another list and this one never emits it. Moving `b` to the front
+        // leaves exactly that state, and the list it lands in serializes tight —
+        // so reporting "loose" would offer to Tighten a list already tight.
+        const doc = "[^1]: n\n\n    - a\n\n    - b\n    - c\n";
+        expect(await moveItem(doc, "b", -1)).toBe("[^1]: n\n\n    - b\n    - a\n    - c\n");
+        expect(await looseAfterMove(doc, "b", -1)).toBe(false);
     });
 });
 
