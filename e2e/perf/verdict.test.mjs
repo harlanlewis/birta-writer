@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
     abVerdict, confirmRegressions, spans, aggregate, GATED_FIXTURES,
+    SPANS, SUB_SPANS, POST_PAINT_SPANS,
     typingAbVerdict, TYPING_GATED_FIXTURES,
 } from "./verdict.mjs";
 
@@ -168,6 +169,21 @@ describe("spans / aggregate — the measurement math", () => {
         const agg = aggregate([{ launch: 100 }, { launch: 200 }, { launch: 150 }], false);
         expect(agg.median.launch).toBe(150);
         expect(agg.runs).toBe(3);
+    });
+
+    // The A/B prints SUB_SPANS inline under a launch delta, as the breakdown of
+    // where that delta went. A post-paint span listed there would read as a
+    // contributor to a launch it cannot touch: `rtp` moving +60 ms next to
+    // `create` and `paint` invites exactly the wrong conclusion. Adding a span
+    // to SPANS without classifying it is the mistake this catches (MAR-311).
+    it("every post-paint span is in SPANS and out of SUB_SPANS", () => {
+        const labels = SPANS.map(([l]) => l);
+        for (const label of POST_PAINT_SPANS) {
+            expect(labels, `${label} must be reported`).toContain(label);
+            expect(SUB_SPANS, `${label} does not compose launch`).not.toContain(label);
+        }
+        // …and nothing else is silently dropped: SUB_SPANS is exactly the rest.
+        expect(SUB_SPANS).toEqual(labels.filter((l) => l !== "launch" && !POST_PAINT_SPANS.has(l)));
     });
 });
 

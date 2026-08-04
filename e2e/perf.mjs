@@ -21,9 +21,21 @@ import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so it can be unit-tested (this file
 // runs Playwright/process.exit on import and can't be).
 import {
-    SPANS, SUB_SPANS, GATED_FIXTURES,
+    SPANS, SUB_SPANS, POST_PAINT_SPANS, GATED_FIXTURES,
     median, round, spans, aggregate, abVerdict, confirmRegressions,
 } from "./perf/verdict.mjs";
+
+// End marks of the POST_PAINT_SPANS. `editor-painted` is not the end of a
+// launch: both of these are scheduled from the mount path onto idle and land in
+// the frames just after first paint, so a sample that stops at the paint mark
+// reads them as absent — which is how ~114 ms of main-thread block on `large`
+// stayed unattributed (MAR-311).
+const SETTLE_MARKS = ["rtp-end", "proofread-end"];
+// Bound. Both are `requestIdleCallback`s with their own timeouts (2000 ms for
+// round-trip protection, 1000 ms for the proofread first pass), so a bundle
+// that stamps them always resolves well inside this; a bundle that does not
+// (an older merge-base) pays it in full, which is why only measure mode waits.
+const SETTLE_TIMEOUT_MS = 3000;
 
 // ── --compare mode: pure stats, no browser ──────────────────
 async function compareMode(beforePath, afterPath) {
@@ -71,7 +83,13 @@ async function loadPlaywright() {
 // or thrown init is exactly the kind of regression the perf harness must not
 // silently average over (this is what caught the katex.css 404). `side` labels
 // which bundle aborted so an A/B failure is diagnosable without a second script.
-async function sampleOnce(browser, url, content, fixture = "?", side = "") {
+//
+// `settleMarks` (measure mode only) additionally waits for the post-paint end
+// marks before reading. The A/B deliberately does NOT: its verdict is `launch`,
+// which is fixed at the paint mark, and its base bundle is an arbitrary
+// merge-base that may predate a mark entirely — waiting there would add the
+// full timeout to all ~108 samples of every pass for context it cannot compare.
+async function sampleOnce(browser, url, content, fixture = "?", side = "", settleMarks = []) {
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
     const errors = [];
     page.on("pageerror", (e) => errors.push(`pageerror: ${e}`));
@@ -85,6 +103,18 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "") {
         () => performance.getEntriesByName("mdw:editor-painted").length > 0,
         { timeout: 15000 },
     );
+    let missingSettle = [];
+    if (settleMarks.length) {
+        missingSettle = await page.evaluate(async ([names, timeoutMs]) => {
+            const absent = () => names.filter((n) => performance.getEntriesByName("mdw:" + n, "mark").length === 0);
+            const deadline = performance.now() + timeoutMs;
+            while (performance.now() < deadline) {
+                if (absent().length === 0) { return []; }
+                await new Promise((r) => setTimeout(r, 20));
+            }
+            return absent();
+        }, [settleMarks, SETTLE_TIMEOUT_MS]);
+    }
     const marks = await page.evaluate(() => {
         const m = {};
         for (const e of performance.getEntriesByType("mark")) {
@@ -100,17 +130,22 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "") {
         err.side = side;
         throw err;
     }
-    return spans(marks);
+    const out = spans(marks);
+    if (missingSettle.length) { out.__missingSettle = missingSettle; }
+    return out;
 }
 
 
 async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     const samples = [];
+    const missing = new Set();
     const browser = await chromium.launch();
     try {
         for (let i = 0; i < runs; i++) {
             try {
-                samples.push(await sampleOnce(browser, baseUrl, content, fixture));
+                const s = await sampleOnce(browser, baseUrl, content, fixture, "", SETTLE_MARKS);
+                for (const m of s.__missingSettle ?? []) { missing.add(m); }
+                samples.push(s);
             } catch (e) {
                 console.error(`\n  ${e.message}`);
                 process.exit(3);
@@ -120,7 +155,9 @@ async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
         await browser.close();
     }
     // Discard the first run (cold caches / JIT warmup); aggregate the rest.
-    return aggregate(samples.slice(1));
+    const agg = aggregate(samples.slice(1));
+    if (missing.size) { agg.missingSettle = [...missing]; }
+    return agg;
 }
 
 async function measureMode(only, runs, jsonOut) {
@@ -157,6 +194,15 @@ async function measureMode(only, runs, jsonOut) {
     console.log(fmt(header));
     console.log(widths.map((w) => "─".repeat(w)).join("  "));
     for (const r of rows) console.log(fmt(r));
+    console.log(`\n  ${[...POST_PAINT_SPANS].join(", ")} land AFTER editor-painted — reported, not part of launch.`);
+    // A post-paint mark that never arrives is the failure this instrumentation
+    // exists to make visible: `rtp` read `–` for a year because its marks were
+    // deleted with the eager call site, and a dash reads exactly like "cheap".
+    for (const [name, agg] of Object.entries(report.fixtures)) {
+        if (agg.missingSettle) {
+            console.log(`  ⚠ ${name}: no ${agg.missingSettle.join(", ")} mark within ${SETTLE_TIMEOUT_MS} ms of paint — that span is unmeasured, not zero.`);
+        }
+    }
     console.log("");
 
     if (jsonOut) {

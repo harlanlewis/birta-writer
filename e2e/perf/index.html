@@ -54,6 +54,14 @@
     translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
     lineNumbers: __perfFlags.get("lineNumbers") === "1",
   };
+  // Default-ON features need the mirror image of the lineNumbers hatch: a way
+  // to turn one OFF, so its cost can be measured as an A/B against a bundle
+  // that is otherwise identical. `?proofreading=0` sets only the master gate;
+  // every other proofread default is left alone (the plugin merges over
+  // DEFAULT_CONFIG), so the flag reads exactly as the user setting does.
+  if (__perfFlags.get("proofreading") === "0") {
+    window.__i18n.proofread = { proofreadingEnabled: false };
+  }
   window.__posted = [];
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
