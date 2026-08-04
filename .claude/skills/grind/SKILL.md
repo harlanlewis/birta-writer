@@ -78,7 +78,7 @@ Feed each handoff forward into briefs not yet sent. A handoff that invalidates a
 
 Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.md`.
 
-**Treat a ticket's account of itself as hypothesis, not brief.** Its *symptom* is usually right; its *cause*, *plan*, and *scope* fail routinely — and scope fails toward too small, which ships a fix leaving the worse half of the bug in place under a green suite. Before implementing, name the observation that would falsify the stated cause and make it. Ask what other gesture reaches the same broken state. Enumerate the space rather than sampling it.
+**Treat a ticket's account of itself as hypothesis, not brief.** Its *symptom* is usually right; its *cause*, *plan*, *scope* and *severity* fail routinely — scope toward too small, which ships a fix leaving the worse half of the bug in place under a green suite, and severity in both directions (a `Low` filed "latent, never reproduced" was live data loss; a `High`'s headline cost was a harness artifact). **Re-derive severity from your own repro before letting it set the queue.** Before implementing, name the observation that would falsify the stated cause and make it. Ask what other gesture reaches the same broken state. Enumerate the space rather than sampling it.
 
 - **Bytes outrank accounts.** When a ticket names both a mechanism and an output, check the output first — one print can convict the mechanism before you understand it.
 - **Verify semantics, not shape.** A grep that matches feels like confirmation and isn't. Ask what the claim predicts that you can run.
@@ -107,7 +107,6 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 - **Scope honestly.** Ship the clean part, re-scope the rest into the ticket. Never force a fragile fix into fidelity-critical code for diminishing returns.
 - **Every user-facing claim is one you checked.** The CHANGELOG describes the product to someone who can't read the diff, so an unverified sentence there is a defect. Reachability claims are the usual offender — drive the gesture, don't infer it.
 - **A recorded number is a description.** Re-measure before quoting a baseline or snapshot.
-- Don't infer a file-wide convention from its first screen.
 
 ## 5. Tracking
 
@@ -135,11 +134,11 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 | `refused` | 3 | Inside a worktree, detached HEAD, or no such branch. |
 | `empty` | 4 | The lane committed nothing, whatever it reported. |
 
-**`merged` is not `shippable`.** Neither git nor the gate can tell you the change is correct. Reverting a green lane is a legitimate outcome — its own `revert:` commit keeping the lane's diagnosis, branch pushed somewhere durable, ticket re-scoped to the measurement and the blocker. **A lane's own "what is still exposed" note is your next probe, not a severity to accept**: the author who just chose to accept a risk is the worst-placed person to price it.
+**`merged` is not `shippable`.** Neither git nor the gate can tell you the change is correct. Reverting a green lane is a legitimate outcome: a `revert:` commit keeping the diagnosis, the branch pushed somewhere durable, the ticket re-scoped to the measurement and the blocker. **A lane's own "what is still exposed" note is your next probe, not a severity to accept**: the author who just chose to accept a risk is the worst-placed person to price it.
 
 ### Critique the seam
 
-- **`/constructive-critique` over `git diff main...<integration-branch>`** — the whole session as one change. Only here are the seams visible: two lanes solving the same thing, an abstraction duplicated, a test one lane deleted and another relied on, a premise a later lane invalidated. Every lane's diff is new to you. `/simplify` belongs in this pass; re-run gates after it.
+- **`/constructive-critique` over `git diff main...<integration-branch>`** — the whole session as one change. Only here are the seams visible: two lanes solving the same thing, an abstraction duplicated, a test one lane deleted and another relied on, a premise a later lane invalidated, **a lane's fix undone downstream by a layer it did not own** — each lane stopped at its own scope, so nobody drove the whole path. Ask what the user's bytes pass through *after* each fix, and drive that. Every lane's diff is new to you. `/simplify` belongs in this pass; re-run gates after it.
 - §3.6's buckets bind here — "a different lane wrote it" is not a reason to file instead of fix.
 - **Write the CHANGELOG once, now**, over the reconciled diff, plus `docs/BENEFITS.md` if a capability's story changed. Verify each claim yourself.
 - **One PR** with the tickets and the verification done. Wait for CI green, squash, delete branch, pull `main`.
