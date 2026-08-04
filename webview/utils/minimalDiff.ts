@@ -1029,13 +1029,27 @@ function depthPrefixOf(savedWs: string, serialWs: string): string | undefined {
  * bytes is a guess, and this file already computes the answer once, in context,
  * for exactly this reason (see the classifier header). Prefer the reading.
  *
- * WHAT IS STILL EXPOSED: a line the CLASSIFIER itself misreads, since the keys
- * are an approximation of the block parser rather than a replica. Its known
- * deliberate gap — indented code nested deep inside a list item classifying as
- * prose — is reachable in principle, but the depth gate covers the case that
- * matters there, and no swept pair reaches it. That is a smaller and better-
- * understood surface than a per-rule byte guess, because it is one shared
- * approximation every rule in this file already depends on.
+ * WHAT IS STILL EXPOSED, and what the measurement behind it does NOT cover:
+ *
+ *   - SETEXT. It is the one class that is both untagged by `normLineForCompare`
+ *     (it falls through to the prose path deliberately, so an underline can
+ *     never key-match a saved hr — MAR-161 M2) and marker-shaped: a bare `-`
+ *     passes LIST_MARKER_RE. Probed, not merely reasoned about — the shapes
+ *     tried produced byte-identical output with the gate removed, meaning they
+ *     never reached this rule at all, so no arm had an answer. That makes it an
+ *     UNVERIFIED residual rather than a known-safe one. The direction to fear is
+ *     a re-spelling that writes a tab: four columns turns an underline into
+ *     indented code and dissolves the heading.
+ *   - A line the CLASSIFIER itself misreads, since the keys approximate the
+ *     block parser rather than replicate it. Its known deliberate gap is
+ *     indented code nested deep inside a list item classifying as prose.
+ *
+ * The 2471-move sweep says nothing about either. It drives the MOVE path only,
+ * and both residuals live on the EDIT path — the sweep could not have reached
+ * them whether or not they are real. What covers the edit path is this file's
+ * unit tests, which is a smaller net. Saying otherwise is how the first cut of
+ * this rule shipped: it rated its fence exposure narrow on reasoning, and
+ * indenting a list inside a fence turned out to be an ordinary gesture.
  */
 function respellMovedIndent(
     saved: string,
