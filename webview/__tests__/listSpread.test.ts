@@ -24,6 +24,7 @@ import { getMarkdown } from "@milkdown/utils";
 import { TextSelection, type EditorView, type Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { moveBlockAt } from "../components/blockMenu";
+import { moveBlocks } from "../editing/moveBlocks";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -85,6 +86,29 @@ async function moveItem(markdown: string, text: string, ...dirs: (-1 | 1)[]): Pr
             throw new Error(`move ${step} of "${text}" (${dir}) was refused`);
         }
     });
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
+}
+
+/**
+ * Raw serializer output after moving the item reading `text` to the document's
+ * first item slot — the promote-a-nested-bullet-to-top-level gesture, which
+ * `moveItem`'s sibling hops cannot express. Throws when the primitive refuses,
+ * and the caller's byte assertion pins where the item actually landed, so this
+ * cannot pass by having moved nothing or moved it somewhere else.
+ */
+async function promoteToTop(markdown: string, text: string): Promise<string> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    const pos = itemPosOf(view.state.doc, text);
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) {
+        throw new Error(`no node at ${pos} for "${text}"`);
+    }
+    if (!moveBlocks(view, { from: pos, to: pos + node.nodeSize }, 1)) {
+        throw new Error(`promoting "${text}" was refused`);
+    }
     const out = editor.action(getMarkdown());
     await editor.destroy();
     return out;
@@ -274,6 +298,12 @@ describe("a reordered item takes the gap it landed in (MAR-210)", () => {
     it("moving the first item of a partly-loose list to the end should join the run it lands in", async () => {
         // No follower to read, so the nearest evidence is the last recorded gap
         // of the run it joined — `d`'s. The loose tail stays loose.
+        //
+        // NON-DISCRIMINATING, deliberately kept: deleting the predecessor arm
+        // leaves this green, because deferring reaches the same bytes here (the
+        // list-level default is `true` for this partly-loose list). It pins the
+        // OBSERVABLE — the tail's spacing survives the move — not the mechanism.
+        // The case below is the one that tells the two apart.
         expect(await moveItem("- a\n- b\n- c\n\n- d\n", "a", 1, 1, 1)).toBe(
             "- b\n- c\n\n- d\n\n- a\n",
         );
@@ -282,8 +312,23 @@ describe("a reordered item takes the gap it landed in (MAR-210)", () => {
     it("a first item moved into a tight run should keep that run tight", async () => {
         // The predecessor fallback in the other direction: the blank the author
         // wrote belonged to `b`, which is now first, so it is gone and the run
-        // `a` joins is tight.
+        // `a` joins is tight. This is the ONE case that discriminates — deleting
+        // the predecessor arm reddens it and nothing else, because deferring
+        // here would read the list-level `true` and write a blank.
         expect(await moveItem("- a\n\n- b\n- c\n", "a", 1, 1)).toBe("- b\n- c\n- a\n");
+    });
+
+    it("promoting a loose nested item to the top should not strand its gap on the item below", async () => {
+        // A first item's `blankBefore` is never emitted — nothing precedes it —
+        // so an item that arrives from another list still carrying one describes
+        // a gap in the list it LEFT. Reading it as the predecessor's evidence
+        // resurrected it one slot to the right: dragging the loose `two` out to
+        // the top of the document wrote `- two\n\n- root`, spacing a top-level
+        // list the author wrote tight. The follower is exempt by construction —
+        // it always has a predecessor, so its gap is one this list emits.
+        expect(await promoteToTop("- root\n\t- one\n\n\t- two\n", "two")).toBe(
+            "- two\n- root\n  - one\n",
+        );
     });
 
     it("a partly-loose ordered list should behave the same", async () => {
