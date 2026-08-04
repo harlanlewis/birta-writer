@@ -427,10 +427,18 @@ describe("an item inside a footnote definition keeps its own spacing (MAR-302)",
     // character into each of the document's paragraphs in turn), every one of
     // the 24 combinations below wrote back the authored bytes — 80 merged
     // saves, none of which carried the invented blank, plus a zero-edit save on
-    // the repro. Protection is non-null here — unlike MAR-211, where it is
-    // null — but the blank falls inside a protected region either way, so
-    // nothing reached disk. What is wrong is the output every consumer that does
-    // not go through the merge sees.
+    // the repro.
+    //
+    // This block used to add "protection is non-null here, unlike MAR-211 where
+    // it is null". That is wrong, and wrong in a way worth keeping visible:
+    // nullness tracks the SHAPE, not the container. Measured — the repro below
+    // is non-null, but only because its sublist is indented four columns and the
+    // 4→2 re-spelling is itself a round-trip difference; write the same footnote
+    // with a canonical two-column sublist, or with ordered markers, and
+    // protection is null exactly as it is outside a footnote. So protection is
+    // not what saves these bytes, and no reasoning should lean on it. What is
+    // wrong is only the output consumers that skip the merge see — Copy as
+    // Markdown among them.
 
     it("the ticket's repro should not gain a blank line before the sublist", async () => {
         // The literal reproduction, with the sublist indented four columns.
@@ -495,6 +503,31 @@ describe("an item inside a footnote definition keeps its own spacing (MAR-302)",
             }
         }
     }
+});
+
+describe("correctItemSpread does not over-lower (MAR-302)", () => {
+    // These pin the LOWERING side: an item that genuinely holds an internal
+    // blank must keep it, so the pass cannot glue an author's paragraphs
+    // together on its way to fixing the container artifact.
+    //
+    // They deliberately do NOT claim to pin the one-directionality the
+    // function's header describes ("only ever lowers"). Measured: making it
+    // assign the geometry in both directions leaves every test in THIS file
+    // green, including these two. That property is pinned instead by
+    // `tightItemSpacing.test.ts` — the setext-heading-inside-an-item rows,
+    // which redden immediately under the same mutation. Naming that here
+    // because a block called "only ever LOWERS" whose tests survive raising is
+    // the exact failure this file is otherwise careful about.
+
+    it("an authored blank inside an item should survive the pass", async () => {
+        const doc = "[^1]: n\n\n    - a\n\n      still a\n\n    - b\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a loose list outside any container should keep every gap", async () => {
+        const doc = "- a\n\n- b\n\n- c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
 });
 
 describe("the Tighten/Loosen state probe reads recorded gaps (MAR-302)", () => {
