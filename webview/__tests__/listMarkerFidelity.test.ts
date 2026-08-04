@@ -511,3 +511,164 @@ describe("Tab-indenting an item that holds a rule keeps the rule in the list", (
         });
     }
 });
+
+// ── Emptying a TASK item that holds another block (MAR-306) ────────────────
+//
+// The two blocks above are about the bullet character. This one is about the
+// checkbox, and it is the same artifact empty paragraph seen from a third side.
+//
+// GFM has no spelling for a checked item with no text: measured, `- [x] ` and
+// `- [x]` both reopen as a PLAIN item whose text is the literal `[x]`. Upstream
+// (`mdast-util-gfm-task-list-item`) does not ask the question — it tests only
+// that the item's first child is a paragraph, which the ARTIFACT empty one
+// answers, and then splices the checkbox in with a regex that matches the
+// marker's own newline when the item has no first line. The checkbox landed on
+// the content's line, ahead of its indent, and took the document with it.
+//
+// Two shapes, one keystroke apart, both reachable with no command involved —
+// select an item's text and delete it:
+//
+//   paragraph(empty), hr    saved `-\n[x] \n  ---\n`, and the `---` then
+//                           UNDERLINED the stray `[x]` into a setext heading:
+//                           the rule was gone and a heading nobody wrote was
+//                           in the file
+//   paragraph(empty), para  saved `-\n[x] \n  body\n`, which the PARSER THREW
+//                           on — a file saved in that state did not reopen
+//
+// The checkbox cannot be kept, and the tick is lost on the reopen. That is not
+// a choice this fix makes so much as one GFM makes: the same path already drops
+// it for every other trailing block (a heading or a fence hoists onto the marker
+// line, so upstream sees a non-paragraph head), and the fix is to answer the
+// two remaining shapes the same way instead of leaving them to corrupt the file.
+
+/**
+ * The flow-child type names of `md`'s first list item, joined.
+ *
+ * `reparsedKinds` cannot answer nesting — it flattens the document, so a block
+ * that ESCAPED the list still shows up after `list_item` in its output, and an
+ * index comparison against it passes on exactly the corruption it was written to
+ * catch (measured: it did). This reads the item itself.
+ */
+async function reparsedItemShape(md: string): Promise<string> {
+    const editor = await makeEditor(md);
+    const shape = editor.action((ctx) => {
+        const item = ctx.get(editorViewCtx).state.doc.firstChild?.firstChild;
+        if (!item || item.type.name !== "list_item") return "<no item>";
+        const names: string[] = [];
+        item.content.forEach((child) => names.push(child.type.name));
+        return names.join(",");
+    });
+    await editor.destroy();
+    return shape;
+}
+
+/** Open, delete `text` wherever it first appears, and serialize — the ordinary
+ *  Backspace-over-a-selection gesture, with no command involved. */
+async function saveWithTextDeleted(content: string, text: string): Promise<string> {
+    const editor = await makeEditor(content);
+    const v = view(editor);
+    const to = posAfterText(v, text);
+    v.dispatch(v.state.tr.delete(to - text.length, to));
+    const serialized = editor.action(getMarkdown());
+    await editor.destroy();
+    return serialized;
+}
+
+describe("emptying a task item that holds another block", () => {
+    it("a checked item holding a rule should keep the rule and invent no heading", async () => {
+        // Act — the ticket's own reproduction, driven through the delete.
+        const serialized = await saveWithTextDeleted("- [x] alpha\n\n  ---\n", "alpha");
+
+        // Assert — the rule is still INSIDE the item, which is what the editor
+        // holds. `not.toContain("heading")` is the reported symptom; the shape
+        // is the half that a rule merely PRESENT in the document would satisfy
+        // while it had escaped the list.
+        const kinds = await reparsedKinds(serialized);
+        expect(kinds).not.toContain("heading");
+        expect(await reparsedItemShape(serialized)).toBe("paragraph,hr");
+    });
+
+    it("a checked item holding a second paragraph should still reopen", async () => {
+        // Act — the shape whose bytes the parser THREW on.
+        const serialized = await saveWithTextDeleted("- [x] hello\n\n  world\n", "hello");
+
+        // Assert — reparsing at all is the whole assertion; `reparsedKinds`
+        // opens a real editor on the bytes, so a throw fails here.
+        const kinds = await reparsedKinds(serialized);
+        expect(kinds).toContain("paragraph");
+        expect(kinds).not.toContain("heading");
+    });
+
+    it("an emptied task item should round-trip stably rather than churn on each save", async () => {
+        // Act — save, reopen, save again.
+        const once = await saveWithTextDeleted("- [x] alpha\n\n  ---\n", "alpha");
+        const twice = await saveUnedited(once);
+
+        // Assert — an unstable spelling rewrites the file on every save even
+        // when the user changes nothing.
+        expect(twice).toBe(once);
+    });
+
+    it("a checked item that still has text should keep its checkbox", async () => {
+        // The inverse case, so the fix cannot pass by dropping every checkbox.
+        expect(await saveUnedited("- [x] alpha\n\n  ---\n")).toBe("- [x] alpha\n\n  ---\n");
+        expect(await saveUnedited("- [ ] a\n- [x] b\n")).toBe("- [ ] a\n- [x] b\n");
+    });
+});
+
+// ── What actually reaches DISK, which is not what the serializer wrote ──────
+//
+// Every case above ends at `getMarkdown()`. The save path does not: the
+// serializer's bytes go through `applyMinimalChanges`, and the merge preserves
+// blank lines the saved file already had. So a fix that REMOVES a blank line —
+// which is exactly what MAR-306's bare-marker glue does — is correct in the
+// serializer and undone on the way to disk.
+//
+// Found by critiquing the session diff as one change, not by any lane: the
+// merge belonged to a different lane, and neither side's tests crossed the seam.
+//
+// The reported symptoms are still fixed end to end — no invented heading, and
+// bytes the parser can read — which is what the first two cases pin. What is
+// NOT fixed is the rule's NESTING: the merge reinstates the blank line, and an
+// item beginning with a blank gives up everything after it, so the rule reopens
+// as a top-level sibling. The third case pins that gap deliberately, so it
+// cannot be mistaken for working. Fixing it means changing how the merge sources
+// blank runs, and there is direct evidence that is dangerous: MAR-303's lane
+// tried it in its first cut and collapsed `\n\n---\n` to `\n---\n` in
+// fence-edges.md, turning a thematic break into a setext underline. Tracked
+// separately rather than forced in here.
+describe("an emptied item holding a rule, through the real save merge", () => {
+    /** Serialize, then merge exactly as the sync pipeline does. */
+    async function saveThroughMerge(content: string, deleteText: string): Promise<string> {
+        const editor = await makeEditor(content);
+        const baseline = editor.action(getMarkdown());
+        const protection = computeRoundTripProtection(content, baseline);
+        const v = view(editor);
+        const to = posAfterText(v, deleteText);
+        v.dispatch(v.state.tr.delete(to - deleteText.length, to));
+        const merged = applyMinimalChanges(content, editor.action(getMarkdown()), protection);
+        await editor.destroy();
+        return merged;
+    }
+
+    it("should never write bytes that invent a heading", async () => {
+        const merged = await saveThroughMerge("- [x] alpha\n\n  ---\n", "alpha");
+        expect(await reparsedKinds(merged)).not.toContain("heading");
+    });
+
+    it("should write bytes that reopen at all", async () => {
+        // The shape whose pre-fix bytes the PARSER THREW on. `reparsedKinds`
+        // opens a real editor, so a throw fails here.
+        const merged = await saveThroughMerge("- [x] hello\n\n  world\n", "hello");
+        expect(await reparsedKinds(merged)).toContain("paragraph");
+    });
+
+    it.fails("should keep the rule inside the item once the merge stops reinstating the blank", async () => {
+        // KNOWN GAP. The serializer writes `-\n  ---\n`; the merge writes
+        // `-\n\n  ---\n`, and the rule reopens outside the list. Asserted as
+        // `it.fails` rather than pinned to today's bytes so it turns red the
+        // moment the merge is fixed, instead of quietly outliving the gap.
+        const merged = await saveThroughMerge("- [x] alpha\n\n  ---\n", "alpha");
+        expect(await reparsedItemShape(merged)).toBe("paragraph,hr");
+    });
+});

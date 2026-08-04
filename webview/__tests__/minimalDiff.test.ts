@@ -509,6 +509,68 @@ describe("applyMinimalChanges — an edited line keeps the parts the user didn't
     });
 });
 
+describe("applyMinimalChanges — editing a line's neighbour too (MAR-303)", () => {
+    // A save carries every edit made since the last one, so two adjacent lines
+    // edited in one sitting arrive as ONE change region. The merge used to
+    // read that region by adjacency — `del` immediately followed by `ins` —
+    // and since the LCS emits a region's dels and then its inses, that found
+    // the LAST saved line beside the FIRST serialized one. Every carry below
+    // already worked when the line was edited alone; each one is here because
+    // touching its neighbour in the same save silently switched it off.
+    //
+    // The serializer output in each case is what the real editor produces —
+    // captured by driving the fixture through it, not composed by hand.
+
+    it("two table rows edited together should each keep their own untouched cell", () => {
+        const saved = "| a | b |\n| --- | --- |\n| <br /> | one |\n| <br /> | two |\n";
+        const serialized = "| a | b |\n| --- | --- |\n|  | oneX |\n|  | twoX |\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "| a | b |\n| --- | --- |\n| <br /> | oneX |\n| <br /> | twoX |\n",
+        );
+    });
+
+    it("a cell's bytes should never land in a different row", () => {
+        // The mispairing's other half: the first row was handed the SECOND
+        // row's saved cell. Here only the lower row carries the legacy bytes,
+        // so a wrong pairing is visible as content moving up a row rather than
+        // merely being lost.
+        const saved = "| a | b |\n| --- | --- |\n|  | one |\n| <br /> | two |\n";
+        const serialized = "| a | b |\n| --- | --- |\n|  | oneX |\n|  | twoX |\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "| a | b |\n| --- | --- |\n|  | oneX |\n| <br /> | twoX |\n",
+        );
+    });
+
+    it("sibling list items edited together should each keep the file's indent unit", () => {
+        // A four-space outline: the serializer writes depth 1 as two spaces,
+        // and the file's own spelling is carried back onto every edited line.
+        // Editing the siblings together used to leave the first at four
+        // columns and the rest at two — two conventions inside one list.
+        const saved = "- alpha\n    - beta\n    - gamma\n    - delta\n";
+        const baseline = "- alpha\n  - beta\n  - gamma\n  - delta\n";
+        const serialized = "- alpha\n  - betaX\n  - gammaX\n  - deltaX\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+
+        expect(applyMinimalChanges(saved, serialized, protection)).toBe(
+            "- alpha\n    - betaX\n    - gammaX\n    - deltaX\n",
+        );
+    });
+
+    it("a tab outline's items edited together should all stay tab-indented", () => {
+        // A plain tab outline round-trips under the profile's own keys, so it
+        // carries no protection at all — the carry here is rule 1's, off the
+        // lines' own bytes.
+        const saved = "- alpha\n\t- beta\n\t- gamma\n";
+        const serialized = "- alpha\n  - betaX\n  - gammaX\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "- alpha\n\t- betaX\n\t- gammaX\n",
+        );
+    });
+});
+
 describe("applyMinimalChanges — construct classification on CRLF files (MAR-223)", () => {
     // A consequence of the engine handing the profile ending-stripped lines
     // that is worth pinning on its own: several markdown normalizers are

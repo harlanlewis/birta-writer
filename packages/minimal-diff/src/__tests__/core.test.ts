@@ -197,6 +197,134 @@ describe("reconcileReplacement — the profile's say over an in-place replacemen
     });
 });
 
+describe("a run's two sides pair positionally, not by adjacency (MAR-303)", () => {
+    /** `plain` plus a recorder of every pair the hooks are offered. */
+    const recorder = () => {
+        const replaced: Array<[string, string]> = [];
+        const inserted: string[][] = [];
+        const profile: FormatProfile = {
+            ...plain,
+            reconcileReplacement: (saved, serial) => {
+                replaced.push([saved, serial]);
+                return serial;
+            },
+            reconcileInsertion: (lines) => {
+                inserted.push(lines.map((l) => l.serial));
+                return lines.map((l) => l.serial);
+            },
+        };
+        return { profile, replaced, inserted };
+    };
+
+    it("two adjacent lines edited in one save should pair first-with-first", () => {
+        // The LCS emits a run's dels and THEN its inses, so reading `del`
+        // immediately followed by `ins` as the replacement found the LAST
+        // saved line beside the FIRST serialized one, and left the rest of the
+        // run with no saved counterpart at all.
+        const { profile, replaced, inserted } = recorder();
+
+        applyMinimalChanges("head\n\nB old\n\nC old\n\ntail\n", "head\n\nB new\n\nC new\n\ntail\n", profile);
+
+        expect(replaced).toEqual([
+            ["B old", "B new"],
+            ["C old", "C new"],
+        ]);
+        expect(inserted).toEqual([]);
+    });
+
+    it("more saved lines than serialized ones should pair the leading ones and drop the rest", () => {
+        const { profile, replaced, inserted } = recorder();
+
+        applyMinimalChanges("head\n\nB old\n\nC old\n\nD old\n\ntail\n", "head\n\nB new\n\nC new\n\ntail\n", profile);
+
+        expect(replaced).toEqual([
+            ["B old", "B new"],
+            ["C old", "C new"],
+        ]);
+        expect(inserted).toEqual([]);
+    });
+
+    it("more serialized lines than saved ones should pair the leading ones and insert the rest", () => {
+        const { profile, replaced, inserted } = recorder();
+
+        applyMinimalChanges("head\n\nB old\n\nC old\n\ntail\n", "head\n\nB new\n\nC new\n\nD new\n\ntail\n", profile);
+
+        expect(replaced).toEqual([
+            ["B old", "B new"],
+            ["C old", "C new"],
+        ]);
+        // The surplus is one run, offered to the profile together.
+        expect(inserted).toEqual([["D new"]]);
+    });
+
+    it("editing a line's neighbour too should not change how that line is written", () => {
+        // The invariant the mispairing broke, and the one a user would notice:
+        // the merge's treatment of a line is a property of THAT line, never of
+        // whether the save happened to carry an edit to the line beside it.
+        // (Markdown's real damage: two adjacent table rows edited in one save
+        // lost the cell bytes the serializer cannot reproduce, and the first
+        // row was handed the second's — MAR-303.)
+        const saved = "head\n\n\tB old\n\n\tC old\n\ntail\n";
+        const both = "head\n\n  B new\n\n  C new\n\ntail\n";
+        const onlyB = "head\n\n  B new\n\n  C old\n\ntail\n";
+        const onlyC = "head\n\n  B old\n\n  C new\n\ntail\n";
+        const carryIndent: FormatProfile = {
+            ...plain,
+            reconcileReplacement: (saved_, serial) =>
+                /^[ \t]*/.exec(saved_)![0] + serial.replace(/^[ \t]*/, ""),
+        };
+        const lineOf = (text: string, needle: string) =>
+            text.split("\n").find((l) => l.includes(needle));
+
+        const merged = applyMinimalChanges(saved, both, carryIndent);
+
+        expect(lineOf(merged, "B new")).toBe(
+            lineOf(applyMinimalChanges(saved, onlyB, carryIndent), "B new"),
+        );
+        expect(lineOf(merged, "C new")).toBe(
+            lineOf(applyMinimalChanges(saved, onlyC, carryIndent), "C new"),
+        );
+    });
+
+    it("the saved lines a shorter serialized side left over should not come back", () => {
+        // Three saved lines, one serialized: the first pairs, and C and D are
+        // deletions. The saved side must be consumed through D, or the next
+        // `keep`'s saved blank run reaches back across them and splices two
+        // deleted lines into the output.
+        const saved = "head\n\nB old\n\nC old\n\nD old\n\ntail\n";
+        const serialized = "head\n\nB new\n\ntail\n";
+
+        expect(applyMinimalChanges(saved, serialized, plain)).toBe("head\n\nB new\n\ntail\n");
+    });
+
+    it("a multi-line run should still take its blank spacing from the serializer", () => {
+        // Pairing changed; SPACING deliberately did not. A run of more than
+        // one del is `dirty` from its first emitted line, so the serializer's
+        // blank runs win across the whole region — the behaviour before the
+        // pairing was corrected, kept byte for byte so that fix could be
+        // measured against it. (Loosening this collapsed `\n\n---\n` to
+        // `\n---\n` in fence-edges.md, turning a thematic break into a setext
+        // underline.)
+        const saved = "head\n\n\n\nB old\n\n\n\nC old\n\n\n\ntail\n";
+        const serialized = "head\n\nB new\n\nC new\n\ntail\n";
+
+        expect(applyMinimalChanges(saved, serialized, plain)).toBe(
+            "head\n\nB new\n\nC new\n\ntail\n",
+        );
+    });
+
+    it("an isolated in-place replacement should still keep the saved spacing", () => {
+        // The one-del/one-ins couple is the shape whose surroundings
+        // demonstrably did not move, and it keeps the user's blank runs.
+        const saved = "head\n\n\n\nB old\n\n\n\ntail\n";
+        const serialized = "head\n\nB new\n\ntail\n";
+
+        expect(applyMinimalChanges(saved, serialized, plain)).toBe(
+            "head\n\n\n\nB new\n\n\n\ntail\n",
+        );
+    });
+});
+
 describe("baselineFacts — what the zero-edit round trip teaches about a file (MAR-222)", () => {
     /** A profile that records every pairing it is offered. */
     function recorder() {

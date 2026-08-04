@@ -485,6 +485,48 @@ function itemContentForMarkdown(content: Fragment): Fragment {
 }
 
 /**
+ * Can this item's content carry a task checkbox at all (MAR-306)?
+ *
+ * GFM has no spelling for a checked item with no text. The marker line has to
+ * read `- [x] something`: the checkbox is only a checkbox when a paragraph's
+ * own text follows it on that line. Measured, every empty spelling loses it —
+ * `- [x] ` and `- [x]` both reopen as a PLAIN item whose text is the literal
+ * `[x]`, and with a rule under them the `---` then underlines that text into a
+ * setext heading.
+ *
+ * So when the content the serializer is about to write LEADS WITH AN EMPTY
+ * PARAGRAPH there is nothing for the checkbox to sit in front of, and the
+ * honest output is the plain-bullet form. Upstream's handler
+ * (`mdast-util-gfm-task-list-item`) does not ask this. It tests only that the
+ * first child is a paragraph — the artifact empty one answers that — and then
+ * splices the checkbox in with `value.replace(/^(?:[*+-]|\d+\.)([\r\n]| {1,3})/,
+ * …)`, a regex that matches the marker's own NEWLINE when the item has no first
+ * line. The checkbox lands on the content's line, before its indent, and takes
+ * the document with it:
+ *
+ *     list_item[checked] → paragraph(empty), hr     "-\n[x] \n  ---\n"
+ *       reopens as a plain item plus a heading reading `[x]`; the rule is gone
+ *     list_item[checked] → paragraph(empty), para   "-\n[x] \n  body\n"
+ *       the PARSER THROWS — a file saved in this state does not reopen at all
+ *
+ * Both shapes are one keystroke away: emptying the text of a task item that
+ * holds a second block reaches them with no command involved.
+ *
+ * Dropping the checkbox loses the checked bit, which is a real loss — but it is
+ * the only one available, and it is already what this path does for every other
+ * trailing block (a heading or a fence hoists onto the marker line, so upstream
+ * sees a non-paragraph head and writes no checkbox). This makes the answer
+ * uniform instead of leaving two shapes to corrupt the file. The editor keeps
+ * showing the tick until the document is reopened; that divergence is recorded
+ * in MAR-306 rather than papered over here, because normalizing the live
+ * document on delete is a command-layer change with its own undo story.
+ */
+function canSpellCheckbox(content: Fragment): boolean {
+    const first = content.firstChild;
+    return !(first?.type.name === "paragraph" && first.content.size === 0);
+}
+
+/**
  * Would hoisting this nested list onto its parent's marker line put a character
  * on that line which a run of markers or rule characters cannot absorb?
  *
@@ -610,7 +652,7 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                     const gap =
                         typeof blankBefore === "boolean" ? { blankBefore } : undefined;
                     const content = itemContentForMarkdown(node.content);
-                    if (node.attrs["checked"] == null) {
+                    if (node.attrs["checked"] == null || !canSpellCheckbox(content)) {
                         state.openNode("listItem", undefined, { spread, ...gap })
                             .next(content)
                             .closeNode();
