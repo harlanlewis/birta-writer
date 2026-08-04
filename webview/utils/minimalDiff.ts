@@ -33,6 +33,7 @@ import {
     type BaselineLinePair,
     type FormatProfile,
     type InsertedLine,
+    type ReplacementKeys,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
 
@@ -869,12 +870,13 @@ function carrySavedIndent(
     saved: string,
     serial: string,
     baseline: Map<string, string> | null,
+    structural: boolean,
 ): string {
     const savedWs = indentOf(saved);
     const serialWs = indentOf(serial);
     if (savedWs === serialWs) return serial;
     if (saved.slice(savedWs.length) === serial.slice(serialWs.length)) {
-        return respellMovedIndent(saved, savedWs, serial, serialWs, baseline);
+        return respellMovedIndent(saved, savedWs, serial, serialWs, baseline, structural);
     }
     const unmoved =
         normalizeOutlineIndent(savedWs) === normalizeOutlineIndent(serialWs) ||
@@ -989,8 +991,15 @@ function depthPrefixOf(savedWs: string, serialWs: string): string | undefined {
  *      prefix of `        ` renders to `  ` except `  ` itself. The baseline
  *      round trip recorded that mapping and inverting it recovers the spelling.
  *
- * Three gates. Each one is the difference between this rule and a data loss:
+ * Four gates. Each one is the difference between this rule and a data loss:
  *
+ *   - BOTH LINES MUST BE STRUCTURAL, i.e. neither key is `\x00`-tagged. This is
+ *     the gate the first cut of this rule did not have, and its absence is why
+ *     that cut was reverted: the marker test below guesses a line's ROLE from
+ *     its bytes, and fence content compares raw, so `- item` inside a ```yaml
+ *     fence passed it and a two-column edit came back four. The keys already
+ *     hold the classification (see `isStructuralPair`), so the guess is no
+ *     longer load-bearing — the reading is.
  *   - BOTH LINES MUST CARRY A LIST MARKER — rule 2's scope rule, for rule 2's
  *     reason: indentation is outline depth here and content everywhere else.
  *     It is also what keeps MAR-161's case out, a Makefile recipe line inside a
@@ -1012,17 +1021,21 @@ function depthPrefixOf(savedWs: string, serialWs: string): string | undefined {
  *     where two were meant. Arm 1 needs no such check: its answer IS this
  *     line's own current bytes.
  *
- * WHAT IS STILL EXPOSED, stated plainly because the marker gate is a guess about
- * a line's ROLE and not a reading of it: fence content compares raw, so a
- * whitespace-only edit inside a top-level fence reaches this hook, and a fence
- * line reading `- item` is indistinguishable here from an outline bullet. The
- * depth gate covers the case that matters — a pure convention conversion at the
- * same column count is left alone — but an edit inside a fence that changes the
- * column count AND happens to land on a marker-shaped line is re-spelled. The
- * hook is handed two bare strings; `reconcileInsertion`'s sibling gets each
- * line's KEY, which already encodes whether the line is verbatim content, and
- * that asymmetry is the real gap. Closing it is an engine-signature change, not
- * a profile one.
+ * WHAT THIS COST, since the rule shipped once and was backed out: the first cut
+ * had only the last three gates and rated the fence exposure narrow. It was not
+ * narrow — indenting a list inside a fenced code block is an ordinary gesture,
+ * and `\x00`-tagged keys were already sitting in the engine one argument away.
+ * The lesson is not about fences: a gate that infers a line's role from its
+ * bytes is a guess, and this file already computes the answer once, in context,
+ * for exactly this reason (see the classifier header). Prefer the reading.
+ *
+ * WHAT IS STILL EXPOSED: a line the CLASSIFIER itself misreads, since the keys
+ * are an approximation of the block parser rather than a replica. Its known
+ * deliberate gap — indented code nested deep inside a list item classifying as
+ * prose — is reachable in principle, but the depth gate covers the case that
+ * matters there, and no swept pair reaches it. That is a smaller and better-
+ * understood surface than a per-rule byte guess, because it is one shared
+ * approximation every rule in this file already depends on.
  */
 function respellMovedIndent(
     saved: string,
@@ -1030,7 +1043,9 @@ function respellMovedIndent(
     serial: string,
     serialWs: string,
     baseline: Map<string, string> | null,
+    structural: boolean,
 ): string {
+    if (!structural) return serial;
     if (!LIST_MARKER_RE.test(saved) || !LIST_MARKER_RE.test(serial)) return serial;
     if (normalizeOutlineIndent(savedWs) === serialWs) return serial;
     // An arm that answers with the serializer's own indent has not answered:
@@ -1078,15 +1093,50 @@ function carrySavedTableCells(saved: string, serial: string): string {
     return indentOf(serial) + "|" + merged.join("|") + "|";
 }
 
+/**
+ * Does this replacement pair consist of two lines whose indentation is OUTLINE
+ * STRUCTURE, rather than bytes the user authored?
+ *
+ * `normLineForCompare` tags every verbatim and non-prose class with a `\x00`
+ * prefix — fence content (`\x00F`), indented code (`\x00C`), a thematic break
+ * (`\x00B`) — so the classification the keys already carry answers this without
+ * re-deriving it. That matters because it CANNOT be re-derived from a line in
+ * isolation: `- item` is an outline bullet in prose and verbatim content inside
+ * a fence, and `- - -` passes `LIST_MARKER_RE` while being a thematic break.
+ *
+ * Both keys are required to be untagged, not just the saved one. The pair's keys
+ * always differ (an equal pair merges as a `keep`), so either side may be the
+ * verbatim one — a bullet the user wrapped in a fence arrives as prose→fence,
+ * and re-spelling the serializer's fence bytes from the saved line's outline
+ * convention corrupts exactly as the reverse does.
+ *
+ * Refusing is the safe direction here, as it is everywhere else in this file:
+ * a false negative leaves an indent canonicalized (cosmetic, and the status quo
+ * before rule 3), a false positive writes invented whitespace into bytes the
+ * user typed. Measured free: over 2471 executable move pairs across thirteen
+ * outline shapes and six corpus fixtures, rule 3 closes the same 5 losses with
+ * this gate as without it.
+ */
+const isStructuralPair = (keys: ReplacementKeys): boolean =>
+    !keys.saved.startsWith("\x00") && !keys.serial.startsWith("\x00");
+
 /** Markdown's `FormatProfile.reconcileReplacement`. Pure and total: every
  * branch falls back to the serializer's line, and neither pass can introduce a
  * newline. `facts` arrives typed `unknown` because the engine only stores and
  * returns it, so the shape is checked here rather than asserted — cheap, and it
  * is what keeps a protection built by some OTHER profile from being read as
  * this one's map once a second format exists. */
-function reconcileReplacement(saved: string, serial: string, facts: unknown): string {
+function reconcileReplacement(
+    saved: string,
+    serial: string,
+    facts: unknown,
+    keys: ReplacementKeys,
+): string {
     const baseline = facts instanceof Map ? (facts as Map<string, string>) : null;
-    return carrySavedTableCells(saved, carrySavedIndent(saved, serial, baseline));
+    return carrySavedTableCells(
+        saved,
+        carrySavedIndent(saved, serial, baseline, isStructuralPair(keys)),
+    );
 }
 
 // ─── Blank-line structure predicates (merge hooks) ──────────────────────────

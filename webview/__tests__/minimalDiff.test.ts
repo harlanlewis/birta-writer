@@ -767,6 +767,28 @@ describe("applyMinimalChanges — a moved item takes the file's spelling of its 
         );
     });
 
+    it("a column-changing edit inside a fence must land verbatim, not be re-spelled (MAR-299)", () => {
+        // The gate the first cut of rule 3 did not have, and the reason it was
+        // reverted. Every other gate lets this through: `- item` passes the
+        // marker test (fence content compares raw, so it reaches the hook at
+        // all), the depth genuinely moved (no saved indent renders to the
+        // serializer's two spaces), and the baseline arm has an answer ready —
+        // the outline above teaches that two canonical columns are written
+        // four. So the user's two spaces came back as four, inside a YAML block,
+        // where the indent is what the document MEANS.
+        //
+        // Pinned line: the `if (!structural) return serial` gate in
+        // `respellMovedIndent`. Delete it and this test reddens on its own.
+        const saved = "- alpha\n    - beta\n\n```yaml\n- item\n```\n";
+        const protection = computeRoundTripProtection(saved, "- alpha\n  - beta\n\n```yaml\n- item\n```\n");
+        expect(protection).not.toBeNull();
+
+        // The user typed two spaces before `- item`, inside the fence.
+        expect(
+            applyMinimalChanges(saved, "- alpha\n  - beta\n\n```yaml\n  - item\n```\n", protection),
+        ).toBe("- alpha\n    - beta\n\n```yaml\n  - item\n```\n");
+    });
+
     it("a whitespace-only outdent on a line that is not a list marker keeps the serializer's bytes", () => {
         // The other gate, and the reason `- item` above needed the depth test to
         // save it: this line's saved indent DOES pass through `\t` on its way
