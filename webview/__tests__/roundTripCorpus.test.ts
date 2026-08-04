@@ -233,6 +233,78 @@ describe("corpus invariant C — typing inside a block never restructures the do
     }
 });
 
+/**
+ * Invariant E — one save carrying edits in SEVERAL blocks.
+ *
+ * C types one character and saves, into paragraph text only. Both limits
+ * matter, and together they made the corpus structurally blind to MAR-312 for
+ * as long as the fixture written FOR it sat in the corpus: `fence-edges.md` and
+ * `fence-tilde-after-escape.md` were both present, C ran over both, and the
+ * gate was 155/155 green on the engine that still corrupted them.
+ *
+ * The shape C cannot reach: round-trip protection repairs a canonicalized line
+ * back to its saved bytes, and each region is anchored to its neighbouring
+ * lines. A tilde fence's two marker lines are two separate regions. Editing the
+ * prose above the fence AND inside the fence's content, in ONE save,
+ * invalidates both anchors of the OPEN line while the CLOSE line's following
+ * anchor survives — so one end repairs to the saved `~~~` and the other keeps
+ * the serializer's ``` ``` ```. The fence never terminates and every block after
+ * it is swallowed as code on reopen.
+ *
+ * A save carries every edit made since the last one (MAR-303), so "several
+ * edits, one save" is an ordinary sitting's work rather than an exotic gesture
+ * — which is exactly why a gate that saves after every keystroke overstates its
+ * own coverage.
+ *
+ * E therefore differs from C on both axes at once: it types into fenced-code
+ * content as well as paragraphs, and it saves ONCE at the end. Edits are
+ * applied back to front so an insertion cannot shift a position still to come.
+ */
+const INVARIANT_E_TIMEOUT_MS = 30_000;
+
+describe("corpus invariant E — one save carrying several edits never restructures the document", { timeout: INVARIANT_E_TIMEOUT_MS }, () => {
+    for (const { name, content } of fixtures) {
+        it(`${name} should keep its structure when several blocks are edited before one save`, async () => {
+            const before = await reparsedShape(content);
+
+            const editor = await makeEditor(content);
+            const protection = computeRoundTripProtection(content, editor.action(getMarkdown()));
+
+            const targets: number[] = [];
+            editor.action((ctx) => {
+                ctx.get(editorViewCtx).state.doc.descendants((node, pos, parent) => {
+                    const holder = parent?.type.name;
+                    if (
+                        node.isText &&
+                        (node.text?.length ?? 0) > 2 &&
+                        (holder === "paragraph" || holder === "code_block")
+                    ) {
+                        targets.push(pos + 1);
+                    }
+                    return true;
+                });
+            });
+
+            const picked = stridedSample(targets, 12).sort((a, b) => b - a);
+            if (picked.length < 2) return; // nothing multi-block to say here
+
+            editor.action((ctx) => {
+                const view = ctx.get(editorViewCtx);
+                let tr = view.state.tr;
+                for (const at of picked) tr = tr.insertText("Z", at);
+                view.dispatch(tr);
+            });
+            const merged = applyMinimalChanges(content, editor.action(getMarkdown()), protection);
+            await editor.destroy();
+
+            expect(
+                await reparsedShape(merged),
+                `editing ${picked.length} blocks before ONE save restructured the document`,
+            ).toEqual(before);
+        });
+    }
+});
+
 /** The distinct line-ending styles a text uses, e.g. `["CRLF"]` or
  *  `["CRLF","LF"]`. The final element of a `\n` split is the text after the
  *  last ending, not a line, so it never contributes.
