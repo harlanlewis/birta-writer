@@ -388,6 +388,52 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toContain("\n\t\t- plain");
     });
 
+    // ── MAR-299: the REPLACEMENT path's version of the same loss ────────────
+    //
+    // Everything above is `reconcileInsertion` — a moved line with no saved
+    // counterpart. But a move that only changes an item's DEPTH leaves its text
+    // untouched, so the diff pairs the line with itself and the merge takes the
+    // in-place replacement branch instead. There `carrySavedIndent` returned
+    // early when the leading whitespace was the only difference (the whitespace
+    // is then the edit, and carrying the saved bytes back was MAR-161's data
+    // loss) — and "don't carry the saved indent" was writing the SERIALIZER's,
+    // which in a tab outline is two columns where four were meant.
+    //
+    // Both moves below are given as raw pairs from the enumeration rather than
+    // named blocks: the target is a boundary with no block after it, which no
+    // text label can name.
+
+    it("outdenting an item by a move should keep the outline's own tab (MAR-299)", async () => {
+        // The flagship shape, and what says this is not an exotic-document bug:
+        // TABS is a plain tab outline with no mixed units anywhere, and it loses
+        // 1 of its 13 executable moves. `gamma` outdents to sit beside `beta`;
+        // before the fix its line was written `  - gamma` beside a kept
+        // `\t- delta`, so delta reparsed as gamma's CHILD.
+        //
+        // Pinned line: the `respellMovedIndent` call in `carrySavedIndent`.
+        // Restore the bare `return serial` there and this test reddens.
+        const { live, reparsed, merged } = await moveAndSave(TABS, { from: 18, to: 27 }, 29);
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- alpha\n\t- beta\n\t- gamma\n\t- delta\n");
+    });
+
+    it("the same move in a four-space outline should keep four spaces (MAR-299)", async () => {
+        // The other arm. Here the file's unit is WIDER than the serializer's, so
+        // no prefix of the saved `        ` renders to the serializer's `  `
+        // except `  ` itself — the line's own bytes cannot answer, and the
+        // spelling comes from the baseline round trip read backwards instead.
+        //
+        // Pinned line: the `sourceSpellingOf` lookup in `respellMovedIndent`.
+        // Delete that block and this test reddens while the tab one above stays
+        // green — the two arms are independent.
+        const source = "- alpha\n    - beta\n        - gamma\n    - delta\n";
+        const { live, reparsed, merged } = await moveAndSave(source, { from: 18, to: 27 }, 29);
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- alpha\n    - beta\n    - gamma\n    - delta\n");
+    });
+
     it("a heading item nested under a sibling should round-trip with no move at all", async () => {
         // The same defect without any move: the serializer's own canonical
         // output for this shape does not survive its own reparse, because a
