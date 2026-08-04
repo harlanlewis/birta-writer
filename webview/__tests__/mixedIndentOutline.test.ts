@@ -130,6 +130,45 @@ describe("mixed indent units in one outline (MAR-222)", () => {
         expect(merged).toBe("- a\n\t- b\n\t   - cZ\n\t   - d\n");
     });
 
+    // The same run, but with the two lines at DIFFERENT unusual indents, which
+    // is where a mispairing would show itself. The merge's own in-place-
+    // replacement branch pairs a `del` with the NEXT `ins`, while the LCS emits
+    // a run's dels before its inses — so for a 2-del/2-ins run it pairs the
+    // last saved line with the first serialized one. With equal indents that
+    // mispairing is invisible (both carry the same bytes); here it would write
+    // `d`'s five-space indent onto `c` and leave `d` canonical. Splitting the
+    // protected region per line is what keeps the merge off that path: `d` is
+    // repaired back to its own bytes and merges as a plain keep.
+    it("typing into one of two adjacent lines at DIFFERENT unusual indents should not restructure", async () => {
+        const { live, reparsed, merged } = await typeAndSave(
+            "- a\n\t- b\n\t   - c\n\t     - d\n",
+            "c",
+        );
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- a\n\t- b\n\t   - cZ\n\t     - d\n");
+    });
+
+    // A fence's content lines are re-indented as a block along with their
+    // fence, so since MAR-231 they form exactly the shape that teaches an
+    // indent fact — and leading whitespace inside a fence is user bytes.
+    // This pins the observable half of that: an edit to the line above leaves
+    // every byte of the fence alone, including the deeper line the serializer
+    // would canonicalize. It does NOT pin the rule that keeps such a fact off
+    // fence lines (it passes with that rule removed, because these lines are
+    // never themselves edited here) — "an outline's fact should not speak for
+    // a fence line added after load" in minimalDiff.test.ts is that pin, and
+    // it does redden when the rule goes.
+    it("editing around a fence in a tab-indented list should leave its content bytes alone", async () => {
+        const { live, reparsed, merged } = await typeAndSave(
+            "- item\n\t```\n\tcode\n\t   deeper\n\t```\n\t- after\n",
+            "item",
+        );
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- iZtem\n\t```\n\tcode\n\t   deeper\n\t```\n\t- after\n");
+    });
+
     it("typing into a plain-tab item should not restructure it either", async () => {
         // The MAR-213 half of the same hazard, in the file that also holds the
         // MAR-222 half: `\t` is ambiguous nowhere here, so both rules agree.
