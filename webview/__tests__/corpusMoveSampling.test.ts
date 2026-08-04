@@ -98,6 +98,22 @@ const SEED = Number(process.env["MDW_MOVE_SEED"] ?? "20260712");
  */
 const SAMPLE_SIZE = Number(process.env["MDW_MOVE_SAMPLE"] ?? "12");
 
+/**
+ * Per-test budget for the corpus gates, which run `SAMPLE_SIZE` full
+ * move→serialize→protect→merge→reparse cycles against a real editor, once per
+ * fixture. Cost scales with fixture size, and the largest — `content-inventory.md`
+ * — sits above the 5 s default: 5.3–6.6 s on a developer laptop, and CI runners
+ * are roughly twice as slow per AGENTS.md.
+ *
+ * It has ALWAYS sat above it. Vitest 2 did not enforce `testTimeout` on these
+ * tests — they were measured at 5278 ms, 5395 ms and 6608 ms while reporting
+ * green — so the Vitest 3 upgrade did not slow anything down; it started
+ * enforcing a limit these tests had been quietly exceeding. The number below is
+ * therefore headroom over a MEASURED cost, not a guess at one, and it is scoped
+ * to these suites so ordinary tests keep the tight default.
+ */
+const CORPUS_TIMEOUT_MS = 30_000;
+
 // This gate holds EVERY fixture to strict content conservation under block
 // moves. It carried a carve-out for the tab-indented Logseq outlines for most of
 // its life; both reasons are now closed and the filter is gone.
@@ -243,7 +259,7 @@ function sampleMoves(
     v.updateState(baseState);
 }
 
-describe("corpus move-sampling gate", () => {
+describe("corpus move-sampling gate", { timeout: CORPUS_TIMEOUT_MS }, () => {
     for (const fixture of fixtures) {
         it(`${fixture.name} should conserve content across ${SAMPLE_SIZE} sampled moves`, async () => {
             const editor = await makeEditor(fixture.content);
@@ -632,7 +648,7 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
     });
 });
 
-describe("corpus move-sampling gate — folded variant", () => {
+describe("corpus move-sampling gate — folded variant", { timeout: CORPUS_TIMEOUT_MS }, () => {
     for (const fixture of fixtures) {
         it(`${fixture.name} with its first foldable collapsed should conserve content and fold state`, async () => {
             const editor = await makeEditor(fixture.content);

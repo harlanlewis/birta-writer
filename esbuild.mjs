@@ -13,8 +13,11 @@ const isWatch = process.argv.includes('--watch');
 if (isProduction && !isWatch) {
     fs.rmSync('dist', { recursive: true, force: true });
 }
-// `--metafile` writes dist/webview.meta.json for bundle analysis (see
-// e2e/perf-bundle.mjs). Off by default so normal builds stay lean.
+// `--metafile` writes dist/webview.meta.json and dist/extension.meta.json.
+// The webview one drives bundle analysis (see e2e/perf-bundle.mjs); both drive
+// the third-party attribution generator (scripts/generate-third-party-notices.mjs),
+// which needs the union of what BOTH bundles inline to know what actually ships.
+// Off by default so normal builds stay lean.
 const withMetafile = process.argv.includes('--metafile');
 
 const commonOptions = {
@@ -38,6 +41,7 @@ const extensionBuild = {
         // CJS extension bundle can inline it.
         'harper.js': path.resolve('./node_modules/harper.js/dist/index.js'),
     },
+    metafile: withMetafile,
 };
 
 // Harper's WASM binary is loaded from dist/ at runtime (see harperService.ts)
@@ -110,7 +114,7 @@ if (isWatch) {
     await Promise.all([ctx1.watch(), ctx2.watch()]);
     console.log('Watching for changes...');
 } else {
-    const [, webviewResult] = await Promise.all([
+    const [extensionResult, webviewResult] = await Promise.all([
         esbuild.build(extensionBuild),
         esbuild.build(webviewBuild),
     ]);
@@ -118,6 +122,12 @@ if (isWatch) {
         fs.writeFileSync(
             path.resolve('./dist/webview.meta.json'),
             JSON.stringify(webviewResult.metafile),
+        );
+    }
+    if (withMetafile && extensionResult.metafile) {
+        fs.writeFileSync(
+            path.resolve('./dist/extension.meta.json'),
+            JSON.stringify(extensionResult.metafile),
         );
     }
 }

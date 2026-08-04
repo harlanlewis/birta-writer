@@ -2,6 +2,26 @@
 
 This extension bundles data and code from the following open-source projects.
 
+**Every bundled npm dependency is attributed in
+[`licenses/THIRD_PARTY_LICENSES.md`](licenses/THIRD_PARTY_LICENSES.md)** — a generated
+appendix carrying the license text and copyright line of each package esbuild inlines
+into `dist/`. This file is the hand-written companion to it: it covers the bundled
+*data* (dictionaries and curated word lists, which are not npm packages and so cannot
+be generated from a manifest), and it records the choices the generator cannot make on
+its own.
+
+## DOMPurify — license election
+
+DOMPurify is offered under `(MPL-2.0 OR Apache-2.0)`. That is a dual license, not an
+ambiguity: the recipient elects one and the other stops applying. **We elect the
+Apache-2.0 grant.** MPL-2.0 §3.2 would attach a standing source-availability duty to
+every copy we distribute — for a dependency we bundle unmodified, that buys nothing,
+while Apache-2.0 asks only for the license text and the retained notices, which the
+generated appendix already reproduces (as it does for the other Apache-2.0 packages,
+Harper and mathjs). The election is recorded in machine-readable form in
+`scripts/generate-third-party-notices.mjs`, and
+`shared/__tests__/thirdPartyNotices.test.ts` fails if upstream ever changes the offer.
+
 ## Harper
 
 Offline grammar and spell checker (`harper.js` + `harper_wasm_bg.wasm`, bundled into the extension host — the WASM binary carries Harper's curated dictionary). https://github.com/Automattic/harper — Apache License 2.0, Copyright 2024 Elijah Potter (a project of Automattic). Harper is bundled unmodified. A verbatim copy of its Apache-2.0 license, including the copyright notice, ships with this extension at `licenses/harper.js-Apache-2.0.txt`; the full text is also at https://www.apache.org/licenses/LICENSE-2.0.

@@ -1,0 +1,95 @@
+/**
+ * Guards on the third-party attribution appendix that do NOT need a build.
+ *
+ * The real staleness gate — "does licenses/THIRD_PARTY_LICENSES.md match what
+ * the bundles actually inline?" — lives in CI's `perf-bundle` job, because
+ * answering it requires a production build with metafiles. That is exactly the
+ * kind of state a unit test should not depend on: `dist/` may be absent, or hold
+ * a dev build, and a guard that silently passes when its input is missing is
+ * worse than no guard (the lesson `bundleBaseline.test.mjs` was written for).
+ *
+ * What IS checkable here is everything derivable from the manifest and the
+ * installed tree, and these are the two ways the appendix goes quietly wrong:
+ *
+ *  1. A dependency is added and nobody regenerates. The file still looks
+ *     complete — it just does not mention the thing we started shipping.
+ *  2. An upstream package changes its license. Our recorded election then
+ *     describes an offer that is no longer on the table, and the appendix keeps
+ *     asserting it with total confidence.
+ */
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import {
+    ALLOWED_LICENSES,
+    LICENSE_ELECTIONS,
+    OUT_FILE,
+    // @ts-expect-error — plain-JS CLI module, intentionally untyped.
+} from "../../scripts/generate-third-party-notices.mjs";
+
+const repoRoot = path.resolve(__dirname, "..", "..");
+
+/**
+ * Read an installed package's manifest off disk.
+ *
+ * Not `require("<pkg>/package.json")`: a package with an `exports` map that does
+ * not list `./package.json` — dompurify, the one package this test most needs to
+ * read — makes that throw.
+ */
+const readInstalledManifest = (name: string) =>
+    JSON.parse(readFileSync(path.join(repoRoot, "node_modules", name, "package.json"), "utf8"));
+const manifest = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+const appendix = readFileSync(OUT_FILE, "utf8");
+
+/** Direct production dependencies, minus our own workspace packages. */
+const directDeps = Object.keys(manifest.dependencies ?? {}).filter((d) => !d.startsWith("@birta/"));
+
+describe("third-party attribution appendix", () => {
+    it("a generated appendix should exist with a package inventory", () => {
+        expect(appendix).toContain("# Third-party licenses");
+        expect(appendix).toMatch(/^\d+ bundled packages\.$/m);
+    });
+
+    it("every direct production dependency should be attributed", () => {
+        // Every direct prod dep currently reaches a bundle, so absence means the
+        // appendix was not regenerated after the dependency was added — not that
+        // the dependency was tree-shaken away. If one ever legitimately stops
+        // shipping, that is a deliberate change to record here, with a reason.
+        const missing = directDeps.filter(
+            (dep) => !new RegExp(`^### ${dep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}@`, "m").test(appendix),
+        );
+        expect(missing, "regenerate: node esbuild.mjs --production --metafile && node scripts/generate-third-party-notices.mjs").toEqual([]);
+    });
+
+    it("every license in the appendix should be one we reviewed for bundled redistribution", () => {
+        const listed = [...appendix.matchAll(/^- License: (.+)$/gm)].map((m) => m[1].trim());
+        expect(listed.length).toBeGreaterThan(0);
+        const unreviewed = [...new Set(listed)].filter((l) => !ALLOWED_LICENSES.has(l));
+        expect(unreviewed).toEqual([]);
+    });
+
+    it("a recorded dual-license election should still match what upstream offers", () => {
+        for (const [name, election] of Object.entries(LICENSE_ELECTIONS) as [
+            string,
+            { elected: string; offered: string },
+        ][]) {
+            const pkg = readInstalledManifest(name);
+            // If upstream relicenses, our election describes an offer that no
+            // longer exists — and the appendix would keep printing it.
+            expect(pkg.license, `${name} changed its license; revisit the election`).toBe(
+                election.offered,
+            );
+            expect(appendix).toContain(`**${name}** — offered as \`${election.offered}\``);
+        }
+    });
+
+    it("the elected license should be the one the appendix prints for that package", () => {
+        for (const [name, election] of Object.entries(LICENSE_ELECTIONS) as [
+            string,
+            { elected: string },
+        ][]) {
+            const entry = appendix.match(new RegExp(`^### ${name}@[^\\n]*\\n\\n- License: (.+)$`, "m"));
+            expect(entry?.[1]).toBe(election.elected);
+        }
+    });
+});

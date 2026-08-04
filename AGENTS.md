@@ -23,6 +23,9 @@ Birta Writer began as a hard fork and is now developed fully independently. The 
 ## Project basics
 
 - **Package manager**: use `pnpm` only. No npm/yarn.
+- **Dependencies**: adding, removing, or bumping one has two obligations beyond the lockfile.
+  - **Regenerate the attribution appendix**: `pnpm notices`. We ship a bundle (`vsce package --no-dependencies`), so every dependency is inlined into `dist/` and minification strips the license headers that would otherwise carry its notice — `licenses/THIRD_PARTY_LICENSES.md` is where MIT/ISC/BSD attribution and Apache-2.0 §4 are actually discharged. It is generated from the esbuild metafiles (what the bundles *inline*), not from the dependency tree, so it never claims we ship tree-shaken code. CI's `perf-bundle` job fails if it is stale; `shared/__tests__/thirdPartyNotices.test.ts` fails if a direct dependency is unattributed or an upstream package changes its license out from under a recorded election. **The script name is `notices`, not `licenses` — `pnpm licenses` is a pnpm builtin and a script by that name is silently shadowed.**
+  - **Keep `@types/vscode` pinned to `engines.vscode`'s floor** (both `1.95.0` today, the types exactly, the engine as `^`). A caret on the types resolves to the newest 1.x, which lets the compiler bless APIs that do not exist in the oldest VS Code we claim to support — a compatibility claim nothing else checks.
 - **Build**: run `pnpm build` after changing code to confirm it compiles.
 - **Debug**: press F5 to launch an Extension Development Host (`.vscode/launch.json`).
 - **Language/tooling**: all TypeScript. Extension side uses `tsconfig.json`; webview side uses `tsconfig.webview.json`.
@@ -187,8 +190,8 @@ The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which stays in
 ### Stack
 | Layer | Framework | Scope |
 |-------|-----------|-------|
-| Extension unit tests | **Vitest 2.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
-| WebView unit tests | **Vitest 2.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
+| Extension unit tests | **Vitest 3.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
+| WebView unit tests | **Vitest 3.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
 | Integration tests | **@vscode/test-electron + Mocha** | `src/test/` — real Extension Host: activation, `onWillSaveTextDocument`/`waitUntil` reaching disk, the custom-editor save cycle with a live webview |
 
 The `vscode` module is mocked centrally via `__mocks__/vscode.ts`, injected by `resolve.alias` in `vitest.config.ts`. Do not `vi.mock("vscode")` in individual test files.
@@ -287,6 +290,8 @@ Test fails
 - Call `vi.clearAllMocks()` in `beforeEach` for each `describe` block.
 - Mock filesystem operations via `vscode.workspace.fs` (never write to the real disk).
 - For time-dependent logic use `vi.useFakeTimers()` / `vi.useRealTimers()`; never wait on a real `setTimeout`.
+  - **`vi.useFakeTimers()` fakes `performance` too (Vitest 3), and a faked `performance.now()` starts at 0.** Code that *sleeps* via `setTimeout` but *reads time* via `performance.now()` — `webview/syncScheduler.ts`, whose every window is a `now() - mark` comparison — therefore boots into a state no real webview is ever in, and an elapsed-window check reads `0 - 0 >= 300` as false. Vitest 2 left `performance` real, so a large real `now()` accidentally modelled production and these tests passed by luck. If a test depends on a scheduler window, wind the clock past it first (`useFakeClockPastIdle` in `savePipeline.test.ts` is the worked example) rather than trusting the default.
+  - **Vitest 2 did not always enforce `testTimeout`; Vitest 3 does.** Three corpus tests had been running 5.3–6.6 s against the 5 s default while reporting green. If a test starts failing on time after a runner upgrade, measure it on the old runner before assuming the new one made it slower — it may simply have started enforcing a limit that was always being exceeded. Prefer a per-`describe` timeout with the measured cost in a comment over raising the project-wide default.
 - Don't test `private` methods; verify behavior through the public interface.
 
 ---
