@@ -110,9 +110,12 @@ export interface FormatProfile {
      * concession the profile would otherwise refuse, and scope them to
      * something checkable on the line in front of you.
      *
-     * Only lines the round trip PAIRED appear (unchanged lines and in-place
-     * rewrites); a construct the serializer drops outright has no counterpart
-     * and is omitted. Lines arrive as content, without their line endings.
+     * Only lines the round trip PAIRED appear — unchanged lines, in-place
+     * rewrites, and runs it merely re-indented line by line; a construct the
+     * serializer drops outright has no counterpart and is omitted, and so does
+     * a run it rewrote deeply enough that no correspondence is visible in the
+     * bytes (`pairBaselineLines`). Lines arrive as content, without their line
+     * endings.
      */
     baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
     /**
@@ -533,7 +536,12 @@ export function computeRoundTripProtection(
     // runs (e.g. a dropped construct sharing a run with a construct whose
     // canonical form has a different line count) — repairing with wrong
     // bytes is worse than canonicalization, so fall back to the fused
-    // region. Suppression regions get the same discipline: if including them
+    // region. `allowSplit` governs the finer per-line split as well, so both
+    // granularities share this one retreat. Note what it can and cannot
+    // catch: a mis-paired split that still reproduces the baseline passes
+    // here and only misbehaves once the user edits one of its lines, which is
+    // why the splits are gated on evidence rather than on this check.
+    // Suppression regions get the same discipline: if including them
     // fails the self-check, retry without them (never worse than the
     // pre-suppression engine), and if nothing can reproduce the baseline,
     // ship no protection at all.
@@ -664,8 +672,8 @@ function positionalRunPairs(
  * now being performed — `mergeFacts`' evidence.
  *
  * Deliberately narrower than `pairBaselineLines`, which also accepts a lone
- * del/ins couple: see `mergeFacts` for why only a `keep` is a witness strong
- * enough to spell an inserted line from.
+ * del/ins couple and a run that corresponds line by line: see `mergeFacts` for
+ * why only a `keep` is a witness strong enough to spell an inserted line from.
  */
 function pairKeptLines(edits: Edit[], lastSavedIdx: number): BaselineLinePair[] {
     const pairs: BaselineLinePair[] = [];
