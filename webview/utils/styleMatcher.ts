@@ -1,10 +1,12 @@
 /**
  * Pure text matchers behind the style check.
  *
- * - Phrase lists (fillers / redundancies / clichés) compile into one
- *   case-insensitive alternation regex per category. Deliberately
- *   regex-simple (no lookaround), following iA Writer's documented choice
- *   for keystroke-time matching performance.
+ * - Phrase lists (fillers / redundancies / clichés) compile into
+ *   case-insensitive alternation regexes, chunked at a fixed alternative
+ *   count (see MAX_ALTERNATIVES_PER_REGEX — one alternation per category was
+ *   seconds of one-time V8 compile work). Deliberately regex-simple (no
+ *   lookaround), following iA Writer's documented choice for keystroke-time
+ *   matching performance.
  * - Entries may carry iA-style `~~ ~~` markers around the deletable
  *   sub-span; matches then strike only that sub-span ("combine ~~together~~"
  *   matches "combine together" but flags just "together").
@@ -92,14 +94,51 @@ export function parseEntry(entry: string): ParsedEntry {
 }
 
 /**
- * Build one word-bounded alternation regex from parsed phrases.
+ * Alternatives per compiled regex (MAR-305).
+ *
+ * V8 compiles a large alternation **superlinearly**, lazily on the first
+ * `exec`, and separately per subject-string encoding: a one-byte subject pays
+ * one compile and the first two-byte subject (anything past Latin-1 — a curly
+ * quote is enough) pays another. The cost therefore lands on whichever scans
+ * run first, split across the first two *differently encoded* strings, which is
+ * why it reads as an unattributable process-wide warm-up.
+ *
+ * Measured on the shipped wordlists (1093 phrases across six categories), one
+ * alternation per category, warm-up = both encodings:
+ *
+ * - Node 22 / V8 12.4: **2.4 s** unchunked, **37 ms** chunked at 256. Scaling a
+ *   single alternation there: 400 alternatives 14 ms, 800 → 910 ms, 1093 → 2.4 s.
+ *   Steady state also improves, 1.53 ms → 0.20 ms per 2000 characters.
+ * - Chromium 151 (median of 7, fresh browser per sample, A/B order alternated):
+ *   **113 ms** unchunked → **69 ms** chunked. Steady state is 0.10 ms either way.
+ *
+ * So the cliff is engine-version-dependent and the 2.4 s figure is NOT what a
+ * current Electron pays — but `engines.vscode` still admits 1.95, whose
+ * Chromium is years older than the one measured above. Chunking is insurance
+ * against whichever V8 the host ships, and it wins on both.
+ *
+ * The trigger is the `\s+` whitespace widening below — with literal spaces the
+ * same 1093-way alternation compiles in 20 ms on Node — but widening is
+ * load-bearing (a phrase must match across a doubled space), so the alternation
+ * is split rather than simplified. Folding `['’]` into the subject text instead
+ * of the pattern was measured too, and does not help (74 ms vs 69 ms).
+ */
+export const MAX_ALTERNATIVES_PER_REGEX = 256;
+
+/**
+ * Build word-bounded alternation regexes from parsed phrases.
  * Longer phrases are listed first so "pretty much" wins over "pretty";
  * literal spaces match any whitespace run; ASCII apostrophes in a phrase
  * also match typographic ones in the document. Word boundaries are only
  * asserted next to word characters (a phrase ending in "?" has none).
+ *
+ * The result is a *list* of regexes, chunked at MAX_ALTERNATIVES_PER_REGEX —
+ * see there for why. Because each chunk scans independently, a category's raw
+ * hits can now overlap where one alternation's leftmost-longest scan would have
+ * produced a single hit; `leftmostLongest` restores that. Exported for unit
+ * testing.
  */
-function compileList(phrases: readonly string[]): RegExp | null {
-    if (phrases.length === 0) { return null; }
+export function compileList(phrases: readonly string[]): RegExp[] {
     const alternatives = [...phrases]
         .sort((a, b) => b.length - a.length)
         .map((p) => {
@@ -110,7 +149,35 @@ function compileList(phrases: readonly string[]): RegExp | null {
             const tail = /\w$/.test(p) ? "\\b" : "";
             return lead + body + tail;
         });
-    return new RegExp(`(?:${alternatives.join("|")})`, "gi");
+    const regexes: RegExp[] = [];
+    for (let i = 0; i < alternatives.length; i += MAX_ALTERNATIVES_PER_REGEX) {
+        const chunk = alternatives.slice(i, i + MAX_ALTERNATIVES_PER_REGEX);
+        regexes.push(new RegExp(`(?:${chunk.join("|")})`, "gi"));
+    }
+    return regexes;
+}
+
+/** A raw phrase hit, before vetoes and strike-span resolution. */
+type Span = { start: number; end: number };
+
+/**
+ * Reduce a category's hits — gathered from several chunk regexes — to the
+ * non-overlapping set a single longest-first alternation would have produced:
+ * leftmost position wins, longest match wins a tie, and the scan resumes after
+ * the winner. Without this, "pretty much" and "pretty" landing in different
+ * chunks would both be flagged. Exported for unit testing.
+ */
+export function leftmostLongest(hits: Span[]): Span[] {
+    if (hits.length < 2) { return hits; }
+    const sorted = [...hits].sort((a, b) => a.start - b.start || b.end - a.end);
+    const kept: Span[] = [];
+    let cursor = -1; // end of the last kept hit; -1 admits a hit at offset 0
+    for (const hit of sorted) {
+        if (hit.start < cursor) { continue; }
+        kept.push(hit);
+        cursor = hit.end;
+    }
+    return kept;
 }
 
 export type StyleMatcher = (text: string) => StyleMatch[];
@@ -204,7 +271,7 @@ export function compileStyleMatcher(
     exceptions: readonly string[] = [],
 ): StyleMatcher {
     const excluded = new Set(exceptions.map((p) => normalizePhrase(p.replace(/~~/g, ""))));
-    const compiled: Array<{ category: StyleCategory; regex: RegExp }> = [];
+    const compiled: Array<{ category: StyleCategory; regexes: RegExp[] }> = [];
     // Strike ranges per normalized phrase, shared across categories
     const strikesByPhrase = new Map<string, StrikeRanges>();
 
@@ -219,8 +286,8 @@ export function compileStyleMatcher(
             phrases.push(parsed.phrase);
             strikesByPhrase.set(normalizePhrase(parsed.phrase), parsed.strikes);
         }
-        const regex = compileList(phrases);
-        if (regex) { compiled.push({ category, regex }); }
+        const regexes = compileList(phrases);
+        if (regexes.length > 0) { compiled.push({ category, regexes }); }
     }
 
     const structural = (Object.entries(STRUCTURAL_CHECKS) as Array<
@@ -229,22 +296,27 @@ export function compileStyleMatcher(
 
     return (text: string): StyleMatch[] => {
         const matches: StyleMatch[] = [];
-        for (const { category, regex } of compiled) {
-            regex.lastIndex = 0;
-            let m: RegExpExecArray | null;
-            while ((m = regex.exec(text)) !== null) {
-                const start = m.index;
-                const end = m.index + m[0].length;
-                if (!isVetoed(text, start, end)) {
-                    const strikes = strikesByPhrase.get(normalizePhrase(m[0]));
-                    if (strikes) {
-                        matches.push(...strikeSpans(m[0], start, strikes, category));
-                    } else {
-                        matches.push({ start, end, category });
-                    }
+        for (const { category, regexes } of compiled) {
+            const hits: Span[] = [];
+            for (const regex of regexes) {
+                regex.lastIndex = 0;
+                let m: RegExpExecArray | null;
+                while ((m = regex.exec(text)) !== null) {
+                    hits.push({ start: m.index, end: m.index + m[0].length });
+                    // Guard against zero-length matches looping forever
+                    if (m[0].length === 0) { regex.lastIndex++; }
                 }
-                // Guard against zero-length matches looping forever
-                if (m[0].length === 0) { regex.lastIndex++; }
+            }
+            // One chunk already scans leftmost-longest; several need merging.
+            for (const { start, end } of regexes.length > 1 ? leftmostLongest(hits) : hits) {
+                if (isVetoed(text, start, end)) { continue; }
+                const matched = text.slice(start, end);
+                const strikes = strikesByPhrase.get(normalizePhrase(matched));
+                if (strikes) {
+                    matches.push(...strikeSpans(matched, start, strikes, category));
+                } else {
+                    matches.push({ start, end, category });
+                }
             }
         }
         for (const check of structural) {
