@@ -24,6 +24,20 @@ const plain: FormatProfile = {
     reconcileReplacement: (_saved, serial) => serial,
 };
 
+/**
+ * `plain` with INDENTATION MADE SIGNIFICANT. `plain` trims, so a re-indented
+ * line keys EQUAL and merges as a plain `keep` — the one shape a test about
+ * indentation must not accidentally use. Here the leading whitespace is part
+ * of the key, so re-indenting a line makes it a del/ins pair: the shape
+ * markdown's own profile produces when the serializer renders a tab-plus-three
+ * as four spaces.
+ */
+const indentSignificant = (profile: FormatProfile): FormatProfile => ({
+    ...profile,
+    keyLines: (lines) =>
+        lines.map((l) => `${/^[ \t]*/.exec(l)![0]}|${l.trim().replace(/\s+/g, " ")}`),
+});
+
 describe("applyMinimalChanges (core, synthetic profile)", () => {
     it("an unchanged document should return the saved reference", () => {
         const saved = "alpha\n\nbeta\n";
@@ -227,6 +241,48 @@ describe("baselineFacts — what the zero-edit round trip teaches about a file (
         expect(pairs().map((p) => p.saved)).toEqual(["alpha", "gamma"]);
     });
 
+    it("a run whose lines differ only in indentation should pair them line by line", () => {
+        // MAR-231. Two neighbouring lines the round trip merely re-indented
+        // form ONE 2-del/2-ins run, which used to teach nothing at all — and
+        // an indent fact is exactly what such a run is evidence of.
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection(
+            "alpha\n\tONE\n\tTWO\nomega\n",
+            "alpha\n  ONE\n  TWO\nomega\n",
+            indentSignificant(profile),
+        );
+
+        expect(pairs()).toContainEqual({ saved: "\tONE", serial: "  ONE" });
+        expect(pairs()).toContainEqual({ saved: "\tTWO", serial: "  TWO" });
+    });
+
+    it("a run with equal line counts but a differing body should contribute no pairs", () => {
+        // The line counts matching is NOT the licence — a span where one
+        // construct was dropped and another expanded has equal counts and no
+        // correspondence at all. The bytes have to show one, and here the
+        // second line's body was rewritten, so the whole run is refused
+        // rather than partly believed.
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection(
+            "alpha\n\tONE\n\tTWO\nomega\n",
+            "alpha\n  ONE\n  two rewritten\nomega\n",
+            indentSignificant(profile),
+        );
+
+        expect(pairs().map((p) => p.saved)).toEqual(["alpha", "omega"]);
+    });
+
+    it("a run whose two sides have different line counts should contribute no pairs", () => {
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection(
+            "alpha\n\tONE\n\tTWO\nomega\n",
+            "alpha\n  ONE\nomega\n",
+            indentSignificant(profile),
+        );
+
+        expect(pairs().map((p) => p.saved)).toEqual(["alpha", "omega"]);
+    });
+
     it("a construct the serializer drops should contribute no pair", () => {
         const { profile, pairs } = recorder();
         computeRoundTripProtection("alpha\nDROPPED\ngamma\n", "alpha\ngamma\n", profile);
@@ -312,6 +368,50 @@ describe("computeRoundTripProtection (core, synthetic profile)", () => {
         expect(
             applyMinimalChanges(saved, "alpha\n\nomega EDITED\n", plain, protection),
         ).toBe("alpha\n\n%%secret%%\n\nomega EDITED\n");
+    });
+});
+
+describe("round-trip protection — a run the round trip only re-indented (MAR-231)", () => {
+    // Two neighbouring lines re-indented by the round trip are consecutive on
+    // BOTH sides, so adjacency grouping leaves them in one all-or-nothing
+    // region: editing either used to canonicalize the other's indentation as
+    // collateral damage. Where the run corresponds line by line, each line's
+    // canonical form is exactly its own counterpart, so the region splits.
+    const profile = indentSignificant(plain);
+    const saved = "alpha\n\tONE\n\tTWO\nomega\n";
+    const baseline = "alpha\n  ONE\n  TWO\nomega\n";
+
+    it("a zero-edit save should still be byte-identical", () => {
+        const protection = computeRoundTripProtection(saved, baseline, profile);
+        expect(protection).not.toBeNull();
+        expect(applyMinimalChanges(saved, baseline, profile, protection)).toBe(saved);
+    });
+
+    it("editing one of the two lines should leave the other's saved bytes alone", () => {
+        const protection = computeRoundTripProtection(saved, baseline, profile);
+
+        expect(
+            applyMinimalChanges(saved, "alpha\n  ONE EDITED\n  TWO\nomega\n", profile, protection),
+        ).toBe("alpha\n  ONE EDITED\n\tTWO\nomega\n");
+    });
+
+    it("a run whose bodies were rewritten should stay one all-or-nothing region", () => {
+        // The boundary of the split, pinned deliberately: without a line-by-line
+        // correspondence in the bytes there is nothing to split ON, and guessing
+        // one is how a mispaired region writes the wrong construct's bytes.
+        const rewritten = "alpha\nONE\nTWO\nomega\n";
+        const rewrittenBaseline = "alpha\none rewritten\ntwo rewritten\nomega\n";
+        const protection = computeRoundTripProtection(rewritten, rewrittenBaseline, plain);
+        expect(protection).not.toBeNull();
+
+        expect(
+            applyMinimalChanges(
+                rewritten,
+                "alpha\none rewritten EDITED\ntwo rewritten\nomega\n",
+                plain,
+                protection,
+            ),
+        ).toBe("alpha\none rewritten EDITED\ntwo rewritten\nomega\n");
     });
 });
 

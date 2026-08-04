@@ -39,11 +39,21 @@ import type { Node as ProseNode } from "../pm";
 import { computeRoundTripProtection, applyMinimalChanges } from "../utils/minimalDiff";
 import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
 
-/** Every non-text node type in document order — the tree a reader gets back. */
+/**
+ * Every non-text node in document order, WITH ITS DEPTH — the tree a reader
+ * gets back.
+ *
+ * The depth is not decoration. A flat list of type names cannot see the very
+ * damage this file is about: when the last item of a nested list is re-parented
+ * one level up, it is still a `list_item` at the same point in document order,
+ * so the flat sequence is byte-identical for both trees. This assertion passed
+ * on a merge that moved `- d` out of its sibling's list (MAR-231) and only the
+ * bytes assertion beside it noticed.
+ */
 function shape(doc: ProseNode): string[] {
     const kinds: string[] = [];
-    doc.descendants((node) => {
-        if (!node.isText) kinds.push(node.type.name);
+    doc.descendants((node, pos) => {
+        if (!node.isText) kinds.push(`${doc.resolve(pos).depth}:${node.type.name}`);
         return true;
     });
     return kinds;
