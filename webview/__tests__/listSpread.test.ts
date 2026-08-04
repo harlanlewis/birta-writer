@@ -424,9 +424,10 @@ describe("an item inside a footnote definition keeps its own spacing (MAR-302)",
     // Raw serializer output, for the same reason as the MAR-211 block above —
     // and here it is a MEASURED reason, not an assumed one: driven through the
     // real merge (`computeRoundTripProtection` + `applyMinimalChanges`, typing a
-    // character into each of the four paragraphs in turn), every one of the 24
-    // combinations below wrote back the authored bytes on both a zero-edit and
-    // an edited save. Protection is non-null here — unlike MAR-211, where it is
+    // character into each of the document's paragraphs in turn), every one of
+    // the 24 combinations below wrote back the authored bytes — 80 merged
+    // saves, none of which carried the invented blank, plus a zero-edit save on
+    // the repro. Protection is non-null here — unlike MAR-211, where it is
     // null — but the blank falls inside a protected region either way, so
     // nothing reached disk. What is wrong is the output every consumer that does
     // not go through the merge sees.
