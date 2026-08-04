@@ -328,12 +328,14 @@ function serializeTableNoAlign(node: any, _parent: any, state: any): string {
  * sides: the gap between its new neighbours is exactly the FOLLOWER's own
  * `blankBefore`, which is why the follower is asked first. At the end of a list
  * there is no follower and no gap to land in, so the nearest evidence is the last
- * recorded gap of the run it joined — the predecessor's own `blankBefore`.
- * Neither neighbour recording one means the list has no observed spacing at all
- * (a list built entirely in the editor, or one the Loosen/Tighten command just
- * cleared), and the default is then the honest answer.
+ * recorded gap of the run it joined — the predecessor's own `blankBefore`, but
+ * only when the predecessor is not itself the list's FIRST item, whose recorded
+ * gap this list never emits (see `observedGap`). Neither neighbour offering one
+ * means the list has no observed spacing at all (a list built entirely in the
+ * editor, or one the Loosen/Tighten command just cleared), and the default is
+ * then the honest answer.
  *
- * This only ever reads gaps the author wrote; it never invents one. In a
+ * This only ever reads gaps the list itself emits, so it cannot invent one. In a
  * UNIFORM list the neighbour and the list-level default agree by construction,
  * so nothing changes for a list that was tight or loose throughout — only the
  * partly-loose list, where the default was never a fact about this gap.
@@ -381,7 +383,17 @@ function observedGap(
     }
     const index = children.indexOf(right);
     const follower = index < 0 ? null : (children[index + 1] as { blankBefore?: unknown } | null);
-    return recordedGap(follower) ?? recordedGap(left);
+    // A FIRST item's recorded gap is not this list's spacing. `blankBefore` on
+    // index 0 is never emitted — there is no pair for it to separate — so when
+    // an item arrives from somewhere else carrying one, that gap describes a
+    // position in the list it LEFT. Reading it as the predecessor's evidence
+    // resurrects it one slot to the right: promoting the loose `two` out of
+    // `- root\n\t- one\n\n\t- two\n` to the top of the document wrote
+    // `- two\n\n- root`, a blank line at a level the author never spaced. The
+    // follower is exempt by construction — it always has a predecessor, so its
+    // gap is always one this list emits.
+    const predecessor = children[0] === (left as unknown) ? null : left;
+    return recordedGap(follower) ?? recordedGap(predecessor);
 }
 
 type FlowNode = {

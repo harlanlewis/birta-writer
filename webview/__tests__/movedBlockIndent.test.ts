@@ -354,8 +354,10 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(reparsedText).toEqual(liveText);
         expect(reparsed).toEqual(live);
         // The siblings end up at one depth. `four space` keeps the spelling the
-        // file gave it; `plain` takes the tab the file uses at that depth.
-        expect(merged).toContain("\t- plain");
+        // file gave it; `plain` takes the tab the file uses at that depth. The
+        // leading newline is load-bearing: `"\t- plain"` alone is also a
+        // substring of `"\t\t- plain"`, so it would pass at the wrong depth.
+        expect(merged).toContain("\n\t- plain");
     });
 
     it("a bullet moved under a table row should not anchor on the row's continuation", async () => {
@@ -383,7 +385,7 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
 
         expect(reparsedText).toEqual(liveText);
         expect(reparsed).toEqual(live);
-        expect(merged).toContain("\t\t- plain");
+        expect(merged).toContain("\n\t\t- plain");
     });
 
     it("a heading item nested under a sibling should round-trip with no move at all", async () => {

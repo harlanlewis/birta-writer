@@ -749,18 +749,26 @@ function mergeIndents(pairs: readonly BaselineLinePair[]): Map<string, string> {
  *     the same canonical indent). Being a spelling the merge is already
  *     emitting is the direct evidence the prefix test was approximating.
  *
- * THE ANCHOR ONLY ADVANCES PAST A LINE THE HOOK HAD AN OPINION ABOUT — one
- * where a substitution was in force, whether it was applied or refused. A line
- * written through untouched because the map knows nothing about its width is
- * not evidence of anything: its indent may be the serializer's canonical bytes
- * OR the saved file's own, restored underneath us by round-trip protection
- * (`repairSerialized` runs BEFORE the diff, so a repaired line reaches this
- * hook wearing source-convention whitespace in a stream that is otherwise
- * canonical). Letting such a line set the anchor is how ONE unresolvable line
- * silently vetoed every substitution below it in the same run — MAR-297's
- * reproduction A exactly, where a protection-repaired `    - four space`
- * blocked the `\t` re-spelling of the `- plain` beneath it and the kept table
- * bullet below then reparsed as that bullet's child.
+ * THE ANCHOR ADVANCES PAST EVERY LINE, including ones the hook had no opinion
+ * about, and that is exactly why the second grant is needed rather than
+ * optional. An anchor is only ever the previous WRITTEN line's indent, and a
+ * line written through untouched — because the map knows nothing about its
+ * width — is not evidence of a convention: its indent may be the serializer's
+ * canonical bytes OR the saved file's own, restored underneath us by round-trip
+ * protection (`repairSerialized` runs BEFORE the diff, so a repaired line
+ * reaches this hook wearing source-convention whitespace in a stream that is
+ * otherwise canonical). Under the prefix test alone, ONE such line silently
+ * vetoed every substitution below it in the same run — MAR-297's reproduction A
+ * exactly, where a protection-repaired `    - four space` blocked the `\t`
+ * re-spelling of the `- plain` beneath it and the kept table bullet below then
+ * reparsed as that bullet's child. The grants above answer that line on its
+ * own terms instead: `    ` is a spelling the baseline renders to the same
+ * canonical indent the substitution targets, so it grants rather than blocks.
+ *
+ * Skipping the advance for opinionless lines was considered and is NOT what
+ * shipped: the anchor would then be carried across arbitrary distances, and the
+ * self-consistency the anchor exists to enforce (a run must agree with itself,
+ * not only with the document) is a property of ADJACENT lines.
  */
 function reconcileInsertion(
     lines: readonly InsertedLine[],
@@ -783,7 +791,7 @@ function reconcileInsertion(
     // structure has resolved one.
     let carried: { canonical: string; source: string } | null = null;
     // The indent this run must remain consistent with: the line above it, then
-    // each line the hook had an opinion about as it is written.
+    // each line as it is written.
     let anchor = preceding === null ? "" : indentOf(preceding);
     return serial.map((line, i) => {
         if (!lines[i].key.startsWith("\x00")) {
