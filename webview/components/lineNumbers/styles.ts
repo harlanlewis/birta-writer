@@ -22,9 +22,11 @@
  * Idempotence is read off the DOM rather than a module flag, so the guard can
  * never disagree with reality.
  *
- * `noColorLiterals.test.ts` sweeps `.ts` for literal `--vscode-*` fallbacks and
- * so reaches this string, but `chromeTokens.test.ts` and the bare-color-literal
- * rule only walk `.css` — `lineNumberStyles.test.ts` re-imposes both here.
+ * `noColorLiterals.test.ts` and `chromeTokens.test.ts` both reach this string:
+ * they extract CSS authored in `.ts` as well as `.css` (MAR-260). What
+ * `lineNumberStyles.test.ts` adds is stricter than either — every `font-size`
+ * must be a `--ui-fs-*` token (not merely ≥14px) and no raw px length may appear
+ * at all — plus the layout invariants and the no-stylesheet-crept-back guard.
  */
 
 /** `id` of the injected element — also the idempotence key. */

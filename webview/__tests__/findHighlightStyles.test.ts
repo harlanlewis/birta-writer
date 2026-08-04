@@ -89,8 +89,9 @@ describe("find highlight styles: launch-cost guards", () => {
     });
 
     it("the injected CSS should name colors only through --vscode-* tokens", () => {
-        // Same rule noColorLiterals.test.ts imposes on .css files, which do not
-        // reach CSS parked in a template literal.
+        // noColorLiterals.test.ts reaches this string since MAR-260 and covers
+        // the literal half centrally. What is local is the stronger claim: a
+        // highlight's paint must be a bare theme token, not merely not a literal.
         expect(FIND_HIGHLIGHT_CSS).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/);
         for (const [, value] of FIND_HIGHLIGHT_CSS.matchAll(/background-color:\s*([^;]+);/g)) {
             expect(value.trim()).toMatch(/^var\(--vscode-[\w-]+\)$/);

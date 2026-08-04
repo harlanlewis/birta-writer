@@ -7,6 +7,14 @@
  *    colors) in webview CSS declaration values at all — theme colors come from
  *    `--vscode-*` variables (AGENTS.md, "No custom colors").
  *
+ * Rule 2 reads CSS wherever it is authored: `.css` files, and the CSS that lives
+ * in `.ts` — injected stylesheets and literal inline style writes, extracted by
+ * `helpers/cssSources.ts`. It used to walk `.css` only, which made the rule a
+ * property of the file extension rather than of the code: `el.style.color =
+ * "#ff0000"` was green while `color: #ff0000` failed immediately (MAR-260). Note
+ * the asymmetry that gap had — rule 1 below always scanned `.ts`, so the file
+ * was already reading TypeScript; only rule 2's sweep stopped at `.css`.
+ *
  * Rule 2 exemptions (both documented at their definitions below):
  * - An explicit same-line CSS comment annotation "color-literal-ok: <reason>"
  *   with a non-empty reason — for surfaces that are deliberately theme-INDEPENDENT,
@@ -47,6 +55,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cssSourcesInFile, cssSourcesInTypeScript } from "./helpers/cssSources";
 
 const webviewRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -237,6 +246,15 @@ function findBareColorLiterals(): string[] {
             violations.push(`${relative(webviewRoot, file)}:${hit}`);
         }
     }
+    // The same rule over CSS authored in TypeScript. `scanCssTextForColorLiterals`
+    // reports a line number relative to the text it was handed, so it is rebased
+    // onto the source file — a hit has to name a line you can go and edit.
+    for (const source of cssSourcesInTypeScript(webviewRoot)) {
+        for (const hit of scanCssTextForColorLiterals(source.text)) {
+            const [, line, literal] = /^(\d+)  (.*)$/.exec(hit) ?? [];
+            violations.push(`${source.file}:${Number(line) + source.startLine - 1}  ${literal}`);
+        }
+    }
     return violations.sort();
 }
 
@@ -392,5 +410,69 @@ describe("no bare color literals in webview CSS", () => {
 
     it("webview CSS should contain no unexempted bare color literals", () => {
         expect(findBareColorLiterals()).toEqual([]);
+    });
+});
+
+// MAR-260. The scan above used to stop at `.css`, so the rule was a property of
+// the file extension: the identical value written from TypeScript was green.
+// These cases pin the extension itself — every one of them was verified to FAIL
+// with the `.ts` sweep removed from `findBareColorLiterals`.
+describe("bare color literals in CSS authored from TypeScript", () => {
+    const scan = (ts: string) =>
+        cssSourcesInFile(ts, "probe.ts").flatMap((s) => scanCssTextForColorLiterals(s.text));
+
+    it("a color literal written to a style property should be flagged", () => {
+        expect(scan(`el.style.color = "#ff0000";`)).toHaveLength(1);
+        expect(scan(`el.style.backgroundColor = "rgb(1, 2, 3)";`)).toHaveLength(1);
+        expect(scan(`el.style.borderColor = "crimson";`)).toHaveLength(1);
+        // …however the write is spelled.
+        expect(scan("el.style.color = `#ff0000`;")).toHaveLength(1);
+        expect(scan(`el.style.cssText = "position:fixed;color:#ff0000";`)).toHaveLength(1);
+        expect(scan(`el.style.setProperty("color", "#ff0000");`)).toHaveLength(1);
+    });
+
+    it("a color literal inside an injected stylesheet should be flagged", () => {
+        // The shape two real modules already have (findBar/highlightStyles.ts,
+        // lineNumbers/styles.ts): a whole stylesheet parked in a template
+        // literal, which moving it out of a `.css` file silently unguarded.
+        expect(scan("export const CSS = `\n.x {\n  color: #ff0000;\n}\n`;")).toHaveLength(1);
+    });
+
+    it("a themed or non-literal style write should not be flagged", () => {
+        expect(scan(`el.style.color = "var(--vscode-foreground)";`)).toEqual([]);
+        expect(scan(`el.style.backgroundColor = "transparent";`)).toEqual([]);
+        // A value the guard cannot read is a value it must not guess at: copied
+        // from a computed style, or interpolated.
+        expect(scan(`sticky.style.color = other.style.color;`)).toEqual([]);
+        expect(scan("el.style.color = `${theme.accent}`;")).toEqual([]);
+        // Composing a token is not minting a value.
+        expect(scan(`el.style.setProperty("--ui-radius-s", "4px");`)).toEqual([]);
+    });
+
+    it("a color word in TypeScript that is not a style write should not be flagged", () => {
+        // The sweep reads CSS, not prose or identifiers — an extension that
+        // simply grepped `.ts` for `#rrggbb` would flag all of these.
+        expect(scan(`const red = "#ff0000"; // a plain constant`)).toEqual([]);
+        expect(scan(`/* the white canvas is #ffffff */`)).toEqual([]);
+        expect(scan(`el.setAttribute("data-tint", "#ff0000");`)).toEqual([]);
+        // Brand-colored SVG marks (components/pathLink/fileIcons.ts) are
+        // theme-independent by design and stay out of scope.
+        expect(scan('export const icon = `<svg><path style="fill:#c09553"/></svg>`;')).toEqual([]);
+    });
+
+    it("a color-literal-ok line comment WITH a reason should exempt, without one should not", () => {
+        expect(
+            scan(`el.style.color = "#fff"; // color-literal-ok: white-on-dark lightbox chrome`),
+        ).toEqual([]);
+        expect(scan(`el.style.color = "#fff"; // color-literal-ok:`)).toHaveLength(1);
+    });
+
+    it("a flagged literal should report the line it is on in the source file", () => {
+        const sources = cssSourcesInFile(
+            "const a = 1;\nconst b = 2;\nel.style.color = \"#ff0000\";\n",
+            "probe.ts",
+        );
+        expect(sources).toHaveLength(1);
+        expect(sources[0].startLine).toBe(3);
     });
 });

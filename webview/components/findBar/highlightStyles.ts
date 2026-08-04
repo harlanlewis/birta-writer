@@ -32,10 +32,12 @@
  * - **Idempotence is read off the DOM**, not a module flag, so the guard can
  *   never disagree with reality (and a test can exercise it more than once).
  *
- * `noColorLiterals.test.ts` and `chromeTokens.test.ts` only walk `.css` files,
- * so CSS parked in a template literal escapes them — `findHighlightStyles.test.ts`
- * re-imposes the color rule on this string, and also fails if a `::highlight()`
- * rule reappears in `findBar.css` or if a name is registered without one.
+ * `noColorLiterals.test.ts` and `chromeTokens.test.ts` reach this string: both
+ * extract CSS authored in `.ts` as well as `.css` (MAR-260), so the repo-wide
+ * color and chrome-token rules apply here with no per-file guard needed.
+ * `findHighlightStyles.test.ts` covers what those cannot — that a `::highlight()`
+ * rule has not reappeared in `findBar.css`, and that every registered name has
+ * exactly one rule.
  */
 
 /** `id` of the injected element — also the idempotence key. */

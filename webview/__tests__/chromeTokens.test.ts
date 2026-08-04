@@ -1,6 +1,13 @@
 /**
  * Guard for the ui-* chrome token system (webview/ui/chrome.css).
  *
+ * "Webview CSS" below means CSS wherever it is authored — `.css` files, and the
+ * CSS that lives in `.ts`: injected stylesheets and literal inline style writes
+ * (`helpers/cssSources.ts`). Scanning stylesheets only made every rule here a
+ * property of the file extension rather than of the code, so `el.style.fontSize
+ * = "11px"` from a NodeView passed while the identical declaration in a
+ * stylesheet failed immediately (MAR-260).
+ *
  * Every border-radius in webview CSS must compose the radius scale
  * (--ui-radius-s/m/l/xl/pill) instead of minting a new pixel value, chrome
  * text sizes below 14px must come from the --ui-fs-* scale, and a
@@ -16,6 +23,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { cssSourcesInFile, cssSourcesInTypeScript } from "./helpers/cssSources";
 
 const WEBVIEW_DIR = join(__dirname, "..");
 
@@ -41,20 +49,53 @@ function tsFiles(dir: string): string[] {
     return out;
 }
 
-/** file → declarations, with line numbers, comments stripped per-line-ish. */
-function declarations(file: string, prop: string): Array<{ line: number; value: string }> {
-    const src = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, (m) =>
-        m.replace(/[^\n]/g, " "),
-    );
+/**
+ * CSS text → declarations of one property, with line numbers, comments stripped.
+ *
+ * A declaration ends at `;` **or at the rule's closing `}`**. Requiring the
+ * semicolon — which this did until MAR-260 — silently exempted the last
+ * declaration in any rule that omits it, which is legal CSS and the form a
+ * minifier and several hand-written rules use. That is the same failure MAR-261
+ * fixed in `noColorLiterals.test.ts`'s scanner (whose `DECLARATION_RE` has
+ * terminated on `[;}]` since): a rule that is really a property of the
+ * *formatting* rather than of the code. Verified before fixing —
+ * `a { border-radius: 7px }` returned nothing while `a { border-radius: 7px; }`
+ * returned `7px`.
+ *
+ * `{}` are excluded from the value so a match can never run past its own rule,
+ * and an empty value (`color: ;`, or the `el.style.display = ""` reset once
+ * synthesized) declares nothing rather than a violation-shaped blank.
+ */
+function declarationsIn(text: string, prop: string): Array<{ line: number; value: string }> {
+    const src = text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
     const out: Array<{ line: number; value: string }> = [];
-    const re = new RegExp(`${prop}\\s*:\\s*([^;]+);`, "g");
+    const re = new RegExp(`${prop}\\s*:\\s*([^;{}]+)(?=[;}])`, "g");
     for (let m = re.exec(src); m; m = re.exec(src)) {
-        out.push({
-            line: src.slice(0, m.index).split("\n").length,
-            value: m[1].trim(),
-        });
+        const value = m[1].trim();
+        if (value === "") continue;
+        out.push({ line: src.slice(0, m.index).split("\n").length, value });
     }
     return out;
+}
+
+/**
+ * One chunk of CSS to scan, wherever it was authored: a `.css` file, or CSS
+ * living in a `.ts` — an injected stylesheet or a literal inline style write
+ * (MAR-260; `helpers/cssSources.ts` explains what is and is not extracted).
+ * `label` and `startLine` exist so a violation names a line you can go and edit.
+ */
+interface CssUnit {
+    label: string;
+    text: string;
+    startLine: number;
+}
+
+/** Declarations of one property across a unit, in the SOURCE file's line numbers. */
+function declarations(unit: CssUnit, prop: string): Array<{ line: number; value: string }> {
+    return declarationsIn(unit.text, prop).map((d) => ({
+        ...d,
+        line: d.line + unit.startLine - 1,
+    }));
 }
 
 // Radius values allowed OUTSIDE the token scale: none/hairline detail and
@@ -74,23 +115,53 @@ describe("chrome design tokens (ui/chrome.css)", () => {
         (f) => !f.endsWith(join("ui", "chrome.css")),
     );
 
+    // `.css` files plus the CSS that lives in `.ts`. Scanning stylesheets only
+    // made every rule below a property of the file extension rather than of the
+    // code — `el.style.borderRadius = "7px"` was green while `border-radius: 7px`
+    // failed immediately, and two whole stylesheets had already moved into
+    // template literals for launch-cost reasons, out of this guard's sight.
+    const fromTs = cssSourcesInTypeScript(WEBVIEW_DIR);
+    const units: CssUnit[] = [
+        ...files.map((f) => ({
+            label: relative(WEBVIEW_DIR, f).split(sep).join("/"),
+            text: readFileSync(f, "utf8"),
+            startLine: 1,
+        })),
+        ...fromTs.map((s) => ({ label: s.file, text: s.text, startLine: s.startLine })),
+    ];
+
     it("webview CSS should exist to guard", () => {
         expect(files.length).toBeGreaterThan(10);
     });
 
+    it("the sweep should reach the CSS that lives in .ts, not only .css files", () => {
+        // Every rule below reports an empty array when it finds nothing — which
+        // is also what it returns if the TS extraction silently stops working
+        // (a moved directory, a parse that throws, a renamed helper). Pin the
+        // reach so a vacuous pass cannot masquerade as a clean one.
+        //
+        // A CONTAINMENT check, not an exact list: a third injected stylesheet
+        // should be picked up and guarded automatically, which is the entire
+        // point — it must not have to be registered here first.
+        const stylesheets = fromTs.filter((s) => s.kind === "stylesheet").map((s) => s.file);
+        expect(stylesheets).toEqual(expect.arrayContaining([
+            "components/findBar/highlightStyles.ts",
+            "components/lineNumbers/styles.ts",
+        ]));
+        expect(fromTs.filter((s) => s.kind === "inline").length).toBeGreaterThan(50);
+    });
+
     it("every border-radius should compose the --ui-radius-* scale", () => {
         const violations: string[] = [];
-        for (const file of files) {
-            for (const { line, value } of declarations(file, "border-radius")) {
+        for (const unit of units) {
+            for (const { line, value } of declarations(unit, "border-radius")) {
                 // Compound values ("0 0 var(--ui-radius-m) var(--ui-radius-m)")
                 // are checked token by token.
                 const parts = value.split(/\s+/);
                 for (const part of parts) {
                     if (part.startsWith("var(--ui-radius-")) continue;
                     if (RADIUS_LITERAL_OK.has(part)) continue;
-                    violations.push(
-                        `${relative(WEBVIEW_DIR, file)}:${line} — border-radius: ${value}`,
-                    );
+                    violations.push(`${unit.label}:${line} — border-radius: ${value}`);
                     break;
                 }
             }
@@ -100,9 +171,9 @@ describe("chrome design tokens (ui/chrome.css)", () => {
 
     it("chrome font sizes below 14px should compose the --ui-fs-* scale", () => {
         const violations: string[] = [];
-        for (const file of files) {
-            const rel = relative(WEBVIEW_DIR, file).split(sep).join("/");
-            for (const { line, value } of declarations(file, "font-size")) {
+        for (const unit of units) {
+            const rel = unit.label;
+            for (const { line, value } of declarations(unit, "font-size")) {
                 const m = /^([0-9.]+)px$/.exec(value);
                 if (!m) continue; // em/calc/var sizing is the content domain
                 const px = parseFloat(m[1]);
@@ -182,19 +253,84 @@ describe("chrome design tokens (ui/chrome.css)", () => {
         const RAW_INK = /\b(?:rgba?|hsla?)\s*\(/;
         const THEME_SHADOW_VAR = /var\(\s*--vscode-[\w-]*shadow/i;
         const violations: string[] = [];
-        for (const file of files) {
-            const rel = relative(WEBVIEW_DIR, file).split(sep).join("/");
+        for (const unit of units) {
             const scanned = [
-                ...declarations(file, "box-shadow").map((d) => ({ ...d, prop: "box-shadow" })),
-                ...declarations(file, "filter")
+                ...declarations(unit, "box-shadow").map((d) => ({ ...d, prop: "box-shadow" })),
+                ...declarations(unit, "filter")
                     .filter((d) => d.value.includes("drop-shadow("))
                     .map((d) => ({ ...d, prop: "filter" })),
             ];
             for (const { line, value, prop } of scanned) {
                 if (!RAW_INK.test(value) && !THEME_SHADOW_VAR.test(value)) continue;
-                violations.push(`${rel}:${line} — ${prop}: ${value}`);
+                violations.push(`${unit.label}:${line} — ${prop}: ${value}`);
             }
         }
         expect(violations, violations.join("\n")).toEqual([]);
+    });
+});
+
+// MAR-260. The repo-wide rules above are clean today and would have stayed
+// clean on their first run with the `.ts` sweep added — which would have told
+// nobody anything. These cases pin the matcher itself: each was verified to
+// FAIL with the `cssSourcesInTypeScript` entry removed from `units`.
+describe("chrome design tokens in CSS authored from TypeScript", () => {
+    /** Values of one property that a chunk of TypeScript declares. */
+    const declared = (ts: string, prop: string) =>
+        cssSourcesInFile(ts, "probe.ts").flatMap((s) =>
+            declarationsIn(s.text, prop).map((d) => d.value),
+        );
+
+    it("a raw radius or chrome font size written to a style property should be seen", () => {
+        expect(declared(`el.style.borderRadius = "7px";`, "border-radius")).toEqual(["7px"]);
+        expect(declared(`el.style.fontSize = "11px";`, "font-size")).toEqual(["11px"]);
+        expect(declared(`el.style.cssText = "border-radius:7px";`, "border-radius")).toEqual(["7px"]);
+        // …and the values a scan must NOT reject, so the rule stays about
+        // minting rather than about writing a style at all.
+        expect(declared(`el.style.borderRadius = "var(--ui-radius-m)";`, "border-radius"))
+            .toEqual(["var(--ui-radius-m)"]);
+    });
+
+    it("a computed or interpolated size should not be read as a minted value", () => {
+        // headingSticky.ts copies the heading's own size; the content font-size
+        // preset interpolates a percentage. Neither mints a chrome token, and a
+        // guard that cannot read the value must not guess at it.
+        expect(declared(`sticky.style.fontSize = style.fontSize;`, "font-size")).toEqual([]);
+        expect(declared("el.style.fontSize = `${pct}%`;", "font-size")).toEqual([]);
+    });
+
+    it("composing a radius token should not be read as minting one", () => {
+        expect(declared(`el.style.setProperty("--ui-radius-s", "4px");`, "border-radius")).toEqual([]);
+    });
+
+    it("an injected stylesheet's declarations should be seen", () => {
+        // The shape findBar/highlightStyles.ts and lineNumbers/styles.ts have.
+        expect(declared("export const CSS = `\n.x {\n  border-radius: 7px;\n}\n`;", "border-radius"))
+            .toEqual(["7px"]);
+    });
+
+    // MAR-260, found while extending the sweep: the scanner required a trailing
+    // `;`, so the last declaration in a rule that omits one — legal CSS, in
+    // `.css` files as much as in TypeScript — was exempt from all three rules
+    // above. Reverting `(?=[;}])` to `;` in `declarationsIn` fails these.
+    it("a declaration terminated by the rule's closing brace should be seen", () => {
+        expect(declarationsIn("a { border-radius: 7px }", "border-radius")).toEqual([
+            { line: 1, value: "7px" },
+        ]);
+        expect(declarationsIn("a { color: red; font-size: 11px }", "font-size")).toEqual([
+            { line: 1, value: "11px" },
+        ]);
+        // A value can never run past its own rule into the next one.
+        expect(declarationsIn("a { font-size: 11px }\nb { color: red }", "font-size")).toEqual([
+            { line: 1, value: "11px" },
+        ]);
+        // An empty value declares nothing — `el.style.borderRadius = ""` is a
+        // reset, not a minted radius.
+        expect(declarationsIn(`a { border-radius: ; }`, "border-radius")).toEqual([]);
+    });
+
+    it("a violation should report the line it is on in the source file", () => {
+        const unit = cssSourcesInFile("const a = 1;\nel.style.borderRadius = \"7px\";\n", "probe.ts");
+        expect(declarations({ label: "probe.ts", text: unit[0].text, startLine: unit[0].startLine },
+            "border-radius")).toEqual([{ line: 2, value: "7px" }]);
     });
 });
