@@ -246,6 +246,84 @@ describe("partly-loose lists keep each gap as authored (MAR-194)", () => {
     });
 });
 
+describe("a list inside a footnote definition keeps its gaps (MAR-211)", () => {
+    // Inside a footnote definition micromark ends each item on the line the NEXT
+    // item STARTS on, so the two positions OVERLAP and `next.start - prev.end` is
+    // 0 for a gap the author wrote as a blank line. The measurement therefore
+    // read `blankBefore: false` for every gap and the per-gap join above pinned
+    // the list TIGHT — worse than deferring, because it agreed with the wrong
+    // answer confidently. `annotateItemGaps` now measures from the previous
+    // item's last CONTENT line, which the container shift does not move.
+    //
+    // Raw serializer output, deliberately: the minimal-diff merge puts every
+    // blank back from the saved bytes, so nothing reaches disk wrong today and
+    // no merge-level gate can see this. What the raw layer loses is real for
+    // every consumer that does not go through the merge.
+
+    it("a loose list inside a footnote definition should keep its blank lines", async () => {
+        // The ticket's repro. Before the fix: `- a\n    - b\n    - c` — every
+        // authored blank dropped, which renders the items tight downstream.
+        const doc = "[^1]: n\n\n    - a\n\n    - b\n\n    - c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a tight list inside a footnote definition should stay tight", async () => {
+        // The over-correction control: the container shift must not become an
+        // excuse to loosen a list the author wrote tight.
+        const doc = "[^1]: n\n\n    - a\n    - b\n    - c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("two definitions differing ONLY in where the blank sits should stay distinct", async () => {
+        // Same sharpest form as the top-level pair above: before the fix both
+        // collapsed onto the tight bytes, so one of the two files was rewritten
+        // into the other.
+        const blankEarly = "[^1]: n\n\n    - a\n\n    - b\n    - c\n";
+        const blankLate = "[^1]: n\n\n    - a\n    - b\n\n    - c\n";
+        expect(await roundTrip(blankEarly)).toBe(blankEarly);
+        expect(await roundTrip(blankLate)).toBe(blankLate);
+    });
+
+    it("a loose ordered list inside a footnote definition should keep its blank lines", async () => {
+        const doc = "[^1]: n\n\n    1. one\n\n    2. two\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("an item with a blank INSIDE it should not gain a gap after it", async () => {
+        // The reason the fix cannot read the previous item's own `spread`: the
+        // container shift makes an item spread when the blank is BETWEEN items,
+        // but an item is equally spread when the blank is between two of its own
+        // paragraphs and there is no gap at all before the next item. Both items
+        // here carry `spread: true`; only one of them is followed by a blank.
+        const doc = "[^1]: n\n\n    - a\n\n      cont\n    - b\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a definition with a multi-paragraph item in a loose list should keep every blank", async () => {
+        const doc = "[^1]: n\n\n    - a\n\n      two\n\n    - b\n\n    - c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("moving an item inside a loose footnote list and back should restore the bytes", async () => {
+        // A recorded gap has to travel with its item here too — the property the
+        // top-level list is enumerated for below. Nothing to travel with before
+        // the fix: every item read `blankBefore: false`.
+        const doc = "[^1]: n\n\n    - a\n\n    - b\n\n    - c\n";
+        expect(await moveItem(doc, "b", 1, -1)).toBe(doc);
+    });
+
+    it("the footnote-variants corpus fixture should serialize back byte-identically", async () => {
+        // Same reasoning as the partly-loose fixture above: the corpus gates run
+        // through the merge, which hides this entirely. Verified to fail on the
+        // definition whose list is loose without the fix.
+        const fixture = readFileSync(
+            join(__dirname, "fixtures", "footnotes-variants.md"),
+            "utf8",
+        );
+        expect(await roundTrip(fixture)).toBe(fixture);
+    });
+});
+
 describe("a reordered item takes the gap it landed in (MAR-210)", () => {
     // The residue of MAR-194. `annotateItemGaps` starts at index 1, so the FIRST
     // item of every list has no recorded gap — there is nothing before it to

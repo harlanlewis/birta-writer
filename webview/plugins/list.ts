@@ -141,19 +141,72 @@ function spreadBool(node: ListMdastNode, fallback: boolean): boolean {
 }
 
 /**
+ * The last SOURCE line this node's own CONTENT occupies — the deepest last
+ * descendant's end line, falling back to the node's own when it has no
+ * positioned children (a fence, an html block, a thematic break).
+ *
+ * AN ITEM'S OWN `position.end.line` IS NOT THAT LINE inside a footnote
+ * definition (MAR-211). There, micromark ends each item on the line the NEXT
+ * item STARTS on, so the two positions overlap and the blank between them is
+ * swallowed by the earlier item:
+ *
+ *     [^1]: n            listItem "a"  position 3-5   ← ends on b's start line
+ *                        listItem "b"  position 5-7
+ *         - a            listItem "c"  position 7-7
+ *
+ *         - b            paragraph "a" position 3-3   ← the real last line
+ *
+ *         - c
+ *
+ * Descending to the last descendant reads the last line the author actually
+ * WROTE in that item, which the container shift does not touch — so the gap
+ * measurement below is a fact about the source in both shapes. It is not a
+ * footnote special case: for every other shape probed the two agree, because
+ * outside that container an item already ends on its own last content line.
+ *
+ * The previous item's own `spread` is NOT a usable substitute, tempting as it
+ * looks (both `a` and `b` above carry `spread: true`): an item is spread when
+ * it holds a blank ANYWHERE, including between two of its own paragraphs with
+ * no gap at all before the next item.
+ *
+ * The descent stops at the LAST child and does not step back over a sibling it
+ * cannot place. A remark transformer may hand back a synthesized node carrying
+ * no `position` (directives and callouts are rebuilt that way), and skipping
+ * one to reach an earlier sibling would report a line ABOVE the content that
+ * follows it — measuring a blank the author never wrote, which is the one
+ * failure direction that costs bytes rather than spacing. Falling back to the
+ * node's own end line there is exactly the behaviour this replaced.
+ */
+function lastContentLine(node: unknown): number | undefined {
+    const n = node as ListMdastNode | null;
+    const children = n?.children;
+    if (Array.isArray(children) && children.length > 0) {
+        const line = lastContentLine(children[children.length - 1]);
+        if (typeof line === "number") {
+            return line;
+        }
+    }
+    const own = n?.position?.end?.line;
+    return typeof own === "number" ? own : undefined;
+}
+
+/**
  * Record, on each of a list's item children, whether a blank line separated it
  * from the previous item in the SOURCE (MAR-194). Only the parent sees the
  * sibling geometry, so the annotation is written here and read by the list_item
  * parse runner. The first item has no preceding gap inside the list, and an
  * item without usable position info is left undefined — the serializer's join
  * then reads a gap off that item's neighbours instead (MAR-210).
+ *
+ * The previous item's end comes from `lastContentLine`, not its `position`; see
+ * there for the container shape where the two differ (MAR-211).
  */
 function annotateItemGaps(children: unknown): void {
     if (!Array.isArray(children)) {
         return;
     }
     for (let i = 1; i < children.length; i++) {
-        const prevEnd = (children[i - 1] as ListMdastNode)?.position?.end?.line;
+        const prevEnd = lastContentLine(children[i - 1]);
         const start = (children[i] as ListMdastNode)?.position?.start?.line;
         if (typeof prevEnd === "number" && typeof start === "number") {
             (children[i] as ListMdastNode).blankBefore = start - prevEnd > 1;
