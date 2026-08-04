@@ -745,7 +745,33 @@ function itemContentGapJoin(
     for (let i = 1; i < item.children.length; i++) {
         if (gapMustBeBlank(item.children[i - 1], item.children[i], item, state)) return 1;
     }
-    return undefined;
+    // An item written as a BARE MARKER has to be GLUED, not merely left alone
+    // (MAR-306). This hook can force a blank, but the default it defers to can
+    // also ADD one — `spread: true` blank-separates every gap — and CommonMark
+    // gives an item beginning with a blank line at most that one blank, so
+    // everything after it is orphaned OUT of the list. Measured both ways: the
+    // editor's `list_item[checked] → paragraph(empty), hr` wrote `-\n\n  ---\n`
+    // and reopened with the rule as a TOP-LEVEL sibling, while the glued
+    // `-\n  ---\n` reopens as the item that was serialized. `-\n  ---\n` is in
+    // fact the only spelling that parses back to this shape at all: authored
+    // loose, `-\n\n  ---\n` already parses with the rule outside the list.
+    //
+    // Restricted to the ARTIFACT empty paragraph — the one `list_item`
+    // (`paragraph block*`) fills in when the real first block is not a
+    // paragraph, which `itemContentForMarkdown` (plugins/list.ts) keeps only
+    // ahead of an `hr` or a sublist that cannot ride the marker line. Ahead of
+    // a PARAGRAPH the empty one is a node the document really has, and gluing
+    // merges the two: `- hello\n\n  world\n` with `hello` deleted would write
+    // `- world\n` and lose a paragraph the user can see. That trade is the
+    // subject of its own case in listMarkerFidelity.test.ts, and neither
+    // spelling is right — Markdown cannot write an empty paragraph — so this
+    // leaves it exactly as it was rather than swapping one loss for another.
+    //
+    // Reached only after the loop has cleared every gap, so an item that
+    // genuinely needs a blank still gets one.
+    return isEmptyParagraph(item.children[0]) && item.children[1]?.type !== "paragraph"
+        ? 0
+        : undefined;
 }
 
 /** Would this thematic break be written with `-`? Mirrors the marker choice in
