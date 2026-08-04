@@ -302,12 +302,6 @@ function normalizeTableDataRow(line: string): string {
     return "|" + cells.join("|") + "|";
 }
 
-// Normalize a fence opening line: ``` javascript → ```javascript (drop the
-// space before the language token).
-function normalizeFenceOpen(line: string): string {
-    return line.replace(/^(\s*`{3,})\s+/, "$1");
-}
-
 // Normalize leading outline indentation: a tab is one nesting level, which
 // the serializer re-emits as two spaces (Logseq graphs indent their whole
 // block tree with tabs — MAR-131). DEPTH-preserving by construction: `\t\t`
@@ -551,7 +545,28 @@ function normLineForCompare(line: string, cls: LineClass): string {
     // A "setext" line falls through: none of the remaining normalizers can
     // touch a dash run, so its key is its raw bytes — an underline only ever
     // matches an identical underline in an identical attachment context.
-    if (/^`{3,}/.test(t)) return normalizeFenceOpen(line);
+    const fence = FENCE_LINE_RE.exec(t);
+    if (fence) {
+        // Key a fence marker line by its INFO STRING alone, dropping the marker
+        // run itself. The serializer canonicalizes `~~~` to ``` ``` ```, so a
+        // tilde fence's two marker lines would otherwise both be recorded as
+        // round-trip protection regions — and protection is anchored to
+        // neighbouring lines, so an edit beside ONE end invalidates that end's
+        // anchors while the other end still repairs. That writes a MISMATCHED
+        // pair (open ``` ``` ```, close `~~~`): the fence never terminates and
+        // the entire rest of the document is swallowed as code on reopen
+        // (MAR-312). Keying the two spellings equal makes both marker lines
+        // ordinary `keep`s, so the saved spelling survives on BOTH ends and no
+        // protection region — hence no anchor — is involved at all.
+        //
+        // Safe in the way the thematic-break branch above is not: `-` doubles
+        // as a setext underline, but a backtick or tilde run is only ever a
+        // fence, so no second construct can be repaired into one. The marker
+        // LENGTH is dropped with the character for the same reason — ```` and
+        // ``` differ only in what they can nest, which is a property of the
+        // content between them, not of how the pair should be spelled.
+        return indentOf(line) + "\x00Q" + t.slice(fence[1].length).trim();
+    }
     return normalizeWrappedLinkEmphasis(normalizeSplitStrong(normalizeOrgCookieEscape(line)));
 }
 
@@ -1417,6 +1432,39 @@ function areListSiblings(prev: string, next: string): boolean {
 // `***`/`___` runs, backtick fences, headings, and list markers all
 // interrupt a paragraph, so their attachment never depends on the blank.
 // This is the M1 dual rule (MAR-161).
+/**
+ * A bare list marker: a bullet or ordered marker with NOTHING after it. A task
+ * checkbox counts as part of the marker, because an emptied task item is still
+ * an empty item — the checkbox is the item's state, not its content.
+ */
+const BARE_LIST_MARKER_RE = /^([ \t]*)(?:[-*+]|\d{1,9}[.)])(?:[ \t]+\[[ xX]\])?[ \t]*$/;
+
+/**
+ * Is a saved blank between a BARE list marker and the item's own indented
+ * content the difference between the item keeping that content and losing it?
+ *
+ * An item that begins with a blank line keeps at most that blank: CommonMark
+ * orphans everything after it OUT of the list. So when the serializer emits the
+ * marker and the content contiguously, the saved blank is not spacing the user
+ * chose — it is a claim about the parse the editor has overruled, exactly like
+ * the lazy-continuation arm beside it. Keeping it reopens the item empty with
+ * its rule or paragraph promoted to a top-level sibling (MAR-313).
+ *
+ * Narrow in both operands on purpose. `prev` must have nothing after the
+ * marker, and `next` must sit at or past the item's content column, so the only
+ * blank this can delete is one that provably orphans the line after it.
+ *
+ * It cannot reach the shape MAR-303's lane broke — a `---` collapsing onto
+ * ordinary prose and reparsing as a setext underline. That prev is prose, which
+ * fails the bare-marker test, and that direction (saved glues, serializer
+ * separates) is `glueChangesConstruct`'s, not this predicate's at all.
+ */
+const blankOrphansItemContent = (prev: string, next: string): boolean => {
+    const marker = BARE_LIST_MARKER_RE.exec(prev);
+    if (!marker) return false;
+    return leadingColumns(next) >= columnWidth(marker[1]) + 2;
+};
+
 const glueChangesConstruct = (prev: string, next: string): boolean => {
     if (BLOCK_DELIMITER_RE.test(prev) || THEMATIC_BREAK_RE.test(prev)) {
         return false;
@@ -1473,7 +1521,9 @@ export const markdownProfile: FormatProfile = {
     // early return is the other half of MAR-290, and is what gives this arm
     // both its failing case and its guard (corpus invariant A).
     blankSplitsBlock: (prev, next) =>
-        (isQuoteLine(prev) && isQuoteLine(next)) || joinsAsLazyContinuation(prev, next),
+        (isQuoteLine(prev) && isQuoteLine(next)) ||
+        joinsAsLazyContinuation(prev, next) ||
+        blankOrphansItemContent(prev, next),
     reconcileReplacement,
     baselineFacts: baselineIndents,
     mergeFacts: mergeIndents,

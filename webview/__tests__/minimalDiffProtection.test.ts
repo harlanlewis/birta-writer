@@ -231,18 +231,32 @@ describe("protection with construct-crossing bytes (MAR-161 M3)", () => {
     });
 });
 
-describe("repair matching uses one pristine analysis (MAR-161 review finding)", () => {
-    // A tilde fence: the serializer rewrites it to backticks, producing TWO
-    // protection regions (open line, close line). Sequential re-analysis
-    // between repairs used to break this: restoring the `~~~` open made the
-    // serializer's following ``` close classify as content of an unclosed
-    // tilde fence, region 2 stopped matching, the self-check failed, and the
-    // null protection let a zero-edit save rewrite the fence.
+describe("a tilde fence survives the serializer's backticks (MAR-161, MAR-312)", () => {
+    // A tilde fence: the serializer rewrites it to backticks. This USED to
+    // produce two protection regions (open line, close line), and the MAR-161
+    // review finding was that sequential re-analysis between repairs broke
+    // them — restoring the `~~~` open made the serializer's following ```
+    // classify as content of an unclosed tilde fence, region 2 stopped
+    // matching, the self-check failed, and the null protection let a zero-edit
+    // save rewrite the fence.
+    //
+    // Since MAR-312 there are no regions to co-ordinate: a fence marker line is
+    // keyed by its info string alone, so `~~~python` and ```` ```python ````
+    // compare EQUAL and both marker lines are ordinary `keep`s carrying the
+    // saved bytes. That is what fixed MAR-312 — two independently-anchored
+    // regions could be repaired independently, and an edit either side of the
+    // fence stood ONE end down, writing a mismatched pair that swallowed the
+    // rest of the document.
     const TILDE_SAVED = "~~~python\ntilde = 'fence'\n~~~\n\ntail prose\n";
     const TILDE_BASELINE = "```python\ntilde = 'fence'\n```\n\ntail prose\n";
 
-    it("a tilde fence should yield protection despite spanning two regions", () => {
-        expect(computeRoundTripProtection(TILDE_SAVED, TILDE_BASELINE)).not.toBeNull();
+    it("a tilde fence should need no protection at all, the two spellings comparing equal", () => {
+        // Asserting NULL is asserting the mechanism, so the two cases below —
+        // which assert the bytes, and would hold under either design — are what
+        // actually guard the user's file. This one exists to fail loudly if the
+        // fence ever goes back to being repaired rather than kept, because that
+        // is the state MAR-312's corruption needs.
+        expect(computeRoundTripProtection(TILDE_SAVED, TILDE_BASELINE)).toBeNull();
     });
 
     it("a zero-edit save should keep the tilde fence byte-identically", () => {
