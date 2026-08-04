@@ -25,3 +25,15 @@ A definition can hold a list, and that list can be loose[^list].
     - second item
 
     - third item
+
+An item in such a list can also carry a sublist of its own[^outline].
+
+[^outline]: A loose list whose first item holds a tight sublist (MAR-302). The
+    blank line belongs between the items, never between an item and its own
+    sublist.
+
+    - parent
+      - child one
+      - child two
+
+    - sibling
