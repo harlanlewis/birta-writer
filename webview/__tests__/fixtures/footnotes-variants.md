@@ -15,3 +15,13 @@ The reference to the above definition sits here[^before].
     The second paragraph is an indented continuation of the same note.
 
 [^unused]: This definition has no reference anywhere in the document.
+
+A definition can hold a list, and that list can be loose[^list].
+
+[^list]: A definition whose list is loose — a blank line between every item.
+
+    - first item
+
+    - second item
+
+    - third item

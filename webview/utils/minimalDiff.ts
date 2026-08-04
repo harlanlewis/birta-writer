@@ -723,21 +723,69 @@ function mergeIndents(pairs: readonly BaselineLinePair[]): Map<string, string> {
  *     two conventions inside ONE parent/child relationship. That is not a
  *     missed fix, it is fresh corruption: in a plain five-deep tab outline the
  *     child stopped being a list item and survived only as literal text glued
- *     into its parent's paragraph. So a substitution is taken only when its
- *     spelling is prefix-COMPATIBLE with the anchor above it (one indent is a
- *     prefix of the other — the same convention, at some depth), and the anchor
- *     advances to each line as it is written so the run stays consistent with
- *     itself as well as with the document. Refusing costs a respelling that
- *     would have been made; taking it wrongly costs the user content.
+ *     into its parent's paragraph. So the anchor above must be a line spelled
+ *     the way this FILE spells indentation, and the anchor advances as the run
+ *     is written so it stays consistent with itself as well as the document.
+ *     Refusing costs a respelling that would have been made; taking it wrongly
+ *     costs the user content.
+ *
+ * "Spelled the way this file spells indentation" is answered two ways, and
+ * either suffices (MAR-297). Both are GRANTS — neither can veto what the other
+ * allows — because refusing is the safe direction and every widening here has
+ * to earn its keep against that:
+ *
+ *   - PREFIX-COMPATIBLE with the substitution's own spelling (one indent is a
+ *     prefix of the other): the same convention, at some depth. Cheap, local,
+ *     and right whenever a file has one indent unit.
+ *   - OR THE ANCHOR IS ITSELF A SPELLING THIS MERGE OBSERVED — a value of the
+ *     map, i.e. leading whitespace the merge is writing back verbatim from the
+ *     saved file at some depth. The prefix test alone reads two ways that are
+ *     both false negatives, and both re-nest a moved bullet. It compares
+ *     against the wrong ROLE (a run landing under a table row anchors on the
+ *     continuation spelling `"\t  "` while its marker resolves to `"\t\t"` —
+ *     the same tab convention, neither a prefix of the other), and it cannot
+ *     see two spellings of ONE depth (a file writing a level as both `\t` and
+ *     four literal spaces, where `baselineIndents` records both rendering to
+ *     the same canonical indent). Being a spelling the merge is already
+ *     emitting is the direct evidence the prefix test was approximating.
+ *
+ * THE ANCHOR ADVANCES PAST EVERY LINE, including ones the hook had no opinion
+ * about, and that is exactly why the second grant is needed rather than
+ * optional. An anchor is only ever the previous WRITTEN line's indent, and a
+ * line written through untouched — because the map knows nothing about its
+ * width — is not evidence of a convention: its indent may be the serializer's
+ * canonical bytes OR the saved file's own, restored underneath us by round-trip
+ * protection (`repairSerialized` runs BEFORE the diff, so a repaired line
+ * reaches this hook wearing source-convention whitespace in a stream that is
+ * otherwise canonical). Under the prefix test alone, ONE such line silently
+ * vetoed every substitution below it in the same run — MAR-297's reproduction A
+ * exactly, where a protection-repaired `    - four space` blocked the `\t`
+ * re-spelling of the `- plain` beneath it and the kept table bullet below then
+ * reparsed as that bullet's child. The grants above answer that line on its
+ * own terms instead: `    ` is a spelling the baseline renders to the same
+ * canonical indent the substitution targets, so it grants rather than blocks.
+ *
+ * Skipping the advance for opinionless lines was considered and is NOT what
+ * shipped: the anchor would then be carried across arbitrary distances, and the
+ * self-consistency the anchor exists to enforce (a run must agree with itself,
+ * not only with the document) is a property of ADJACENT lines.
  */
 function reconcileInsertion(
     lines: readonly InsertedLine[],
     preceding: string | null,
     facts: unknown,
+    baseline: unknown,
 ): readonly string[] {
     const serial = lines.map((l) => l.serial);
     if (!(facts instanceof Map)) return serial;
     const spelling = facts as Map<string, string>;
+    // Every source spelling this merge is writing back verbatim — the file's
+    // own indentation vocabulary, as observed rather than computed.
+    const spelled = new Set(spelling.values());
+    // The load-time baseline, source → canonical. Only ever consulted to GRANT
+    // (see below), so its documented staleness can cost a respelling that would
+    // have been made, never cause a wrong one.
+    const rendered = baseline instanceof Map ? (baseline as Map<string, string>) : null;
     // The substitution in force, carried across verbatim lines and past widths
     // the file has taught nothing about. Null until a line whose indentation is
     // structure has resolved one.
@@ -755,7 +803,10 @@ function reconcileInsertion(
             sub &&
             sub.source !== sub.canonical &&
             line.startsWith(sub.canonical) &&
-            (sub.source.startsWith(anchor) || anchor.startsWith(sub.source))
+            (sub.source.startsWith(anchor) ||
+                anchor.startsWith(sub.source) ||
+                spelled.has(anchor) ||
+                rendered?.get(anchor) === sub.canonical)
                 ? sub.source + line.slice(sub.canonical.length)
                 : line;
         anchor = indentOf(written);

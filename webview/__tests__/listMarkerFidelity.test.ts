@@ -16,7 +16,9 @@ import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "../pm";
+import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
+import { tabKeymapPlugin } from "../plugins/tabKeymap";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 
 async function makeEditor(markdown: string): Promise<Editor> {
@@ -82,12 +84,15 @@ async function saveTypingBefore(content: string, anchor: string): Promise<string
 // that actually prints once a per-list bullet (this change) and a per-node rule
 // marker (sourceStyle, MAR-16) are both in play.
 //
-// That branch is structurally UNREACHABLE in this editor: `list_item`'s content
+// That stock branch is still unreachable in this editor: `list_item`'s content
 // is `"paragraph block*"`, so an item always starts with a paragraph and a
-// thematic break can never be an item's first mdast child (the serializer emits
-// the rule on its own indented line instead). These cases pin that — if a
-// schema change ever makes the branch reachable, the flip's comparison has to
-// be revisited before a list can silently collapse into a rule.
+// thematic break is never an item's first mdast child when the `list` handler
+// is entered. (`hoistRulesOntoMarkerLine` does make one first later in that
+// same call — but only when the two characters differ, which is the collision
+// the stock branch exists to break, so it cannot make it live. MAR-240.) These
+// cases pin that — if a schema change ever makes the branch reachable, the
+// flip's comparison has to be revisited before a list can silently collapse
+// into a rule.
 
 /** The non-text node kinds `md` reparses to — what a reader actually gets back. */
 async function reparsedKinds(md: string): Promise<string[]> {
@@ -197,6 +202,112 @@ describe("an item's real first block rides on the marker line", () => {
         expect(before).toBe(2); // an empty paragraph and a real one
         expect(kinds.filter((k) => k === "paragraph")).toHaveLength(2);
     });
+});
+
+// ── A nested item's rule on the marker line (MAR-240) ──────────────────────
+//
+// The block above hoists an item's real first block onto the marker line, but
+// held a THEMATIC BREAK back unconditionally (a marker joining the rule's own
+// characters re-lexes the line as one break) and refused a nested list with no
+// TEXT (three bare markers are a break: `- - -`). The bare marker each left
+// behind is safe at the top level and fatal one level down: glued under a
+// paragraph line, a lone `-` is a setext underline and a lone `*`/`+` is lazy
+// continuation text, so the nested list was deleted on reopen.
+//
+// Both hold-backs are now as narrow as their hazard — see
+// `hoistRulesOntoMarkerLine` / `bulletNeedsFlipForRule` (plugins/sourceStyle.ts)
+// and `ridesMarkerLineSafely` (plugins/list.ts).
+//
+// The matrix is enumerated rather than sampled because the hazard is a
+// character collision: which bullet meets which rule character is the whole
+// question, and the shapes differ in whether a bare marker would land under a
+// paragraph at all. Hand-picking would have covered the `-`/`***` pair the
+// ticket happened to report and missed that `+` bullets lost the nesting
+// against every rule character. Measured on the pre-fix build, 13 of these 54
+// rows came back as a different document.
+
+describe("an item whose content is a thematic break keeps its nesting", () => {
+    const BULLETS = ["-", "*", "+"];
+    const RULES = ["---", "***", "___"];
+    const SHAPES: Array<[string, (bullet: string, rule: string) => string]> = [
+        ["a top-level item, rule on the marker line", (b, r) => `${b} ${r}\n`],
+        ["a top-level item, rule under a bare marker", (b, r) => `${b}\n  ${r}\n`],
+        ["a tight nested item", (b, r) => `${b} normal\n  ${b} ${r}\n`],
+        ["a loose nested item", (b, r) => `${b} normal\n\n  ${b} ${r}\n`],
+        ["a loose nested item, rule under a bare marker", (b, r) => `${b} normal\n\n  ${b}\n    ${r}\n`],
+        ["a nested rule item with a sibling after it", (b, r) => `${b} normal\n  ${b} ${r}\n  ${b} after\n`],
+    ];
+
+    for (const [label, build] of SHAPES) {
+        for (const bullet of BULLETS) {
+            for (const rule of RULES) {
+                it(`${label} (${bullet} bullet, ${rule} rule) should reopen as the document the editor held`, async () => {
+                    // Arrange — assert on the REOPENED shape, not on bytes: the
+                    // serializer is allowed to respell this (that is the whole
+                    // fix), and what the user loses is the document, not the
+                    // spelling. Several of these sources are the collapsed form
+                    // already — `- ---` is a thematic break, not a list — and
+                    // the invariant holds for those too, since `held` is read
+                    // from the same parse the editor gets.
+                    const source = build(bullet, rule);
+                    // `reparsedKinds` of the SOURCE is what the editor holds —
+                    // the same parse the user sees on screen.
+                    const held = await reparsedKinds(source);
+
+                    // Act
+                    const saved = await saveUnedited(source);
+
+                    // Assert — reopening returns the same document, and the
+                    // spelling has settled (a save of the save changes nothing,
+                    // so the respelling cannot oscillate on every keystroke).
+                    expect(await reparsedKinds(saved)).toEqual(held);
+                    expect(await saveUnedited(saved)).toBe(saved);
+                });
+            }
+        }
+    }
+});
+
+describe("the shapes MAR-240 reported round-trip byte-for-byte", () => {
+    const cases: Array<[string, string]> = [
+        ["a rule in a nested bullet", "- normal\n  - ***\n"],
+        ["a rule in a nested ordered item", "1. normal\n   1. ***\n"],
+        ["a dash rule in a nested ordered item", "1. normal\n   1. ---\n"],
+        ["a sublist holding only an image", "- normal\n  - - ![](a.png)\n"],
+        ["a rule with content after it in the same item", "- normal\n  - ***\n    text\n"],
+    ];
+
+    for (const [label, source] of cases) {
+        it(`${label} should round-trip byte-for-byte`, async () => {
+            // The source already writes the block on the marker line, so any
+            // other output is the serializer inventing the bare-marker
+            // construct again — the construct that does not survive its reparse.
+            expect(await saveUnedited(source)).toBe(source);
+        });
+    }
+});
+
+describe("a bare marker that would survive is left exactly as written", () => {
+    // The bullet and the rule are the same character here, so the rule cannot
+    // ride the marker line — and these three spellings need no rescue, because
+    // nothing above the bare marker can absorb it. Flipping the bullet to make
+    // room would rewrite a marker the user wrote, to fix nothing.
+    const cases: Array<[string, string]> = [
+        ["a top-level star item with a *** rule", "*\n  ***\n"],
+        ["a top-level dash item with a --- rule", "-\n  ---\n"],
+        ["a nested dash item behind a blank line", "- normal\n\n  -\n    ---\n"],
+        ["a nested star item behind a blank line", "* normal\n\n  *\n    ***\n"],
+        // The sublist is its item's FIRST block, so the bare marker sits under
+        // another bare marker rather than under a paragraph line — nothing
+        // there absorbs it either.
+        ["a nested dash item under an empty parent", "-\n  -\n    ---\n"],
+    ];
+
+    for (const [label, source] of cases) {
+        it(`${label} should round-trip byte-for-byte`, async () => {
+            expect(await saveUnedited(source)).toBe(source);
+        });
+    }
 });
 
 // ── Marker facts (MAR-218) ──────────────────────────────────────────────────
@@ -311,4 +422,89 @@ describe("a marker fact is only recorded when the source actually states it", ()
         // Assert — the configured `-` bullet, not a carried one.
         expect(serialized).toContain("- fresh");
     });
+});
+
+// ── The collision, reached by a real gesture (MAR-240) ──────────────────────
+//
+// The one shape where the bullet and the rule genuinely collide AND the bare
+// marker is fatal cannot be written in Markdown — `- ---` is four dashes, so a
+// nested item holding a same-character rule has no source spelling. It is
+// reached by EDITING: Tab-indenting an item that holds a rule. The sublist
+// `sinkListItem` creates has no recorded marker, so it takes the global `-`
+// bullet — the same character as the global `---` rule.
+//
+// This drives the editor's own Tab handler rather than calling the serializer
+// with a hand-built document, because "can a user get here" is what decides
+// whether the bullet is worth flipping at all. (The published
+// `insertHorizontalRule` command does NOT get here: it replaces the nested item
+// rather than filling it, so the sublist is gone before the save.)
+
+/** An editor with the Tab handler wired, as the real webview has it. */
+async function makeEditorWithTab(markdown: string): Promise<Editor> {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    return Editor.make()
+        .config((ctx) => {
+            ctx.set(rootCtx, root);
+            ctx.set(defaultValueCtx, markdown);
+            configureSerialization(ctx);
+        })
+        .use(pureCommonmark)
+        .use(gfmFidelity)
+        .use(tabKeymapPlugin)
+        .create();
+}
+
+/** Put the caret in the item that holds a rule, press Tab, and save. */
+async function saveAfterTabIndentingTheRuleItem(source: string): Promise<string> {
+    const editor = await makeEditorWithTab(source);
+    const v = view(editor);
+    let caret = -1;
+    v.state.doc.descendants((node, pos) => {
+        if (caret >= 0) return false;
+        const holdsRule =
+            node.type.name === "list_item" &&
+            node.childCount >= 2 &&
+            node.child(1).type.name === "hr";
+        if (holdsRule) caret = pos + 2; // inside the item's leading paragraph
+        return !holdsRule;
+    });
+    if (caret < 0) throw new Error(`no rule-holding item in ${JSON.stringify(source)}`);
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, caret)));
+    const handled = v.someProp("handleKeyDown", (f) =>
+        f(v, new KeyboardEvent("keydown", { key: "Tab" })),
+    );
+    // Both guards are the probe checking it hit what it aimed at: a Tab that
+    // was ignored, or one that moved something else, would leave the assertions
+    // below passing on a document the gesture never produced.
+    if (!handled) throw new Error("Tab was not handled — the gesture did not happen");
+    const nested = v.state.doc.firstChild?.firstChild?.child(1)?.type.name;
+    if (nested !== "bullet_list") throw new Error(`Tab did not nest the item: ${nested}`);
+    const serialized = editor.action(getMarkdown());
+    await editor.destroy();
+    return serialized;
+}
+
+describe("Tab-indenting an item that holds a rule keeps the rule in the list", () => {
+    const cases: Array<[string, string]> = [
+        ["dash bullets and a dash rule", "- first\n-\n  ---\n"],
+        ["star bullets and a star rule", "* first\n*\n  ***\n"],
+        ["dash bullets and a star rule", "- first\n- ***\n"],
+    ];
+
+    for (const [label, source] of cases) {
+        it(`${label} should reopen with the rule still nested`, async () => {
+            // Act
+            const serialized = await saveAfterTabIndentingTheRuleItem(source);
+
+            // Assert — two lists deep with the rule inside, which is what the
+            // editor holds after the Tab. Before this fix the dash/dash case
+            // saved a bare marker under `first` and reopened as a HEADING plus
+            // a rule, with the nested list gone.
+            const kinds = await reparsedKinds(serialized);
+            expect(kinds.filter((k) => k === "bullet_list")).toHaveLength(2);
+            expect(kinds).toContain("hr");
+            expect(kinds).not.toContain("heading");
+        });
+    }
 });

@@ -51,8 +51,8 @@ function shape(doc: ProseNode): string[] {
  */
 async function moveAndSave(
     source: string,
-    block: string,
-    before: string,
+    block: string | { from: number; to: number },
+    before: string | number,
     blockType = "list_item",
     beforeType = "list_item",
 ) {
@@ -81,10 +81,18 @@ async function moveAndSave(
         return found as unknown as { from: number; to: number };
     };
 
-    const source_ = locate(block, blockType);
+    // A raw range/position is accepted for the pairs no text label can name —
+    // a move to a boundary that has no block after it, which is where MAR-297's
+    // reproductions live. The ticket cites those pairs numerically.
+    const source_ = typeof block === "string" ? locate(block, blockType) : block;
     // "START" is the document-start boundary — the only target for a top-level
     // block, whose slots are not inside any list.
-    const target = before === "START" ? 0 : locate(before, beforeType).from;
+    const target =
+        typeof before === "number"
+            ? before
+            : before === "START"
+              ? 0
+              : locate(before, beforeType).from;
     expect(moveBlocks(v, source_, target), "the move was refused").toBe(true);
 
     const merged = applyMinimalChanges(source, editor.action(getMarkdown()), protection);
@@ -301,6 +309,83 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toContain("\n  |---|---|\n");
         // ...and the outline the move did NOT touch keeps its tab.
         expect(merged).toContain("\t- plain");
+    });
+
+    // ── MAR-297: the anchor gate's two false negatives ──────────────────────
+    //
+    // Both are `reconcileInsertion` refusing a re-spelling it should have made,
+    // and both cost the same thing: the inserted marker line keeps the
+    // serializer's two spaces beside a KEPT line still holding the file's tab,
+    // so the kept line reparses as the inserted one's child and the document
+    // gains a `bullet_list`. The table survives in both — this is MAR-241's
+    // residual, not MAR-241.
+    //
+    // The ticket blamed `baselineIndents` "learning one canonical rendering per
+    // source indent and dropping ambiguous ones". Measured, nothing is dropped:
+    // for the first case below `mergeIndents` distils
+    // `{"m": "", "m  ": "\t", "c    ": "\t  "}` and `baselineIndents`
+    // `{"": "", "\t": "  ", "\t  ": "    ", "    ": "  "}` — the facts are all
+    // present and consistent. What fails is the anchor's PREFIX test, which is
+    // a byte comparison standing in for "the same convention".
+
+    it("a bullet moved past a 4-space branch in a tab outline should not re-nest", async () => {
+        // Reproduction A. `    - four space` and `\t- plain` are siblings the
+        // file spells two different ways, and `baselineIndents` records both
+        // rendering to the same canonical `"  "` — so they are one depth, not
+        // two.
+        //
+        // The 4-space line reaches the merge wearing its SAVED bytes: the
+        // baseline round trip re-spells it, so it becomes a protected region
+        // and `repairSerialized` splices the saved bytes back in BEFORE the
+        // diff. It then anchors the run at `"    "`, against which `plain`'s
+        // correct `"\t"` is neither a prefix nor a continuation — vetoed, left
+        // at two columns, and the kept `\t- | a | b |` below became its child.
+        //
+        // Pinned line: the `rendered?.get(anchor) === sub.canonical` grant in
+        // `reconcileInsertion`. Delete it and this test is the one that reddens.
+        const source =
+            "- root\n\t- | a | b |\n\t  | --- | --- |\n\t  | 1 | 2 |\n    - four space\n\t- plain\n";
+        const { live, reparsed, merged, liveText, reparsedText } = await moveAndSave(
+            source,
+            { from: 9, to: 39 },
+            62,
+        );
+
+        expect(reparsedText).toEqual(liveText);
+        expect(reparsed).toEqual(live);
+        // The siblings end up at one depth. `four space` keeps the spelling the
+        // file gave it; `plain` takes the tab the file uses at that depth. The
+        // leading newline is load-bearing: `"\t- plain"` alone is also a
+        // substring of `"\t\t- plain"`, so it would pass at the wrong depth.
+        expect(merged).toContain("\n\t- plain");
+    });
+
+    it("a bullet moved under a table row should not anchor on the row's continuation", async () => {
+        // The second false negative, and one the ticket does not describe. No
+        // protection is involved at all here (the file round-trips to null), so
+        // it is reached by a different route than the case above.
+        //
+        // The run lands under `\t  | 1 | 2 |` — a table row, which is a
+        // CONTINUATION line, spelled `\t` + two spaces. The moved marker
+        // resolves to `\t\t`. Both are the same tab convention, but a marker
+        // spelling and a continuation spelling are never prefixes of each
+        // other, so the gate compared the two ROLES and refused. `plain` stayed
+        // at four columns where the file writes eight, and the kept
+        // `\t\t- | c | d |` below it became its child.
+        //
+        // Pinned line: the `spelled.has(anchor)` grant. Delete it and this test
+        // reddens while the one above stays green — they are independent.
+        const source =
+            "- root\n\t- | a | b |\n\t  | --- | --- |\n\t  | 1 | 2 |\n\t\t- | c | d |\n\t\t  | --- | --- |\n\t\t  | 3 | 4 |\n\t- plain\n";
+        const { live, reparsed, merged, liveText, reparsedText } = await moveAndSave(
+            source,
+            { from: 71, to: 80 },
+            39,
+        );
+
+        expect(reparsedText).toEqual(liveText);
+        expect(reparsed).toEqual(live);
+        expect(merged).toContain("\n\t\t- plain");
     });
 
     it("a heading item nested under a sibling should round-trip with no move at all", async () => {

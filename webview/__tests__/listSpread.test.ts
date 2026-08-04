@@ -21,8 +21,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { Node as ProseNode } from "../pm";
+import { TextSelection, type EditorView, type Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
+import { moveBlockAt } from "../components/blockMenu";
+import { moveBlocks } from "../editing/moveBlocks";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -53,6 +55,92 @@ async function parseDoc(markdown: string): Promise<ProseNode> {
     const doc = editor.action((ctx) => ctx.get(editorViewCtx)).state.doc as ProseNode;
     await editor.destroy();
     return doc;
+}
+
+/** Position of the one `list_item` whose whole text is `text`. */
+function itemPosOf(doc: ProseNode, text: string): number {
+    const hits: number[] = [];
+    doc.descendants((node, pos) => {
+        if (node.type.name === "list_item" && node.textContent === text) {
+            hits.push(pos);
+        }
+        return true;
+    });
+    if (hits.length !== 1) {
+        throw new Error(`expected exactly one list item reading "${text}", found ${hits.length}`);
+    }
+    return hits[0]!;
+}
+
+/**
+ * Raw serializer output after reordering the item reading `text` by `dirs` —
+ * one sibling hop per entry, so `(…, 1, -1)` is "move it down, then put it
+ * back". Re-locates the item by its text between hops and throws when the
+ * primitive refuses, so a test can never pass by having moved nothing.
+ */
+async function moveItem(markdown: string, text: string, ...dirs: (-1 | 1)[]): Promise<string> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    dirs.forEach((dir, step) => {
+        if (!moveBlockAt(view, itemPosOf(view.state.doc, text), dir)) {
+            throw new Error(`move ${step} of "${text}" (${dir}) was refused`);
+        }
+    });
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
+}
+
+/**
+ * Raw serializer output after moving the item reading `text` to the document's
+ * first item slot — the promote-a-nested-bullet-to-top-level gesture, which
+ * `moveItem`'s sibling hops cannot express. Throws when the primitive refuses,
+ * and the caller's byte assertion pins where the item actually landed, so this
+ * cannot pass by having moved nothing or moved it somewhere else.
+ */
+async function promoteToTop(markdown: string, text: string): Promise<string> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    const pos = itemPosOf(view.state.doc, text);
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) {
+        throw new Error(`no node at ${pos} for "${text}"`);
+    }
+    if (!moveBlocks(view, { from: pos, to: pos + node.nodeSize }, 1)) {
+        throw new Error(`promoting "${text}" was refused`);
+    }
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
+}
+
+/**
+ * Raw serializer output after pressing Enter with the caret at offset 0 of the
+ * document's first list item — the gesture that pushes a brand-new empty item
+ * in front of it. Driven through the real keymap (`handleKeyDown`), not by
+ * calling a command, so the plugin stack decides what Enter means here.
+ */
+async function enterAtFirstItemStart(markdown: string): Promise<string> {
+    const editor = await makeEditor(markdown);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+    // bullet_list at 0, its first list_item at 1, that item's paragraph at 2 —
+    // so 3 is the first INLINE position. Resolving to the paragraph is asserted
+    // rather than assumed: pos 2 lands on the list_item, where Enter means
+    // something else entirely and the check would silently test that instead.
+    const caret = view.state.doc.resolve(3);
+    if (caret.parent.type.name !== "paragraph" || caret.parentOffset !== 0) {
+        throw new Error(
+            `caret landed in ${caret.parent.type.name} at offset ${caret.parentOffset}, not a paragraph start`,
+        );
+    }
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    if (!view.someProp("handleKeyDown", (f) => f(view, event))) {
+        throw new Error("Enter was not handled");
+    }
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
 }
 
 /** typeof the `spread` attr of the first node of `typeName`, or "" if absent. */
@@ -180,6 +268,215 @@ describe("partly-loose lists keep each gap as authored (MAR-194)", () => {
         expect(await roundTrip("- a\n- b\n- c\n")).toBe("- a\n- b\n- c\n");
         expect(await roundTrip("- a\n\n- b\n\n- c\n")).toBe("- a\n\n- b\n\n- c\n");
     });
+});
+
+describe("a list inside a footnote definition keeps its gaps (MAR-211)", () => {
+    // Inside a footnote definition micromark ends each item on the line the NEXT
+    // item STARTS on, so the two positions OVERLAP and `next.start - prev.end` is
+    // 0 for a gap the author wrote as a blank line. The measurement therefore
+    // read `blankBefore: false` for every gap and the per-gap join above pinned
+    // the list TIGHT — worse than deferring, because it agreed with the wrong
+    // answer confidently. `annotateItemGaps` now measures from the previous
+    // item's last CONTENT line, which the container shift does not move.
+    //
+    // Raw serializer output, deliberately: the minimal-diff merge puts every
+    // blank back from the saved bytes, so nothing reaches disk wrong today and
+    // no merge-level gate can see this. What the raw layer loses is real for
+    // every consumer that does not go through the merge.
+
+    it("a loose list inside a footnote definition should keep its blank lines", async () => {
+        // The ticket's repro. Before the fix this emitted
+        // `[^1]: n\n\n    - a\n    - b\n    - c\n` — every authored blank
+        // dropped, which renders the items tight downstream.
+        const doc = "[^1]: n\n\n    - a\n\n    - b\n\n    - c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a tight list inside a footnote definition should stay tight", async () => {
+        // The over-correction control: the container shift must not become an
+        // excuse to loosen a list the author wrote tight.
+        const doc = "[^1]: n\n\n    - a\n    - b\n    - c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("two definitions differing ONLY in where the blank sits should stay distinct", async () => {
+        // Same sharpest form as the top-level pair above: before the fix both
+        // collapsed onto the tight bytes, so one of the two files was rewritten
+        // into the other.
+        const blankEarly = "[^1]: n\n\n    - a\n\n    - b\n    - c\n";
+        const blankLate = "[^1]: n\n\n    - a\n    - b\n\n    - c\n";
+        expect(await roundTrip(blankEarly)).toBe(blankEarly);
+        expect(await roundTrip(blankLate)).toBe(blankLate);
+    });
+
+    it("a loose ordered list inside a footnote definition should keep its blank lines", async () => {
+        const doc = "[^1]: n\n\n    1. one\n\n    2. two\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("an item with a blank INSIDE it should not gain a gap after it", async () => {
+        // The reason the fix cannot read the previous item's own `spread`: the
+        // container shift makes an item spread when the blank is BETWEEN items,
+        // but an item is equally spread when the blank is between two of its own
+        // paragraphs and no gap at all follows it. Item `a` here carries
+        // `spread: true` and is followed by no blank — so a `spread` rule would
+        // invent one, which is why the measurement stays geometric.
+        const doc = "[^1]: n\n\n    - a\n\n      cont\n    - b\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a multi-LINE item should be measured from its last line, not its first", async () => {
+        // The descent has to land on the paragraph's END line, not its start:
+        // an item whose own text runs over two source lines is where those two
+        // differ. Both spacings, so neither answer can be right by accident.
+        const loose = "[^1]: n\n\n    - line one\\\n      line two\n\n    - b\n";
+        const tight = "[^1]: n\n\n    - line one\\\n      line two\n    - b\n";
+        expect(await roundTrip(loose)).toBe(loose);
+        expect(await roundTrip(tight)).toBe(tight);
+    });
+
+    it("a definition with a multi-paragraph item in a loose list should keep every blank", async () => {
+        const doc = "[^1]: n\n\n    - a\n\n      two\n\n    - b\n\n    - c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("moving an item inside a loose footnote list and back should restore the bytes", async () => {
+        // A recorded gap has to travel with its item here too — the property the
+        // top-level list is enumerated for below. Nothing to travel with before
+        // the fix: every item read `blankBefore: false`.
+        const doc = "[^1]: n\n\n    - a\n\n    - b\n\n    - c\n";
+        expect(await moveItem(doc, "b", 1, -1)).toBe(doc);
+    });
+
+    it("the footnote-variants corpus fixture should serialize back byte-identically", async () => {
+        // Same reasoning as the partly-loose fixture above: the corpus gates run
+        // through the merge, which hides this entirely. Verified to fail on the
+        // definition whose list is loose without the fix.
+        const fixture = readFileSync(
+            join(__dirname, "fixtures", "footnotes-variants.md"),
+            "utf8",
+        );
+        expect(await roundTrip(fixture)).toBe(fixture);
+    });
+});
+
+describe("a reordered item takes the gap it landed in (MAR-210)", () => {
+    // The residue of MAR-194. `annotateItemGaps` starts at index 1, so the FIRST
+    // item of every list has no recorded gap — there is nothing before it to
+    // measure. Deferring to mdast's default for it is not neutral: that default
+    // is the LIST-level `spread`, which one interior blank line makes true for
+    // the whole list, so a reorder that landed the first item mid-list drew its
+    // gap from the whole list and wrote a blank line the author never typed.
+    // The serializer's join now reads the gap off the item's new neighbours.
+
+    it("moving the first item of a partly-loose list down should not invent a blank line", async () => {
+        // The ticket's repro. The authored blank sits between `c` and `d` and
+        // nowhere else; before the fix this emitted `- b\n\n- a\n- c\n\n- d\n`.
+        expect(await moveItem("- a\n- b\n- c\n\n- d\n", "a", 1)).toBe("- b\n- a\n- c\n\n- d\n");
+    });
+
+    it("moving the last item of a partly-loose list to the front should not invent one either", async () => {
+        // The other end of the same hole: `d`'s own recorded blank travels with
+        // it and then evaporates (a first item's gap is never emitted), which
+        // leaves `a` mid-list with nothing recorded. Before the fix: an invented
+        // blank before `a`.
+        expect(await moveItem("- a\n- b\n- c\n\n- d\n", "d", -1, -1, -1)).toBe(
+            "- d\n- a\n- b\n- c\n",
+        );
+    });
+
+    it("moving the first item of a partly-loose list to the end should join the run it lands in", async () => {
+        // No follower to read, so the nearest evidence is the last recorded gap
+        // of the run it joined — `d`'s. The loose tail stays loose.
+        //
+        // NON-DISCRIMINATING, deliberately kept: deleting the predecessor arm
+        // leaves this green, because deferring reaches the same bytes here (the
+        // list-level default is `true` for this partly-loose list). It pins the
+        // OBSERVABLE — the tail's spacing survives the move — not the mechanism.
+        // The case below is the one that tells the two apart.
+        expect(await moveItem("- a\n- b\n- c\n\n- d\n", "a", 1, 1, 1)).toBe(
+            "- b\n- c\n\n- d\n\n- a\n",
+        );
+    });
+
+    it("a first item moved into a tight run should keep that run tight", async () => {
+        // The predecessor fallback in the other direction: the blank the author
+        // wrote belonged to `b`, which is now first, so it is gone and the run
+        // `a` joins is tight. This is the ONE case that discriminates — deleting
+        // the predecessor arm reddens it and nothing else, because deferring
+        // here would read the list-level `true` and write a blank.
+        expect(await moveItem("- a\n\n- b\n- c\n", "a", 1, 1)).toBe("- b\n- c\n- a\n");
+    });
+
+    it("promoting a loose nested item to the top should not strand its gap on the item below", async () => {
+        // A first item's `blankBefore` is never emitted — nothing precedes it —
+        // so an item that arrives from another list still carrying one describes
+        // a gap in the list it LEFT. Reading it as the predecessor's evidence
+        // resurrected it one slot to the right: dragging the loose `two` out to
+        // the top of the document wrote `- two\n\n- root`, spacing a top-level
+        // list the author wrote tight. The follower is exempt by construction —
+        // it always has a predecessor, so its gap is one this list emits.
+        expect(await promoteToTop("- root\n\t- one\n\n\t- two\n", "two")).toBe(
+            "- two\n- root\n  - one\n",
+        );
+    });
+
+    it("a partly-loose ordered list should behave the same", async () => {
+        expect(await moveItem("1. a\n2. b\n3. c\n\n4. d\n", "a", 1)).toBe(
+            "1. b\n2. a\n3. c\n\n4. d\n",
+        );
+    });
+
+    it("moving the first item of a FULLY LOOSE list down should keep the blank line", async () => {
+        // The over-correction the ticket warns about: recording `false` for the
+        // first item would tighten a gap the author really did write.
+        expect(await moveItem("- a\n\n- b\n\n- c\n", "a", 1)).toBe("- b\n\n- a\n\n- c\n");
+        expect(await moveItem("- a\n\n- b\n\n- c\n", "a", 1, 1)).toBe("- b\n\n- c\n\n- a\n");
+    });
+
+    it("moving the first item of a TIGHT list down should keep it tight", async () => {
+        expect(await moveItem("- a\n- b\n- c\n", "a", 1)).toBe("- b\n- a\n- c\n");
+        expect(await moveItem("- a\n- b\n- c\n", "a", 1, 1)).toBe("- b\n- c\n- a\n");
+    });
+
+    it("an item typed IN FRONT of the first one should not invent a blank line either", async () => {
+        // Not a move at all: Enter at the head of the first item pushes a new
+        // empty item in front of it, which strands the old first item mid-list
+        // with nothing recorded — the same hole reached without going anywhere
+        // near the block-move primitive. Before the fix: `-\n\n- a\n- b\n…`.
+        // This is why the rule lives in the serializer rather than in
+        // editing/moveBlocks.ts, where it would have missed this entirely.
+        expect(await enterAtFirstItemStart("- a\n- b\n- c\n\n- d\n")).toBe(
+            "-\n- a\n- b\n- c\n\n- d\n",
+        );
+    });
+
+    // A recorded gap travels with its item, so a hop and its reverse must land
+    // back on the source bytes — the property that makes "travel with the item"
+    // defensible in the first place, and the one an observational rule for the
+    // gapless first item could quietly break. Enumerated over every item and
+    // both directions rather than sampled, since the first and last items are
+    // exactly the ones with an edge case.
+    const REVERSIBLE: Array<{ name: string; doc: string; items: string[] }> = [
+        { name: "tight", doc: "- a\n- b\n- c\n", items: ["a", "b", "c"] },
+        { name: "fully loose", doc: "- a\n\n- b\n\n- c\n", items: ["a", "b", "c"] },
+        { name: "partly loose, gap late", doc: "- a\n- b\n- c\n\n- d\n", items: ["a", "b", "c", "d"] },
+        { name: "partly loose, gap early", doc: "- a\n\n- b\n- c\n- d\n", items: ["a", "b", "c", "d"] },
+        { name: "ordered, partly loose", doc: "1. a\n2. b\n3. c\n\n4. d\n", items: ["a", "b", "c", "d"] },
+    ];
+    for (const shape of REVERSIBLE) {
+        for (const [index, text] of shape.items.entries()) {
+            for (const dir of [-1, 1] as const) {
+                // Skip the hop that does not exist at the list's edges.
+                if (dir === -1 && index === 0) continue;
+                if (dir === 1 && index === shape.items.length - 1) continue;
+                const way = dir === 1 ? "down" : "up";
+                it(`${shape.name}: moving "${text}" ${way} and back should restore the source bytes`, async () => {
+                    expect(await moveItem(shape.doc, text, dir, -dir as -1 | 1)).toBe(shape.doc);
+                });
+            }
+        }
+    }
 });
 
 describe("freshly parsed lists carry a boolean spread attr (MAR-124)", () => {

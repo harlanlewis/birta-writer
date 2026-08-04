@@ -4,6 +4,7 @@ import {
     orderedListSchema,
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
+import type { Node as ProseNode } from "../pm";
 import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { joinTextblockBackward, liftListItem } from "../pm";
@@ -54,21 +55,27 @@ import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
 // decides the separator BETWEEN two items.
 //
 // Items with no recorded value (editor-created, or any path that doesn't set
-// it) leave `blankBefore` undefined on the mdast node, and the join defers to
-// mdast's default.
+// it) leave `blankBefore` undefined on the mdast node.
 //
-// KNOWN LIMITATION — deferring is not neutral (MAR-210). The default it falls
-// back to is the LIST-level `spread`, which for a partly-loose list is `true`.
-// The first item never has a gap recorded (there is nothing before it), so if a
-// reorder lands it mid-list its gap is drawn from that default and a blank line
-// appears that the author never wrote: `- a\n- b\n- c\n\n- d` with `a` moved
-// down one emits `- b\n\n- a\n- c\n\n- d`. This is strictly better than the
-// pre-fix behaviour (which loosened every gap) and re-parses stably, but it is
-// the same class of bug. There is no obviously correct value to record for the
-// first item — `false` would wrongly tighten a real gap in a fully loose list —
-// so the fix needs a rule for what a MOVED item's gap should be, which is a
-// design decision rather than an oversight. A recorded gap otherwise travels
-// with its item, so moving an item away and back restores the source bytes.
+// THE FIRST ITEM IS ALWAYS ONE OF THEM (MAR-210) — the loop below starts at
+// index 1, because nothing precedes the first item to measure against. That
+// used to mean its gap fell through to mdast's default, and DEFERRING IS NOT
+// NEUTRAL: the default is the LIST-level `spread`, the very whole-list boolean
+// this annotation exists to stop trusting, and a single interior blank line
+// makes it `true`. So a reorder that landed the first item mid-list drew its
+// gap from the whole list and invented a blank line — `- a\n- b\n- c\n\n- d`
+// with `a` moved down one emitted `- b\n\n- a\n- c\n\n- d`.
+//
+// There is still no correct value to RECORD for the first item at parse time —
+// `false` would wrongly tighten a real gap in a fully loose list, and the honest
+// answer depends on where the item ends up. So the answer is made observational
+// instead, at the only point that knows where it ended up: `listItemGapJoin`
+// (serialization.ts) reads the gap off the item's NEIGHBOURS when it has none
+// of its own. That covers every path that can strand a gapless item mid-list —
+// a block move, an item inserted above the first one, a paste, an undo — rather
+// than only the block-move primitive. A recorded gap still travels with its
+// item, so moving an item away and back restores the source bytes exactly
+// (enumerated over every item and direction in listSpread.test.ts).
 
 // ── Source marker style (MAR-218) ───────────────────────────────────────────
 //
@@ -135,18 +142,81 @@ function spreadBool(node: ListMdastNode, fallback: boolean): boolean {
 }
 
 /**
+ * The last SOURCE line this node's own CONTENT occupies — the deepest last
+ * descendant's end line, falling back to the node's own when it has no
+ * positioned children (a fence, an html block, a thematic break).
+ *
+ * AN ITEM'S OWN `position.end.line` IS NOT THAT LINE inside a footnote
+ * definition (MAR-211). There, micromark ends each item on the line the NEXT
+ * item STARTS on, so consecutive items OVERLAP and the blank between them is
+ * swallowed by the earlier one:
+ *
+ *     1  [^1]: n
+ *     2
+ *     3      - a      listItem "a"     position 3-5  ← ends on b's START line
+ *     4               listItem "b"     position 5-7
+ *     5      - b      listItem "c"     position 7-7
+ *     6
+ *     7      - c      paragraph in a   position 3-3  ← the line `a` really ends on
+ *
+ * `next.start.line - prev.end.line` is then 0 across a blank the author wrote,
+ * so the measurement below read `blankBefore: false` for every gap and the
+ * per-gap join pinned the list TIGHT — worse than deferring, because it agreed
+ * with the wrong answer confidently.
+ *
+ * Descending to the last descendant reads the last line the author actually
+ * WROTE in that item, which the container shift does not move. It is not a
+ * footnote special case: for every other shape probed the two agree, because
+ * outside that container an item already ends on its own last content line.
+ *
+ * The previous item's own `spread` is NOT a usable substitute, tempting as it
+ * looks (both `a` and `b` above carry `spread: true`): an item is spread when
+ * it holds a blank ANYWHERE, including between two of its own paragraphs with
+ * no gap at all before the next item.
+ *
+ * The descent stops at the LAST child and does not step back over a sibling it
+ * cannot place. Position is not guaranteed on every node the parse runner sees
+ * — a remark transformer can rebuild children without it, as plugins/callouts.ts
+ * records the preset's `remarkLineBreak` doing to a paragraph's inlines — and
+ * skipping a positionless node to reach an earlier sibling would report a line
+ * ABOVE the content that follows it, measuring a blank the author never wrote.
+ * That is the one failure direction that costs bytes rather than spacing, so an
+ * unplaceable last child falls back to the node's own end line, which is exactly
+ * the behaviour this replaced.
+ *
+ * Cost is one walk down the last-child chain per gap — bounded by nesting depth,
+ * at parse time, on a path that is already O(document size).
+ */
+function lastContentLine(node: unknown): number | undefined {
+    const n = node as ListMdastNode | null;
+    const children = n?.children;
+    if (Array.isArray(children) && children.length > 0) {
+        const line = lastContentLine(children[children.length - 1]);
+        if (typeof line === "number") {
+            return line;
+        }
+    }
+    const own = n?.position?.end?.line;
+    return typeof own === "number" ? own : undefined;
+}
+
+/**
  * Record, on each of a list's item children, whether a blank line separated it
  * from the previous item in the SOURCE (MAR-194). Only the parent sees the
  * sibling geometry, so the annotation is written here and read by the list_item
  * parse runner. The first item has no preceding gap inside the list, and an
- * item without usable position info is left undefined (→ mdast's default).
+ * item without usable position info is left undefined — the serializer's join
+ * then reads a gap off that item's neighbours instead (MAR-210).
+ *
+ * The previous item's end comes from `lastContentLine`, not its `position`; see
+ * there for the container shape where the two differ (MAR-211).
  */
 function annotateItemGaps(children: unknown): void {
     if (!Array.isArray(children)) {
         return;
     }
     for (let i = 1; i < children.length; i++) {
-        const prevEnd = (children[i - 1] as ListMdastNode)?.position?.end?.line;
+        const prevEnd = lastContentLine(children[i - 1]);
         const start = (children[i] as ListMdastNode)?.position?.start?.line;
         if (typeof prevEnd === "number" && typeof start === "number") {
             (children[i] as ListMdastNode).blankBefore = start - prevEnd > 1;
@@ -299,22 +369,20 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
  *   2. A THEMATIC BREAK re-lexes when a marker joins it. The marker character
  *      runs into the rule's own characters and the whole line becomes ONE
  *      thematic break — `*` above `***` becomes `* ***` — so the list is gone.
- *   3. A NESTED LIST WITH NO TEXT is the same collision reached through the
- *      markers themselves. Hoisting puts its marker on this line too, and three
- *      or more bullets alone ARE a thematic break: an outline branch whose
- *      three lines have all been emptied serialized to `- - -` and reopened as
- *      a horizontal rule, with the branch destroyed. A nested list that carries
- *      text (`- - child`) puts a non-marker character on the line and is safe.
- *
- * Read clause 3's predicate literally — `textContent === ""` is "no TEXT", not
- * "empty". A sublist holding only an image, a rule, an empty fence or an empty
- * quote has real content and no text, so it is refused too, and refusing leaves
- * the bare marker line in place with its original hazard intact (`- normal`
- * above `  - - ![](a.png)` still loses the nesting on reopen). That is a
- * deliberate under-reach, not an oversight: it is the pre-existing behaviour, so
- * it costs nothing that was working, and narrowing the predicate to a genuinely
- * empty list would need a rule for which of those contents can safely ride a
- * marker line — the same question clause 2 answers "no" to for rules.
+ *      Held back UNCONDITIONALLY here, and released one level up by
+ *      `hoistRulesOntoMarkerLine` (plugins/sourceStyle.ts) for the half of the
+ *      case that is provably safe: the collision needs the bullet and the rule
+ *      to be the same character, and neither the printed bullet nor the flip
+ *      that can change it is decided until `serializeList` runs (MAR-240).
+ *   3. A NESTED LIST THAT WOULD CONTRIBUTE ONLY MARKERS is the same collision
+ *      reached through the markers themselves. Hoisting puts its marker on this
+ *      line too, and three or more bullets alone ARE a thematic break: an
+ *      outline branch whose three lines have all been emptied serialized to
+ *      `- - -` and reopened as a horizontal rule, with the branch destroyed.
+ *      A nested list that puts any other character on the line — text, an
+ *      image, a heading, a fence — is safe; `ridesMarkerLineSafely` below is
+ *      that question, and its own header explains why it is asked of the
+ *      first-item chain rather than of the whole subtree.
  *
  * Cases 2 and 3 are one hazard (a line that re-lexes as a rule) and case 1 is a
  * different one (a node that isn't ours to drop); they are kept as separate
@@ -336,8 +404,53 @@ function itemContentForMarkdown(content: Fragment): Fragment {
     const next = content.child(1);
     if (next.type.name === "paragraph") return content;
     if (next.type.name === "hr") return content;
-    if (isListNode(next) && next.textContent === "") return content;
+    if (isListNode(next) && !ridesMarkerLineSafely(next)) return content;
     return content.cut(first.nodeSize);
+}
+
+/**
+ * Would hoisting this nested list onto its parent's marker line put a character
+ * on that line which a run of markers or rule characters cannot absorb?
+ *
+ * Clause 3 above used to ask `textContent === ""`, which is "holds no TEXT" —
+ * and a sublist holding only an image, a rule, an empty fence or an empty quote
+ * answers that too, so it was refused with the bare-marker hazard left intact
+ * (`- normal` above `  - - ![](a.png)` lost the nesting on reopen — MAR-240).
+ *
+ * The hazard clause 3 exists for is narrower than "no text": a line becomes a
+ * THEMATIC BREAK only when every character on it is the SAME marker/rule
+ * character (`- - -`). One `!`, `#`, `>`, backtick or letter anywhere on it
+ * settles the question for good, whatever the markers turn out to be — which
+ * matters, because the bullet each level prints is not decided until
+ * `serializeList` runs (plugins/sourceStyle.ts), long after this.
+ *
+ * So this walks the FIRST-item chain, which is the only part of the sublist that
+ * can reach the marker line, and answers `true` only on reaching a block that is
+ * certain to print such a character. The three ways down are all refusals:
+ *
+ *   - no first item, or a first block that is an empty paragraph — the sublist
+ *     contributes a BARE MARKER, which is what makes `- - -` in the first place
+ *     (an emptied three-deep branch reopened as an `<hr>`, pinned in
+ *     `listMarkerFidelity.test.ts`);
+ *   - a thematic break — its characters may be the markers' own (`- - ---` is
+ *     five dashes). `serializeList` releases the safe half of that case one
+ *     level up, where the two characters are finally both known; here they are
+ *     not, so this refuses rather than guessing;
+ *   - a deeper list — recurse, since the same question applies to it.
+ *
+ * `itemContentForMarkdown` is asked for the inner item's content rather than
+ * reading its children directly, so this sees the same hoisting the serializer
+ * will do. The mutual recursion terminates: each step descends one list level.
+ */
+function ridesMarkerLineSafely(list: ProseNode): boolean {
+    const item = list.firstChild;
+    if (!item) return false;
+    const first = itemContentForMarkdown(item.content).firstChild;
+    if (!first) return false;
+    if (first.type.name === "hr") return false;
+    if (isListNode(first)) return ridesMarkerLineSafely(first);
+    if (first.type.name === "paragraph") return first.content.size > 0;
+    return true;
 }
 
 /**
@@ -366,9 +479,10 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                 ...base.attrs,
                 spread: { default: false, validate: "boolean" },
                 // Whether the SOURCE put a blank line before this item (MAR-194).
-                // `null` = unknown (editor-created); the serializer's join then
-                // defers to mdast's list-level default instead of pinning a gap
-                // this item never had one recorded for.
+                // `null` = unknown — an editor-created item, and ALWAYS the
+                // first item of a list; the serializer's join then reads the gap
+                // off this item's neighbours (MAR-210) rather than pinning one
+                // it never had recorded.
                 blankBefore: { default: null },
             },
             // PASTE fidelity (MAR-21 item 2): GFM's own rule reads `checked`
@@ -415,7 +529,8 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                     const spread = attrSpreadBool(node.attrs["spread"]);
                     const blankBefore = node.attrs["blankBefore"];
                     // Only pass a real boolean through; anything else leaves the
-                    // prop absent so `listItemGapJoin` defers (MAR-194).
+                    // prop absent, which is what tells `listItemGapJoin` to read
+                    // the gap off this item's neighbours (MAR-194/MAR-210).
                     const gap =
                         typeof blankBefore === "boolean" ? { blankBefore } : undefined;
                     const content = itemContentForMarkdown(node.content);

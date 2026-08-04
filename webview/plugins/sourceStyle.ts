@@ -286,12 +286,23 @@ serializeStrong.peek = (node: any, _parent: any, state: any): string =>
     node.marker === "_" || node.marker === "*" ? node.marker : state.options.strong || "*";
 
 /**
+ * The character a thematic break will actually PRINT: its preserved source
+ * marker, or the configured `rule` for one the editor created. Shared so the
+ * hoist decision in `serializeList` cannot drift from what is emitted.
+ * (`emitsDashRule` in webview/serialization.ts asks the same question of a node
+ * this module does not hand it, and states the same rule there.)
+ */
+function ruleMarkerFor(node: any, state: any): string {
+    return RULE_MARKERS.has(node.marker) ? node.marker : state.options.rule || "*";
+}
+
+/**
  * Thematic-break handler honoring the per-node `marker`. New breaks (marker
  * `null`) fall back to `state.options.rule` — `-` as configured in
  * `configureSerialization`, giving `---`.
  */
 function serializeThematicBreak(node: any, _parent: any, state: any): string {
-    const marker = RULE_MARKERS.has(node.marker) ? node.marker : state.options.rule || "*";
+    const marker = ruleMarkerFor(node, state);
     const repetition = state.options.ruleRepetition || 3;
     const value = (marker + (state.options.ruleSpaces ? " " : "")).repeat(repetition);
     return state.options.ruleSpaces ? value.slice(0, -1) : value;
@@ -343,6 +354,118 @@ function serializeHeading(node: any, _parent: any, state: any, info: any): strin
     subexit();
     exit();
     return value;
+}
+
+/**
+ * Bring an item's thematic break UP onto its marker line, where that is
+ * provably safe (MAR-240).
+ *
+ * `itemContentForMarkdown` (plugins/list.ts) hoists an item's real first block
+ * onto the marker line — `- # H` rather than a bare `-` with the heading
+ * indented beneath — but holds a THEMATIC BREAK back, because a marker joining
+ * the rule's own characters re-lexes the line as one break (`*` above `***`
+ * becomes `* ***`, and the list is gone). The bare-marker spelling it keeps
+ * instead is itself a hazard the moment the item is NESTED: a lone `-` directly
+ * under a paragraph line is a SETEXT UNDERLINE, so `- normal\n  - ***` reopened
+ * with `normal` as a heading and the nested list deleted.
+ *
+ * Both spellings are unsafe, but not for the same inputs: the collision needs
+ * the bullet and the rule to be the SAME character. `- ***` is four ordinary
+ * characters, an item holding a rule; `* ***` is a run of stars. So the rule is
+ * "hoist when they differ", and it needs two facts that meet in this function
+ * and nowhere earlier — the bullet is decided HERE (`node.marker`, the global
+ * fallback, or the `useDifferentMarker` flip), while the rule character is the
+ * break node's own recorded marker (MAR-16). The PM→mdast pass that
+ * `itemContentForMarkdown` runs in has finished by the time either is known,
+ * which is why the hold-back there stays and the release happens here.
+ *
+ * Called AFTER the flip, not before: `useDifferentMarker` can turn a `-` list
+ * into a `*` one to keep it apart from an adjacent list, and the character that
+ * has to differ from the rule is the one that will actually print.
+ *
+ * ORDERED lists always hoist — no digit-and-delimiter marker can extend a run
+ * of `*`/`_`/`-`, so the collision does not exist there. They had the same
+ * nesting loss (`1. normal\n   1. ***` reopened as one item holding a hardbreak
+ * and a rule), reached through the same bare marker.
+ *
+ * When the two characters DO collide, `bulletNeedsFlipForRule` below asks
+ * whether the bare marker this leaves behind is somewhere it survives, and
+ * flips the bullet if it is not.
+ */
+function hoistRulesOntoMarkerLine(node: any, bullet: string, state: any): void {
+    for (const led of itemsLedByRule(node)) {
+        if (!node.ordered && ruleMarkerFor(led.rule, state) === bullet) continue;
+        led.children.shift();
+    }
+}
+
+/**
+ * The items of this list whose real first block is a THEMATIC BREAK — the ones
+ * `itemContentForMarkdown` held back — as their own children array (so a caller
+ * can drop the artifact) and the break itself.
+ *
+ * The leading empty paragraph is the artifact `list_item` (`paragraph block*`)
+ * fills in when an item's real first block is not a paragraph. An item that
+ * genuinely begins with a paragraph never matches, because a real one is not
+ * empty — and `- ***` / `-\n\n  ***` parse to this same node, so there is no
+ * authored blank line being dropped either.
+ */
+function itemsLedByRule(node: any): Array<{ children: any[]; rule: any }> {
+    const led: Array<{ children: any[]; rule: any }> = [];
+    for (const item of node.children ?? []) {
+        if (item?.type !== "listItem") continue;
+        const children = item.children;
+        if (!Array.isArray(children) || children.length < 2) continue;
+        const first = children[0];
+        if (first?.type !== "paragraph" || (first.children?.length ?? 0) !== 0) continue;
+        if (children[1]?.type !== "thematicBreak") continue;
+        led.push({ children, rule: children[1] });
+    }
+    return led;
+}
+
+/**
+ * Must this list print a different bullet so a rule it holds can ride the
+ * marker line (MAR-240)?
+ *
+ * When the bullet and the rule are the SAME character the rule cannot be
+ * hoisted, and the bare marker line left instead is fatal ONE LEVEL DOWN: glued
+ * directly under a paragraph line, a lone `-` is read as a SETEXT UNDERLINE and
+ * a lone `*`/`+` as lazy continuation text. Measured, both destroy the item —
+ * `- first\n  -\n    ---` reopens as a heading and a rule with the nested list
+ * gone, and the star spelling as a paragraph with a hardbreak. Tab-indenting an
+ * item that holds a rule reaches it with the editor's own defaults, since a
+ * sublist `sinkListItem` creates has no recorded marker and takes the global
+ * `-` — the same character as the global `rule`.
+ *
+ * Flipping costs one character on this list's markers and removes the bare
+ * marker entirely, so it is only worth doing where the bare marker actually
+ * dies. Three conditions, each of which was measured to matter:
+ *
+ *   - a SUBLIST (`parent` is a `listItem`) — a top-level bare marker has no
+ *     paragraph line above it to be absorbed into, and `*\n  ***` round-trips
+ *     byte-for-byte today;
+ *   - whose parent item is TIGHT — a blank line before the marker makes it a
+ *     list start rather than an underline, and `- normal\n\n  -\n    ---` also
+ *     round-trips byte-for-byte today;
+ *   - and directly after a NON-EMPTY PARAGRAPH — the thing that does the
+ *     absorbing. A sublist that is its item's first block sits under a bare
+ *     marker, not a paragraph line.
+ *
+ * The remaining over-fire is an item that `itemContentGapJoin`
+ * (webview/serialization.ts) will blank-separate for some OTHER gap's sake,
+ * which no longer needs the flip; predicting that would mean re-deriving that
+ * module's whole answer here, and the cost of being wrong is one marker
+ * character rather than a lost list.
+ */
+function bulletNeedsFlipForRule(node: any, bullet: string, parent: any, state: any): boolean {
+    if (parent?.type !== "listItem" || parent.spread === true) return false;
+    const siblings = parent.children;
+    if (!Array.isArray(siblings)) return false;
+    const index = siblings.indexOf(node);
+    const previous = index > 0 ? siblings[index - 1] : undefined;
+    if (previous?.type !== "paragraph" || (previous.children?.length ?? 0) === 0) return false;
+    return itemsLedByRule(node).some((led) => ruleMarkerFor(led.rule, state) === bullet);
 }
 
 /**
@@ -435,11 +558,17 @@ function serializeList(node: any, parent: any, state: any, info: any): string {
         // A thematic break at the start of the first list item needs a
         // different bullet, for the same reason (`- ---` is four dashes).
         // Unreachable through this editor — `list_item`'s content is
-        // `"paragraph block*"`, so an item's first child is always a paragraph
-        // — but kept verbatim so a schema change can't quietly remove the
-        // guard. (`state.options.rule` is the global; sourceStyle carries a
-        // per-node rule marker, so if this ever DOES become reachable the
-        // comparison has to move to the break's own marker.)
+        // `"paragraph block*"`, so an item's first mdast child is always a
+        // paragraph when this handler is entered — but kept verbatim so a
+        // schema change can't quietly remove the guard.
+        //
+        // `hoistRulesOntoMarkerLine` below DOES put a break first, and does it
+        // in this same call — but only after this test has run, and only when
+        // the two characters differ, which is the very collision this branch
+        // exists to break. It cannot make this branch live. (Note the test
+        // reads `state.options.rule`, the global; a per-node marker is what
+        // that hoist compares, so if a schema change ever does make this
+        // reachable, the comparison has to move to the break's own marker.)
         if ((state.options.rule || "*") === bullet && firstListItem) {
             for (const item of node.children) {
                 if (item?.type === "listItem" && item.children?.[0]?.type === "thematicBreak") {
@@ -448,9 +577,16 @@ function serializeList(node: any, parent: any, state: any, info: any): string {
                 }
             }
         }
+
+        // A rule this bullet cannot carry (MAR-240) — the live form of the
+        // hazard above, reached through the artifact paragraph rather than
+        // through a break in first position.
+        if (bulletNeedsFlipForRule(node, bullet, parent, state)) useDifferentMarker = true;
     }
 
     if (useDifferentMarker) bullet = bulletOther;
+
+    hoistRulesOntoMarkerLine(node, bullet, state);
 
     state.bulletCurrent = bullet;
     const incrementCurrent = state.options.incrementListMarker;
