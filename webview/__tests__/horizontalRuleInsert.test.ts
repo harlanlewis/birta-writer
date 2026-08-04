@@ -20,7 +20,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { commandsCtx, editorViewCtx, Editor, rootCtx, defaultValueCtx, parserCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { TextSelection } from "../pm";
+import { NodeSelection, TextSelection } from "../pm";
 import type { Node } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { insertHorizontalRuleCommand } from "../plugins/horizontalRule";
@@ -29,6 +29,17 @@ import { insertHorizontalRuleCommand } from "../plugins/horizontalRule";
  * One editor for the whole file: `Editor.create()` arms a Milkdown timer that
  * `destroy()` does not clear, so an editor per case leaves one pending timer
  * per case and any that fires after teardown counts as an unhandled error.
+ *
+ * This editor deliberately does NOT register `trailingHrParagraphPlugin`, which
+ * production does (`editor.ts`). That plugin appends an empty paragraph after a
+ * rule that ends the document, as a place to put the caret — and Markdown has no
+ * way to write an empty trailing paragraph, so with it registered a doc-final
+ * rule reads `paragraph, hr, paragraph` live and `paragraph, hr` on reparse
+ * (`"hello\n\n---\n\n"`). That divergence is the affordance, not a loss: reopening
+ * re-adds it. Registering the plugin here would make the round-trip invariant
+ * below assert something false by design, so the omission is the point — but it
+ * does mean this file measures the command, not the composed pair. A rule
+ * inserted mid-document is byte-exact either way (measured).
  */
 let editor: Editor;
 
@@ -114,10 +125,24 @@ function insertRule() {
     if (!ran) throw new Error("insertHorizontalRule declined — the gesture did not happen");
 }
 
-type Case = { label: string; src: string; needle: string; empty?: boolean };
+/**
+ * `consumes` marks the one shape where a block legitimately disappears: an
+ * emptied top-level paragraph is a placeholder the rule takes over by design,
+ * so the paragraph count drops by exactly one. Everywhere else a dropped block
+ * is the bug under test, which is why the exemption is a per-case opt-in rather
+ * than a softening of the invariant.
+ */
+type Case = { label: string; src: string; needle: string; empty?: boolean; consumes?: string };
 
 const CASES: Case[] = [
     { label: "a plain paragraph", src: "hello\n", needle: "hello" },
+    // The shape the empty-textblock takeover branch exists FOR. Every other
+    // emptied case here is a list item, where that branch changes no bytes at
+    // all — so without this row the branch could be deleted outright and the
+    // file stayed green, while a caret in an emptied top-level paragraph went
+    // back to writing `"a\n\n\n\n---\n\n"` (the blank-line churn this fix
+    // removed) instead of `"a\n\n---\n\n"`.
+    { label: "an emptied top-level paragraph", src: "a\n\nhello\n", needle: "hello", empty: true, consumes: "paragraph" },
     { label: "a top-level list item", src: "- x\n", needle: "x" },
     { label: "an emptied top-level list item", src: "- x\n", needle: "x", empty: true },
     { label: "a nested list item", src: "- normal\n  - x\n", needle: "x" },
@@ -144,8 +169,9 @@ describe("inserting a horizontal rule", () => {
                 // reported bug deleted the nested list outright.
                 const after = kinds(view.state.doc);
                 for (const kind of new Set(before)) {
+                    const allowed = kind === c.consumes ? 1 : 0;
                     expect(
-                        after.filter((k) => k === kind).length,
+                        after.filter((k) => k === kind).length + allowed,
                         `${kind} count dropped`,
                     ).toBeGreaterThanOrEqual(before.filter((k) => k === kind).length);
                 }
@@ -196,5 +222,116 @@ describe("inserting a horizontal rule", () => {
 
         // Assert — the old command replaced the selection with the rule.
         expect(texts(view.state.doc)).toEqual(["hello there"]);
+    });
+
+    it("the caret should land past the rule, not before it", () => {
+        // Arrange — a following block, so there is somewhere to land without
+        // `trailingHrParagraphPlugin` (which this editor omits, see the header).
+        const view = load("hello\n\nafter\n");
+        caretAt(view, "hello", false);
+
+        // Act
+        insertRule();
+
+        // Assert — the whole caret-placement half of the command was untested:
+        // dropping `Selection.findFrom`, or resolving it at the wrong position,
+        // changed nothing any assertion could see. The old command's landing
+        // paragraph was inserted BEFORE the rule, so "past it" is the property
+        // that distinguishes them.
+        const hrPos = view.state.doc.resolve(0).nodeAfter
+            ? view.state.doc.content.findIndex(0).index
+            : -1;
+        void hrPos;
+        let rulePos = -1;
+        view.state.doc.descendants((n, pos) => {
+            if (n.type.name === "hr") rulePos = pos;
+            return true;
+        });
+        expect(rulePos).toBeGreaterThanOrEqual(0);
+        expect(view.state.selection.from).toBeGreaterThan(rulePos);
+    });
+
+    it.each([
+        ["the whole document", "x\n"],
+        ["a trailing empty paragraph", "Some notes.\n\nx\n"],
+        ["an empty paragraph in a blockquote", "> Z\n>\n> x\n"],
+    ])("the caret should be typeable after inserting into %s", (_label, src) => {
+        // Arrange — the `/divider` path: `slashMenu.apply` deletes the typed
+        // text BEFORE running the command, so the block is always empty and the
+        // rule always ends whatever contains it. Markdown cannot spell a
+        // trailing empty paragraph, so the emptiness has to be made by editing
+        // here exactly as the slash menu makes it.
+        const view = load(src);
+        caretAt(view, "x", true);
+        expect(view.state.selection.$from.parent.content.size).toBe(0);
+
+        // Act
+        insertRule();
+
+        // Assert — the caret must be in a textblock, not on the rule. Left
+        // unset, ProseMirror maps the old caret onto a NodeSelection over the
+        // new rule and the next keystroke replaces it: the user picks
+        // "Horizontal Rule", types, and the rule is gone.
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        expect(view.state.selection.$from.parent.isTextblock).toBe(true);
+        expect(kinds(view.state.doc)).toContain("hr");
+
+        // And typing must leave the rule alone. Where nothing follows the rule
+        // the caret lands in the block ABOVE it, so the character joins that
+        // block's text rather than standing alone — what matters is that it
+        // landed in the document and the rule survived.
+        view.dispatch(view.state.tr.insertText("A"));
+        expect(kinds(view.state.doc)).toContain("hr");
+        expect(texts(view.state.doc).join("")).toContain("A");
+    });
+
+    it.each([
+        ["an empty heading keeps its level", "# doc\n\n## \n\nafter\n", "heading"],
+        ["an empty code block keeps its language", "# doc\n\n```js\n```\n\nafter\n", "code_block"],
+    ])("%s rather than being replaced by the rule", (_label, src, kind) => {
+        // Arrange — both are textblocks, and both carry state their emptiness
+        // hides. Taking them over dropped the level / the language silently.
+        const view = load(src);
+        let pos = -1;
+        view.state.doc.descendants((n, p) => {
+            if (pos < 0 && n.type.name === kind && n.content.size === 0) pos = p + 1;
+            return true;
+        });
+        expect(pos, `probe found no empty ${kind}`).toBeGreaterThan(0);
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        // COUNT, not presence: the heading fixture carries a second heading
+        // (`# doc`), so `toContain("heading")` stayed green while the empty one
+        // was being eaten — the assertion passing for the wrong reason.
+        const before = kinds(view.state.doc).filter((k) => k === kind).length;
+
+        // Act
+        insertRule();
+
+        // Assert
+        expect(kinds(view.state.doc).filter((k) => k === kind)).toHaveLength(before);
+        expect(kinds(view.state.doc)).toContain("hr");
+    });
+
+    it("a rule that is itself selected should not gain a second rule", () => {
+        // Arrange — `horizontalRulePlugin`'s click handler puts a NodeSelection
+        // on a rule, so this is a state a user reaches with the mouse.
+        const view = load("a\n\n---\n\nb\n");
+        let rulePos = -1;
+        view.state.doc.descendants((n, pos) => {
+            if (n.type.name === "hr") rulePos = pos;
+            return true;
+        });
+        expect(rulePos).toBeGreaterThanOrEqual(0);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, rulePos)));
+        const before = kinds(view.state.doc).filter((k) => k === "hr").length;
+
+        // Act — the command may decline; what it must not do is stack a second
+        // rule on the one already selected. Starting the outward walk one depth
+        // too high does exactly that.
+        editor.action((ctx) => ctx.get(commandsCtx).call(insertHorizontalRuleCommand.key));
+
+        // Assert
+        expect(kinds(view.state.doc).filter((k) => k === "hr")).toHaveLength(before);
+        expect(texts(view.state.doc)).toEqual(["a", "b"]);
     });
 });
