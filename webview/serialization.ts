@@ -756,22 +756,30 @@ function itemContentGapJoin(
     // fact the only spelling that parses back to this shape at all: authored
     // loose, `-\n\n  ---\n` already parses with the rule outside the list.
     //
-    // Restricted to the ARTIFACT empty paragraph — the one `list_item`
-    // (`paragraph block*`) fills in when the real first block is not a
-    // paragraph, which `itemContentForMarkdown` (plugins/list.ts) keeps only
-    // ahead of an `hr` or a sublist that cannot ride the marker line. Ahead of
-    // a PARAGRAPH the empty one is a node the document really has, and gluing
-    // merges the two: `- hello\n\n  world\n` with `hello` deleted would write
-    // `- world\n` and lose a paragraph the user can see. That trade is the
-    // subject of its own case in listMarkerFidelity.test.ts, and neither
-    // spelling is right — Markdown cannot write an empty paragraph — so this
-    // leaves it exactly as it was rather than swapping one loss for another.
+    // Applies to ANY item whose first child is an empty paragraph, including
+    // one whose second child is a real paragraph (MAR-309). Markdown cannot
+    // write an empty paragraph, so both available spellings lose something and
+    // this is a policy call, decided by the maintainer 2026-08-04:
+    //
+    //   `-\n\n  world\n` (was)  the empty paragraph survives as a node, but
+    //                           CommonMark orphans `world` OUT of the list and
+    //                           the item reopens EMPTY.
+    //   `-\n  world\n`  (now)   `world` stays the item's own paragraph; the
+    //                           empty one is gone.
+    //
+    // Chosen on least-surprise grounds: no editor in any ecosystem relocates
+    // content out of the container the user put it in as a side effect of
+    // deleting adjacent text. Losing an invisible empty paragraph reads as
+    // tidying; losing a visible block's list membership reads as a bug, and it
+    // only shows up on reopen.
+    //
+    // The shape is reachable ONLY by editing — measured, authored
+    // `-\n\n  world\n` already parses with `world` outside the list — so no
+    // existing file is being re-spelled by this.
     //
     // Reached only after the loop has cleared every gap, so an item that
     // genuinely needs a blank still gets one.
-    return isEmptyParagraph(item.children[0]) && item.children[1]?.type !== "paragraph"
-        ? 0
-        : undefined;
+    return isEmptyParagraph(item.children[0]) ? 0 : undefined;
 }
 
 /** Would this thematic break be written with `-`? Mirrors the marker choice in
