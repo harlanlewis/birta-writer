@@ -21,11 +21,10 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 - **Read `MAR-141`** (board guide). It goes stale the moment anything ships — verify against `git log` and the tree, and fix it as part of grooming.
 - **Pull `Todo` + `In Progress` + `Backlog`.** Prioritize over that union, not the `Todo` view. Fetch Backlog inside a subagent returning a compact table; inline it and you blow the output limit.
 - **Reconcile:** close silently-shipped work (verify in the tree, not the CHANGELOG; cite the SHA), re-scope tickets the code outgrew, un-stick stale `In Progress`.
-- **Check `Closes MAR-NN` against ancestry.** A ticket closed on a pushed branch rather than a merged PR leaves no signal anywhere — `git merge-base --is-ancestor <sha> main`.
+- **Check `Closes MAR-NN` against ancestry** — `git merge-base --is-ancestor <sha> main`. A ticket closed on a pushed branch rather than a merged PR leaves no signal anywhere.
 - **Pick: first High-or-Urgent down the spine** — `phase-0-fidelity` → `phase-1-performance` → `phase-2-syntax` → `phase-3-interaction` → `phase-4-differentiators`, then by `priority`. `phase-5-surfaces` never ranks (D8). With no High anywhere, take the spine's top by priority.
-  - **Readiness is not a filter.** Unscoped and unreproduced is what existential work looks like; making it ready IS the work, and bounding it is a legitimate deliverable. Only *blocked* — needing something outside the session — releases the quota. Name the blocker in the ticket.
-  - The spine item is the session's opener, not its leftover.
-- **Burn down deferred residue** (follow-ups, cleanups, polish batches): absorb, merge, or close with a reason. "Below the value bar" is a reason. Once what remains is features and real bugs, the quota is satisfied — never close maintainer-authored ideas to hit a count, and never manufacture phase-0 tickets so the spine has something to point at.
+  - **Readiness is not a filter.** Unscoped and unreproduced is what existential work looks like; making it ready IS the work. Only *blocked* — needing something outside the session — releases it, and name the blocker in the ticket. The spine item is the session's opener, not its leftover.
+- **Burn down deferred residue** (follow-ups, cleanups, polish batches): absorb, merge, or close with a reason — "below the value bar" is one. Never close maintainer-authored ideas to hit a count, and never manufacture phase-0 tickets so the spine has something to point at.
 - **Work MAR-141's do-inline ledger** when a session touches a line's area. Prune lines sessions have worked past.
 - If grooming finds nothing open, say so and ask.
 
@@ -34,8 +33,8 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 - State the pick and why in one line. Passing over a higher-spine item is a claim that it's blocked — put it in the reply and the ticket.
 - **Lane 1 is the spine item, and it's yours.** Fill remaining lanes behind it in queue order. Three lanes is the ceiling; prefer two clean seams to three ambiguous ones.
 - **Plan by file ownership, measured.** Grep the symbols each ticket names. Tickets sharing a hot file (`webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins) share a lane and run in sequence — that's the answer to a collision, not collapsing to one lane.
-- **`CHANGELOG.md` is never a lane's.** The orchestrator writes it once at §6. It is the empirically-observed conflict, because the handoff rules tell every lane to touch it.
-- Holding lane 1 means your commits trip the repo pre-commit guard (`$CLAUDECODE` + primary checkout + live worktree). `--no-verify` is its documented override — read `git status --short` first and confirm your paths are disjoint from every lane.
+- **`CHANGELOG.md` is never a lane's** — the orchestrator writes it once at §6. It is the observed conflict, because the handoff rules tell every lane to touch it.
+- Holding lane 1 trips the repo pre-commit guard (`$CLAUDECODE` + primary checkout + live worktree). `--no-verify` is its documented override — read `git status --short` first and confirm your paths are disjoint from every lane.
 - `TaskCreate` covering every lane's tickets.
 
 ### Dispatch
@@ -57,7 +56,7 @@ Your shell's cwd is the worktree base, so `cd`-ing into a worktree nests the nex
 
 ### On completion
 
-1. Read the handoff. **A lane's report is a description, not a result** — reproduce anything you'll relay, file, or changelog. This includes its tracking claims: "filed separately" is an intention as often as an outcome, and one `list_issues` settles it.
+1. Read the handoff. **A lane's report is a description, not a result** — reproduce anything you'll relay, file, or changelog, its tracking claims included ("filed separately" is an intention as often as an outcome; one `list_issues` settles it).
 2. Measure what it actually touched against the plan:
    ```bash
    .claude/skills/grind/scripts/file-overlap.sh --base lewish/<slug> \
@@ -70,7 +69,7 @@ Your shell's cwd is the worktree base, so `cd`-ing into a worktree nests the nex
 
 **On failure:** ticket back to `Todo` with what broke; don't re-dispatch this session. Already failed a previous session → it's a grooming problem, not a lane.
 
-**Transport death is not work failure.** Connection drops and watchdog stalls kill the agent with its reasoning intact; `SendMessage` resumes from transcript. Read the worktree (`git log`, `git status --short`, `git diff --stat`) before deciding — usually far more survived than the notification suggests. **Lead every resume with "commit what you have, first."** Uncommitted work is the only thing these deaths cost; an ungated commit on a lane branch reaches `main` only through your merge gate. A silent lane is not a working lane — check file mtimes and last commit rather than waiting, and verify its committed work in parallel instead of blocking on a ping.
+**Transport death is not work failure.** Connection drops kill the agent with its reasoning intact; `SendMessage` resumes from transcript. Read the worktree (`git log`, `git status --short`, `git diff --stat`) first — usually far more survived than the notification suggests. **Lead every resume with "commit what you have, first":** uncommitted work is the only thing these deaths cost, and an ungated lane commit reaches `main` only through your merge gate. A silent lane is not a working lane — check mtimes and last commit rather than blocking on a ping.
 
 Feed each handoff forward into briefs not yet sent. A handoff that invalidates a queued ticket's premise re-plans that lane now.
 
@@ -82,8 +81,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 
 - **Bytes outrank accounts.** When a ticket names both a mechanism and an output, check the output first — one print can convict the mechanism before you understand it.
 - **Verify semantics, not shape.** A grep that matches feels like confirmation and isn't. Ask what the claim predicts that you can run.
-- Push broad or noisy reads into subagents; relay conclusions. Their reports are descriptions too — weight by whether they *ran* something.
-- **Brief subagents to measure, and give them standing to contradict you.** A brief that hands down conclusions buys obedience, and obedience propagates your errors with a green suite. When one contradicts you, that's the return on the instruction.
+- **Brief subagents to measure, and give them standing to contradict you** — a brief that hands down conclusions buys obedience, and obedience propagates your errors with a green suite. Push broad or noisy reads to them and relay conclusions, weighting by whether they *ran* something.
 
 ## 3. Work loop (per ticket, and what each lane runs)
 
@@ -130,11 +128,10 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 | `conflict` | 1 | Tree untouched, `conflict_files` listed. Resolve by hand or rebrief the lane. Either way it's a lane-plan finding: rebrief every queued lane sharing those files. |
 | `merge_failed` | 1 | Refused *without* conflicts — usually an untracked file, named in `reason`. Clear it, re-run. |
 | `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. |
-| `dirty` | 3 | Your own uncommitted work. Commit or stash, re-run. |
-| `refused` | 3 | Inside a worktree, detached HEAD, or no such branch. |
+| `dirty` / `refused` | 3 | Your own uncommitted work, or a bad HEAD/branch. `reason` says which. |
 | `empty` | 4 | The lane committed nothing, whatever it reported. |
 
-**`merged` is not `shippable`.** Neither git nor the gate can tell you the change is correct. Reverting a green lane is a legitimate outcome: a `revert:` commit keeping the diagnosis, the branch pushed somewhere durable, the ticket re-scoped to the measurement and the blocker. **A lane's own "what is still exposed" note is your next probe, not a severity to accept**: the author who just chose to accept a risk is the worst-placed person to price it.
+**`merged` is not `shippable`.** Neither git nor the gate can tell you the change is correct. Reverting a green lane is legitimate: a `revert:` commit keeping the diagnosis, the branch pushed somewhere durable, the ticket re-scoped. **A lane's own "what is still exposed" note is your next probe, not a severity to accept** — the author who just chose to accept a risk is the worst-placed person to price it.
 
 ### Critique the seam
 
@@ -155,7 +152,7 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
   git fetch --prune
   ```
   `branches_kept: unmerged` means check where those commits went before reaching for `--force-branches`.
-- **Improve this skill — last step of every lane session.** Fold back only what would change a future session's behavior, and **amend or replace rather than append**. This file loads on every invocation; a bullet costs every future session while its own value falls. It reached 9,476 words across six sessions before being cut to ~2,500 — every one of those sessions read a "keep it lean" line before adding to it. **Adding net words owes a deletion.** Prefer the rule to its story: keep an incident only where the rule reads as arbitrary without it.
+- **Improve this skill — last step of every lane session.** Fold back only what would change a future session's behavior, and **amend or replace rather than append**. This file loads on every invocation; a bullet costs every future session while its own value falls. It reached 9,476 words across six sessions before being cut to ~2,500 — every one of those sessions read a "keep it lean" line before adding to it. **Adding net words owes a deletion — `wc -w` before and after, both figures in the commit** (2026-08-04 claimed a net cut and shipped +62 unmeasured). Prefer the rule to its story: keep an incident only where the rule reads as arbitrary without it.
 
 ## Stance
 
