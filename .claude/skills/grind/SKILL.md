@@ -77,7 +77,7 @@ Feed each handoff forward into briefs not yet sent. A handoff that invalidates a
 
 Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.md`.
 
-**Treat a ticket's account of itself as hypothesis, not brief.** Its *symptom* is usually right; its *cause*, *plan*, *scope* and *severity* fail routinely — scope toward too small, which ships a fix leaving the worse half of the bug in place under a green suite, and severity in both directions (a `Low` filed "latent, never reproduced" was live data loss; a `High`'s headline cost was a harness artifact). **Re-derive severity from your own repro before letting it set the queue.** Before implementing, name the observation that would falsify the stated cause and make it. Ask what other gesture reaches the same broken state. Enumerate the space rather than sampling it.
+**Treat a ticket's account of itself as hypothesis, not brief.** Its *symptom* is usually right; its *cause*, *plan*, *scope* and *severity* fail routinely — scope toward too small, which ships a fix leaving the worse half of the bug in place under a green suite, and severity in both directions. **Re-derive severity from your own repro before letting it set the queue.** Before implementing, name the observation that would falsify the stated cause and make it. Ask what other gesture reaches the same broken state. Enumerate the space rather than sampling it.
 
 - **Bytes outrank accounts.** When a ticket names both a mechanism and an output, check the output first — one print can convict the mechanism before you understand it.
 - **Verify semantics, not shape.** A grep that matches feels like confirmation and isn't. Ask what the claim predicts that you can run.
@@ -89,7 +89,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 2. **Implement** the smallest correct fix in the surrounding idiom. Grep for the mechanism that already exists before building one — if you're citing a function to justify your design, call it instead. Prefer observing the result to predicting it.
 3. **Critique the design before hardening it.** Is there less of it? Churn is the tell: a predicate written, reverted, rewritten means the design isn't settled. Act on findings here — carried to step 5 they cost a test suite.
 4. **Test.** Pin a regression test; promote a fidelity `it.fails`. **Prove each new test can fail by reverting the exact line it pins.** Assert what the user would lose, not the state your fix sets — and watch for assertions satisfied by something else in the fixture. Then `pnpm test`, `pnpm typecheck`, `pnpm build`; `/verify` for runtime behavior beyond jsdom.
-   - **Read the `Errors:` line of a passing vitest run, not just `Tests:`.** Unhandled errors exit non-zero with every test green, and the failure is load-dependent — quiet locally, fatal on CI. Contention explains *varying* failures across *different* suites; it does not explain the same error from the same file every time.
+   - **Read the `Errors:` line of a passing vitest run, not just `Tests:`.** Unhandled errors exit non-zero with every test green. Contention explains *varying* failures across *different* suites; it does not explain the same error from the same file every time.
 5. **Critique the diff** — `/constructive-critique` (`/code-review` for pure bug-hunting). A reviewer that runs its own probes finds more than one reading the diff.
 6. **Disposition every finding where it was raised**, by value, never effort:
    - **Fixed** — the default for anything that matters. Cheapest now.
@@ -110,8 +110,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 
 - **Never file a repro you haven't run.** Paste observed output, not expected. If it can't be reproduced in-session, say so in the ticket.
 - Watch the filing ratio — more created than closed is a deficit worth justifying.
-- Check whether the change incidentally fixed another open ticket.
-- Close both directions: `Closes MAR-NN` in the commit, merge SHA in the ticket (squash rewrites branch SHAs).
+- Close both directions: `Closes MAR-NN` in the commit, merge SHA in the ticket.
 
 ## 6. Reconcile and land
 
@@ -127,7 +126,7 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 | `merged` | 0 | Refill the lane. |
 | `conflict` | 1 | Tree untouched, `conflict_files` listed. Resolve by hand or rebrief the lane. Either way it's a lane-plan finding: rebrief every queued lane sharing those files. |
 | `merge_failed` | 1 | Refused *without* conflicts — usually an untracked file, named in `reason`. Clear it, re-run. |
-| `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. |
+| `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. **First check `uptime`:** a gate run while lanes still hold the machine fails with every test passing, `Errors: N` worker timeouts, and 2–3× normal duration. Re-run idle before blaming a lane. |
 | `dirty` / `refused` | 3 | Your own uncommitted work, or a bad HEAD/branch. `reason` says which. |
 | `empty` | 4 | The lane committed nothing, whatever it reported. |
 
@@ -136,6 +135,7 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 ### Critique the seam
 
 - **`/constructive-critique` over `git diff main...<integration-branch>`** — the whole session as one change. Only here are the seams visible: two lanes solving the same thing, an abstraction duplicated, a test one lane deleted and another relied on, a premise a later lane invalidated, **a lane's fix undone downstream by a layer it did not own** — each lane stopped at its own scope, so nobody drove the whole path. Ask what the user's bytes pass through *after* each fix, and drive that. Every lane's diff is new to you. `/simplify` belongs in this pass; re-run gates after it.
+- **The critique is a description too — reproduce a finding before fixing it.** One reasoned from control flow named four shapes, none of which reproduced; the mechanism was real and reached by a fifth it never guessed.
 - §3.6's buckets bind here — "a different lane wrote it" is not a reason to file instead of fix.
 - **Write the CHANGELOG once, now**, over the reconciled diff, plus `docs/BENEFITS.md` if a capability's story changed. Verify each claim yourself.
 - **One PR** with the tickets and the verification done. Wait for CI green, squash, delete branch, pull `main`.
@@ -145,14 +145,13 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 
 - Run `AGENTS.md`'s end-of-work handoff whenever `src/`, `webview/`, `shared/`, or `package.json` changed. End by telling the user to reload.
 - **Push any lane work a ticket cites before cleaning up**, and cite the remote ref — a local worktree branch dies with the worktree and the citation points at nothing.
-- Classify merged vs unmerged before deleting: `git branch --merged` misses squash merges; check `gh pr list --head <branch>`. Ask before deleting anything that would lose work.
 - Remove this session's worktrees only once every lane merged, preserving any still running:
   ```bash
   .claude/skills/grind/scripts/cleanup-worktrees.sh --preserve agent-abc --delete-branches
   git fetch --prune
   ```
-  `branches_kept: unmerged` means check where those commits went before reaching for `--force-branches`.
-- **Improve this skill — last step of every lane session.** Fold back only what would change a future session's behavior, and **amend or replace rather than append**. This file loads on every invocation; a bullet costs every future session while its own value falls. It reached 9,476 words across six sessions before being cut to ~2,500 — every one of those sessions read a "keep it lean" line before adding to it. **Adding net words owes a deletion — `wc -w` before and after, both figures in the commit** (2026-08-04 claimed a net cut and shipped +62 unmeasured). Prefer the rule to its story: keep an incident only where the rule reads as arbitrary without it.
+  A squash merge rewrites SHAs, so every lane branch reports `branches_kept: unmerged` even when it shipped. Verify the CONTENT reached `main` — grep a distinctive line from each lane — before deleting, and ask before deleting anything that would lose work.
+- **Improve this skill — last step of every lane session.** Fold back only what would change a future session's behavior, and **amend or replace rather than append**: this file loads on every invocation, so a bullet costs every future session while its own value falls. It reached 9,476 words before being cut to ~2,500, every one of those sessions having read a "keep it lean" line first. **Adding net words owes a deletion — `wc -w` before and after, both figures in the commit.** Prefer the rule to its story: keep an incident only where the rule reads as arbitrary without it.
 
 ## Stance
 
