@@ -122,13 +122,13 @@ A short paragraph with a **bit** of emphasis and a [link](https://example.com).
 ${STYLE_SENTENCES[0]}
 `;
 
-// Section counts are chosen to hold the documented BYTE sizes across the
-// style-check seeding, which added ~215 characters to each section: 18→14 and
-// 140→108 keeps medium at ~12 KB and large at ~96 KB (within 1% of their
-// pre-seeding lengths), so a fixture's identity stays its size. Left alone,
-// every prose fixture would have grown ~30% and the typing job — already the
-// most expensive check in the repo, and dominated by its largest fixture —
-// would have grown with it, for no measurement anyone asked for.
+// A FIXTURE'S IDENTITY IS ITS SIZE, so the section counts are derived from the
+// documented byte sizes and not the other way round: 14 and 108 hold medium at
+// ~12 KB and large at ~96 KB. Re-derive them whenever a section's content
+// changes — the style-check seeding grew each one by ~215 characters, and left
+// alone would have grown every prose fixture ~30%, taking the typing job (the
+// most expensive check in the repo, dominated by its largest fixture) with it
+// for no measurement anyone asked for.
 const medium = repeatToSize("# Medium document", 14);   // ~12 KB
 const large = repeatToSize("# Large document", 108);     // ~96 KB
 

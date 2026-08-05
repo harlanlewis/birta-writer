@@ -30,9 +30,14 @@ async function writeFixture(name: string, content: string): Promise<vscode.Uri> 
 }
 
 /**
- * Deterministic ~large document, structurally comparable to the headless `large`
- * fixture (~140 sections of heading + prose), so the real launch numbers are
- * read on a comparable workload.
+ * Deterministic heading + prose document, big enough that the launch spans
+ * below are read on a real parse rather than a trivial one.
+ *
+ * It is NOT the headless `large` fixture, which is richer (lists, tables, code
+ * blocks, style-seeded prose) and several times this size, at a section count
+ * chosen to hold a documented byte size (`e2e/perf/fixtures.mjs`). So the
+ * size-dependent spans here are not like-for-like against `pnpm perf` — see
+ * the note on the report below for the one span that is.
  */
 function largeDoc(sections = 140): string {
     const out: string[] = [];
@@ -77,8 +82,10 @@ describe("Birta integration: real-VS-Code launch marks (MAR-191)", () => {
             toc: span("toc-start", "toc-end"),
             toolbar: span("toolbar-start", "toolbar-end"),
         };
-        // Logged for the maintainer to compare against `pnpm perf` (headless).
-        // The `roundtrip` value here is the REAL IPC hop the headless stub fakes.
+        // Logged for the maintainer to read against `pnpm perf` (headless).
+        // `roundtrip` is the span worth comparing: it is the REAL IPC hop the
+        // headless stub fakes, and it does not scale with document size. The
+        // rest do, and this document is not the `large` fixture (see largeDoc).
         console.log("\n[MAR-191] real VS Code launch spans (ms):", JSON.stringify(report, null, 2));
 
         // Structural assertions only — CI-safe, never an absolute-time gate.

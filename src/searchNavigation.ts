@@ -42,10 +42,9 @@ export interface CapturedNavTarget {
 }
 
 /**
- * How long to wait for the text editor to show up at all. An order of
- * magnitude above the probed ~26 ms; the rest is headroom for a loaded machine.
- * On expiry we swap anyway — a missed jump is a disappointment, a stalled swap
- * is a bug.
+ * How long to wait for the text editor to show up at all. Several times the
+ * probed ~26 ms; the rest is headroom for a loaded machine. On expiry we swap
+ * anyway — a missed jump is a disappointment, a stalled swap is a bug.
  */
 export const EDITOR_APPEAR_BUDGET_MS = 120;
 
