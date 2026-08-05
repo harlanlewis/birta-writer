@@ -154,8 +154,7 @@ export function readFoldingConfig(
 
 // ─── Settings write-back (webview/toolbar → settings) ───────────────────────
 // The write half of the config seam, next to the read half so the extension's
-// entire `birta.*` surface lives in this one file (moved off the provider,
-// where these sat as unrelated statics — 2026-07-17 round-2 critique).
+// entire `birta.*` surface lives in this one file. Keep it that way.
 
 /**
  * Persist a setting, writing to the scope that currently wins — a Global

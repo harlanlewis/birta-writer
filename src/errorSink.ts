@@ -4,10 +4,10 @@
  * The one place that decides how an extension-side failure surfaces:
  * console-only (the default — diagnosable in the developer tools, invisible in
  * healthy operation) versus a user-facing notification (reserved for failures
- * the user must know about, e.g. a crashed webview). Handlers that used to
- * swallow errors with `.catch(() => {})` route through here instead, so a
- * best-effort feature can still fail quietly for the user without failing
- * silently for whoever is debugging it.
+ * the user must know about, e.g. a crashed webview). A handler that would
+ * otherwise swallow an error with `.catch(() => {})` routes through here
+ * instead, so a best-effort feature can fail quietly for the user without
+ * failing silently for whoever is debugging it.
  */
 import * as vscode from "vscode";
 

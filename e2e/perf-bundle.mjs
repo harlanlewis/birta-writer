@@ -153,15 +153,14 @@ async function main() {
             }
         }
 
-        // Write the CEILING ONLY — never the measurement. The snapshot fields
-        // this used to persist (`eagerTotal` and friends) were read by nothing:
-        // `--check` reads `eagerBudget`, `--set-budget` reads `prev.eagerBudget`,
-        // and `--compare` reads its two argument files. They existed purely to
-        // be read by humans, and they went stale the moment anything landed
-        // while still looking like a current reading — which produced the same
-        // misquote twice: 62,824 B of drift (a 3× error on a gate's margin,
-        // documented in AGENTS.md) and then 41,526 B again four days later.
-        // A number that cannot be stored cannot go stale. Run the tool.
+        // Write the CEILING ONLY — never the measurement. Nothing reads a
+        // stored snapshot: `--check` reads `eagerBudget`, `--set-budget` reads
+        // `prev.eagerBudget`, and `--compare` reads its two argument files. A
+        // snapshot would exist purely to be read by humans, and it goes stale
+        // the moment anything lands while still looking like a current reading
+        // — which has already produced the same misquote twice. A number that
+        // cannot be stored cannot go stale; run the tool instead. Guarded by
+        // `e2e/perf/bundleBaseline.test.mjs`, which carries the evidence.
         await writeFile(baselinePath, JSON.stringify({ note: BUDGET_NOTE, eagerBudget }, null, 2) + "\n");
         console.log(
             `wrote ${baselinePath}\n  eager total ${kb(r.eagerTotal)} KB / budget ${kb(eagerBudget)} KB ` +

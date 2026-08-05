@@ -11,8 +11,7 @@
  *   math       — inline + block KaTeX, exercises the (lazy) math path
  *   link-heavy — many BARE autolinks on their own lines (provider and not),
  *                exercising the embed recognizer walk that titled links never
- *                reach (bareLinkHref requires text === href) — the path the
- *                2026-07-24 perf review found unmeasured
+ *                reach (bareLinkHref requires text === href)
  *
  * The three PROSE fixtures (tiny/medium/large, and xlarge below, which is built
  * from the same sections) deliberately trip the style check — see
@@ -47,12 +46,12 @@ const CODE_SAMPLES = {
 /**
  * Sentences that TRIP the style check, one per line of the rotation below.
  *
- * The prose fixtures used to trip **zero** style checks — `medium` produced 0
- * `.pf-style-hit` elements — so proofreading's scan ran on every measured
- * launch and found nothing, exercising the matcher's traversal but never the
- * decoration-building path that scales with how much a document actually
- * trips. A green gate over that fixture set is evidence of non-interference,
- * not of coverage (MAR-310).
+ * The prose fixtures MUST trip the style check. Proofreading ships on, so
+ * every measured launch runs its scan; over prose that matches nothing the
+ * scan exercises the matcher's traversal but never the decoration-building
+ * path, which is the half that scales with how much a document actually trips.
+ * A green gate over such a fixture set is evidence of non-interference, not of
+ * coverage (MAR-310).
  *
  * Between them these four cover seven categories — fillers, redundancies,
  * clichés, wordiness, AI vocabulary, AI artifacts, passive voice and negative

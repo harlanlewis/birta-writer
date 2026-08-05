@@ -18,12 +18,10 @@ export const SPANS = [
     // The INITIAL VIEW RENDER: everything between Milkdown handing back a
     // created editor and the browser painting the first frame that shows it —
     // ProseMirror's first DOM build, style/layout/paint, and any work a plugin
-    // schedules from its `view()` onto the frames before that paint. It was
-    // the harness's largest blind spot (on `large`, roughly half of `launch`
-    // was unattributed), which let a change that added a whole extra
-    // decoration pass on the mount path read as "every measured span is flat
-    // or better" while launch regressed. It costs nothing to report: both
-    // marks already existed.
+    // schedules from its `view()` onto the frames before that paint. Work
+    // moved in front of first paint is invisible to every other span, so a
+    // change can read as "every measured span flat or better" while `launch`
+    // regresses. If a plugin schedules its own rAF at mount, suspect this one.
     ["paint", "create-end", "editor-painted"],
     ["toc", "toc-start", "toc-end"],
     ["toolbar", "toolbar-start", "toolbar-end"],
@@ -38,12 +36,13 @@ export const SPANS = [
  *
  * They are measured anyway because deferring work past the last mark does not
  * make it free: `rtp` (the zero-edit re-serialization behind round-trip
- * protection) and `proofread` (the first whole-document style pass) together
- * blocked the main thread for ~114 ms right after first paint on the `large`
- * fixture — the window a user's first keystroke or scroll lands in — and no
- * span reached them. `rtp` was worse than unmeasured: it was listed here the
- * whole time and read `null` on every run, because the marks were deleted when
- * the work moved off the mount path (MAR-311).
+ * protection) and `proofread` (the first whole-document style pass) both block
+ * the main thread right after first paint on the big fixtures — the window a
+ * user's first keystroke or scroll lands in.
+ *
+ * A span listed here whose marks are gone reads `null` on every run, and a
+ * dash reads exactly like "cheap" — which is worse than never measuring it at
+ * all. `checks.mjs` fails if either stops being stamped (MAR-311).
  */
 export const POST_PAINT_SPANS = new Set(["rtp", "proofread"]);
 
@@ -131,16 +130,16 @@ export function confirmRegressions(firstRegressed, secondRegressed) {
 // ── typing gate ─────────────────────────────────────────────
 // Same shape as the launch gate above, different metric and floors.
 
-// Only this fixture can FAIL the gate. At ~46 ms per keystroke on a CI runner
-// its dispatch median dwarfs the 0.5 ms floor, so a real move is unambiguous;
-// every smaller fixture sits near the fixed per-keystroke floor where 10% is a
-// fraction of a millisecond and the gate can never fire.
+// Only this fixture can FAIL the gate. Its dispatch median is far enough above
+// the 0.5 ms floor that a real move is unambiguous; every smaller fixture sits
+// near that floor, where 10% is a fraction of a millisecond and the gate can
+// never fire.
 //
-// `large` was gated too until it was measured against its cost: it is the
-// second most expensive fixture to run and, at ~9 ms, roughly a fifth as
-// sensitive as `xlarge`. Any regression that scales with document size — the
-// shape this gate exists for (MAR-215) — shows on `xlarge` first and larger.
-// Run `pnpm perf:typing` locally for the full fixture spread.
+// Gating a second fixture is a cost decision, not a coverage one: each costs a
+// mount plus a burst on the most expensive job in the repo, and any regression
+// that scales with document size — the shape this gate exists for (MAR-215) —
+// shows on `xlarge` first and largest. Run `pnpm perf:typing` locally for the
+// full fixture spread.
 export const TYPING_GATED_FIXTURES = new Set(["xlarge"]);
 
 // A per-keystroke move counts as real only at ≥10% AND ≥0.5 ms. These are the
@@ -157,20 +156,19 @@ export const TYPING_MIN_MS = 0.5;
 export const TYPING_BLOCK_MIN_PCT = 25;
 export const TYPING_BLOCK_MIN_MS = 250;
 
-// `caret` (selection-only dispatch) IS gated. It exists because selection
-// transactions were the one class of work nothing in this repo measured, and
-// an upstream plugin quietly billed 2.4 ms to every arrow key and click on a
-// 300 KB document for as long as that was true (MAR-137).
+// `caret` (selection-only dispatch) IS gated. It exists because nothing else
+// in this repo can see selection transactions — no harness, no other gate, not
+// `block` — and a cost no instrument reports is a cost that regresses freely
+// (MAR-137).
 //
-// It gates on the burst TOTAL, not the median — corrected 2026-07-30 after the
-// median produced two false REGRESSED verdicts (+72%, +82%) and one neutral
-// against effectively the same change. The old code assumed a burst yielded
-// CARET_MOVES independent samples; it does not. Back-to-back arrow presses
-// coalesce `selectionchange`, so 30 presses collapse into 2–7 transactions and
-// the "median" was an order statistic over n=2. A total is not an order
-// statistic: coalescing changes how the burst's work is split across
-// transactions, but not how much of it there is, so the sum is invariant to
-// exactly the thing that made the median unstable.
+// It gates on the burst TOTAL, never the median. A burst does not yield
+// CARET_MOVES independent samples: back-to-back arrow presses coalesce
+// `selectionchange`, so 30 presses collapse into 2–7 transactions and a median
+// over that is an order statistic on n=2, which swings wildly against
+// effectively identical changes. A total is not an order statistic —
+// coalescing changes how the burst's work is split across transactions, but
+// not how much of it there is, so the sum is invariant to exactly the thing
+// that makes the median unstable.
 //
 // The sample floor is a second, independent guard: below it the caret verdict
 // ABSTAINS rather than guessing. Abstention is always printed — a gate that

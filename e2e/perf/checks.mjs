@@ -1,22 +1,22 @@
 /**
- * Checks for the launch-perf harness's own instrumentation.
+ * Checks that the launch-perf harness measures what it claims to measure.
  *
- * `e2e/perf/` was a measurement runner with nothing asserting that what it
- * measures is what it claims to measure, and two blind spots grew in it:
+ * Two ways it can stop doing that, both invisible to `pnpm perf` — which
+ * reports a `–` for an unstamped span and a number for a scan that found
+ * nothing:
  *
- * - Its fixtures tripped **zero** style checks, so every measured launch ran the
- *   proofread scan against prose it never matched — the matcher's traversal, but
- *   never the decoration build that scales with how much a document actually
- *   trips (MAR-310). A green launch gate over that fixture set is evidence of
- *   non-interference, not of coverage.
- * - The `rtp` span sat in `SPANS` reading `null` on every run, because its marks
- *   were deleted when round-trip protection moved off the mount path onto idle.
- *   The work did not get cheaper; it landed ~100 ms after `editor-painted`,
- *   past the last mark, where nothing looked (MAR-311).
+ * - Fixtures that trip zero style checks. Proofreading ships on, so every
+ *   measured launch runs its scan; over prose that matches nothing the scan
+ *   exercises the matcher's traversal but never the decoration build, which is
+ *   the half that scales with how much a document actually trips. A green
+ *   launch gate over such a fixture set is evidence of non-interference, not of
+ *   coverage (MAR-310).
+ * - A span whose marks are gone. Deferring work past the last mark does not
+ *   make it cheaper, and a `–` reads exactly like "cheap" — worse than never
+ *   having claimed to measure it (MAR-311).
  *
- * Both are invisible to `pnpm perf`, which reports a `–` for an unstamped span
- * and a number for a scan that found nothing. Neither can be caught by reading
- * the harness — only by driving it. These checks drive it.
+ * Neither can be caught by reading the harness, only by driving it. These
+ * checks drive it.
  */
 import { FIXTURES } from "./fixtures.mjs";
 
@@ -66,22 +66,22 @@ export async function run({ page, check, baseUrl }) {
     // ── proofreading ON (the shipped default, and what every gate measures) ──
     // `large` rather than `medium`: the two ordering checks below compare mark
     // timestamps, and on a small document both idle callbacks can land inside
-    // the two frames between `create-end` and the `editor-painted` mark (on
-    // `tiny`, proofread starts 15 ms BEFORE it). That is not a violation of
-    // anything — it is a document with no work to defer — but asserting an
-    // ordering with a 14 ms margin on a shared runner is how a check becomes
-    // flaky. On `large` the margins are +61 ms and +135 ms.
+    // the two frames between `create-end` and the `editor-painted` mark — on
+    // `tiny`, proofread starts BEFORE it. That is not a violation of anything,
+    // just a document with no work to defer, but asserting an ordering across a
+    // margin of a few frames on a shared runner is how a check becomes flaky.
+    // `large` has enough deferred work to put the margins beyond doubt.
     await load(page, baseUrl, FIXTURES.large, { expect: ["rtp-end", "proofread-end"] });
     const m = await readMarks(page);
 
-    // MAR-310's exact failing observation was `styleHits === 0`. The floor sits
-    // far below the 756 the seeded fixture produces (2026-08-04): it pins "the
-    // decoration path runs at a realistic density", not a count a word-list edit
-    // would churn.
+    // The failure this exists for is `styleHits === 0` (MAR-310). The floor sits
+    // far below what the seeded fixture actually produces, so it pins "the
+    // decoration path runs at a realistic density" rather than a count a
+    // word-list edit would churn.
     //
-    // 756 counts `.pf-style-hit` ELEMENTS; `fixtures.test.mjs` counts 540 phrase
-    // matches in the same fixture. Different metrics — one match can decorate
-    // several nodes — so don't reconcile them.
+    // This counts `.pf-style-hit` ELEMENTS; `fixtures.test.mjs` counts phrase
+    // MATCHES over the same fixture, and one match can decorate several nodes.
+    // They are different metrics — don't reconcile the two numbers.
     check("large fixture trips the style check", m.styleHits >= 300, `${m.styleHits} .pf-style-hit`);
 
     check("proofread first pass is marked", m.pfStart != null && m.pfEnd != null,
@@ -104,10 +104,10 @@ export async function run({ page, check, baseUrl }) {
         m.measures.join(", "));
 
     // ── proofreading OFF ──────────────────────────────────────
-    // The control from MAR-311: with the feature off the post-paint block is
-    // still there, which is what proved it was not proofreading. It also pins
-    // AGENTS.md's rule that a disabled feature costs nothing — no scan, no
-    // decorations — which a mark makes checkable for the first time.
+    // The control (MAR-311): with the feature off the post-paint block is still
+    // there, which is what separates round-trip protection's cost from
+    // proofreading's. It also pins AGENTS.md's rule that a disabled feature
+    // costs nothing — no scan, no decorations.
     await load(page, baseUrl, FIXTURES.medium, { query: "?proofreading=0", expect: ["rtp-end"] });
     const off = await readMarks(page);
     check("proofreading off ⇒ no style decorations", off.styleHits === 0, `${off.styleHits} .pf-style-hit`);

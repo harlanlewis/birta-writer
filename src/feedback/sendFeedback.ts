@@ -206,8 +206,8 @@ export async function runSendFeedback(extensionVersion: string): Promise<void> {
  * cannot carry a prefilled query. The opener renders it as
  * `encodeURI(uri.toString(true))`, and `encodeURI` escapes `%` — so every
  * `%3A` we wrote arrives as `%253A`, and GitHub shows the literal text
- * `Bug%3A%20hi` in its title field. That is not a hypothetical: it is what
- * shipped, and what `sendFeedback.test.ts` now models directly.
+ * `Bug%3A%20hi` in its title field. `sendFeedback.test.ts` models that hop
+ * directly.
  *
  * A **string** is passed through verbatim, verified across all three hops of
  * VS Code 1.130: `ExtHostWindow.openUri` keeps it as `uriAsString`,

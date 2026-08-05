@@ -1305,16 +1305,15 @@ export class MarkdownEditorProvider
      * — VS Code refused the edit (a concurrent version change, a closed or
      * read-only document); the edit lives ONLY in the webview.
      *
-     * The three used to collapse into one boolean, which quietly broke the
-     * echo baseline. `_lastSyncedText` has to be written BEFORE `applyEdit`,
-     * because `onDidChangeTextDocument` fires during it and must recognise the
-     * change as ours — but on rejection that left the baseline claiming
-     * content the document does not have. Every later comparison against it
-     * then read as "already in sync", so the webview and the document stayed
-     * silently diverged with no path back. The baseline is now rolled back on
-     * rejection, so the next sync is treated as a real change and re-applies.
-     * (The save flush is the backstop either way: it asks the webview to
-     * serialize at save time and does not consult this baseline.)
+     * The three must stay distinct, because `"rejected"` needs its own
+     * handling. `_lastSyncedText` has to be written BEFORE `applyEdit` —
+     * `onDidChangeTextDocument` fires during it and must recognise the change
+     * as ours — so on rejection the baseline claims content the document does
+     * not have. It is rolled back there, and must be: otherwise every later
+     * comparison reads as "already in sync" and the webview and the document
+     * stay silently diverged with no path back. (The save flush is the backstop
+     * either way: it asks the webview to serialize at save time and does not
+     * consult this baseline.)
      */
     private async _applyWebviewEdit(
         document: vscode.TextDocument,
