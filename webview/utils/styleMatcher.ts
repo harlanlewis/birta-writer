@@ -226,8 +226,17 @@ export const MAX_ALTERNATIVES_PER_REGEX = 256;
  * **Speed.** Sorting lexicographically groups alternatives that share a prefix,
  * which irregexp exploits. Scanning the 1093 phrases over the `large` perf
  * fixture, 15 alternating samples in one process, identical 540 hits: Chromium
- * 151 median 10.6 → 7.3 ms, Node 22 / V8 12.4 11.5 → 7.8 ms (−31% both). The
- * document-scaled half of a proofread pass is exactly this scan. The one-time
+ * 151 median 10.6 → 7.3 ms, Node 22 / V8 12.4 11.5 → 7.8 ms (−31% both).
+ *
+ * **What that is NOT worth.** The scan is a smaller share of the proofread pass
+ * than it looks: the `proofread` span on `large` measures ~62 ms, so ~3 ms is
+ * about 5% of it, and the span read 62.4 ms before this change and 63.4 ms after
+ * (`node e2e/perf.mjs large`, idle, median-of-9 each) — i.e. unmoved within the
+ * drift of an absolute cross-run comparison, which cannot resolve 3 ms either
+ * way. So this is a free and correct win in the scan itself, and NOT a
+ * user-visible speed-up of the pass; it deliberately has no CHANGELOG entry. If
+ * you are looking for the rest of that span, it is lint dispatch and decoration
+ * building, and nobody has attributed them. The one-time
  * compile floor did not get worse — medians of 6 fresh processes each, 74 ms
  * before and 57 ms after, ranges 58.5–81.4 and 51.8–68.2 on a contended machine,
  * which overlap far too much to claim the difference either way.

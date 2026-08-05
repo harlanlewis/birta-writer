@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Documents full of tables and code blocks open substantially faster** — the editor was doing a full page-layout calculation roughly sixteen times per table before it ever painted, because the code that positions a table's drag grips and insert bars re-measured the page after each position it wrote instead of measuring once up front. On a 96 KB document holding 108 tables it spent 269 ms of the wait on that alone. The same pass now measures first and writes second, and the row of controls beside each block attaches when something reveals it rather than at open — the buttons were built either way, but 4,428 of them joining the page at once is work you paid for before seeing anything. Measured on that document: **707 ms to a painted editor, down to 554 ms**, with the layout portion falling from 269 ms to 115 ms. Nothing about the controls changed — same buttons, same gestures.
+
+- **Selecting a block, and typing, no longer stall on a large document** — pressing Escape to select the block you were in froze the editor for roughly a sixteenth of a second on a 300 KB file, and *leaving* the selection cost the same again. The sticky heading bar at the top was recalculating the position of every heading in the document — measuring each of them individually — and it did so on every cursor move, and on every keystroke, not only when something had actually moved. It now recalculates when the document changes, when a section folds, and when the page scrolls or resizes, which is when the answer can differ. On a 300 KB document, entering and leaving a block selection went from about 1.4 seconds of frozen editor across a dozen round trips to **none that a frame budget can see**, and typing on that document got about a tenth faster per keystroke.
+
 ### Fixed
 
 - **The Marketplace listing's Changelog tab now shows the version you installed** — releases had never rolled the changelog's `Unreleased` section into a version heading, so the tab opened on a section titled "Unreleased" above a history that stopped at `0.2.3` (2026-07-04), whichever build you were running. Each release now stamps its own heading, and the release notes on GitHub describe only that release rather than re-listing every feature the editor has ever shipped. Versions before `2026.731.0` predate the Marketplace listing and were never publicly installable; their history moved out of the shipped changelog and into the repository.
