@@ -176,8 +176,15 @@ describe("findHeadingPos", () => {
         // The fast path reads a position out of the DOM, so it is the nesting
         // depth that could break it — and headings inside list items and
         // blockquotes are real enough that the fold plugin carries cases for
-        // them. Checked against the document search it replaced, not against a
-        // hand-written expectation.
+        // them.
+        //
+        // Comparing the answer against the document search is NOT enough on its
+        // own, and the first version of this test did only that and could not
+        // fail. findHeadingPos verifies its own candidate and falls through to
+        // that same search when the check fails, so the two agree by
+        // construction however wrong the fast path is: breaking it for depth > 1
+        // headings specifically left the whole file green. What makes this bite
+        // is asserting the search never RAN.
         const view = await makeEditor("> # Quoted\n>\n> text\n\n- # In a list\n\n  body\n\n# Top level\n");
         const headings = getAllHeadings(view);
         // Guard against a vacuous run: if the parser flattened the fixture,
@@ -187,8 +194,13 @@ describe("findHeadingPos", () => {
         expect(Math.max(...depths)).toBeGreaterThan(1);
         expect(headings.length).toBeGreaterThanOrEqual(2);
 
-        for (const heading of headings) {
-            const fast = findHeadingPos(view, heading);
+        const descendants = vi.spyOn(view.state.doc, "descendants");
+        const fastAnswers = headings.map((h) => findHeadingPos(view, h));
+        expect(descendants).not.toHaveBeenCalled();
+        descendants.mockRestore();
+
+        for (const [i, heading] of headings.entries()) {
+            const fast = fastAnswers[i];
             let search: number | null = null;
             view.state.doc.descendants((node, pos) => {
                 if (node.type.name === "heading" && view.nodeDOM(pos) === heading) {
