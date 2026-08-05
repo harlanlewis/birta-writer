@@ -3,7 +3,15 @@
  *
  * Milkdown 7.22.0 runs the link mark's `href` through `sanitizeLinkHref` in
  * `toDOM` (#2410). Before it, `[click](javascript:alert(1))` in a document
- * someone else wrote became a real, clickable anchor that ran their script.
+ * someone else wrote rendered as a real anchor carrying that address.
+ *
+ * Calibrate the severity honestly: this is defence in depth here, not a fix
+ * for a live hole. The webview's CSP is `script-src 'nonce-…' <cspSource>`
+ * with no `'unsafe-inline'` (src/webviewHtml.ts), and a `javascript:` URL is
+ * governed by `script-src` and needs `'unsafe-inline'` to run — so the scheme
+ * could not execute in this editor even while the anchor carried it. Upstream
+ * calls it stored XSS because a plain web host without that CSP would be
+ * exploitable. Worth having, worth not overstating.
  *
  * Two halves, and the second is the one a dependency bump can silently take
  * away in the other direction:
@@ -92,6 +100,31 @@ describe("link href safety", () => {
             expect(findLinkAt(view(editor), anchor)?.href).toBe(href);
         });
     }
+
+    it("the link mark's parseDOM rules should keep ProseMirror's default priority", async () => {
+        // `priority: 25` on the link marks (plugins/linkBoundary.ts,
+        // plugins/referenceLinks.ts) exists for SERIALIZER mark nesting, but
+        // `@milkdown/core` also stamps a schema's priority onto every parseDOM
+        // rule, where it means rule-matching order. Left unpinned, a fix to
+        // serialization would silently demote `a[href]` below every default-50
+        // rule and change what HTML paste produces.
+        //
+        // Asserted on the built schema rather than the source, so it holds
+        // however `extendPriority` is spelled upstream.
+        const editor = await makeEditor("x\n");
+        const schema = editor.action((ctx) => ctx.get(editorViewCtx)).state.schema;
+        for (const name of ["link", "link_ref"]) {
+            const spec = schema.marks[name]?.spec as {
+                priority?: number;
+                parseDOM?: { priority?: number }[];
+            };
+            expect(spec, name).toBeDefined();
+            expect(spec.priority, `${name} should still open outermost`).toBe(25);
+            for (const rule of spec.parseDOM ?? []) {
+                expect(rule.priority, `${name} parseDOM rule was demoted with it`).toBe(50);
+            }
+        }
+    });
 
     it("an ordinary link should be untouched in both directions", async () => {
         // Guards the inverse failure: a sanitizer that ate everything would

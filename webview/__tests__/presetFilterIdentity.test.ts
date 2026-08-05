@@ -11,11 +11,11 @@
  * which rewrites `[text][ref]` inline and DELETES the `[ref]: url`
  * definitions before the transformer ever sees them.
  *
- * This is the guard `keepTableAlign.test.ts` already had for its own filter
- * (`expect(gfm).toContain(upstreamKeepTableAlign)`), generalized to the seven
- * that had none. It is written for the Milkdown-upgrade PR: a rename, a
- * removal, or a re-export that changes plugin identity fails HERE, naming the
- * plugin, rather than surfacing days later as a fidelity bug.
+ * This is the guard `keepTableAlign.test.ts` already had for its own filter,
+ * generalized to every filter in `serialization.ts` that had none. It is
+ * written for the Milkdown-upgrade PR: a rename, a removal, or a re-export that
+ * changes plugin identity fails HERE, naming the plugin, rather than surfacing
+ * days later as a fidelity bug.
  *
  * `remarkInlineLinkPlugin` is the one filtered by `meta.displayName` rather
  * than by identity, because it is absent from the preset's `.d.ts` — so it is

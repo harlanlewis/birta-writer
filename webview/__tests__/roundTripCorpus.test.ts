@@ -465,7 +465,7 @@ describe("pinned edit-tier repro — splitting inside an inline mark", () => {
     // not escaped), so serialize→parse→serialize stability, the invariant this
     // repo otherwise prefers, was green on it. The delimiters have to be
     // asserted directly.
-    it("a split inside a highlight should leave the space outside the delimiters [MAR-237]", async () => {
+    it("a split inside a highlight should leave the space outside the delimiters [MAR-237-found]", async () => {
         expect(await splitBetweenWords("Unicode ==one two== survives.\n"))
             .toBe("Unicode ==one== \n\n==two== survives.\n");
     });

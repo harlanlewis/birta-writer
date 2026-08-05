@@ -36,8 +36,23 @@
  */
 import { linkSchema } from "@milkdown/preset-commonmark";
 
-export const linkBoundaryPlugins = linkSchema.extendSchema((prev) => (ctx) => ({
-    ...prev(ctx),
-    inclusive: false,
-    priority: 25,
-}));
+export const linkBoundaryPlugins = linkSchema.extendSchema((prev) => (ctx) => {
+    const base = prev(ctx);
+    return {
+        ...base,
+        inclusive: false,
+        priority: 25,
+        // `priority` is OVERLOADED, and the second meaning is easy to ship by
+        // accident: `@milkdown/core`'s `extendPriority` stamps the schema's
+        // priority onto every parseDOM rule as well
+        // (`internal-plugin/schema.ts`, `{ priority: x.priority, ...rule }`),
+        // where it means ProseMirror's rule-matching priority. Left alone, the
+        // 25 above would also demote `a[href]` below every default-50 rule and
+        // quietly change what HTML paste produces — a side effect with nothing
+        // to do with mark nesting.
+        //
+        // A rule's own priority wins that spread, so pin the rules back to
+        // ProseMirror's default and let the 25 mean only what it is here for.
+        parseDOM: base.parseDOM?.map((rule) => ({ priority: 50, ...rule })),
+    };
+});

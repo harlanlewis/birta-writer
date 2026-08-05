@@ -102,6 +102,10 @@ export const linkRefSchema = $markSchema("link_ref", () => ({
     parseDOM: [
         {
             tag: 'a[data-type="link-ref"]',
+            // Pinned to ProseMirror's default: `priority: 25` above is for
+            // serializer mark nesting, but @milkdown/core also stamps a
+            // schema's priority onto its parseDOM rules. See linkBoundary.ts.
+            priority: 50,
             getAttrs: (dom) => {
                 const el = dom as HTMLElement;
                 return {
