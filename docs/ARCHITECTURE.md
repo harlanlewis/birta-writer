@@ -98,7 +98,7 @@ flowchart TB
     MD --> PM
 ```
 
-The same injection shape appears at both seams. The editor consumes a `FormatModule` (`{presets, configureSerialization, nodeViews, formatProfile}`), and markdown is format #1. The minimal-diff engine consumes a `FormatProfile` (`{keyLines, glueChangesConstruct, blankSplitsBlock}`), which is contextual line identity plus the two blank-line-is-structure predicates.
+The same injection shape appears at both seams. The editor consumes a `FormatModule` (`{presets, configureSerialization, nodeViews, formatProfile}`), and markdown is format #1. The minimal-diff engine consumes a `FormatProfile` (`{keyLines, glueChangesConstruct, blankSplitsBlock, reconcileReplacement}`, plus the optional `baselineFacts`, `mergeFacts` and `reconcileInsertion`), which is contextual line identity, the two blank-line-is-structure predicates, and sub-line reconciliation of a line the merge is replacing.
 
 The serializer inside markdown's presets is a vendored, patched copy of Milkdown's `SerializerState` (`plugins/fidelitySerializer.ts`). Its four divergences from upstream are enumerated in its header, and `fidelitySerializerDrift.test.ts` pins the upstream sources' hashes so a Milkdown bump cannot silently diverge from the patched copy.
 
