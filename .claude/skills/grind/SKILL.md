@@ -30,7 +30,7 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 
 ## 1. Plan the lanes
 
-- State the pick and why in one line. Passing over a higher-spine item is a claim that it's blocked — put it in the reply and the ticket.
+- State the pick and why in one line. Passing over a higher-spine item is a claim that it's blocked — put it in the reply and the ticket. Holding the machine for one perf ticket blocks every other measurement-bound one, however highly it ranks.
 - **Lane 1 is the spine item, and it's yours.** Fill remaining lanes behind it in queue order. Three lanes is the ceiling; prefer two clean seams to three ambiguous ones.
 - **Plan by file ownership, measured.** Grep the symbols each ticket names. Tickets sharing a hot file (`webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins) share a lane and run in sequence — that's the answer to a collision, not collapsing to one lane.
 - **`CHANGELOG.md` is never a lane's** — the orchestrator writes it once at §6. It is the observed conflict, because the handoff rules tell every lane to touch it.
@@ -41,7 +41,7 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 
 Cut the integration branch first: `git checkout main && git pull && git checkout -b lewish/<slug>`.
 
-If another live session owns the primary checkout, don't check anything out — `git branch lewish/<slug> main`, take a dedicated worktree for it, merge by hand. `merge-lane.sh` refuses linked worktrees and would `git checkout` the other session's branch out from under it.
+If another live session owns the primary checkout, don't check anything out — `git branch lewish/<slug> main`, take a dedicated worktree, merge by hand. `merge-lane.sh` would check that session's branch out from under it.
 
 Send the filled-in brief from [references/lane-brief.md](references/lane-brief.md). Per lane, in order:
 
@@ -54,7 +54,7 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
 
 Your shell's cwd is the worktree base, so `cd`-ing into a worktree nests the next agent's inside it, where `cleanup-worktrees.sh` never finds it. `cd` back to the primary before every dispatch.
 
-**Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). Lanes then report *what they want measured and what would falsify it* — a better handoff than a number they could not trust. Their headlines stay unverified until you re-run them: one lane's −27.2% was −23.8% idle.
+**Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). Lanes then report *what they want measured and what would falsify it* — a better handoff than a number they could not trust, and naming the span makes a win landing in a different one a finding rather than a footnote. Their headlines stay unverified until you re-run them: one lane's −27.2% was −23.8% idle.
 
 ### On completion
 
@@ -71,7 +71,7 @@ Your shell's cwd is the worktree base, so `cd`-ing into a worktree nests the nex
 
 **On failure:** ticket back to `Todo` with what broke; don't re-dispatch this session. Already failed a previous session → it's a grooming problem, not a lane.
 
-**Transport death is not work failure.** A dropped connection kills the agent with its reasoning intact; `SendMessage` resumes from transcript, and the worktree usually holds more than the notification suggests — read `git log` / `git status --short` first, and lead the resume with "commit what you have, first" (uncommitted work is the only thing these deaths cost). A silent lane is not a working lane: check mtimes and last commit rather than blocking on a ping.
+**Transport death is not work failure.** Read the worktree's `git log` / `git status --short` before assuming nothing landed, resume with `SendMessage`, and lead with "commit what you have, first" — uncommitted work is the only thing these deaths cost. A silent lane is not a working lane: check mtimes and last commit rather than blocking on a ping.
 
 Feed each handoff forward into briefs not yet sent. A handoff that invalidates a queued ticket's premise re-plans that lane now.
 
@@ -82,13 +82,14 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 **Treat a ticket's account of itself as hypothesis, not brief.** Its *symptom* is usually right; its *cause*, *plan*, *scope* and *severity* fail routinely — scope toward too small, which ships a fix leaving the worse half of the bug in place under a green suite, and severity in both directions. **Re-derive severity from your own repro before letting it set the queue.** Before implementing, name the observation that would falsify the stated cause and make it. Ask what other gesture reaches the same broken state. Enumerate the space rather than sampling it.
 
 - **Bytes outrank accounts.** When a ticket names both a mechanism and an output, check the output first — one print can convict the mechanism before you understand it.
-- **On a perf ticket, profile before you ablate.** Ablation confirms a suspect; it cannot generate one. Three phase-1 tickets each named a plausible mechanism and each was wrong — a CDP sampling profile (self-time by frame, then by *caller*) found two in twenty minutes, after prior sessions had ablated for weeks. A ticket admitting "the ablations only chipped at it" is telling you nobody has profiled.
+- **On a perf ticket, profile before you ablate.** Ablation confirms a suspect; it cannot generate one. Four phase-1 tickets running have named a mechanism nobody profiled, and all four were wrong. Take a CDP sampling profile and fold native self-time into the nearest *JS caller* — unfolded, the top frames are `querySelectorAll` and the engine's internals, which name no code you own.
+- **An ablation bounds one caller and is blind to a second**, so a residue the ticket wrote off as unattributed is the next finding, and the first suspect is the same hot function reached from elsewhere. MAR-316 ablated one scroll listener, attributed 660 ms, shelved the other 1170 ms: the table of contents, calling the identical function once per heading above the viewport. Grep the hot function's callers before believing any attribution.
 - **Verify semantics, not shape.** A grep that matches feels like confirmation and isn't. Ask what the claim predicts that you can run.
 - **Brief subagents to measure, and give them standing to contradict you** — a brief that hands down conclusions buys obedience, and obedience propagates your errors with a green suite. Push broad or noisy reads to them and relay conclusions, weighting by whether they *ran* something.
 
 ## 3. Work loop (per ticket, and what each lane runs)
 
-1. **Reproduce.** Throwaway probes are fine; delete them. A probe is code you just wrote — assert it hit what you aimed at. A result surprising in a *boring* way (a count of 0, an element you never named) means the probe missed.
+1. **Reproduce.** Throwaway probes are fine; delete them. A probe is code you just wrote — assert it hit what you aimed at. A result surprising in a *boring* way (a count of 0, an element you never named) means the probe missed; one that reads far WORSE than the ticket it reproduces means the probe caught more than the gesture. Reproducing the ticket's own number is the check that you are both measuring the same thing.
 2. **Implement** the smallest correct fix in the surrounding idiom. Grep for the mechanism that already exists before building one — if you're citing a function to justify your design, call it instead. Prefer observing the result to predicting it.
 3. **Critique the design before hardening it.** Is there less of it? Churn is the tell: a predicate written, reverted, rewritten means the design isn't settled. Act on findings here — carried to step 5 they cost a test suite.
 4. **Test.** Pin a regression test; promote a fidelity `it.fails`. **Prove each new test can fail by reverting the exact line it pins.** Assert what the user would lose, not the state your fix sets — and watch for assertions satisfied by something else in the fixture. Then `pnpm test`, `pnpm typecheck`, `pnpm build`; `/verify` for runtime behavior beyond jsdom.
@@ -104,7 +105,6 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 
 ## 4. Judgment
 
-- Weigh correctness, fidelity, performance, security, maintainability, test quality, UX. Name the trade-off.
 - **Scope honestly.** Ship the clean part, re-scope the rest into the ticket. Never force a fragile fix into fidelity-critical code for diminishing returns.
 - **Every user-facing claim is one you checked.** The CHANGELOG describes the product to someone who can't read the diff, so an unverified sentence there is a defect. Reachability claims are the usual offender — drive the gesture, don't infer it.
 - **A recorded number is a description.** Re-measure before quoting a baseline or snapshot.
@@ -113,7 +113,6 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 
 - **Never file a repro you haven't run.** Paste observed output, not expected. If it can't be reproduced in-session, say so in the ticket.
 - Watch the filing ratio — more created than closed is a deficit worth justifying.
-- Close both directions: `Closes MAR-NN` in the commit, merge SHA in the ticket.
 
 ## 6. Reconcile and land
 
@@ -129,7 +128,7 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 | `merged` | 0 | Refill the lane. |
 | `conflict` | 1 | Tree untouched, `conflict_files` listed. Resolve by hand or rebrief the lane. Either way it's a lane-plan finding: rebrief every queued lane sharing those files. |
 | `merge_failed` | 1 | Refused *without* conflicts — usually an untracked file, named in `reason`. Clear it, re-run. |
-| `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. **First check `uptime`:** a gate run while lanes still hold the machine fails with every test passing, `Errors: N` worker timeouts, and 2–3× normal duration. Re-run idle before blaming a lane. **A contention red reproduces**, including across branches — two e2e checks failed identically on the branch *and* on `main`, which reads as proof of a pre-existing bug, and both passed 57/57 once the machine was idle. Bisecting under load proves nothing; re-run idle first, then bisect. |
+| `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. **First check `uptime`:** a gate run while lanes still hold the machine fails with every test passing, `Errors: N` worker timeouts, and 2–3× normal duration. Re-run idle before blaming a lane. **A contention red reproduces, including across branches**, so reproducibility is not evidence the failure is real. Re-run idle first, then bisect. |
 | `dirty` / `refused` | 3 | Your own uncommitted work, or a bad HEAD/branch. `reason` says which. |
 | `empty` | 4 | The lane committed nothing, whatever it reported. |
 
@@ -137,11 +136,11 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 
 ### Critique the seam
 
-- **`/constructive-critique` over `git diff main...<integration-branch>`** — the whole session as one change. Only here are the seams visible: two lanes solving the same thing, an abstraction duplicated, a test one lane deleted and another relied on, a premise a later lane invalidated, **a lane's fix undone downstream by a layer it did not own** — each lane stopped at its own scope, so nobody drove the whole path. Ask what the user's bytes pass through *after* each fix, and drive that. Every lane's diff is new to you. `/simplify` belongs in this pass; re-run gates after it.
+- **`/constructive-critique` over `git diff main...<integration-branch>`** — the whole session as one change. Only here are the seams visible: two lanes solving the same thing, an abstraction duplicated, a test one lane deleted and another relied on, a premise a later lane invalidated, **a lane's fix undone downstream by a layer it did not own** — each lane stopped at its own scope, so nobody drove the whole path. Ask what the user's bytes pass through *after* each fix, and drive that. `/simplify` belongs in this pass; re-run gates after it.
 - **The critique is a description too — reproduce a finding before fixing it.** One reasoned from control flow named four shapes, none of which reproduced; the mechanism was real and reached by a fifth it never guessed.
 - §3.6's buckets bind here — "a different lane wrote it" is not a reason to file instead of fix.
 - **Write the CHANGELOG once, now**, over the reconciled diff, plus `docs/BENEFITS.md` if a capability's story changed. Verify each claim yourself.
-- **One PR** with the tickets and the verification done. Wait for CI green, squash, delete branch, pull `main`.
+- **One PR** with the tickets and the verification done. Wait for CI, squash, delete branch, pull `main`. **A red on an ADVISORY gate is a measurement — reproduce it idle before accepting or ignoring it.** Accepting a regression that isn't there is as false a record as ignoring one that is, and an unstable gate diagnosed with a reproduction is worth more than the lane that tripped it.
 - Move shipped tickets to `Done` with the merge SHA; re-scope partials. A failed lane doesn't hold the session.
 
 ## 7. Hand off and clean up
@@ -154,7 +153,7 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
   git fetch --prune
   ```
   A squash merge rewrites SHAs, so every lane branch reports `branches_kept: unmerged` even when it shipped. Verify the CONTENT reached `main` — grep a distinctive line from each lane — before deleting, and ask before deleting anything that would lose work.
-- **Improve this skill — last step of every lane session.** Fold back only what would change a future session's behavior, and **amend or replace rather than append**: this file loads on every invocation, so a bullet costs every future session while its own value falls. It reached 9,476 words before being cut to ~2,500, every one of those sessions having read a "keep it lean" line first. **Adding net words owes a deletion — `wc -w` before and after, both figures in the commit.** Prefer the rule to its story: keep an incident only where the rule reads as arbitrary without it.
+- **Improve this skill — last step of every lane session.** Fold back only what would change a future session's behavior, and **amend or replace rather than append**: this file loads on every invocation, so a bullet costs every future session while its own value falls. **Adding net words owes a deletion — `wc -w` before and after, both figures in the commit.** Prefer the rule to its story: keep an incident only where the rule reads as arbitrary without it.
 
 ## Stance
 
