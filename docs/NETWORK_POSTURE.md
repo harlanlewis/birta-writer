@@ -70,7 +70,7 @@ These come from shipped work (MAR-179, MAR-199) and from MAR-198's directed desi
 
 ### Consent
 
-1. Layered, each layer off by default: master network switch, then capability toggle (embeds, unfurl), then per-provider, then per-service connect. A master gates its children and never overwrites them, so re-enabling restores prior child choices. That is the proofreading-switch contract.
+1. Layered, and the outermost layer ships off: master network switch, then capability toggle (embeds, unfurl), then per-provider, then per-service connect. Only the master ships off. `birta.pasteUnfurl.enabled` and `birta.embeds.enabled` both ship on, beneath it, so turning the master on makes both live at once and each is then turned off individually. The default-quiet guarantee rests on the master alone. A master gates its children and never overwrites them, so re-enabling restores prior child choices. That is the proofreading-switch contract.
 2. Consent belongs to the user, not the repo. Every consent key is `"scope": "application"`, so a workspace `settings.json` cannot flip it. Shipped and enforced (MAR-199), and pinned by `shared/__tests__/settingsScope.test.ts`.
 3. Disabled costs nothing: no scan, no lazy chunk loaded, no resolver call. A feature the user turned off is not merely inert, it is absent.
 
