@@ -144,6 +144,19 @@ function markBoundsAt(
     return { from, to };
 }
 
+/** One attr off the named mark covering `pos`, read from the doc model. */
+function markHrefAt(
+    view: EditorView,
+    pos: number,
+    markName: string,
+    attr: string,
+): string | null {
+    const node = view.state.doc.nodeAt(pos);
+    const mark = node?.marks.find((m) => m.type.name === markName);
+    const value = mark?.attrs[attr];
+    return typeof value === "string" ? value : null;
+}
+
 /**
  * Resolve a reference link's identifier to its `[label]: url` definition's URL,
  * scanning the document's `link_definition` nodes. Markdown identifiers are
@@ -209,7 +222,7 @@ function wikiHrefOf(anchor: Element): string {
     return heading ? `${target}#${heading}` : target;
 }
 
-function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
+export function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
     const text = anchor.textContent ?? "";
 
     // Wikilink atom: openable and editable through the format switch. The
@@ -240,9 +253,16 @@ function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
         return { href: url, text, from: bounds.from, to: bounds.to, readOnly: true };
     }
 
-    const href = anchor.getAttribute("href") ?? "";
     const bounds = markBoundsAt(view, anchor, "link");
     if (!bounds) return null;
+    // The address comes from the DOCUMENT, never from the anchor's `href`.
+    // As of Milkdown 7.22.0 the link mark's `toDOM` runs unsafe schemes
+    // through `sanitizeLinkHref` (#2410), so a `javascript:` link renders with
+    // `href=""` — correct for the rendering, and wrong to read back: the
+    // popup's URL field would show empty, and applying an edit would write
+    // that emptiness over the address the file actually holds. The mark's
+    // attrs are what the file holds.
+    const href = markHrefAt(view, bounds.from, "link", "href") ?? "";
     return { href, text, from: bounds.from, to: bounds.to };
 }
 
