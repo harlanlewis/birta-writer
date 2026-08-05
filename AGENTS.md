@@ -132,7 +132,7 @@ webview/components/imageView/index.ts         Image NodeView (selection/lightbox
 
 ### Color and theming
 
-CSS must use `--vscode-*` variables so light and dark themes both work. No custom colors, guarded by `noColorLiterals.test.ts`. Accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with no literal fallback, because inside VS Code the variable always exists: pinned and custom themes only override the native set, never remove it. Literal fallbacks for other `--vscode-*` variables are legacy, so don't add new ones; repo-wide removal is tracked in Linear.
+CSS must use `--vscode-*` variables so light and dark themes both work. No custom colors, guarded by `noColorLiterals.test.ts`. Accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with no literal fallback, because inside VS Code the variable always exists: pinned and custom themes only override the native set, never remove it. Never give a `--vscode-*` variable a literal fallback. The last of them were removed in MAR-54, so the only ones left in the tree are fixtures inside `noColorLiterals.test.ts`.
 
 ### Chrome skin
 
@@ -269,7 +269,9 @@ __mocks__/vscode.ts         Central vscode API mock
 | `src/utils/contentTransform.ts` | 90% |
 | `src/utils/lineMap.ts` | 90% |
 | `webview/utils/slug.ts` | 90% |
-| Overall | 70% |
+| Overall | 70%, enforced |
+
+Only the overall figure is a gate. `vitest.config.ts` sets `thresholds: { lines: 70, functions: 70 }` globally and nothing per module, so the six rows above are a convention that no check enforces. Treat them as the bar for a review, not as something CI will catch.
 
 ### Required workflow
 
