@@ -4,7 +4,7 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
-import { gfm, keepTableAlignPlugin as upstreamKeepTableAlignPlugin } from "@milkdown/preset-gfm";
+import { gfm } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
 import { createSerializerPostPassPlugin } from "./plugins/serializerPostPass";
@@ -16,7 +16,6 @@ import { linkBoundaryPlugins } from "./plugins/linkBoundary";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { reparseHazardPlugin } from "./plugins/reparseHazard";
-import { keepTableAlignPlugin } from "./plugins/keepTableAlign";
 import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
@@ -214,21 +213,15 @@ export const pureCommonmark = [
  * was — production `editor.ts` and every test editor factory go through this
  * one bundle so the test harness matches production by construction.
  *
- * One gfm plugin is REPLACED rather than overridden: `keepTableAlignPlugin`
- * has no override seam — a plugin's `appendTransaction` can only be dropped by
- * dropping the plugin — and ours carries its own `PluginKey`, so leaving
- * upstream's in place would not error, it would just run BOTH and keep paying
- * the per-keystroke whole-document walk this replaces (MAR-137 — the charter,
- * the measurement and the two corrections are in `plugins/keepTableAlign.ts`).
- * The filter matches by identity rather than by key name, so an upstream
- * rename surfaces as `keepTableAlign.test.ts` going red rather than as both
- * plugins silently running again.
+ * gfm's own `keepTableAlignPlugin` used to be filtered out here and replaced
+ * by ours, because it walked the WHOLE document on every doc-changing
+ * transaction and appended an empty transaction every time — 16.1 ms of a
+ * 23.7 ms keystroke on the 300 KB fixture, which contains no tables at all
+ * (MAR-137). That fix went upstream and shipped in 7.22.0 (Milkdown #2436),
+ * so the replacement is gone and gfm's own plugin runs again.
  */
 export const gfmFidelity = [
-    gfm.filter((plugin) =>
-        plugin !== upstreamKeepTableAlignPlugin
-        && !strikethroughHtmlReplacedPlugins.has(plugin)),
-    keepTableAlignPlugin,
+    gfm.filter((plugin) => !strikethroughHtmlReplacedPlugins.has(plugin)),
     tableAlignDefaultPlugin,
     listItemSpreadBoolPlugins,
     // Recognise <s>/<strike> on paste; parse-only, serialization unchanged.

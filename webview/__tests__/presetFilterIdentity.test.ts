@@ -92,9 +92,11 @@ describe("preset filter identity", () => {
     });
 
     it("keepTableAlignPlugin should still be a member of the gfm preset", () => {
-        // The same guard keepTableAlign.test.ts carried before we returned to
-        // upstream's implementation; kept here so the whole filter surface is
-        // checked in one place.
+        // Not filtered any more — 7.22.0's version is ours — but gfmFidelity
+        // still depends on the plugin BEING there, because that is what pays
+        // for `tableAlignDefaultPlugin`'s null default to stay consistent
+        // across a column. If upstream ever drops it, the alignment behavior
+        // in keepTableAlign.test.ts goes with it.
         expect(gfm).toContain(keepTableAlignPlugin);
     });
 
@@ -114,9 +116,7 @@ describe("preset filter identity", () => {
         const kept = pureCommonmark.filter((plugin) => commonmark.includes(plugin));
         expect(kept).toHaveLength(commonmark.length - commonmarkRemoved);
 
-        const gfmRemoved =
-            strikethroughHtmlReplacedPlugins.size +
-            1; // keepTableAlignPlugin, replaced by webview/plugins/keepTableAlign.ts
+        const gfmRemoved = strikethroughHtmlReplacedPlugins.size;
         const gfmKept = gfmFidelity.filter((plugin) => gfm.includes(plugin));
         expect(gfmKept).toHaveLength(gfm.length - gfmRemoved);
     });
