@@ -20,6 +20,7 @@ import {
     nodeViewCtx,
 } from "@milkdown/core";
 import { CellSelection, TableMap } from "../pm";
+import { revealTableAffordances } from "./helpers/revealTableAffordances";
 import type { Node as PMNode } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
@@ -128,6 +129,7 @@ describe("grip click selection", () => {
         document.body.innerHTML = "";
         editor = await makeEditor(TABLE_MD);
         v = view(editor);
+        revealTableAffordances(document.querySelector<HTMLElement>(".mw-table")!);
     });
     afterEach(async () => {
         await editor.destroy();
@@ -171,6 +173,7 @@ describe("insert + buttons", () => {
         document.body.innerHTML = "";
         editor = await makeEditor(TABLE_MD);
         v = view(editor);
+        revealTableAffordances(document.querySelector<HTMLElement>(".mw-table")!);
     });
     afterEach(async () => {
         await editor.destroy();
@@ -256,6 +259,7 @@ describe("grip drag reorder", () => {
         document.body.innerHTML = "";
         editor = await makeEditor(MD);
         v = view(editor);
+        revealTableAffordances(document.querySelector<HTMLElement>(".mw-table")!);
     });
     afterEach(async () => {
         await editor.destroy();
