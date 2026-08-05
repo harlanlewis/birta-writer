@@ -536,7 +536,15 @@ export const headingFoldPlugin = $prose(() =>
             // handles so the gutter never flickers alongside the caret; the
             // next mouse motion brings them back.
             const handleKeyDown = () => {
-                document.body.classList.add("handles-quiet");
+                // Check before writing: classList.add re-writes the class
+                // attribute even when the class is already present, and every
+                // body-class MutationObserver wakes on that write — one of them
+                // measures the topbar, which forces a layout. This is the
+                // hottest handler in the editor (every keydown), so the write
+                // has to be conditional, not just idempotent (MAR-266).
+                if (!document.body.classList.contains("handles-quiet")) {
+                    document.body.classList.add("handles-quiet");
+                }
             };
 
             const handleMouseMove = (event: MouseEvent) => {
