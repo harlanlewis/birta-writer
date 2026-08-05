@@ -259,10 +259,10 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     //   - It runs AFTER the typed burst, never before. Arrow keys walk the
     //     caret into whatever the fixture holds, and `large`/`xlarge` repeat a
     //     section containing a table and a code block: starting the typed burst
-    //     from a caret parked in a code block measures several times prose's
-    //     per-key cost, because a caret inside a code block re-highlights the
-    //     whole document on every keystroke. Ordering these the other way
-    //     silently changes what the headline typing median means.
+    //     from a caret parked in a code block measures ~7x prose's per-key
+    //     cost, because a caret inside a code block re-highlights the whole
+    //     document on every keystroke. Ordering these the other way silently
+    //     changes what the headline typing median means.
     await page.keyboard.press("ArrowDown");
     await page.waitForTimeout(120);
     await page.evaluate(() => performance.clearMeasures("mdw:tx-select"));
