@@ -22,7 +22,10 @@
  *    rule inside the version above.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
     stamp,
@@ -194,5 +197,52 @@ describe("the repository's own CHANGELOG.md", () => {
         );
         const kept = new Set(out.split("\n"));
         expect(changelog.split("\n").filter((l) => l.trim() && !kept.has(l))).toEqual([]);
+    });
+});
+
+/**
+ * The shipped changelog must not open on an empty [Unreleased] heading.
+ *
+ * The repository needs that heading; the Marketplace Changelog tab does not,
+ * and after a stamp the reader saw it above the version they installed. The
+ * release job strips it from the packaged copy only (scripts/strip-empty-
+ * unreleased.mjs), then restores the repository copy before committing back.
+ */
+describe("strip-empty-unreleased", () => {
+    const script = resolve(__dirname, "../../scripts/strip-empty-unreleased.mjs");
+
+    function runOn(content: string): { code: number; text: string } {
+        const dir = mkdtempSync(join(tmpdir(), "strip-unreleased-"));
+        const file = join(dir, "CHANGELOG.md");
+        writeFileSync(file, content, "utf8");
+        const r = spawnSync(process.execPath, [script, file], { encoding: "utf8" });
+        const text = readFileSync(file, "utf8");
+        rmSync(dir, { recursive: true, force: true });
+        return { code: r.status ?? 1, text };
+    }
+
+    const STAMPED =
+        "# Changelog\n\n---\n\n## [Unreleased]\n\n---\n\n## [2026.805.0] - 2026-08-05\n\n- A shipped thing.\n";
+
+    it("a stamped changelog should lose the empty section and keep the version", () => {
+        const { code, text } = runOn(STAMPED);
+        expect(code).toBe(0);
+        expect(text).not.toContain("[Unreleased]");
+        expect(text).toContain("## [2026.805.0] - 2026-08-05");
+        expect(text).toContain("- A shipped thing.");
+    });
+
+    it("an Unreleased section holding entries should be refused, not emptied", () => {
+        const withEntries = STAMPED.replace("## [Unreleased]\n", "## [Unreleased]\n\n- Not yet shipped.\n");
+        const { code, text } = runOn(withEntries);
+        expect(code).not.toBe(0);
+        expect(text).toContain("- Not yet shipped.");
+    });
+
+    it("a changelog with no Unreleased section should be left alone", () => {
+        const none = "# Changelog\n\n---\n\n## [1.0.0] - 2026-01-01\n\n- Old.\n";
+        const { code, text } = runOn(none);
+        expect(code).toBe(0);
+        expect(text).toBe(none);
     });
 });

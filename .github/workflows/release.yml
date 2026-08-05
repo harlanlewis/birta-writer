@@ -198,9 +198,19 @@ jobs:
           ANTHROPIC_MODEL: claude-haiku-4-5
         run: node scripts/gen-release-notes.mjs
 
+      # The stamp above leaves an EMPTY `## [Unreleased]` behind, because the
+      # repository needs that heading and the next stamp looks for it by name.
+      # A reader of the Marketplace Changelog tab does not: it put an empty
+      # "Unreleased" above the version they installed. So the VSIX is built from
+      # a copy without it, and the repository copy is restored immediately, well
+      # before the commit-back step at the end of this job.
       - name: Package extension
         if: steps.plan.outputs.release == 'true'
-        run: mkdir -p releases && pnpm run package
+        run: |
+          cp CHANGELOG.md "$RUNNER_TEMP/CHANGELOG.repo.md"
+          node scripts/strip-empty-unreleased.mjs
+          mkdir -p releases && pnpm run package
+          cp "$RUNNER_TEMP/CHANGELOG.repo.md" CHANGELOG.md
 
       # Supply chain (MAR-130). A source audit can only tell you what the source
       # does; it cannot tell you the published binary was built from it. This
