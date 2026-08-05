@@ -24,8 +24,6 @@
 
 ### Fixed
 
-- The Marketplace Changelog tab shows the version you installed. It previously opened on a section titled Unreleased, above a history that stopped at 0.2.3 from 2026-07-04, whichever build you were running.
-
 - Editing inside a `~~~` code fence keeps the rest of the document. The file could previously be saved with mismatched fence characters, and everything below the fence reopened as code. Fences written with backticks were never affected.
 
 - A rule or paragraph inside an emptied list item stays in the list. It previously reopened outside the list. The content was never lost from disk. This affects plain bullets and task items alike.
@@ -263,9 +261,9 @@ The first public release, and Birta Writer's first version on the VS Code Market
 #### Coding-agent integration
 
 - Share your file and selection with AI coding agents. An agent (Copilot, Cursor, the Claude and Codex sidebars, and others) normally cannot see which file you have open or what you have selected while you are in the WYSIWYG editor, because VS Code hides a custom editor from its active-editor API. Three ways to close that gap:
-  - A precise clipboard reference, one click away. Select text and the floating palette's AI button puts a `path.md#L12-L20` reference on your clipboard (hide it with `birta.floatingToolbar.items.agentReference`). The same Copy Reference for AI Agent and Copy Selection + Reference for AI Agent commands sit at the top of the right-click menu and in the palette; the second quotes exactly what you selected below the reference as a fenced block of real source markdown, trimmed to your selection's exact start and end even mid-line.
-  - A Language Model Tool (`#birtaSelection`) lets Copilot agent mode, and any tool-using agent, pull your current file, caret, and selection on demand. Requires VS Code 1.95+.
-  - A public extension API (`getActiveEditorContext()`, returned from `activate()`) lets any cooperating extension read the same live file and selection.
+    - A precise clipboard reference, one click away. Select text and the floating palette's AI button puts a `path.md#L12-L20` reference on your clipboard (hide it with `birta.floatingToolbar.items.agentReference`). The same Copy Reference for AI Agent and Copy Selection + Reference for AI Agent commands sit at the top of the right-click menu and in the palette; the second quotes exactly what you selected below the reference as a fenced block of real source markdown, trimmed to your selection's exact start and end even mid-line.
+    - A Language Model Tool (`#birtaSelection`) lets Copilot agent mode, and any tool-using agent, pull your current file, caret, and selection on demand. Requires VS Code 1.95+.
+    - A public extension API (`getActiveEditorContext()`, returned from `activate()`) lets any cooperating extension read the same live file and selection.
 
 #### Platform
 
