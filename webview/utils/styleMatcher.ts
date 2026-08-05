@@ -121,9 +121,8 @@ export function parseEntry(entry: string): ParsedEntry {
  * per RegExp object. So the floor is paid once per webview, and rebuilding an
  * identical matcher on a config toggle (`styleMatcherFor`) is near-free.
  *
- * The cliff is engine-version-dependent, and unchunked it is catastrophic on
- * older V8 — two orders of magnitude over the chunked cost — while a current
- * Electron pays far less. `engines.vscode` still admits 1.95, whose Chromium is
+ * The cliff is engine-version-dependent, and a current Electron pays far less
+ * than the worst case. `engines.vscode` still admits 1.95, whose Chromium is
  * years older, so chunking is insurance against whichever V8 the host ships,
  * and it wins on every engine measured.
  *
@@ -194,7 +193,8 @@ export const MAX_ALTERNATIVES_PER_REGEX = 256;
  *
  * **Speed.** Sorting lexicographically also groups alternatives that share a
  * prefix, which irregexp exploits, so the scan itself is measurably faster than
- * an arbitrary order and the one-time compile floor is unchanged.
+ * an arbitrary order, with no measurable change to the one-time compile floor
+ * either way.
  *
  * **What that is NOT worth.** The scan is a smaller share of the proofread pass
  * than it looks — the rest is lint dispatch and decoration building, which

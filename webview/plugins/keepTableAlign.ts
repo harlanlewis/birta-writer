@@ -21,9 +21,9 @@
  * text node, on every doc-changing transaction, and it allocates `tr` on the
  * first node visited rather than when it has an edit to make. So it always
  * returns a transaction, which makes ProseMirror run a second `applyInner`
- * (every plugin's state field, again) for every keystroke. That is the majority
- * of per-keystroke dispatch on a large document, and it is paid even by a
- * document containing **no tables at all**.
+ * (every plugin's state field, again) for every keystroke. So the bill is a
+ * whole-document walk plus a second pass over every plugin's state, per
+ * keystroke — and a document containing **no tables at all** pays all of it.
  *
  * The two corrections here:
  *

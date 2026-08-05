@@ -22,10 +22,9 @@
  * because the walks sit above the `transaction.docChanged` test they ran on
  * selection-only transactions too — every arrow key, every click.
  *
- * On a large document that dominated selection-only `state.apply` — a cost the
- * typing harness cannot see at all, because `instrumentTransactions` only
- * stamps doc-changing transactions — and it was a sizeable share of typing
- * dispatch besides.
+ * The selection-only half of that is a cost the typing harness cannot see at
+ * all, because `instrumentTransactions` stamps `mdw:tx-select` separately and
+ * the gate reads only the doc-changing median (MAR-137).
  *
  * Two corrections, in increasing order of how much thought they need:
  *
