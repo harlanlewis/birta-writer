@@ -52,6 +52,22 @@ describe("bundle-baseline.json", () => {
         ).toEqual([]);
     });
 
+    it("should carry the note the writer would rewrite it with", () => {
+        // `--set-budget` regenerates the whole file from `BUDGET_NOTE` in
+        // perf-bundle.mjs, so a note corrected by hand here survives only until
+        // the next budget change silently overwrites it. That already happened:
+        // the constant kept promising "the remaining fields are the last
+        // measured snapshot" for a snapshot this very suite had deleted. Nothing
+        // caught it, because the two other cases only look at the KEYS.
+        const { note } = JSON.parse(readFileSync(BASELINE, "utf8"));
+        const writer = readFileSync(join(__dirname, "..", "perf-bundle.mjs"), "utf8");
+        expect(
+            writer.includes(JSON.stringify(note).slice(1, -1)),
+            "bundle-baseline.json's note does not match BUDGET_NOTE in e2e/perf-bundle.mjs — the " +
+                "next `--set-budget` would overwrite it. Change the constant, not the file.",
+        ).toBe(true);
+    });
+
     it("the budget should be a plausible byte ceiling, not KB and not a float", () => {
         // A budget written in KB (e.g. 1216) would pass every --check forever.
         const { eagerBudget } = JSON.parse(readFileSync(BASELINE, "utf8"));

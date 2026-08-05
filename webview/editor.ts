@@ -5,7 +5,7 @@ import {
     rootCtx,
     serializerCtx,
 } from "@milkdown/core";
-import { prism, prismConfig, prismPlugin } from "@milkdown/plugin-prism";
+import { prism, prismConfig } from "@milkdown/plugin-prism";
 import { getState, getView, type EditorView } from "./pm";
 import type { Node as ProseNode } from "./pm";
 import { getMarkdown } from "@milkdown/utils";
@@ -36,7 +36,6 @@ import {
     copyMarkdownPlugin,
     docChangePlugin,
     setDocChangeListener,
-    prismHighlightPlugin,
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
     foldRevealKeymapPlugin,
@@ -573,13 +572,14 @@ export async function createEditor(
         // 200ms debounce is what MAR-145 removed from the save path, and it has
         // no other consumer.
         .use(docChangePlugin)
-        // prismConfig (the ctx slice) is kept; prismPlugin is REPLACED — it ran
-        // two whole-document walks on every transaction, selection-only ones
-        // included. See plugins/prismHighlight.ts (MAR-137). Filtered by
-        // identity so an upstream shape change fails prismHighlight.test.ts
-        // rather than silently running both.
-        .use(prism.filter((plugin) => plugin !== prismPlugin))
-        .use(prismHighlightPlugin)
+        // `prismPlugin` used to be filtered out here and replaced by ours: it
+        // ran two whole-document `findChildren` walks on EVERY transaction,
+        // selection-only ones included, which was 71% of a selection-only
+        // `state.apply` on the 300 KB fixture (MAR-137). That fix went
+        // upstream and shipped in 7.22.0 (Milkdown #2436), together with a
+        // correctness fix ours never had — a language change on any but the
+        // FIRST code block now re-highlights (#2440).
+        .use(prism)
         .use(historyPlugin)
         .use(historyKeymapPlugin)
         .use(listLiftPlugin)

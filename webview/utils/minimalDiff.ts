@@ -241,10 +241,10 @@ function normalizeSepRow(line: string): string {
 }
 
 // Normalize adjacent strong runs: `**a** **b**` → `**a b**`. Milkdown's
-// stock serializer split a strong node into two `**...**` runs when it
-// contained a link child; the fidelity serializer
-// (plugins/fidelitySerializer.ts) no longer does, but files saved by older
-// builds still contain the split form, which is semantically identical.
+// serializer used to split a strong node into two `**...**` runs when it
+// contained a link child; it no longer does (7.22.0 keeps a mark open across
+// adjacent nodes), but files saved by older builds still contain the split
+// form, which is semantically identical.
 function normalizeSplitStrong(line: string): string {
     let prev: string;
     do {
@@ -354,7 +354,7 @@ function normalizeRefLabel(label: string): string {
  *     conservative — an escape is kept, never wrongly dropped.)
  *
  * Applied at the single point where the whole serialized string exists
- * (fidelitySerializer's returned closure), which also covers table-cell
+ * (the serializer post-pass, plugins/serializerPostPass.ts), which also covers table-cell
  * text that per-line compare normalizers never see.
  */
 export function unescapeOrgCookies(markdown: string): string {
@@ -469,7 +469,7 @@ function splitCodeSpans(line: string): Array<{ text: string; code: boolean }> {
  *
  * Fence-aware and code-span-aware for the same reason `unescapeOrgCookies` is:
  * verbatim user bytes are never rewritten. Applied at the single point where
- * the whole serialized string exists (fidelitySerializer's returned closure);
+ * the whole serialized string exists (the serializer post-pass);
  * see webview/serialization.ts, which composes the two passes.
  */
 export function unescapeAutolinkBackslashes(markdown: string): string {

@@ -4,10 +4,10 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
-import { gfm, keepTableAlignPlugin as upstreamKeepTableAlignPlugin } from "@milkdown/preset-gfm";
+import { gfm } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
-import { createFidelitySerializerPlugin } from "./plugins/fidelitySerializer";
+import { createSerializerPostPassPlugin } from "./plugins/serializerPostPass";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { imageStringAttrPlugins, imageStringAttrReplacedPlugins } from "./plugins/image";
@@ -16,7 +16,6 @@ import { linkBoundaryPlugins } from "./plugins/linkBoundary";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { reparseHazardPlugin } from "./plugins/reparseHazard";
-import { keepTableAlignPlugin } from "./plugins/keepTableAlign";
 import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
@@ -44,16 +43,15 @@ const postSerialize = (serialized: string): string =>
     unescapeAutolinkBackslashes(unescapeOrgCookies(serialized));
 
 /**
- * Markdown's fidelity serializer: the vendored, patched `SerializerState`
- * (plugins/fidelitySerializer.ts — a format-agnostic factory) instantiated
- * with markdown's whole-document post-pass (above). Bound here, inside the
- * preset, so every construction site — production editor.ts and every test
- * factory — serializes with the pass by construction (the MAR-143 argument).
- * This binding is the SINGLE source of truth for the pass: the FormatModule
- * deliberately declares no separate post-pass member (see the charter in
- * webview/format/types.ts).
+ * Markdown's whole-document post-pass (above), wrapped around the stock
+ * serializer by the format-agnostic factory in plugins/serializerPostPass.ts.
+ * Bound here, inside the preset, so every construction site — production
+ * editor.ts and every test factory — serializes with the pass by construction
+ * (the MAR-143 argument). This binding is the SINGLE source of truth for the
+ * pass: the FormatModule deliberately declares no separate post-pass member
+ * (see the charter in webview/format/types.ts).
  */
-const fidelitySerializerPlugin = createFidelitySerializerPlugin(postSerialize);
+const serializerPostPassPlugin = createSerializerPostPassPlugin(postSerialize);
 
 /**
  * The commonmark preset minus two of Milkdown's remark transforms, plus our
@@ -76,12 +74,17 @@ const fidelitySerializerPlugin = createFidelitySerializerPlugin(postSerialize);
  * is absent from the preset's .d.ts, so it is filtered by its withMeta
  * displayName rather than by identity.
  *
- * `fidelitySerializerPlugin` (built above from plugins/fidelitySerializer.ts)
- * swaps the stock `SerializerState` for a vendored, patched copy that keeps a
- * link containing bold/italic/code children serialized as ONE link instead of
- * several adjacent same-URL links, and defers emphasis edge-space trimming
- * until after adjacent mark segments have merged. It carries markdown's
- * whole-document post-pass (org-cookie unescape) as an injected hook.
+ * `serializerPostPassPlugin` (built above from plugins/serializerPostPass.ts)
+ * wraps the stock serializer with markdown's whole-document post-pass — the
+ * org-cookie unescape (MAR-131) and the autolink backslash unescape (MAR-218),
+ * both of which need the WHOLE serialized document rather than one node.
+ *
+ * Until Milkdown 7.22.0 this slot held a whole vendored copy of upstream's
+ * `SerializerState`, patched so a link containing bold/italic/code children
+ * serialized as ONE link rather than several adjacent same-URL ones (MAR-33).
+ * Upstream now keeps marks open across adjacent nodes (#2405), so all that
+ * survives of the patch is `priority: 25` on the two link marks — see
+ * plugins/linkBoundary.ts.
  *
  * `mathPlugin` (plugins/math.ts) adds KaTeX inline/block math: `remark-math`
  * for parsing/serializing `$...$` and `$$...$$`, a visitor that routes block
@@ -188,7 +191,7 @@ export const pureCommonmark = [
     // a link's end boundary stays plain text instead of silently extending
     // the link. See plugins/linkBoundary.ts.
     ...linkBoundaryPlugins,
-    fidelitySerializerPlugin,
+    serializerPostPassPlugin,
     // Registers this editor's serializer/parser for the save-survival move
     // check (MAR-120). Rides the base preset so no construction site —
     // production or test factory — can wire an editor without it (the
@@ -210,21 +213,15 @@ export const pureCommonmark = [
  * was — production `editor.ts` and every test editor factory go through this
  * one bundle so the test harness matches production by construction.
  *
- * One gfm plugin is REPLACED rather than overridden: `keepTableAlignPlugin`
- * has no override seam — a plugin's `appendTransaction` can only be dropped by
- * dropping the plugin — and ours carries its own `PluginKey`, so leaving
- * upstream's in place would not error, it would just run BOTH and keep paying
- * the per-keystroke whole-document walk this replaces (MAR-137 — the charter,
- * the measurement and the two corrections are in `plugins/keepTableAlign.ts`).
- * The filter matches by identity rather than by key name, so an upstream
- * rename surfaces as `keepTableAlign.test.ts` going red rather than as both
- * plugins silently running again.
+ * gfm's own `keepTableAlignPlugin` used to be filtered out here and replaced
+ * by ours, because it walked the WHOLE document on every doc-changing
+ * transaction and appended an empty transaction every time — 16.1 ms of a
+ * 23.7 ms keystroke on the 300 KB fixture, which contains no tables at all
+ * (MAR-137). That fix went upstream and shipped in 7.22.0 (Milkdown #2436),
+ * so the replacement is gone and gfm's own plugin runs again.
  */
 export const gfmFidelity = [
-    gfm.filter((plugin) =>
-        plugin !== upstreamKeepTableAlignPlugin
-        && !strikethroughHtmlReplacedPlugins.has(plugin)),
-    keepTableAlignPlugin,
+    gfm.filter((plugin) => !strikethroughHtmlReplacedPlugins.has(plugin)),
     tableAlignDefaultPlugin,
     listItemSpreadBoolPlugins,
     // Recognise <s>/<strike> on paste; parse-only, serialization unchanged.

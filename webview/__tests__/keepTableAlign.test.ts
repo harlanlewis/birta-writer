@@ -1,18 +1,26 @@
 /**
- * `keepTableAlignPlugin` (webview/plugins/keepTableAlign.ts) — our replacement
- * for preset-gfm's version, which walked the WHOLE document on every
- * doc-changing transaction and appended an empty transaction every time
- * (MAR-137).
+ * preset-gfm's `keepTableAlignPlugin`: a table's body cells mirror their
+ * column's HEADER cell `alignment`, so the serializer writes one consistent
+ * `:---` marker per column.
  *
- * These assert the two things the replacement must not lose (a body cell still
- * inherits its column header's alignment; the fast path never skips a change
- * that needed reconciling) and the two properties the replacement adds (no
- * transaction is appended when nothing needs marking; upstream's copy is
- * actually gone from the composed preset).
+ * These used to test OUR replacement for it, which walked only the changed
+ * range instead of the whole document and allocated its transaction only when
+ * it had an edit to make — 16.1 ms of a 23.7 ms keystroke on the 300 KB
+ * fixture, which contains no tables at all (MAR-137). That fix went upstream
+ * and shipped in Milkdown 7.22.0 (#2436), so the subject here is now the
+ * dependency and the replacement is gone.
+ *
+ * Every assertion below survived the handover unchanged, because none of them
+ * was ever about which copy was running: the two things the range-bounded walk
+ * must not lose (a body cell still inherits its column header's alignment; the
+ * fast path never skips a change that needed reconciling), and the property it
+ * adds (no transaction is appended when nothing needs marking). Keeping them
+ * pointed at upstream is what makes a future bump that regresses any of it go
+ * red here.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm, keepTableAlignPlugin as upstreamKeepTableAlign } from "@milkdown/preset-gfm";
+import { gfm, keepTableAlignPlugin } from "@milkdown/preset-gfm";
 import type { EditorView, Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 
@@ -175,12 +183,18 @@ describe("keepTableAlign", () => {
         }
     });
 
-    it("the composed preset should carry our plugin instead of upstream's, not both", async () => {
-        // MAR-141's carve-out lesson: a filter that silently stops matching
-        // (an upstream rename, a shape change) would leave the O(doc) walk
-        // running again with nothing red. Identity, not name, is the test.
-        expect(gfm).toContain(upstreamKeepTableAlign);
-        expect(gfmFidelity).not.toContain(upstreamKeepTableAlign);
+    it("the composed preset should carry exactly one keep-table-align plugin", async () => {
+        // While we shipped a replacement, this guarded the identity FILTER that
+        // dropped upstream's copy: a filter that silently stopped matching (a
+        // rename, a shape change) would have left both running, paying the
+        // O(doc) walk again with nothing red (MAR-141's carve-out lesson).
+        //
+        // The filter is gone, but the count is still worth pinning from the
+        // other side: `gfmFidelity` must not drop the plugin, and nothing must
+        // reintroduce a second one. Every behavioral assertion above depends on
+        // exactly one being registered.
+        expect(gfm).toContain(keepTableAlignPlugin);
+        expect(gfmFidelity).toContain(keepTableAlignPlugin);
         const editor = await makeEditor(TABLE);
         const keys = view(editor).state.plugins
             .map((p) => String((p as { key?: string }).key ?? ""))

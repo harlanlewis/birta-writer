@@ -50,7 +50,6 @@ export {
     settleImageUpload,
     uploadInsertPos,
 } from "./imageUploadProgress";
-export { prismHighlightPlugin } from "./prismHighlight";
 // NOTE: plugins/embed is deliberately NOT re-exported here. The barrel is in
 // the eager graph, and the embed plugin must stay lazy (dynamic import in
 // editor.ts, gated on the network master switch). Import it directly.

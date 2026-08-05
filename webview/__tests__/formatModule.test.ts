@@ -32,7 +32,7 @@ describe("markdown FormatModule", () => {
         // prose, and only the whole-document post-pass (unescapeOrgCookies,
         // MAR-131) restores it. The pass has no member on the FormatModule —
         // the presets are its single source of truth (bound via
-        // `createFidelitySerializerPlugin` inside `pureCommonmark`,
+        // `createSerializerPostPassPlugin` inside `pureCommonmark`,
         // webview/serialization.ts) — so this behavioral round trip is what
         // pins that the module's presets actually carry it.
         const editor = await makeCorpusEditor("TODO [#A] write the seam", [], markdownFormat);
