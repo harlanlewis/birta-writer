@@ -12,7 +12,7 @@
 
 - Scrolling a long document is smooth. A flick down a 300 KB file with 344 headings previously blocked the editor for about 2.5 seconds spread over 32 stalls. It now costs a single stall of about 0.1 seconds. The editor was asking the document where every heading was, on every frame, twice over: once for the sticky heading and once for the table of contents.
 
-- Documents with many tables open faster. On a 96 KB document with 108 tables the editor now appears in 521 ms instead of 639 ms, because a table's row and column grips are built when you first move the pointer over it rather than for every table at startup. They were never reachable by keyboard, before or after this change.
+- Documents with many tables open faster. On a 95 KB document with 108 tables the editor now appears in 521 ms instead of 639 ms, because a table's row and column grips are built when you first move the pointer over it rather than for every table at startup. They were never reachable by keyboard, before or after this change.
 
 ### Fixed
 
