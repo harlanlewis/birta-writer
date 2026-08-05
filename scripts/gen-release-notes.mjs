@@ -181,20 +181,20 @@ export const PROMPT = (changelog, list) => `You are writing end-user release not
 Rules:
 - Matter-of-fact tone. State the capability and why it matters. No marketing adjectives ("powerful", "seamless", "delightful"), no exclamation marks.
 - Structure exactly these sections, in this order, omitting any that would be empty:
-  ## Breaking changes (only if any — changes that require the user to act; lead each with the action needed)
-  ## Security     (security-relevant changes; bulleted, one line each. Reproduce the changelog's wording and scope — do not raise or lower the severity it states, and keep any sentence saying what was NOT exposed)
-  ## Highlights   (the 1-4 most significant NEW capabilities; each a bold short title on its own line, then 1-2 plain sentences)
-  ## New          (other new features; bulleted, one line each)
-  ## Improved     (existing features that changed or got better, including user-visible performance; bulleted, one line each)
-  ## Fixed        (user-visible bug fixes; bulleted, one line each)
-  ## Deprecated   (still works, but is going away; bulleted, one line each)
-  ## Removed      (gone; bulleted, one line each. A removal the user must act on is a Breaking change instead)
+  ### Breaking changes (only if any — changes that require the user to act; lead each with the action needed)
+  ### Security     (security-relevant changes; bulleted, one line each. Reproduce the changelog's wording and scope — do not raise or lower the severity it states, and keep any sentence saying what was NOT exposed)
+  ### Highlights   (the 1-4 most significant NEW capabilities; each a bold short title on its own line, then 1-2 plain sentences)
+  ### New          (other new features; bulleted, one line each)
+  ### Improved     (existing features that changed or got better, including user-visible performance; bulleted, one line each)
+  ### Fixed        (user-visible bug fixes; bulleted, one line each)
+  ### Deprecated   (still works, but is going away; bulleted, one line each)
+  ### Removed      (gone; bulleted, one line each. A removal the user must act on is a Breaking change instead)
 - Map the CHANGELOG sections onto those: Added → New, Changed → Improved, Fixed → Fixed, Security → Security, Deprecated → Deprecated, Removed → Removed. Every changelog entry lands in exactly one section; none may be dropped for want of somewhere to put it. Highlights is a promotion out of New, not a seventh source section.
 - A first release with no prior public version has only Highlights + New — there is nothing to improve or fix against yet.
 - Only describe what a user can observe. Drop anything invisible to them: refactors, internal performance, tooling, tests, dependency and version bumps. A performance win a user can feel ("faster launch") goes under Improved.
 - Merge duplicates and superseded iterations — describe the final capability once, not its development history.
 - Do NOT invent features. Only describe what the source material supports.
-- Do not include a top-level version heading; that is added separately.
+- Use ### for those section headings, not ##: a top-level version heading is added separately and they sit underneath it.
 
 Source material follows.
 

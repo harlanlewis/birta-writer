@@ -175,13 +175,17 @@ describe("the prompt", () => {
         // applies and prose the model reads — so it is checked against itself.
         // Drifting them apart is how `Security` came to have no home at all.
         //
-        // Anchored to a line, not `toContain`: the changelog is pasted into this
-        // same string as source material, so a bare "## Security" is satisfied
-        // by the "### Security" heading of the entry we are trying to route. It
-        // was, and this test passed with the section deleted from the prompt.
+        // Asked of a prompt with NO source material, and anchored to a line
+        // rather than `toContain`. Both matter: the changelog is pasted into
+        // this same string, and it carries the very headings being checked for
+        // — so an assertion made against the full prompt is satisfied by the
+        // entry it is trying to route, and passes with the section deleted. It
+        // did. Emptying the source material is what makes the section list the
+        // only thing that can satisfy this.
+        const sectionsOnly = PROMPT("", []) as string;
         for (const [, to] of NOTES_SECTIONS as [string, string][]) {
-            expect(prompt, `the prompt has no "## ${to}" section`).toMatch(
-                new RegExp(`^[ \\t]*## ${to}\\b`, "m"),
+            expect(sectionsOnly, `the prompt has no "### ${to}" section`).toMatch(
+                new RegExp(`^[ \\t]*### ${to}\\b`, "m"),
             );
         }
     });

@@ -172,6 +172,36 @@ describe("findHeadingPos", () => {
         }
     });
 
+    it("a heading nested inside another block should resolve the same way", async () => {
+        // The fast path reads a position out of the DOM, so it is the nesting
+        // depth that could break it — and headings inside list items and
+        // blockquotes are real enough that the fold plugin carries cases for
+        // them. Checked against the document search it replaced, not against a
+        // hand-written expectation.
+        const view = await makeEditor("> # Quoted\n>\n> text\n\n- # In a list\n\n  body\n\n# Top level\n");
+        const headings = getAllHeadings(view);
+        // Guard against a vacuous run: if the parser flattened the fixture,
+        // every heading would sit at depth 1 and this would be the top-level
+        // case again under a different name.
+        const depths = headings.map((h) => findHeadingPos(view, h)).map((pos) => view.state.doc.resolve(pos!).depth);
+        expect(Math.max(...depths)).toBeGreaterThan(1);
+        expect(headings.length).toBeGreaterThanOrEqual(2);
+
+        for (const heading of headings) {
+            const fast = findHeadingPos(view, heading);
+            let search: number | null = null;
+            view.state.doc.descendants((node, pos) => {
+                if (node.type.name === "heading" && view.nodeDOM(pos) === heading) {
+                    search = pos;
+                    return false;
+                }
+                return true;
+            });
+            expect(fast).toBe(search);
+            expect(fast).not.toBeNull();
+        }
+    });
+
     it("a heading element the view does not render should still resolve to null", async () => {
         const view = await makeEditor(SIX_HEADINGS);
         const stray = document.createElement("h2");

@@ -8,9 +8,17 @@
 
 - A link whose address is `javascript:` or `data:` is no longer clickable. Nothing could run through one before this either, because the editor already blocked that. This is a second layer, not a way in that was open. Your file is unchanged.
 
+### Changed
+
+- Scrolling a long document is smooth. A flick down a 300 KB file with 344 headings previously blocked the editor for about 2.5 seconds spread over 32 stalls. It now costs a single stall of about 0.1 seconds. The editor was asking the document where every heading was, on every frame, twice over: once for the sticky heading and once for the table of contents.
+
+- Documents with many tables open faster. On a 96 KB document with 108 tables the editor now appears in 521 ms instead of 639 ms, because a table's row and column grips are built when you first move the pointer over it rather than for every table at startup. They were never reachable by keyboard, before or after this change.
+
 ### Fixed
 
 - Splitting a highlight in two keeps both halves highlighted. Pressing Enter inside `==one two==` previously produced `==one ==`, which reopens as ordinary text with the `==` visible, so the highlight was gone from the file.
+
+- The release notes you read when the extension updates carry every kind of change. A Security, Removed, or Deprecated note had no section to land in. Worse, when the notes were generated without an API key the changelog was not read at all, so a reviewed Security note was dropped and a raw commit subject published in its place.
 
 ---
 
