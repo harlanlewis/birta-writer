@@ -61,11 +61,15 @@ describe("release.yml", () => {
     });
 
     it("the stamp commit should be pushed only after the release is published", () => {
-        // It must never be able to fail a release that already shipped.
-        expect(stepLine("Commit the stamped changelog to main")).toBeGreaterThan(
-            stepLine("Tag and create GitHub Release"),
-        );
-        expect(workflow).toMatch(/continue-on-error: true/);
+        // It must never be able to fail a release that already shipped, so the
+        // step has to be both LAST and non-fatal. Check continue-on-error
+        // inside this step's own block — asserting it appears anywhere in the
+        // file would pass on a continue-on-error belonging to another step.
+        const commitAt = stepLine("Commit the stamped changelog to main");
+        expect(commitAt).toBeGreaterThan(stepLine("Tag and create GitHub Release"));
+
+        const block = workflow.split("\n").slice(commitAt, commitAt + 6).join("\n");
+        expect(block).toMatch(/continue-on-error: true/);
     });
 
     it("the release guard's exclusion should match the stamp commit's subject", () => {

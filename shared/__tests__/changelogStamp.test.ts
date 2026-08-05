@@ -178,12 +178,21 @@ describe("the repository's own CHANGELOG.md", () => {
         for (const v of versions) expect(() => dateFromVersion(v)).not.toThrow();
     });
 
-    it("it should be stampable by the release job as it stands", () => {
-        // The guard that would have caught the original bug: whatever shape the
-        // file drifts into, the release must still be able to roll it.
-        const out = stamp(changelog, "2026.805.0");
+    it("should be stampable by the release job whatever state it is in", () => {
+        // Stamped with a version the file can NEVER already carry, and phrased
+        // to hold in both states this file alternates between: entries pending,
+        // and empty because the nightly rolled it hours ago. Naming a plausible
+        // version here instead would go red on every PR opened the morning
+        // after a release — a self-inflicted break of exactly the kind the
+        // release job must not cause.
+        const pending = extractSection(changelog, "Unreleased");
+        const out = stamp(changelog, "2999.101.0");
 
         expect(extractSection(out, "Unreleased")).toBe("");
-        expect(extractSection(out, "2026.805.0")).toBe(extractSection(changelog, "Unreleased"));
+        expect(extractSection(out, "2999.101.0")).toBe(
+            pending === "" ? NO_USER_VISIBLE_CHANGES : pending,
+        );
+        const kept = new Set(out.split("\n"));
+        expect(changelog.split("\n").filter((l) => l.trim() && !kept.has(l))).toEqual([]);
     });
 });
