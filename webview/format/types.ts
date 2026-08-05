@@ -17,8 +17,8 @@
  * speculative hooks. Two consequences worth naming:
  *
  * - The presets fully define the serializer, INCLUDING any whole-document
- *   post-pass over its output. `createFidelitySerializerPlugin(postSerialize?)`
- *   (webview/plugins/fidelitySerializer.ts) is the injection point a format's
+ *   post-pass over its output. `createSerializerPostPassPlugin(postSerialize)`
+ *   (webview/plugins/serializerPostPass.ts) is the injection point a format's
  *   preset uses; markdown binds the org-cookie unescape inside
  *   `pureCommonmark` (webview/serialization.ts). There is deliberately no
  *   separate post-pass member here — the preset is the single source of

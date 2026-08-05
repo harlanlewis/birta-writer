@@ -36,8 +36,15 @@ const metaPath = join(repoRoot, "dist", "webview.meta.json");
 const baselinePath = join(repoRoot, "e2e", "perf", "bundle-baseline.json");
 const kb = (b) => Math.round((b / 1024) * 10) / 10;
 
+// Written verbatim into the baseline on every `--set-budget`, so it must
+// describe the file this script ACTUALLY writes. It fell out of sync once: it
+// still promised "the remaining fields are the last measured snapshot" long
+// after the snapshot was deleted for going stale, so the first `--set-budget`
+// after that clobbered the corrected note with the obsolete one — the same
+// stale-record failure the note itself is about, one level up. Pinned by
+// `e2e/perf/bundleBaseline.test.mjs`.
 const BUDGET_NOTE =
-    "Eager-bytes BUDGET for the CI gate (`pnpm perf:bundle --check`): the gate fails only when `eagerTotal` exceeds `eagerBudget` — a deliberate ceiling with headroom, NOT a per-commit ratchet to current bytes. Normal feature growth flows under it silently. Raise the ceiling consciously at a milestone: `node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --set-budget`, then commit this file and say why. The remaining fields are the last measured snapshot (informational), refreshed with `--write-baseline`.";
+    "Eager-bytes BUDGET for the CI gate (`pnpm perf:bundle --check`): the gate fails only when the freshly measured eager total exceeds `eagerBudget` — a deliberate ceiling with headroom, NOT a per-commit ratchet to current bytes. Normal feature growth flows under it silently. Raise the ceiling consciously at a milestone: `node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --set-budget`, then commit this file and say why. This file holds the ceiling and NOTHING ELSE, deliberately: it used to also carry the last measured snapshot, which no code read and which went stale the moment anything landed while still reading like a current figure (62,824 B of drift once, then 41,526 B again four days later). For current bytes or headroom, run the tool — never quote a file.";
 
 async function computeEager() {
     let meta;

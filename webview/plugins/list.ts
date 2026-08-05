@@ -574,12 +574,26 @@ function ridesMarkerLineSafely(list: ProseNode): boolean {
 /**
  * `list_item` is owned by preset-gfm, not commonmark: gfm's
  * `extendListItemSchemaForTask` re-registers it (adding the task-list `checked`
- * attr) AFTER commonmark, and both its parse and serialize runners stringify /
- * string-compare `spread`. So the coercion for list_item must layer on top of
- * GFM's task schema — preserving `checked` and the task parseDOM/toDOM — and
- * register AFTER gfm to win (schema registration is last-wins per node id). The
- * runners below mirror GFM's own (RE-DIFF ON EVERY MILKDOWN UPGRADE) with the
- * sole change that `spread` is a real boolean on both sides.
+ * attr) AFTER commonmark, so this must layer on top of GFM's task schema —
+ * preserving `checked` and the task parseDOM/toDOM — and register AFTER gfm to
+ * win (schema registration is last-wins per node id).
+ *
+ * The runners below started as GFM's own with one change (a real boolean
+ * `spread` on both sides, MAR-124) and have since grown three
+ * (RE-DIFF ON EVERY MILKDOWN UPGRADE):
+ *
+ *   1. `blankBefore` — whether the SOURCE put a blank line before this item —
+ *      is threaded through both directions (MAR-194/MAR-210). Upstream has no
+ *      such attr; this is the bulk of the divergence now.
+ *   2. A `<input type=checkbox>` parseDOM rule ahead of the stock ones, so
+ *      task lists pasted from a rendered page keep their ticks (MAR-21).
+ *   3. The `canSpellCheckbox` guard on serialize, so an item whose content
+ *      cannot carry a checkbox does not get one.
+ *
+ * The `spread` coercion that named this schema is now belt-and-braces: as of
+ * Milkdown 7.22.0 (#2419, #2423) upstream's own runners store a real boolean.
+ * `attrSpreadBool` still accepts the string spelling, which is what a document
+ * parsed from OLD `data-spread` markup can still carry.
  */
 export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema(
     (prev) => (ctx) => {
@@ -691,9 +705,10 @@ export const listItemSpreadBoolPlugins = [listItemSpreadBoolSchema].flat();
 /**
  * The stock commonmark list schemas the bullet/ordered overrides replace.
  * `pureCommonmark` filters these out before adding `listSpreadBooleanPlugins`
- * so only the coercing schemas register — the ProseMirror parser reads one
+ * so only the overriding schemas register — the ProseMirror parser reads one
  * parseMarkdown runner per node id from the winning schema, so a stock schema
- * left in place would keep emitting string `spread`. (list_item is not here:
+ * left in place would drop the source `marker` and the item gaps our runners
+ * record. (list_item is not here:
  * gfm re-registers it after commonmark, so the list_item override wins by
  * registering after gfm instead of by filtering.) Same pattern as
  * sourceStyle/tableBreaks.

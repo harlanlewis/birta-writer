@@ -97,7 +97,7 @@ The substrate is unchanged: Milkdown, ProseMirror, refractor, mermaid, dompurify
 
 Upstream is a WYSIWYG Markdown editor for VS Code — a Milkdown webview with good chrome, ~22k lines, built feature-first. This fork kept that shell and rebuilt underneath it around two commitments with no trace in the pre-fork tree:
 
-1. **Round-trip fidelity** — `contentGuard`, `fidelitySerializer`, `reparseHazard`, `fingerprints`, and a format-agnostic minimal-diff engine extracted into a package behind an injected `FormatProfile` (markdown deliberately framed as "format #1").
+1. **Round-trip fidelity** — `contentGuard`, `serializerPostPass`, `reparseHazard`, `fingerprints`, and a format-agnostic minimal-diff engine extracted into a package behind an injected `FormatProfile` (markdown deliberately framed as "format #1").
 2. **Measured performance** — blocking CI gates, an eager-bytes budget, lazy-load seams for every heavy dependency.
 
 Plus a feature surface with no upstream ancestor at all: the calc engine, proofreading, heading fold, block menu with drag/marquee, slash menu, callouts and directives, footnotes, wiki links, math, embeds. And the Chinese→English migration and rebrand, which touch nearly every file.

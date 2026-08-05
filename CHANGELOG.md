@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Security
+
+- A link whose address is a `javascript:` or `data:` URL is no longer drawn as a live link. The editor's content security policy already stopped such a link from running anything, so this closes the gap one layer earlier rather than fixing a way in. The link's text and the file on disk are unchanged; only the address is dropped from what the editor draws.
+
+### Fixed
+
+- Splitting a highlight in two keeps both halves highlighted. Pressing Enter inside `==one two==` previously produced `==one ==`, which reopens as ordinary text with the `==` visible, so the highlight was gone from the file.
+
 ---
 
 ## [2026.805.0] - 2026, August 5

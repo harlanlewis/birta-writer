@@ -38,30 +38,13 @@ export type TextblockEdit =
           delta: number;
       };
 
-/**
- * The span of `next` that differs from `prev`, or null when the two are
- * value-identical. The coarser sibling of `singleTextblockInlineEdit`: it makes
- * no claim about structure, only that everything OUTSIDE the returned range is
- * value-identical in both docs.
- *
- * That is the right tool when a caller can narrow its work to a region but
- * still has to handle structural change — `plugins/keepTableAlign.ts` uses it
- * to visit the tables a change touched instead of every node in the document,
- * including on the Enter/paste/delete edits that `singleTextblockInlineEdit`
- * deliberately refuses. Same reference-equality short-circuit, so an edit
- * inside one block costs a handful of pointer comparisons.
- */
-export function changedRange(prev: PmNode, next: PmNode): { from: number; to: number } | null {
-    const from = prev.content.findDiffStart(next.content);
-    if (from == null) {
-        return null;
-    }
-    const diff = prev.content.findDiffEnd(next.content);
-    // Repeated content ("aa" → "aaa") lets the end scan overrun the start;
-    // clamp so the range stays well-formed.
-    const to = diff ? Math.max(diff.b, from) : next.content.size;
-    return { from, to };
-}
+// `changedRange` used to live here — the coarser sibling of
+// `singleTextblockInlineEdit`, returning the span two docs differ over without
+// claiming anything about structure. Its only caller was
+// `plugins/keepTableAlign.ts`, which narrowed gfm's whole-document walk to the
+// tables a change touched. That fix is upstream as of Milkdown 7.22.0 (#2436),
+// which carries its own copy of the same scan, so the function had no callers
+// and no tests and is gone. Reinstate it here if a second caller ever needs it.
 
 /**
  * Localize the change between two docs to a single textblock, or return null

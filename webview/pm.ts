@@ -14,9 +14,8 @@
  *
  * Rules:
  * - Webview code imports PM names from this module, never from
- *   `@milkdown/prose/*` directly (pinned by `webview/__tests__/pmFunnel.test.ts`;
- *   the only exception is the vendored `plugins/fidelitySerializer.ts`, whose
- *   imports document its upstream provenance).
+ *   `@milkdown/prose/*` directly (pinned by `webview/__tests__/pmFunnel.test.ts`,
+ *   which now allows no exception but the funnel itself).
  * - Re-export ONLY what is actually consumed — no wholesale `export *`, which
  *   would hide exactly the surface this file exists to reveal.
  * - Names only ever used in type positions are `export type`, so they cost
