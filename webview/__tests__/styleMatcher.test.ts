@@ -232,25 +232,11 @@ describe("phrase-list chunking", () => {
         expect(compileList(phrases).length).toBeGreaterThan(1);
     });
 
-    it("a longer phrase should still win over a shorter one in another chunk", () => {
-        // compileList sorts longest-first, so a full cap's worth of
-        // intermediate-length padding forces "pretty much" and "pretty" into
-        // different chunks — the case a single alternation resolved for free.
-        const padding = Array.from(
-            { length: MAX_ALTERNATIVES_PER_REGEX },
-            (_, i) => `zzq${String(i).padStart(4, "0")}`, // 7 chars: between the two
-        );
-        const matcher = compileStyleMatcher(
-            { fillers: ["pretty much", ...padding, "pretty"] },
-            { fillers: true },
-        );
-        const text = "This is pretty much done.";
-
-        const matches = matcher(text);
-
-        expect(matches).toHaveLength(1);
-        expect(text.slice(matches[0].start, matches[0].end)).toBe("pretty much");
-    });
+    // The cross-chunk "longer phrase still wins" case moved to
+    // styleMatcherOrdering.test.ts, with the rest of the ordering contract: its
+    // padding has to sort between the two phrases to force the straddle, which
+    // makes it a property of the comparator, and it now asserts the straddle
+    // instead of assuming it.
 });
 
 describe("leftmostLongest", () => {

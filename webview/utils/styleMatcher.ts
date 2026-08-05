@@ -56,7 +56,12 @@ function escapeRegExp(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function normalizePhrase(s: string): string {
+/**
+ * The comparison form of a phrase: what the compiled pattern actually matches,
+ * modulo the widenings it applies (case, `'`/`’`, whitespace runs). It is both
+ * the strike-lookup key and `compileList`'s sort key. Exported for unit testing.
+ */
+export function normalizePhrase(s: string): string {
     return s.toLowerCase().replace(/’/g, "'").replace(/\s+/g, " ").trim();
 }
 
@@ -176,21 +181,62 @@ export const MAX_ALTERNATIVES_PER_REGEX = 256;
 
 /**
  * Build word-bounded alternation regexes from parsed phrases.
- * Longer phrases are listed first so "pretty much" wins over "pretty";
- * literal spaces match any whitespace run; ASCII apostrophes in a phrase
- * also match typographic ones in the document. Word boundaries are only
- * asserted next to word characters (a phrase ending in "?" has none).
+ * Literal spaces match any whitespace run; ASCII apostrophes in a phrase also
+ * match typographic ones in the document. Word boundaries are only asserted
+ * next to word characters (a phrase ending in "?" has none).
  *
  * The result is a *list* of regexes, chunked at MAX_ALTERNATIVES_PER_REGEX —
  * see there for why. Because each chunk scans independently, a category's raw
  * hits can now overlap where one alternation's leftmost-longest scan would have
  * produced a single hit; `leftmostLongest` restores that. Exported for unit
  * testing.
+ *
+ * ## Why alternatives are sorted DESCENDING by normalized phrase (MAR-315)
+ *
+ * Two things have to hold, and this one order gets both.
+ *
+ * **Correctness — "pretty much" must win over "pretty".** Alternation is
+ * leftmost-*first*, not leftmost-longest, so within a chunk the order decides
+ * which of two alternatives matching at the same start position wins. Two
+ * alternatives can only match at one start position with different lengths when
+ * the shorter match is a prefix of the longer one *in the same subject string*,
+ * which means the shorter phrase's normalized form is a proper prefix of the
+ * longer's. A proper prefix always sorts BEFORE the longer string ascending, so
+ * descending puts the longer phrase first — for every such pair, unconditionally.
+ * Straddling a chunk boundary is safe for a different reason: separate chunks
+ * both report their hit and `leftmostLongest` keeps the longer. So the observable
+ * contract — longest match wins — no longer depends on the sort at all, which is
+ * exactly what `styleMatcherOrdering.test.ts` pins.
+ *
+ * The key is the **normalized** phrase, not the raw one, because matching is
+ * case-insensitive and widens `'`/`’` and whitespace: raw-descending would let a
+ * lowercase "delve" outrank a capitalized "Delve into" ("d" > "D"). The shipped
+ * lists are all normalized already, so for them the two keys produce byte-
+ * identical patterns; the normalization is what stops a future non-lowercase
+ * entry from silently flipping a pair.
+ *
+ * The argument above was not trusted on its own. A differential over the six
+ * shipped lists — 60 repo markdown files plus every phrase in six contexts
+ * (uppercased, doubled spaces, typographic apostrophes, bare, parenthesized,
+ * concatenated with another phrase); 10,990 inputs, 1.1 M characters — produced
+ * **byte-identical** spans under the old length-descending order and this one,
+ * all 17,872 of them. Ascending, run as a control, diverged on 142 lines. Counts
+ * alone would not have shown either: they are equal in all three.
+ *
+ * **Speed.** Sorting lexicographically groups alternatives that share a prefix,
+ * which irregexp exploits. Scanning the 1093 phrases over the `large` perf
+ * fixture, 15 alternating samples in one process, identical 540 hits: Chromium
+ * 151 median 10.6 → 7.3 ms, Node 22 / V8 12.4 11.5 → 7.8 ms (−31% both). The
+ * document-scaled half of a proofread pass is exactly this scan. The one-time
+ * compile floor did not get worse — medians of 6 fresh processes each, 74 ms
+ * before and 57 ms after, ranges 58.5–81.4 and 51.8–68.2 on a contended machine,
+ * which overlap far too much to claim the difference either way.
  */
 export function compileList(phrases: readonly string[]): RegExp[] {
     const alternatives = [...phrases]
-        .sort((a, b) => b.length - a.length)
-        .map((p) => {
+        .map((phrase) => ({ phrase, key: normalizePhrase(phrase) }))
+        .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0))
+        .map(({ phrase: p }) => {
             const body = escapeRegExp(p)
                 .replace(/ /g, "\\s+")
                 .replace(/'/g, "['’]");
