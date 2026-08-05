@@ -1,8 +1,9 @@
 /**
  * Unit tests for the launch-A/B gate's DECISION logic (e2e/perf/verdict.mjs) —
- * the math that blocks every PR. perf.mjs runs Playwright/process.exit on import
- * so its verdict path was previously untestable; these cover the noise floor,
- * the gated-fixture rule, and the double-confirm intersection directly.
+ * the math that blocks every PR. The runners themselves run Playwright and
+ * process.exit on import and cannot be tested, which is why the decision lives
+ * in verdict.mjs: the noise floor, the gated-fixture rule, and the
+ * double-confirm intersection are all exercised here directly.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -69,7 +70,7 @@ const tPass = (name, baseMedian, headMedian, baseBlock, headBlock) => ({
 
 describe("typingAbVerdict — the gate's per-fixture per-keystroke decision", () => {
     it("a gated fixture slower by ≥10% AND ≥0.5ms regresses", () => {
-        // xlarge: the MAR-215 win handed back — 22.3 → 44.6 ms (+100%)
+        // xlarge: 22.3 → 44.6 ms = +100%, a doubling of per-keystroke cost.
         expect([...typingAbVerdict(tPass("xlarge", 22.3, 44.6)).regressed]).toEqual(["xlarge"]);
     });
 
@@ -102,9 +103,9 @@ describe("typingAbVerdict — the gate's per-fixture per-keystroke decision", ()
         expect(v.regressed.size).toBe(0);
     });
 
-    // `large` is measured locally but no longer gated (it is ~1/5 as sensitive
-    // as xlarge for most of the cost). A regression there must not leak into
-    // the gated verdict, and xlarge's verdict must not be masked by it.
+    // `large` is measured locally but not gated (TYPING_GATED_FIXTURES). A
+    // regression there must not leak into the gated verdict, and xlarge's
+    // verdict must not be masked by it.
     it("an ungated fixture regressing beside a neutral gated one does not gate", () => {
         const two = { ...tPass("large", 8, 20), ...tPass("xlarge", 22, 22.5) };
         expect([...typingAbVerdict(two).regressed]).toEqual([]);
@@ -188,9 +189,9 @@ describe("spans / aggregate — the measurement math", () => {
 });
 
 // ── Caret (selection-only dispatch) gate ────────────────────────────────────
-// This gate exists because selection transactions were the one class of work
-// nothing in this repo measured, which is how an upstream plugin billed 2.4 ms
-// to every arrow key on a 300 KB document unnoticed (MAR-137).
+// This gate covers selection-only transactions — the one class of work no
+// other metric in this repo can see, and therefore the one that can regress
+// with nothing reporting it (MAR-137).
 
 /**
  * One-fixture typing pass carrying caret TOTALS (and typing medians held flat).
@@ -209,7 +210,7 @@ const caretPass = (name, baseCaret, headCaret, median = 10, samples = 40) => ({
 
 describe("typingAbVerdict — the caret gate", () => {
     it("a gated fixture whose caret cost rises ≥10% AND ≥0.5ms regresses", () => {
-        // The real regression this gate was built from: 3.5 → 5.7 ms, +63%.
+        // 3.5 → 5.7 ms = +63%, clear of both floors.
         expect([...typingAbVerdict(caretPass("xlarge", 3.5, 5.7)).regressed]).toEqual(["xlarge"]);
     });
 
@@ -241,14 +242,14 @@ describe("typingAbVerdict — the caret gate", () => {
         expect(v.rows[0].caret).toBeNull();
     });
 
-    // ── The sampling floor (2026-07-30) ────────────────────────────────────
-    // Arrow presses coalesce `selectionchange`, so a 30-press burst yields 2–7
-    // transactions. The median over that produced +72% / +82% / neutral against
-    // effectively the same change. Two fixes: gate the total, and abstain when
-    // even the total rests on too few samples.
+    // ── The sampling floor ─────────────────────────────────────────────────
+    // Arrow presses coalesce `selectionchange`, so a 30-press burst yields only
+    // 2–7 transactions — few enough that a median over them swings against
+    // effectively identical changes. Two guards: gate the total, and abstain
+    // when even the total rests on too few samples.
 
     it("a caret move below the sample floor should ABSTAIN, not gate", () => {
-        // The exact shape that fired falsely: a large apparent move on n=2.
+        // The shape that fires falsely: a large apparent move on n=2.
         const v = typingAbVerdict(caretPass("xlarge", 3.5, 6.5, 10, 2));
         expect(v.regressed.size).toBe(0);
         expect(v.rows[0].caret.insufficient).toBe(true);

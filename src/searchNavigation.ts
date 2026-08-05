@@ -11,16 +11,17 @@
  * target is observable is the short-lived raw text editor VS Code opens before
  * `defaultMode: "preview"` swaps it for a Birta panel.
  *
- * Two measured facts shape everything here (Extension Host probe, 2026-07-29):
+ * Two facts about that window shape everything here (Extension Host probe,
+ * 2026-07-29; re-probe before changing either constant below):
  *
- *   1. The swap is faster than the extension host. Closing that text tab ~13 ms
- *      after it opens means `onDidChangeActiveTextEditor` NEVER fires for it —
+ *   1. The swap can outrun the extension host. Close that text tab too soon
+ *      after it opens and `onDidChangeActiveTextEditor` NEVER fires for it —
  *      the delta is coalesced away, and the navigation is lost with it. So the
  *      swap has to wait for the signal rather than race it.
  *   2. `onDidChangeActiveTextEditor` is the wrong signal anyway. It arrives
  *      ~26 ms after the tab opens carrying selection `0:0`; the real target
- *      (`78:22-78:28` for a search hit) lands ~2 ms later as a SEPARATE
- *      `onDidChangeTextEditorSelection` of kind `Command`.
+ *      lands ~2 ms later as a SEPARATE `onDidChangeTextEditorSelection` of
+ *      kind `Command`.
  *
  * Hence: wait for the editor to appear, then a short grace for the selection.
  * A plain open produces no `Command` selection, so it resolves `undefined` and
@@ -41,20 +42,21 @@ export interface CapturedNavTarget {
 }
 
 /**
- * How long to wait for the text editor to show up at all. Measured at ~26 ms
- * after the tab opens; the rest is headroom for a loaded machine. On expiry we
- * swap anyway — a missed jump is a disappointment, a stalled swap is a bug.
+ * How long to wait for the text editor to show up at all. An order of
+ * magnitude above the probed ~26 ms; the rest is headroom for a loaded machine.
+ * On expiry we swap anyway — a missed jump is a disappointment, a stalled swap
+ * is a bug.
  */
 export const EDITOR_APPEAR_BUDGET_MS = 120;
 
 /**
  * How long to wait for the navigation's selection once the editor exists.
  *
- * Measured at ~2 ms behind the editor, so this is almost entirely margin. It is
- * also the delay every ORDINARY open pays before the swap, and the swap is what
- * the user sees: the raw text is on screen for the whole wait, so this number
- * is the difference between a flicker and a readable flash of Markdown. Keep it
- * an order of magnitude above the measurement and no more.
+ * The probe put it ~2 ms behind the editor, so this is almost entirely margin.
+ * It is also the delay every ORDINARY open pays before the swap, and the swap
+ * is what the user sees: the raw text is on screen for the whole wait, so this
+ * number is the difference between a flicker and a readable flash of Markdown.
+ * Keep it an order of magnitude above the measurement and no more.
  */
 export const SELECTION_GRACE_MS = 20;
 
