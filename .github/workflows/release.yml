@@ -15,6 +15,12 @@ name: Release
 # (microsoft/vscode#322741) — so there is no long-lived credential here to expire
 # or rotate. See docs/RELEASING.md for the one-time identity setup.
 #
+# The Azure indirection is meant to be temporary: `vsce publish --oidc` exchanges
+# the GitHub OIDC token at the Marketplace directly, with no Azure resource in the
+# picture. It is `next`-channel only and its Marketplace-side policy is unconfirmed
+# as of 2026-08-04. When both land, drop the azure/login step below, swap
+# --azure-credential for --oidc, and the subscription can be deleted.
+#
 # Versions are CalVer, derived from the release date (America/Los_Angeles):
 #   YYYY . (month*100 + day) . (releases already cut that day)
 #   e.g. the 2026-07-14 nightly -> 2026.714.0, a manual re-cut -> 2026.714.1
