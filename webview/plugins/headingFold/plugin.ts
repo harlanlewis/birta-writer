@@ -428,13 +428,12 @@ export const headingFoldPlugin = $prose(() =>
             // the affordance is built: one windowed build, and not a single
             // decoration rendered before `editor-painted`.
             //
-            // Scheduling the observer independently (its own animation frame)
-            // was the launch regression MAR-215 shipped and CI caught: measuring
-            // and rebuilding cost ~1 ms, but the chrome's DOM insertion and
-            // paint moved in front of the paint mark — +13 ms on the 12 KB
-            // fixture, +45 ms on the 96 KB one, all of it in the previously
-            // unattributed create-end → editor-painted gap (now the `paint`
-            // span in e2e/perf/verdict.mjs).
+            // Do NOT schedule the observer independently, on its own animation
+            // frame: measuring and rebuilding are cheap, but doing so moves the
+            // chrome's DOM insertion and paint in FRONT of the paint mark. That
+            // is a launch regression the CI gate catches, and it lands entirely
+            // in the create-end → editor-painted gap (the `paint` span in
+            // e2e/perf/verdict.mjs).
             let windowCommitted = false;
             const visibleWindow = observeVisibleWindow(view, (next) => {
                 if (disposed || view.isDestroyed) { return; }

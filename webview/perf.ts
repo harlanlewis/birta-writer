@@ -60,21 +60,18 @@ export function measure(name: string, startMark?: string, endMark?: string): voi
  * `update`). While typing, that is the dominant — but not the whole —
  * per-keystroke cost: ProseMirror's pre-dispatch input path (DOM-observer
  * read, input-rule scan) and rAF-coalesced followers (TOC refresh, the
- * scheduled serialize) run outside this span (~1/3 of a typing burst's total
- * block, measured on the 300 KB fixture). The typing-perf harness
+ * scheduled serialize) run outside this span and are a substantial share of a
+ * typing burst's total block. The typing-perf harness
  * (`e2e/perf-typing.mjs`) reads these measures, and they make a slow real
  * document diagnosable from the webview devtools.
  *
- * **Selection-only transactions stamp `mdw:tx-select` instead**, and they are
- * measured for a reason worth stating, because the original design deliberately
- * left them unwrapped as "not the cost being tracked". That was wrong, and it
- * hid a real bug for as long as it stood: `@milkdown/plugin-prism` ran two
- * whole-document walks ABOVE its own `docChanged` test, so every arrow key and
- * click on a 300 KB document cost 2.4 ms of blocked main thread — and **no
- * harness or CI gate could see it**, because caret moves were the one class of
- * transaction nothing measured (MAR-137). A cost that no instrument reports is
- * a cost that regresses freely. The two spans are named separately so the
- * typing median stays exactly what it was and is never diluted by caret moves.
+ * **Selection-only transactions stamp `mdw:tx-select` instead**, and they must
+ * keep being measured. Leaving them unwrapped as "not the cost being tracked"
+ * is what let `@milkdown/plugin-prism` run two whole-document walks above its
+ * own `docChanged` test, blocking the main thread on every arrow key and click,
+ * with **no harness or CI gate able to see it** (MAR-137). A cost that no
+ * instrument reports is a cost that regresses freely. The two spans are named
+ * separately so the typing median is never diluted by caret moves.
  */
 export function instrumentTransactions(view: EditorView): void {
     // Entries are cleared on a rolling window so a long-lived, heavily edited

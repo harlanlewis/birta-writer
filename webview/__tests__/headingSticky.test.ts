@@ -142,12 +142,12 @@ describe("sticky heading gutter", () => {
  * When the sticky plugin RESCANS (MAR-266).
  *
  * updateSticky is O(headings in the document) and forces a layout on each one,
- * so what schedules it is a performance contract, not an implementation detail:
- * it used to run on every view update AND on every body-class mutation, and the
- * fold plugin writes `handles-quiet` on every keydown. On a 300 KB document that
- * cost ~55-85 ms of blocked main thread per caret move.
+ * so what schedules it is a performance contract, not an implementation detail.
+ * Running it on every view update, or on every body-class mutation, puts that
+ * whole cost on every caret move and every keystroke — the fold plugin writes
+ * `handles-quiet` on every keydown.
  *
- * These assert the SCHEDULING, because that is what regressed. The positioning
+ * These assert the SCHEDULING, because that is what regresses. The positioning
  * itself needs real layout and lives in the e2e harness.
  */
 describe("sticky heading rescan scheduling", () => {

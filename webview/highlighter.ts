@@ -2,9 +2,9 @@
 import { refractor } from "refractor/core";
 import { normalizeCodeLanguage } from "./codeLanguages";
 
-// The bundled Prism grammars (~155 KB) are split into a lazily-loaded chunk
+// The bundled Prism grammars live in a lazily-loaded chunk
 // (highlighterLanguages.ts) instead of being registered synchronously at boot,
-// so a launch no longer parses them for documents with no code.
+// so a launch never parses them for a document with no code.
 let grammarsPromise: Promise<void> | null = null;
 
 /**

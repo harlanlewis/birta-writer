@@ -99,12 +99,11 @@ export function parseEntry(entry: string): ParsedEntry {
 }
 
 /**
- * Alternatives per compiled regex (MAR-305).
+ * Alternatives per compiled regex (MAR-305, MAR-315).
  *
  * V8 compiles a large alternation **superlinearly**, and always lazily — never
- * at `new RegExp`, only on `exec`. MAR-315 pinned the mechanism, which is not
- * one compile but up to three per pattern, only the first of which lands on the
- * first scan:
+ * at `new RegExp`, only on `exec`. It is not one compile but up to three per
+ * pattern, only the first of which lands on the first scan:
  *
  *   1. the first `exec` compiles the pattern to irregexp **bytecode**;
  *   2. after `--regexp-tier-up-ticks` executions (**default 1**, so on the
@@ -113,63 +112,41 @@ export function parseEntry(entry: string): ParsedEntry {
  *      one curly quote in a paragraph is enough) pays a third compile, because
  *      irregexp compiles per subject-string encoding.
  *
- * The observation that fixes this rather than merely fitting it: running node
- * with `--regexp-tier-up-ticks=3` moves step 2's cost off the second `exec` and
- * onto the fourth, exactly; `--no-regexp-tier-up` removes step 2 entirely and
- * compiles straight to native on the first `exec`. Nothing else proposed for
- * the same timing shape — JIT warm-up of the matching loop, GC from allocating
- * the phrase structures, IC warm-up, string interning, "the second call just
- * reuses a cache the first filled" — moves with a regexp-only V8 flag. And the
- * subject in that probe is the single character `"x"`, so none of what is being
- * measured is matching cost.
+ * There is therefore no build-time or eager-construction trick that pays this
+ * off: only a smaller alternation does. (`--regexp-tier-up-ticks` and
+ * `--no-regexp-tier-up` are the flags that isolate step 2 if the mechanism ever
+ * needs re-checking.)
  *
  * The compiled code is cached **per process, keyed by (source, flags)** — not
- * per RegExp object. A freshly built, identical set of regexes costs 0.02 ms
- * against ~34 ms for the first set. So the floor is paid once per webview, and
- * rebuilding the matcher on a config toggle (`styleMatcherFor`) is free.
+ * per RegExp object. So the floor is paid once per webview, and rebuilding an
+ * identical matcher on a config toggle (`styleMatcherFor`) is near-free.
  *
- * Measured on the shipped wordlists (1093 phrases across six categories), one
- * alternation per category, warm-up = all three steps:
- *
- * - Node 22 / V8 12.4: **2.4 s** unchunked, **37 ms** chunked at 256. Scaling a
- *   single alternation there: 400 alternatives 14 ms, 800 → 910 ms, 1093 → 2.4 s.
- *   Steady state also improves, 1.53 ms → 0.20 ms per 2000 characters.
- * - Chromium 151 (median of 7, fresh browser per sample, A/B order alternated):
- *   **113 ms** unchunked → **69 ms** chunked. Steady state is 0.10 ms either way.
- *
- * So the cliff is engine-version-dependent and the 2.4 s figure is NOT what a
- * current Electron pays — but `engines.vscode` still admits 1.95, whose
- * Chromium is years older than the one measured above. Chunking is insurance
- * against whichever V8 the host ships, and it wins on both.
+ * The cliff is engine-version-dependent, and unchunked it is catastrophic on
+ * older V8 — two orders of magnitude over the chunked cost — while a current
+ * Electron pays far less. `engines.vscode` still admits 1.95, whose Chromium is
+ * years older, so chunking is insurance against whichever V8 the host ships,
+ * and it wins on every engine measured.
  *
  * The trigger is the `\s+` whitespace widening below — with literal spaces the
- * same 1093-way alternation compiles in 20 ms on Node — but widening is
- * load-bearing (a phrase must match across a doubled space), so the alternation
- * is split rather than simplified. Folding `['’]` into the subject text instead
- * of the pattern was measured too, and does not help (74 ms vs 69 ms).
+ * same alternation compiles cheaply — but widening is load-bearing (a phrase
+ * must match across a doubled space), so the alternation is split rather than
+ * simplified. Folding `['’]` into the subject text instead of the pattern was
+ * measured too, and does not help.
  *
  * ## What is left of the floor, and why 256 stays (MAR-315)
  *
- * All three steps together cost ~34–50 ms on Node 22 for the shipped lists, and
- * that is the document-size-independent floor the first proofread pass pays.
- * It is **accepted, not removed**. Three ways out were measured and rejected:
+ * The three compile steps are a document-size-independent floor that the first
+ * proofread pass pays. It is **accepted, not removed**. Three ways out were
+ * measured and rejected:
  *
  * - **A smaller chunk.** Sweeping 16…384 alternatives per regex moves total
- *   compile time by less than the run-to-run spread (12 samples each at 48 and
- *   256, alternating order: medians 113 ms vs 126 ms, ranges 91–229 and
- *   90–165). Only leaving the chunking altogether is catastrophic — one
- *   alternation per category re-measured at 1310 ms here against the 2.4 s
- *   MAR-305 recorded on the same V8 12.4 (a gap worth nobody's time: it is two
- *   orders of magnitude over the chunked cost either way), and it scans 6×
- *   slower besides. **The win here was the chunking, not its size**; do not
- *   re-sweep the constant hoping for more.
+ *   compile time by less than the run-to-run spread; only leaving the chunking
+ *   altogether is catastrophic, and unchunked also scans several times slower.
+ *   **The win here was the chunking, not its size**; do not re-sweep the
+ *   constant hoping for more.
  * - **Compiling only enabled categories.** Already what `compileStyleMatcher`
- *   does, and it works: with `cliches` off the floor drops from 168 ms to
- *   37 ms, with every phrase category off to 4.7 ms. Those three, and the two
- *   chunk-sweep medians above, were taken on a machine running other work — the
- *   absolute values are inflated well past the 34–50 ms quoted earlier, so read
- *   the ratios and not the milliseconds. `cliches` is 732 of the 1093 phrases
- *   and roughly three quarters of the floor — a user who turns it off already
+ *   does, and it works: `cliches` is 732 of the 1093 shipped phrases and
+ *   roughly three quarters of the floor, so a user who turns it off already
  *   stops paying for it. There is nothing further to split here.
  * - **Warming the regexes in an earlier idle callback.** Relocation, not
  *   removal: the total is fixed, and every destination for it is either the
@@ -215,31 +192,17 @@ export const MAX_ALTERNATIVES_PER_REGEX = 256;
  * identical patterns; the normalization is what stops a future non-lowercase
  * entry from silently flipping a pair.
  *
- * The argument above was not trusted on its own. A differential over the six
- * shipped lists — 60 repo markdown files plus every phrase in six contexts
- * (uppercased, doubled spaces, typographic apostrophes, bare, parenthesized,
- * concatenated with another phrase); 10,990 inputs, 1.1 M characters — produced
- * **byte-identical** spans under the old length-descending order and this one,
- * all 17,872 of them. Ascending, run as a control, diverged on 142 lines. Counts
- * alone would not have shown either: they are equal in all three.
- *
- * **Speed.** Sorting lexicographically groups alternatives that share a prefix,
- * which irregexp exploits. Scanning the 1093 phrases over the `large` perf
- * fixture, 15 alternating samples in one process, identical 540 hits: Chromium
- * 151 median 10.6 → 7.3 ms, Node 22 / V8 12.4 11.5 → 7.8 ms (−31% both).
+ * **Speed.** Sorting lexicographically also groups alternatives that share a
+ * prefix, which irregexp exploits, so the scan itself is measurably faster than
+ * an arbitrary order and the one-time compile floor is unchanged.
  *
  * **What that is NOT worth.** The scan is a smaller share of the proofread pass
- * than it looks: the `proofread` span on `large` measures ~62 ms, so ~3 ms is
- * about 5% of it, and the span read 62.4 ms before this change and 63.4 ms after
- * (`node e2e/perf.mjs large`, idle, median-of-9 each) — i.e. unmoved within the
- * drift of an absolute cross-run comparison, which cannot resolve 3 ms either
- * way. So this is a free and correct win in the scan itself, and NOT a
- * user-visible speed-up of the pass; it deliberately has no CHANGELOG entry. If
- * you are looking for the rest of that span, it is lint dispatch and decoration
- * building, and nobody has attributed them. The one-time
- * compile floor did not get worse — medians of 6 fresh processes each, 74 ms
- * before and 57 ms after, ranges 58.5–81.4 and 51.8–68.2 on a contended machine,
- * which overlap far too much to claim the difference either way.
+ * than it looks — the rest is lint dispatch and decoration building, which
+ * nobody has attributed — so this is a free and correct win inside the scan,
+ * and NOT a user-visible speed-up of the pass. It deliberately has no CHANGELOG
+ * entry. Re-measure with `node e2e/perf.mjs large` (idle machine, median-of-9)
+ * before claiming otherwise; an absolute cross-run comparison of the
+ * `proofread` span cannot resolve a few milliseconds either way.
  */
 export function compileList(phrases: readonly string[]): RegExp[] {
     const alternatives = [...phrases]

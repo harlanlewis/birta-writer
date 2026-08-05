@@ -2269,10 +2269,9 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-hos
    NEVER key them off `.ProseMirror-hideselection`, the class PM toggles on the
    editor ROOT for exactly this state (which is what this bundle used to do):
    `caret-color` is inherited and `*::selection` is universal, so the toggle
-   re-resolves style for the whole document. On the 300 KB perf fixture that
-   cost 169 ms per invisible-selection change, against 3 ms with no rule
-   matching the class — and each of the two rules alone was enough to cost it
-   (MAR-258). Suppression is scoped instead:
+   re-resolves style for the whole document — a document-size-scaling block of
+   the main thread on every invisible-selection change, and each of the two
+   rules alone is enough to cost it (MAR-258). Suppression is scoped instead:
 
      - `.pm-hidden-selection` is a node decoration on the top-level blocks the
        invisible selection touches (plugins/hiddenSelection.ts), so

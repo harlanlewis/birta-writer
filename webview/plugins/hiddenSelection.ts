@@ -9,11 +9,10 @@
  * (`*::selection { background: transparent }` plus `caret-color: transparent`)
  * is a DOCUMENT-WIDE invalidation keyed to a class on the editor root: one is
  * an inherited property, the other a universal pseudo, so toggling the class
- * re-resolves style for every element in the document. Measured on the 300 KB
- * `xlarge` fixture, entering a block range cost **169 ms** with those rules and
- * **3 ms** with them gone — and each rule alone was enough to cost it (170 ms
- * with only `::selection`, 153 ms with only `caret-color`), so both had to
- * leave the root, not just the dominant-looking one.
+ * re-resolves style for every element in the document — a document-size-scaling
+ * block of the main thread on every invisible-selection change. **Each rule
+ * alone is enough to cost it**, so both have to stay off the root, not just the
+ * dominant-looking one.
  *
  * They cannot simply be deleted — they are what keeps the native highlight from
  * double-painting under the block-range tint, and the caret from blinking

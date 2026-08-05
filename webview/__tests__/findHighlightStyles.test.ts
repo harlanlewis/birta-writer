@@ -4,8 +4,8 @@
  * These rules are kept OUT of the eagerly-loaded `findBar.css` on purpose:
  * Blink resolves a style for every registered custom highlight name while
  * resolving every element's style, so an unused `::highlight()` rule is a
- * per-element cost on the mount path. Measured, one such rule cost the `large`
- * launch fixture +31 ms and failed the blocking `launch-perf` gate. Nothing
+ * per-element cost on the mount path — one such rule was enough to fail the
+ * blocking `launch-perf` gate (measurements in the source header). Nothing
  * about that is visible in a behavior test, so it needs a structural one —
  * otherwise the rules drift back into the stylesheet and the cost returns
  * silently.

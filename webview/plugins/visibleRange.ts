@@ -7,9 +7,8 @@
  * MAR-215. The block gutter chrome is a per-block DECORATION — two per block,
  * more per list item — so on a large document the fold plugin's set holds
  * thousands of decorations that ProseMirror must position-map on every
- * keystroke and diff against the DOM on every redraw. Measured on the 300 KB
- * typing fixture that was 10 ms of `DecorationSet.map` plus roughly twice that
- * again inside the view's redraw, out of a 65 ms per-keystroke dispatch.
+ * keystroke and diff against the DOM on every redraw, and the redraw costs more
+ * than the mapping does.
  * Chrome the reader cannot see costs exactly as much as chrome they can, so
  * the decoration pass builds only what is (nearly) in view; everything else is
  * emitted the moment it scrolls in. Nothing about the DOCUMENT is windowed —
@@ -110,9 +109,9 @@ function sameWindow(a: VisibleWindow | null, b: VisibleWindow | null): boolean {
  * `onChange`. That is deliberate and load-bearing (MAR-215): the caller runs on
  * the mount path, and a window arriving before first paint pulls the whole
  * gutter chrome's DOM insertion, layout, and paint in FRONT of the paint mark.
- * Measured on the 96 KB fixture that cost 36 ms of launch even though the
- * measurement itself is 0.4 ms and the rebuild 0.6 ms — the price is the
- * rendering the new decorations force, not the computing. MAR-189 already
+ * The price is the rendering those new decorations force, not the measuring or
+ * the rebuilding, which are cheap — so "it only costs a fraction of a
+ * millisecond" is not a reason to run it early. MAR-189 already
  * keeps that DOM off the mount path by deferring the affordance build to an
  * idle callback after first paint; `start()` exists so this observer joins
  * that deferral instead of defeating it.

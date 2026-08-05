@@ -76,13 +76,13 @@ const SEED = Number(process.env["MDW_MOVE_SEED"] ?? "20260712");
 /**
  * Moves sampled per fixture (and per folded variant).
  *
- * The default is deliberately UNCHANGED at 12. It was briefly cut to 6 on the
- * belief that this file cost 65.7 s — 23% of the unit suite. That number was an
- * artifact: it came from the JSON reporter's `endTime - startTime`, which in a
- * parallel run includes time the file spent queued behind 253 others. Measured
- * in isolation the real cost is 6.8 s at 12 and 4.4 s at 6, so halving the
- * sample bought ~2.4 s of a 64 s suite — nowhere near enough to justify
- * thinning a phase-0 fidelity net on every PR.
+ * The default is deliberately 12, and thinning it to buy suite time is not
+ * worth it: halving the sample saves a couple of seconds of the whole unit
+ * suite, against thinning a phase-0 fidelity net on every PR. Before believing
+ * otherwise, measure this file IN ISOLATION — the JSON reporter's
+ * `endTime - startTime` counts time the file spent queued behind the other
+ * suites in a parallel run, which is how it once read an order of magnitude
+ * over its real cost.
  *
  * What IS worth having, and why the env override exists: the seed is fixed, so
  * every ordinary run re-tests the same 12 pairs and a repeat carries almost no
@@ -105,12 +105,8 @@ const SAMPLE_SIZE = Number(process.env["MDW_MOVE_SAMPLE"] ?? "12");
  * — sits above the 5 s default: 5.3–6.6 s on a developer laptop, and CI runners
  * are roughly twice as slow per AGENTS.md.
  *
- * It has ALWAYS sat above it. Vitest 2 did not enforce `testTimeout` on these
- * tests — they were measured at 5278 ms, 5395 ms and 6608 ms while reporting
- * green — so the Vitest 3 upgrade did not slow anything down; it started
- * enforcing a limit these tests had been quietly exceeding. The number below is
- * therefore headroom over a MEASURED cost, not a guess at one, and it is scoped
- * to these suites so ordinary tests keep the tight default.
+ * The number below is headroom over a MEASURED cost, not a guess at one, and it
+ * is scoped to these suites so ordinary tests keep the tight default.
  */
 const CORPUS_TIMEOUT_MS = 30_000;
 

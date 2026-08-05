@@ -21,9 +21,8 @@ import { mockVscodeApi } from "./setup";
 // freshCreateEditor below), so the first one pays that load inside the test
 // rather than in `collect`: measured 1.5 s, the rest 60-180 ms. That is 3x
 // headroom against the 5 s default, which is thin under full-suite load, so the
-// file keeps a per-file override. It is NOT the old ~2s wordlist-compile cost
-// this comment used to cite — MAR-305's chunking cut that by well over an order
-// of magnitude, and the number outlived the thing it described.
+// file keeps a per-file override. The cost is the module-graph load, not the
+// wordlist compile — do not re-attribute it without re-measuring.
 vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
 
 // A pass-through spy on the one call whose cost the disabled-state tests below

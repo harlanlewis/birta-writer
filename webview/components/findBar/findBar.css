@@ -175,8 +175,9 @@
    in highlightStyles.ts, injected the first time the bar paints a highlight.
    Blink resolves a style for every registered highlight name while resolving
    every element's style, so an unused `::highlight()` rule in this eagerly
-   loaded sheet is a per-element launch cost: one such rule measured +31 ms on
-   the `large` launch fixture. See that file's header for the measurements. */
+   loaded sheet is a per-element launch cost, large enough on the `large` launch
+   fixture to fail the blocking gate. See that file's header for the
+   measurements. */
 
 /* Element-level highlight for matches without a text range
    (link URLs, image src/alt/title, code fence language, raw-syntax blocks) */

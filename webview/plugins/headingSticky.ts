@@ -328,14 +328,14 @@ export const headingStickyPlugin = $prose(() =>
             // for the same reason. Body classes churn on ordinary editing: the
             // fold plugin writes `handles-quiet` on EVERY keydown, and
             // `classList.add` re-writes the class attribute even when the class
-            // is already present, so an unfiltered observer here rescanned every
+            // is already present, so an unfiltered observer here rescans every
             // heading in the document on every keystroke — a querySelectorAll
-            // plus a forced layout per heading, ~55-85 ms per press on a 300 KB
-            // document, and twice per mutation because scheduleLayoutUpdate
-            // queues two frames (MAR-266).
+            // plus a forced layout per heading, twice per mutation because
+            // scheduleLayoutUpdate queues two frames (MAR-266).
             //
             // So measure what the sticky is POSITIONED from rather than
-            // enumerating class names — two rects instead of 440, and a class
+            // enumerating class names — two rects instead of one per heading in
+            // the document, and a class
             // that starts moving the editor tomorrow is handled without editing
             // a list here. The sticky takes its top from the topbar and its
             // left/width from the active heading, which tracks the editor
@@ -375,9 +375,9 @@ export const headingStickyPlugin = $prose(() =>
             return {
                 // A selection-only transaction cannot change which heading sits
                 // above the viewport, and this scan is O(headings in the
-                // document) with a forced layout on each — ~55-85 ms per caret
-                // move on a 300 KB document, which is what made entering a block
-                // range block a frame and a half (MAR-266).
+                // document) with a forced layout on each — so running it on
+                // every transaction puts that whole cost on every caret move
+                // (MAR-266).
                 //
                 // What DOES change the answer: a doc edit (content above the
                 // threshold shifts, or the active heading's own text changes)

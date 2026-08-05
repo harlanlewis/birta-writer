@@ -97,11 +97,10 @@ describe("measureVisibleWindow", () => {
  * The mount-path contract (MAR-215, second round). The observer must be
  * completely inert until `start()`: no listeners, no measurement, no
  * `onChange`. Scheduling its first measurement independently — on its own
- * animation frame from the plugin's `view()` — is what regressed launch by
- * 13 ms on the 12 KB fixture and 45 ms on the 96 KB one, because the window it
- * committed pulled the gutter chrome's DOM insertion, layout, and paint in
- * front of `editor-painted`. Cheap to compute, expensive to render; the caller
- * starts it from its post-paint idle callback instead.
+ * animation frame from the plugin's `view()` — regresses launch, because the
+ * window it commits pulls the gutter chrome's DOM insertion, layout, and paint
+ * in front of `editor-painted`. Cheap to compute, expensive to render; the
+ * caller starts it from its post-paint idle callback instead.
  */
 describe("observeVisibleWindow start gating", () => {
     function liveView(): any {

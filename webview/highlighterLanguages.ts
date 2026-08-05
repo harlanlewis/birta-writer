@@ -1,12 +1,11 @@
 /**
  * Refractor language grammars, split into their own lazily-loaded chunk.
  *
- * These ~68 Prism grammars total ~155 KB and were previously imported and
- * registered synchronously at boot from highlighter.ts, so every editor launch
- * paid to parse them even for documents with no code. They now live behind
- * `ensureGrammars()` (see highlighter.ts): loaded before editor creation only
- * when the document actually contains a code fence, and on demand when a code
- * block is added later.
+ * They load only behind `ensureGrammars()` (see highlighter.ts): before editor
+ * creation when the document already contains a code fence, and on demand when
+ * a code block is added later. Importing them from highlighter.ts instead would
+ * register them synchronously at boot, so every launch would pay to parse the
+ * whole set even for a document with no code.
  *
  * refractor's exports map "./*" → "./lang/*.js", so import paths omit "lang/".
  *

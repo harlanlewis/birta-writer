@@ -173,11 +173,9 @@ function stridedSample<T>(items: readonly T[], budget: number): T[] {
 
 // Invariant C types a character into EVERY paragraph of a fixture and reparses
 // after each one, so its cost scales with paragraph count rather than file size.
-// On the largest fixture (`content-inventory.md`) that measured 6608 ms — above
-// the 5 s default, and above it under Vitest 2 as well, which reported the test
-// green because it did not enforce `testTimeout` here. The Vitest 3 upgrade
-// surfaced that; it did not cause it. Headroom over a measured cost, scoped to
-// this suite so the other three invariants keep the tight default.
+// On the largest fixture (`content-inventory.md`) that measured 6608 ms, above
+// the 5 s default. Headroom over a measured cost, scoped to this suite so the
+// other three invariants keep the tight default.
 const INVARIANT_C_TIMEOUT_MS = 30_000;
 
 describe("corpus invariant C — typing inside a block never restructures the document", { timeout: INVARIANT_C_TIMEOUT_MS }, () => {

@@ -576,8 +576,7 @@ export function sectionHeadingPosAt(doc: ProseMirrorNode, pos: number): number |
     // Innermost heading whose section contains pos — the innermost is the
     // one starting latest. One cached stack walk instead of the old
     // per-heading full-doc scan: this runs on EVERY mousemove over
-    // non-heading content, where the old shape was O(headings × doc) and
-    // measured 2.6ms/event on a 500-heading document.
+    // non-heading content, where a per-heading scan is O(headings × doc).
     let headingPos: number | null = null;
     for (const [candidate, range] of cachedFoldRanges(doc)) {
         if (

@@ -9,9 +9,9 @@
  * a view riding it lags the document by up to 200ms and, being *trailing*,
  * stops updating entirely during continuous typing until the user pauses (an
  * outline that trails the text it describes reads as broken); and upstream of
- * the save pipeline it defeated syncScheduler's leading edge, so the first
- * keystroke took ~208ms to dirty the TextDocument and a Cmd+S inside that
- * window silently didn't write it (MAR-145). Both consumers do their own
+ * the save pipeline it defeats syncScheduler's leading edge, so the first
+ * keystroke does not dirty the TextDocument until the debounce fires and a
+ * Cmd+S inside that window silently doesn't write it (MAR-145). Both consumers do their own
  * coalescing — the TOC batches to one rAF, the save pipeline has syncScheduler
  * — so this plugin's only job is to report the change the instant it happens.
  *

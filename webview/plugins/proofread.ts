@@ -654,9 +654,9 @@ export const proofreadPlugin = $prose(() => {
                 // The FIRST completed scan is the launch-time cost: a whole-document
                 // walk plus the decoration build and its dispatch, landing on the
                 // frames just after first paint where no launch span reaches. Marked
-                // once so `pnpm perf` can attribute it — the harness's fixtures
-                // tripped zero checks until MAR-310, so this pass was only ever
-                // measured finding nothing, which is the cheap half of it.
+                // once so `pnpm perf` can attribute it — but the span only means
+                // anything if the harness's fixtures actually trip checks
+                // (MAR-310); a pass that finds nothing measures the cheap half.
                 const firstPass = !firstScanMarked;
                 if (firstPass) { firstScanMarked = true; mark("proofread-start"); }
 
