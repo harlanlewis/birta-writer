@@ -1,9 +1,5 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions are CalVer, stamped from the release clock — `2026.804.0` is the 2026-08-04 release; see [`docs/RELEASING.md`](docs/RELEASING.md). Entries are written under `## [Unreleased]`, and the nightly `Release` workflow rolls that section into a version heading when it cuts a build, so no version heading is ever written by hand.
-
 ---
 
 ## [Unreleased]
