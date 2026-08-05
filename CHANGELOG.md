@@ -6,7 +6,7 @@
 
 ### Security
 
-- A link whose address is a `javascript:` or `data:` URL is no longer rendered as a clickable link. Opening a document someone else wrote could previously run their script when you clicked its text. The link's text and the file on disk are unchanged; only the address is neutralized when the editor draws it.
+- A link whose address is a `javascript:` or `data:` URL is no longer drawn as a live link. The editor's content security policy already stopped such a link from running anything, so this closes the gap one layer earlier rather than fixing a way in. The link's text and the file on disk are unchanged; only the address is dropped from what the editor draws.
 
 ### Fixed
 
