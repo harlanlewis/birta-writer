@@ -77,19 +77,83 @@ export function makeBlockControlButton(opts: {
     return { button, tooltip, setVerb, setOn };
 }
 
+/** A control column: the strip, plus the deferred attachment of its contents. */
+export interface BlockControlsColumn {
+    /** The strip. Append it to the host as usual — it mounts EMPTY. */
+    readonly el: HTMLElement;
+    /**
+     * Queue controls in column order. They are attached to the strip on the
+     * column's first reveal, not at mount — see the note on
+     * `createBlockControlsColumn`. Adding after a reveal attaches immediately.
+     */
+    add(...children: HTMLElement[]): void;
+    /** Attach the queued controls now. Idempotent; safe before `add`. */
+    reveal(): void;
+}
+
 /** The column itself — hidden at rest, revealed on host hover/focus (one
  * rule for every block; pin open with `.bc-col--shown`). The host must be a
  * positioning context; this adds the `bc-host` class that drives the
  * visibility, and also documents the ORDER convention every column follows:
  * primary verb first (open / zoom / copy), then view verbs (preview, wrap,
  * width, fullscreen), then a `.bc-gap`, then document-editing verbs. No
- * delete buttons — deletion belongs to the block menu and the keyboard. */
-export function createBlockControlsColumn(host: HTMLElement): HTMLElement {
+ * delete buttons — deletion belongs to the block menu and the keyboard.
+ *
+ * **The strip mounts empty and its contents attach on first reveal**
+ * (MAR-251). Every column is invisible at rest, and on a document of any size
+ * the user reveals a handful of them — but the launch harness's `large`
+ * fixture (108 code blocks + 108 tables) put 4,428 button/icon nodes, 16% of
+ * the whole document's DOM, into the first paint for chrome nobody had asked
+ * to see. Deferring the ATTACHMENT (not the construction — the buttons are
+ * built eagerly, so every caller's `syncWidthBtn()` / `applyWordWrapState()`
+ * keeps working on a detached node and is simply correct the moment it lands)
+ * measured -40 ms of launch on `large`, of which only ~5 ms was the JS: the
+ * cost is joining a live tree and being styled and laid out.
+ *
+ * Three triggers arm the reveal, and the third is the one that makes the set
+ * complete rather than a guess. The CSS is the choke point *every* reveal path
+ * goes through — `.bc-host:hover`, `:focus-within`, `.bc-active` (a caret
+ * arriving in the block, no pointer involved), `.bc-col--shown` (an image
+ * pinning its column from selectNode) — and each one animates the strip's
+ * opacity, so `transitionrun` fires however the reveal was caused, including
+ * by paths added later. That is also its one dependency: **`.bc-col`'s
+ * `transition: opacity` in blockControls.css is load-bearing.** Take it away
+ * (a `prefers-reduced-motion` rule is the plausible way) and the pointer-free
+ * reveals go back to fading in an empty strip. The other two triggers are the
+ * semantic fallbacks that survive that, and they are what a jsdom test can
+ * drive — jsdom runs no transitions at all.
+ */
+export function createBlockControlsColumn(host: HTMLElement): BlockControlsColumn {
     host.classList.add("bc-host");
     const col = document.createElement("div");
     col.className = "bc-col";
     col.setAttribute("contenteditable", "false");
-    return col;
+
+    let pending: DocumentFragment | null = document.createDocumentFragment();
+    const ac = new AbortController();
+    const reveal = (): void => {
+        if (!pending) {
+            return;
+        }
+        const frag = pending;
+        pending = null;
+        ac.abort();
+        col.appendChild(frag);
+    };
+    const { signal } = ac;
+    host.addEventListener("pointerenter", reveal, { signal });
+    host.addEventListener("focusin", reveal, { signal });
+    col.addEventListener("transitionrun", reveal, { signal });
+
+    return {
+        el: col,
+        add(...children: HTMLElement[]): void {
+            for (const child of children) {
+                (pending ?? col).appendChild(child);
+            }
+        },
+        reveal,
+    };
 }
 
 /** A small spacer separating verb groups within a column. */
