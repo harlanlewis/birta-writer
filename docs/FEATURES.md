@@ -34,7 +34,7 @@ Headings carry their sections, collapsed content always travels with its heading
 
 ## Writing
 
-- The basics. Headings H1 to H6, **bold**, *italic*, ~~strikethrough~~, `inline code`, ==highlight==, blockquotes, horizontal rules, and ordered, unordered, and task lists. Clicking a checkbox toggles it.
+- The basics. Headings H1 to H6, `**bold**`, `*italic*`, `~~strikethrough~~`, `inline code`, ==highlight==, blockquotes, horizontal rules, and ordered, unordered, and task lists. Clicking a checkbox toggles it.
 - Slash menu. Typing `/` at a block start, or after a space, opens everything insertable: headings, lists, callouts, tables, code, math, footnotes. It filters as you type.
 - Callouts. GitHub-style `> [!note]` / `[!tip]` / `[!warning]` and friends render with icons and accent colors. A `[!kind]-` marker starts collapsed. Notion-style asides are preserved too.
 - Math. Inline `$...$` and block `$$...$$` render with KaTeX, loaded lazily. Clicking one edits its source in place.
@@ -66,7 +66,7 @@ Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Ad
 - Smart link resolution (`birta.smartLinks`). Local links resolve the way your site generator publishes them: workspace-root paths, ancestor content roots, and `.md` / `index.md` / `_index.md` inference. External links open through VS Code's own trusted-domains prompt.
 - Wikilinks. `[[target]]`, `[[target|alias]]`, and `[[target#heading]]` (Obsidian conventions) parse, render, navigate, and round-trip byte-identically. Typing `[[` opens name autocompletion.
 - Section links. Picking a heading from a live list (`/section`, the selection palette, or Link to Section) inserts a standard `[text](#slug)` anchor. Typing `#` in the link editor's URL field suggests the document's headings. Renaming a heading repoints every in-note anchor to it, in the same undo step (`birta.autoUpdateAnchors`).
-- Bare-URL paste. Pasting a bare URL with nothing selected fetches the page's own title extension-side, with network features on and no third-party service involved, and *offers* it as the link text. Accept it and the link becomes `[title](url)`; ignore it and the plain link stays. Nothing is written to your file until you accept, unless you turn on `birta.pasteUnfurl.autoApply`. A bare YouTube link on its own line renders as a player card instead. The card is display only, so the file keeps the plain link either way (`birta.embeds.enabled`), and a link that can become a card is never retitled.
+- Bare-URL paste. Pasting a bare URL with nothing selected fetches the page's own title extension-side, with network features on and no third-party service involved, and offers it as the link text. Accept it and the link becomes `[title](url)`; ignore it and the plain link stays. Nothing is written to your file until you accept, unless you turn on `birta.pasteUnfurl.autoApply`. A bare YouTube link on its own line renders as a player card instead. The card is display only, so the file keeps the plain link either way (`birta.embeds.enabled`), and a link that can become a card is never retitled.
 - Path autocomplete. `@/`, `./`, and `../` inside inline code browse the workspace with file-type icons.
 
 ## Tables
