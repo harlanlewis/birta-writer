@@ -6,7 +6,7 @@
 
 ### Security
 
-- A link whose address is a `javascript:` or `data:` URL is no longer drawn as a live link. The editor's content security policy already stopped such a link from running anything, so this closes the gap one layer earlier rather than fixing a way in. The link's text and the file on disk are unchanged; only the address is dropped from what the editor draws.
+- A link whose address is `javascript:` or `data:` is no longer clickable. Nothing could run through one before this either, because the editor already blocked that. This is a second layer, not a way in that was open. Your file is unchanged.
 
 ### Fixed
 
