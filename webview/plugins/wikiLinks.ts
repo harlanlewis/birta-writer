@@ -8,7 +8,7 @@
  * spacing and escape edge cases aren't provably byte-identical. Here the
  * mdast node's `value` is `sliceSerialize` of the source bytes between the
  * brackets and the stringify handler re-emits `[[` + value + `]]` verbatim —
- * byte-identity by construction, the fidelitySerializer philosophy.
+ * byte-identity by construction, the round-trip-fidelity philosophy.
  *
  * Grammar (deliberately strict — anything else stays plain text):
  *   `[[` , one or more chars that are not `[`, `]`, or a line ending , `]]`

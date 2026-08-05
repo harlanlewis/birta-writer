@@ -7,9 +7,11 @@
  *
  * Allowed exceptions:
  * - `webview/pm.ts` — the funnel itself.
- * - `webview/plugins/fidelitySerializer.ts` — vendored from upstream Milkdown;
- *   its imports document its provenance and the file is deliberately kept
- *   diffable against its source.
+ *
+ * There used to be a second: `plugins/fidelitySerializer.ts`, a vendored copy
+ * of Milkdown's `SerializerState` whose imports documented its provenance.
+ * Milkdown 7.22.0 made that fork unnecessary and it is gone, so the funnel is
+ * now exceptionless. Keep it that way.
  *
  * Scope: all of webview/** including tests — test files count toward the
  * inventory too, otherwise the barrel understates what the code depends on.
@@ -22,7 +24,6 @@ import { walkFiles } from "../../shared/__tests__/cjkScanner";
 const WEBVIEW_ROOT = path.resolve(__dirname, "..");
 const ALLOWED = new Set([
     path.join(WEBVIEW_ROOT, "pm.ts"),
-    path.join(WEBVIEW_ROOT, "plugins", "fidelitySerializer.ts"),
     // This file: the matcher probes below contain import-shaped strings.
     __filename,
 ]);

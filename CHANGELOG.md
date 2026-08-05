@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Security
+
+- A link whose address is a `javascript:` or `data:` URL is no longer rendered as a clickable link. Opening a document someone else wrote could previously run their script when you clicked its text. The link's text and the file on disk are unchanged; only the address is neutralized when the editor draws it.
+
+### Fixed
+
+- Splitting a highlight in two keeps both halves highlighted. Pressing Enter inside `==one two==` previously produced `==one ==`, which reopens as ordinary text with the `==` visible, so the highlight was gone from the file.
+
 ---
 
 ## [2026.805.0] - 2026-08-05

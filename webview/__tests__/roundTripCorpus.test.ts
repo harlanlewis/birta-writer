@@ -452,18 +452,21 @@ describe("pinned edit-tier repro — splitting inside an inline mark", () => {
             .toBe("Unicode **one** \n\n**two** survives.\n");
     });
 
-    // MAR-237-found. `==` is a paired inline delimiter with the same flanking
-    // rule, so a closer preceded by whitespace does not close: `==one ==`
-    // reopens as LITERAL TEXT and the highlight is gone from the file. Note
-    // what does NOT catch this — the corrupt output is a round-trip FIXED POINT
-    // (`==one ==` re-serializes to itself, since `==` in prose is not escaped),
-    // so serialize→parse→serialize stability, the invariant this repo otherwise
-    // prefers, is green on it. The delimiters have to be asserted directly.
-    it.fails(
-        "a split inside a highlight should leave the space outside the delimiters [MAR-237-found]",
-        async () => {
-            expect(await splitBetweenWords("Unicode ==one two== survives.\n"))
-                .toBe("Unicode ==one== \n\n==two== survives.\n");
-        },
-    );
+    // MAR-237-found, fixed by Milkdown 7.22.0. `==` is a paired inline
+    // delimiter with the same flanking rule, so a closer preceded by
+    // whitespace does not close: `==one ==` reopened as LITERAL TEXT and the
+    // highlight was gone from the file. The old `#moveSpaces` hunted for the
+    // first and last TEXT child anywhere in a mark's child list and trimmed
+    // those, which skipped the boundary when the real first/last child was
+    // something else; #2405 trims the actual first/last child, or nothing.
+    //
+    // Note what does NOT catch this — the corrupt output was a round-trip
+    // FIXED POINT (`==one ==` re-serializes to itself, since `==` in prose is
+    // not escaped), so serialize→parse→serialize stability, the invariant this
+    // repo otherwise prefers, was green on it. The delimiters have to be
+    // asserted directly.
+    it("a split inside a highlight should leave the space outside the delimiters [MAR-237]", async () => {
+        expect(await splitBetweenWords("Unicode ==one two== survives.\n"))
+            .toBe("Unicode ==one== \n\n==two== survives.\n");
+    });
 });
