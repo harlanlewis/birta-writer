@@ -49,6 +49,7 @@ Add or amend an entry under `## [Unreleased]`, in the right Keep a Changelog sec
 - The gate is observability, not effort. A speed-up a user can feel is `Changed`; an invisible refactor, internal perf change, tooling, test, or dependency bump is omitted, because it is in git.
 - Order entries by significance within a section, and flag a breaking change inline.
 - Don't add a Highlights section yourself. The release-notes generator lifts the top items into it (taxonomy in `docs/RELEASING.md`, "What goes in").
+- `Security` is direct and accurate: don't inflate, don't deflate. Say what an attacker could and could not do, then stop. A reader scans this section to decide whether to act, so overstating spends their trust on urgency that was not there, and understating costs them a decision they should have made. Check the severity against our code rather than an upstream advisory, which describes the dependency's exposure and not this editor's (2026-08-05: a link-href sanitizer whose "stored XSS" the webview CSP had already made dead was first written up as "could run their script when you clicked"). Where a defence already existed, say so plainly rather than naming the mechanism; the reader wants their exposure, not the architecture.
 
 Do it while the change is fresh. It is the one step you can't reconstruct later.
 
