@@ -10,9 +10,10 @@
  *
  * Widget decorations sit in the document flow: ProseMirror position-maps the
  * whole set on every keystroke and diffs it against the DOM on every redraw.
- * On a large document the block gutter's much sparser decoration set is already
- * a substantial share of per-keystroke dispatch (MAR-215; see
- * `plugins/visibleRange.ts`), and a number per source line is denser still.
+ * The block gutter's set — two decorations per BLOCK — already has to be
+ * windowed to the viewport to keep typing responsive on a large document
+ * (MAR-215; see `plugins/visibleRange.ts`), and one number per SOURCE LINE is
+ * denser still.
  * Decorations also cannot escape their block's box to reach the viewport edge.
  *
  * So this is an external layer, and ProseMirror never learns it exists — no

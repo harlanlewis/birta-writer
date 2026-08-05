@@ -439,10 +439,10 @@ class TableController {
      * after one forces a synchronous re-layout of the whole document. The read
      * phase below captures every rect the write loops need, so a read placed
      * under the first write is always a duplicate of one already taken — and it
-     * costs a forced layout per row and per cell. This pass runs once per table
-     * at mount, before first paint, so on a table-heavy document that storm
-     * dominates the `paint` span. Add a read below the first write and it comes
-     * straight back.
+     * costs a forced layout per row and per column. This pass runs once per
+     * table on the frames before first paint, so on a table-heavy document that
+     * storm lands squarely in the `paint` span. Add a read below the first write
+     * and it comes straight back.
      */
     private reposition(): void {
         const rows = this.rowEls();

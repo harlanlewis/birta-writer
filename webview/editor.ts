@@ -131,11 +131,12 @@ let _protectionSnapshot: { baseline: string; doc: ProseNode; editor: Editor } | 
  * no-op (guarded, since ctx access on a torn-down editor throws).
  *
  * The `rtp-start`/`rtp-end` marks bracket the whole zero-edit re-serialization,
- * and they must stay wherever the work actually runs (MAR-311). Deferring this
- * past first paint moves it to frames no launch span reaches, so dropping the
- * marks with the eager call leaves the harness's `rtp` span reading `null`
- * while the cost is still paid — it just reads as an unattributed post-paint
- * longtask. Deferring work past the last mark does not make it free.
+ * and must stay wherever the work actually runs (MAR-311). This work is
+ * deferred past first paint, onto frames no launch span reaches, so marks left
+ * behind at an old call site would leave the harness's `rtp` span reading
+ * `null` while the cost is still paid — reported as nothing, and visible only
+ * as an unattributed post-paint longtask. Deferring work past the last mark
+ * does not make it free.
  */
 function getProtection(): RoundTripProtection | null {
     if (_protection) return _protection;

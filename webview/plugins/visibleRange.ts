@@ -7,8 +7,7 @@
  * MAR-215. The block gutter chrome is a per-block DECORATION — two per block,
  * more per list item — so on a large document the fold plugin's set holds
  * thousands of decorations that ProseMirror must position-map on every
- * keystroke and diff against the DOM on every redraw, and the redraw costs more
- * than the mapping does.
+ * keystroke and diff against the DOM on every redraw.
  * Chrome the reader cannot see costs exactly as much as chrome they can, so
  * the decoration pass builds only what is (nearly) in view; everything else is
  * emitted the moment it scrolls in. Nothing about the DOCUMENT is windowed —

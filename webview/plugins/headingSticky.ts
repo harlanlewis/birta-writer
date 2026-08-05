@@ -335,9 +335,9 @@ export const headingStickyPlugin = $prose(() =>
             //
             // So measure what the sticky is POSITIONED from rather than
             // enumerating class names — two rects instead of one per heading in
-            // the document, and a class
-            // that starts moving the editor tomorrow is handled without editing
-            // a list here. The sticky takes its top from the topbar and its
+            // the document, and a class that starts moving the editor tomorrow
+            // is handled without editing a list here.
+            // The sticky takes its top from the topbar and its
             // left/width from the active heading, which tracks the editor
             // column; `toc-docked`/`toc-open`/`editor-width-auto` all shift that
             // column through CSS variables. The ResizeObserver below is NOT

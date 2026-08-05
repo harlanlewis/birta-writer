@@ -22,14 +22,16 @@ import { mockVscodeApi } from "./setup";
 // Vitest's 5s default testTimeout is not a fit for a suite that drives the REAL
 // production editor. Building the full Milkdown stack is cheap (~90ms/editor);
 // the cost is a ONE-TIME ~2s charge that lands on whichever test first advances
-// timers far enough to trigger the deferred proofread pass (compiling the style
-// wordlists into matchers, plus V8 warmup). It is cached process-wide after
-// that, which is why only the FIRST test in this file was ever slow (~2.9s
-// measured idle, vs ~15-110ms for every later test).
+// timers far enough to trigger the deferred proofread pass. It is cached
+// process-wide after that, which is why only the FIRST test in this file is
+// slow (~2.9s measured idle, vs ~15-110ms for every later test). That charge
+// has not been re-attributed since MAR-305 chunked the wordlist compile, so
+// treat the trigger as known and the cause as unverified.
 //
 // At 2.9s of a 5s budget there was under 2x headroom, so under full-suite load
-// (180 files across parallel workers) this file's first test intermittently blew
-// past 5s — a flake in the suite guarding the data-loss path, which trains the
+// (hundreds of files across parallel workers) this file's first test
+// intermittently blew past 5s — a flake in the suite guarding the data-loss
+// path, which trains the
 // reader to re-run instead of read. The cost is real, one-time, and inherent to
 // exercising the production stack: it cannot be refactored away, only paid
 // somewhere. So budget for it honestly rather than trim the stack — dropping

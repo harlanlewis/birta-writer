@@ -60,16 +60,15 @@ export function measure(name: string, startMark?: string, endMark?: string): voi
  * `update`). While typing, that is the dominant — but not the whole —
  * per-keystroke cost: ProseMirror's pre-dispatch input path (DOM-observer
  * read, input-rule scan) and rAF-coalesced followers (TOC refresh, the
- * scheduled serialize) run outside this span and are a substantial share of a
- * typing burst's total block. The typing-perf harness
+ * scheduled serialize) run outside this span. The typing-perf harness
  * (`e2e/perf-typing.mjs`) reads these measures, and they make a slow real
  * document diagnosable from the webview devtools.
  *
  * **Selection-only transactions stamp `mdw:tx-select` instead**, and they must
  * keep being measured. Leaving them unwrapped as "not the cost being tracked"
- * is what let `@milkdown/plugin-prism` run two whole-document walks above its
- * own `docChanged` test, blocking the main thread on every arrow key and click,
- * with **no harness or CI gate able to see it** (MAR-137). A cost that no
+ * is what kept `@milkdown/plugin-prism`'s two whole-document walks — above its
+ * own `docChanged` test, so blocking the main thread on every arrow key and
+ * click — invisible to **every harness and CI gate** (MAR-137). A cost that no
  * instrument reports is a cost that regresses freely. The two spans are named
  * separately so the typing median is never diluted by caret moves.
  */
