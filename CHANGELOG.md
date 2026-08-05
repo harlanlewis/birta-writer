@@ -40,8 +40,6 @@
 
 ### Added
 
-- Published to the VS Code Marketplace as `BirtaLabs.birta-writer`, rather than only as a downloaded VSIX. Builds are cut nightly and versioned with CalVer.
-
 - The installed extension carries its own attribution. `licenses/THIRD_PARTY_LICENSES.md` ships inside the extension, listing every bundled open-source package with its license text and copyright line. It is generated from what the bundles actually inline, so it lists what you have rather than what a manifest claims.
 
 ### Fixed
