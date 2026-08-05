@@ -6,7 +6,7 @@
 
 ---
 
-## [2026.805.0] - 2026-08-05
+## [2026.805.0] - 2026, August 5
 
 ### Changed
 
@@ -40,7 +40,7 @@
 
 ---
 
-## [2026.804.0] - 2026-08-04
+## [2026.804.0] - 2026, August 4
 
 ### Added
 
@@ -62,7 +62,7 @@
 
 ---
 
-## [2026.803.0] - 2026-08-03
+## [2026.803.0] - 2026, August 3
 
 ### Changed
 
@@ -96,13 +96,13 @@
 
 ---
 
-## [2026.802.0] - 2026-08-02
+## [2026.802.0] - 2026, August 2
 
 _No user-visible changes; internal work only._
 
 ---
 
-## [2026.801.0] - 2026-08-01
+## [2026.801.0] - 2026, August 1
 
 ### Added
 
@@ -120,7 +120,7 @@ _No user-visible changes; internal work only._
 
 ---
 
-## [2026.731.0] - 2026-07-31
+## [2026.731.0] - 2026, July 31
 
 The first public release, and Birta Writer's first version on the VS Code Marketplace.
 

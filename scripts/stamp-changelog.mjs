@@ -72,8 +72,21 @@ export function dateFromVersion(version) {
     if (month < 1 || month > 12 || day < 1 || day > 31) {
         throw new Error(`version ${version} does not encode a real date`);
     }
-    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    // Written out rather than ISO. `2026.805.0 - 2026-08-05` states the same
+    // date twice in two notations, and the reader has to decode both to see
+    // they agree. `2026, August 5` reads at a glance and cannot be confused
+    // for another field.
+    //
+    // Nothing parses this back: gen-release-notes.mjs finds a section by
+    // `## [<version>]` and never reads the date. Keep it that way, or this
+    // becomes a format with two owners.
+    return `${year}, ${MONTHS[month - 1]} ${day}`;
 }
+
+const MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+];
 
 /**
  * Replace `## [Unreleased]` with an empty `## [Unreleased]` followed by

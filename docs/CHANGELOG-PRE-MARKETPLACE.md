@@ -8,7 +8,7 @@ This file is not shipped inside the extension (`docs/**` is excluded by `.vscode
 
 ---
 
-## [0.2.3] - 2026-07-04
+## [0.2.3] - 2026, July 4
 
 A large batch focused on round-trip fidelity, VS Code parity, and Markdown syntax breadth.
 
@@ -39,7 +39,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ---
 
-## [0.1.6] - 2026-04-27
+## [0.1.6] - 2026, April 27
 
 ### Fixed
 
@@ -47,7 +47,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ---
 
-## [0.1.5] - 2026-04-08
+## [0.1.5] - 2026, April 8
 
 ### Fixed
 
@@ -61,7 +61,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ---
 
-## [0.1.4] - 2026-04-08
+## [0.1.4] - 2026, April 8
 
 ### Fixed
 
@@ -70,7 +70,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ---
 
-## [0.1.3] - 2026-04-07
+## [0.1.3] - 2026, April 7
 
 ### Added
 
@@ -81,7 +81,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ---
 
-## [0.1.2] - 2026-04-07
+## [0.1.2] - 2026, April 7
 
 ### Added
 
@@ -94,7 +94,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ---
 
-## [0.1.1] - 2026-04-01
+## [0.1.1] - 2026, April 1
 
 ### Added
 
@@ -105,7 +105,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ---
 
-## [0.1.0] - 2026-03-31
+## [0.1.0] - 2026, March 31
 
 ### Added
 
