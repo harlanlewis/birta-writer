@@ -11,7 +11,7 @@
 //   RANGE              git revision range, e.g. "v0.3.1..HEAD" (default: last tag..HEAD)
 //   VERSION            version being released, e.g. "0.3.2" (for the heading)
 //   ANTHROPIC_API_KEY  optional; enables AI-authored highlights
-//   ANTHROPIC_MODEL    optional; defaults to claude-sonnet-5
+//   ANTHROPIC_MODEL    optional; defaults to claude-haiku-4-5
 //   OUT                optional output file; otherwise writes to stdout
 //
 // No dependencies — Node 20+ (global fetch).

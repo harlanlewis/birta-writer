@@ -89,7 +89,7 @@ The two surfaces express the same taxonomy in their own vocabulary:
 | Surface | Sections |
 |---|---|
 | `CHANGELOG.md` (the record) | Keep a Changelog: `Added` / `Changed` / `Fixed` / `Removed` / `Deprecated` / `Security`. Flag breaking changes inline; don't add a Highlights section, because the generator lifts those. |
-| Generated release notes | `Breaking changes` → `Highlights` → `New` → `Improved` → `Fixed` (→ `Removed` / `Security`). The generator maps `Added` to `New`, `Changed` to `Improved`, and promotes the tentpoles. |
+| Generated release notes | `Breaking changes` → `Highlights` → `New` → `Improved` → `Fixed`, and nothing else. The prompt in `scripts/gen-release-notes.mjs` defines those five; it has no `Removed` or `Security` section and no mapping rule, so a changelog entry under either lands wherever the model judges best. |
 
 A first release is the special case. With no prior public version, every observable change is *New*: there is nothing to Improve or Fix against yet, which is why the initial `[Unreleased]` reads as one consolidated feature list.
 
