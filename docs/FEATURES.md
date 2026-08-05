@@ -100,7 +100,7 @@ Switching to Raw Markdown (`Cmd+Shift+M`) and back is lossless. External file ch
 
 ## Keyboard shortcuts
 
-macOS shown; Ctrl on Windows/Linux unless noted. All rebindable in VS Code's Keyboard Shortcuts.
+macOS shown; Ctrl on Windows/Linux unless noted. Most are contributed commands and rebindable in VS Code's Keyboard Shortcuts. The block and selection chords (Escape, Shift+Arrow, Alt+Arrow) are not: they are handled inside the editor and cannot convert to contributed keybindings, for the three structural reasons set out in `webview/keyboardShortcuts.ts`. You can bind an extra key to the equivalent palette command, but you cannot rebind the chord itself.
 
 | Keys | Action |
 | --- | --- |
@@ -163,7 +163,7 @@ Birta isn't a personal-knowledge-management tool. It reads and writes plain Mark
 | Obsidian | Yes, directly (`.md` vault) | Wikilinks, `==highlights==`, `> [!callouts]`, footnotes, math, and frontmatter render or round-trip; `#tags`, `^block-ids`, `![[embeds]]`, `%%comments%%` are preserved as text |
 | Foam | Yes, directly (`.md`) | Same wikilink family; its link-reference-definition shim is preserved, not inlined away |
 | "Second Brain" / PARA | Yes, directly | A folder convention, not a format, so there is nothing tool-specific to preserve |
-| Logseq | Caution, opens (round-trip unverified) | Text is preserved, but its outliner model renders as one big nested list. Whether Birta keeps the exact bullet indentation Logseq's structure needs is untested |
+| Logseq | Yes, opens (round-trip tested) | Its outliner model renders as one big nested list, because every block is a bullet and tab indentation encodes the tree. Untouched lines keep their tabs and org tokens byte for byte, and an edited or moved block keeps the file's own indentation, so its nested children stay children. Pinned by `logseqRoundTrip.test.ts`, which `pnpm fidelity` runs |
 | Quarto (`.qmd`) | Caution, needs a file association | Safe to round-trip; executable cells, `:::` fenced divs, shortcodes, and citations are preserved as inert text or code, not understood |
 | MDX (`.mdx`) | No, not recommended | MDX changes base Markdown rules and adds JSX and imports; re-serializing edited regions risks invalid MDX |
 | Roam Research | No, export first | Proprietary database (JSON/EDN), not files |
