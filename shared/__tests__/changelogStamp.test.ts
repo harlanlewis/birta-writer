@@ -52,7 +52,7 @@ Entries are written under \`## [Unreleased]\`; the release rolls them.
 
 ---
 
-## [2026.804.0] - 2026-08-04
+## [2026.804.0] - 2026, August 4
 
 ### Added
 
@@ -63,9 +63,9 @@ Entries are written under \`## [Unreleased]\`; the release rolls them.
 
 describe("dateFromVersion", () => {
     it("a CalVer version should yield the date it encodes", () => {
-        expect(dateFromVersion("2026.805.0")).toBe("2026-08-05");
-        expect(dateFromVersion("2026.1231.2")).toBe("2026-12-31");
-        expect(dateFromVersion("2026.731.0")).toBe("2026-07-31");
+        expect(dateFromVersion("2026.805.0")).toBe("2026, August 5");
+        expect(dateFromVersion("2026.1231.2")).toBe("2026, December 31");
+        expect(dateFromVersion("2026.731.0")).toBe("2026, July 31");
     });
 
     it("a non-CalVer version should be refused rather than guessed at", () => {
@@ -99,7 +99,7 @@ describe("stamp", () => {
     it("entries under [Unreleased] should move to the version heading", () => {
         const out = stamp(FILE, "2026.805.0");
 
-        expect(out).toContain("## [2026.805.0] - 2026-08-05");
+        expect(out).toContain("## [2026.805.0] - 2026, August 5");
         expect(extractSection(out, "2026.805.0")).toBe(
             "### Fixed\n\n- **A thing** — was broken, now is not.",
         );
@@ -159,7 +159,7 @@ describe("stamp", () => {
     });
 
     it("a file with no [Unreleased] section should fail loudly", () => {
-        expect(() => stamp("# Changelog\n\n## [2026.804.0] - 2026-08-04\n", "2026.805.0")).toThrow(
+        expect(() => stamp("# Changelog\n\n## [2026.804.0] - 2026, August 4\n", "2026.805.0")).toThrow(
             /no `## \[Unreleased\]` section/,
         );
     });
@@ -222,13 +222,13 @@ describe("strip-empty-unreleased", () => {
     }
 
     const STAMPED =
-        "# Changelog\n\n---\n\n## [Unreleased]\n\n---\n\n## [2026.805.0] - 2026-08-05\n\n- A shipped thing.\n";
+        "# Changelog\n\n---\n\n## [Unreleased]\n\n---\n\n## [2026.805.0] - 2026, August 5\n\n- A shipped thing.\n";
 
     it("a stamped changelog should lose the empty section and keep the version", () => {
         const { code, text } = runOn(STAMPED);
         expect(code).toBe(0);
         expect(text).not.toContain("[Unreleased]");
-        expect(text).toContain("## [2026.805.0] - 2026-08-05");
+        expect(text).toContain("## [2026.805.0] - 2026, August 5");
         expect(text).toContain("- A shipped thing.");
     });
 
@@ -240,7 +240,7 @@ describe("strip-empty-unreleased", () => {
     });
 
     it("a changelog with no Unreleased section should be left alone", () => {
-        const none = "# Changelog\n\n---\n\n## [1.0.0] - 2026-01-01\n\n- Old.\n";
+        const none = "# Changelog\n\n---\n\n## [1.0.0] - 2026, January 1\n\n- Old.\n";
         const { code, text } = runOn(none);
         expect(code).toBe(0);
         expect(text).toBe(none);
