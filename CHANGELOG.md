@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.805.0] - 2026-08-05
+
 ### Changed
 
 - Documents with many tables and code blocks open faster. On a 96 KB document with 108 tables, the editor appears in 554 ms instead of 707 ms.
