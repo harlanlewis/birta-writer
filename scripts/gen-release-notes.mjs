@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Generate end-user release notes for a Birta Writer release.
 //
-// Reads the git commit range and the CHANGELOG "[Unreleased]" section, then asks
+// Reads the git commit range and this version's CHANGELOG section, then asks
 // Claude to infer cursor.com/changelog-style highlights: a few tentpole items
 // described for the benefit they deliver, followed by smaller improvements and
 // fixes. If ANTHROPIC_API_KEY is absent or the API call fails, it degrades to a
@@ -18,6 +18,8 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+
+import { extractSection } from "./stamp-changelog.mjs";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
 const VERSION = process.env.VERSION || "unreleased";
@@ -43,19 +45,28 @@ function commits() {
     .filter(Boolean);
 }
 
-/** The prose under "## [Unreleased]" in CHANGELOG.md — already end-user framed. */
-function unreleasedChangelog() {
+/**
+ * THIS release's changelog entries — already end-user framed.
+ *
+ * The release job stamps CHANGELOG.md before calling this, so the entries for
+ * this version live under `## [<version>]` and `## [Unreleased]` is empty. Read
+ * the stamped section, falling back to `[Unreleased]` when running by hand
+ * against an unstamped tree.
+ *
+ * Reading `[Unreleased]` unconditionally is what made every nightly re-announce
+ * the whole product: nothing ever rolled that section, so it accumulated every
+ * entry ever written and each night's notes described all of them as new. The
+ * v2026.804.0 notes ran to 112 lines of features that had shipped weeks earlier
+ * (MAR-282).
+ */
+function releaseChangelog() {
   let text;
   try {
     text = readFileSync("CHANGELOG.md", "utf8");
   } catch {
     return "";
   }
-  const start = text.indexOf("## [Unreleased]");
-  if (start === -1) return "";
-  const rest = text.slice(start + "## [Unreleased]".length);
-  const next = rest.search(/\n## \[/);
-  return (next === -1 ? rest : rest.slice(0, next)).trim();
+  return extractSection(text, VERSION) ?? extractSection(text, "Unreleased") ?? "";
 }
 
 /** Fallback: group conventional-commit subjects by type. */
@@ -99,7 +110,7 @@ Rules:
 
 Source material follows.
 
-=== CHANGELOG [Unreleased] (authoritative, already user-framed) ===
+=== CHANGELOG entries for THIS release (authoritative, already user-framed) ===
 ${changelog || "(none)"}
 
 === Commit log for this release range ===
@@ -140,7 +151,7 @@ async function aiNotes(changelog, list) {
 }
 
 const list = commits();
-const changelog = unreleasedChangelog();
+const changelog = releaseChangelog();
 const body = (await aiNotes(changelog, list)) ?? fallbackNotes(list);
 const out = `## Birta Writer ${VERSION}\n\n${body}\n`;
 

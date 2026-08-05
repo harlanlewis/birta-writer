@@ -83,8 +83,19 @@ describe("rebrand guard", () => {
 
     it("published docs should name only the birta.* namespace and Birta Writer", () => {
         // README.md and NOTICE stay unscanned (legitimate upstream attribution
-        // lives there); docs/ carries no such exception.
-        const files = walkFiles(path.join(REPO_ROOT, "docs"), [".md"], []);
+        // lives there); docs/ carries one exception, for the same reason
+        // CHANGELOG.md is unscanned rather than a new one.
+        //
+        // CHANGELOG-PRE-MARKETPLACE.md IS CHANGELOG.md's older half: the
+        // pre-rebrand releases were split out of it so the shipped changelog
+        // covers only versions a user could install (MAR-282). It is
+        // point-in-time history naming settings as they shipped — 0.2.3's entry
+        // deprecating `markdownWysiwyg.autoSave` is a true statement about
+        // 0.2.3 — so policing it would mean falsifying the record. Nothing here
+        // is a live instruction: every version it names predates the listing.
+        const files = walkFiles(path.join(REPO_ROOT, "docs"), [".md"], []).filter(
+            (f) => path.basename(f) !== "CHANGELOG-PRE-MARKETPLACE.md",
+        );
         expect(files.length).toBeGreaterThan(0);
         const offenders = scan(files);
         expect(
