@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { revealBlockControls } from "./helpers/revealBlockControls";
+import { revealTableAffordances } from "./helpers/revealTableAffordances";
 import {
     Editor,
     rootCtx,
@@ -15,7 +16,7 @@ import {
     nodeViewCtx,
 } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { TableMap } from "../pm";
+import { TableMap, CellSelection, addRowAfter } from "../pm";
 import { TextSelection } from "../pm";
 import type { Node as PMNode } from "../pm";
 import type { EditorView } from "../pm";
@@ -114,7 +115,20 @@ describe("table NodeView — DOM structure", () => {
         expect(overlay).not.toBeNull();
     });
 
+    it("an overlay nobody has pointed at should hold no grips or insert bars", () => {
+        // MAR-317: the overlay is a table's whole grip/insert layer and every
+        // node of it is invisible at rest, so on a table-heavy document
+        // building it at mount puts a large share of the first paint's DOM
+        // into chrome nobody asked to see. The strip itself still mounts — it
+        // is the frame the affordances are placed in — but it mounts empty.
+        const overlay = document.querySelector(".mw-table-overlay")!;
+        expect(overlay.querySelectorAll(".mw-grip")).toHaveLength(0);
+        expect(overlay.querySelectorAll(".mw-insert")).toHaveLength(0);
+    });
+
     it("should build one grip per row and per column plus an insert bar per gap", () => {
+        const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
+        revealTableAffordances(wrapper);
         const overlay = document.querySelector(".mw-table-overlay")!;
         // 3 rows, 2 columns.
         expect(overlay.querySelectorAll(".mw-grip--row").length).toBe(3);
@@ -122,6 +136,40 @@ describe("table NodeView — DOM structure", () => {
         // gaps = count + 1.
         expect(overlay.querySelectorAll(".mw-insert--row").length).toBe(4);
         expect(overlay.querySelectorAll(".mw-insert--col").length).toBe(3);
+    });
+
+    it("further pointer movement should reuse the grips, not rebuild them", () => {
+        // Counting elements cannot catch this: a rebuild clears before it
+        // builds, so the counts come out right either way. Element identity is
+        // what a per-move rebuild would break — along with the `.mw-near`
+        // reveal state and the drag in progress that happen to be riding on
+        // those exact nodes.
+        const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
+        revealTableAffordances(wrapper, { clientX: 0, clientY: 0 });
+        const overlay = document.querySelector(".mw-table-overlay")!;
+        const first = overlay.querySelector('.mw-grip--row[data-row="0"]');
+        expect(first).not.toBeNull();
+        revealTableAffordances(wrapper, { clientX: 40, clientY: 40 });
+        expect(overlay.querySelector('.mw-grip--row[data-row="0"]')).toBe(first);
+    });
+
+    it("a structural edit before any reveal should still build the new row's grip", async () => {
+        // The rebuild-on-structure-change path is skipped while unbuilt, so
+        // the dimensions recorded then are all the first reveal has to go on.
+        const v = view(editor);
+        const { pos } = findTable(v);
+        const $cell = v.state.doc.resolve(pos + 3);
+        v.dispatch(v.state.tr.setSelection(TextSelection.near($cell)));
+        addRowAfter(v.state, v.dispatch);
+        await Promise.resolve();
+
+        const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
+        const bodyRows = wrapper.querySelectorAll("tbody > tr").length;
+        expect(bodyRows).toBe(4);
+        revealTableAffordances(wrapper);
+        const overlay = document.querySelector(".mw-table-overlay")!;
+        expect(overlay.querySelectorAll(".mw-grip--row").length).toBe(4);
+        expect(overlay.querySelectorAll(".mw-insert--row").length).toBe(5);
     });
 
     it("should mount the control column empty and fill it on the first reveal", () => {
@@ -147,6 +195,9 @@ describe("table NodeView — DOM structure", () => {
         // the budget scales with the TABLE (rows + columns), not with the
         // grips and insert bars being positioned (about twice as many).
         const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
+        // Nothing is positioned before the first reveal, so the read budget
+        // only exists once the affordances do (MAR-317).
+        revealTableAffordances(wrapper);
         const rows = wrapper.querySelectorAll("tbody > tr").length;
         const cols = wrapper.querySelectorAll("tbody > tr:first-child > *").length;
         const frame = (): Promise<void> =>
@@ -169,6 +220,89 @@ describe("table NodeView — DOM structure", () => {
         }
         // wrapper + table + one per row + one per first-row cell.
         expect(reads).toBe(2 + rows + cols);
+    });
+
+    it("a table nobody has pointed at should read no layout at all", async () => {
+        // The other half of the read budget above (MAR-317). Every table on
+        // the page runs this pass on the frames before first paint, and each
+        // controller's reads land after the previous one's writes, so the
+        // read-then-write discipline that makes ONE table's pass cheap does
+        // not compose across a document full of them. An untouched table must
+        // therefore read nothing, not read efficiently.
+        const frame = (): Promise<void> =>
+            new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        await frame(); // let the mount-time pass drain
+
+        const original = Element.prototype.getBoundingClientRect;
+        let reads = 0;
+        Element.prototype.getBoundingClientRect = function (this: Element) {
+            reads++;
+            return original.call(this);
+        };
+        try {
+            window.dispatchEvent(new Event("scroll"));
+            await frame();
+        } finally {
+            Element.prototype.getBoundingClientRect = original;
+        }
+        expect(reads).toBe(0);
+    });
+
+    it("a structural edit under the pointer should re-reveal, not leave the new grips dark", async () => {
+        // The reveal keeps two pieces of state — the elements currently
+        // carrying `.mw-near`, and the indices they were computed for, which
+        // exist so an unchanged pointer position costs no DOM writes. A
+        // rebuild throws away the elements but not the indices, so the
+        // early-out then reports "nothing changed" against grips that no
+        // longer exist and the freshly built ones stay invisible until the
+        // pointer crosses into a different row.
+        const frame = (): Promise<void> =>
+            new Promise((r) => requestAnimationFrame(() => r()));
+        const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
+        revealTableAffordances(wrapper);
+        await frame(); // the reveal itself is rAF-coalesced
+        const overlay = document.querySelector(".mw-table-overlay")!;
+        expect(overlay.querySelectorAll(".mw-near").length).toBeGreaterThan(0);
+
+        const v = view(editor);
+        const { pos } = findTable(v);
+        const $cell = v.state.doc.resolve(pos + 3);
+        v.dispatch(v.state.tr.setSelection(TextSelection.near($cell)));
+        addRowAfter(v.state, v.dispatch);
+        await Promise.resolve();
+
+        // Same pointer position, same nearest indices — the case the
+        // early-out is built to skip.
+        revealTableAffordances(wrapper);
+        await frame();
+        const near = overlay.querySelectorAll(".mw-near");
+        expect(near.length).toBeGreaterThan(0);
+        for (const el of near) {
+            expect(overlay.contains(el)).toBe(true);
+        }
+    });
+
+    it("a CellSelection made with no pointer should build the overlay and light the grip", () => {
+        // The keyboard path (MAR-317). Shift+arrow produces a CellSelection
+        // with no pointer anywhere near the table, and the lit grip is the
+        // only chrome that answers it — so a pointer-only build trigger would
+        // silently stop the highlight working. Nothing here reveals by
+        // pointer: the selection dispatch is the whole gesture.
+        const v = view(editor);
+        const { node, pos } = findTable(v);
+        const map = TableMap.get(node);
+        const start = pos + 1;
+        const $a = v.state.doc.resolve(start + map.positionAt(1, 0, node));
+        const $h = v.state.doc.resolve(
+            start + map.positionAt(1, map.width - 1, node),
+        );
+        v.dispatch(v.state.tr.setSelection(new CellSelection($a, $h)));
+
+        const overlay = document.querySelector(".mw-table-overlay")!;
+        expect(overlay.querySelectorAll(".mw-grip--row")).toHaveLength(3);
+        const active = overlay.querySelectorAll<HTMLElement>(".mw-grip--active");
+        expect(active).toHaveLength(1);
+        expect(active[0]!.dataset.row).toBe("1");
     });
 });
 

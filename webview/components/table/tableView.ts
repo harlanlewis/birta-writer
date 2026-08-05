@@ -16,6 +16,11 @@
  *      ├─ .mw-drop-line     (drag drop indicator)
  *      └─ .mw-drag-ghost    (translucent row/column preview during drag)
  *
+ * The overlay strip mounts EMPTY: the grips and insert bars are built on the
+ * first gesture that could need them, not at mount (MAR-317, see
+ * TableController.ensureBuilt). Nothing outside this file may assume a grip
+ * exists just because a table does.
+ *
  * A future column-resize layer would live in the overlay too: add a
  * <colgroup> to the <table> and a row of `.mw-col-resize` handles positioned on
  * the vertical gridlines (the same measurement path reposition() already uses).
@@ -195,6 +200,10 @@ class TableController {
 
     private cachedWidth = -1;
     private cachedHeight = -1;
+    /** False until the grips and insert bars have actually been created — see
+     *  ensureBuilt(). Everything that mutates them iterates empty arrays until
+     *  then, so no caller needs to ask. */
+    private built = false;
     private rafId: number | null = null;
     private readonly resizeObs: ResizeObserver | null = null;
     private drag: DragState | null = null;
@@ -286,19 +295,80 @@ class TableController {
      * Rebuild the affordance elements only when the row/column count actually
      * changed (structural edit); otherwise just re-measure and refresh the
      * active highlight. Keeps per-keystroke updates cheap.
+     *
+     * Before the first reveal there is nothing to rebuild: recording the new
+     * dimensions is enough, because ensureBuilt() reads them when it finally
+     * runs.
      */
     private syncStructure(): void {
         const { width, height } = this.mapDims();
         if (width !== this.cachedWidth || height !== this.cachedHeight) {
             this.cachedWidth = width;
             this.cachedHeight = height;
-            this.rebuild(width, height);
+            if (this.built) {
+                this.rebuild(width, height);
+            }
         }
         this.scheduleReposition();
         this.updateActive();
     }
 
+    /**
+     * Create the overlay affordances, once, on the first gesture that could
+     * possibly need them (MAR-317). Idempotent.
+     *
+     * The overlay is a table's whole grip/insert layer — one grip per row and
+     * per column, one insert bar per gap, each with a tooltip binding and an
+     * icon — and every node of it is `opacity: 0` at rest (table.css). On a
+     * table-heavy document that is a large share of the first paint's DOM,
+     * built and attached and laid out for chrome nobody has asked to see, and
+     * it is paid per table whether or not the reader ever goes near one.
+     *
+     * Deferring the whole thing, construction included, is safe here because
+     * nothing outside this class holds a handle to a grip: reposition(),
+     * updateActive() and markDraggedGrips() all iterate the controller's own
+     * arrays, which are simply empty until this runs. That is the difference
+     * from the control column (ui/blockControls.ts), where callers mutate
+     * their buttons from mount onward and so only the ATTACHMENT could move.
+     *
+     * Two triggers arm it, and both are needed:
+     *  • onWrapperMove — the pointer arriving over the table, which is what
+     *    the `.mw-near` reveal keys off anyway, so it always precedes any
+     *    grip or "+" interaction.
+     *  • updateActive — a CellSelection landing in this table. Shift+arrow
+     *    makes one with no pointer involved at all, and prosemirror-tables'
+     *    `selectedCell` decorations put us through NodeView.update for it, so
+     *    the keyboard path reaches this method on its own.
+     *
+     * Positioning is done synchronously rather than left to the scheduled
+     * pass, and that is load-bearing three times over: the grips land on
+     * their rows in the same frame they appear, the pointermove hit-test that
+     * follows on the next rAF has fresh bounds to read instead of the empty
+     * ones a deferred pass would leave, and — least obviously — the forced
+     * layout inside reposition() resolves the new elements' `opacity: 0`
+     * before `.mw-near` is added a frame later, which is what lets the fade
+     * in table.css actually run instead of the grips popping in at full
+     * strength. Deferring this call would break all three.
+     */
+    private ensureBuilt(): void {
+        if (this.built) {
+            return;
+        }
+        this.built = true;
+        this.rebuild(this.cachedWidth, this.cachedHeight);
+        this.reposition();
+    }
+
     private rebuild(width: number, height: number): void {
+        // The reveal caches BOTH the elements carrying `.mw-near` and the
+        // indices they were computed for, the latter so an unchanged pointer
+        // position costs no DOM writes. Every one of those elements is about
+        // to be destroyed, so the indices have to go with them: left behind,
+        // the early-out answers "nothing changed" for a pointer that has not
+        // moved and the freshly built affordances stay dark until it crosses
+        // into a different row. Dropping both here costs at most one frame of
+        // hidden chrome, which is what the next pointermove is for.
+        this.hideNear();
         for (const el of [
             ...this.rowGrips,
             ...this.colGrips,
@@ -445,6 +515,16 @@ class TableController {
      * and it comes straight back.
      */
     private reposition(): void {
+        // Before the first reveal there is nothing to place, and the read
+        // phase below is the whole cost of this pass — a rect per row and per
+        // header cell, per table. Bailing above it is what keeps a document
+        // full of untouched tables from paying for measurement it will never
+        // use (MAR-317). The folded `…` chip is the one piece of chrome that
+        // is visible without a reveal, so it still needs the measurement.
+        const collapsed = this.wrapper.classList.contains("collapsed");
+        if (!this.built && !collapsed) {
+            return;
+        }
         const rows = this.rowEls();
         if (!rows.length) {
             return;
@@ -516,7 +596,7 @@ class TableController {
         // always fresh — and it comes from the read phase's header rect, not a
         // fresh read down here, which would force a layout after every write
         // above.
-        if (this.wrapper.classList.contains("collapsed")) {
+        if (collapsed) {
             const chip = this.wrapper.querySelector<HTMLElement>(
                 ":scope > .mw-table-fold-ellipsis",
             );
@@ -544,6 +624,7 @@ class TableController {
         if (this.drag) {
             return; // no reveal churn mid-reorder (Task B)
         }
+        this.ensureBuilt();
         this.pendingX = e.clientX;
         this.pendingY = e.clientY;
         if (this.revealRafId !== null) {
@@ -641,6 +722,11 @@ class TableController {
         if (anchor < pos || anchor > pos + this.node.nodeSize) {
             return;
         }
+        // The keyboard build trigger (MAR-317). Shift+arrow makes a
+        // CellSelection with no pointer anywhere near the table, and the grip
+        // highlight below is the only chrome that is meant to show for it, so
+        // this is where the overlay has to come into existence for it.
+        this.ensureBuilt();
         try {
             const rect = selectedRect(this.view.state);
             if (sel.isRowSelection()) {
