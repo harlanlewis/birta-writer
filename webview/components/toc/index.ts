@@ -13,7 +13,6 @@ import {
     getTopbarBottom,
     scrollElementBelowTopbar,
     getAllHeadings,
-    findHeadingPos,
     findActiveHeading,
     collectDocHeadings,
 } from "@/utils/headingUtils";
