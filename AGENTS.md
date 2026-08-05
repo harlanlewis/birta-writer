@@ -2,21 +2,7 @@
 
 This is the canonical, tool-agnostic instruction file for the repository, and the one every agent and contributor should actually read. `CLAUDE.md` at the repo root is only a pointer (`@AGENTS.md`) so Claude Code finds its way here.
 
-## Language policy
-
-The maintainer reads and writes English only. This project is migrating from Chinese to English, and every change must move it further in that direction, never back. This policy supersedes any older instruction in this repo that mandates Chinese, including earlier versions of this file.
-
-- Reply to the user in English. Never Chinese, Korean, or any other language.
-- Write all new code comments, identifiers, commit messages, docs, test descriptions, and log or `console` strings in English.
-- When you touch a file that still contains Chinese (comments, strings, docs), translate the parts you touch. Leave the rest rather than doing unrelated mass rewrites, and never add new non-English content.
-- For user-facing UI text, keep the i18n system intact and treat English as the source language.
-
-## Relationship to the origin project
-
-Birta Writer began as a hard fork and is now developed fully independently. The `upstream` git remote is removed on purpose; the only live remote is `origin` (`harlanlewis/birta-writer`).
-
-- Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to the origin repository. The fork diverged deliberately and permanently, and pulling from it would drag back exactly what this project is moving away from.
-- Don't name the origin project anywhere new. It is named only where attribution requires it: `NOTICE`, `LICENSE-MIT`, and `docs/PROVENANCE.md`, whose whole subject is how much of it remains. Prose elsewhere refers to it obliquely ("the project this one forked from"). Keep the slug out of the README, the changelog, docs, comments, and test fixtures. `shared/__tests__/noLegacyBrand.test.ts` bans our own former slug and id; it does not police the origin's, so this one is unguarded.
+Everything here is written in English: code, comments, commit messages, docs, test descriptions, and log strings. For user-facing UI text, keep the i18n system intact and treat English as the source language.
 
 ## Project basics
 
@@ -68,16 +54,11 @@ Do it while the change is fresh. It is the one step you can't reconstruct later.
 
 ### Installing by hand
 
-`pnpm build` only rebuilds `dist/`; the user's editor runs an installed copy, so a window reload alone never picks up source changes. `pnpm run install:local` is the one-shot path. When you need the steps individually:
+`pnpm build` only rebuilds `dist/`; the user's editor runs an installed copy, so a window reload alone never picks up source changes. `pnpm run install:local` is the path, and `scripts/install-local.mjs` is the reference for the individual steps. Three things it handles that are easy to get wrong by hand:
 
-1. `pnpm run package`
-2. `code --install-extension releases/birta-writer-0.0.0.vsix --force`, where `--force` allows reinstalling the same version.
-3. Remove any pre-org or pre-rebrand build, so VS Code never runs two copies over the same `.md` files: `code --uninstall-extension harlanlewis.birta-writer` and `code --uninstall-extension harlanlewis.md-wysiwyg-editor`. Ignore "not installed"; it means the cleanup already happened.
-4. Confirm one copy remains: `code --list-extensions | grep -iE 'birta|wysiwyg'` should print only `birtalabs.birta-writer`. VS Code lowercases ids on output, so that is the canonical, Marketplace-cased `BirtaLabs.birta-writer` and not a stale copy.
-
-Never edit or delete the user's settings as part of an install. Both the `--force` install and the legacy uninstalls leave `settings.json` untouched, so their `birta.*` config carries across every reinstall.
-
-The `code` CLI is often not on `PATH` on this machine even though VS Code is installed. `install-local.mjs` falls back to `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`; use that path when running the steps by hand. Only if VS Code truly isn't installed, skip it and say so rather than failing the handoff.
+- Never edit or delete the user's `settings.json` as part of an install. Neither the `--force` install nor the legacy uninstalls touch it, so their `birta.*` config carries across every reinstall.
+- Uninstall the pre-rebrand ids (`harlanlewis.birta-writer`, `harlanlewis.md-wysiwyg-editor`) so VS Code never runs two copies over the same `.md` files, then confirm only `birtalabs.birta-writer` remains.
+- The `code` CLI is often not on `PATH` on this machine; the script falls back to `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`. If VS Code truly isn't installed, skip and say so rather than failing the handoff.
 
 For iterative debugging, F5 (Extension Development Host) is faster, with no packaging step.
 
@@ -197,25 +178,24 @@ All bugs and planned work live in Linear, team "Birta Writer", `MAR-` prefix. Ne
 
 Keeping the backlog honest matters as much as filing it. Close the loop when work ships.
 
-- When a commit ships tracked work, move its issue to `Done` and leave a one-line comment citing the commit SHAs. Never leave completed work sitting in `In Progress` or `Backlog`. Put a `Closes MAR-NN` line in the commit body too, so the link exists in both directions: the SHA in Linear, the issue id in git.
-- Audit for silently-shipped work. When reviewing the backlog or picking up an `In Progress` issue, check first whether it already shipped. Cross-reference recent large `feat:` and omnibus commits against open tickets, reading the diff rather than the subject. A tracked fix bundled into an unrelated commit is the classic way work gets done but never closed.
-- Verify against the code before closing, not the CHANGELOG alone. A feature can ship with a different implementation than the ticket described, so confirm the actual behavior, settings, and files exist in the working tree.
-- The CHANGELOG and Linear are complementary, not a single source of truth. The CHANGELOG records what shipped, including untracked work; Linear tracks planned work and bugs. When you ship a tracked feature, do both: close the issue and add the CHANGELOG entry. "Not in Linear" never means "not shipped".
-- Reconcile periodically. When asked what's next or to review the backlog, cross-check open issues against the CHANGELOG and git history, close anything already shipped, and re-scope tickets whose premise the code has outgrown.
+- When a commit ships tracked work, move its issue to `Done` with a comment citing the SHA, and put `Closes MAR-NN` in the commit body. The link has to exist in both directions.
+- Before closing, verify against the code, not the CHANGELOG. A feature can ship with a different implementation than the ticket described.
+- Audit for silently-shipped work when reviewing the backlog or picking up an `In Progress` issue. Read recent omnibus commits' diffs, not their subjects. A tracked fix buried in an unrelated commit is the classic way work gets done but never closed.
+- The CHANGELOG and Linear are complementary. The CHANGELOG records what shipped, including untracked work; Linear tracks planned work and bugs. "Not in Linear" never means "not shipped".
 
 ### Sequencing
 
 The `phase-*` labels are the roadmap spine, in order: `phase-0-fidelity` (round-trip trust, existential, comes first), `phase-1-performance` (speed the user can feel, reusing the slot vacated by the retired `phase-1-vscode-parity`, which shipped in 0.2.3), `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`. Within a phase, order by `priority`, and pick the first High or Urgent down the spine.
 
-`phase-5-surfaces` does not rank and does not compete (maintainer, 2026-07-26). It is exploration, not queued work, and it does not sit on the spine at all. Its `priority` chips are meaningful only within the phase: a High there never compels a pick against the ranked spine, and never outranks a phase-0 fidelity bug. The "first High-or-Urgent down the spine" rule simply skips it. Do not silently promote it. If the exploration ever becomes committed scope, that is a roadmap change the owner makes explicitly. Recorded as resolved decision D8 in the private strategy corpus.
+`phase-5-surfaces` does not rank. It is exploration, not queued work, so the "first High-or-Urgent down the spine" rule skips it, and a High there never outranks a phase-0 bug. Promoting it is a roadmap change the owner makes explicitly (decision D8).
 
-`docs/WHY_THIS_FORK.md` holds project intent and ordering principles, but its 1 to 4 list is the founding rationale, not the live spine: it still names VS Code parity as layer 2, which shipped in 0.2.3. When the two appear to disagree, the `phase-*` labels win. The brand brief and the Birta Writer naming decision are in the private strategy corpus, with the full candidate and rejection record in Linear MAR-134.
+Where `docs/WHY_THIS_FORK.md` disagrees with the `phase-*` labels, the labels win. Its 1 to 4 list is the founding rationale, not the live spine.
 
-### Strategy documents (maintained privately)
+### Strategy documents
 
-Strategy and exploration documents live in a private repository, not here: which surfaces the project might expand to, engine ownership, the AI posture, publishing, positioning, and brand. None of that exploration is measured, ratified, or committed scope, so when fragments of it surface in Linear issues, commit messages, or discussion, quote them as arguments rather than findings. Strategy-level writing produced while working in this repo belongs in the private corpus, never in `docs/`; the maintainer's own agent configuration handles the routing.
+Strategy and exploration live in a private repository, never in `docs/`: surfaces, engine ownership, AI posture, publishing, positioning, brand. None of it is measured or committed scope, so quote fragments of it as arguments rather than findings.
 
-The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which stays here because it is not exploration. It records shipped network behavior, the consent ladder, and MAR-198's directed connector design. Read it before touching anything that makes an outbound request.
+The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which records shipped network behavior and the consent ladder. Read it before touching anything that makes an outbound request.
 
 ## Testing
 
