@@ -272,7 +272,8 @@ export function createImageView(
     // every other rich block. Hover-revealed like all columns, pinned open
     // while the image is selected. No delete button: deletion belongs to the
     // block menu and the keyboard (Backspace on the selected image).
-    const controlsCol = createBlockControlsColumn(wrapper);
+    const controls = createBlockControlsColumn(wrapper);
+    const controlsCol = controls.el;
 
     const zoomControl = makeBlockControlButton({
         className: "img-bc-zoom",
@@ -321,8 +322,10 @@ export function createImageView(
         widthControl.setOn(mode !== "natural");
     }
 
-    controlsCol.appendChild(zoomControl.button);
-    controlsCol.appendChild(widthControl.button);
+    // The strip mounts empty; both buttons attach on its first reveal
+    // (ui/blockControls.ts) — including the selectNode pin below, whose
+    // `.bc-col--shown` animates the strip and so trips the same trigger.
+    controls.add(zoomControl.button, widthControl.button);
 
     function updateInfo(src: string): void {
         const name = src.split("/").pop() ?? src;
@@ -523,7 +526,12 @@ export function createImageView(
             wrapper.classList.add("image-wrapper--selected");
             toolbar.style.display = "flex";
             // The hover-revealed control column stays pinned open while the
-            // image is selected.
+            // image is selected. Reveal explicitly rather than leaning on the
+            // strip's opacity transition: a NodeSelection can land here in the
+            // same frame the view mounts, before the strip has a previous
+            // computed style to animate from, and then no `transitionrun`
+            // would ever fire.
+            controls.reveal();
             controlsCol.classList.add("bc-col--shown");
 
             // If the toolbar would extend past the top of the viewport, show

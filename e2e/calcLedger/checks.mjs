@@ -142,6 +142,11 @@ export async function run({ page, check, baseUrl }) {
     const preHidden = await page.$eval(".code-block-wrapper pre",
         (el) => el.classList.contains("code-pre--preview-hidden"));
     check("blocks off: source stays visible (no auto-preview)", preHidden === false);
+    // The control column mounts EMPTY and builds its buttons on first reveal
+    // (webview/ui/blockControls.ts), so the toggle only exists once the block
+    // has been hovered — and "exists but display:none" is exactly what this
+    // check needs to tell apart from "gated off".
+    await page.hover(".code-block-wrapper pre");
     const toggleDisplay = await page.$eval(".code-view-toggle-btn",
         (el) => getComputedStyle(el).display);
     check("blocks off: no preview toggle", toggleDisplay === "none");

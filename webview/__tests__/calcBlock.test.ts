@@ -5,6 +5,7 @@
  * changes. The pure per-line engine is covered in calc.test.ts.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { revealBlockControls } from "./helpers/revealBlockControls";
 import { ensureCalcUnits } from "../utils/calc";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
@@ -130,6 +131,7 @@ describe("calc code-block preview", () => {
         expect(nv.dom.querySelector("pre")?.classList.contains("code-pre--preview-hidden"))
             .toBe(false);
         expect(nv.dom.querySelectorAll(".calc-row")).toHaveLength(0);
+        revealBlockControls(nv.dom);
         expect(
             (nv.dom.querySelector(".code-view-toggle-btn") as HTMLElement).style.display,
         ).toBe("none");

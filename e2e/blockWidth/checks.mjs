@@ -92,6 +92,23 @@ export async function run({ page, check, baseUrl }) {
             return Math.abs(c.height - w.height) <= 2 && c.left >= w.right - 1 && c.width >= 40;
         }),
     );
+    // The code column mounts EMPTY and attaches its buttons on first reveal
+    // (webview/ui/blockControls.ts, MAR-251), so every check below that reads
+    // a button needs the hover that a user would make anyway. This is also
+    // the check that the hover path populates at all — an unrevealed column
+    // has no `.bc-btn` and the height assertion would find nothing.
+    check(
+        "the code column has no buttons before it is ever revealed",
+        (await page.locator(".code-block-wrapper .bc-col .bc-btn").count()) === 0,
+        `count=${await page.locator(".code-block-wrapper .bc-col .bc-btn").count()}`,
+    );
+    await page.locator(".code-block-wrapper pre").hover();
+    await page.waitForTimeout(50);
+    check(
+        "hovering the code block populates its column",
+        (await page.locator(".code-block-wrapper .bc-col .bc-btn").count()) === 5,
+        `count=${await page.locator(".code-block-wrapper .bc-col .bc-btn").count()}`,
+    );
     check(
         "a SHORT block never squashes its buttons — they overflow at full size",
         await page.evaluate(() => {
@@ -112,18 +129,32 @@ export async function run({ page, check, baseUrl }) {
         `opacity=${await colOpacity(".embed-card__controls")}`,
     );
     await page.keyboard.press("Escape");
-    // A caret inside a table cell keeps the table's column visible.
-    await page.locator(".mw-table td").first().click();
-    await page.waitForTimeout(150);
+    // A caret inside a table cell keeps the table's column visible — reached
+    // from the paragraph BELOW by keyboard, with the pointer parked far away,
+    // so no pointer event over the table can carry the reveal. Clicking a cell
+    // (the obvious gesture) would hover the table on the way in and make both
+    // of the checks below pass for the wrong reason.
+    await page.getByText("tail text").click();
     await page.mouse.move(5, 5);
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(50);
+    await page.keyboard.press("ArrowUp");
+    await page.waitForTimeout(250);
     const tableActive = await page.evaluate(() => ({
         active: document.querySelector(".mw-table").classList.contains("bc-active"),
         opacity: getComputedStyle(document.querySelector(".mw-table .bc-col")).opacity,
+        buttons: document.querySelectorAll(".mw-table .bc-col .bc-btn").length,
     }));
     check(
         "a caret inside a table cell keeps the table's controls visible",
         tableActive.active && tableActive.opacity === "1",
+        JSON.stringify(tableActive),
+    );
+    // The `bc-active` reveal has no pointer event to hang population on; the
+    // strip's own opacity transition is what carries it (MAR-251). A revealed
+    // but EMPTY column is the failure this pins.
+    check(
+        "the caret reveal populates the column, not just fades an empty strip",
+        tableActive.buttons === 1,
         JSON.stringify(tableActive),
     );
     await page.keyboard.press("Escape");
@@ -254,6 +285,7 @@ export async function run({ page, check, baseUrl }) {
     );
 
     // ── Code block: header width toggle breaks out and reverts ──
+    await page.locator(".code-block-wrapper pre").hover();
     await page.locator(".code-block-wrapper .code-width-toggle-btn").dispatchEvent("mousedown");
     await page.waitForTimeout(50);
     geo = await geometry();

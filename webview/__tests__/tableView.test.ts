@@ -6,6 +6,7 @@
  * not disturb parsing, serialization, or in-cell editing.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { revealBlockControls } from "./helpers/revealBlockControls";
 import {
     Editor,
     rootCtx,
@@ -121,6 +122,54 @@ describe("table NodeView — DOM structure", () => {
         // gaps = count + 1.
         expect(overlay.querySelectorAll(".mw-insert--row").length).toBe(4);
         expect(overlay.querySelectorAll(".mw-insert--col").length).toBe(3);
+    });
+
+    it("should mount the control column empty and fill it on the first reveal", () => {
+        const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
+        const col = wrapper.querySelector(":scope > .bc-col");
+        // The strip is there — it is the hover target that carries the reveal
+        // — but its Full Width button is not, until a reveal arrives
+        // (MAR-251). A call site that appended straight to `col.el` instead of
+        // going through `add()` would fail here.
+        expect(col).not.toBeNull();
+        expect(col!.querySelectorAll(".bc-btn")).toHaveLength(0);
+        revealBlockControls(wrapper);
+        expect(col!.querySelectorAll(".mw-bc-width")).toHaveLength(1);
+    });
+
+    it("should read layout once per row and column, never once per affordance", async () => {
+        // reposition() must stay strictly read-then-write (MAR-251): a
+        // `style.top` write dirties layout, so a getBoundingClientRect() after
+        // one forces a synchronous re-layout of the whole document. It used to
+        // re-read each row's and cell's rect inside the four write loops —
+        // values the read phase had already captured — which on the launch
+        // harness's `large` fixture (108 tables) cost 237 ms, 65% of the whole
+        // paint span. Counting the reads is what makes that regression loud:
+        // the budget scales with the TABLE (rows + columns), not with the
+        // grips and insert bars being positioned (about twice as many).
+        const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
+        const rows = wrapper.querySelectorAll("tbody > tr").length;
+        const cols = wrapper.querySelectorAll("tbody > tr:first-child > *").length;
+        const frame = (): Promise<void> =>
+            new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+        await frame(); // let the mount-time pass drain
+        const original = Element.prototype.getBoundingClientRect;
+        let reads = 0;
+        Element.prototype.getBoundingClientRect = function (this: Element) {
+            reads++;
+            return original.call(this);
+        };
+        try {
+            // The capture-phase scroll listener is the cheapest way to ask for
+            // exactly one more pass.
+            window.dispatchEvent(new Event("scroll"));
+            await frame();
+        } finally {
+            Element.prototype.getBoundingClientRect = original;
+        }
+        // wrapper + table + one per row + one per first-row cell.
+        expect(reads).toBe(2 + rows + cols);
     });
 });
 
