@@ -19,7 +19,7 @@ import type { EditorView } from "../pm";
 import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { tabKeymapPlugin } from "../plugins/tabKeymap";
-import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
+import { applyMinimalChanges, computeRoundTripProtection, markdownProfile } from "../utils/minimalDiff";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -186,11 +186,15 @@ describe("an item's real first block rides on the marker line", () => {
         expect(kinds).not.toContain("hr");
     });
 
-    it("a blank line the author wrote inside an item should survive the save", async () => {
-        // Here the leading empty paragraph is NOT an artifact — an item may
-        // legally start with a paragraph, so nothing was filled in and the empty
-        // one is a node the document really has. Dropping it deleted a paragraph
-        // the user could see (`-\n\n  world` came back as `- world`).
+    it("emptying an item's first paragraph should keep the second one INSIDE the item", async () => {
+        // MAR-309, a fidelity-policy call (maintainer, 2026-08-04). Emptying an
+        // item's first paragraph when it holds a second leaves
+        // `paragraph(empty), paragraph("world")` — a shape Markdown cannot
+        // write. Both spellings lose something; the item's CONTENT wins.
+        //
+        // Asserted on the ITEM's children, not on a document-wide paragraph
+        // count. A count is satisfied by the bug: when `world` escapes to the
+        // top level it is still there to be counted. A missing child is not.
         const editor = await makeEditor("- hello\n\n  world\n");
         const v = view(editor);
         v.dispatch(v.state.tr.delete(posAfterText(v, "hello") - "hello".length, posAfterText(v, "hello")));
@@ -198,9 +202,13 @@ describe("an item's real first block rides on the marker line", () => {
         const serialized = editor.action(getMarkdown());
         await editor.destroy();
 
-        const kinds = await reparsedKinds(serialized);
         expect(before).toBe(2); // an empty paragraph and a real one
-        expect(kinds.filter((k) => k === "paragraph")).toHaveLength(2);
+        expect(serialized).toBe("-\n  world\n");
+        expect(await reparsedItemShape(serialized)).toBe("paragraph");
+        // The point of the whole case: nothing sits BESIDE the list. The old
+        // bytes reparsed to a trailing top-level paragraph — that extra entry
+        // is exactly the escape, and it is what this equality forbids.
+        expect(await reparsedKinds(serialized)).toEqual(["bullet_list", "list_item", "paragraph"]);
     });
 });
 
@@ -627,16 +635,16 @@ describe("emptying a task item that holds another block", () => {
 // Found by critiquing the session diff as one change, not by any lane: the
 // merge belonged to a different lane, and neither side's tests crossed the seam.
 //
-// The reported symptoms are still fixed end to end — no invented heading, and
-// bytes the parser can read — which is what the first two cases pin. What is
-// NOT fixed is the rule's NESTING: the merge reinstates the blank line, and an
-// item beginning with a blank gives up everything after it, so the rule reopens
-// as a top-level sibling. The third case pins that gap deliberately, so it
-// cannot be mistaken for working. Fixing it means changing how the merge sources
-// blank runs, and there is direct evidence that is dangerous: MAR-303's lane
-// tried it in its first cut and collapsed `\n\n---\n` to `\n---\n` in
-// fence-edges.md, turning a thematic break into a setext underline. Tracked
-// separately rather than forced in here.
+// Three symptoms, all pinned end to end: no invented heading, bytes the parser
+// can read, and the rule's NESTING.
+//
+// Nesting is the one that needs the whole save path to prove. The serializer
+// glues an item led by the artifact empty paragraph (MAR-306) and
+// `getMarkdown()` shows it — but bytes reach disk through
+// `applyMinimalChanges`, which used to reinstate the blank the saved file had.
+// An item beginning with a blank gives up everything after it, so the rule
+// reopened as a top-level sibling (MAR-313). A test that stops at
+// `getMarkdown()` cannot see any of that.
 describe("an emptied item holding a rule, through the real save merge", () => {
     /** Serialize, then merge exactly as the sync pipeline does. */
     async function saveThroughMerge(content: string, deleteText: string): Promise<string> {
@@ -663,12 +671,95 @@ describe("an emptied item holding a rule, through the real save merge", () => {
         expect(await reparsedKinds(merged)).toContain("paragraph");
     });
 
-    it.fails("should keep the rule inside the item once the merge stops reinstating the blank", async () => {
-        // KNOWN GAP. The serializer writes `-\n  ---\n`; the merge writes
-        // `-\n\n  ---\n`, and the rule reopens outside the list. Asserted as
-        // `it.fails` rather than pinned to today's bytes so it turns red the
-        // moment the merge is fixed, instead of quietly outliving the gap.
+    it("should keep the rule inside the item, not promote it to a top-level sibling", async () => {
+        // The merge used to write `-\n\n  ---\n` where the serializer wrote
+        // `-\n  ---\n`, and the rule reopened OUTSIDE the list (MAR-313).
         const merged = await saveThroughMerge("- [x] alpha\n\n  ---\n", "alpha");
+        expect(merged).toBe("-\n  ---\n");
         expect(await reparsedItemShape(merged)).toBe("paragraph,hr");
+    });
+
+    it("should glue the first gap even when a LATER gap must stay blank", async () => {
+        // `gapMustBeBlank`'s whole-item scan answers for the item as a unit: if
+        // any gap must be blank it returns 1 for EVERY gap. A raw HTML block
+        // forces exactly that — and a blank in the FIRST gap does not merely
+        // loosen the item, it orphans all of its content, since CommonMark
+        // gives an item beginning with a blank at most that one blank. Let the
+        // scan decide this gap and the item reopens empty with both blocks
+        // lifted to the top level.
+        const merged = await saveThroughMerge("- hello\n\n  <div>raw</div>\n\n  body\n", "hello");
+        expect(await reparsedItemShape(merged)).toBe("paragraph,paragraph");
+        // Nothing beside the list — the whole point. (The `html` node sits
+        // INSIDE the item's first paragraph, which is why the item shape above
+        // reads two paragraphs while this reads five nodes.)
+        expect(await reparsedKinds(merged)).toEqual([
+            "bullet_list", "list_item", "paragraph", "html", "paragraph",
+        ]);
+        // The later gap still gets its blank: gluing there would let the HTML
+        // block absorb `body`, which is what the scan exists to prevent.
+        expect(merged).toContain("</div>\n\n  body");
+    });
+
+    it("should carry MAR-309's glued paragraph all the way to disk", async () => {
+        // The seam between the two fixes, driven end to end because neither
+        // layer's own tests cross it: MAR-309 is the SERIALIZER gluing
+        // `-\n  world\n`, MAR-313 is the MERGE not reinstating the blank. A
+        // green `getMarkdown()` proves only the first half.
+        const merged = await saveThroughMerge("- hello\n\n  world\n", "hello");
+        expect(merged).toBe("-\n  world\n");
+        expect(await reparsedItemShape(merged)).toBe("paragraph");
+    });
+
+    it("should keep a plain bullet's rule inside the item too", async () => {
+        // Not checkbox-specific: MAR-306 is how the shape was found, not what
+        // causes it. This case fails identically on the pre-fix merge.
+        const merged = await saveThroughMerge("- alpha\n\n  ---\n", "alpha");
+        expect(await reparsedItemShape(merged)).toBe("paragraph,hr");
+    });
+
+    // The arm's GUARD — that `prev` must be a bare marker — is asserted on the
+    // predicate directly rather than through a save.
+    //
+    // A save-level test of it is decoration: `gapBefore` consults
+    // `blankSplitsBlock` only when the saved bytes have a blank and the
+    // serializer does not, and for every shape below the serializer emits one
+    // too, so its answer is discarded. Remove the bare-marker check entirely
+    // and the whole suite stays green.
+    //
+    // Each pair is a real line pair from the named fixture, found by diffing
+    // the guarded arm against an unguarded one across the corpus — a blank the
+    // unguarded rule would be free to delete the moment the serializer glued
+    // that shape, gluing an item's fence onto its own text or merging two
+    // paragraphs of a footnote.
+    //
+    // `partly-loose-lists.md`'s `- first paragraph` / `  second paragraph` is
+    // deliberately absent: the predicate answers true there through the
+    // lazy-continuation arm, with or without this fix, and correctly so —
+    // glued, the second line really is continuation text.
+    it("should refuse every corpus pair whose prev is not a bare marker", () => {
+        const cases: [string, string, string][] = [
+            ["fence-tilde-after-escape.md", "- item with a fence", "  ~~~"],
+            [
+                "footnotes-variants.md",
+                "[^note]: A longer footnote definition with two paragraphs.",
+                "    The second paragraph is an indented continuation of the same note.",
+            ],
+            ["footnotes-variants.md", "[^list]: A definition whose list is loose.", "    - first item"],
+            ["tables-and-code.md", "```", "    legacy indented code block"],
+        ];
+        for (const [fixture, prev, next] of cases) {
+            expect(
+                markdownProfile.blankSplitsBlock(prev, next),
+                `${fixture}: the blank after ${JSON.stringify(prev)} is the user's and must survive`,
+            ).toBe(false);
+        }
+    });
+
+    it("should accept a bare marker holding indented content", () => {
+        expect(markdownProfile.blankSplitsBlock("-", "  ---")).toBe(true);
+        expect(markdownProfile.blankSplitsBlock("- [x]", "  body")).toBe(true);
+        expect(markdownProfile.blankSplitsBlock("1.", "   body")).toBe(true);
+        // Content at the marker's own column is a sibling, not the item's.
+        expect(markdownProfile.blankSplitsBlock("-", "body")).toBe(false);
     });
 });

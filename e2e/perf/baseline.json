@@ -1,72 +1,7 @@
 {
-  "note": "Historical reference only, NOT the loop gate. Absolute ms are machine-specific (maintainer laptop, production build). The loop gates on a same-session A/B via `pnpm perf --compare`; this file advances only inside accepted-optimization commits.",
+  "note": "Holds NO measurements, deliberately. This file gates nothing and no code reads it — the loop gates on a same-session A/B (`pnpm perf --compare`, `pnpm perf:ab`). Figures kept here could only be quoted by a human, and went stale the moment anything landed while still reading like a current figure. Rebuild and run `pnpm perf` for current numbers. Guarded by bundleBaseline.test.mjs.",
   "lastLanded": "MAR-67 (extract sampleDocPosition; selectionToolbar leaves the bundle)",
   "build": "production (node esbuild.mjs --production --metafile)",
   "runsPerFixture": 10,
-  "aggregation": "median of runs 2..10 (first discarded)",
-  "bundle": {
-    "eagerJs": 980842,
-    "eagerCss": 78863,
-    "eagerTotal": 1059705,
-    "eagerChunkCount": 8,
-    "totalJs": 3818337,
-    "totalCss": 1539167
-  },
-  "fixtures": {
-    "tiny": {
-      "median": {
-        "launch": 100.9,
-        "eager": 20.1,
-        "roundtrip": 7,
-        "create": 14.7,
-        "rtp": null,
-        "toc": 0.5,
-        "toolbar": 9.4
-      }
-    },
-    "medium": {
-      "median": {
-        "launch": 273.7,
-        "eager": 20.2,
-        "roundtrip": 7.1,
-        "create": 109.8,
-        "rtp": null,
-        "toc": 0.5,
-        "toolbar": 9.3
-      }
-    },
-    "large": {
-      "median": {
-        "launch": 943.8,
-        "eager": 20.3,
-        "roundtrip": 7.2,
-        "create": 500.1,
-        "rtp": null,
-        "toc": 0.4,
-        "toolbar": 9.6
-      }
-    },
-    "code-heavy": {
-      "median": {
-        "launch": 151.5,
-        "eager": 20.4,
-        "roundtrip": 7,
-        "create": 51.1,
-        "rtp": null,
-        "toc": 0.4,
-        "toolbar": 9.6
-      }
-    },
-    "math": {
-      "median": {
-        "launch": 173.1,
-        "eager": 20.4,
-        "roundtrip": 7.1,
-        "create": 22.7,
-        "rtp": null,
-        "toc": 0.5,
-        "toolbar": 9.6
-      }
-    }
-  }
+  "aggregation": "median of runs 2..10 (first discarded)"
 }

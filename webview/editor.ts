@@ -129,11 +129,21 @@ let _protectionSnapshot: { baseline: string; doc: ProseNode; editor: Editor } | 
  * pristine-derived protection. The snapshot is bound to its editor instance, so
  * a deferred callback that fires after the editor was destroyed or replaced is a
  * no-op (guarded, since ctx access on a torn-down editor throws).
+ *
+ * The `rtp-start`/`rtp-end` marks bracket the whole zero-edit re-serialization.
+ * They were stamped here when this ran eagerly on the mount path and were
+ * deleted along with the eager call when it was deferred — leaving the harness's
+ * `rtp` span reading `null` on every run while the work itself moved to the
+ * frames just after first paint, where no span reaches. That is what the 63 ms
+ * post-paint longtask on the `large` fixture turned out to be (MAR-311): not
+ * unattributable work, work whose attribution was removed. Deferring work past
+ * the last mark does not make it free.
  */
 function getProtection(): RoundTripProtection | null {
     if (_protection) return _protection;
     const snap = _protectionSnapshot;
     if (snap && snap.editor === _editor) {
+        mark("rtp-start");
         try {
             const serialized = snap.editor.action((ctx) => ctx.get(serializerCtx)(snap.doc));
             _protection = computeRoundTripProtection(
@@ -145,6 +155,11 @@ function getProtection(): RoundTripProtection | null {
             // Editor torn down before the deferred compute ran — no live save
             // path to protect, so leave protection unset.
         }
+        // Stamped even when the serialize threw: the main thread was blocked
+        // either way, and a span that silently vanishes on the error path is how
+        // this measurement was lost the first time.
+        mark("rtp-end");
+        measure("rtp", "rtp-start", "rtp-end");
         _protectionSnapshot = null;
     }
     return _protection;

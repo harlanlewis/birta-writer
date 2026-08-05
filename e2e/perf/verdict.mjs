@@ -25,13 +25,33 @@ export const SPANS = [
     // or better" while launch regressed. It costs nothing to report: both
     // marks already existed.
     ["paint", "create-end", "editor-painted"],
-    ["rtp", "rtp-start", "rtp-end"],
     ["toc", "toc-start", "toc-end"],
     ["toolbar", "toolbar-start", "toolbar-end"],
+    // ── after `editor-painted` (see POST_PAINT_SPANS) ──
+    ["rtp", "rtp-start", "rtp-end"],
+    ["proofread", "proofread-start", "proofread-end"],
 ];
 
-// The sub-spans that compose launch (everything but launch itself).
-export const SUB_SPANS = SPANS.map(([l]) => l).filter((l) => l !== "launch");
+/**
+ * Spans that fall AFTER `editor-painted`, so they are not part of `launch` and
+ * a move in one can never explain a launch delta.
+ *
+ * They are measured anyway because deferring work past the last mark does not
+ * make it free: `rtp` (the zero-edit re-serialization behind round-trip
+ * protection) and `proofread` (the first whole-document style pass) together
+ * blocked the main thread for ~114 ms right after first paint on the `large`
+ * fixture — the window a user's first keystroke or scroll lands in — and no
+ * span reached them. `rtp` was worse than unmeasured: it was listed here the
+ * whole time and read `null` on every run, because the marks were deleted when
+ * the work moved off the mount path (MAR-311).
+ */
+export const POST_PAINT_SPANS = new Set(["rtp", "proofread"]);
+
+// The sub-spans that compose launch (everything but launch itself, and not the
+// post-paint ones, which are reported separately).
+export const SUB_SPANS = SPANS
+    .map(([l]) => l)
+    .filter((l) => l !== "launch" && !POST_PAINT_SPANS.has(l));
 
 // Only these fixtures can FAIL the gate — their launch medians dwarf the 10 ms
 // floor so a real move is unambiguous. The small ones are reported, never gated.

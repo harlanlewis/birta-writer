@@ -7,11 +7,12 @@
  * stylesheet would put a feature almost nobody enables on everybody's launch
  * path. That is invisible in a behavior test, so it needs a structural one.
  *
- * CSS parked in a template literal also escapes the repo-wide sweeps:
- * `chromeTokens.test.ts` and the bare-color-literal rule in
- * `noColorLiterals.test.ts` only walk `.css` files. Both are re-imposed here.
- * (The `--vscode-*`-with-a-literal-fallback rule does reach `.ts`, so it is not
- * duplicated.)
+ * The repo-wide sweeps DO reach CSS parked in a template literal — since MAR-260
+ * `chromeTokens.test.ts` and `noColorLiterals.test.ts` extract CSS authored in
+ * `.ts` as well as `.css`. What stays here is what they do not say: `font-size`
+ * must be a `--ui-fs-*` token rather than merely not a sub-14px literal, and the
+ * gutter may mint no raw px length at all. Don't add a fourth hand-rolled color
+ * scan to the next injected stylesheet — the central guards have it.
  *
  * The gutter's *behavior* is covered by `lineNumberLayout.test.ts` (placement
  * arithmetic) and `e2e/lineNumbers` (real geometry, which jsdom cannot have).

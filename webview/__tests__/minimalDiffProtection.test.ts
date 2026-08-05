@@ -231,18 +231,25 @@ describe("protection with construct-crossing bytes (MAR-161 M3)", () => {
     });
 });
 
-describe("repair matching uses one pristine analysis (MAR-161 review finding)", () => {
-    // A tilde fence: the serializer rewrites it to backticks, producing TWO
-    // protection regions (open line, close line). Sequential re-analysis
-    // between repairs used to break this: restoring the `~~~` open made the
-    // serializer's following ``` close classify as content of an unclosed
-    // tilde fence, region 2 stopped matching, the self-check failed, and the
-    // null protection let a zero-edit save rewrite the fence.
+describe("a tilde fence survives the serializer's backticks (MAR-161, MAR-312)", () => {
+    // A tilde fence: the serializer rewrites it to backticks, and the saved
+    // spelling has to survive that.
+    //
+    // There are no protection regions to co-ordinate here — a fence marker line
+    // is keyed by its info string alone, so `~~~python` and ```` ```python ````
+    // compare EQUAL and both marker lines are ordinary `keep`s carrying the
+    // saved bytes (MAR-312). Two independently-anchored regions could be
+    // repaired independently, and an edit either side of the fence stood ONE
+    // end down, writing a mismatched pair that swallowed the rest of the file.
     const TILDE_SAVED = "~~~python\ntilde = 'fence'\n~~~\n\ntail prose\n";
     const TILDE_BASELINE = "```python\ntilde = 'fence'\n```\n\ntail prose\n";
 
-    it("a tilde fence should yield protection despite spanning two regions", () => {
-        expect(computeRoundTripProtection(TILDE_SAVED, TILDE_BASELINE)).not.toBeNull();
+    it("a tilde fence should need no protection at all, the two spellings comparing equal", () => {
+        // The two cases below assert the bytes and would hold under either
+        // design — they are what actually guards the user's file. This one
+        // fails loudly if the fence goes back to being repaired rather than
+        // kept, which is the state MAR-312's corruption needs.
+        expect(computeRoundTripProtection(TILDE_SAVED, TILDE_BASELINE)).toBeNull();
     });
 
     it("a zero-edit save should keep the tilde fence byte-identically", () => {

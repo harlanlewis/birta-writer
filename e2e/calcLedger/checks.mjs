@@ -47,15 +47,34 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.down();
     await page.mouse.move(resBox.x + resBox.width - 2, resBox.y + resBox.height / 2, { steps: 12 });
     await page.mouse.up();
-    await page.waitForTimeout(150);
-    const dragText = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+
+    // Poll for the selection instead of reading once after a fixed wait. A
+    // synthetic drag settles on the browser's own schedule, and on a loaded
+    // machine 150 ms is not always enough: this check went red in a full run
+    // with `""` — no selection yet — and passed 14/14 in isolation minutes
+    // later. Polling keeps the assertion identical (the selection must still
+    // span source AND value) while removing the dependence on how busy the
+    // machine is; a real regression wipes the selection and every poll sees the
+    // same empty string the fixed wait did.
+    const settledSelection = async (predicate) => {
+        let text = "";
+        for (let i = 0; i < 40; i++) {
+            text = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+            if (predicate(text)) return text;
+            await page.waitForTimeout(25);
+        }
+        return text;
+    };
+
+    const dragText = await settledSelection(
+        (t) => t.includes("total = rent + budget") && t.includes("6500"),
+    );
     check("a mouse drag in the ledger survives (ignoreMutation)",
         dragText.includes("total = rent + budget") && dragText.includes("6500"),
         JSON.stringify(dragText));
 
     await page.mouse.dblclick(srcBox.x + 10, srcBox.y + srcBox.height / 2);
-    await page.waitForTimeout(120);
-    const dblText = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+    const dblText = await settledSelection((t) => t.trim().length > 0);
     check("double-click selects a ledger word", dblText.trim().length > 0, JSON.stringify(dblText));
 
     // ── The editor still owns selection everywhere else ──
