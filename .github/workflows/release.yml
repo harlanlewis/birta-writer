@@ -63,11 +63,22 @@ jobs:
     outputs:
       release: ${{ steps.plan.outputs.release }}
       version: ${{ steps.plan.outputs.version }}
+    env:
+      # Dormant until the secret exists, exactly like the publish job's
+      # HAS_AZURE. Without it the release still stamps the packaged CHANGELOG
+      # and writes correct notes; only the commit back to main is skipped.
+      HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # full history for the notes range
+          # The stamp commit at the end of this job pushes to main, which
+          # requires a PR from anyone but an admin. GITHUB_TOKEN is not one, so
+          # the push needs an admin-owned token; branch protection has
+          # enforce_admins off, so no bypass rule is involved. Falls back to the
+          # job token — which cannot push — when the secret is unset.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - name: Determine version and whether to release
         id: plan
@@ -84,7 +95,13 @@ jobs:
             PREV="(none)"                  # first-ever release: all history is new
             RANGE="HEAD"
           fi
-          COUNT=$(git rev-list --count "$RANGE")
+          # Exclude this job's own stamp commits (MAR-282). The last step
+          # commits the rolled CHANGELOG back to main, so a plain count would
+          # see that commit the next night, cut a release of nothing, stamp
+          # another heading, and repeat forever. Excluding them by subject
+          # keeps the guard honest without making it depend on where the tag
+          # sits, so the tag can still be created last (see below).
+          COUNT=$(git rev-list --count --invert-grep --grep='^release: stamp' "$RANGE")
           echo "prev=$PREV"   >> "$GITHUB_OUTPUT"
           echo "range=$RANGE" >> "$GITHUB_OUTPUT"
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
@@ -136,9 +153,31 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: pnpm install --frozen-lockfile
 
+      # The nightly used to package whatever was at HEAD without checking that
+      # anything about it was green: `pnpm run package` runs vscode:prepublish
+      # (an esbuild build) and nothing else, and the release cron fires on its
+      # own schedule regardless of whether CI for the newest commit had finished
+      # — or finished green (MAR-265). Verifying here rather than querying the
+      # commit's check-runs makes the artifact self-justifying, and costs a few
+      # minutes on an unattended job nobody is waiting for.
+      - name: Verify the commit being released
+        if: steps.plan.outputs.release == 'true'
+        run: pnpm typecheck && pnpm test
+
       - name: Stamp package.json to the release version
         if: steps.plan.outputs.release == 'true'
         run: pnpm version "${{ steps.plan.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      # Roll [Unreleased] into this version's heading BEFORE the notes are
+      # generated and before the VSIX is packaged, so the shipped changelog —
+      # which is what the Marketplace renders on its Changelog tab — leads with
+      # the version the user just installed, and the notes describe only this
+      # release (MAR-282).
+      - name: Stamp CHANGELOG.md to the release version
+        if: steps.plan.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: node scripts/stamp-changelog.mjs
 
       - name: Generate release notes
         if: steps.plan.outputs.release == 'true'
@@ -193,6 +232,13 @@ jobs:
       # same step that publishes the release. Tagging separately, earlier, would
       # risk an orphan tag if a later step failed — and that tag would then make
       # the next run's "anything new since the last tag?" guard skip this content.
+      #
+      # This survives the CHANGELOG stamp commit below because the guard filters
+      # stamp commits out by subject rather than relying on the tag sitting at
+      # or after them. The tag therefore points at the pre-stamp commit, so the
+      # tagged tree's CHANGELOG.md is one heading behind the shipped one — the
+      # same relationship package.json has always had, being stamped at build
+      # time and never committed back.
       - name: Tag and create GitHub Release
         if: steps.plan.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
@@ -217,6 +263,40 @@ jobs:
           name: vsix
           path: releases/*.vsix
           retention-days: 7
+
+      # Give the repo the same heading the artifact just shipped with, so
+      # [Unreleased] holds only what has NOT been released yet.
+      #
+      # Deliberately the last step, and continue-on-error: the release is
+      # already tagged, published, and on the Marketplace by now, so nothing
+      # here may fail it. A skipped push is self-correcting — the next night's
+      # heading simply spans two days' entries.
+      - name: Commit the stamped changelog to main
+        if: steps.plan.outputs.release == 'true' && env.HAS_RELEASE_TOKEN == 'true'
+        continue-on-error: true
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # package.json is stamped for the build and is NOT a release
+          # authority; it stays 0.0.0 in the repo. Restoring it also leaves the
+          # tree clean enough for the rebase below.
+          git checkout -- package.json
+
+          git add CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "CHANGELOG.md unchanged — nothing to commit." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The subject is what the release guard greps for; changing it here
+          # without changing the guard reintroduces the perpetual empty release.
+          git commit -m "release: stamp CHANGELOG for v${{ steps.plan.outputs.version }}"
+
+          # main requires linear history, so rebase rather than merge if a PR
+          # landed while this job was running.
+          git pull --rebase origin main
+          git push origin HEAD:main
 
   # Publishing is a SEPARATE job on purpose. It is the only part that needs the
   # `marketplace-publish` environment, and an environment is a policy surface —

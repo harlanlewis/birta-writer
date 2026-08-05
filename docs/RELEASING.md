@@ -32,18 +32,35 @@ The same string is the git tag (`v2026.714.0`), the GitHub Release title, and th
 The `Release` workflow (`.github/workflows/release.yml`) runs **nightly at 04:00 PT** and can also be run by hand (Actions → Release → *Run workflow*).
 
 1. If nothing has landed since the last tag, it stops — no empty releases.
-2. It writes end-user highlights (see below), packages the `.vsix`, tags the commit, and publishes a GitHub Release with the `.vsix` attached.
-3. A second job, `publish`, then pushes that same `.vsix` to the Marketplace.
+2. It runs `pnpm typecheck && pnpm test`. `vsce package` only runs a build, and the release cron fires on its own schedule regardless of whether CI for the newest commit has finished, or finished green — so the job proves the commit for itself rather than trusting a status lookup that may be pending or absent.
+3. It rolls `CHANGELOG.md` (see below), writes end-user highlights, packages the `.vsix`, tags the commit, and publishes a GitHub Release with the `.vsix` attached.
+4. A second job, `publish`, then pushes that same `.vsix` to the Marketplace.
+5. Finally it commits the rolled `CHANGELOG.md` back to `main`.
 
-That's the whole loop. It is fully automatic; nothing is pushed to `main`.
+That's the whole loop. It is fully automatic; the one thing it writes to `main` is that changelog commit, and it is the last step, so it can never fail a release that has already shipped.
 
 Publishing is a separate job because it is the only part that needs the `marketplace-publish` environment, and an environment is a policy surface — a required reviewer or a deployment branch rule added to it would stall every job that declares it. Splitting keeps the tag, the GitHub Release, and the downloadable `.vsix` out of reach of a policy only publishing cares about, and means a broken credential costs one skipped job rather than the whole release.
 
 > **DST note:** GitHub cron is UTC-only. `0 11 * * *` is 04:00 during PDT and 03:00 during PST. Change it to `0 12 * * *` to anchor 04:00 to standard time.
 
+## The changelog
+
+Entries are written under `## [Unreleased]` as work lands. The release job runs `scripts/stamp-changelog.mjs`, which renames that heading to the version being cut and opens a fresh empty one, then commits the result to `main`. **No version heading is ever written by hand**, and `[Unreleased]` holds only what has not shipped yet.
+
+The heading's date is derived from the CalVer version rather than read from a clock, so the two cannot disagree — a second clock read could land on the other side of midnight from the one that produced the version.
+
+Two consequences worth knowing:
+
+- **A release with no user-visible changes still gets a heading**, reading `_No user-visible changes; internal work only._`. Commits land that a user cannot observe; `2026.802.0` was one. Giving it a heading keeps the version sequence gap-free instead of implying the release never happened.
+- **The tag points at the pre-stamp commit**, so a tagged tree's `CHANGELOG.md` is one heading behind the artifact built from it. This is the same relationship `package.json` has always had — stamped at build time, never committed back — and it is why the release guard filters its own stamp commits out by subject (`release: stamp …`) rather than depending on where the tag sits. Change that subject without changing the guard in `release.yml` and the nightly will cut an empty release every night, each one stamping another heading; `shared/__tests__/releaseWorkflow.test.ts` checks the two against each other.
+
+Until 2026-08-05 none of this happened: no release had ever rolled `[Unreleased]`, so the changelog shipped inside the VSIX — which is what the Marketplace renders on its **Changelog** tab — led with a section titled "Unreleased" above a version history that stopped at `0.2.3`. Those pre-Marketplace semver releases were never publicly installable and now live in [`CHANGELOG-PRE-MARKETPLACE.md`](CHANGELOG-PRE-MARKETPLACE.md), which `.vscodeignore` keeps out of the VSIX.
+
 ## Release notes
 
-`scripts/gen-release-notes.mjs` reads the commit range and the `[Unreleased]` section of `CHANGELOG.md`, then asks Claude to write [cursor.com/changelog](https://cursor.com/changelog)-style notes. Without an `ANTHROPIC_API_KEY` it falls back to a plain categorized commit list, so a release never blocks on the model.
+`scripts/gen-release-notes.mjs` reads the commit range and **this version's** section of `CHANGELOG.md` (falling back to `[Unreleased]` when run by hand against an unstamped tree), then asks Claude to write [cursor.com/changelog](https://cursor.com/changelog)-style notes. Without an `ANTHROPIC_API_KEY` it falls back to a plain categorized commit list, so a release never blocks on the model.
+
+It reads the stamped section for a reason: reading `[Unreleased]` unconditionally is what made four consecutive nightly releases re-announce the entire product, because nothing ever rolled that section and it had accumulated every entry ever written. The `2026.804.0` notes ran to 112 lines of features that had shipped weeks earlier.
 
 ### What goes in — the taxonomy
 
@@ -70,10 +87,15 @@ A **first release** is the special case: with no prior public version, every obs
 | `ANTHROPIC_API_KEY` | AI-written highlights instead of a commit list    | recommended      |
 | `AZURE_CLIENT_ID`   | Also publishes to the VS Code Marketplace         | set to publish   |
 | `AZURE_TENANT_ID`   | Required alongside `AZURE_CLIENT_ID`              | set to publish   |
+| `RELEASE_TOKEN`     | Commits the rolled `CHANGELOG.md` back to `main`  | needed to stamp  |
 
 Until `AZURE_CLIENT_ID` exists, a release builds the downloadable `.vsix` and stops — the "build it, don't publish yet" phase.
 
-Neither value is a secret in the usual sense: they are identifiers, not credentials, and nothing here expires. They are stored as secrets only to keep the tenant out of public logs.
+`AZURE_CLIENT_ID` and `AZURE_TENANT_ID` are not secrets in the usual sense: they are identifiers, not credentials, and nothing about them expires. They are stored as secrets only to keep the tenant out of public logs.
+
+`RELEASE_TOKEN` **is** a credential — a fine-grained personal access token scoped to this repository alone, `Contents: read and write`, set to **No expiration**. It exists because `main` requires a pull request from anyone but an admin, and `GITHUB_TOKEN` is not one; branch protection has `enforce_admins` off, so an admin-owned token pushes directly and no bypass rule is involved. (CI cannot open a PR instead: pull requests created with `GITHUB_TOKEN` do not trigger workflows, so the required checks would never run and it could never merge.) Without it the release still stamps the packaged changelog and writes correct notes — only the commit back to `main` is skipped, and the next night's heading simply spans two days.
+
+**Check the first run after adding it.** The push step is `continue-on-error`, so a rejected push shows up as a green release with no stamp commit rather than as a failure — read the step's log the first morning rather than inferring from the release having succeeded. Two things are only proven by that run: that an admin-owned token does bypass both the pull-request requirement and the required status checks (documented behaviour of `enforce_admins: false`, not verified here), and that the rebase-before-push handles a PR landing mid-run. Note also that the stamp commit is a push to `main`, so it triggers a CI run of its own each night; `launch-perf` short-circuits on it, and the rest is the ordinary cost of a docs-only commit.
 
 ## Marketplace authentication (one-time setup)
 
@@ -83,10 +105,10 @@ This is deliberately *not* the flow VS Code's own docs describe. Those instruct 
 
 The setup, once:
 
-1. **A user-assigned managed identity** in the Azure portal — **not an App Registration**. An App Registration is free and needs no subscription, so it looks like the obvious choice; it reportedly authenticates successfully and then fails the publish itself with `InvalidAccessException: The requested operation is not allowed`. (Reported by others, not reproduced here — Microsoft documents this flow only for Azure Pipelines, so the GitHub Actions shape of it is community knowledge. Treat the whole section as verified-by-use once the first publish succeeds, not before.)
+1. **A user-assigned managed identity** in the Azure portal — **not an App Registration**. An App Registration is free and needs no subscription, so it looks like the obvious choice; it reportedly authenticates successfully and then fails the publish itself with `InvalidAccessException: The requested operation is not allowed`. (Reported by others, not reproduced here — Microsoft documents this flow only for Azure Pipelines, so the GitHub Actions shape of it is community knowledge. **This section is now verified by use**: the first publish succeeded on 2026-07-31 and every nightly since has published on the same path.)
 2. **A federated credential** on that identity, scenario *GitHub Actions deploying Azure resources*, **entity type Environment**, environment name `marketplace-publish`. Branch or Tag bindings match one literal ref and break on the next release; the release job declares this environment for exactly this reason.
 3. **`AZURE_CLIENT_ID` and `AZURE_TENANT_ID`** copied from the identity's *Properties* into repo secrets.
-4. **The identity added to the Marketplace publisher as a Contributor.** Its Azure object ID will not be found by the publisher's member search — the only id that search accepts comes from querying `https://app.vssps.visualstudio.com/_apis/profile/profiles/me` *as the identity*, which is what `.github/workflows/entra-identity-probe.yml` exists to do. Run it once by hand, take the `id`, then delete the workflow.
+4. **The identity added to the Marketplace publisher as a Contributor.** Its Azure object ID will not be found by the publisher's member search — the only id that search accepts comes from querying `https://app.vssps.visualstudio.com/_apis/profile/profiles/me` *as the identity*. A throwaway `workflow_dispatch` workflow did this once, on 2026-07-30, and has since been deleted; if the identity is ever replaced, re-create one to print the new `id`.
 
 Because the identity lives inside an Azure subscription, **the subscription has to stay active** or it disappears and publishing breaks. The identity itself is free; a pay-as-you-go subscription holding nothing else should bill nothing, but confirm that against current Azure terms rather than trusting this sentence — a lapsed free trial is the one way this otherwise non-expiring setup can still expire.
 
