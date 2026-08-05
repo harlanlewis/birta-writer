@@ -109,11 +109,12 @@ export function setStickyContent(
             event.stopPropagation();
 
             // Derive the position at CLICK time: updateSticky refreshes
-            // data-heading-pos on every state update, while this handler's
+            // data-heading-pos on every doc change, while this handler's
             // captured `headingPos` goes stale whenever content above the
             // heading shifts without changing its text/collapsed state
             // (external sync, find-replace) — the gutter's own rule
-            // (gutterBlockPos) applied to the sticky clone.
+            // (gutterBlockPos) applied to the sticky clone. A doc change is
+            // exactly what shifts that content, so the refresh still covers it.
             const livePos = Number(sticky.dataset["headingPos"] ?? headingPos);
 
             const tr = view.state.tr
@@ -146,7 +147,7 @@ export function setStickyContent(
     // deliberately not a grabbable block. The position callback applies the
     // same live-pos rule as the fold toggle above: the captured pos goes
     // stale when content above shifts; data-heading-pos is refreshed on
-    // every state update.
+    // every doc change, which is what shifting that content is.
     const marker = document.createElement("button");
     marker.type = "button";
     marker.className = "heading-sticky-marker";
@@ -322,7 +323,32 @@ export const headingStickyPlugin = $prose(() =>
                 requestAnimationFrame(scheduleUpdate);
             };
 
-            const bodyClassObserver = new MutationObserver(scheduleLayoutUpdate);
+            // Fire only when the topbar's extent actually MOVES, not on every
+            // body-class mutation — the same shape nativeThemeBridge uses, and
+            // for the same reason. Body classes churn on ordinary editing: the
+            // fold plugin writes `handles-quiet` on EVERY keydown, and
+            // `classList.add` re-writes the class attribute even when the class
+            // is already present, so an unfiltered observer here rescanned every
+            // heading in the document on every keystroke — a querySelectorAll
+            // plus a forced layout per heading, ~55-85 ms per press on a 300 KB
+            // document, and twice per mutation because scheduleLayoutUpdate
+            // queues two frames (MAR-266).
+            //
+            // The topbar height is the ONLY thing this plugin reads that a body
+            // class decides, so measure that one element rather than enumerating
+            // class names: a class that starts affecting the topbar later is
+            // handled without editing a list here, and everything else that
+            // moves headings (TOC docking, content width) already arrives
+            // through the ResizeObserver below.
+            let topbarBottom = getTopbarBottom();
+            const bodyClassObserver = new MutationObserver(() => {
+                const next = getTopbarBottom();
+                if (next === topbarBottom) {
+                    return;
+                }
+                topbarBottom = next;
+                scheduleLayoutUpdate();
+            });
             bodyClassObserver.observe(document.body, {
                 attributes: true,
                 attributeFilter: ["class"],
@@ -340,7 +366,30 @@ export const headingStickyPlugin = $prose(() =>
             scheduleUpdate();
 
             return {
-                update: scheduleUpdate,
+                // A selection-only transaction cannot change which heading sits
+                // above the viewport, and this scan is O(headings in the
+                // document) with a forced layout on each — ~55-85 ms per caret
+                // move on a 300 KB document, which is what made entering a block
+                // range block a frame and a half (MAR-266).
+                //
+                // What DOES change the answer: a doc edit (content above the
+                // threshold shifts, or the active heading's own text changes)
+                // and a fold toggle (collapsing a section changes the VISIBLE
+                // heading set without touching the doc). Scrolling and resizing
+                // arrive through their own listeners below. The fold set is
+                // compared by identity, the same way headingFold's own plugin
+                // does it.
+                update(updatedView, prevState) {
+                    const fold = headingFoldPluginKey.getState(updatedView.state);
+                    const prevFold = headingFoldPluginKey.getState(prevState);
+                    if (
+                        updatedView.state.doc !== prevState.doc ||
+                        fold?.folded !== prevFold?.folded ||
+                        fold?.enabled !== prevFold?.enabled
+                    ) {
+                        scheduleUpdate();
+                    }
+                },
                 destroy() {
                     if (rafId !== null) {
                         cancelAnimationFrame(rafId);

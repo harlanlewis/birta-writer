@@ -10,8 +10,8 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import type { EditorView } from "../pm";
 import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin } from "../plugins/headingFold";
-import { setStickyContent } from "../plugins/headingSticky";
+import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { setStickyContent, headingStickyPlugin } from "../plugins/headingSticky";
 import { setBlockMenuContext, closeBlockMenu } from "../components/blockMenu";
 
 let editors: Editor[] = [];
@@ -135,5 +135,147 @@ describe("sticky heading gutter", () => {
         marker?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
 
         expect(document.querySelector(".block-menu")).not.toBeNull();
+    });
+});
+
+/**
+ * When the sticky plugin RESCANS (MAR-266).
+ *
+ * updateSticky is O(headings in the document) and forces a layout on each one,
+ * so what schedules it is a performance contract, not an implementation detail:
+ * it used to run on every view update AND on every body-class mutation, and the
+ * fold plugin writes `handles-quiet` on every keydown. On a 300 KB document that
+ * cost ~55-85 ms of blocked main thread per caret move.
+ *
+ * These assert the SCHEDULING, because that is what regressed. The positioning
+ * itself needs real layout and lives in the e2e harness.
+ */
+describe("sticky heading rescan scheduling", () => {
+    /** Deterministic rAF: the plugin coalesces on a pending frame, so a test
+     *  that let jsdom's timer-backed rAF fire on its own would race it. */
+    function stubRaf(): { pending: () => number; flush: () => void } {
+        let queue: FrameRequestCallback[] = [];
+        let id = 0;
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            queue.push(cb);
+            return ++id;
+        });
+        vi.stubGlobal("cancelAnimationFrame", () => {});
+        return {
+            pending: () => queue.length,
+            flush: () => {
+                const due = queue;
+                queue = [];
+                for (const cb of due) {
+                    cb(0);
+                }
+            },
+        };
+    }
+
+    /**
+     * `withFold: false` is not tidiness — it is what makes the doc-change
+     * assertion mean anything. The fold plugin hands out a fresh `folded` set
+     * on every doc change, so with it installed the fold branch fires on a doc
+     * edit too and a test asserting "a doc change schedules a rescan" passes
+     * with the doc branch deleted. Dropping the plugin leaves both fold reads
+     * undefined, so only the doc branch can answer.
+     */
+    async function mountSticky(markdown: string, withFold = true) {
+        const raf = stubRaf();
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        let make = Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, markdown);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity);
+        if (withFold) {
+            make = make.use(headingFoldPlugin);
+        }
+        const editor = await make
+            .use(headingStickyPlugin)
+            .create();
+        editors.push(editor);
+        activeEditor = editor;
+        const editorView = view(editor);
+        raf.flush(); // drain the mount-time scan
+        return { editorView, raf };
+    }
+
+    const DOC = "# One\n\nAlpha.\n\n## Two\n\nBeta.\n";
+
+    it("a selection-only transaction should schedule no rescan", async () => {
+        const { editorView, raf } = await mountSticky(DOC);
+
+        editorView.dispatch(
+            editorView.state.tr.setSelection(
+                TextSelection.near(editorView.state.doc.resolve(3)),
+            ),
+        );
+
+        expect(raf.pending()).toBe(0);
+    });
+
+    it("a doc change should schedule a rescan with no fold plugin to mask it", async () => {
+        const { editorView, raf } = await mountSticky(DOC, false);
+
+        editorView.dispatch(editorView.state.tr.insertText("x", 3));
+
+        expect(raf.pending()).toBe(1);
+    });
+
+    it("a selection-only transaction should schedule no rescan without the fold plugin either", async () => {
+        const { editorView, raf } = await mountSticky(DOC, false);
+
+        editorView.dispatch(
+            editorView.state.tr.setSelection(
+                TextSelection.near(editorView.state.doc.resolve(3)),
+            ),
+        );
+
+        expect(raf.pending()).toBe(0);
+    });
+
+    it("a fold toggle should schedule a rescan even though the doc is unchanged", async () => {
+        const { editorView, raf } = await mountSticky(DOC);
+        const docBefore = editorView.state.doc;
+
+        editorView.dispatch(
+            editorView.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: 0 }),
+        );
+
+        // The branch this pins exists precisely because collapsing a section
+        // changes the VISIBLE heading set without touching the document.
+        expect(editorView.state.doc).toBe(docBefore);
+        expect(raf.pending()).toBeGreaterThan(0);
+    });
+
+    it("re-writing a body class that leaves the topbar in place should schedule no rescan", async () => {
+        const { raf } = await mountSticky(DOC);
+
+        // Exactly what the fold plugin does on every keydown — and classList.add
+        // re-writes the attribute (firing the observer) even when the class is
+        // already there, which is why the observer cannot simply trust the event.
+        document.body.classList.add("handles-quiet");
+        await Promise.resolve();
+        document.body.classList.add("handles-quiet");
+        await Promise.resolve();
+
+        expect(raf.pending()).toBe(0);
+    });
+
+    it("a body class that moves the topbar should schedule a rescan", async () => {
+        const { raf } = await mountSticky(DOC);
+
+        // getTopbarBottom returns 0 for a hidden toolbar and the bar's height
+        // otherwise, so this is the one body-class change the sticky depends on.
+        document.body.classList.add("toolbar-hidden");
+        await Promise.resolve();
+
+        expect(raf.pending()).toBeGreaterThan(0);
     });
 });
