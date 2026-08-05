@@ -424,3 +424,45 @@ describe("heading gutter level menu", () => {
         expect(document.activeElement).toBe(m);
     });
 });
+
+/**
+ * The quiet-while-typing body class is written from the editor's keydown
+ * handler, so it runs on every keystroke. `classList.add` re-writes the class
+ * ATTRIBUTE even when the class is already present, and every body-class
+ * MutationObserver wakes on that write — headingSticky's measures the topbar,
+ * which forces a layout. The write therefore has to be conditional, and only a
+ * MutationObserver can tell the difference: the class value looks identical
+ * either way (MAR-266).
+ */
+describe("handles-quiet write frequency", () => {
+    it("a second keydown should not re-write the class attribute", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title\n\nBody");
+        const v = view(editor);
+        const writes: string[] = [];
+        const observer = new MutationObserver((records) => {
+            for (const _ of records) {
+                writes.push(document.body.className);
+            }
+        });
+        observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+        const key = () =>
+            v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+
+        // Act: the first keydown legitimately adds the class; the rest are
+        // the steady state of someone typing.
+        key();
+        await Promise.resolve();
+        const afterFirst = writes.length;
+        key();
+        key();
+        key();
+        await Promise.resolve();
+        observer.disconnect();
+
+        // Assert
+        expect(document.body.classList.contains("handles-quiet")).toBe(true);
+        expect(afterFirst).toBe(1);
+        expect(writes.length).toBe(1);
+    });
+});

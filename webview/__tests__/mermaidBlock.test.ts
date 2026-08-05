@@ -6,6 +6,7 @@
  * real layout and is pinned by e2e/mermaidRender.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { revealBlockControls } from "./helpers/revealBlockControls";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { gfmFidelity } from "../serialization";
@@ -115,8 +116,10 @@ function replaceCode(
     nv.update(view.state.doc.nodeAt(pos)!);
 }
 
-const toggleBtn = (nv: CodeBlockNodeView): HTMLElement =>
-    nv.dom.querySelector<HTMLElement>(".code-view-toggle-btn")!;
+const toggleBtn = (nv: CodeBlockNodeView): HTMLElement => {
+    revealBlockControls(nv.dom);
+    return nv.dom.querySelector<HTMLElement>(".code-view-toggle-btn")!;
+};
 
 const clickToggle = (nv: CodeBlockNodeView): void => {
     toggleBtn(nv).dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));

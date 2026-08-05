@@ -433,31 +433,40 @@ class TableController {
      *     fiddlier than the explicit arithmetic here, with no accuracy win.
      * Task A's pointermove reveal needs cached bounds for its hit-test anyway,
      * so this pass earns its keep regardless.
+     *
+     * STRICTLY read-then-write, and it must stay that way (MAR-251). Every
+     * `style.top` write here dirties layout, so a `getBoundingClientRect()`
+     * after one forces a synchronous re-layout of the whole document — and
+     * this pass used to interleave them, re-reading each row's and cell's
+     * rect inside the four write loops even though the read phase above had
+     * already captured the same values. That is ~16 forced layouts per table,
+     * and the mount-time pass runs once per table before first paint: on the
+     * launch harness's `large` fixture (108 tables) it cost 237 ms — 65% of
+     * the whole `paint` span. Batched, the identical pass costs ~9 ms. Add a
+     * read below the first write and the storm comes straight back.
      */
     private reposition(): void {
         const rows = this.rowEls();
         if (!rows.length) {
             return;
         }
+
+        // ── Read phase: every layout read in the method ─────────────────────
         const wrap = this.wrapper.getBoundingClientRect();
         const tableRect = this.table.getBoundingClientRect();
+        const firstCells = Array.from(rows[0]!.children) as HTMLElement[];
+        const rowRects = rows.map((r) => r.getBoundingClientRect());
+        const cellRects = firstCells.map((c) => c.getBoundingClientRect());
+
         const relTop = tableRect.top - wrap.top;
         const relLeft = tableRect.left - wrap.left;
-        const firstCells = Array.from(rows[0]!.children) as HTMLElement[];
-
         // Cache viewport bounds for the pointermove reveal hit-test (Task A).
-        // This is the single place that reads layout for the whole controller.
-        this.rowBounds = rows.map((r) => {
-            const b = r.getBoundingClientRect();
-            return { top: b.top, bottom: b.bottom };
-        });
-        this.colBounds = firstCells.map((c) => {
-            const b = c.getBoundingClientRect();
-            return { left: b.left, right: b.right };
-        });
+        this.rowBounds = rowRects.map((b) => ({ top: b.top, bottom: b.bottom }));
+        this.colBounds = cellRects.map((b) => ({ left: b.left, right: b.right }));
 
+        // ── Write phase: no layout reads past this point ────────────────────
         this.rowGrips.forEach((g, r) => {
-            const rr = rows[r]?.getBoundingClientRect();
+            const rr = rowRects[r];
             if (!rr) {
                 return;
             }
@@ -468,7 +477,7 @@ class TableController {
         });
 
         this.colGrips.forEach((g, c) => {
-            const cc = firstCells[c]?.getBoundingClientRect();
+            const cc = cellRects[c];
             if (!cc) {
                 return;
             }
@@ -480,10 +489,9 @@ class TableController {
 
         this.rowInserts.forEach((bar, g) => {
             const y =
-                g < rows.length
-                    ? rows[g]!.getBoundingClientRect().top - wrap.top
-                    : rows[rows.length - 1]!.getBoundingClientRect().bottom -
-                      wrap.top;
+                g < rowRects.length
+                    ? rowRects[g]!.top - wrap.top
+                    : rowRects[rowRects.length - 1]!.bottom - wrap.top;
             bar.style.top = `${y - INSERT_ZONE / 2}px`;
             bar.style.left = `${relLeft}px`;
             bar.style.width = `${tableRect.width}px`;
@@ -492,10 +500,9 @@ class TableController {
 
         this.colInserts.forEach((bar, g) => {
             const x =
-                g < firstCells.length
-                    ? firstCells[g]!.getBoundingClientRect().left - wrap.left
-                    : firstCells[firstCells.length - 1]!.getBoundingClientRect()
-                          .right - wrap.left;
+                g < cellRects.length
+                    ? cellRects[g]!.left - wrap.left
+                    : cellRects[cellRects.length - 1]!.right - wrap.left;
             bar.style.left = `${x - INSERT_ZONE / 2}px`;
             bar.style.top = `${relTop}px`;
             bar.style.height = `${tableRect.height}px`;
@@ -505,14 +512,16 @@ class TableController {
         // Folded `…` chip: every other kind seats the chip on the collapsed
         // block's visible line, so the table's must read as part of the
         // header row — just past its right edge, vertically centered on it
-        // (table.css absolutely positions it; this is the one layout
-        // reader). Collapsing hides the body rows, which resizes the table
-        // and re-runs this pass, so the measurement is always fresh.
+        // (table.css absolutely positions it). Collapsing hides the body rows,
+        // which resizes the table and re-runs this pass, so the measurement is
+        // always fresh — and it comes from the read phase's header rect, not a
+        // fresh read down here, which would force a layout after every write
+        // above.
         if (this.wrapper.classList.contains("collapsed")) {
             const chip = this.wrapper.querySelector<HTMLElement>(
                 ":scope > .mw-table-fold-ellipsis",
             );
-            const header = rows[0]!.getBoundingClientRect();
+            const header = rowRects[0]!;
             if (chip && header.height > 0) {
                 // Clamp to the wrapper: a header wider than the editor would
                 // otherwise push the chip out of view.
@@ -1229,9 +1238,13 @@ export function createTableView(
         // column, so the toggle would be a dead control there.
         const pos = getPos();
         if (pos !== undefined && view.state.doc.resolve(pos).depth === 0) {
-            const controlsCol = createBlockControlsColumn(wrapper);
-            controlsCol.appendChild(widthControl.button);
-            wrapper.appendChild(controlsCol);
+            // The strip mounts empty; the button attaches on first reveal
+            // (ui/blockControls.ts). applyWidth() above already ran against
+            // the detached button, and re-runs from onBlockWidthChange, so
+            // whenever it lands its icon/label/tint are current.
+            const controls = createBlockControlsColumn(wrapper);
+            controls.add(widthControl.button);
+            wrapper.appendChild(controls.el);
         }
     }
 

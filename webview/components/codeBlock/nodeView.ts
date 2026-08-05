@@ -286,12 +286,13 @@ export function createCodeBlockView(
     floatRow.appendChild(foldEllipsis.dom);
 
     // control column (outside top-right): [copy][toggle][wrap][width][fullscreen]
-    const controlsCol = createBlockControlsColumn(wrapper);
-    controlsCol.appendChild(copyBtn);
-    controlsCol.appendChild(toggleBtn);
-    controlsCol.appendChild(wordWrapBtn);
-    controlsCol.appendChild(widthBtn);
-    controlsCol.appendChild(fullscreenBtn);
+    // The strip mounts empty; these five attach on its first reveal
+    // (ui/blockControls.ts). They are constructed eagerly, so every `style` /
+    // `innerHTML` / class write above and in update() below keeps working
+    // against a detached node and is correct the moment it lands.
+    const controls = createBlockControlsColumn(wrapper);
+    const controlsCol = controls.el;
+    controls.add(copyBtn, toggleBtn, wordWrapBtn, widthBtn, fullscreenBtn);
 
     // ── Code area ─────────────────────────────────────────
     const pre = document.createElement("pre");

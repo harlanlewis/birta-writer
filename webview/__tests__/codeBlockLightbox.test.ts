@@ -14,6 +14,7 @@
  * (mid-"fade") but the stack and listener must already be gone.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { revealBlockControls } from "./helpers/revealBlockControls";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { gfmFidelity } from "../serialization";
@@ -58,6 +59,7 @@ async function makeCodeBlockView(md: string): Promise<CodeBlockNodeView> {
 }
 
 function openLightbox(nv: CodeBlockNodeView): HTMLElement {
+    revealBlockControls(nv.dom);
     const btn = nv.dom.querySelector<HTMLElement>(".code-block-fullscreen-btn");
     expect(btn).not.toBeNull();
     btn!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));

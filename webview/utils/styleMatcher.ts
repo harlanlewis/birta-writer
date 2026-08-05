@@ -56,7 +56,12 @@ function escapeRegExp(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function normalizePhrase(s: string): string {
+/**
+ * The comparison form of a phrase: what the compiled pattern actually matches,
+ * modulo the widenings it applies (case, `'`/`’`, whitespace runs). It is both
+ * the strike-lookup key and `compileList`'s sort key. Exported for unit testing.
+ */
+export function normalizePhrase(s: string): string {
     return s.toLowerCase().replace(/’/g, "'").replace(/\s+/g, " ").trim();
 }
 
@@ -96,15 +101,35 @@ export function parseEntry(entry: string): ParsedEntry {
 /**
  * Alternatives per compiled regex (MAR-305).
  *
- * V8 compiles a large alternation **superlinearly**, lazily on the first
- * `exec`, and separately per subject-string encoding: a one-byte subject pays
- * one compile and the first two-byte subject (anything past Latin-1 — a curly
- * quote is enough) pays another. The cost therefore lands on whichever scans
- * run first, split across the first two *differently encoded* strings, which is
- * why it reads as an unattributable process-wide warm-up.
+ * V8 compiles a large alternation **superlinearly**, and always lazily — never
+ * at `new RegExp`, only on `exec`. MAR-315 pinned the mechanism, which is not
+ * one compile but up to three per pattern, only the first of which lands on the
+ * first scan:
+ *
+ *   1. the first `exec` compiles the pattern to irregexp **bytecode**;
+ *   2. after `--regexp-tier-up-ticks` executions (**default 1**, so on the
+ *      second) it **tiers up** and compiles again, to native code;
+ *   3. the first `exec` against a **two-byte** subject (anything past Latin-1 —
+ *      one curly quote in a paragraph is enough) pays a third compile, because
+ *      irregexp compiles per subject-string encoding.
+ *
+ * The observation that fixes this rather than merely fitting it: running node
+ * with `--regexp-tier-up-ticks=3` moves step 2's cost off the second `exec` and
+ * onto the fourth, exactly; `--no-regexp-tier-up` removes step 2 entirely and
+ * compiles straight to native on the first `exec`. Nothing else proposed for
+ * the same timing shape — JIT warm-up of the matching loop, GC from allocating
+ * the phrase structures, IC warm-up, string interning, "the second call just
+ * reuses a cache the first filled" — moves with a regexp-only V8 flag. And the
+ * subject in that probe is the single character `"x"`, so none of what is being
+ * measured is matching cost.
+ *
+ * The compiled code is cached **per process, keyed by (source, flags)** — not
+ * per RegExp object. A freshly built, identical set of regexes costs 0.02 ms
+ * against ~34 ms for the first set. So the floor is paid once per webview, and
+ * rebuilding the matcher on a config toggle (`styleMatcherFor`) is free.
  *
  * Measured on the shipped wordlists (1093 phrases across six categories), one
- * alternation per category, warm-up = both encodings:
+ * alternation per category, warm-up = all three steps:
  *
  * - Node 22 / V8 12.4: **2.4 s** unchunked, **37 ms** chunked at 256. Scaling a
  *   single alternation there: 400 alternatives 14 ms, 800 → 910 ms, 1093 → 2.4 s.
@@ -122,26 +147,105 @@ export function parseEntry(entry: string): ParsedEntry {
  * load-bearing (a phrase must match across a doubled space), so the alternation
  * is split rather than simplified. Folding `['’]` into the subject text instead
  * of the pattern was measured too, and does not help (74 ms vs 69 ms).
+ *
+ * ## What is left of the floor, and why 256 stays (MAR-315)
+ *
+ * All three steps together cost ~34–50 ms on Node 22 for the shipped lists, and
+ * that is the document-size-independent floor the first proofread pass pays.
+ * It is **accepted, not removed**. Three ways out were measured and rejected:
+ *
+ * - **A smaller chunk.** Sweeping 16…384 alternatives per regex moves total
+ *   compile time by less than the run-to-run spread (12 samples each at 48 and
+ *   256, alternating order: medians 113 ms vs 126 ms, ranges 91–229 and
+ *   90–165). Only leaving the chunking altogether is catastrophic — one
+ *   alternation per category re-measured at 1310 ms here against the 2.4 s
+ *   MAR-305 recorded on the same V8 12.4 (a gap worth nobody's time: it is two
+ *   orders of magnitude over the chunked cost either way), and it scans 6×
+ *   slower besides. **The win here was the chunking, not its size**; do not
+ *   re-sweep the constant hoping for more.
+ * - **Compiling only enabled categories.** Already what `compileStyleMatcher`
+ *   does, and it works: with `cliches` off the floor drops from 168 ms to
+ *   37 ms, with every phrase category off to 4.7 ms. Those three, and the two
+ *   chunk-sweep medians above, were taken on a machine running other work — the
+ *   absolute values are inflated well past the 34–50 ms quoted earlier, so read
+ *   the ratios and not the milliseconds. `cliches` is 732 of the 1093 phrases
+ *   and roughly three quarters of the floor — a user who turns it off already
+ *   stops paying for it. There is nothing further to split here.
+ * - **Warming the regexes in an earlier idle callback.** Relocation, not
+ *   removal: the total is fixed, and every destination for it is either the
+ *   same idle window or in front of first paint, which `AGENTS.md` forbids.
+ *   Worth revisiting only with a browser capture that shows the first pass is
+ *   a *long* task on a fixture where the document-scaled half is small.
  */
 export const MAX_ALTERNATIVES_PER_REGEX = 256;
 
 /**
  * Build word-bounded alternation regexes from parsed phrases.
- * Longer phrases are listed first so "pretty much" wins over "pretty";
- * literal spaces match any whitespace run; ASCII apostrophes in a phrase
- * also match typographic ones in the document. Word boundaries are only
- * asserted next to word characters (a phrase ending in "?" has none).
+ * Literal spaces match any whitespace run; ASCII apostrophes in a phrase also
+ * match typographic ones in the document. Word boundaries are only asserted
+ * next to word characters (a phrase ending in "?" has none).
  *
  * The result is a *list* of regexes, chunked at MAX_ALTERNATIVES_PER_REGEX —
  * see there for why. Because each chunk scans independently, a category's raw
  * hits can now overlap where one alternation's leftmost-longest scan would have
  * produced a single hit; `leftmostLongest` restores that. Exported for unit
  * testing.
+ *
+ * ## Why alternatives are sorted DESCENDING by normalized phrase (MAR-315)
+ *
+ * Two things have to hold, and this one order gets both.
+ *
+ * **Correctness — "pretty much" must win over "pretty".** Alternation is
+ * leftmost-*first*, not leftmost-longest, so within a chunk the order decides
+ * which of two alternatives matching at the same start position wins. Two
+ * alternatives can only match at one start position with different lengths when
+ * the shorter match is a prefix of the longer one *in the same subject string*,
+ * which means the shorter phrase's normalized form is a proper prefix of the
+ * longer's. A proper prefix always sorts BEFORE the longer string ascending, so
+ * descending puts the longer phrase first — for every such pair, unconditionally.
+ * Straddling a chunk boundary is safe for a different reason: separate chunks
+ * both report their hit and `leftmostLongest` keeps the longer. So the observable
+ * contract — longest match wins — no longer depends on the sort at all, which is
+ * exactly what `styleMatcherOrdering.test.ts` pins.
+ *
+ * The key is the **normalized** phrase, not the raw one, because matching is
+ * case-insensitive and widens `'`/`’` and whitespace: raw-descending would let a
+ * lowercase "delve" outrank a capitalized "Delve into" ("d" > "D"). The shipped
+ * lists are all normalized already, so for them the two keys produce byte-
+ * identical patterns; the normalization is what stops a future non-lowercase
+ * entry from silently flipping a pair.
+ *
+ * The argument above was not trusted on its own. A differential over the six
+ * shipped lists — 60 repo markdown files plus every phrase in six contexts
+ * (uppercased, doubled spaces, typographic apostrophes, bare, parenthesized,
+ * concatenated with another phrase); 10,990 inputs, 1.1 M characters — produced
+ * **byte-identical** spans under the old length-descending order and this one,
+ * all 17,872 of them. Ascending, run as a control, diverged on 142 lines. Counts
+ * alone would not have shown either: they are equal in all three.
+ *
+ * **Speed.** Sorting lexicographically groups alternatives that share a prefix,
+ * which irregexp exploits. Scanning the 1093 phrases over the `large` perf
+ * fixture, 15 alternating samples in one process, identical 540 hits: Chromium
+ * 151 median 10.6 → 7.3 ms, Node 22 / V8 12.4 11.5 → 7.8 ms (−31% both).
+ *
+ * **What that is NOT worth.** The scan is a smaller share of the proofread pass
+ * than it looks: the `proofread` span on `large` measures ~62 ms, so ~3 ms is
+ * about 5% of it, and the span read 62.4 ms before this change and 63.4 ms after
+ * (`node e2e/perf.mjs large`, idle, median-of-9 each) — i.e. unmoved within the
+ * drift of an absolute cross-run comparison, which cannot resolve 3 ms either
+ * way. So this is a free and correct win in the scan itself, and NOT a
+ * user-visible speed-up of the pass; it deliberately has no CHANGELOG entry. If
+ * you are looking for the rest of that span, it is lint dispatch and decoration
+ * building, and nobody has attributed them. The one-time
+ * compile floor did not get worse — medians of 6 fresh processes each, 74 ms
+ * before and 57 ms after, ranges 58.5–81.4 and 51.8–68.2 on a contended machine,
+ * which overlap far too much to claim the difference either way.
  */
 export function compileList(phrases: readonly string[]): RegExp[] {
     const alternatives = [...phrases]
-        .sort((a, b) => b.length - a.length)
-        .map((p) => {
+        .map((phrase) => ({ phrase, key: normalizePhrase(phrase) }))
+        .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0))
+        .map(({ phrase: p }) => {
             const body = escapeRegExp(p)
                 .replace(/ /g, "\\s+")
                 .replace(/'/g, "['’]");

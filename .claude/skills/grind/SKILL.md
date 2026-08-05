@@ -19,7 +19,7 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 ## 0. Groom
 
 - **Read `MAR-141`** (board guide). It goes stale the moment anything ships — verify against `git log` and the tree, and fix it as part of grooming.
-- **Pull `Todo` + `In Progress` + `Backlog`.** Prioritize over that union, not the `Todo` view. Fetch Backlog inside a subagent returning a compact table; inline it and you blow the output limit.
+- **Pull `Todo` + `In Progress` + `Backlog`.** Prioritize over that union, not the `Todo` view. Fetch Backlog inline with minimal `fields` (`title`, `priority`, `labels`) — that fits; a subagent for it is waste.
 - **Reconcile:** close silently-shipped work (verify in the tree, not the CHANGELOG; cite the SHA), re-scope tickets the code outgrew, un-stick stale `In Progress`.
 - **Check `Closes MAR-NN` against ancestry** — `git merge-base --is-ancestor <sha> main`. A ticket closed on a pushed branch rather than a merged PR leaves no signal anywhere.
 - **Pick: first High-or-Urgent down the spine** — `phase-0-fidelity` → `phase-1-performance` → `phase-2-syntax` → `phase-3-interaction` → `phase-4-differentiators`, then by `priority`. `phase-5-surfaces` never ranks (D8). With no High anywhere, take the spine's top by priority.
@@ -54,6 +54,8 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
 
 Your shell's cwd is the worktree base, so `cd`-ing into a worktree nests the next agent's inside it, where `cleanup-worktrees.sh` never finds it. `cd` back to the primary before every dispatch.
 
+**Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). Lanes then report *what they want measured and what would falsify it* — a better handoff than a number they could not trust. Their headlines stay unverified until you re-run them: one lane's −27.2% was −23.8% idle.
+
 ### On completion
 
 1. Read the handoff. **A lane's report is a description, not a result** — reproduce anything you'll relay, file, or changelog, its tracking claims included ("filed separately" is an intention as often as an outcome; one `list_issues` settles it).
@@ -69,7 +71,7 @@ Your shell's cwd is the worktree base, so `cd`-ing into a worktree nests the nex
 
 **On failure:** ticket back to `Todo` with what broke; don't re-dispatch this session. Already failed a previous session → it's a grooming problem, not a lane.
 
-**Transport death is not work failure.** Connection drops kill the agent with its reasoning intact; `SendMessage` resumes from transcript. Read the worktree (`git log`, `git status --short`, `git diff --stat`) first — usually far more survived than the notification suggests. **Lead every resume with "commit what you have, first":** uncommitted work is the only thing these deaths cost, and an ungated lane commit reaches `main` only through your merge gate. A silent lane is not a working lane — check mtimes and last commit rather than blocking on a ping.
+**Transport death is not work failure.** A dropped connection kills the agent with its reasoning intact; `SendMessage` resumes from transcript, and the worktree usually holds more than the notification suggests — read `git log` / `git status --short` first, and lead the resume with "commit what you have, first" (uncommitted work is the only thing these deaths cost). A silent lane is not a working lane: check mtimes and last commit rather than blocking on a ping.
 
 Feed each handoff forward into briefs not yet sent. A handoff that invalidates a queued ticket's premise re-plans that lane now.
 
@@ -80,6 +82,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 **Treat a ticket's account of itself as hypothesis, not brief.** Its *symptom* is usually right; its *cause*, *plan*, *scope* and *severity* fail routinely — scope toward too small, which ships a fix leaving the worse half of the bug in place under a green suite, and severity in both directions. **Re-derive severity from your own repro before letting it set the queue.** Before implementing, name the observation that would falsify the stated cause and make it. Ask what other gesture reaches the same broken state. Enumerate the space rather than sampling it.
 
 - **Bytes outrank accounts.** When a ticket names both a mechanism and an output, check the output first — one print can convict the mechanism before you understand it.
+- **On a perf ticket, profile before you ablate.** Ablation confirms a suspect; it cannot generate one. Three phase-1 tickets each named a plausible mechanism and each was wrong — a CDP sampling profile (self-time by frame, then by *caller*) found two in twenty minutes, after prior sessions had ablated for weeks. A ticket admitting "the ablations only chipped at it" is telling you nobody has profiled.
 - **Verify semantics, not shape.** A grep that matches feels like confirmation and isn't. Ask what the claim predicts that you can run.
 - **Brief subagents to measure, and give them standing to contradict you** — a brief that hands down conclusions buys obedience, and obedience propagates your errors with a green suite. Push broad or noisy reads to them and relay conclusions, weighting by whether they *ran* something.
 
@@ -126,7 +129,7 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 | `merged` | 0 | Refill the lane. |
 | `conflict` | 1 | Tree untouched, `conflict_files` listed. Resolve by hand or rebrief the lane. Either way it's a lane-plan finding: rebrief every queued lane sharing those files. |
 | `merge_failed` | 1 | Refused *without* conflicts — usually an untracked file, named in `reason`. Clear it, re-run. |
-| `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. **First check `uptime`:** a gate run while lanes still hold the machine fails with every test passing, `Errors: N` worker timeouts, and 2–3× normal duration. Re-run idle before blaming a lane. |
+| `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. **First check `uptime`:** a gate run while lanes still hold the machine fails with every test passing, `Errors: N` worker timeouts, and 2–3× normal duration. Re-run idle before blaming a lane. **A contention red reproduces**, including across branches — two e2e checks failed identically on the branch *and* on `main`, which reads as proof of a pre-existing bug, and both passed 57/57 once the machine was idle. Bisecting under load proves nothing; re-run idle first, then bisect. |
 | `dirty` / `refused` | 3 | Your own uncommitted work, or a bad HEAD/branch. `reason` says which. |
 | `empty` | 4 | The lane committed nothing, whatever it reported. |
 

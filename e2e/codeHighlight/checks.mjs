@@ -44,11 +44,16 @@ export async function run({ page, check, baseUrl }) {
     // (the toggle exists in every code block's header but is only shown for
     // previewable languages, so the visible one is mermaid's; it mounts in
     // preview mode, and clicking it drops back to the source view)
+    // The control column both reveals AND builds its buttons on host hover
+    // (hidden and EMPTY at rest — webview/ui/blockControls.ts): enter the
+    // block first, the way a mouse user reaches the column. The hover has to
+    // come before the toggle is located at all, not just before it is clicked
+    // — until then there is no button in the DOM to wait for.
+    // (every code block owns a `.mermaid-preview` element, so the mermaid one
+    // is identified by the pane it is actually SHOWING — the hidden <pre>.)
+    await page.hover(".code-block-wrapper:has(pre.code-pre--preview-hidden)");
     const mermaidToggle = page.locator(".code-block-wrapper .code-view-toggle-btn:visible").first();
     await mermaidToggle.waitFor({ timeout: 10000 });
-    // The control column reveals on host hover (hidden at rest): enter the
-    // block first, the way a mouse user reaches the column.
-    await page.hover(".code-block-wrapper:has(.code-view-toggle-btn:visible)");
     await mermaidToggle.click();
     await page.waitForFunction(
         () => !document.querySelector(".code-pre--preview-hidden"), null, { timeout: 5000 });
