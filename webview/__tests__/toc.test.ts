@@ -471,6 +471,141 @@ describe("TOC drag-to-resize", () => {
     });
 });
 
+describe("active-heading tracking on scroll", () => {
+    // The scroll handler runs on every frame of a flick. Re-applying the SAME
+    // active heading walked every row in the list and re-ran scrollIntoView on
+    // the active one, per frame, for an answer that had not changed (MAR-316).
+    const schema = new Schema({
+        nodes: {
+            doc: { content: "block+" },
+            paragraph: { group: "block", content: "inline*" },
+            heading: { group: "block", content: "inline*", attrs: { level: { default: 1 } } },
+            text: { group: "inline" },
+        },
+    });
+
+    let frames: FrameRequestCallback[] = [];
+    const flush = () => {
+        for (const cb of frames.splice(0)) {
+            cb(0);
+        }
+    };
+
+    /** A view whose headings really are in `view.dom`, so findActiveHeading can
+     *  place them: elements ↔ positions are wired both ways, the way a real
+     *  view wires them. */
+    function makeScrollView(texts: string[]) {
+        const doc = schema.node(
+            "doc",
+            null,
+            texts.flatMap((text) => [
+                schema.node("heading", { level: 1 }, [schema.text(text)]),
+                schema.node("paragraph", null, [schema.text("body")]),
+            ]),
+        );
+        const dom = document.createElement("div");
+        const byPos = new Map<number, HTMLElement>();
+        const byEl = new Map<HTMLElement, number>();
+        doc.descendants((node, pos) => {
+            if (node.type.name !== "heading") {
+                return false;
+            }
+            const el = document.createElement("h1");
+            el.textContent = node.textContent;
+            dom.appendChild(el);
+            byPos.set(pos, el);
+            byEl.set(el, pos);
+            return false;
+        });
+        document.body.appendChild(dom);
+        const view = {
+            state: EditorState.create({ doc, schema }),
+            dom,
+            nodeDOM: (pos: number) => byPos.get(pos) ?? null,
+            posAtDOM: (el: HTMLElement) => {
+                const pos = byEl.get(el);
+                if (pos === undefined) {
+                    throw new RangeError("not in this view");
+                }
+                return pos + 1; // posAtDOM(el, 0) lands just inside the node
+            },
+        } as unknown as EditorView & { state: EditorState };
+        return { view, headingEls: [...byEl.keys()] };
+    }
+
+    /** Put `el` at `top`; jsdom reports 0×0, which reads as hidden. */
+    function placeAt(el: HTMLElement, top: number): void {
+        el.getBoundingClientRect = () =>
+            ({ x: 0, y: top, top, left: 0, right: 100, bottom: top + 30, width: 100, height: 30 }) as DOMRect;
+    }
+
+    function scrollHandler(): () => void {
+        const call = (fakeEventManager.onWindow as unknown as ReturnType<typeof vi.fn>).mock.calls
+            .find((args: unknown[]) => args[0] === "scroll");
+        expect(call).toBeDefined();
+        return call![1] as () => void;
+    }
+
+    // jsdom has no scrollIntoView at all, so it is installed rather than spied.
+    const scrollIntoView = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        frames = [];
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+        Element.prototype.scrollIntoView = scrollIntoView;
+        document.body.className = "";
+        document.body.innerHTML = "";
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    });
+
+    function setup(texts: string[]) {
+        const { view, headingEls } = makeScrollView(texts);
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.toggle();
+        flush();
+        return { view, headingEls, onScroll: scrollHandler() };
+    }
+
+    it("a scroll frame that lands under the same heading should not re-apply the highlight", () => {
+        const { headingEls, onScroll } = setup(["Alpha", "Beta"]);
+        placeAt(headingEls[0], -100); // above the threshold — the active one
+        placeAt(headingEls[1], 800);
+
+        onScroll();
+        flush();
+        expect(scrollIntoView).toHaveBeenCalledTimes(1); // the first frame does apply it
+        scrollIntoView.mockClear();
+
+        onScroll();
+        flush();
+        onScroll();
+        flush();
+
+        expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("a scroll frame that lands under a different heading should move the highlight", () => {
+        const { headingEls, onScroll } = setup(["Alpha", "Beta"]);
+        placeAt(headingEls[0], -100);
+        placeAt(headingEls[1], 800);
+        onScroll();
+        flush();
+        const active = () => document.querySelector<HTMLElement>(".toc-item--active")?.textContent;
+        expect(active()).toContain("Alpha");
+
+        placeAt(headingEls[1], -50); // scrolled past Beta
+        onScroll();
+        flush();
+        expect(active()).toContain("Beta");
+    });
+});
+
 describe("outline refresh cost (observed-diff fast path)", () => {
     // The outline walk is O(document blocks) and refreshContent runs once per
     // doc-changing frame, so ordinary body-text typing must NOT pay it: the

@@ -1422,7 +1422,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const threshold = top + 50;
         // The TOC does not exclude collapsed/hidden headings
         const result = findActiveHeading(view, threshold, false);
-        setActiveHeadingPos(result?.pos ?? null);
+        const pos = result?.pos ?? null;
+        // Most scroll frames land under the same heading as the one before, and
+        // re-applying it walked every row in the list and re-ran scrollIntoView
+        // on the active one, per frame (MAR-316). Only the scroll path may skip
+        // this: the other callers re-apply an UNCHANGED pos on purpose, to
+        // restore the highlight onto rows the list has just rebuilt.
+        if (pos !== activeHeadingPos) {
+            setActiveHeadingPos(pos);
+        }
     }
 
     function scheduleScrollUpdate(): void {

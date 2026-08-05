@@ -84,9 +84,38 @@ export function scrollElementBelowTopbar(
     window.scrollTo({ top: Math.max(0, top), behavior });
 }
 
+/**
+ * The heading elements of `view`, in document order, cached per document.
+ *
+ * The query itself is what costs: `querySelectorAll` walks the whole editor
+ * subtree, which is 75,000 nodes on the `xlarge` fixture, and the scroll path
+ * runs it twice a frame — the sticky heading and the table of contents each
+ * re-derive the same list (MAR-316).
+ *
+ * A heading element exists only because the document holds a heading node, so
+ * the document's identity is the natural key: any edit replaces it and the next
+ * read re-queries. What that key does NOT cover is a decoration-only change
+ * that makes ProseMirror rebuild a heading's DOM without touching the document.
+ * So rather than reason about which decorations do that, the cache checks: a
+ * rebuilt heading leaves the element we cached detached, and `isConnected` is a
+ * flag read, cheap enough to run over every entry and still be far below the
+ * query it replaces.
+ */
+const headingCache = new WeakMap<EditorView, { doc: PmNode; elements: HTMLElement[] }>();
+
+function cachedHeadings(view: EditorView): HTMLElement[] {
+    const hit = headingCache.get(view);
+    if (hit && hit.doc === view.state.doc && hit.elements.every((el) => el.isConnected)) {
+        return hit.elements;
+    }
+    const elements = Array.from(view.dom.querySelectorAll<HTMLElement>(HEADING_SELECTOR));
+    headingCache.set(view, { doc: view.state.doc, elements });
+    return elements;
+}
+
 /** Get all visible heading elements (excluding those hidden by folding) */
 export function getVisibleHeadings(view: EditorView): HTMLElement[] {
-    return Array.from(view.dom.querySelectorAll<HTMLElement>(HEADING_SELECTOR)).filter((heading) => {
+    return cachedHeadings(view).filter((heading) => {
         const rect = heading.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0 && !heading.classList.contains("heading-fold-hidden");
     });
@@ -94,11 +123,38 @@ export function getVisibleHeadings(view: EditorView): HTMLElement[] {
 
 /** Get all heading elements (including those hidden by folding) */
 export function getAllHeadings(view: EditorView): HTMLElement[] {
-    return Array.from(view.dom.querySelectorAll<HTMLElement>(HEADING_SELECTOR));
+    // A copy: callers must not be able to reorder or truncate the cached list.
+    return cachedHeadings(view).slice();
 }
 
-/** Find the document position corresponding to a heading element */
+/**
+ * Find the document position corresponding to a heading element.
+ *
+ * Asks the view where this element sits rather than searching the document for
+ * it. `posAtDOM` resolves upward from the element through the ViewDesc tree,
+ * which costs the element's depth; the search below is O(document) and calls
+ * `view.nodeDOM` once per heading node it passes on the way. That is 344
+ * lookups per call on the `xlarge` fixture, and the scroll path calls this many
+ * times a frame: one flick of 40 frames measured 549 calls and 188,856
+ * `nodeDOM` lookups (MAR-316).
+ *
+ * The search is kept as a fallback, and the fast path is verified rather than
+ * trusted: `posAtDOM` answers for any DOM position, including ones inside a
+ * heading's decorations, so the candidate only stands if the document really
+ * holds a heading there and the view really renders it as this element.
+ */
 export function findHeadingPos(view: EditorView, heading: HTMLElement): number | null {
+    try {
+        // posAtDOM(el, 0) lands just inside the node's content; the node itself
+        // is one position earlier.
+        const pos = view.posAtDOM(heading, 0) - 1;
+        if (pos >= 0 && view.state.doc.nodeAt(pos)?.type.name === "heading" && view.nodeDOM(pos) === heading) {
+            return pos;
+        }
+    } catch {
+        // posAtDOM throws for an element the view does not render (a detached
+        // clone, or a heading in another editor) — fall through to the search.
+    }
     let result: number | null = null;
     view.state.doc.descendants((node, pos) => {
         if (node.type.name === "heading" && view.nodeDOM(pos) === heading) {
@@ -136,27 +192,30 @@ export function findActiveHeading(
     excludeCollapsed: boolean = true,
 ): { element: HTMLElement; pos: number } | null {
     const headings = excludeCollapsed ? getVisibleHeadings(view) : getAllHeadings(view);
-    let activeHeading: HTMLElement | null = null;
-    let activePos: number | null = null;
 
+    // Collect the candidates first and resolve a position only for the one that
+    // wins. Resolving as we go asked the document for a position per heading
+    // above the threshold, so scrolling deeper into a document cost strictly
+    // more per frame — the same answer, priced by how far down the reader had
+    // got (MAR-316). The walk backwards preserves the old fall-through: a
+    // candidate the document cannot place yields to the one before it.
+    const candidates: HTMLElement[] = [];
     for (const heading of headings) {
         const rect = heading.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) {
             continue;
         }
-        if (rect.top <= threshold) {
-            const pos = findHeadingPos(view, heading);
-            if (pos !== null) {
-                activeHeading = heading;
-                activePos = pos;
-            }
-        } else {
+        if (rect.top > threshold) {
             break;
         }
+        candidates.push(heading);
     }
 
-    if (activeHeading && activePos !== null) {
-        return { element: activeHeading, pos: activePos };
+    for (let i = candidates.length - 1; i >= 0; i--) {
+        const pos = findHeadingPos(view, candidates[i]);
+        if (pos !== null) {
+            return { element: candidates[i], pos };
+        }
     }
     return null;
 }
