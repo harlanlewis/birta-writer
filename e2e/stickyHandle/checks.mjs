@@ -337,4 +337,31 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the heading gutter centers on the first text line (≤1px drift)",
         gutterAlign.delta <= 1, JSON.stringify(gutterAlign));
+
+    // ── 5. The sticky follows a body-class layout shift that resizes NOTHING ──
+    // Since MAR-266 the body-class observer no longer reschedules on every
+    // mutation; it compares what the sticky is positioned from. A pure
+    // horizontal shift (TOC docking moves the editor column with a margin) is
+    // the case the ResizeObserver cannot see, so it is the one worth pinning:
+    // with the guard reading only the topbar, the sticky strands at its old
+    // left while the column moves out from under it.
+    await page.evaluate(() => {
+        document.body.classList.remove("handles-rest-hover");
+        const st = document.createElement("style");
+        st.textContent = ".sticky-shift-probe .ProseMirror { transform: translateX(160px); }";
+        document.head.appendChild(st);
+    });
+    await page.evaluate(() => window.scrollTo(0, 400));
+    await page.waitForTimeout(250);
+    await page.evaluate(() => document.body.classList.add("sticky-shift-probe"));
+    await page.waitForTimeout(300);
+    const shifted = await page.evaluate(() => ({
+        stickyLeft: Math.round(parseFloat(
+            document.querySelector(".heading-sticky-title").style.left)),
+        columnLeft: Math.round(
+            document.querySelector(".ProseMirror").getBoundingClientRect().left),
+    }));
+    check("the sticky tracks a move-without-resize column shift",
+        Math.abs(shifted.stickyLeft - shifted.columnLeft) <= 1, JSON.stringify(shifted));
+    await page.evaluate(() => document.body.classList.remove("sticky-shift-probe"));
 }

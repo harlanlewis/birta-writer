@@ -334,19 +334,26 @@ export const headingStickyPlugin = $prose(() =>
             // document, and twice per mutation because scheduleLayoutUpdate
             // queues two frames (MAR-266).
             //
-            // The topbar height is the ONLY thing this plugin reads that a body
-            // class decides, so measure that one element rather than enumerating
-            // class names: a class that starts affecting the topbar later is
-            // handled without editing a list here, and everything else that
-            // moves headings (TOC docking, content width) already arrives
-            // through the ResizeObserver below.
-            let topbarBottom = getTopbarBottom();
+            // So measure what the sticky is POSITIONED from rather than
+            // enumerating class names — two rects instead of 440, and a class
+            // that starts moving the editor tomorrow is handled without editing
+            // a list here. The sticky takes its top from the topbar and its
+            // left/width from the active heading, which tracks the editor
+            // column; `toc-docked`/`toc-open`/`editor-width-auto` all shift that
+            // column through CSS variables. The ResizeObserver below is NOT
+            // enough on its own for those: docking moves the column with a
+            // margin, and a pure horizontal shift resizes nothing.
+            const placement = (): string => {
+                const box = view.dom.getBoundingClientRect();
+                return `${getTopbarBottom()}|${box.left}|${box.width}`;
+            };
+            let lastPlacement = placement();
             const bodyClassObserver = new MutationObserver(() => {
-                const next = getTopbarBottom();
-                if (next === topbarBottom) {
+                const next = placement();
+                if (next === lastPlacement) {
                     return;
                 }
-                topbarBottom = next;
+                lastPlacement = next;
                 scheduleLayoutUpdate();
             });
             bodyClassObserver.observe(document.body, {
