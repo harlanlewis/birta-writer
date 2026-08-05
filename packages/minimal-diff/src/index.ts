@@ -73,12 +73,12 @@ export interface FormatProfile {
      *
      * This is the philosophy the keys already express — "a difference the
      * profile considers formatting-only is never applied" — extended from
-     * whole-line to SUB-LINE granularity. A `keep` writes the saved bytes, but
-     * a replacement used to write the serializer's line wholesale, so every
-     * formatting-only part of an edited line (its outline indent unit, a table
-     * cell the user never touched) was canonicalized as collateral damage
-     * while its untouched neighbours kept theirs — leaving two conventions
-     * mixed inside one construct (MAR-213 / MAR-214).
+     * whole-line to SUB-LINE granularity. A `keep` writes the saved bytes;
+     * without this hook a replacement writes the serializer's line wholesale,
+     * so every formatting-only part of an edited line (its outline indent unit,
+     * a table cell the user never touched) is canonicalized as collateral
+     * damage while its untouched neighbours keep theirs — leaving two
+     * conventions mixed inside one construct (MAR-213 / MAR-214).
      *
      * `facts` is whatever `baselineFacts` distilled for this file, or null when
      * no protection was computed. A profile MUST treat it as untrusted (it
@@ -1077,21 +1077,21 @@ export function applyMinimalChanges(
     // predicate says the blank run is block structure rather than spacing
     // style. (Asserted across the whole suite while developing MAR-290: no
     // all-keeps rebuild ever differed from `saved` without one firing.) What it
-    // does cost is the rebuild itself — one O(lines) pass that the fast path
-    // used to skip on a save that changed nothing. It is off the keystroke path
-    // (see webview/editor.ts) and small beside the serialization and LCS that
+    // does cost is the rebuild itself — one O(lines) pass, paid even on a save
+    // that changed nothing. It is off the keystroke path (see
+    // webview/editor.ts) and small beside the serialization and LCS that
     // precede it on the same save.
     //
     // Which makes corpus invariant A — a zero-edit save is byte-identical — a
-    // soundness test for those predicates, where before it was blind to them: a
-    // predicate that misjudges a construct now rewrites the file on a save that
-    // changed nothing, and can also cost the file its round-trip protection
-    // outright, since `computeRoundTripProtection` keeps a protection only if
-    // replaying it reproduces the baseline exactly. That cascade is how a `$$`
-    // misjudgement surfaced as `$$x$$` → `$x$` in `math-variants.md`. All of
-    // that is the point, not a hazard: the same lie already corrupted every
-    // save that touched anything ELSE in the document, and the fast path only
-    // hid it from the one case a test looks at.
+    // soundness test for those predicates: a predicate that misjudges a
+    // construct rewrites the file on a save that changed nothing, and can also
+    // cost the file its round-trip protection outright, since
+    // `computeRoundTripProtection` keeps a protection only if replaying it
+    // reproduces the baseline exactly — the cascade that turns a `$$`
+    // misjudgement into `$$x$$` → `$x$` in `math-variants.md`. That is the
+    // point, not a hazard: the same misjudgement corrupts every save that
+    // touches anything ELSE in the document, and a fast path here would only
+    // hide it from the one case a test looks at.
 
     // What this file's own untouched lines say about how it spells what the
     // serializer renders canonically — the evidence an inserted line is written
@@ -1207,20 +1207,21 @@ export function applyMinimalChanges(
             // and is consulted for lines it never saw, so an absent pair is
             // cheap and a wrong one is a lie. Here the pairing is per line and
             // per merge, the profile re-checks every carry against the two
-            // lines in front of it, and declining to pair is not "no answer" —
-            // it is the answer this walk used to give, which was wrong.
+            // lines in front of it, and declining to pair is not a neutral "no
+            // answer" — it routes the line to the insertion path, which is an
+            // answer of its own, and usually the wrong one.
             //
-            // WHAT IT USED TO GIVE (MAR-303): the walk read adjacency, `del`
-            // immediately followed by `ins`, as the replacement. The LCS
+            // Do NOT reduce this to adjacency — `del` immediately followed by
+            // `ins` — as the test for a replacement (MAR-303). The LCS
             // backtrack emits a run's dels and THEN its inses (the fact
             // `pairBaselineLines` states about itself), so on any run longer
-            // than one couple that test found the LAST saved line beside the
+            // than one couple that test pairs the LAST saved line with the
             // FIRST serialized one — two lines with nothing to do with each
-            // other — and every other serialized line in the run fell through
+            // other — and every other serialized line in the run falls through
             // to the insertion path, which has no saved counterpart to consult
-            // at all. Editing two adjacent table rows in ONE save was enough
-            // to reach it: the second row lost the cell bytes the serializer
-            // cannot reproduce, and the first row was handed the second's.
+            // at all. Editing two adjacent table rows in ONE save is enough to
+            // reach it: the second row loses the cell bytes the serializer
+            // cannot reproduce, and the first row is handed the second's.
             //
             // Collecting the two sides separately also makes the walk
             // independent of the order the backtrack emits them in, which is a
@@ -1228,21 +1229,18 @@ export function applyMinimalChanges(
             const { dels, inses, end } = runAt(edits, e);
             e = end;
 
-            // SPACING is deliberately carried over from the walk this
-            // replaced, byte for byte, so that this change is about pairing
-            // and nothing else. Two rules reproduce it exactly:
+            // SPACING is decided by two rules, independently of the pairing
+            // above:
             //   • a saved line with no serialized counterpart takes the blank
             //     run around it away, so a run with more than one del — or
             //     with none at all to pair against — is `dirty` from the
             //     start and every line it emits is spaced by the serializer;
             //   • after the run, `dirty` is false only for the isolated
             //     couple whose surroundings demonstrably did not move.
-            // (The second rule is stated in terms of the SERIALIZED side
-            // because that is what the old walk's branch order made it depend
-            // on. That is an accident of that shape rather than a reasoned
-            // rule, and it is worth its own look — but not from inside a fix
-            // to the pairing, where any spacing change would be unmeasurable
-            // against it.)
+            // (The second rule is stated in terms of the SERIALIZED side. That
+            // is probably an accident of an earlier branch order rather than a
+            // reasoned rule, and worth its own look — but change it on its own,
+            // never alongside a pairing change, or neither is measurable.)
             if (dels.length > 1 || inses.length === 0) dirty = true;
 
             const paired = Math.min(dels.length, inses.length);

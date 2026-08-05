@@ -22,10 +22,9 @@
  * because the walks sit above the `transaction.docChanged` test they ran on
  * selection-only transactions too — every arrow key, every click.
  *
- * Measured on the 300 KB `xlarge` fixture: a selection-only `state.apply` cost
- * 2.40 ms, of which 1.70 ms (71%) was this plugin — a cost the typing harness
- * cannot see at all, because `instrumentTransactions` only stamps doc-changing
- * transactions. It was also 4.48 ms/key (18%) of typing dispatch.
+ * The selection-only half of that is a cost the typing harness cannot see at
+ * all, because `instrumentTransactions` stamps `mdw:tx-select` separately and
+ * the gate reads only the doc-changing median (MAR-137).
  *
  * Two corrections, in increasing order of how much thought they need:
  *
@@ -171,10 +170,10 @@ export const prismHighlightPlugin = $prose((ctx) => {
             apply: (transaction: Transaction, decorationSet: DecorationSet, oldState: EditorState, state: EditorState) => {
                 // The plugin's contract, stated where it is easiest to read: a
                 // decoration can only change when the document does. Kept for
-                // that reason and NOT as an optimization — measured against
-                // removing it, selection-only `state.apply` is 0.600 ms either
-                // way, because the `identical` branch below already catches
-                // this case. Deleting it would leave the contract implicit.
+                // that reason and NOT as an optimization — the `identical`
+                // branch below already catches this case, so removing this test
+                // costs nothing measurable and only leaves the contract
+                // implicit.
                 if (!transaction.docChanged) {
                     return decorationSet;
                 }
@@ -187,9 +186,8 @@ export const prismHighlightPlugin = $prose((ctx) => {
                     }
                     // Only this code block's text changed: re-highlight it on
                     // its own rather than every code block in the document.
-                    // That is what takes typing inside a code block on the
-                    // 300 KB fixture from 38.3 ms to ~9 ms — the old path
-                    // recomputed all 440 blocks on every keystroke.
+                    // Typing inside a code block is otherwise O(code blocks in
+                    // the document) per keystroke.
                     const from = edited.pos;
                     const to = from + edited.node.nodeSize;
                     return mapped

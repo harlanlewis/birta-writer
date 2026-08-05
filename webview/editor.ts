@@ -130,14 +130,13 @@ let _protectionSnapshot: { baseline: string; doc: ProseNode; editor: Editor } | 
  * a deferred callback that fires after the editor was destroyed or replaced is a
  * no-op (guarded, since ctx access on a torn-down editor throws).
  *
- * The `rtp-start`/`rtp-end` marks bracket the whole zero-edit re-serialization.
- * They were stamped here when this ran eagerly on the mount path and were
- * deleted along with the eager call when it was deferred — leaving the harness's
- * `rtp` span reading `null` on every run while the work itself moved to the
- * frames just after first paint, where no span reaches. That is what the 63 ms
- * post-paint longtask on the `large` fixture turned out to be (MAR-311): not
- * unattributable work, work whose attribution was removed. Deferring work past
- * the last mark does not make it free.
+ * The `rtp-start`/`rtp-end` marks bracket the whole zero-edit re-serialization,
+ * and must stay wherever the work actually runs (MAR-311). This work is
+ * deferred past first paint, onto frames no launch span reaches, so marks left
+ * behind at an old call site would leave the harness's `rtp` span reading
+ * `null` while the cost is still paid — reported as nothing, and visible only
+ * as an unattributed post-paint longtask. Deferring work past the last mark
+ * does not make it free.
  */
 function getProtection(): RoundTripProtection | null {
     if (_protection) return _protection;
@@ -222,7 +221,7 @@ let _compositionAbort: AbortController | null = null;
 // SYNCHRONOUSLY (see onDocChanged below). The trigger is O(1): it flags that an
 // edit happened and asks the scheduler when to sync. SERIALIZATION (whole-doc
 // `getMarkdown()` + `applyMinimalChanges` + round-trip protection) is expensive
-// — O(document size), ~49 ms on a 300 KB doc — so it runs ONLY in syncNow(),
+// — O(document size) — so it runs ONLY in syncNow(),
 // never on the keystroke path, and the scheduler keeps it off mid-burst
 // (leading edge → dirty ASAP; trailing debounce → don't re-serialize while
 // typing; max-wait → bound crash-safety staleness). The definitive freshest
@@ -231,15 +230,15 @@ let _compositionAbort: AbortController | null = null;
 // (unit-tested there).
 //
 // This deliberately does NOT ride Milkdown's `listenerCtx.updated`, which wraps
-// every callback in a lodash `debounce(fn, 200)` (trailing). That debounce sat
-// upstream of the scheduler and starved it (MAR-145), breaking two invariants:
-//   • #2 — the first keystroke took ~208 ms to dirty the TextDocument, so a
-//     Cmd+S inside that window found a clean document, never fired
-//     onWillSaveTextDocument, and did not write the keystroke;
-//   • #3 — being TRAILING, it reset on every keystroke, so typing continuously
-//     never fired it at all: request() was never called, the scheduler's
-//     max-wait could never engage, and the document stayed clean for the whole
-//     burst (measured: no update across 3 s of typing).
+// every callback in a lodash `debounce(fn, 200)` (trailing). Upstream of the
+// scheduler that debounce starves it and breaks two invariants (MAR-145):
+//   • #2 — the first keystroke does not dirty the TextDocument for a fifth of
+//     a second, so a Cmd+S inside that window finds a clean document, never
+//     fires onWillSaveTextDocument, and does not write the keystroke;
+//   • #3 — being TRAILING, it resets on every keystroke, so continuous typing
+//     never fires it at all: request() is never called, the scheduler's
+//     max-wait can never engage, and the document stays clean for the whole
+//     burst, however long it runs.
 // The scheduler already implements leading edge + trailing + max-wait together;
 // a second timer upstream can only starve it. Pinned by e2e/syncLatency.
 let _onUpdate: ((markdown: string) => void) | null = null;
@@ -499,7 +498,7 @@ export async function createEditor(
 
     // Register syntax grammars before create when the document already contains a
     // fenced code block, so the prism plugin highlights it on the first paint. A
-    // document with no code skips the ~155 KB grammar chunk entirely; a code
+    // document with no code skips the grammar chunk entirely; a code
     // block added later loads it via the code-block NodeView.
     if (/(^|\n)[ \t]{0,3}(```|~~~)/.test(initialMarkdown)) {
         await ensureGrammars();
@@ -684,8 +683,9 @@ export async function createEditor(
     // — the feature read as broken. The plugin is inert when gated off: its
     // decoration function returns DecorationSet.empty on the first read and its
     // view() schedules no idle pass, so "a disabled feature costs nothing"
-    // still holds for the work, and only the plugin's own bytes (~1.5 KB
-    // against a ~1.2 MB eager baseline) are paid. The card builder and the
+    // still holds for the work, and only the plugin's own bytes are paid —
+    // negligible against the eager baseline (`pnpm perf:bundle`). The card
+    // builder and the
     // thumbnail are still lazy, so nothing reaches the network while off.
     // Re-gating is live in both directions via regateEmbeds (messageHandlers).
     try {

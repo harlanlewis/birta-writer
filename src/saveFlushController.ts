@@ -17,9 +17,9 @@
  *    against the authoritative per-document version, bumped at OBSERVE time
  *    for every external change.
  *
- * Both stale guards are implemented here ONCE; the provider's `update` path
- * and the flush path call the same two primitives (they used to carry
- * duplicated copies of this logic).
+ * Both stale guards are implemented here ONCE, and must stay that way: the
+ * provider's `update` path and the flush path call the same two primitives
+ * rather than carrying their own copies.
  *
  * Format-agnostic by design: content is an opaque string and the edit type is
  * generic — no markdown (or any other format) knowledge lives here.

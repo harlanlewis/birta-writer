@@ -9,9 +9,9 @@
  * very same singleton as `refractor/core` but registers 35 grammars onto it as
  * an import-time side effect — and refractor lists that file in `sideEffects`,
  * so esbuild cannot tree-shake the registrations away. `@milkdown/plugin-prism`
- * imports it, which dragged ~82 KB of grammars into the *eager* launch bundle,
- * duplicating a subset of what `highlighterLanguages.ts` already ships in a lazy
- * chunk.
+ * imports it, which without this rebinding drags all 35 grammars into the
+ * *eager* launch bundle, duplicating a subset of what `highlighterLanguages.ts`
+ * already ships in a lazy chunk.
  *
  * Nothing else changes: the instance is identical either way, so the prism
  * plugin keeps highlighting with the same object `highlighter.ts` registers our

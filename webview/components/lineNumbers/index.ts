@@ -10,11 +10,11 @@
  *
  * Widget decorations sit in the document flow: ProseMirror position-maps the
  * whole set on every keystroke and diffs it against the DOM on every redraw.
- * Measured on the 300 KB typing fixture, the block gutter's decorations cost
- * ~10 ms of `DecorationSet.map` plus roughly twice that again in redraw, out of
- * a 65 ms dispatch (MAR-215; see `plugins/visibleRange.ts`). A number per source
- * line is a denser set than that one. Decorations also cannot escape their
- * block's box to reach the viewport edge.
+ * The block gutter's set — two decorations per BLOCK — already has to be
+ * windowed to the viewport to keep typing responsive on a large document
+ * (MAR-215; see `plugins/visibleRange.ts`), and one number per SOURCE LINE is
+ * denser still.
+ * Decorations also cannot escape their block's box to reach the viewport edge.
  *
  * So this is an external layer, and ProseMirror never learns it exists — no
  * decoration mapping, no redraw diffing, and no contenteditable surface to

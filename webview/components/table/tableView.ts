@@ -436,14 +436,13 @@ class TableController {
      *
      * STRICTLY read-then-write, and it must stay that way (MAR-251). Every
      * `style.top` write here dirties layout, so a `getBoundingClientRect()`
-     * after one forces a synchronous re-layout of the whole document — and
-     * this pass used to interleave them, re-reading each row's and cell's
-     * rect inside the four write loops even though the read phase above had
-     * already captured the same values. That is ~16 forced layouts per table,
-     * and the mount-time pass runs once per table before first paint: on the
-     * launch harness's `large` fixture (108 tables) it cost 237 ms — 65% of
-     * the whole `paint` span. Batched, the identical pass costs ~9 ms. Add a
-     * read below the first write and the storm comes straight back.
+     * after one forces a synchronous re-layout of the whole document. The read
+     * phase below captures every rect the write loops need, so a read placed
+     * under the first write is always a duplicate of one already taken — and it
+     * costs a forced layout per row and per column. This pass runs once per
+     * table on the frames before first paint, so on a table-heavy document that
+     * storm lands squarely in the `paint` span. Add a read below the first write
+     * and it comes straight back.
      */
     private reposition(): void {
         const rows = this.rowEls();

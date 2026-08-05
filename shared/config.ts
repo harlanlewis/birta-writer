@@ -297,8 +297,8 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
 };
 
 /**
- * The one defaults table. Every inline `get(key, fallback)` literal the
- * extension used to carry lives here instead, pinned against package.json.
+ * The one defaults table, pinned against package.json. A default belongs here,
+ * never inline as a `get(key, fallback)` literal at a call site.
  */
 export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Proofreading: every check ships ON; the escape hatch is the master gate.

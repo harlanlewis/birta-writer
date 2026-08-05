@@ -21,10 +21,9 @@
  * text node, on every doc-changing transaction, and it allocates `tr` on the
  * first node visited rather than when it has an edit to make. So it always
  * returns a transaction, which makes ProseMirror run a second `applyInner`
- * (every plugin's state field, again) for every keystroke. Measured on the
- * 300 KB `xlarge` typing fixture — which contains **no tables at all** — the
- * two together were 16.1 ms of a 23.7 ms per-keystroke dispatch median: 68%,
- * removing which puts the fixture back under the 16 ms frame budget.
+ * (every plugin's state field, again) for every keystroke. So the bill is a
+ * whole-document walk plus a second pass over every plugin's state, per
+ * keystroke — and a document containing **no tables at all** pays all of it.
  *
  * The two corrections here:
  *
@@ -35,11 +34,10 @@
  *   2. `tr` is allocated only when a cell actually needs re-marking, so a
  *      transaction is appended only when one is warranted.
  *
- * The first cut skipped the walk only when the edit was a single-textblock
- * inline edit, which covered typing and nothing else. Narrowing by range
- * instead covers the structural edits too — Enter on the 300 KB fixture went
- * 33.3 ms → 18.6 ms once this landed, a case the earlier shape could not help
- * because it fell straight through to a whole-document walk.
+ * Narrowing by RANGE rather than by edit shape is the load-bearing part: a test
+ * for "single-textblock inline edit" covers typing and nothing else, and every
+ * structural edit — Enter above all — falls straight through to a
+ * whole-document walk.
  *
  * This mirrors the fix proposed upstream (Milkdown `perf(preset-gfm)`), so the
  * two can be diffed line for line — and this file deleted outright — once that

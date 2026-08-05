@@ -100,15 +100,14 @@ export interface BlockControlsColumn {
  * delete buttons — deletion belongs to the block menu and the keyboard.
  *
  * **The strip mounts empty and its contents attach on first reveal**
- * (MAR-251). Every column is invisible at rest, and on a document of any size
- * the user reveals a handful of them — but the launch harness's `large`
- * fixture (108 code blocks + 108 tables) put 4,428 button/icon nodes, 16% of
- * the whole document's DOM, into the first paint for chrome nobody had asked
- * to see. Deferring the ATTACHMENT (not the construction — the buttons are
- * built eagerly, so every caller's `syncWidthBtn()` / `applyWordWrapState()`
- * keeps working on a detached node and is simply correct the moment it lands)
- * measured -40 ms of launch on `large`, of which only ~5 ms was the JS: the
- * cost is joining a live tree and being styled and laid out.
+ * (MAR-251). Every column is invisible at rest and the user reveals a handful
+ * of them, so mounting every strip's buttons puts a large share of a
+ * block-heavy document's DOM into the first paint for chrome nobody asked to
+ * see. The cost being avoided is joining a live tree and being styled and laid
+ * out, NOT building the nodes — so defer the ATTACHMENT and never the
+ * construction: the buttons are built eagerly, so every caller's
+ * `syncWidthBtn()` / `applyWordWrapState()` keeps working on a detached node
+ * and is simply correct the moment it lands.
  *
  * Three triggers arm the reveal, and the third is the one that makes the set
  * complete rather than a guess. The CSS is the choke point *every* reveal path

@@ -2,8 +2,8 @@
  * Tests for the scoped suppression of an invisible selection's native paint
  * (MAR-258): which blocks get the `pm-hidden-selection` decoration, and the
  * standing rule that nothing may key a style rule off the class ProseMirror
- * toggles on the editor ROOT — that toggle re-styles the whole document
- * (169 ms on the 300 KB perf fixture, against 3 ms with no rule matching it).
+ * toggles on the editor ROOT — that toggle re-styles the whole document on
+ * every invisible-selection change.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";

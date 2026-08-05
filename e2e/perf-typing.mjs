@@ -5,10 +5,9 @@
  * around every doc-changing transaction (see instrumentTransactions in
  * webview/perf.ts). One measure = the synchronous DISPATCH block of one
  * keystroke: state apply + view DOM reconciliation + every plugin view's
- * update. That is the dominant slice of MAR-137's per-keystroke cost, but not
- * all of it — ProseMirror's pre-dispatch input path and rAF-coalesced
- * followers (TOC refresh, the scheduled serialize) fall outside the span
- * (~1/3 of a typing burst's total main-thread block on the 300 KB fixture).
+ * update. That is the dominant slice of per-keystroke cost, but not all of it:
+ * ProseMirror's pre-dispatch input path and rAF-coalesced followers (TOC
+ * refresh, the scheduled serialize) fall outside the span.
  * The `block` column closes that blind spot (MAR-163): a buffered longtask
  * observer sums every main-thread task ≥50 ms during the measured burst, so a
  * change that merely MOVES work out of dispatch into a rAF still shows in
@@ -52,21 +51,19 @@ const TYPING_TEXT = "The quick brown fox jumps over the lazy dog and keeps going
 // these is added CI wall-clock on the most expensive job in the repo.
 const CARET_MOVES = 30;
 
-// A/B mode measures ONLY the gated fixtures — currently just `xlarge`.
+// A/B mode measures ONLY the gated fixtures.
 //
-// This is a cost decision made from measurement. Per sample on a dev laptop,
-// `xlarge` costs ~6.4 s to mount + ~8 s for an 80-key burst; `large` ~1.3 s +
-// ~3.5 s. A CI runner is ~2× slower again. Every fixture in this list is that
-// cost × 2 sides × (pairs + 1 warmup), twice over if a regression needs
-// confirming — which is how the first shipped configuration reached ~8 min of
-// CI on every PR.
+// Adding one to this list is a cost decision. Each costs a mount plus a burst,
+// × 2 sides × (pairs + 1 warmup), doubled again when a regression needs
+// confirming — on the most expensive job in the repo. Size that from a
+// completed CI job, never from local timings: a runner is roughly twice as
+// slow per keystroke as a dev laptop (e2e/perf/README.md).
 //
-// The smaller fixtures cannot inform the decision anyway: `medium` measured
-// 1.8 ms per keystroke on CI, so even a large percentage move is a fraction of
-// the gate's own 0.5 ms absolute floor. A number that cannot fire the gate is
-// not context, it is cost. `large` was dropped on the same reasoning at the
-// margin — ~1/5 the sensitivity of `xlarge` for a third of the runtime, and a
-// regression that scales with document size shows on `xlarge` first.
+// The smaller fixtures cannot inform the decision anyway. Their per-keystroke
+// medians sit near the gate's own 0.5 ms absolute floor, so even a large
+// percentage move on one can never fire it — and a number that cannot fire the
+// gate is not context, it is cost. A regression that scales with document size,
+// the shape this gate exists for, shows on the largest fixture first.
 //
 // Run `pnpm perf:typing` for the full fixture spread when investigating.
 const AB_FIXTURES = [...TYPING_GATED_FIXTURES];
@@ -254,19 +251,18 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     await page.waitForTimeout(200);
 
     // ── Caret burst (MAR-137) ───────────────────────────────────────────
-    // Selection-only transactions were the one class nothing measured, which
-    // is exactly how a 2.4 ms-per-arrow-key cost hid in an upstream plugin
-    // that walked the whole document above its own docChanged test. Two things
-    // about the placement are deliberate:
-    //   - It runs on the ALREADY-MOUNTED page. Mount is ~38% of an xlarge
-    //     sample, so folding this in costs burst time only, not a second mount.
+    // Selection-only transactions, which no other metric here can see. Two
+    // things about the placement are deliberate:
+    //   - It runs on the ALREADY-MOUNTED page. Mount is a large fraction of a
+    //     big-fixture sample, so folding this in costs burst time only, not a
+    //     second mount.
     //   - It runs AFTER the typed burst, never before. Arrow keys walk the
-    //     caret into whatever the fixture holds, and `xlarge` is 440 sections
-    //     of prose + table + code block: starting the typed burst from a caret
-    //     parked in a code block measured 38.5 ms/key against prose's 5.4,
-    //     because a caret inside a code block re-highlights the whole document
-    //     on every keystroke. Ordering these the other way silently changed
-    //     what the headline typing median means.
+    //     caret into whatever the fixture holds, and `large`/`xlarge` repeat a
+    //     section containing a table and a code block: starting the typed burst
+    //     from a caret parked in a code block measures ~7x prose's per-key
+    //     cost, because a caret inside a code block re-highlights the whole
+    //     document on every keystroke. Ordering these the other way silently
+    //     changes what the headline typing median means.
     await page.keyboard.press("ArrowDown");
     await page.waitForTimeout(120);
     await page.evaluate(() => performance.clearMeasures("mdw:tx-select"));
@@ -400,8 +396,7 @@ async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs,
             // `selectionchange`, so 30 presses collapse into 2–7 transactions.
             // That is why the gate reads the TOTAL below and not the median —
             // the pool is too small for an order statistic, but the sum still
-            // measures the whole burst's work (MAR-137 note, corrected
-            // 2026-07-30).
+            // measures the whole burst's work (MAR-137).
             headCaret.push(...(h.caret ?? [])); baseCaret.push(...(b.caret ?? []));
             // `.length`, not truthiness: an empty array is truthy, and counting
             // a burst that contributed no samples would dilute the per-burst

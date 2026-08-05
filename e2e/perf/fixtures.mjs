@@ -11,8 +11,7 @@
  *   math       — inline + block KaTeX, exercises the (lazy) math path
  *   link-heavy — many BARE autolinks on their own lines (provider and not),
  *                exercising the embed recognizer walk that titled links never
- *                reach (bareLinkHref requires text === href) — the path the
- *                2026-07-24 perf review found unmeasured
+ *                reach (bareLinkHref requires text === href)
  *
  * The three PROSE fixtures (tiny/medium/large, and xlarge below, which is built
  * from the same sections) deliberately trip the style check — see
@@ -47,12 +46,12 @@ const CODE_SAMPLES = {
 /**
  * Sentences that TRIP the style check, one per line of the rotation below.
  *
- * The prose fixtures used to trip **zero** style checks — `medium` produced 0
- * `.pf-style-hit` elements — so proofreading's scan ran on every measured
- * launch and found nothing, exercising the matcher's traversal but never the
- * decoration-building path that scales with how much a document actually
- * trips. A green gate over that fixture set is evidence of non-interference,
- * not of coverage (MAR-310).
+ * The prose fixtures MUST trip the style check. Proofreading ships on, so
+ * every measured launch runs its scan; over prose that matches nothing the
+ * scan exercises the matcher's traversal but never the decoration-building
+ * path, which is the half that scales with how much a document actually trips.
+ * A green gate over such a fixture set is evidence of non-interference, not of
+ * coverage (MAR-310).
  *
  * Between them these four cover seven categories — fillers, redundancies,
  * clichés, wordiness, AI vocabulary, AI artifacts, passive voice and negative
@@ -123,13 +122,13 @@ A short paragraph with a **bit** of emphasis and a [link](https://example.com).
 ${STYLE_SENTENCES[0]}
 `;
 
-// Section counts are chosen to hold the documented BYTE sizes across the
-// style-check seeding, which added ~215 characters to each section: 18→14 and
-// 140→108 keeps medium at ~12 KB and large at ~96 KB (within 1% of their
-// pre-seeding lengths), so a fixture's identity stays its size. Left alone,
-// every prose fixture would have grown ~30% and the typing job — already the
-// most expensive check in the repo, and dominated by its largest fixture —
-// would have grown with it, for no measurement anyone asked for.
+// A FIXTURE'S IDENTITY IS ITS SIZE, so the section counts are derived from the
+// documented byte sizes and not the other way round: 14 and 108 hold medium at
+// ~12 KB and large at ~96 KB. Re-derive them whenever a section's content
+// changes — the style-check seeding grew each one by ~215 characters, and left
+// alone would have grown every prose fixture ~30%, taking the typing job (the
+// most expensive check in the repo, dominated by its largest fixture) with it
+// for no measurement anyone asked for.
 const medium = repeatToSize("# Medium document", 14);   // ~12 KB
 const large = repeatToSize("# Large document", 108);     // ~96 KB
 

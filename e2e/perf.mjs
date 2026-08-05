@@ -28,8 +28,7 @@ import {
 // End marks of the POST_PAINT_SPANS. `editor-painted` is not the end of a
 // launch: both of these are scheduled from the mount path onto idle and land in
 // the frames just after first paint, so a sample that stops at the paint mark
-// reads them as absent — which is how ~114 ms of main-thread block on `large`
-// stayed unattributed (MAR-311).
+// reads them as absent and their main-thread block goes unattributed (MAR-311).
 const SETTLE_MARKS = ["rtp-end", "proofread-end"];
 // Bound. Both are `requestIdleCallback`s with their own timeouts (2000 ms for
 // round-trip protection, 1000 ms for the proofread first pass), so a bundle

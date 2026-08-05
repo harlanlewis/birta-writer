@@ -140,11 +140,10 @@ describe("table NodeView — DOM structure", () => {
     it("should read layout once per row and column, never once per affordance", async () => {
         // reposition() must stay strictly read-then-write (MAR-251): a
         // `style.top` write dirties layout, so a getBoundingClientRect() after
-        // one forces a synchronous re-layout of the whole document. It used to
-        // re-read each row's and cell's rect inside the four write loops —
-        // values the read phase had already captured — which on the launch
-        // harness's `large` fixture (108 tables) cost 237 ms, 65% of the whole
-        // paint span. Counting the reads is what makes that regression loud:
+        // one forces a synchronous re-layout of the whole document. Re-reading
+        // a row's or cell's rect inside the write loops — values the read phase
+        // has already captured — is a forced layout per affordance, paid once
+        // per table before first paint. Counting the reads makes that loud:
         // the budget scales with the TABLE (rows + columns), not with the
         // grips and insert bars being positioned (about twice as many).
         const wrapper = document.querySelector<HTMLElement>(".mw-table")!;
