@@ -199,6 +199,36 @@ describe("prism decorations — editing", () => {
         expect(decorations(view(editor)).length).toBeGreaterThan(20);
     });
 
+    it("every supported language should be highlighted, and the unsupported one not", async () => {
+        // What the deleted differential used to catch and a total count does
+        // not: highlighting breaking for ONE language. A grammar that stops
+        // registering, or an upstream change to how `listLanguages()` is
+        // consulted, takes out a single block while the document-wide total
+        // stays comfortably over any threshold.
+        //
+        // Per-BLOCK presence, not class names or counts: the point is that
+        // each block got tokenized, and pinning prism's token vocabulary would
+        // re-assert today's output, which is what the differential existed to
+        // avoid.
+        const editor = await makeEditor(CODE_DOC);
+        const v = view(editor);
+        const decos = decorations(v);
+        const languages = ["js", "python", "css", "not-a-real-language"];
+        for (const [i, language] of languages.entries()) {
+            const pos = codeBlockPos(v, i);
+            expect(pos, `code block ${i} (${language}) is missing`).toBeGreaterThanOrEqual(0);
+            const node = v.state.doc.nodeAt(pos)!;
+            expect(node.attrs["language"]).toBe(language);
+            const count = within(decos, { from: pos + 1, to: pos + node.nodeSize - 1 }).length;
+            if (language === "not-a-real-language") {
+                // No grammar, so no decorations — and the block still renders.
+                expect(count, "an unregistered language should decorate nothing").toBe(0);
+            } else {
+                expect(count, `${language} produced no decorations`).toBeGreaterThan(0);
+            }
+        }
+    });
+
     it("a selection-only transaction should not rebuild the set (identity preserved)", async () => {
         // The headline defect #2436 fixed: two whole-document `findChildren`
         // walks sat ABOVE the plugin's own `docChanged` test, so every caret
