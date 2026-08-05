@@ -1,202 +1,235 @@
-# Agent & contributor instructions — Birta Writer
+# Agent and contributor instructions for Birta Writer
 
-This is the **canonical, tool-agnostic** instruction file for the repository — the one every agent and contributor should actually read. `CLAUDE.md` at the repo root is only a pointer (`@AGENTS.md`) so Claude Code finds its way here.
+This is the canonical, tool-agnostic instruction file for the repository, and the one every agent and contributor should actually read. `CLAUDE.md` at the repo root is only a pointer (`@AGENTS.md`) so Claude Code finds its way here.
 
 ## Language policy
 
-The maintainer reads and writes **English only**. This project is being migrated from Chinese to English, and every change should move it further in that direction — never back.
+The maintainer reads and writes English only. This project is migrating from Chinese to English, and every change must move it further in that direction, never back. This policy supersedes any older instruction in this repo that mandates Chinese, including earlier versions of this file.
 
-- **Reply to the user in English.** Never reply in Chinese, Korean, or any other language.
-- **Every edit must move the codebase toward English, never away from it:**
-  - Write all new code comments, identifiers, commit messages, docs, test descriptions, and log/`console` strings in English.
-  - When you touch a file that still contains Chinese (comments, strings, docs), translate the parts you touch into English as you go. Leave the rest rather than doing unrelated mass rewrites, but never add new non-English content.
-  - For user-facing UI text, keep the i18n system intact but treat English as the source/base language.
-- This policy **supersedes any older instruction in this repo that mandates Chinese**, including earlier versions of this file.
+- Reply to the user in English. Never Chinese, Korean, or any other language.
+- Write all new code comments, identifiers, commit messages, docs, test descriptions, and log or `console` strings in English.
+- When you touch a file that still contains Chinese (comments, strings, docs), translate the parts you touch. Leave the rest rather than doing unrelated mass rewrites, and never add new non-English content.
+- For user-facing UI text, keep the i18n system intact and treat English as the source language.
 
 ## Relationship to the origin project
 
-Birta Writer began as a hard fork and is now developed fully independently. The `upstream` git remote has been **removed on purpose** — the only live remote is `origin` (`harlanlewis/birta-writer`). The origin project is named in `NOTICE` and `LICENSE-MIT`; that is where to look it up if you need it.
+Birta Writer began as a hard fork and is now developed fully independently. The `upstream` git remote is removed on purpose; the only live remote is `origin` (`harlanlewis/birta-writer`).
 
-- **Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to the origin repository.** The fork diverged deliberately and permanently (including the Chinese→English migration and the rebrand); pulling from it would drag back exactly what this project is moving away from.
-- **Don't name the origin project anywhere new.** It is named only where attribution requires it — `NOTICE` and `LICENSE-MIT` — plus `docs/PROVENANCE.md`, whose entire subject is how much of it remains. Prose elsewhere refers to it obliquely ("the project this one forked from"). Don't reintroduce the slug into the README, the changelog, docs, comments, or test fixtures. The brand-guard test (`shared/__tests__/noLegacyBrand.test.ts`) bans our *own* former slug and id; it does not police the origin's, so this one is on you.
+- Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to the origin repository. The fork diverged deliberately and permanently, and pulling from it would drag back exactly what this project is moving away from.
+- Don't name the origin project anywhere new. It is named only where attribution requires it: `NOTICE`, `LICENSE-MIT`, and `docs/PROVENANCE.md`, whose whole subject is how much of it remains. Prose elsewhere refers to it obliquely ("the project this one forked from"). Keep the slug out of the README, the changelog, docs, comments, and test fixtures. `shared/__tests__/noLegacyBrand.test.ts` bans our own former slug and id; it does not police the origin's, so this one is unguarded.
 
 ## Project basics
 
-- **Package manager**: use `pnpm` only. No npm/yarn.
-- **Dependencies**: adding, removing, or bumping one has two obligations beyond the lockfile.
-  - **Regenerate the attribution appendix**: `pnpm notices`. We ship a bundle (`vsce package --no-dependencies`), so every dependency is inlined into `dist/` and minification strips the license headers that would otherwise carry its notice — `licenses/THIRD_PARTY_LICENSES.md` is where MIT/ISC/BSD attribution and Apache-2.0 §4 are actually discharged. It is generated from the esbuild metafiles (what the bundles *inline*), not from the dependency tree, so it never claims we ship tree-shaken code. CI's `perf-bundle` job fails if it is stale; `shared/__tests__/thirdPartyNotices.test.ts` fails if a direct dependency is unattributed or an upstream package changes its license out from under a recorded election. **The script name is `notices`, not `licenses` — `pnpm licenses` is a pnpm builtin and a script by that name is silently shadowed.**
-  - **Keep `@types/vscode` pinned to `engines.vscode`'s floor** (both `1.95.0` today, the types exactly, the engine as `^`). A caret on the types resolves to the newest 1.x, which lets the compiler bless APIs that do not exist in the oldest VS Code we claim to support — a compatibility claim nothing else checks.
-- **Build**: run `pnpm build` after changing code to confirm it compiles.
-- **Debug**: press F5 to launch an Extension Development Host (`.vscode/launch.json`).
-- **Language/tooling**: all TypeScript. Extension side uses `tsconfig.json`; webview side uses `tsconfig.webview.json`.
-- **Dual-target build**: `dist/extension.js` (Node.js) + `dist/webview.js` (browser), produced by `esbuild.mjs`.
-- **Syntax level**: modern JS/CSS is fine (native CSS nesting, `:has()`, optional chaining, top-level `await`, etc.). No need to down-level for old browsers/runtimes — the only runtimes are Electron (VS Code) and Node 18, and esbuild (`target: es2020`) transpiles as needed at build time. Prefer concise modern syntax such as nesting.
-- **Packaging/release**: the VSIX must be written to `releases/`. Command: `pnpm run package`.
-- **Local install (one-shot)**: `pnpm run install:local` runs the full test → package → install → legacy-cleanup → verify handoff (`scripts/install-local.mjs`) so trying a build in your own VS Code window is a single command. It never touches your `settings.json`; the only manual step left is the window reload.
-- **Git commit convention**: keep the English type prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `release:`) and write the description in **English**. e.g. `feat: add image upload`, `fix: correct table drag offset`.
-  - **Cite the Linear issue when a commit closes tracked work.** End the commit body with a `Closes MAR-NN` line (one per issue; use `Closes MAR-NN, MAR-MM` or several lines for a commit that lands more than one). This is the commit→issue link that keeps the backlog honest — without it a shipped fix can sit `In Progress` indefinitely because nothing points from the code back to the ticket. **Never bury a tracked fix inside a large omnibus commit without naming its issue** — that is exactly how MAR-36's already-shipped DnD rewrite went unnoticed for days inside a multi-feature `feat:` commit.
+- Package manager: `pnpm` only. No npm, no yarn.
+- Build: run `pnpm build` after changing code, to confirm it compiles.
+- Debug: press F5 for an Extension Development Host (`.vscode/launch.json`).
+- Language and tooling: all TypeScript. The extension side uses `tsconfig.json`, the webview side `tsconfig.webview.json`.
+- Dual-target build: `dist/extension.js` (Node.js) and `dist/webview.js` (browser), produced by `esbuild.mjs`.
+- Syntax level: modern JS and CSS are fine (native CSS nesting, `:has()`, optional chaining, top-level `await`). The only runtimes are Electron (VS Code) and Node 18, and esbuild transpiles to es2020 at build time, so nothing needs down-levelling. Prefer the concise modern form, such as nesting.
+- Packaging: `pnpm run package`, which writes the VSIX to `releases/`. It must always go there.
+- Local install: `pnpm run install:local` (`scripts/install-local.mjs`) runs the whole handoff below in one command. It never touches your `settings.json`, and the only manual step left is the window reload.
 
-### End-of-work handoff (ALWAYS)
+### Dependencies
 
-Whenever a work session changes extension or webview source (`src/`, `webview/`, `shared/`, `package.json`), finish by making the build testable in the user's own editor with zero extra steps for them:
+Adding, removing, or bumping a dependency carries two obligations beyond the lockfile.
 
-1. `pnpm test` — all green.
-2. **Update `CHANGELOG.md`** if the change is **observable by a user** — a new capability, a changed or removed behavior/setting, or a user-visible bug fix. Add or amend an entry under `## [Unreleased]` in the correct Keep a Changelog section — and **never write a version heading by hand**: the nightly `Release` job rolls `[Unreleased]` into one and commits it back, so `[Unreleased]` holds only what has not shipped yet (`scripts/stamp-changelog.mjs`, `docs/RELEASING.md`). Releases before 2026-08-05 never did this, which is why that section had grown to 255 lines and the Marketplace Changelog tab still read `0.2.3` (`Added` / `Changed` / `Removed` / `Fixed`; `Deprecated` / `Security` when they apply), written for a user of the editor — the observable behavior and any `birta.*` setting keys, not the internal plugins or APIs. **The gate is observability, not effort**: a speed-up a user can feel is `Changed`; an invisible refactor, internal perf change, tooling, test, or dependency bump is omitted (it's in git). Order entries by significance within a section, and flag a breaking change inline — but **don't add a Highlights section yourself**; the release-notes generator lifts the top items into Highlights (full taxonomy: `docs/RELEASING.md` → *What goes in*). This is the one step you can't reconstruct later, so do it while the change is fresh.
-3. **Review `docs/BENEFITS.md`** and, if appropriate, edit it. Unlike the CHANGELOG (an append-only log), this is a refined document — if the change altered a capability the doc describes, its fidelity/safety story, or the tool-compatibility table, revise the relevant entry *in place* to keep it accurate; don't append a new one. Most changes won't touch it — skip it when the benefits/compatibility story is unchanged. Keep the tone matter-of-fact: state what the capability is and *why* it matters, never marketing copy.
-4. **Build, package, and install** — the quickest path is `pnpm run install:local`, which folds this step together with step 1 into one command: `pnpm test`, then `pnpm run package` (writes `releases/birta-writer-0.0.0.vsix`; `package.json` is pinned at `0.0.0` — real CalVer versions are stamped only by the CI `Release` job, see [`docs/RELEASING.md`](docs/RELEASING.md)), then installs into VS Code, removes any legacy copy, and verifies exactly one copy remains. (It does *not* do steps 2–3 or the step-5 reload — do the CHANGELOG/BENEFITS review yourself, and tell the user to reload.) It never edits your `settings.json`. If VS Code truly isn't installed it builds/packages and skips the install with a message rather than failing. The equivalent manual steps are:
-   - `pnpm run package` — local packaging always writes `releases/birta-writer-0.0.0.vsix`.
-   - `code --install-extension releases/birta-writer-0.0.0.vsix --force`
-   - Remove any pre-org or pre-rebrand build so VS Code never runs two copies over the same `.md` files: `code --uninstall-extension harlanlewis.birta-writer` and `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore "not installed" messages — they just mean the cleanup already happened). Then confirm exactly one remains: `code --list-extensions | grep -iE 'birta|wysiwyg'` should print only `birtalabs.birta-writer` — VS Code lowercases ids on output, so that is `BirtaLabs.birta-writer` (the canonical, Marketplace-cased id) and not a stale copy.
+1. Regenerate the attribution appendix with `pnpm notices`. The script name is `notices`, not `licenses`: `pnpm licenses` is a pnpm builtin, and a script by that name is silently shadowed. We ship a bundle (`vsce package --no-dependencies`), so every dependency is inlined into `dist/` and minification strips the license headers that would otherwise carry its notice. `licenses/THIRD_PARTY_LICENSES.md` is where MIT, ISC, and BSD attribution and Apache-2.0 section 4 are actually discharged. It is generated from the esbuild metafiles (what the bundles inline), not from the dependency tree, so it never claims we ship tree-shaken code. CI's `perf-bundle` job fails if it is stale, and `shared/__tests__/thirdPartyNotices.test.ts` fails if a direct dependency is unattributed or an upstream package changes its license out from under a recorded election.
+2. Keep `@types/vscode` pinned to `engines.vscode`'s floor: the types exactly, the engine as `^`. A caret on the types resolves to the newest 1.x, which lets the compiler bless APIs that do not exist in the oldest VS Code we claim to support. Nothing else checks that compatibility claim.
 
-   Both `--force`-installing `BirtaLabs.birta-writer` and uninstalling the old ids (`harlanlewis.birta-writer`, `harlanlewis.md-wysiwyg-editor`) leave the user's `settings.json` untouched, so their Birta config (`birta.*` keys) carries across every reinstall — never edit or delete their settings as part of an install. `--force` allows reinstalling the same version. The VS Code `code` CLI is often not on `PATH` on this machine even though VS Code is installed — `install-local.mjs` already falls back to the app-bundle binary `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"`; when running the steps by hand, use that path for `--install-extension`/`--uninstall-extension`. Only if VS Code truly isn't installed, skip it and say so rather than failing the handoff.
-5. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
+### Git commit convention
 
-Do this by default, without being asked, before handing control back. Don't touch `package.json`'s version to mark a build — it stays `0.0.0`; the window reload is what confirms the new build is live.
+Keep the English type prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `release:`) and write the description in English: `feat: add image upload`, `fix: correct table drag offset`.
 
-### Trying changes in the user's editor (VS Code)
+Cite the Linear issue when a commit closes tracked work. End the commit body with a `Closes MAR-NN` line, one per issue, or `Closes MAR-NN, MAR-MM` for a commit that lands more than one. This is the link that keeps the backlog honest; without it a shipped fix can sit in `In Progress` indefinitely, because nothing points from the code back to the ticket. Never bury a tracked fix inside a large omnibus commit without naming its issue.
 
-`pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own VS Code window (rather than F5 debugging), the one-shot path is:
+## End-of-work handoff (always)
 
-1. `pnpm run install:local` — runs `pnpm test`, `pnpm run package`, installs the VSIX with `--force`, clears any legacy build, and verifies only one copy is installed. None of these steps touch the user's `settings.json`, so their `birta.*` config persists.
-2. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
+When a session changes `src/`, `webview/`, `shared/`, or `package.json`, finish by making the build testable in the user's own editor with zero extra steps for them. Do this by default, without being asked.
 
-Prefer the manual sequence when you need to run the steps individually:
+1. `pnpm test`, all green.
+2. Update `CHANGELOG.md` if the change is observable by a user: a new capability, a changed or removed behavior or setting, or a user-visible bug fix. Rules below.
+3. Review `docs/BENEFITS.md`. Unlike the CHANGELOG, an append-only log, this is a refined document: if the change altered a capability it describes, its fidelity or safety story, or the tool-compatibility table, revise that entry in place rather than appending. Most changes won't touch it. Keep the tone matter-of-fact, stating what the capability is and why it matters, never marketing copy.
+4. `pnpm run install:local`, which folds in step 1. It runs `pnpm test`, then `pnpm run package` (writing `releases/birta-writer-0.0.0.vsix`), then installs into VS Code, removes any legacy copy, and verifies exactly one remains. If VS Code truly isn't installed it builds and packages, then skips the install with a message rather than failing.
+5. End your reply by telling the user to reload: Cmd+Shift+P, then "Developer: Reload Window".
 
-1. `pnpm test` — must pass first.
-2. `pnpm run package` — writes `releases/birta-writer-0.0.0.vsix` (local builds are always `0.0.0`; see the handoff note above).
-3. Install into VS Code (`--force` allows reinstalling the same version), and clear out any legacy build so only one copy runs:
-   - `code --install-extension releases/birta-writer-0.0.0.vsix --force`
-   - `code --uninstall-extension harlanlewis.birta-writer` and `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore "not installed").
-4. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
+Don't touch `package.json`'s version to mark a build. It stays `0.0.0`, and real CalVer versions are stamped only by the CI `Release` job ([`docs/RELEASING.md`](docs/RELEASING.md)). The window reload is what confirms the new build is live.
 
-For iterative debugging, F5 (Extension Development Host) is still faster — no packaging step.
+### Writing the CHANGELOG entry
 
----
+Add or amend an entry under `## [Unreleased]`, in the right Keep a Changelog section: `Added`, `Changed`, `Removed`, `Fixed`, plus `Deprecated` and `Security` when they apply.
+
+- Never write a version heading by hand. The nightly `Release` job rolls `[Unreleased]` into one and commits it back (`scripts/stamp-changelog.mjs`, `docs/RELEASING.md`), so `[Unreleased]` holds only what has not shipped.
+- Write for a user of the editor: the observable behavior and any `birta.*` setting keys, not the internal plugins or APIs.
+- The gate is observability, not effort. A speed-up a user can feel is `Changed`; an invisible refactor, internal perf change, tooling, test, or dependency bump is omitted, because it is in git.
+- Order entries by significance within a section, and flag a breaking change inline.
+- Don't add a Highlights section yourself. The release-notes generator lifts the top items into it (taxonomy in `docs/RELEASING.md`, "What goes in").
+
+Do it while the change is fresh. It is the one step you can't reconstruct later.
+
+### Installing by hand
+
+`pnpm build` only rebuilds `dist/`; the user's editor runs an installed copy, so a window reload alone never picks up source changes. `pnpm run install:local` is the one-shot path. When you need the steps individually:
+
+1. `pnpm run package`
+2. `code --install-extension releases/birta-writer-0.0.0.vsix --force`, where `--force` allows reinstalling the same version.
+3. Remove any pre-org or pre-rebrand build, so VS Code never runs two copies over the same `.md` files: `code --uninstall-extension harlanlewis.birta-writer` and `code --uninstall-extension harlanlewis.md-wysiwyg-editor`. Ignore "not installed"; it means the cleanup already happened.
+4. Confirm one copy remains: `code --list-extensions | grep -iE 'birta|wysiwyg'` should print only `birtalabs.birta-writer`. VS Code lowercases ids on output, so that is the canonical, Marketplace-cased `BirtaLabs.birta-writer` and not a stale copy.
+
+Never edit or delete the user's settings as part of an install. Both the `--force` install and the legacy uninstalls leave `settings.json` untouched, so their `birta.*` config carries across every reinstall.
+
+The `code` CLI is often not on `PATH` on this machine even though VS Code is installed. `install-local.mjs` falls back to `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`; use that path when running the steps by hand. Only if VS Code truly isn't installed, skip it and say so rather than failing the handoff.
+
+For iterative debugging, F5 (Extension Development Host) is faster, with no packaging step.
 
 ## Key file map
 
 ```
-src/extension.ts                              — Extension entry; registers CustomEditorProvider
-src/MarkdownEditorProvider.ts                 — Provider core (message routing, webview lifecycle)
-src/saveFlushController.ts                    — Save flush/seq protocol (stale guard, injectable timeout)
-src/config.ts + shared/config.ts              — The birta.* config seam: typed snapshot reads + settings write-back
-src/externalChanges.ts                        — External-change detection ADR + both mechanisms' constants
-src/errorSink.ts                              — Extension-side failure sink (console vs deduped notification)
-src/searchNavigation.ts                       — Catching a search-hit/goto target off the raw tab the WYSIWYG swap is about to close
-src/webviewMessaging.ts                       — Typed extension→webview send funnel
-src/webviewHtml.ts                            — Webview HTML/CSP construction
-src/utils/getNonce.ts                         — CSP nonce generation
-src/utils/imageService.ts                     — Local image save (MD5 dedup) + server upload
-webview/index.ts                              — WebView entry
-webview/pm.ts                                 — THE ProseMirror import funnel (raw @milkdown/prose surface + getView/getState); guarded by pmFunnel.test.ts
-webview/editor.ts                             — Editor composition root (chrome plugins + the injected FormatModule)
-webview/format/                               — FormatModule seam: per-format presets/serialization/NodeViews/diff profile (markdown is format #1)
-webview/crashReporter.ts                      — Webview crash boundary (posts structured crash messages)
-webview/editing/blockOps.ts                   — Published block-operations surface for UI components
-webview/utils/calc.ts                         — The deterministic calc engine (eval-free parser, =/=> detection, block evaluation, refresh scanner); units via the lazy mathjs seam in calcUnits.ts
-webview/plugins/calc.ts                       — Inline-calc ProseMirror wiring: advisory =/=> suggestions + the auto-insert rule
-webview/plugins/calcRefresh.ts                — The answer-maintenance engine: refresh, variable cascade, and withdrawal (consent model in its header)
-webview/serialization.ts                      — Serializer config (stringify options, table handler, pure-markdown preset)
-packages/minimal-diff/src/index.ts            — Format-agnostic minimal-diff engine (LCS merge + round-trip protection), workspace package
-webview/utils/minimalDiff.ts                  — Markdown FormatProfile (classifier + normalizers) + profile-bound minimal-diff API
-webview/messaging.ts                          — WebView ↔ Extension message protocol (the only comms layer)
-webview/style.css                             — VS Code theming (--vscode-* CSS variables)
-webview/ui/chrome.css                         — Chrome design tokens (--ui-radius/-space/-fs, card recipe) + the .ui-btn button primitive; guarded by chromeTokens.test.ts
-webview/i18n/index.ts                         — t() / kbd() translation functions
-webview/ui/icons.ts                           — SVG icons
-webview/ui/tooltip.ts                         — Tooltip component
-webview/components/toolbar/index.ts           — Top main toolbar
-webview/components/selectionToolbar/index.ts  — Floating selection toolbar
-webview/components/table/tableView.ts         — Table NodeView (overlay chrome: grips, insert bars, drag-reorder)
-webview/components/table/reorder.ts           — Pure row/column block-reorder + drop-index helpers
-webview/components/codeBlock/index.ts         — Code block UI
-webview/components/toc/index.ts               — Table of contents (TOC) panel
-webview/components/linkPopup/index.ts         — Link hover popup
-webview/components/imageView/index.ts         — Image NodeView (selection/lightbox/toolbar)
+src/extension.ts                              Extension entry; registers CustomEditorProvider
+src/MarkdownEditorProvider.ts                 Provider core (message routing, webview lifecycle)
+src/saveFlushController.ts                    Save flush/seq protocol (stale guard, injectable timeout)
+src/config.ts + shared/config.ts              The birta.* config seam: typed snapshot reads + settings write-back
+src/externalChanges.ts                        External-change detection ADR + both mechanisms' constants
+src/errorSink.ts                              Extension-side failure sink (console vs deduped notification)
+src/searchNavigation.ts                       Catches a search-hit/goto target off the raw tab the WYSIWYG swap is closing
+src/webviewMessaging.ts                       Typed extension-to-webview send funnel
+src/webviewHtml.ts                            Webview HTML/CSP construction
+src/utils/getNonce.ts                         CSP nonce generation
+src/utils/imageService.ts                     Local image save (MD5 dedup) + server upload
+webview/index.ts                              WebView entry
+webview/pm.ts                                 THE ProseMirror import funnel (raw @milkdown/prose surface + getView/getState); guarded by pmFunnel.test.ts
+webview/editor.ts                             Editor composition root (chrome plugins + the injected FormatModule)
+webview/format/                               FormatModule seam: per-format presets/serialization/NodeViews/diff profile (markdown is format #1)
+webview/crashReporter.ts                      Webview crash boundary (posts structured crash messages)
+webview/editing/blockOps.ts                   Published block-operations surface for UI components
+webview/utils/calc.ts                         Deterministic calc engine (eval-free parser, =/=> detection, block evaluation, refresh scanner); units via the lazy mathjs seam in calcUnits.ts
+webview/plugins/calc.ts                       Inline-calc ProseMirror wiring: advisory =/=> suggestions + the auto-insert rule
+webview/plugins/calcRefresh.ts                Answer maintenance: refresh, variable cascade, withdrawal (consent model in its header)
+webview/serialization.ts                      Serializer config (stringify options, table handler, pure-markdown preset)
+packages/minimal-diff/src/index.ts            Format-agnostic minimal-diff engine (LCS merge + round-trip protection), workspace package
+webview/utils/minimalDiff.ts                  Markdown FormatProfile (classifier + normalizers) + profile-bound minimal-diff API
+webview/messaging.ts                          WebView/Extension message protocol (the only comms layer)
+webview/style.css                             VS Code theming (--vscode-* CSS variables)
+webview/ui/chrome.css                         Chrome design tokens (--ui-radius/-space/-fs, card recipe) + the .ui-btn primitive; guarded by chromeTokens.test.ts
+webview/i18n/index.ts                         t() / kbd() translation functions
+webview/ui/icons.ts                           SVG icons
+webview/ui/tooltip.ts                         Tooltip component
+webview/components/toolbar/index.ts           Top main toolbar
+webview/components/selectionToolbar/index.ts  Floating selection toolbar
+webview/components/table/tableView.ts         Table NodeView (overlay chrome: grips, insert bars, drag-reorder)
+webview/components/table/reorder.ts           Pure row/column block-reorder + drop-index helpers
+webview/components/codeBlock/index.ts         Code block UI
+webview/components/toc/index.ts               Table of contents (TOC) panel
+webview/components/linkPopup/index.ts         Link hover popup
+webview/components/imageView/index.ts         Image NodeView (selection/lightbox/toolbar)
 ```
-
----
 
 ## Architecture constraints
 
-- **UI/UX principles live in `docs/DESIGN_PRINCIPLES.md`** — decoration semantics (strikethrough = "delete this", dotted underline = "reconsider", color = source), the "annotation is advisory, reversible, and quiet" rules, and gutter/theming conventions. Check a new affordance against it before adding a visual channel.
-- WebView ↔ Extension communication goes **only through** the wrappers in `webview/messaging.ts`.
-- The webview side never `import`s the VS Code API directly; it gets a handle via `acquireVsCodeApi()`.
-- CSS must use `--vscode-*` variables so light/dark themes both work. **No custom colors**: accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with **no literal fallback** — inside VS Code the variable always exists (pinned/custom themes only *override* the native set, never remove it). Literal fallbacks for other `--vscode-*` variables are legacy; don't add new ones (repo-wide removal is tracked in Linear).
-- **Chrome skin composes `webview/ui/chrome.css`** — corner radii come from the `--ui-radius-*` scale, chrome text sizes from `--ui-fs-*`, floating menus/popups from the `--ui-card-*` recipe, new buttons compose the `.ui-btn` primitive (`class="ui-btn ui-btn--icon my-btn"`; filled CTAs use `--primary`/`--secondary`), menu rows/group headers compose `.ui-menu-row` / `.ui-heading ui-menu-heading` (containers retheme rows via `--ui-menu-ink`/`--ui-menu-hover-bg`), and advisory popup pills compose `.ui-notice` — instead of re-authoring anatomy. Two invariants: (a) `chrome.css` must stay the FIRST import in `webview/index.ts` — primitives and surface classes tie on specificity, so bundle order decides who wins (guarded by `cssImportOrder.test.ts`); (b) the old surface classes (`.tb-btn`, `.sel-tb-btn`, `.tb-fmt-item`, `.fm-suggest-item`, …) are now shells that are BROKEN without their primitive class — every creation site must compose both. Gotcha: a composed button that keeps a visible resting border must restate `border-color` in its own `:hover` (the primitive's hover border is the usually-transparent `toolbar-hoverOutline`). `chromeTokens.test.ts` fails the suite on a new raw radius or sub-14px font literal; `noColorLiterals.test.ts` guards colors. **Both read CSS wherever it is authored** — `.css` files, stylesheets parked in a `.ts` template literal (`findBar/highlightStyles.ts`, `lineNumbers/styles.ts`), and literal inline style writes (`el.style.borderRadius = "7px"`, `style.cssText`, `style.setProperty`). They used to walk `.css` only, which made every rule a property of the file extension rather than of the code; `webview/__tests__/helpers/cssSources.ts` documents what is extracted and what deliberately is not (a value the guard cannot read — computed or interpolated — and the brand-colored file-type icons). Document content (em-based, `--content-*`) is a separate system — don't mix them.
-- Don't keep global state outside modules (singletons like the editor view are the exception).
+- WebView and Extension communication goes only through the wrappers in `webview/messaging.ts`.
+- The webview side never `import`s the VS Code API directly. It gets a handle via `acquireVsCodeApi()`.
+- Don't keep global state outside modules. Singletons like the editor view are the exception.
+- UI and UX principles live in `docs/DESIGN_PRINCIPLES.md`: decoration semantics (strikethrough means "delete this", dotted underline means "reconsider", color means source), the "annotation is advisory, reversible, and quiet" rules, and gutter and theming conventions. Check a new affordance against it before adding a visual channel.
+
+### Color and theming
+
+CSS must use `--vscode-*` variables so light and dark themes both work. No custom colors, guarded by `noColorLiterals.test.ts`. Accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with no literal fallback, because inside VS Code the variable always exists: pinned and custom themes only override the native set, never remove it. Literal fallbacks for other `--vscode-*` variables are legacy, so don't add new ones; repo-wide removal is tracked in Linear.
+
+### Chrome skin
+
+Chrome composes `webview/ui/chrome.css` instead of re-authoring anatomy. Corner radii come from the `--ui-radius-*` scale, chrome text sizes from `--ui-fs-*`, floating menus and popups from the `--ui-card-*` recipe. New buttons compose the `.ui-btn` primitive (`class="ui-btn ui-btn--icon my-btn"`; filled CTAs use `--primary` or `--secondary`). Menu rows and group headers compose `.ui-menu-row` and `.ui-heading ui-menu-heading`, with containers retheming rows via `--ui-menu-ink` and `--ui-menu-hover-bg`. Advisory popup pills compose `.ui-notice`.
+
+Two invariants:
+
+- `chrome.css` must stay the FIRST stylesheet reached in the webview entry's import graph, which is not the same as first among `index.ts`'s own import lines: `import "./perfBoot"` sits above it and must stay there. Primitives and surface classes tie on specificity, so bundle order decides who wins. Guarded by `cssImportOrder.test.ts`, which walks the eager graph in evaluation order.
+- The old surface classes (`.tb-btn`, `.sel-tb-btn`, `.tb-fmt-item`, `.fm-suggest-item`, and the rest) are shells that are BROKEN without their primitive class. Every creation site must compose both.
+
+Gotcha: a composed button that keeps a visible resting border must restate `border-color` in its own `:hover`, because the primitive's hover border is the usually-transparent `toolbar-hoverOutline`.
+
+`chromeTokens.test.ts` fails the suite on a new raw radius or a sub-14px font literal. It and `noColorLiterals.test.ts` both read CSS wherever it is authored: `.css` files, stylesheets parked in a `.ts` template literal (`findBar/highlightStyles.ts`, `lineNumbers/styles.ts`), and inline style writes (`el.style.borderRadius = "7px"`, `style.cssText`, `style.setProperty`). `webview/__tests__/helpers/cssSources.ts` documents what is extracted and what deliberately is not.
+
+Document content is a separate system (em-based, `--content-*`). Don't mix the two.
 
 ## Launch performance
 
-Webview cold-start (open `.md` → editor painted) is a first-class concern — it's also the cost of switching back from the raw editor, since VS Code disposes the webview on switch-away. Keep it fast:
+Webview cold start (open a `.md`, editor painted) is a first-class concern. It is also the cost of switching back from the raw editor, since VS Code disposes the webview on switch-away.
 
-- **Keep the launch bundle lean.** Anything not needed to render the *first paint* loads lazily, the moment the document actually needs it — mirror `webview/utils/katexLoader.ts` / `mermaidLoader.ts` (cached dynamic `import()`) and the lazy grammar chunk (`webview/highlighterLanguages.ts`). Don't add a static `import` of a heavy dependency into the eager graph.
-- **Keep decoration/analysis work off the mount path.** Proofreading, and anything like it, is decoration only: it must never block the editor becoming interactive, and it should settle in *after* first paint (`requestIdleCallback`), never synchronously during create and never as a reaction to the user's first touch. A feature the user has disabled must cost nothing — no scan, no lazy dependency loaded.
-- **Resolve bundled sibling assets against the entry `<script>`, not `import.meta.url`** — esbuild chunk splitting shifts modules between `dist/` and `dist/chunks/`, which silently breaks relative URLs (see `katexCssHref` in `katexLoader.ts`).
-- **A `::highlight()` rule costs launch time even when nothing is highlighted, and no JavaScript has to run.** Blink resolves a style for *every registered custom-highlight name* while resolving *every element's* style, so an unused rule in the eagerly-loaded stylesheet is a per-element cost on the mount path — it lands in `create` and `paint`, and scales with document size. One four-line `::highlight()` rule cost the `large` fixture +31 ms (+3.4%) and failed the blocking gate twice; moving the find bar's three rules out of `findBar.css` into a `<style>` injected on the first search took **102 ms (10.8%) off `large`** and 17.6 ms off `medium`. Inject highlight rules on first use (`webview/components/findBar/highlightStyles.ts`), never eagerly — and prefer an inline `<style>` over a lazily-linked stylesheet, which loads asynchronously and would paint the first matches unstyled.
+### Keeping it fast
 
-**Measure before and after — don't guess.** The harness (`e2e/perf/`, see its README) drives the real production bundle in headless Chromium and reads the `mdw:` User-Timing marks (`webview/perf.ts`):
+- Keep the launch bundle lean. Anything not needed for first paint loads lazily, the moment the document actually needs it. Mirror `webview/utils/katexLoader.ts` and `mermaidLoader.ts` (cached dynamic `import()`) and the lazy grammar chunk in `webview/highlighterLanguages.ts`. Don't add a static `import` of a heavy dependency to the eager graph.
+- Keep decoration and analysis work off the mount path. Proofreading, and anything like it, is decoration only. It must never block the editor becoming interactive, and it should settle in after first paint (`requestIdleCallback`), never synchronously during create and never as a reaction to the user's first touch. A feature the user has disabled must cost nothing: no scan, no lazy dependency loaded.
+- Resolve bundled sibling assets against the entry `<script>`, not `import.meta.url`. esbuild chunk splitting shifts modules between `dist/` and `dist/chunks/`, which silently breaks relative URLs (see `katexCssHref` in `katexLoader.ts`).
+- Inject `::highlight()` rules on first use, never eagerly. Blink resolves a style for every registered custom-highlight name while resolving every element's style, so a rule in the eagerly-loaded stylesheet costs launch time even when nothing is highlighted and no JavaScript runs. The cost lands in `create` and `paint`, and scales with document size: one four-line rule cost the `large` fixture 3.4%, and moving the find bar's three rules out of `findBar.css` into an injected `<style>` took 10.8% back off it. `webview/components/findBar/highlightStyles.ts` is the worked example and holds the full provenance. Prefer an inline `<style>` over a lazily-linked stylesheet, which loads asynchronously and would paint the first matches unstyled.
 
-- `pnpm perf` — median-of-9 launch spans per fixture (build `node esbuild.mjs --production --metafile` first).
-- `pnpm perf:bundle` — zero-variance eager-bytes metric. It gates on a **budget ceiling** (`--check`, `e2e/perf/bundle-baseline.json` → `eagerBudget`), not a ratchet: a cheap browser-free backstop that catches *bytes added without asking* (an accidental heavy static import). Raise the ceiling deliberately with `--set-budget`.
-- The launch A/B is **same-session** (`pnpm perf --compare before.json after.json`) with a warmup run discarded — absolute ms drift on a laptop, so a `before.json` captured earlier is untrustworthy; stash the change, rebuild, capture `before`, restore, capture `after`. Treat a delta under ~3% (the noise floor) as neutral.
-- **`bundle-baseline.json` now holds the ceiling and nothing else — so there is no recorded figure left to quote.** **Rebuild and run `pnpm perf:bundle` for current bytes or headroom.** It used to also persist the last measured snapshot (`eagerTotal` and friends), which no code read: `--check` reads `eagerBudget`, `--set-budget` reads the previous `eagerBudget`, and `--compare` reads its two *argument* files. Those fields existed only to be read by humans, and they drifted behind `main` the moment anything landed while still reading like a current figure — 62,824 B on 2026-07-25 (turning "95.9 KB of headroom" into an actual 34.5 KB, a 3× error on a gate's margin, quoted into a ticket in good faith), then **41,526 B again on 2026-07-30, four days after this very bullet warned about it.** The warning did not stop the recurrence, so the field is gone instead; `e2e/perf/bundleBaseline.test.mjs` fails if one creeps back. The general lesson survives the specific fix: **a stored number is a record, not a reading** — the same trap still applies to `e2e/perf/baseline.json` and to any figure pasted into a ticket or doc.
-- **Removing eager bytes produces no CI signal on its own**, because the budget is a ceiling rather than a ratchet: `--check` simply passes with more room, and the space is immediately re-spendable. Finish a bytes win with `--set-budget` so the ratchet sticks.
-- **The `paint` span (`create-end` → `editor-painted`) is the initial view render** — ProseMirror's first DOM build plus style/layout/paint, and any work a plugin schedules from its `view()` onto the frames before that paint. It was the harness's largest blind spot (roughly half of `large`'s launch was unattributed) until 2026-07-25, when a change that added a whole decoration-render pass to the mount path read as "every measured span flat or better" while launch regressed 3.4%. **If a plugin schedules its own rAF at mount, suspect this span** — work moved in front of first paint is invisible to every other one.
+### Measuring
 
-**CI guards launch time automatically.** On every PR the **required, blocking** `launch-perf` job (`pnpm perf:ab` / `e2e/perf-ab.mjs`) builds the merge-base and head, measures both back-to-back on one runner, and gates on the launch delta — catching *time added without bytes* that the eager-bytes backstop can't see. It gates only the `medium`/`large` fixtures and double-confirms a regression across two passes before failing. An intentional launch cost merges via the `perf-accept` PR label or a `Perf-Regression-Accepted: <reason>` commit trailer.
+Measure before and after; don't guess. The harness (`e2e/perf/`, see its README) drives the real production bundle in headless Chromium and reads the `mdw:` User-Timing marks (`webview/perf.ts`).
 
-**Typing is gated the same way** (`.github/workflows/typing-perf.yml`, `pnpm perf:typing:ab` — MAR-224). Launch is what a user pays once; per-keystroke dispatch is what they pay *thousands of times* on a large document, and it went unguarded long enough for MAR-215's 2× win to have been silently reversible. Same shared orchestrator, same merge-base interleave, same double-confirm, same accept hatch — gating the `xlarge` dispatch median at ≥10% AND ≥0.5 ms.
+- `pnpm perf` reports median launch spans per fixture. Build first with `node esbuild.mjs --production --metafile`. Pass a fixture name to measure one.
+- `pnpm perf:bundle` is the zero-variance eager-bytes metric: a cheap, browser-free backstop that catches bytes added without asking, such as an accidental heavy static import. It gates on a budget ceiling (`--check`, the `eagerBudget` key in `e2e/perf/bundle-baseline.json`), not a ratchet. Raise the ceiling deliberately with `--set-budget`.
+- Removing eager bytes produces no CI signal on its own, because the budget is a ceiling: `--check` simply passes with more room, and the space is immediately re-spendable. Finish a bytes win with `--set-budget` so the ratchet sticks.
+- The launch A/B is same-session (`pnpm perf --compare before.json after.json`), with a warmup run discarded. Absolute ms drift on a laptop, so a `before.json` captured earlier is untrustworthy: stash the change, rebuild, capture `before`, restore, capture `after`. Treat a delta under about 3%, the noise floor, as neutral.
+- A stored number is a record, not a reading. Re-measure before quoting one. `bundle-baseline.json` holds the ceiling and nothing else, and `e2e/perf/bundleBaseline.test.mjs` fails if a measured figure creeps back in. The same trap applies to `e2e/perf/baseline.json` and to any figure pasted into a ticket or a doc.
+- The `paint` span (`create-end` to `editor-painted`) is the initial view render: ProseMirror's first DOM build, style, layout and paint, plus any work a plugin schedules from its `view()` onto the frames before that paint. If a plugin schedules its own rAF at mount, suspect this span. Work moved in front of first paint is invisible to every other one.
 
-Three things about it are deliberate and easy to get wrong:
+### CI perf gates
 
-- **It runs only on PRs touching `webview/`, `packages/` or the perf harness**, in its own workflow behind a `paths` filter, and is **not** a required check. It is the most expensive check in the repo and most PRs cannot move per-keystroke dispatch; paying minutes on every one of those compounds badly across a day of small PRs. (A required check that a `paths` filter skips would leave PRs waiting forever — hence advisory.)
-- **`block` (total longtask ms) is reported, never gated.** Its threshold is a fixed 50 ms, so a slower machine pushes sub-threshold tasks over it and the number inflates super-linearly: a null A/B on identical bundles moves it while dispatch medians hold, and the same burst reads more than an order of magnitude higher on a CI runner than on a laptop.
-- **Size it from a completed CI job, never from local timings** — the runner is roughly twice as slow per keystroke. And the cost is dominated by the largest fixture itself (mount + burst), *not* by how many fixtures are in the list: dropping a smaller one buys little. Cut keystrokes or pairs.
+`launch-perf` (`pnpm perf:ab`, `e2e/perf-ab.mjs`) is required and blocking on every PR. It builds the merge-base and head, measures both back to back on one runner, and gates on the launch delta, catching time added without bytes that the eager-bytes backstop cannot see. It gates only the `medium` and `large` fixtures, and double-confirms a regression across two passes before failing.
+
+`typing-perf` (`.github/workflows/typing-perf.yml`, `pnpm perf:typing:ab`) gates per-keystroke dispatch the same way: same orchestrator, same merge-base interleave, same double-confirm. It fails the `xlarge` dispatch median at 10% or worse AND at least 0.5 ms. Launch is what a user pays once; dispatch is what they pay thousands of times on a large document (MAR-224).
+
+An intentional cost merges through either gate via the `perf-accept` PR label or a `Perf-Regression-Accepted: <reason>` commit trailer.
+
+Three things about `typing-perf` are deliberate and easy to get wrong:
+
+- It runs only on PRs touching `webview/`, `packages/`, or the perf harness, behind a `paths` filter, and it is not a required check. It is the most expensive check in the repo and most PRs cannot move per-keystroke dispatch, so paying minutes on every one of those compounds badly across a day of small PRs. A required check that a `paths` filter skips would leave those PRs waiting forever, hence advisory.
+- `block` (total longtask ms) is reported, never gated. Its threshold is a fixed 50 ms, so a slower machine pushes sub-threshold tasks over it and the number inflates super-linearly. A null A/B on identical bundles moves it while dispatch medians hold, and the same burst reads more than an order of magnitude higher on a CI runner than on a laptop.
+- Size it from a completed CI job, never from local timings; the runner is roughly twice as slow per keystroke. The cost is dominated by the largest fixture itself (mount plus burst), not by how many fixtures are in the list, so dropping a smaller one buys little. Cut keystrokes or pairs.
 
 ## Issue tracking
 
-All bugs and planned work live in **Linear** (team "Birta Writer", `MAR-` prefix) — never GitHub Issues, and never local files. The `MAR-` prefix predates the rebrand and is unchanged; the team name is what the Linear tools take, and querying a wrong one returns an empty list that reads exactly like an empty queue.
+All bugs and planned work live in Linear, team "Birta Writer", `MAR-` prefix. Never GitHub Issues, and never local files. The `MAR-` prefix predates the rebrand and is unchanged. The team name is what the Linear tools take, and querying a wrong one returns an empty list that reads exactly like an empty queue.
 
-- **Known bug**: `#Bug` label; only for issues still unfixed after development.
-- **Feature request**: `#Improvement` label; record maturity, implementation approach, and affected files.
-- Filed via the `/devlog` skill (`.claude/skills/devlog/SKILL.md`), which also covers **closing, updating, and auditing** issues — triggers: "record a bug", "record a feature request", "close an issue", "audit the backlog", `/devlog`.
+- Known bug: `#Bug` label, only for issues still unfixed after development.
+- Feature request: `#Improvement` label. Record maturity, implementation approach, and affected files.
+- File, close, update, and audit through the `/devlog` skill (`.claude/skills/devlog/SKILL.md`). Triggers: "record a bug", "record a feature request", "close an issue", "audit the backlog", `/devlog`.
 
-### Lifecycle (not just filing)
+### Lifecycle
 
-Keeping the backlog honest is as important as filing it. Close the loop when work ships:
+Keeping the backlog honest matters as much as filing it. Close the loop when work ships.
 
-- **When a commit ships tracked work, move its issue to `Done`** and leave a one-line comment citing the commit SHA(s). Never leave completed work sitting in `In Progress` or `Backlog`. Put a `Closes MAR-NN` line in the commit body too (see the Git commit convention above), so the link exists in both directions — the SHA in Linear, the issue id in git.
-- **Audit for silently-shipped work.** When reviewing the backlog or picking up an `In Progress` issue, first check whether it already shipped — cross-reference recent large `feat:`/omnibus commits against open tickets (`git log --oneline` + read the diff, not just the subject). A tracked fix bundled into an unrelated commit is the classic way work gets done but never closed.
-- **Verify against the code before closing — not the CHANGELOG alone.** A feature can ship with a different implementation than the ticket described; confirm the actual behavior/settings/files exist in the working tree.
-- **The CHANGELOG and Linear are complementary, not a single source of truth.** The CHANGELOG records what *shipped* (including untracked work); Linear tracks *planned* work and bugs. When you ship a tracked feature, do both: close the issue **and** add the CHANGELOG entry. "Not in Linear" never means "not shipped."
-- **Sequencing signal**: the `phase-*` labels are the roadmap spine (`phase-0-fidelity` is existential — round-trip trust — and comes first; then `phase-1-performance` — speed the user can feel, reusing the slot vacated by `phase-1-vscode-parity` (retired, shipped in 0.2.3) — then `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`). Within a phase, order by `priority`.
-  - **`phase-5-surfaces` does NOT rank, and does NOT compete** (maintainer, 2026-07-26). The multi-surface work (MAR-225 and its children) created the label, and the question of where it sits relative to phases 0–4 is now answered: **it doesn't sit on the spine at all.** Phase-5 is exploration, not queued work. Its `priority` chips are meaningful only *within* the phase — a `High` there never compels a pick against the ranked spine, and never outranks a phase-0 fidelity bug. So the "first High-or-Urgent down the spine" rule simply skips phase-5. Do not silently promote it; if the exploration ever becomes committed scope, that is a roadmap change the owner makes explicitly. Recorded as resolved decision **D8** in the strategy corpus (maintained privately).
-  - **`docs/WHY_THIS_FORK.md`'s 1–4 list is the founding rationale, not the live spine.** It still names VS Code parity as layer 2, which shipped in 0.2.3. When the two appear to disagree, the `phase-*` labels win. (It lived in `README.md` until the README was cut down to a storefront.)
-- **Periodically reconcile**: when asked what's next or to review the backlog, cross-check open issues against the CHANGELOG and git history, close anything already shipped, and re-scope tickets whose premise the code has outgrown.
+- When a commit ships tracked work, move its issue to `Done` and leave a one-line comment citing the commit SHAs. Never leave completed work sitting in `In Progress` or `Backlog`. Put a `Closes MAR-NN` line in the commit body too, so the link exists in both directions: the SHA in Linear, the issue id in git.
+- Audit for silently-shipped work. When reviewing the backlog or picking up an `In Progress` issue, check first whether it already shipped. Cross-reference recent large `feat:` and omnibus commits against open tickets, reading the diff rather than the subject. A tracked fix bundled into an unrelated commit is the classic way work gets done but never closed.
+- Verify against the code before closing, not the CHANGELOG alone. A feature can ship with a different implementation than the ticket described, so confirm the actual behavior, settings, and files exist in the working tree.
+- The CHANGELOG and Linear are complementary, not a single source of truth. The CHANGELOG records what shipped, including untracked work; Linear tracks planned work and bugs. When you ship a tracked feature, do both: close the issue and add the CHANGELOG entry. "Not in Linear" never means "not shipped".
+- Reconcile periodically. When asked what's next or to review the backlog, cross-check open issues against the CHANGELOG and git history, close anything already shipped, and re-scope tickets whose premise the code has outgrown.
 
-Project intent and ordering principles live in `docs/WHY_THIS_FORK.md`; the brand brief and the Birta Writer naming decision are recorded in the private strategy corpus (full candidate/rejection record in Linear MAR-134).
+### Sequencing
+
+The `phase-*` labels are the roadmap spine, in order: `phase-0-fidelity` (round-trip trust, existential, comes first), `phase-1-performance` (speed the user can feel, reusing the slot vacated by the retired `phase-1-vscode-parity`, which shipped in 0.2.3), `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`. Within a phase, order by `priority`, and pick the first High or Urgent down the spine.
+
+`phase-5-surfaces` does not rank and does not compete (maintainer, 2026-07-26). It is exploration, not queued work, and it does not sit on the spine at all. Its `priority` chips are meaningful only within the phase: a High there never compels a pick against the ranked spine, and never outranks a phase-0 fidelity bug. The "first High-or-Urgent down the spine" rule simply skips it. Do not silently promote it. If the exploration ever becomes committed scope, that is a roadmap change the owner makes explicitly. Recorded as resolved decision D8 in the private strategy corpus.
+
+`docs/WHY_THIS_FORK.md` holds project intent and ordering principles, but its 1 to 4 list is the founding rationale, not the live spine: it still names VS Code parity as layer 2, which shipped in 0.2.3. When the two appear to disagree, the `phase-*` labels win. The brand brief and the Birta Writer naming decision are in the private strategy corpus, with the full candidate and rejection record in Linear MAR-134.
 
 ### Strategy documents (maintained privately)
 
-Strategy and exploration documents — which surfaces the project might expand to, engine ownership, the AI posture, publishing, positioning, and brand — are **maintained in a private repository, not here**. None of that exploration is measured, ratified, or committed scope; when fragments of it surface (in Linear issues, commit messages, or discussion), quote them as arguments, never as findings. The maintainer's own agent configuration handles routing: strategy-level writing produced while working in this repo belongs in the private corpus, never in `docs/`.
+Strategy and exploration documents live in a private repository, not here: which surfaces the project might expand to, engine ownership, the AI posture, publishing, positioning, and brand. None of that exploration is measured, ratified, or committed scope, so when fragments of it surface in Linear issues, commit messages, or discussion, quote them as arguments rather than findings. Strategy-level writing produced while working in this repo belongs in the private corpus, never in `docs/`; the maintainer's own agent configuration handles the routing.
 
-The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which stays in this repo because it is **not** exploration — it records shipped network behavior, the consent ladder, and MAR-198's directed connector design. Read it before touching anything that makes an outbound request.
-
----
+The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which stays here because it is not exploration. It records shipped network behavior, the consent ladder, and MAR-198's directed connector design. Read it before touching anything that makes an outbound request.
 
 ## Testing
 
 ### Stack
+
 | Layer | Framework | Scope |
 |-------|-----------|-------|
-| Extension unit tests | **Vitest 3.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
-| WebView unit tests | **Vitest 3.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
-| Integration tests | **@vscode/test-electron + Mocha** | `src/test/` — real Extension Host: activation, `onWillSaveTextDocument`/`waitUntil` reaching disk, the custom-editor save cycle with a live webview |
+| Extension unit tests | Vitest 3.x (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
+| WebView unit tests | Vitest 3.x + jsdom 24.x | `webview/utils/`, `webview/messaging.ts` |
+| Integration tests | @vscode/test-electron + Mocha | `src/test/`, in a real Extension Host: activation, `onWillSaveTextDocument` and `waitUntil` reaching disk, the custom-editor save cycle with a live webview |
 
 The `vscode` module is mocked centrally via `__mocks__/vscode.ts`, injected by `resolve.alias` in `vitest.config.ts`. Do not `vi.mock("vscode")` in individual test files.
 
-**Integration vs unit boundary:** unit tests mock `vscode` and cover the flush *protocol* logic (seq ordering, stale rejection, timeout) against a controllable fake webview; integration tests run in a downloaded VS Code and verify the behaviors a mock can't — that VS Code fires our will-save participant and applies its `TextEdit[]` to disk, and, driving the **real Milkdown editor**, that an edit living only in the webview is carried to disk by the save flush (the original data-loss bug, end-to-end). That last test uses `birta._test.insertText` — an **invisible, uncontributed, test-only** command that posts `__testInsertText` to the active webview; it is inert in production (no product code path invokes it). Webview *behavior* is otherwise exercised by the `e2e/` Chromium harness. The integration suite (`src/test/**`) compiles via `tsconfig.integration.json` to `out/` and is excluded from Vitest and the perf harness; it downloads VS Code on first run (cached in `.vscode-test/`, gitignored) and is **not** part of `pnpm test` — run it explicitly.
+Integration versus unit boundary. Unit tests mock `vscode` and cover the flush protocol logic (seq ordering, stale rejection, timeout) against a controllable fake webview. Integration tests run in a downloaded VS Code and verify what a mock can't: that VS Code fires our will-save participant and applies its `TextEdit[]` to disk, and, driving the real Milkdown editor, that an edit living only in the webview is carried to disk by the save flush. That last test uses `birta._test.insertText`, an invisible, uncontributed, test-only command that posts `__testInsertText` to the active webview; no product code path invokes it. Webview behavior is otherwise exercised by the `e2e/` Chromium harness. The integration suite (`src/test/**`) compiles via `tsconfig.integration.json` to `out/`, and is excluded from Vitest and the perf harness. It downloads VS Code on first run (cached in `.vscode-test/`, gitignored) and is not part of `pnpm test`, so run it explicitly.
 
 ### Test commands
 
@@ -207,107 +240,90 @@ pnpm test:coverage     # run tests + coverage report (coverage/)
 pnpm test:integration  # build + compile + run the real-VS-Code suite (downloads VS Code first run)
 ```
 
-**Run one harness at a time.** `pnpm test`, `pnpm test:e2e`, and any `perf:*` capture all compete for the same cores, and concurrently they produce failures that are not real: vitest suites go red and pass on a rerun, and `perf:typing`'s `block` metric inflates **super-linearly** because its `longtask` threshold is a fixed 50 ms, so contention pushes sub-threshold tasks over it. A perf capture in particular must have the machine to itself, or its numbers are not evidence. (2026-07-25: a run of e2e alongside vitest produced a red suite that passed cleanly twice on an idle machine — the same phantom failures a parallel agent had reported an hour earlier from a shared checkout.)
+Run one harness at a time. `pnpm test`, `pnpm test:e2e`, and any `perf:*` capture compete for the same cores, and run concurrently they produce failures that are not real. Vitest suites go red and pass on a rerun. `perf:typing`'s `block` metric inflates super-linearly, because its `longtask` threshold is a fixed 50 ms and contention pushes sub-threshold tasks over it. A perf capture in particular must have the machine to itself, or its numbers are not evidence.
 
-**Running a suite inside a `git worktree` needs care with `node_modules`.** Symlinking the whole directory from the main checkout makes the workspace package resolve *there*: `node_modules/@birta/minimal-diff` is a relative symlink to `../../packages/minimal-diff`, so a worktree that symlinks `node_modules` wholesale **tests the main checkout's engine, not its own** — silently, with a green suite. If your change touches `packages/`, build `node_modules` as per-entry symlinks with a real `@birta/` directory pointing at the worktree's own package, or run `pnpm install` in it.
+Running a suite inside a `git worktree` needs care with `node_modules`. Symlinking the whole directory from the main checkout makes the workspace package resolve there: `node_modules/@birta/minimal-diff` is a relative symlink to `../../packages/minimal-diff`, so a worktree that symlinks `node_modules` wholesale tests the main checkout's engine rather than its own, silently, with a green suite. If your change touches `packages/`, build `node_modules` as per-entry symlinks with a real `@birta/` directory pointing at the worktree's own package, or run `pnpm install` in the worktree.
 
-### Layout & naming
+### Layout and naming
 
 ```
-src/__tests__/              — Extension-side unit tests (Node env)
-webview/__tests__/          — WebView-side unit tests (jsdom env)
-webview/__tests__/setup.ts  — jsdom global setup (injects acquireVsCodeApi)
-shared/__tests__/           — Shared-type tests
-packages/*/src/__tests__/   — Workspace-package tests (Node env; e.g. the minimal-diff core)
-__mocks__/vscode.ts         — Central vscode API mock
+src/__tests__/              Extension-side unit tests (Node env)
+webview/__tests__/          WebView-side unit tests (jsdom env)
+webview/__tests__/setup.ts  jsdom global setup (injects acquireVsCodeApi)
+shared/__tests__/           Shared-type tests
+packages/*/src/__tests__/   Workspace-package tests (Node env; e.g. the minimal-diff core)
+__mocks__/vscode.ts         Central vscode API mock
 ```
 
 - Test files are named `<module>.test.ts`, matching the module under test.
-- Follow **AAA** (Arrange / Act / Assert), with two levels: `describe` → `it`.
-- `it` descriptions use the form: `<input condition> should <expected result>` (in English).
+- Follow AAA (Arrange, Act, Assert), with two levels: `describe`, then `it`.
+- `it` descriptions take the form `<input condition> should <expected result>`, in English.
 
 ### Coverage floors
 
 | Module | Min line coverage |
 |--------|-------------------|
-| `src/utils/imageService.ts` | ≥ 85% |
+| `src/utils/imageService.ts` | 85% |
 | `src/utils/getNonce.ts` | 100% |
-| `src/utils/textEdit.ts` | ≥ 90% |
-| `src/utils/contentTransform.ts` | ≥ 90% |
-| `src/utils/lineMap.ts` | ≥ 90% |
-| `webview/utils/slug.ts` | ≥ 90% |
-| **Overall** | ≥ 70% |
+| `src/utils/textEdit.ts` | 90% |
+| `src/utils/contentTransform.ts` | 90% |
+| `src/utils/lineMap.ts` | 90% |
+| `webview/utils/slug.ts` | 90% |
+| Overall | 70% |
 
 ### Required workflow
 
-#### After feature work
-1. Write unit tests (at least one case each for core logic, boundary values, and error paths).
-2. Run `pnpm test` and confirm all pass.
-3. Run `pnpm build` and confirm it compiles.
-4. Only then `git commit`.
+After feature work: write unit tests with at least one case each for core logic, boundary values, and error paths; run `pnpm test`; run `pnpm build` to confirm it compiles; only then `git commit`.
 
-#### After a bug fix
-1. First add a **test that reproduces the bug** (in the same commit as the fix).
-2. Confirm it fails before the fix and passes after.
-3. Run `pnpm test` and confirm the whole suite passes before committing.
+After a bug fix: first add a test that reproduces the bug, in the same commit as the fix; confirm it fails before the fix and passes after; run `pnpm test` and confirm the whole suite passes before committing.
 
-#### Choosing what to assert (two ways tests have been green while the editor was broken)
+### Choosing what to assert
 
-Both of these shipped bugs in 2026-07-30's paste work, and neither was a coverage gap — the broken lines were executed by passing tests.
+Coverage is not the bar. Two bugs shipped with their broken lines executed by passing tests, so the assertion, not the coverage, is what to get right.
 
-- **An expected-output assertion can only confirm what you already believe.** `expect(md).toBe("| one<br>two |")` passed while pasting plain multi-line text into a cell produced `| line1⏎line2 |` — a raw newline that terminates the row, so the result was not a table (MAR-277). The author picked the payload that exercised the code path they had just written (a bullet list) rather than the one a user would paste (plain lines), and then asserted their own model of the output. **Prefer invariants**, which hold regardless of what the author expects; see `webview/__tests__/pasteMatrix.test.ts`, whose first run found two real defects the hand-picked cases had missed. Where a space is combinatorial (payload × destination, block × target), enumerate it rather than sampling by hand: that is the same reasoning as `corpusMoveSampling`.
-  - **Pick invariants the production code can answer, not ones the test has to re-derive.** That matrix shipped with five and now has two — schema-valid (`doc.check()`) and round-trip stable (serialize → parse → serialize). The other three ("the table keeps its shape", "one line per table row", "nothing dropped") each needed the TEST to re-parse Markdown with regexes, and between them fired fourteen times and were wrong all fourteen: every firing was a bug in those helpers, never in the editor. Round-trip stability caught every real defect on its own — verified by reintroducing one and watching the same four cases fail with the other invariants disabled — because corrupt Markdown reparses into something else, generically, with no per-construct rule to maintain. **A more specific invariant is not a stronger one when the specificity lives in test-side parsing; it just moves a parser somewhere that has no tests of its own.**
-- **A prop-level test cannot catch a handler race.** Image paste was tested by calling `someProp("handlePaste", …)` directly, which bypasses event dispatch entirely — the layer the bug lived in. The real defect was that a `document`-level listener bubbled *after* ProseMirror's own handler on the editor element, so one paste inserted two images (MAR-277). Anything registering `handlePaste` / `handleDrop` / `handleKeyDown`, or otherwise depending on **which listener wins**, needs an `e2e/` check dispatching a real event (`e2e/pasteImage` is the worked example). Gotcha while writing one: a bare `.ProseMirror img` selector reports a phantom image, because ProseMirror renders its own `<img class="ProseMirror-separator">` into contenteditable — query `img:not(.ProseMirror-separator)`.
+- An expected-output assertion can only confirm what you already believe. Prefer invariants, which hold regardless of what the author expects. Where a space is combinatorial (payload against destination, block against target), enumerate it rather than sampling by hand: `webview/__tests__/pasteMatrix.test.ts` and `corpusMoveSampling.test.ts` are the worked examples, and the matrix found two real defects on its first run.
+- Pick invariants the production code can answer, not ones the test has to re-derive. `pasteMatrix` keeps two: schema-valid (`doc.check()`) and round-trip stable (serialize, parse, serialize). Three more specific ones were removed after firing fourteen times, every firing a bug in the test's own Markdown-reparsing helpers rather than in the editor. Round-trip stability caught every real defect on its own, because corrupt Markdown reparses into something else generically, with no per-construct rule to maintain. Specificity that lives in test-side parsing is not strength; it just moves a parser somewhere that has no tests of its own.
+- A prop-level test cannot catch a handler race. Calling `someProp("handlePaste", ...)` directly bypasses event dispatch, which is the layer such bugs live in: one paste inserted two images because a `document`-level listener bubbled after ProseMirror's own handler on the editor element (MAR-277). Anything registering `handlePaste`, `handleDrop`, or `handleKeyDown`, or otherwise depending on which listener wins, needs an `e2e/` check dispatching a real event. `e2e/pasteImage` is the worked example. Gotcha: a bare `.ProseMirror img` selector reports a phantom image, because ProseMirror renders its own `<img class="ProseMirror-separator">` into contenteditable. Query `img:not(.ProseMirror-separator)`.
+- Mark a known-but-unfixed combination `it.fails` with its issue id, never skip it. `it.fails` errors the moment the bug is fixed, so the list must shrink (`KNOWN_GAPS` in `pasteMatrix.test.ts`).
 
-A known-but-unfixed combination is marked `it.fails` with its issue id, never skipped: `it.fails` errors the moment the bug is fixed, so the list must shrink (`KNOWN_GAPS` in `pasteMatrix.test.ts`).
+### Before `git push`
 
-#### Before `git push`
-- You **must** run `pnpm test`; push only if everything passes.
-- **Run `pnpm typecheck` too.** Neither esbuild (`pnpm build`) nor vitest typechecks — both transpile with types erased — so an interface/annotation error passes every local test and build, then fails CI's `unit-test` job at its `pnpm typecheck` step (2026-07-26: a method added to a controller but not its declared interface shipped exactly this way).
-- **Run `pnpm test:e2e` too.** It is the local pre-push gate for webview behavior — CI does **not** run it, so nothing downstream will catch what it catches. Anything touching `webview/` needs it, and jsdom's lack of a layout engine means whole classes of change (positioning, viewport, scroll) are *only* observable here. Run it separately from `pnpm test`, not alongside (see **Run one harness at a time** above).
-- CI's `unit-test` job runs on every push/PR (`.github/workflows/ci.yml`); a failure blocks the build.
+- Run `pnpm test`. Push only if everything passes.
+- Run `pnpm typecheck`. Neither esbuild (`pnpm build`) nor Vitest typechecks, because both transpile with types erased, so an interface or annotation error passes every local test and build and then fails CI's `unit-test` job at its `pnpm typecheck` step.
+- Run `pnpm test:e2e`. It is the local pre-push gate for webview behavior, and CI does not run it, so nothing downstream will catch what it catches. Anything touching `webview/` needs it, and jsdom's lack of a layout engine means whole classes of change (positioning, viewport, scroll) are observable only here. Run it separately from `pnpm test`, not alongside; see "Run one harness at a time" above.
+- CI's `unit-test` job runs on every push and PR (`.github/workflows/ci.yml`). A failure blocks the build.
 
 ### Handling test failures
 
-```
-Test fails
-  │
-  ├─ Newly introduced failure?      → locate the code change, fix, re-run
-  │
-  ├─ Test expectation no longer     → update the test (only if the change was intentional)
-  │   matches intended behavior?
-  │
-  └─ Environment/dependency issue?  → check jsdom version, verify the vscode mock is complete
-```
+A newly introduced failure: locate the code change, fix it, re-run. An expectation that no longer matches intended behavior: update the test, but only if the change was intentional. Anything else: check the jsdom version and confirm the vscode mock is complete.
 
-**Prohibited:**
+Prohibited:
+
 - Do not skip (`it.skip`) or comment out failing tests to make CI pass.
-- Do not change expected values to mask a bug (unless the implementation changed intentionally and was reviewed).
+- Do not change expected values to mask a bug, unless the implementation changed intentionally and was reviewed.
 - Do not push to `main` or `dev` without running tests.
 
 ### Mock rules
 
 - Call `vi.clearAllMocks()` in `beforeEach` for each `describe` block.
-- Mock filesystem operations via `vscode.workspace.fs` (never write to the real disk).
-- For time-dependent logic use `vi.useFakeTimers()` / `vi.useRealTimers()`; never wait on a real `setTimeout`.
-  - **`vi.useFakeTimers()` fakes `performance` too (Vitest 3), and a faked `performance.now()` starts at 0.** Code that *sleeps* via `setTimeout` but *reads time* via `performance.now()` — `webview/syncScheduler.ts`, whose every window is a `now() - mark` comparison — therefore boots into a state no real webview is ever in, and an elapsed-window check reads `0 - 0 >= 300` as false. Vitest 2 left `performance` real, so a large real `now()` accidentally modelled production and these tests passed by luck. If a test depends on a scheduler window, wind the clock past it first (`useFakeClockPastIdle` in `savePipeline.test.ts` is the worked example) rather than trusting the default.
-  - **Vitest 2 did not always enforce `testTimeout`; Vitest 3 does.** Three corpus tests had been running 5.3–6.6 s against the 5 s default while reporting green. If a test starts failing on time after a runner upgrade, measure it on the old runner before assuming the new one made it slower — it may simply have started enforcing a limit that was always being exceeded. Prefer a per-`describe` timeout with the measured cost in a comment over raising the project-wide default.
-- Don't test `private` methods; verify behavior through the public interface.
-
----
+- Mock filesystem operations via `vscode.workspace.fs`. Never write to the real disk.
+- Don't test `private` methods. Verify behavior through the public interface.
+- For time-dependent logic use `vi.useFakeTimers()` and `vi.useRealTimers()`. Never wait on a real `setTimeout`.
+  - `vi.useFakeTimers()` fakes `performance` too, and a faked `performance.now()` starts at 0. Code that sleeps via `setTimeout` but reads time via `performance.now()`, such as `webview/syncScheduler.ts` where every window is a `now() - mark` comparison, therefore boots into a state no real webview is ever in, and an elapsed-window check reads `0 - 0 >= 300` as false. If a test depends on a scheduler window, wind the clock past it first rather than trusting the default; `useFakeClockPastIdle` in `savePipeline.test.ts` is the worked example.
+  - Vitest 3 enforces `testTimeout`, which Vitest 2 did not always do. If a test starts failing on time after a runner upgrade, measure it on the old runner before assuming the new one made it slower: it may simply have started exceeding a limit it always exceeded. Prefer a per-`describe` timeout, with the measured cost in a comment, over raising the project-wide default.
 
 ## Autosave
 
-The editor is `CustomTextEditorProvider`-backed, so the backing `TextDocument` carries native dirty state. **Saving is governed entirely by VS Code's built-in `files.autoSave` / `files.autoSaveDelay`** — there is no extension-specific autosave. (The former `markdownWysiwyg.autoSave` / `autoSaveDelay` settings were removed before the rename; the custom timer only ever fired in configurations where it was redundant or actively fought the user's `files.autoSave` choice.) With the VS Code default (`files.autoSave: "off"`), edits stay dirty until Cmd+S / hot exit, exactly like any text editor.
+The editor is `CustomTextEditorProvider`-backed, so the backing `TextDocument` carries native dirty state. Saving is governed entirely by VS Code's built-in `files.autoSave` and `files.autoSaveDelay`; there is no extension-specific autosave, and the former `markdownWysiwyg.autoSave` and `autoSaveDelay` settings were removed before the rename. With the VS Code default (`files.autoSave: "off"`), edits stay dirty until Cmd+S or hot exit, exactly like any text editor.
 
-### View→document sync invariant (never lose an edit on save)
+### View to document sync invariant (never lose an edit on save)
 
-The edit lives in the webview (Milkdown); the `TextDocument` is what VS Code saves. The pipeline that carries edits webview→document must satisfy, in order of priority:
+The edit lives in the webview (Milkdown); the `TextDocument` is what VS Code saves. The pipeline carrying edits from webview to document must satisfy, in order of priority:
 
-1. **A save never persists content older than the editor state.** The extension registers `onWillSaveTextDocument` and, via `waitUntil`, asks the webview to serialize the live document *now* and returns those bytes as the save's edits (`_flushWebviewEdits` / `flushPendingEdit`). A save is bounded by a ~1s timeout so a wedged webview degrades to "save current document" rather than hanging.
-2. **An edit is save-capturable the moment the user perceives it.** The first edit after a save dirties the `TextDocument` within an IPC hop (leading-edge sync in `webview/editor.ts`) — `onWillSaveTextDocument` only fires for a dirty document, so this is what makes a fast Cmd+S actually save.
-3. **Ordering is total.** Every outbound content message carries a monotonic `seq`; the extension drops any `update` a flush has superseded, so a slow in-flight sync can never revert a newer save (`_appliedSeq`).
+1. A save never persists content older than the editor state. The extension registers `onWillSaveTextDocument` and, via `waitUntil`, asks the webview to serialize the live document now, returning those bytes as the save's edits (`_flushWebviewEdits`, `flushPendingEdit`). A save is bounded by a roughly 1 s timeout, so a wedged webview degrades to "save current document" rather than hanging.
+2. An edit is save-capturable the moment the user perceives it. The first edit after a save dirties the `TextDocument` within an IPC hop (leading-edge sync in `webview/editor.ts`). `onWillSaveTextDocument` only fires for a dirty document, so this is what makes a fast Cmd+S actually save.
+3. Ordering is total. Every outbound content message carries a monotonic `seq`, and the extension drops any `update` a flush has superseded, so a slow in-flight sync can never revert a newer save (`_appliedSeq`).
 
-The webview→document **debounce is load-bearing for crash-safety, not performance**: it bounds how far the `TextDocument` (which hot exit backs up) trails the editor. Serialization is O(document size); it runs off the keystroke path (on typing pause / max-wait / save), never per keystroke. Do not lengthen the debounce toward "save less often" or move serialization back onto the keystroke — the first breaks the crash-safety window, the second reintroduces per-keystroke O(n) cost. (Note: on very large documents typing itself is still bounded by ProseMirror's per-keystroke view reconciliation — a separate, document-size-scaling cost unrelated to this sync pipeline.)
+The webview-to-document debounce is load-bearing for crash safety, not performance: it bounds how far the `TextDocument`, which hot exit backs up, trails the editor. Serialization is O(document size) and runs off the keystroke path, on typing pause, max-wait, or save, never per keystroke. Do not lengthen the debounce toward "save less often", which breaks the crash-safety window, and do not move serialization back onto the keystroke, which reintroduces per-keystroke O(n) cost. On very large documents typing is still bounded by ProseMirror's per-keystroke view reconciliation, a separate document-size-scaling cost unrelated to this pipeline.
 
-**`webview/syncScheduler.ts` must be the ONLY delay in this pipeline.** Its trigger is `webview/plugins/docChange.ts`, which reports every doc-changing transaction synchronously. Never put a debounce/throttle upstream of it, and never route the trigger through one — Milkdown's `@milkdown/plugin-listener` (unconditional trailing `debounce(fn, 200)`) used to sit there and broke two of the three invariants above at once: the first keystroke took ~208 ms to dirty the document (#2), and because a *trailing* debounce resets on every keystroke, continuous typing never fired it at all, so the scheduler was never asked, its max-wait never engaged, and the document stayed clean for the whole burst — a Cmd+S mid-burst was a no-op and hot exit backed up stale bytes (MAR-145). The scheduler already implements leading edge + trailing + max-wait together; a second timer upstream can only starve it. Pinned by `e2e/syncLatency`.
+`webview/syncScheduler.ts` must be the ONLY delay in this pipeline. Its trigger is `webview/plugins/docChange.ts`, which reports every doc-changing transaction synchronously. Never put a debounce or throttle upstream of it, and never route the trigger through one. The scheduler already implements leading edge, trailing edge, and max-wait together, so a second timer upstream can only starve it. Milkdown's `@milkdown/plugin-listener` (an unconditional trailing `debounce(fn, 200)`) used to sit there and broke invariants 1 and 2 at once (MAR-145). Its 200 ms constant put a fifth of a second between the first keystroke and the document going dirty, and because a trailing debounce resets on every keystroke, continuous typing never fired it at all: the scheduler was never asked, its max-wait never engaged, and the document stayed clean for the whole burst, so a Cmd+S mid-burst was a no-op and hot exit backed up stale bytes. Pinned by `e2e/syncLatency`.
