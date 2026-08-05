@@ -19,7 +19,7 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 ## 0. Groom
 
 - **Read `MAR-141`** (board guide). It goes stale the moment anything ships — verify against `git log` and the tree, and fix it as part of grooming.
-- **Pull `Todo` + `In Progress` + `Backlog`.** Prioritize over that union, not the `Todo` view. Fetch Backlog inline with minimal `fields` (`title`, `priority`, `labels`) — that fits; a subagent for it is waste.
+- **Pull `Todo` + `In Progress` + `Backlog`.** Prioritize over that union, not the `Todo` view.
 - **Reconcile:** close silently-shipped work (verify in the tree, not the CHANGELOG; cite the SHA), re-scope tickets the code outgrew, un-stick stale `In Progress`.
 - **Check `Closes MAR-NN` against ancestry** — `git merge-base --is-ancestor <sha> main`. A ticket closed on a pushed branch rather than a merged PR leaves no signal anywhere.
 - **Pick: first High-or-Urgent down the spine** — `phase-0-fidelity` → `phase-1-performance` → `phase-2-syntax` → `phase-3-interaction` → `phase-4-differentiators`, then by `priority`. `phase-5-surfaces` never ranks (D8). With no High anywhere, take the spine's top by priority.
@@ -52,7 +52,7 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
    .claude/skills/grind/scripts/check-isolation.sh --path "<worktreePath>" --branch "<worktreeBranch>"
    ```
 
-Your shell's cwd is the worktree base, so `cd`-ing into a worktree nests the next agent's inside it, where `cleanup-worktrees.sh` never finds it. `cd` back to the primary before every dispatch.
+`cd` back to the primary before every dispatch: a nested worktree is one `cleanup-worktrees.sh` never finds.
 
 **Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). Lanes then report *what they want measured and what would falsify it* — a better handoff than a number they could not trust, and naming the span makes a win landing in a different one a finding rather than a footnote. Their headlines stay unverified until you re-run them: one lane's −27.2% was −23.8% idle.
 
@@ -89,12 +89,12 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 
 ## 3. Work loop (per ticket, and what each lane runs)
 
-1. **Reproduce.** Throwaway probes are fine; delete them. A probe is code you just wrote — assert it hit what you aimed at. A result surprising in a *boring* way (a count of 0, an element you never named) means the probe missed; one that reads far WORSE than the ticket it reproduces means the probe caught more than the gesture. Reproducing the ticket's own number is the check that you are both measuring the same thing.
+1. **Reproduce.** Throwaway probes are fine, and delete them — *unless* a probe is the only thing that proved a claim you are shipping. Then it is a missing test, not a throwaway, and deleting it ships the claim with its evidence thrown away. A probe is code you just wrote — assert it hit what you aimed at. A result surprising in a *boring* way (a count of 0, an element you never named) means the probe missed; one that reads far WORSE than the ticket it reproduces means the probe caught more than the gesture. Reproducing the ticket's own number is the check that you are both measuring the same thing.
 2. **Implement** the smallest correct fix in the surrounding idiom. Grep for the mechanism that already exists before building one — if you're citing a function to justify your design, call it instead. Prefer observing the result to predicting it.
 3. **Critique the design before hardening it.** Is there less of it? Churn is the tell: a predicate written, reverted, rewritten means the design isn't settled. Act on findings here — carried to step 5 they cost a test suite.
-4. **Test.** Pin a regression test; promote a fidelity `it.fails`. **Prove each new test can fail by reverting the exact line it pins.** Assert what the user would lose, not the state your fix sets — and watch for assertions satisfied by something else in the fixture. Then `pnpm test`, `pnpm typecheck`, `pnpm build`; `/verify` for runtime behavior beyond jsdom.
+4. **Test.** Pin a regression test; promote a fidelity `it.fails`. **Prove each new test can fail by reverting the exact line it pins.** Assert what the user would lose, not the state your fix sets — and watch for assertions satisfied by something else in the fixture. **A differential test against the path your code falls back to cannot fail**: if the function verifies its own result and degrades on mismatch, the two agree by construction however broken the fast path is. Assert the fallback never RAN. Then `pnpm test`, `pnpm typecheck`, `pnpm build`; `/verify` for runtime behavior beyond jsdom.
    - **Read the `Errors:` line of a passing vitest run, not just `Tests:`.** Unhandled errors exit non-zero with every test green. Contention explains *varying* failures across *different* suites; it does not explain the same error from the same file every time.
-5. **Critique the diff** — `/constructive-critique` (`/code-review` for pure bug-hunting). A reviewer that runs its own probes finds more than one reading the diff.
+5. **Critique the diff** — `/constructive-critique` (`/code-review` for pure bug-hunting).
 6. **Disposition every finding where it was raised**, by value, never effort:
    - **Fixed** — the default for anything that matters. Cheapest now.
    - **Filed** — only when genuinely outside the session: blocked on a decision, a design fork, upstream, or pre-existing in untouched territory. Big-but-unblocked is fixed.
@@ -136,8 +136,8 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 
 ### Critique the seam
 
-- **`/constructive-critique` over `git diff main...<integration-branch>`** — the whole session as one change. Only here are the seams visible: two lanes solving the same thing, an abstraction duplicated, a test one lane deleted and another relied on, a premise a later lane invalidated, **a lane's fix undone downstream by a layer it did not own** — each lane stopped at its own scope, so nobody drove the whole path. Ask what the user's bytes pass through *after* each fix, and drive that. `/simplify` belongs in this pass; re-run gates after it.
-- **The critique is a description too — reproduce a finding before fixing it.** One reasoned from control flow named four shapes, none of which reproduced; the mechanism was real and reached by a fifth it never guessed.
+- **`/constructive-critique` over `git diff main...<integration-branch>`** — the whole session as one change. Only here are the seams visible: two lanes solving the same thing, an abstraction duplicated, a test one lane deleted and another relied on, a premise a later lane invalidated, **a lane's fix undone downstream by a layer it did not own**. Ask what the user's bytes pass through *after* each fix, and drive that. `/simplify` belongs in this pass; re-run gates after it.
+- **The critique is a description too — reproduce a finding before fixing it.** One reasoned from control flow named four shapes, none of which reproduced. Its own fixes need the same bar: two checks written in a critique pass passed for the wrong reason on their first run.
 - §3.6's buckets bind here — "a different lane wrote it" is not a reason to file instead of fix.
 - **Write the CHANGELOG once, now**, over the reconciled diff, plus `docs/BENEFITS.md` if a capability's story changed. Verify each claim yourself.
 - **One PR** with the tickets and the verification done. Wait for CI, squash, delete branch, pull `main`. **A red on an ADVISORY gate is a measurement — reproduce it idle before accepting or ignoring it.** Accepting a regression that isn't there is as false a record as ignoring one that is, and an unstable gate diagnosed with a reproduction is worth more than the lane that tripped it.
