@@ -184,7 +184,51 @@ export function initReviewList(
         container: bodyEl,
         items: () => [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")],
         onEscape: () => getView()?.focus(),
+        // MAR-295: ArrowRight from a row body enters its trailing action
+        // cluster (Ignore / Learn) — a horizontal spur off the vertical list.
+        // The cluster's own keys are handled below; its buttons stay at
+        // tabIndex -1, so the list keeps exactly one Tab stop.
+        onHorizontal: (item, dir) => dir === 1 && enterRowActions(item),
     });
+
+    /** Focus the first trailing action of the row whose body is `item`; false
+     *  when the row has none (Notes rows), letting the arrow fall through. */
+    function enterRowActions(item: HTMLElement): boolean {
+        if (!item.classList.contains("review-item__main")) { return false; }
+        const first = item.parentElement?.querySelector<HTMLElement>(".review-item__action");
+        if (!first) { return false; }
+        first.focus();
+        return true;
+    }
+
+    // Keys while focus sits INSIDE an action cluster. Left/Right walk the
+    // cluster, with ArrowLeft at the first action returning to the row body;
+    // Up/Down first re-target the row body and then fall through to the roving
+    // handler (which reads document.activeElement at handler time), so they
+    // step the LIST from this row rather than jumping to its first item.
+    // Capture phase: the target is a descendant of bodyEl, so this runs before
+    // wireRoving's bubble-phase handler and can stop what it fully handled.
+    bodyEl.addEventListener("keydown", (e) => {
+        const target = e.target as HTMLElement;
+        if (!(target instanceof HTMLElement) || !target.classList.contains("review-item__action")) { return; }
+        const row = target.closest<HTMLElement>(".review-item");
+        if (!row) { return; }
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            e.preventDefault();
+            e.stopPropagation();
+            const actions = [...row.querySelectorAll<HTMLElement>(".review-item__action")];
+            const i = actions.indexOf(target);
+            if (e.key === "ArrowRight") {
+                actions[Math.min(actions.length - 1, i + 1)]?.focus(); // clamp at the end
+            } else if (i > 0) {
+                actions[i - 1]?.focus();
+            } else {
+                row.querySelector<HTMLElement>(".review-item__main")?.focus();
+            }
+        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            row.querySelector<HTMLElement>(".review-item__main")?.focus();
+        }
+    }, true);
 
     /** Switch modes and re-render. `persist` distinguishes a user click (echo
      *  the setting) from an external settings echo (already persisted). */

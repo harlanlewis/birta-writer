@@ -103,12 +103,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // hide action makes sense.
     const controls = document.createElement("div");
     controls.className = "toc-controls";
+    // The pair is its own toolbar, not part of the surrounding tablist's tab
+    // set — a tablist's arrows must move between TABS (and these are not
+    // tabs; the strip's keydown handler is scoped to .toc-tab for exactly
+    // that reason), so reaching them takes the strip's second Tab stop.
+    controls.setAttribute("role", "toolbar");
+    controls.setAttribute("aria-orientation", "horizontal");
+    controls.setAttribute("aria-label", t("Sidebar controls"));
 
     // Side-switch: moves the panel to the opposite edge. Two-way arrows read as
     // "swap sides"; the tooltip names the destination.
     const flipBtn = document.createElement("button");
     flipBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-flip-btn";
-    flipBtn.tabIndex = -1;
     flipBtn.innerHTML = IconArrowLeftRight;
     controls.appendChild(flipBtn);
 
@@ -117,8 +123,19 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // the two read as one persistent control as the panel slides away.
     const hideBtn = document.createElement("button");
     hideBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-hide-btn";
-    hideBtn.tabIndex = -1;
     controls.appendChild(hideBtn);
+
+    // MAR-295: the flip/hide pair used to sit at tabIndex -1 outside every
+    // group — mouse-only. It is now the sidebar's standard shape in miniature:
+    // one roving group, one Tab stop, arrows along its own (horizontal) axis.
+    // wireRoving seeds the single tabbable slot, so the buttons no longer set
+    // tabIndex themselves.
+    wireRoving({
+        container: controls,
+        items: () => [...controls.querySelectorAll<HTMLElement>("button")],
+        orientation: "horizontal",
+        onEscape: () => getEditorView()?.focus(),
+    });
 
     const list = document.createElement("div");
     list.className = "toc-list";
@@ -701,6 +718,21 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     /**
+     * MAR-295: when the panel stops being focusable while the keyboard is
+     * inside it — the hide button, the panel-toggle command, a responsive
+     * docked→overlay collapse, a flyout teardown — focus goes back to the
+     * editor, exactly where Escape would have put it. Without this it drops to
+     * <body>, stranding the keyboard nowhere (observed by driving a resize
+     * flip with focus in the overflow menu). Only ever called when the panel
+     * is NOT visible, so an open panel's focus is never yanked.
+     */
+    function restoreFocusToEditor(): void {
+        if (panel.contains(document.activeElement)) {
+            getEditorView()?.focus();
+        }
+    }
+
+    /**
      * Re-commit the panel's whole presentation: open/docked classes, the tab
      * glyph, the outside-click listener, and (when visible) the list. This is
      * the RARE path — a toggle, a responsive flip, an edge swap, or load —
@@ -730,6 +762,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // armed the NEXT drag against positions the doc had moved past.
         if (isPanelVisible()) {
             renderActiveView(headings ?? getHeadings());
+        } else {
+            restoreFocusToEditor(); // the panel just stopped being focusable (MAR-295)
         }
         syncTabOverflow(); // presentation (open/side/mode) may have changed the row's width
         if (initialLoad) {
@@ -1275,6 +1309,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  the dock-open path) and restore the docked drawer's CSS positioning. */
     function teardownFlyout(): void {
         cancelFlyoutCleanup();
+        // A flyout that retracts with the keyboard inside it (Tab moved focus
+        // in; the reveal tab's blur timer still fires) must not strand focus
+        // on a hidden box. Skipped when the teardown is the dock-open path,
+        // where the panel stays visible and keeps its focus.
+        if (!isOpen) { restoreFocusToEditor(); }
         panel.classList.remove("toc-panel--flyout", "toc-panel--flyout-in");
         document.body.classList.remove("toc-flyout-open");
         panel.style.left = "";

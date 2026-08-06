@@ -269,6 +269,79 @@ describe("initReviewList — the toolbar row is a keyboard region", () => {
     });
 });
 
+describe("initReviewList — per-row action cluster (MAR-295)", () => {
+    beforeEach(() => { document.body.innerHTML = ""; });
+
+    /** Two flat rows, each with Learn + Ignore actions (the proofreading shape). */
+    function mkWithActions() {
+        const learn = vi.fn();
+        const ignore = vi.fn();
+        const ctx = mk(false);
+        ctx.render({ rows: [
+            row({ label: "first", actions: [
+                { label: "Learn", run: learn },
+                { label: "Ignore", run: ignore },
+            ] }),
+            row({ label: "second", actions: [{ label: "Ignore", run: vi.fn() }] }),
+        ] });
+        return { ...ctx, learn, ignore };
+    }
+    const mains = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>(".review-item__main")];
+    const actions = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>(".review-item__action")];
+
+    it("ArrowRight from a focused row body should enter its action cluster", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight");
+        expect(document.activeElement).toBe(actions(element)[0]);
+        expect((document.activeElement as HTMLElement).textContent).toBe("Learn");
+    });
+
+    it("ArrowRight should walk the cluster and clamp at the last action", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight"); // → Learn
+        press("ArrowRight"); // → Ignore
+        expect((document.activeElement as HTMLElement).textContent).toBe("Ignore");
+        press("ArrowRight"); // clamps
+        expect((document.activeElement as HTMLElement).textContent).toBe("Ignore");
+    });
+
+    it("ArrowLeft at the first action should return to the row body", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight");
+        press("ArrowLeft");
+        expect(document.activeElement).toBe(mains(element)[0]);
+    });
+
+    it("ArrowDown from an action should step the LIST from its row, not from the top", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight"); // into row 0's cluster
+        press("ArrowDown");
+        expect(document.activeElement).toBe(mains(element)[1]);
+    });
+
+    it("the action buttons should stay OUT of the Tab order (one Tab stop per list)", () => {
+        const { element } = mkWithActions();
+        for (const btn of actions(element)) { expect(btn.tabIndex).toBe(-1); }
+        // …and entering the cluster must not steal the roving slot from the row.
+        mains(element)[0]!.focus();
+        press("ArrowRight");
+        expect(mains(element)[0]!.tabIndex).toBe(0);
+    });
+
+    it("ArrowRight on a row with no actions should stay put (Notes rows)", () => {
+        const ctx = mk(false);
+        ctx.render({ rows: [row({ label: "bare" })] });
+        const main = ctx.element.querySelector<HTMLElement>(".review-item__main")!;
+        main.focus();
+        press("ArrowRight");
+        expect(document.activeElement).toBe(main);
+    });
+});
+
 describe("initReviewList — view mode (driven by the shell)", () => {
     beforeEach(() => { document.body.innerHTML = ""; });
 

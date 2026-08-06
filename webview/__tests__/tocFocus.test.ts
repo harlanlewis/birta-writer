@@ -137,3 +137,119 @@ describe("focusPanel — the deliberate keyboard entry (MAR-294)", () => {
         expect(toc.panel.contains(document.activeElement)).toBe(true);
     });
 });
+
+/** Press a key on whatever currently has focus, as the roving handler sees it. */
+function press(key: string): void {
+    document.activeElement!.dispatchEvent(
+        new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+    );
+}
+
+describe("flip/hide controls — their own roving group (MAR-295)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        stubTimers();
+        document.body.className = "";
+        document.body.innerHTML = "";
+        Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+    });
+
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    function openPanel() {
+        const view = makeView(docWithHeadings(5));
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.refresh();
+        expect(toc.isOpen()).toBe(true);
+        return { toc, view };
+    }
+    const controls = () => document.querySelector<HTMLElement>(".toc-controls")!;
+    const flip = () => document.querySelector<HTMLElement>(".toc-flip-btn")!;
+    const hide = () => document.querySelector<HTMLElement>(".toc-hide-btn")!;
+
+    it("the pair should be one horizontal group with exactly one Tab stop", () => {
+        openPanel();
+        expect(controls().getAttribute("role")).toBe("toolbar");
+        const tabbable = [...controls().querySelectorAll<HTMLElement>("button")]
+            .filter((b) => b.tabIndex === 0);
+        expect(tabbable).toHaveLength(1);
+        expect(tabbable[0]).toBe(flip());
+    });
+
+    it("ArrowRight/ArrowLeft should walk flip ↔ hide and clamp at both ends", () => {
+        openPanel();
+        flip().focus();
+        press("ArrowRight");
+        expect(document.activeElement).toBe(hide());
+        press("ArrowRight"); // clamps
+        expect(document.activeElement).toBe(hide());
+        press("ArrowLeft");
+        expect(document.activeElement).toBe(flip());
+        press("ArrowLeft"); // clamps
+        expect(document.activeElement).toBe(flip());
+    });
+
+    it("Escape from the controls should return focus to the editor", () => {
+        const { view } = openPanel();
+        flip().focus();
+        press("Escape");
+        expect(document.activeElement).toBe(view.dom);
+    });
+});
+
+describe("focus restore — the panel stops being focusable (MAR-295)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        stubTimers();
+        document.body.className = "";
+        document.body.innerHTML = "";
+        Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+    });
+
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    function openPanel() {
+        const view = makeView(docWithHeadings(5));
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.refresh();
+        expect(toc.isOpen()).toBe(true);
+        return { toc, view };
+    }
+
+    it("activating the hide button with the keyboard should land focus in the editor, not <body>", () => {
+        const { toc, view } = openPanel();
+        const hide = document.querySelector<HTMLElement>(".toc-hide-btn")!;
+        hide.focus();
+        expect(toc.panel.contains(document.activeElement)).toBe(true);
+        // bindActivate runs on mousedown / keyboard-synthesized click.
+        hide.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(toc.isOpen()).toBe(false);
+        expect(document.activeElement).toBe(view.dom);
+    });
+
+    it("a responsive docked→overlay collapse with focus inside should also restore the editor", () => {
+        const { toc, view } = openPanel();
+        toc.focusPanel();
+        expect(toc.panel.contains(document.activeElement)).toBe(true);
+        // Shrink below tocWidth (260) + DOCKED_MIN_CONTENT_WIDTH (720): the
+        // resize listener flips to overlay and closes the panel.
+        Object.defineProperty(window, "innerWidth", { value: 700, configurable: true });
+        const resize = (fakeEventManager.onWindow as ReturnType<typeof vi.fn>).mock.calls
+            .find((c) => c[0] === "resize")?.[1] as () => void;
+        resize();
+        expect(toc.isOpen()).toBe(false);
+        expect(document.activeElement).toBe(view.dom);
+    });
+
+    it("closing the panel with focus elsewhere should leave that focus alone", () => {
+        const { toc } = openPanel();
+        const outside = document.createElement("button");
+        document.body.appendChild(outside);
+        outside.focus();
+        toc.toggle(); // hide
+        expect(toc.isOpen()).toBe(false);
+        expect(document.activeElement).toBe(outside);
+    });
+});
