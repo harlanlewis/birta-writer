@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.806.1] - 2026, August 6
+
 ### Added
 
 - A block can be dropped inside a list item, between the blocks that make it up. Dragging into the gap between an item's paragraph and the quote, code block, or sublist under it now shows a drop target at the item's content column, and the drop nests the block into the item; until now a drag could only land beside the item, and a block already inside one could only be pulled out. Items holding a single block offer no interior target, no target is offered ahead of an item's first paragraph, and an item written as `- > quote` (whose first block is not a paragraph) offers none at all, because a second block there would break the list open on reopen.
