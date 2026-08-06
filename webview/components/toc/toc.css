@@ -39,8 +39,8 @@
    tab itself never moves, so the cursor stays over it. This is a floating card —
    auto height (capped, the list scrolls), rounded, shadowed, bordered — not the
    flush full-height edge drawer, and it floats above the content (never pushing
-   it). It sits ABOVE the formatting/link palettes (z 1200 / 9999) so they slide
-   under it rather than punching hover-holes through it.
+   it). It sits ABOVE the formatting and link palettes so they slide under it
+   rather than punching hover-holes through it.
    Enter/exit is a slight slide-DOWN + fade (toc-panel--flyout-in toggles it);
    `overflow: visible` keeps the hover-band ::before below unclipped, and the
    inner .toc-list keeps its own scroll (min-height:0 so it can shrink to cap). */
@@ -799,7 +799,7 @@ body.toc-overlay-open .toc-toggle-tab {
 }
 
 /* While the flyout is out: lift the reveal tab ABOVE the flyout panel and its
-   hover band (z 10000) so its own clicks/hover still land, and hold its hover
+   hover band so its own clicks/hover still land, and hold its hover
    look — it reads as the active trigger of the open flyout even as the cursor
    roams the panel. */
 body.toc-flyout-open .toc-toggle-tab {

@@ -129,11 +129,18 @@ export function handleUnfurlResult(
     if (!range) { return; }
     const url = pending.url;
     const pos = pending.pos;
-    const anchorRect = rectForRange(view, range.from, range.to);
+    const from = range.from;
+    const to = range.to;
     void loadUnfurlOffer()
         .then((mod) => mod.offerUnfurlTitle({
             title,
-            anchorRect,
+            // Measured INSIDE the continuation, not before it: this is a
+            // viewport rect and `loadUnfurlOffer` is a lazy import that can
+            // take a real fetch on the first unfurl of a session. Measured
+            // beforehand and later composed with the current scrollY, the
+            // pill landed adrift by however far the user scrolled in the gap —
+            // and it is the consent surface for rewriting their document.
+            anchorRect: rectForRange(view, from, to),
             // Re-resolve on accept rather than closing over `range`: the user
             // may have kept typing while the offer was up.
             onAccept: () => upgradeBareLinkToTitle(view, url, pos, title),

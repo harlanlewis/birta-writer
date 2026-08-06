@@ -180,7 +180,6 @@ export function createLangPicker(
         escapeLayerOff ??= registerEscapeLayer(close);
         const rect = triggerBtn.getBoundingClientRect();
         const dropW = Math.max(rect.width, 160);
-        dropdown.style.left = `${rect.left}px`;
         dropdown.style.width = `${dropW}px`;
         dropdown.style.top = "";
         dropdown.style.bottom = "";
@@ -199,6 +198,9 @@ export function createLangPicker(
             viewportSize(),
             { gap: 2 },
         );
+        // `placed.left` is the clamped edge — the raw `rect.left` ran a
+        // right-hand code block's dropdown off the screen.
+        dropdown.style.left = `${placed.left}px`;
         if (placed.above) {
             dropdown.style.bottom = `${placed.cssBottom}px`;
         } else {

@@ -27,6 +27,8 @@ import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockCon
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { trackEditorReflow } from "@/ui/editorReflow";
+import { safeAreaTop } from "@/utils/headingUtils";
 import './imageView.css';
 
 // ─── webviewUri ↔ relPath bidirectional map (written by index.ts when init/revert messages arrive) ─────
@@ -481,6 +483,21 @@ export function createImageView(
         }
     }
 
+    // Open the toolbar above the image, or below it when the space above is
+    // inside the fixed chrome. The band ends at the chrome's bottom edge, not
+    // at y=0 — measured from y=0 an image sitting just under the topbar kept
+    // its toolbar above and drew it behind the bar, which paints over it.
+    function placeToolbar(): void {
+        const rect = wrapper.getBoundingClientRect();
+        const clearance = toolbar.offsetHeight + 10; // 6px gap + margin
+        toolbar.classList.toggle(
+            "image-toolbar--below",
+            rect.top - safeAreaTop() < clearance,
+        );
+    }
+
+    let reflowOff: (() => void) | null = null;
+
     // ── NodeView interface ────────────────────────────────────
     return {
         dom: wrapper,
@@ -534,18 +551,20 @@ export function createImageView(
             controls.reveal();
             controlsCol.classList.add("bc-col--shown");
 
-            // If the toolbar would extend past the top of the viewport, show
-            // it below the image instead. Measured, not hardcoded: the
-            // toolbar is two rows tall and grows if more rows are added.
-            const rect = wrapper.getBoundingClientRect();
-            const clearance = toolbar.offsetHeight + 10; // 6px gap + margin
-            toolbar.classList.toggle("image-toolbar--below", rect.top < clearance);
+            placeToolbar();
+            // The side that fits is a function of where the image is on
+            // screen, so it has to be re-asked as the content moves under it —
+            // decided once at selection, scrolling the image up under the
+            // topbar left the toolbar in `above` mode and hid it behind the bar.
+            reflowOff ??= trackEditorReflow(view.dom, placeToolbar);
         },
 
         deselectNode(): void {
             wrapper.classList.remove("image-wrapper--selected");
             toolbar.style.display = "none";
             controlsCol.classList.remove("bc-col--shown");
+            reflowOff?.();
+            reflowOff = null;
         },
 
         stopEvent(e: Event): boolean {
@@ -569,6 +588,8 @@ export function createImageView(
         },
 
         destroy(): void {
+            reflowOff?.();
+            reflowOff = null;
             detachCaptionUndo();
             detachTitleUndo();
             // Clean up the lightbox (if the one triggered by this image is still showing)

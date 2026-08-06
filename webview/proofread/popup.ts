@@ -86,8 +86,11 @@ export function showFindingsPopup(view: EditorView, anchorPos: number, findings:
     document.body.appendChild(popup);
     activePopup = popup;
 
-    // Position below the anchor, clamped to the viewport; flip above on
-    // overflow (even into less room — the top clamp keeps it on screen).
+    // Position below the anchor, clamped to the usable area; flip above on
+    // overflow (even into less room — the engine's floor keeps it on screen).
+    // That floor is the fixed chrome's bottom edge, not 8px from the viewport
+    // top: a stacked multi-finding popup flagged near the top of the screen
+    // used to clamp to y=8 and disappear behind the toolbar.
     const coords = view.coordsAtPos(anchorPos);
     const rect = popup.getBoundingClientRect();
     const placed = computeAnchoredPosition(
@@ -97,7 +100,11 @@ export function showFindingsPopup(view: EditorView, anchorPos: number, findings:
         { gap: 4, fitSlack: 4, flipPolicy: "overflow" },
     );
     popup.style.left = `${placed.left}px`;
-    popup.style.top = `${Math.max(8, placed.top)}px`;
+    popup.style.top = `${placed.top}px`;
+    // Clipped by the floor it can lose its action buttons off the bottom, so
+    // give it the space that actually exists and let it scroll inside that.
+    popup.style.maxHeight = `${placed.maxHeight}px`;
+    popup.style.overflowY = "auto";
 
     const onKeyDown = (e: KeyboardEvent) => {
         // Only a bare Escape closes a layer; modifier-Escape (Shift+Esc pops

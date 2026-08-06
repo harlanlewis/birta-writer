@@ -198,13 +198,17 @@ function position(view: EditorView): void {
         host?.querySelector(".embed-card") ?? host;
     if (!anchor) { return; }
     const rect = (anchor as HTMLElement).getBoundingClientRect();
+    // Measure and clamp in VIEWPORT coords, then convert to the document
+    // coords this absolutely-positioned palette lives in. Adding scrollX to
+    // `left` before the clamp mixed the two spaces in one rect and compared a
+    // document-x against the viewport width.
     const placed = computeAnchoredPosition(
-        { left: rect.left + window.scrollX, right: rect.right, top: rect.top, bottom: rect.bottom },
+        { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
         { width: root.offsetWidth, height: root.offsetHeight },
         viewportSize(),
     );
     root.style.top = `${placed.top + window.scrollY}px`;
-    root.style.left = `${placed.left}px`;
+    root.style.left = `${placed.left + window.scrollX}px`;
 }
 
 /**

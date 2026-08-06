@@ -246,7 +246,10 @@
 .img-editor-lightbox {
     position: fixed;
     inset: 0;
-    z-index: 9999;
+    /* Above the topbar (10002). A fullscreen preview that the opaque toolbar
+       paints across is not fullscreen, and the close button sits at top: 16px
+       — under the bar, its upper half was unclickable. */
+    z-index: 10010;
     background: color-mix(in srgb, var(--vscode-editor-background) 25%, transparent);
     backdrop-filter: blur(2px);
     display: flex;

@@ -36,6 +36,7 @@ import {
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
     createSuggestMenuFromRows,
+    trackSuggestMenuAnchor,
     type LinkSuggestMenu,
     type SuggestMenuAnchor,
 } from "@/ui/suggestList";
@@ -204,8 +205,12 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
     // re-open a menu the user already dismissed.
     let closeGeneration = 0;
 
+    let reflowOff: (() => void) | null = null;
+
     /** Tears the menu DOM down without invalidating in-flight requests. */
     function removeMenu(): void {
+        reflowOff?.();
+        reflowOff = null;
         menu?.destroy();
         menu = null;
     }
@@ -236,6 +241,9 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
             { left: rect.left, top: rect.bottom + 2, flipTop: rect.top - 2, minWidth: rect.width },
             applySelection,
         );
+        // The link popup hosting this field tracks reflow itself; without this
+        // the popup moved and its dropdown stayed behind.
+        reflowOff ??= trackSuggestMenuAnchor(input, () => menu, { pinWidth: true });
     }
 
     /**

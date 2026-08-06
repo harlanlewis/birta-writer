@@ -5,9 +5,10 @@
     position: fixed;
     top: calc(var(--editor-topbar-height, 40px) + 6px);
     right: 16px;
-    /* Sits in the band between the sticky heading title (1100), which must not
-       paint over the find bar, and the topbar (1200), whose dropdown menus
-       (Format / Checks / Settings) must paint OVER it. So: 1100 < 1180 < 1200. */
+    /* Above the sticky heading title, which must not paint over the find bar,
+       and below the topbar and its dropdown menus (Format / Checks /
+       Settings), which must paint OVER it. The bar never reaches the topbar's
+       band anyway: `top` is offset by its measured height above. */
     z-index: 1180;
     display: flex;
     align-items: stretch;

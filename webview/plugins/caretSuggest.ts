@@ -17,6 +17,7 @@ import { Plugin, type PluginKey } from "../pm";
 import type { EditorState, EditorView } from "../pm";
 import type { LinkSuggestMenu, SuggestMenuAnchor } from "../components/pathLink/linkTargetComplete";
 import { setPendingRange } from "./pendingRange";
+import { trackEditorReflow } from "../ui/editorReflow";
 
 /**
  * How far back from the caret the match window reaches, in characters. Every
@@ -258,10 +259,41 @@ class CaretSuggestController {
      * caller either rebuilds immediately (showMenu) or is a deliberate
      * close that clears it itself (closeMenu). */
     private removeMenu(): void {
+        this.reflowOff?.();
+        this.reflowOff = null;
         this.menu?.destroy();
         this.menu = null;
         this.shownFor = null;
         openControllers.delete(this);
+    }
+
+    private reflowOff: (() => void) | null = null;
+
+    /**
+     * Follow the caret while the menu is open.
+     *
+     * These menus are `position: fixed` but anchored to a caret measured once
+     * at build time, and update() deliberately short-circuits when the matched
+     * construct is unchanged (so the arrow highlight survives a keystroke).
+     * Scrolling therefore left the menu stranded at the coordinates it opened
+     * at while the caret it belongs to travelled away. The slash menu solves
+     * the same problem by re-anchoring on every scroll.
+     *
+     * An unmeasurable caret leaves the menu where it is. Re-placing it against
+     * the zero fallback would fling it to the top-left corner, which is worse
+     * than a briefly stale position and, unlike a stale position, is not
+     * self-correcting on the next frame.
+     */
+    private trackCaret(): void {
+        this.reflowOff ??= trackEditorReflow(this.view.dom, () => {
+            const c = this.caretCoordsOrNull();
+            if (!this.menu || !c) { return; }
+            this.menu.reposition({
+                left: c.left,
+                top: c.bottom + 4,
+                flipTop: c.top - 4,
+            });
+        });
     }
 
     // The last chip range applied (-1 = none), so update()'s per-transaction
@@ -344,6 +376,7 @@ class CaretSuggestController {
         );
         if (this.menu) {
             openControllers.add(this);
+            this.trackCaret();
             this.shownFor = { start: match.start, caret: match.caret, query: match.query };
             this.syncChip(match);
         } else {
@@ -357,14 +390,19 @@ class CaretSuggestController {
     }
 
     /** Viewport coordinates of the caret (menu anchor). */
-    private caretCoords(): { left: number; top: number; bottom: number } {
+    private caretCoordsOrNull(): { left: number; top: number; bottom: number } | null {
         try {
             const c = this.view.coordsAtPos(this.view.state.selection.from);
             return { left: c.left, top: c.top, bottom: c.bottom };
         } catch {
             // jsdom (unit tests) cannot measure text positions.
-            return { left: 0, top: 0, bottom: 0 };
+            return null;
         }
+    }
+
+    /** Caret coordinates, falling back to the origin when unmeasurable. */
+    private caretCoords(): { left: number; top: number; bottom: number } {
+        return this.caretCoordsOrNull() ?? { left: 0, top: 0, bottom: 0 };
     }
 
     // ── Picking ──────────────────────────────────────────────────────────

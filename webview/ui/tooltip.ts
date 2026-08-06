@@ -1,4 +1,4 @@
-import { getTopbarBottom } from "../utils/headingUtils";
+import { safeAreaTop } from "../utils/headingUtils";
 
 let tooltipEl: HTMLElement | null = null;
 
@@ -57,6 +57,11 @@ function position(
     let x = elRect.left + elRect.width / 2 - tipRect.width / 2;
     let y: number;
 
+    // The fixed chrome (the topbar, and the sticky heading under it) paints
+    // over the tooltip, so every vertical decision below is taken against this
+    // line rather than the viewport top.
+    const safeTop = safeAreaTop();
+
     if (placement === "left") {
         x = elRect.left - tipRect.width - 6;
         y = elRect.top + elRect.height / 2 - tipRect.height / 2;
@@ -64,15 +69,9 @@ function position(
             // No room on the left: fall through to the right side.
             x = elRect.right + 6;
         }
-        if (y < getTopbarBottom() + 4) {
-            y = getTopbarBottom() + 4;
-        }
     } else if (placement === "above") {
         y = elRect.top - tipRect.height - 6;
-        // The fixed topbar (z 10002) covers the tooltip (z 10000), so "room
-        // above" ends at the bar's bottom edge, not the viewport top — chrome
-        // flush under the bar (the sticky heading) must drop its tip below.
-        if (y < getTopbarBottom() + 4) {
+        if (y < safeTop + 4) {
             y = elRect.bottom + 6;
         } // not enough room above, so drop below
     } else {
@@ -80,6 +79,17 @@ function position(
         if (y + tipRect.height > window.innerHeight - 4) {
             y = elRect.top - tipRect.height - 6;
         }
+    }
+
+    // Every branch has a fallback that can itself land in the band: `above`
+    // and `below` each flip to the other side without re-checking, and an
+    // anchor that is ITSELF under the chrome (a table grip on a scrolled
+    // table) leaves both sides inside it. One floor covers all three.
+    if (y < safeTop + 4) {
+        y = safeTop + 4;
+    }
+    if (y + tipRect.height > window.innerHeight - 4) {
+        y = Math.max(safeTop + 4, window.innerHeight - tipRect.height - 4);
     }
 
     if (x + tipRect.width > window.innerWidth - 4) {

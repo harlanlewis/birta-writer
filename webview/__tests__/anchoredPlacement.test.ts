@@ -194,6 +194,88 @@ describe("computeAnchoredPosition — vertical", () => {
     });
 });
 
+// The usable area's top edge is the fixed chrome's bottom (topbar + sticky
+// heading), not 0 — a popup placed above it is painted over by an opaque bar
+// and is invisible AND unclickable, while the code that placed it believes it
+// succeeded. Every case here reads against a 40px inset.
+describe("computeAnchoredPosition — safe-area top inset", () => {
+    const INSET = { width: 1000, height: 800, top: 40 };
+    function anchorAt(top: number, bottom: number, left = 100) {
+        return { left, right: left + 100, top, bottom };
+    }
+
+    it("a flip that would land in the chrome band should floor at the safe top", () => {
+        // A tall anchor: below doesn't fit (spaceBelow 300 < 308), so it flips
+        // — and the flip lands at 300 - 6 - 300 = -6, inside the band.
+        const p = computeAnchoredPosition(anchorAt(300, 500), MENU, INSET, {
+            gap: 6, flipPolicy: "overflow",
+        });
+        expect(p.above).toBe(true);
+        expect(p.top).toBe(40);
+    });
+
+    it("the same anchor without an inset should still floor at zero", () => {
+        const p = computeAnchoredPosition(anchorAt(300, 500), MENU, VIEWPORT, {
+            gap: 6, flipPolicy: "overflow",
+        });
+        expect(p.above).toBe(true);
+        expect(p.top).toBe(0);
+    });
+
+    it("space above should be measured net of the inset, not from zero", () => {
+        // spaceBelow = 800 - 360 = 440; spaceAbove = 350 - 40 = 310. Below is
+        // the larger side once the band is discounted, so no flip — measured
+        // from 0 the 350px above would have won and hidden the popup.
+        const p = computeAnchoredPosition(anchorAt(350, 360), { width: 200, height: 500 }, INSET);
+        expect(p.above).toBe(false);
+    });
+
+    it("an anchor scrolled under the chrome should push its popup clear of the band", () => {
+        // The anchor's bottom is inside the band, so "below" starts at the
+        // safe top rather than following the anchor underneath the bar.
+        const p = computeAnchoredPosition(anchorAt(-40, 10), MENU, INSET, { gap: 6 });
+        expect(p.above).toBe(false);
+        expect(p.top).toBe(40);
+    });
+
+    it("a squeezed popup should report the space it actually has", () => {
+        // Below the anchor: 800 - 8 - (620 + 6) = 166 of usable height.
+        const p = computeAnchoredPosition(anchorAt(600, 620), { width: 200, height: 600 }, INSET, {
+            gap: 6, flipPolicy: "larger-side",
+        });
+        expect(p.above).toBe(true);
+        // Above: spaceAbove (600 - 40) minus the gap.
+        expect(p.maxHeight).toBe(554);
+    });
+
+    it("maxHeight should never collapse below the readable floor", () => {
+        // A pane so short that the band leaves negative room: report the
+        // floor and let the popup scroll, rather than a nonsense height.
+        const p = computeAnchoredPosition(anchorAt(80, 90), MENU, { width: 400, height: 100, top: 40 }, { gap: 6 });
+        expect(p.maxHeight).toBe(48);
+    });
+
+    it("a hidden toolbar (inset 0) should reproduce the pre-inset placement", () => {
+        const withBar = computeAnchoredPosition(anchorAt(200, 220), MENU, INSET, { gap: 6 });
+        const noBar = computeAnchoredPosition(anchorAt(200, 220), MENU, VIEWPORT, { gap: 6 });
+        expect(noBar.top).toBe(withBar.top); // both place below, unaffected
+        expect(noBar.above).toBe(false);
+    });
+});
+
+describe("computeMenuPlacement — safe-area top inset", () => {
+    it("a menu that would flip up into the chrome band should stay below", () => {
+        // Room above the anchor (60) exceeds the margin, but not once the
+        // 40px band is discounted, so the upward flip is refused.
+        const anchor = { left: 100, right: 140, top: 60, bottom: 780 };
+        const menu = { width: 200, height: 40 };
+        expect(computeMenuPlacement(anchor, menu, { width: 1000, height: 800 }).flipUp).toBe(true);
+        expect(
+            computeMenuPlacement(anchor, menu, { width: 1000, height: 800, top: 40 }).flipUp,
+        ).toBe(false);
+    });
+});
+
 describe("computeAnchoredPosition — horizontal", () => {
     it("the returned left should be clamped into the viewport", () => {
         const p = computeAnchoredPosition(

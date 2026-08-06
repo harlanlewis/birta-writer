@@ -149,17 +149,24 @@ function showDefinitionPopup(view: EditorView, label: string, anchor: HTMLElemen
     requestAnimationFrame(() => {
         const rect = anchor.getBoundingClientRect();
         const popupRect = popup.getBoundingClientRect();
-        // Document coords (absolute popup): scrollX rides into the clamp,
-        // scrollY onto the flip-decided top. Flip above whenever below
-        // overflows — a hover preview must never cover the reference.
+        // Measure and clamp in viewport coords, then convert to the document
+        // coords this absolute popup lives in. Flip above whenever below
+        // overflows — a hover preview must never cover the reference — and
+        // note the engine floors that flip at the fixed chrome's bottom, so a
+        // long definition on a reference near the top of the screen no longer
+        // flips up behind the toolbar (or off the top of the page entirely).
         const placed = computeAnchoredPosition(
-            { left: rect.left + window.scrollX, right: rect.right, top: rect.top, bottom: rect.bottom },
+            { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
             { width: popupRect.width, height: popupRect.height },
             viewportSize(),
             { flipPolicy: "overflow" },
         );
-        popup.style.left = `${placed.left}px`;
+        popup.style.left = `${placed.left + window.scrollX}px`;
         popup.style.top = `${placed.top + window.scrollY}px`;
+        // A definition too tall for the space scrolls inside it rather than
+        // running off an edge.
+        popup.style.maxHeight = `${placed.maxHeight}px`;
+        popup.style.overflowY = "auto";
         popup.style.visibility = "visible";
     });
 }

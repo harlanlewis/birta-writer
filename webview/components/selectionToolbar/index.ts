@@ -55,6 +55,7 @@ import { notifyCopyAgentReference } from "@/messaging";
 import { computeToolbarActiveState } from "@/components/toolbar/activeState";
 import { trackEditorReflow } from "@/ui/editorReflow";
 import { clampLeft, viewportSize } from "@/ui/anchoredPlacement";
+import { safeAreaTop } from "@/utils/headingUtils";
 import './selectionToolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -66,10 +67,14 @@ type GetEditor = () => Editor | null;
  * this runs) menu height. Deliberately NOT ui/anchoredPlacement: these menus
  * are CSS-anchored to their button wrapper (`calc(100% + 6px)`), invert the
  * usual below-first preference, and never clamp horizontally.
+ *
+ * The room above the bar ends at `safeAreaTop()`, not at the viewport top —
+ * the palette itself can sit just clear of the topbar while a menu opening
+ * upward from it lands underneath the bar and vanishes.
  */
 function placeSubmenuVertical(menu: HTMLElement, btn: HTMLElement, approxH: number): void {
     const rect = btn.getBoundingClientRect();
-    if (rect.top < approxH + 16) {
+    if (rect.top - safeAreaTop() < approxH + 16) {
         menu.style.bottom = "auto";
         menu.style.top = "calc(100% + 6px)";
     } else {
@@ -828,9 +833,16 @@ export function setupSelectionToolbar(
         delBlockBtn.style.display = "none";
     }
 
+    // Above the selection by preference, below it when there is no room —
+    // measured against the usable band, whose top edge is the fixed chrome's
+    // bottom rather than y=0. Against y=0 a selection on the first line always
+    // "fit" above, and the palette rendered underneath the opaque topbar:
+    // present, positioned, and invisible.
     function positionToolbar(view: EditorView, from: number, to: number): void {
         const tbW = toolbar.offsetWidth;
         const tbH = toolbar.offsetHeight;
+        const viewport = viewportSize();
+        const safeTop = viewport.top ?? 0;
         let leftX: number, topY: number;
         if (pendingPos) {
             const px = pendingPos.x;
@@ -846,11 +858,15 @@ export function setupSelectionToolbar(
             const endC = view.coordsAtPos(to);
             leftX = (startC.left + endC.right) / 2 - tbW / 2;
             topY = startC.top - tbH - 8;
-            if (topY < 8) {
+            if (topY < safeTop + 8) {
                 topY = endC.bottom + 8;
             }
         }
-        leftX = clampLeft(leftX, tbW, viewportSize());
+        leftX = clampLeft(leftX, tbW, viewport);
+        // The below-fallback overflows in its turn for a selection near the
+        // bottom edge, so bound both ends; the safe top wins in a pane too
+        // short to hold the bar at all.
+        topY = Math.max(safeTop + 8, Math.min(topY, viewport.height - tbH - 8));
         toolbar.style.left = `${leftX}px`;
         toolbar.style.top = `${topY}px`;
         toolbar.style.visibility = "visible";

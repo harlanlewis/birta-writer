@@ -21,7 +21,7 @@
     top: calc(var(--editor-topbar-height, 40px) + 6px);
     right: 16px;
     /* Same band as the find bar (see findBar.css): above the sticky heading
-       title (1100), below the topbar and its dropdown menus (1200). */
+       title, below the topbar and its dropdown menus. */
     z-index: 1180;
     width: min(480px, calc(100vw - 32px));
     max-height: calc(100vh - var(--editor-topbar-height, 40px) - 22px);

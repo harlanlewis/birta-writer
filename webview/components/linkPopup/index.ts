@@ -539,6 +539,11 @@ export function setupLinkPopup(
             // focus lives in the popup's inputs (a caret insert has from===to,
             // which the plugin treats as "nothing to highlight").
             highlightPending();
+            // Expanding changes the popup's height, which is an input to the
+            // above/below decision — re-place it rather than letting it grow
+            // downward from a `top` chosen for the collapsed box (an
+            // above-placed popup grew over the link it is editing).
+            repositionToAnchor();
             // Focus the URL first — it's the primary field and now leads the
             // form; the label is usually prefilled from the selection anyway.
             requestAnimationFrame(() => inputUrl.focus());
@@ -737,17 +742,17 @@ export function setupLinkPopup(
         // bottom of the flow) into view — a later frame would then read the
         // bumped window.scrollY and place the popup far below its anchor. The
         // caller sets display:flex first, so offsetHeight is measurable now.
-        // The popup is absolutely positioned in document coords: the anchor's
-        // left carries scrollX into the clamp and scrollY is added to the
-        // flip-decided top (flip/fit are viewport questions, so those use the
-        // raw viewport rect).
+        // The popup is absolutely positioned in document coords, but fit,
+        // flip and clamp are all VIEWPORT questions — so measure and clamp in
+        // viewport space and convert afterwards. Carrying scrollX into the
+        // rect beforehand compared a document-x against the viewport width.
         const placed = computeAnchoredPosition(
-            { left: rect.left + window.scrollX, right: rect.right, top: rect.top, bottom: rect.bottom },
+            { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
             { width: popup.offsetWidth, height: popup.offsetHeight },
             viewportSize(),
         );
         popup.style.top = `${placed.top + window.scrollY}px`;
-        popup.style.left = `${placed.left}px`;
+        popup.style.left = `${placed.left + window.scrollX}px`;
     }
 
     /**
