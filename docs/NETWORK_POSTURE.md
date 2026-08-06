@@ -2,9 +2,9 @@
 
 Status: a record of live behavior and directed work, not exploration.
 
-This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds), and the directed design ahead of it (MAR-198's connector foundation). It is tracked as decision D10 in the private strategy corpus. The strategy documents cited by name below live in that corpus rather than in this repository; they are named so the reasoning stays traceable.
+This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds), and the directed design ahead of it (MAR-198's connector foundation).
 
-Most of this is checkable, unlike those documents. Where it describes shipped behavior it is a fact about the tree. Where it describes MAR-198 it is directed but unbuilt, and says so.
+All of it is checkable. Where it describes shipped behavior it is a fact about the tree. Where it describes MAR-198 it is directed but unbuilt, and says so.
 
 ---
 
@@ -30,7 +30,7 @@ URL embed cards contact the recognized provider's own pinned hosts, and ask that
 
 ### Rungs 1 and 2 never upload document content
 
-That is what makes rung 3 a category change rather than one more checkbox, and it is why `PUBLISH_LOOP.md` argues publishing needs its own consent architecture. That argument survives rung 2 existing. It is strengthened by it.
+That is what makes rung 3 a category change rather than one more checkbox: publishing would need its own consent architecture, not one more toggle on this one. Rung 2 existing strengthens that rather than weakening it.
 
 ### Rung 2 is where identity enters
 
@@ -97,21 +97,12 @@ Every mechanism above that handles a credential is VS Code's:
 - `vscode.authentication.getSession`, the built-in GitHub provider, which makes GitHub's rung 2 nearly free
 - `"scope": "application"`, the guarantee that a shared workspace config cannot flip a consent key
 
-None of these has an analog on Tauri, Capacitor, iPadOS, or the web. `MULTI_SURFACE_INVESTIGATION.md` §2's `HostAdapter` sketch lists "a single network fetch (unfurl)" and nothing else, and its §14 capability taxonomy has no bucket for credential storage or a callback route. So any surface bet inherits three uncosted pieces of work: a keychain, a callback-URL scheme, and a consent-scope guarantee. Invariant 2 in particular has no obvious reimplementation off VS Code, because application scope is a VS Code settings concept.
+None of these has an analog on Tauri, Capacitor, iPadOS, or the web, so any surface beyond VS Code inherits three pieces of work that no host-adapter design has costed: a keychain, a callback-URL scheme, and a consent-scope guarantee. Invariant 2 in particular has no obvious reimplementation off VS Code, because application scope is a VS Code settings concept.
 
 That is the live question, and it is a reason to treat this document as an input to the persistence and host-contract design (MAR-226) rather than as a separate concern.
 
 ---
 
-## 4. Where this bites the other documents
-
-- `PUBLISH_LOOP.md` §8. The publish loop is rung 3. Its argument that publishing is a categorical change holds; what it gains from this document is that the layered consent architecture it says publishing would need is already designed at rung 2. Extend that ladder, do not invent one.
-- `AI_ASSISTANCE.md` §3.6. "BYO-key" is rung 2 with a different provider. Reuse invariants 7 to 9 rather than standing up a second key store. On-device inference is rung 0, which is exactly why the AI posture and the privacy claim reinforce each other.
-- `MULTI_SURFACE_INVESTIGATION.md` §9. Its identity and auth section reasoned from "today: zero", and is corrected in place. Section 3 above is the portability gap that correction implies.
-- `SURFACE_STRATEGY.md`. A cloud-backed surface is rung 3 by construction, which is most of why that document rates it the worst brand fit despite the best feasibility.
-
----
-
 ## Tracking
 
-MAR-198 (connector foundation, the rung-2 design), MAR-186 (provider roadmap), MAR-179 and MAR-199 (the shipped consent ladder and its application scope, both Done), MAR-232 (rung 3, gated). The open portability question is D10 in the private strategy corpus, feeding MAR-226.
+MAR-198 (connector foundation, the rung-2 design), MAR-186 (provider roadmap), MAR-179 and MAR-199 (the shipped consent ladder and its application scope, both Done), MAR-232 (rung 3, gated). The open portability question feeds MAR-226.
