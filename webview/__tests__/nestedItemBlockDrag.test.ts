@@ -36,10 +36,21 @@ function reparseDiff(e: Editor, v: EditorView): string {
 /**
  * MAR-88 ships the gutter grabber for a container/leaf block nested inside a
  * list item (blockquote/code/callout/table/heading), making its block menu and
- * drag handle reachable. The block's drag offers only the existing (safe) drop
- * slots — no NEW item-internal block slots (those exposed unfixed serializer
- * round-trip hazards and are deferred; see moveProperty.test.ts). This guard
- * pins that dragging such a block OUT of its item to top level round-trips.
+ * drag handle reachable. This guard pins that dragging such a block OUT of its
+ * item to top level round-trips.
+ *
+ * The item-internal DROP SLOTS (blockBoundaryPositions' walkList) were
+ * deferred from the first MAR-88 cut because block-between-continuation-blocks
+ * arrangements then corrupted through the serializer (a MAR-113-family
+ * hazard). Re-measured 2026-08-05: every such arrangement now round-trips
+ * clean (paragraph/blockquote/code/callout/table/heading between continuation
+ * blocks, loose and tight lists, ordered lists, nested sublists), so the slots
+ * shipped. The pins below hold that shape: the slots exist (with their two
+ * deliberate gaps — none before an item's lead paragraph, none inside a
+ * single-child item), and a move through an EMITTED slot round-trips. The
+ * generative gates (moveProperty, corpusMoveSampling) sweep the expanded
+ * pair space automatically, since their targets come from
+ * visibleBoundaryPositions.
  */
 describe("MAR-88 marker drag-out safety", () => {
     const cases: [string, string][] = [
@@ -153,4 +164,103 @@ describe("MAR-88 discovered: vacated-item bare marker", () => {
         const harmless = docOf(ul(li(p()), li(p("item two"))));
         expect(reparseRefusal(pre, harmless)).toBeNull();
     });
+});
+
+describe("MAR-88 item-internal drop slots", () => {
+    /** The block-kind slots owned by the first list item of the doc. */
+    function itemSlots(v: EditorView): number[] {
+        const doc = v.state.doc;
+        const itemPos = 1; // doc → list at 0 → first item at 1
+        expect(doc.nodeAt(itemPos)?.type.name).toBe("list_item");
+        return blockBoundaryPositions(doc)
+            .filter((b) => b.kind === "block" && b.ownerPos === itemPos)
+            .map((b) => b.pos);
+    }
+
+    it("a multi-child item should emit slots between continuation blocks and at its end, but none before the lead paragraph", async () => {
+        const e = await make("- para A\n\n  > quote B\n\n  para C\n\n- item two");
+        const v = view(e);
+        const doc = v.state.doc;
+        const item = doc.nodeAt(1)!;
+        // Children: para A, blockquote, para C → slots before child 1 and 2
+        // plus end-of-item; the lead-paragraph slot (pos 2) is deliberately
+        // absent (list_item is `paragraph block*`, so a non-paragraph drop
+        // there could only refuse — the slot is never offered).
+        const expected: number[] = [];
+        let childEnd = 2;
+        item.forEach((child, offset, index) => {
+            if (index > 0) expected.push(2 + offset);
+            childEnd = 2 + offset + child.nodeSize;
+        });
+        expected.push(childEnd);
+        expect(itemSlots(v)).toEqual(expected);
+        expect(itemSlots(v)).not.toContain(2);
+    });
+
+    it("a single-child item should emit no item-internal slots", async () => {
+        const e = await make("- just one paragraph\n- item two");
+        const v = view(e);
+        expect(itemSlots(v)).toEqual([]);
+    });
+
+    it("a container nested in an item should contribute its own interior slots", async () => {
+        const e = await make("- para A\n\n  > quote B\n\n- item two");
+        const v = view(e);
+        const doc = v.state.doc;
+        // The blockquote is child 1 of the first item.
+        let quotePos = -1;
+        doc.nodeAt(1)!.forEach((child, offset, index) => {
+            if (index === 1) quotePos = 2 + offset;
+        });
+        expect(doc.nodeAt(quotePos)?.type.name).toBe("blockquote");
+        const interior = blockBoundaryPositions(doc)
+            .filter((b) => b.kind === "block" && b.ownerPos === quotePos);
+        // block+ container: slot before its paragraph + end-of-container.
+        expect(interior.length).toBeGreaterThanOrEqual(2);
+    });
+
+    const dropCases: [string, string, (v: EditorView) => number][] = [
+        [
+            "a top-level paragraph dropped between an item's para and quote",
+            "- para A\n\n  > quote B\n\n- item two\n\nfloating para",
+            (v) => itemSlots(v)[0]!, // before the quote
+        ],
+        [
+            "a top-level quote dropped at an item's end",
+            "- para A\n\n  > quote B\n\n- item two\n\n> floating quote",
+            (v) => itemSlots(v).at(-1)!, // end-of-item
+        ],
+        [
+            "a top-level paragraph dropped inside a quote nested in an item",
+            "- para A\n\n  > quote B\n\n- item two\n\nfloating para",
+            (v) => {
+                const doc = v.state.doc;
+                let quotePos = -1;
+                doc.nodeAt(1)!.forEach((child, offset, index) => {
+                    if (index === 1) quotePos = 2 + offset;
+                });
+                return blockBoundaryPositions(doc)
+                    .find((b) => b.kind === "block" && b.ownerPos === quotePos)!.pos;
+            },
+        ],
+    ];
+    for (const [name, md, pickTarget] of dropCases) {
+        it(`${name} should land and round-trip`, async () => {
+            const e = await make(md);
+            const v = view(e);
+            expect(reparseDiff(e, v)).toBe(""); // precondition
+            // Source: the last top-level block.
+            let srcFrom = -1;
+            let srcTo = -1;
+            v.state.doc.forEach((node, offset) => {
+                srcFrom = offset;
+                srcTo = offset + node.nodeSize;
+            });
+            const target = pickTarget(v);
+            expect(target).toBeGreaterThan(0);
+            const ok = moveBlocks(v, { from: srcFrom, to: srcTo }, target);
+            expect(ok, "move through an emitted slot should succeed").toBe(true);
+            expect(reparseDiff(e, v), "the landing must round-trip").toBe("");
+        });
+    }
 });
