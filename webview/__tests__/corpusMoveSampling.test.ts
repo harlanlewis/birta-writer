@@ -606,6 +606,42 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         ).toBe("lost: (none); gained: (none)");
     });
 
+    it("merge hazard M4 (fixed in-session, 2026-08-06): a moved fence cannot leave a mismatched marker pair in the merged bytes", async () => {
+        // Found by a rotated-seed boosted sweep (MDW_MOVE_SEED=20260806,
+        // MDW_MOVE_SAMPLE=40) standing in for the nightly. Pre-existing and
+        // reachable on main: both source and target are top-level boundaries
+        // the shipped drag enumerates. Fence marker lines key by info string
+        // alone (MAR-312's fix, so ``` and ~~~ spellings survive as keeps),
+        // and under a MOVE the LCS paired one fence's kept `~~~` with a
+        // DIFFERENT fence's serializer ``` twin — a ``` run cannot close a
+        // `~~~` fence, so the mismatched pair swallowed the moved code block
+        // on reopen while the raw serialization stayed clean. The engine's
+        // lineRoles output self-check now catches the role flip and degrades
+        // that save to the serializer's own text (churn, never loss).
+        const fixture = fixtures.find((f) => f.name === "fence-tilde-after-escape.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+
+        // Source: the first top-level tilde fence ("tilde fenced content").
+        const srcPos = findContaining(v.state.doc, "code_block", "tilde fenced content");
+        expect(srcPos).toBeGreaterThan(-1);
+        const src = v.state.doc.nodeAt(srcPos)!;
+        // Target: the top-level boundary just before "closing paragraph.".
+        const target = findContaining(v.state.doc, "paragraph", "closing paragraph.");
+        expect(target).toBeGreaterThan(-1);
+
+        expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
+
+        const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
     it("a move in a document that ALREADY fails round-trip is not refused (the gesture didn't cause it)", async () => {
         const editor = await makeEditor(
             "First.\n\n:::caution\nBody.\n:::\n\nLast.",
