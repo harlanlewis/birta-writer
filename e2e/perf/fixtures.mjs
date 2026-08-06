@@ -169,17 +169,11 @@ const linkHeavy = (() => {
 })();
 
 // ── realistic ───────────────────────────────────────────────────────────────
-// A document shaped like a real working file, not a section shape repeated:
-// several MULTI-ROW tables (the generated fixtures never exceed 3×3), mermaid
-// diagrams with HTML labels, subgraphs and a stateDiagram, 900-character
-// single-line paragraphs (real authoring tools keep one paragraph on one
-// line; the generated prose hard-wraps at ~80), and prose seeded to trip the
-// style check like the gated prose fixtures. It exists because a cost cliff
-// on a real document is usually an INTERACTION between constructs, which the
-// homogeneous fixtures cannot produce — the motivating failure (a document
-// that froze the window on open) was invisible to every fixture above.
-// All five diagrams are valid: this fixture measures the healthy path. The
-// invalid-diagram error path is pinned by e2e/corpus and e2e/mermaidRender.
+// A working-file construct MIX the homogeneous fixtures can't produce: 7-row
+// tables, HTML-labeled mermaid (subgraphs, stateDiagram, styled nodes),
+// 900-char single-line paragraphs, style-seeded prose. A real document's cost
+// cliff is usually an interaction between constructs. All five diagrams are
+// valid — the invalid-diagram path is pinned by e2e/corpus and mermaidRender.
 
 const REALISTIC_DIAGRAMS = [
     `\`\`\`mermaid

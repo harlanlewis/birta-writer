@@ -1,32 +1,18 @@
 /**
- * webview/nodeViewBoundary.ts — the per-node crash boundary.
+ * Per-node crash boundary: a NodeView that throws costs its own chrome, never
+ * the editor. Unguarded, a constructor throw aborts the mount and an update()
+ * throw unwinds the keystroke's dispatch — one bad block, whole document.
  *
- * A NodeView that throws must cost its own chrome, never the editor. Without
- * this boundary the blast radius of one bad block is the whole document:  a
- * throw in a constructor propagates out of ProseMirror's view build and the
- * editor never mounts; a throw in update() unwinds the dispatch that carried
- * a keystroke. Both punish a document for one node's bug, which is exactly
- * the failure shape that shipped as "one invalid mermaid diagram froze the
- * window" — the fix for the loop lives in mermaidPane.ts, and this boundary
- * is the general rule it taught: failures scope to the failing node.
- *
- * Degradation is ProseMirror's own: a guarded factory that throws reports
- * once and returns undefined, and a falsy NodeView makes prosemirror-view
- * fall back to the schema's toDOM rendering — the node stays visible and
- * editable, only its custom chrome is lost. A guarded update() that throws
- * reports and returns false, which tells ProseMirror to rebuild the view
- * (through the guarded factory, so a persistently broken view converges to
- * toDOM instead of throwing per transaction).
- *
- * Costs nothing until something actually throws: the guards are one
- * try/catch per call on paths that are already function calls.
+ * Degradation is ProseMirror's own: a throwing factory reports once and
+ * returns undefined, which prosemirror-view renders via the schema's toDOM,
+ * so the node stays editable without its chrome. update() → false rebuilds
+ * through the guarded factory, converging a persistently broken view to toDOM.
  */
 import type { NodeViewConstructor } from "./pm";
 import { reportNodeViewFailure } from "./crashReporter";
 
-/** The NodeView methods whose throw would otherwise unwind an editor-wide
- *  code path, each with the return that makes ProseMirror take its own
- *  fallback. destroy/select/deselect return nothing; a throw is swallowed. */
+/** Guarded methods, each with the return that makes ProseMirror take its own
+ *  fallback. Void methods swallow the throw. */
 const METHOD_FALLBACKS: Record<string, unknown> = {
     update: false, // false → ProseMirror recreates the view
     ignoreMutation: false, // false → ProseMirror re-reads the DOM itself
@@ -52,12 +38,8 @@ function guardMethods(nodeId: string, nv: Record<string, unknown>): void {
     }
 }
 
-/**
- * Wrap one `nodeViewCtx` factory so a throw anywhere in the node's custom
- * rendering degrades that node to default rendering instead of taking the
- * editor down. Applied to every format-supplied NodeView at the composition
- * root (editor.ts).
- */
+/** Wrap one `nodeViewCtx` factory. Applied to every format-supplied NodeView
+ *  at the composition root (editor.ts). */
 export function guardNodeViewFactory(
     nodeId: string,
     factory: NodeViewConstructor,
@@ -68,7 +50,6 @@ export function guardNodeViewFactory(
             nv = factory(...args);
         } catch (err) {
             reportNodeViewFailure(nodeId, "create", err);
-            // Falsy → prosemirror-view renders the node via its schema toDOM.
             return undefined as unknown as ReturnType<NodeViewConstructor>;
         }
         if (nv && typeof nv === "object") {

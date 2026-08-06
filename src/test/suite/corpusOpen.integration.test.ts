@@ -1,18 +1,10 @@
 /**
- * Real-VS-Code corpus open: a real-shaped document — wide tables, HTML-labeled
- * mermaid, 900-char lines, and one DELIBERATELY INVALID diagram — opens in the
- * real custom editor, paints, and the webview keeps answering afterwards.
- *
- * This is the release-blocking form of the e2e/corpus suite: same document
- * (webview/__tests__/fixtures/mixed-real-document.md), but through the real
- * Extension Host, the real IPC hop, the real CSP, and whichever VS Code build
- * BIRTA_ITEST_VSCODE selected. The motivating failure froze the webview's main
- * thread about a second AFTER first paint (the lazily loaded mermaid chunk
- * had to arrive before the broken render loop could start), which is why this
- * test keeps polling the live `birta._test.getPerfMarks` round trip for
- * several seconds after paint instead of declaring victory at the paint mark:
- * a frozen webview never answers the next poll, the poll loop stops
- * completing, and the Mocha timeout converts that silence into a failure.
+ * Release-blocking form of the e2e/corpus suite: the real-shaped fixture
+ * (invalid mermaid included) opens in the real custom editor on whichever
+ * VS Code BIRTA_ITEST_VSCODE selected, paints, and keeps answering. The
+ * motivating freeze started ~1s AFTER paint (lazy mermaid chunk), so the test
+ * polls the live getPerfMarks round trip past that window — a frozen webview
+ * stops answering and the Mocha timeout converts silence into failure.
  */
 import * as assert from "assert";
 import * as path from "path";
@@ -36,8 +28,7 @@ describe("Birta integration: a real-shaped document opens and stays alive", () =
     it("mixed-real-document.md (invalid mermaid included) should paint and keep answering", async function () {
         this.timeout(60000);
 
-        // __dirname is out/test/suite at runtime; the fixture lives in the
-        // extension development tree three levels up.
+        // __dirname at runtime is out/test/suite; the repo root is ../../..
         const fixture = path.resolve(
             __dirname, "../../..", "webview", "__tests__", "fixtures", "mixed-real-document.md",
         );
@@ -60,11 +51,8 @@ describe("Birta integration: a real-shaped document opens and stays alive", () =
         }
         assert.ok(painted, "editor painted the real-shaped document");
 
-        // Then liveness: every poll is a full extension-host → webview → back
-        // round trip, so each completed iteration proves the webview main
-        // thread escaped whatever the previous 500 ms scheduled on it. A
-        // wedged webview stops answering and the test dies on its timeout —
-        // which is the assertion.
+        // Each poll is a full host→webview→back round trip; a wedged webview
+        // stops answering and the test dies on its timeout.
         const until = Date.now() + LIVENESS_WINDOW_MS;
         let polls = 0;
         while (Date.now() < until) {

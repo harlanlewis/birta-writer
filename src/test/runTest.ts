@@ -23,13 +23,10 @@ async function main(): Promise<void> {
 
     try {
         await runTests({
-            // BIRTA_ITEST_VSCODE selects the VS Code build under test. The
-            // release job runs the suite twice — "1.95.0" (the engines floor,
-            // which nothing else ever launches, so without this the floor is
-            // an unverified claim) and "stable". Local default is stable.
-            // History: this was pinned to 1.130.0 while
-            // @vscode/test-electron@3.0.0 spawned a path 1.131.0's macOS
-            // bundle stopped shipping (MAR-257); the 3.1 upgrade ended that.
+            // BIRTA_ITEST_VSCODE selects the build under test; the release
+            // job runs the engines floor and stable (nothing else ever
+            // launches the floor). The old 1.130.0 pin (MAR-257) retired
+            // with the @vscode/test-electron 3.1 upgrade.
             version: process.env.BIRTA_ITEST_VSCODE || "stable",
             extensionDevelopmentPath,
             extensionTestsPath,

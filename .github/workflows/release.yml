@@ -170,13 +170,10 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: pnpm typecheck && pnpm test
 
-      # The only place the declared engines floor is ever LAUNCHED. The
-      # integration suite opens real documents — including a real-shaped one
-      # with an invalid mermaid diagram — in the real custom editor and fails
-      # if the webview stops answering, so a freeze class that every unit test
-      # and delta gate missed blocks the release here, on both the oldest VS
-      # Code we claim (engines.vscode's floor) and the newest that exists.
-      # xvfb because the Electron host needs a display on a headless runner.
+      # The only place the engines floor is ever LAUNCHED. The suite opens a
+      # real-shaped document (invalid mermaid included) in the real custom
+      # editor and fails if the webview stops answering — a freeze class no
+      # unit test or delta gate can see. xvfb: Electron needs a display.
       - name: Open the corpus in the engines floor and in stable
         if: steps.plan.outputs.release == 'true'
         run: |

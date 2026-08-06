@@ -1,28 +1,16 @@
 /**
- * Corpus launch suite: every real markdown file in the repo's corpus opens in
- * the PRODUCTION bundle, paints, and leaves the main thread alive.
+ * Corpus launch suite: every real markdown file in the corpus opens in the
+ * production bundle, paints, and leaves the main thread alive. The perf
+ * fixtures are synthetic and the perf gates are delta gates, so a document
+ * class that hangs the editor was invisible to both — this is the only place
+ * the corpus is ever RENDERED (roundTripCorpus.test.ts never builds a view).
  *
- * This exists because the perf fixtures are synthetic by design (size ×
- * isolated-subsystem) and the perf gates are delta gates — a document class
- * that hangs the editor is structurally invisible to both. The corpus below
- * (the round-trip fixtures plus samples/) is real-shaped, and this suite is
- * the only place it is ever RENDERED: roundTripCorpus.test.ts serializes it
- * in jsdom and never builds a view. The motivating failure was a document
- * whose one invalid mermaid diagram froze the whole window on open — every
- * unit test green, every gate green, because nothing ever opened a document
- * shaped like a user's.
- *
- * Failure is scoped per document and per cause: no paint inside the ceiling,
- * a post-paint timer that never fires (the frozen-loop signature), an uncaught
- * page error, or a crash report posted to the host. Console noise (CSP-blocked
- * remote fetches, missing sibling images) is deliberately NOT a failure —
- * real documents reference assets a stub server does not have, and failing on
- * that would teach this suite to be ignored.
- *
- * Each document gets a FRESH browser context raced against a node-side
- * deadline: a renderer wedged hard enough can hang Playwright calls past
- * their own timeouts (the motivating bug did), and a shared page would let
- * one bad document wedge the whole runner.
+ * Per-document failure causes: no paint inside the ceiling, a post-paint
+ * timer that never fires (the frozen-loop signature), an uncaught page error,
+ * or a posted crash report. Console noise is NOT a failure — real documents
+ * reference assets the stub server lacks. Each document runs in a fresh
+ * context raced against a node-side deadline, because a wedged renderer can
+ * hang Playwright calls past their own timeouts.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { join, dirname, relative } from "node:path";
@@ -83,20 +71,12 @@ async function openDoc(browser, baseUrl, content) {
         );
         const paintedMs = Date.now() - t0;
 
-        // Lazy previews (mermaid today) start AFTER paint: the chunk loads for
-        // around a second before any render runs, so a liveness ping taken at
-        // paint time reads a healthy thread and misses a loop that starts
-        // late. Proven, not hypothetical: the pre-fix bundle sailed through a
-        // paint-time-only version of this suite. Wait until every active
-        // mermaid pane settled — a diagram or an error card, no loading state
-        // — before probing. A wedged renderer can't run the poll, so the
-        // deadline converts a frozen page into this document's failure.
-        // Every VISIBLE pane must settle. Non-empty mermaid blocks enter
-        // preview synchronously at NodeView construction, so their panes are
-        // visible before editor-painted; every other code block also carries
-        // a (hidden) pane, which is why visibility — computed, since inactive
-        // panes keep an empty inline style — is the membership test, not a
-        // fence count parsed out of the markdown.
+        // Mermaid renders lazily AFTER paint (~1s of chunk load first), so a
+        // paint-time ping misses a loop that starts late — the pre-fix bundle
+        // passed a paint-only version of this suite. Wait for every VISIBLE
+        // pane to settle (diagram or error card) before probing. Visibility is
+        // computed style: every code block carries a hidden pane, and inactive
+        // ones keep an empty inline style.
         if (content.includes("```mermaid")) {
             await Promise.race([
                 page.waitForFunction(() => {
@@ -110,10 +90,8 @@ async function openDoc(browser, baseUrl, content) {
             ]);
         }
 
-        // Post-paint liveness. The setTimeout ping is the load-bearing probe:
-        // the frozen-retry failure mode starves the timer queue, so a timer
-        // that fires proves the main thread escaped its microtask chain. The
-        // rAF proves frames are still being produced.
+        // A timer that fires proves the main thread escaped its microtask
+        // chain; the rAF proves frames still paint.
         const p0 = Date.now();
         await Promise.race([
             page.evaluate(() => new Promise((r) => {
@@ -129,8 +107,7 @@ async function openDoc(browser, baseUrl, content) {
         if (pageErrors.length) return { ok: false, why: `page error: ${pageErrors[0]}` };
         return { ok: true, paintedMs, pingMs };
     } finally {
-        // Racing close keeps a wedged renderer from hanging the suite; the
-        // context is leaked in that case, which the process exit collects.
+        // A wedged renderer may hang close(); leak it and let exit collect it.
         await Promise.race([ctx.close(), new Promise((r) => setTimeout(r, 5000))]).catch(() => {});
     }
 }

@@ -188,16 +188,13 @@ export function activate(context: vscode.ExtensionContext) {
                 // replace it when the document is dirty — it leaves two tabs on
                 // the same file (verified in a live Extension Host).
                 //
-                // The capture above yields to the event loop, so RE-FIND the
-                // tab rather than re-checking the handle from the event: the
-                // user may have closed or moved it, and — the part that bit —
-                // Tab object identity is not stable across an await on every
-                // VS Code we support. On 1.95.0 (the engines floor) the tab's
-                // own preview-state update replaces the object, an
-                // identity-based `tabs.includes(tab)` reads "closed", and the
-                // swap silently never happens: every ordinary open strands the
-                // user in the raw text editor. Caught the first time the floor
-                // was actually launched (the release corpus step).
+                // The capture yields to the event loop, so RE-FIND the tab by
+                // uri rather than trusting the event's handle: Tab object
+                // identity is not stable across an await on every supported
+                // VS Code. On the 1.95.0 floor the preview-state update
+                // replaces the object, an identity check read "closed", and
+                // the swap silently never happened — every ordinary open
+                // stranded the user in the raw text editor.
                 const liveTab = vscode.window.tabGroups.all
                     .flatMap((group) => group.tabs)
                     .find((t) =>

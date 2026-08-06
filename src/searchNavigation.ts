@@ -131,13 +131,10 @@ export function captureNavTarget(
         };
 
         // THE signal: an explicit navigation applying its selection. Newer
-        // VS Code stamps those TextEditorSelectionChangeKind.Command. The
-        // engines floor (1.95.0) applies a search-result reveal
-        // programmatically with kind UNDEFINED, so an undefined kind is
-        // accepted too — but only with a NON-EMPTY selection, which is what
-        // separates a reveal highlighting its match from an editor-state
-        // restore parking a bare caret (an ordinary reopen must never read as
-        // "jump"). Caught by the release corpus step's floor matrix.
+        // VS Code stamps it Command; the 1.95.0 floor applies a search reveal
+        // with kind UNDEFINED. Undefined is accepted only with a NON-EMPTY
+        // selection — a reveal highlights its match, an editor-state restore
+        // parks a bare caret, and a reopen must never read as "jump".
         subscriptions.push(
             deps.onSelectionChange((event) => {
                 if (event.textEditor.document.uri.toString() !== key) { return; }
