@@ -155,7 +155,7 @@ Measure before and after; don't guess. The harness (`e2e/perf/`, see its README)
 
 ### CI perf gates
 
-`launch-perf` (`pnpm perf:ab`, `e2e/perf-ab.mjs`) is required and blocking on every PR. It builds the merge-base and head, measures both back to back on one runner, and gates on the launch delta, catching time added without bytes that the eager-bytes backstop cannot see. It gates only the `medium` and `large` fixtures, and double-confirms a regression across two passes before failing.
+`launch-perf` (`pnpm perf:ab`, `e2e/perf-ab.mjs`) is required and blocking on every PR. It builds the merge-base and head, measures both back to back on one runner, and gates on the launch delta, catching time added without bytes that the eager-bytes backstop cannot see. It gates only the `medium`, `large`, and `realistic` fixtures (`realistic` is the mixed-construct real-document shape: wide tables, mermaid, unwrapped paragraphs), and double-confirms a regression across two passes before failing.
 
 `typing-perf` (`.github/workflows/typing-perf.yml`, `pnpm perf:typing:ab`) gates per-keystroke dispatch the same way: same orchestrator, same merge-base interleave, same double-confirm. It fails the `xlarge` dispatch median at 10% or worse AND at least 0.5 ms. Launch is what a user pays once; dispatch is what they pay thousands of times on a large document (MAR-224).
 
