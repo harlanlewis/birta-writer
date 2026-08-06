@@ -65,7 +65,7 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
      --actual <lane-branch> --expected "path,path"
    ```
    An overlap here is a queued-lane rebrief, and far cheaper than finding it in the merge.
-3. Merge (§6). 4. Refill. 5. Disposition its discovered work now, while the repro still runs. Small and inside the lane's own seam → resume the finished agent (`SendMessage`) to fix it with its context intact — cheaper than a ticket or a fresh brief; otherwise file.
+3. Merge (§6). 4. Refill. 5. Disposition its discovered work now, while the repro still runs — and the default disposition is *resolve*, not *file*. Inside the lane's seam → resume the finished agent (`SendMessage`) with its context intact; outside it → take it yourself or fold it into a queued brief. File only the truly large or blocked, naming why.
 
 **Refill** after the predecessor merged, so the stale-HEAD sync lands on a reconciled tree. One refill per message — two lanes draining at once relaunch into the same race.
 
@@ -111,7 +111,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 ## 5. Tracking
 
 - **Never file a repro you haven't run.** Paste observed output, not expected. If it can't be reproduced in-session, say so in the ticket.
-- Watch the filing ratio — more created than closed is a deficit worth justifying.
+- **The standard outcome is closing significantly more work than the session opens.** Discovered work is resolved in flight (§1.5, §3.6); a ticket is the exception, for the truly large or blocked. Ending with more open tickets than you started is a failure — justify it explicitly in the report.
 
 ## 6. Reconcile and land
 
