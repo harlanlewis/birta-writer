@@ -178,11 +178,17 @@ export function initReviewList(
         onEscape: () => getView()?.focus(),
     });
 
+    /** The roving items currently in the body, in DOM order — group headers,
+     *  row bodies, and show-more toggles. Shared by the keyboard group and the
+     *  rebuild focus restore below. */
+    const bodyItems = (): HTMLElement[] =>
+        [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")];
+
     // Keyboard navigation: arrow through the group headers, rows, and show-more
     // toggles; Enter activates (all are <button>s); Escape returns to the editor.
     const roving = wireRoving({
         container: bodyEl,
-        items: () => [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")],
+        items: bodyItems,
         onEscape: () => getView()?.focus(),
         // MAR-295: ArrowRight from a row body enters its trailing action
         // cluster (Ignore / Learn) — a horizontal spur off the vertical list.
@@ -359,8 +365,30 @@ export function initReviewList(
         }
         renderedSignature = signature;
         element.classList.toggle("review-list--grouped", groupByType && hasRows);
+        // MAR-295 follow-up: a rebuild tears out the focused element — Enter
+        // on Ignore removes the row under the keyboard — and focus would drop
+        // to <body>. Capture where the keyboard was (an action button maps to
+        // its row body) BEFORE the teardown, and put it back at the same index
+        // in the fresh list, clamped to the new length. An emptied list falls
+        // back to the editor, like every path where a region stops being
+        // focusable. Focus outside the body (toolbar, editor) is untouched.
+        const active = document.activeElement;
+        const hadFocus = active instanceof HTMLElement && bodyEl.contains(active);
+        const focusIdx = hadFocus
+            ? bodyItems().indexOf(
+                active.closest(".review-item")?.querySelector<HTMLElement>(".review-item__main") ?? active)
+            : -1;
         bodyEl.replaceChildren(...buildNodes(result));
         roving.refresh(); // one tabbable item among the freshly built rows
+        if (hadFocus) {
+            const fresh = bodyItems();
+            if (fresh.length > 0) {
+                // The focusin listener carries the roving slot onto it.
+                fresh[Math.min(fresh.length - 1, Math.max(0, focusIdx))]!.focus();
+            } else {
+                getView()?.focus();
+            }
+        }
     }
 
     return {

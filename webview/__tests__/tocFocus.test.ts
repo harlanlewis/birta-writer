@@ -196,6 +196,14 @@ describe("flip/hide controls — their own roving group (MAR-295)", () => {
         press("Escape");
         expect(document.activeElement).toBe(view.dom);
     });
+
+    it("Escape from a tab button should also return to the editor (the strip was the one region without the rule)", () => {
+        const { view } = openPanel();
+        const tab = document.querySelector<HTMLElement>(".toc-tab[tabindex='0']")!;
+        tab.focus();
+        press("Escape");
+        expect(document.activeElement).toBe(view.dom);
+    });
 });
 
 describe("focus restore — the panel stops being focusable (MAR-295)", () => {

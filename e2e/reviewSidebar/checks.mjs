@@ -592,6 +592,12 @@ export async function run({ page, check, baseUrl }) {
     // the ignored word goes at once — same as the in-text popup's Ignore.
     check("Enter on the focused Ignore action dismisses the finding",
         findingsAfter < findingsBefore, `${findingsBefore} -> ${findingsAfter}`);
+    // The rebuild that removed the row must not strand the keyboard: focus
+    // lands on the roving item now at the removed row's index (clamped),
+    // never on <body>.
+    check("…and focus stays on a list item after the row is removed, not <body>",
+        await page.evaluate(() => !!document.activeElement?.closest(".review-body")),
+        await focusedClass());
 
     // ── MAR-295: the flip/hide controls are their own keyboard group ──────
     // They sit inside the tablist but are not tabs, so they could not join its
@@ -702,6 +708,40 @@ export async function run({ page, check, baseUrl }) {
     }));
     check("the flyout measures its own width — full tab list, not the docked select",
         !flyoutMode.select && flyoutMode.tabsVisible >= 4, JSON.stringify(flyoutMode));
+
+    // ── MAR-295 follow-up: the flyout must not retract under the keyboard ──
+    // Tabbing from the focused reveal tab into the flyout fires the tab's
+    // blur, whose scheduled hide (220ms) nothing cancelled: the flyout tore
+    // itself down ~400ms later with the keyboard inside it (reproduced before
+    // the fix). Focus arriving in the panel now cancels the pending hide,
+    // mirroring mouseenter; leaving it re-arms the retract.
+    await page.mouse.move(500, 500); // park the pointer so hover keeps nothing alive
+    await page.waitForTimeout(500);  // let the hover flyout above fully retract (220ms grace + 170ms exit)
+    await page.evaluate(() => document.querySelector(".toc-toggle-tab")?.focus());
+    await page.waitForSelector(".toc-panel--flyout-in", { timeout: 3000 });
+    await page.keyboard.press("Tab");
+    check("Tab from the focused reveal tab lands inside the flyout",
+        await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
+        await focusedClass());
+    await page.waitForTimeout(700); // past the 220ms blur hide + 170ms exit teardown
+    const flyoutHeld = await page.evaluate(() => ({
+        flyoutIn: document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in"),
+        inPanel: !!document.activeElement?.closest(".toc-panel"),
+    }));
+    check("the flyout stays out while the keyboard is inside it (no retraction under focus)",
+        flyoutHeld.flyoutIn && flyoutHeld.inPanel, JSON.stringify(flyoutHeld));
+    // Escape from the strip (the region rule, now covering the tab strip too)
+    // returns to the editor, and the departing focus re-arms the retract — the
+    // fix must not have made the flyout sticky.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(600); // 220ms hide + 170ms exit
+    const flyoutGone = await page.evaluate(() => ({
+        flyoutIn: document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in"),
+        inEditor: !!document.activeElement?.closest(".ProseMirror"),
+    }));
+    check("Escape from the flyout's strip returns focus to the editor and the flyout retracts",
+        !flyoutGone.flyoutIn && flyoutGone.inEditor, JSON.stringify(flyoutGone));
+
     // Restore the docked-open state for any later checks.
     await page.locator(".toc-toggle-tab").dispatchEvent("mousedown");
     await page.waitForTimeout(300);

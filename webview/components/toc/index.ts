@@ -316,6 +316,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // jump to the ends, Enter/Space activate the focused tab. Hidden tabs (the
     // Proofreading tab when the master switch is off) are skipped.
     tabStrip.addEventListener("keydown", (e) => {
+        // Escape from the strip returns to the editor — the region rule every
+        // other wired region already follows; the strip was the one without it
+        // (found while pinning the flyout's keyboard path). The OPEN overflow
+        // menu is excluded: its own roving handles Escape (close + refocus the
+        // select), and that bubbled event must not also yank focus away.
+        if (e.key === "Escape" && e.target instanceof HTMLElement && !tabsMenu.contains(e.target)) {
+            getEditorView()?.focus();
+            return;
+        }
         // ONLY the tab buttons. The strip also hosts the overflow select, its
         // menu, and the flip/hide controls — the select runs the menu-button
         // model instead, and this handler used to preventDefault its Enter and
@@ -1408,6 +1417,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // click already promoted it to a persistent open, when flyoutOpen is false).
     panel.addEventListener("mouseenter", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
     panel.addEventListener("mouseleave", () => { if (flyoutOpen) { scheduleFlyoutHide(); } });
+    // The keyboard half of the hover pair (MAR-295 follow-up): Tabbing from
+    // the reveal tab into the flyout fires the tab's blur, and the hide that
+    // blur scheduled had no canceller — the flyout retracted under the
+    // keyboard ~400ms later (reproduced against the built bundle). Focus
+    // arriving anywhere in the panel cancels the pending hide, exactly like
+    // mouseenter; the focusout handler below re-arms it when focus leaves, so
+    // blur-out still retracts and the flyout never turns sticky.
+    panel.addEventListener("focusin", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
     panel.addEventListener("focusout", (e) => {
         if (flyoutOpen && !panel.contains(e.relatedTarget as Node | null)) {
             scheduleFlyoutHide();
