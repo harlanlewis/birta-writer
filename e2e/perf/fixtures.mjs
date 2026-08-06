@@ -184,57 +184,57 @@ const linkHeavy = (() => {
 const REALISTIC_DIAGRAMS = [
     `\`\`\`mermaid
 flowchart TB
-    WORK(["<b>Work running<br/>in production</b>"])
-    WORK --> EX["<b>Exception</b><br/>a human corrects the run"]
-    EX -->|"hours"| WORK
-    WORK --> EV["<b>Eval</b><br/>history becomes the suite"]
-    EV -->|"days"| WORK
-    WORK --> OUT["<b>Outcome</b><br/>the consequence returns"]
-    OUT -->|"weeks"| WORK
+    JOBS(["<b>Jobs running<br/>in production</b>"])
+    JOBS --> RETRY["<b>Retry</b><br/>an operator re-runs the job"]
+    RETRY -->|"hours"| JOBS
+    JOBS --> REG["<b>Regression</b><br/>failures become test cases"]
+    REG -->|"days"| JOBS
+    JOBS --> REP["<b>Reporting</b><br/>the results roll up"]
+    REP -->|"weeks"| JOBS
 \`\`\``,
     `\`\`\`mermaid
 stateDiagram-v2
-    [*] --> Observe
-    Observe --> Recommend: accuracy threshold met
-    Recommend --> ActWithApproval: acceptance clears bar
-    ActWithApproval --> Act: approval holds over N runs
-    Act --> ActWithApproval: regression detected, auto-demote
+    [*] --> Staging
+    Staging --> Canary: smoke suite green
+    Canary --> Gradual: error budget holds
+    Gradual --> Full: p99 stable over N hours
+    Full --> Gradual: regression detected, auto-rollback
 \`\`\``,
     `\`\`\`mermaid
 flowchart LR
-    A["Intake"] --> B["Scheduler"]
-    B --> C["Registration<br/>& eligibility"]
-    C --> D["Approval"]
-    D --> E["The visit"]
-    E --> F["Claim"]
-    F -.->|"the verdict returns"| A
+    A["Ingest"] --> B["Validator"]
+    B --> C["Enrichment<br/>& joins"]
+    C --> D["Quality gate"]
+    D --> E["The load"]
+    E --> F["Report"]
+    F -.->|"the correction returns"| A
     style A fill:#1f6feb,color:#fff
     style F fill:#8957e5,color:#fff
 \`\`\``,
     `\`\`\`mermaid
 flowchart TB
-    subgraph SUB["<b>SUBSTRATE</b> - standing, not per-deal"]
-        S["Connectors · Gateway<br/>Templates · Observability"]
+    subgraph BASE["<b>PLATFORM</b> - standing, not per-dataset"]
+        S["Connectors · Scheduler<br/>Rules · Observability"]
     end
-    subgraph COLD["<b>COLD START</b> - per prospect"]
+    subgraph ONB["<b>ONBOARDING</b> - per dataset"]
         direction LR
-        C1["Call"] --> C2["Discovery"] --> C3["Charter"] --> C4["Seeded org"]
+        C1["Request"] --> C2["Profiling"] --> C3["Contract"] --> C4["Sandbox"]
     end
-    SUB ==> COLD
+    BASE ==> ONB
     C4 --> HAND["Handed back<br/><i>next day</i>"]
     HAND -->|"<b>correction</b>"| C2
     HAND ==> RUN["<b>RUNNING</b>"]
-    RUN -.->|"banked hours"| SUB
+    RUN -.->|"rule contributions"| BASE
 \`\`\``,
     `\`\`\`mermaid
 flowchart LR
-    CALL["Prospect call"] --> MATCH["Discovery<br/>+ template match"]
-    MATCH --> PKG["Charters · packaging"]
-    PKG --> ORG["Seeded org<br/>mocked flows"]
-    ORG --> BACK["Handed back"]
-    BACK -->|"<b>'not how we do it'</b>"| MATCH
-    MATCH -.->|"no template matched"| LIB["Ranked library"]
-    LIB -.-> MATCH
+    REQ["Dataset request"] --> PROF["Profiling<br/>+ rule match"]
+    PROF --> MAP["Contracts · mapping"]
+    MAP --> SBX["Sandbox<br/>sample runs"]
+    SBX --> BACK["Handed back"]
+    BACK -->|"<b>'not our layout'</b>"| PROF
+    PROF -.->|"no rule matched"| LIB["Rule backlog"]
+    LIB -.-> PROF
 \`\`\``,
 ];
 
@@ -248,8 +248,8 @@ function longLine(i) {
 
 /** A 7-row × 6-column table, the shape the 3×3 generated tables never reach. */
 function wideTable(i) {
-    const rows = ["exception", "eval", "outcome", "permission", "depth", "factory", "account"];
-    let out = "| Loop | Owner | Needs | Clock | Status | Note |\n|---|---|---|---|---|---|\n";
+    const rows = ["retry", "regression", "reporting", "access", "schema", "tooling", "billing"];
+    let out = "| Cycle | Owner | Needs | Clock | Status | Note |\n|---|---|---|---|---|---|\n";
     rows.forEach((r, j) => {
         out += `| **${r}** | Owner ${i}-${j} | \`need-${i}-${j}\` | ${j + 1}d | ${j % 2 ? "live" : "planned"} | [ref](https://example.com/${i}/${j}) |\n`;
     });
