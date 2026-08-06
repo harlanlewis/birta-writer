@@ -529,4 +529,57 @@ export async function run({ page, check, baseUrl }) {
     check("collapsed-callout drop: block stays visible",
         dropVisibility !== null && dropVisibility.h > 0 && !dropVisibility.hiddenInFold,
         JSON.stringify(dropVisibility));
+
+    // ── 11. Item-internal drop slots (MAR-88) ──
+    // A multi-child list item exposes drop targets BETWEEN its continuation
+    // blocks, so a real pointer drag can nest a block inside the item rather
+    // than only beside it. This is the pointer-level check the unit pins
+    // (which call moveBlocks directly) cannot make: the slot has to win the
+    // nearest-boundary contest in real layout, and the drop has to serialize
+    // the block as item content. Shipped alongside MAR-322's merge fix, which
+    // was the last thing withholding the slots.
+    await page.evaluate(() => {
+        [...document.querySelectorAll(".ProseMirror li")]
+            .find((el) => el.textContent.includes("host item lead"))
+            .scrollIntoView({ block: "center" });
+    });
+    await page.waitForTimeout(150);
+    const payload = await markerCenter(page, ".ProseMirror > p", "slot payload");
+    const gap = await page.evaluate(() => {
+        const li = [...document.querySelectorAll(".ProseMirror li")]
+            .find((el) => el.textContent.includes("host item lead"));
+        const lead = li.querySelector("p").getBoundingClientRect();
+        const quote = li.querySelector("blockquote").getBoundingClientRect();
+        return {
+            x: lead.x + lead.width / 2,
+            y: (lead.bottom + quote.top) / 2,
+            itemLeft: li.getBoundingClientRect().left,
+        };
+    });
+    await page.mouse.move(payload.x, payload.y);
+    await page.mouse.down();
+    await page.mouse.move(payload.x + 10, payload.y + 10); // cross the threshold
+    await page.mouse.move(gap.x, gap.y, { steps: 10 });
+    await page.waitForTimeout(100);
+    const slotIndicator = await page.evaluate((itemLeft) => {
+        const el = document.querySelector(".block-drag-indicator");
+        if (!el || getComputedStyle(el).display === "none") return null;
+        const r = el.getBoundingClientRect();
+        return { left: Math.round(r.left), indentedToItem: r.left >= itemLeft - 8 };
+    }, gap.itemLeft);
+    check("item-internal slot: indicator appears at the item's content column",
+        slotIndicator !== null && slotIndicator.indentedToItem, JSON.stringify(slotIndicator));
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    const nested = await latestDoc(page, (doc) => {
+        const lines = doc.split("\n");
+        const payloadIdx = lines.findIndex(
+            (l) => l.trim() === "slot payload paragraph" && /^\s+/.test(l));
+        if (payloadIdx === -1) return false;
+        const leadIdx = lines.findIndex((l) => l.includes("host item lead"));
+        const quoteIdx = lines.findIndex((l) => l.includes("host quote"));
+        return leadIdx !== -1 && quoteIdx !== -1 && leadIdx < payloadIdx && payloadIdx < quoteIdx;
+    });
+    check("dropping between an item's continuation blocks nests the block in the item",
+        nested !== null, `tail=${JSON.stringify(nested?.slice(-220) ?? null)}`);
 }
