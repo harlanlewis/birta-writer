@@ -103,10 +103,16 @@ export const reparseHazardPlugin = $prose(
  *     from the prose check: fence bytes inside them are fenced content and
  *     can never pair.
  *   - BARE-MARKER machinery (found under MAR-88) — a list item whose whole
- *     content is blank paragraphs. It serializes as a bare `-` marker line,
- *     and a bare marker directly under a paragraph line re-lexes as a
- *     SETEXT UNDERLINE on reparse (the paragraph becomes a heading, the
- *     list splits). Whether that actually corrupts is position-dependent —
+ *     content is blank paragraphs, OR an artifact-lead item (`- > quote`,
+ *     a code-fenced item, `- # heading` — `list_item` is `paragraph
+ *     block*`, so a non-paragraph lead parses as [blank artifact
+ *     paragraph, ...real blocks]) holding more than one block past the
+ *     artifact (MAR-324; the exact-one-extra case still rides safely, see
+ *     `hazardMachineryPresent`). Either shape serializes as a bare `-`
+ *     marker line, and a bare marker directly under a paragraph line
+ *     re-lexes as a SETEXT UNDERLINE on reparse (the paragraph becomes a
+ *     heading, the list splits). Whether that actually corrupts is
+ *     position-dependent —
  *     a leading empty item round-trips fine — which is exactly what the
  *     oracle, not a shape rule, should judge.
  *
@@ -129,14 +135,23 @@ function hazardMachineryPresent(doc: ProseNode): boolean {
             present = true;
             return false;
         }
-        if (name === "list_item") {
-            let allBlank = node.childCount > 0;
+        if (name === "list_item" && node.childCount > 0) {
+            let allBlank = true;
             node.forEach((child: ProseNode) => {
                 if (!isBlankParagraph(child, node)) {
                     allBlank = false;
                 }
             });
-            if (allBlank) {
+            // Bare marker (every child blank) OR an artifact-lead item
+            // (MAR-324): a non-paragraph-first item parses as [blank
+            // artifact paragraph, ...real blocks], and once it holds MORE
+            // THAN ONE block past the artifact the serializer can no
+            // longer ride the content on the marker line (MAR-230) and
+            // emits the bare-marker shape instead. `childCount > 2` is
+            // "artifact + 2 or more other blocks" — the exact-one-extra
+            // case (`- > quote`) still rides safely and is left unarmed.
+            const leadBlank = isBlankParagraph(node.child(0), node);
+            if (allBlank || (leadBlank && node.childCount > 2)) {
                 present = true;
                 return false;
             }

@@ -164,6 +164,52 @@ describe("MAR-88 discovered: vacated-item bare marker", () => {
         const harmless = docOf(ul(li(p()), li(p("item two"))));
         expect(reparseRefusal(pre, harmless)).toBeNull();
     });
+
+    it("an artifact-lead item that gains a second real block should refuse the gesture (MAR-324)", async () => {
+        // `- normal\n  - > q` parses as [artifact empty paragraph,
+        // blockquote] for the inner item — a 2-child artifact-lead item,
+        // which rides safely on the marker line (see the next test) and
+        // must NOT arm the gate. Inserting a paragraph BETWEEN the artifact
+        // and the quote (the shape a real insert at that position
+        // produces) grows it to 3 children, which is exactly where the
+        // serializer can no longer ride the content and emits a bare `-`
+        // marker line instead — a setext underline on reopen.
+        const e = await make("- normal\n  - > q");
+        const v = view(e);
+        expect(reparseDiff(e, v)).toBe(""); // precondition: base doc rides fine
+        let innerPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "list_item") innerPos = pos; // deepest wins
+            return true;
+        });
+        const schema = v.state.doc.type.schema;
+        const payload = schema.nodes["paragraph"]!.createChecked(null, schema.text("payload"));
+        const preDoc = v.state.doc;
+        // The artifact paragraph is the item's first child (nodeSize 2, an
+        // empty paragraph); insert right after it, before the blockquote.
+        const insertAt = innerPos + 1 + 2;
+        const tr = v.state.tr.insert(insertAt, payload);
+        const postDoc = tr.doc;
+        v.dispatch(tr);
+        // Confirm the damage is real: the artifact is forced onto its own
+        // bare-marker line and the reparse loses the list entirely.
+        expect(e.action(getMarkdown())).toBe("- normal\n  -\n    payload\n    > q\n");
+        expect(reparseDiff(e, v)).not.toBe("");
+        // The gate must now arm and the oracle must refuse this gesture.
+        expect(String(reparseRefusal(preDoc, postDoc))).toMatch(/would not survive/);
+    });
+
+    it("a 2-child artifact-lead item (the shape the serializer still rides safely) should not arm the gate", async () => {
+        // Confirms the childCount > 2 boundary: the exact-one-extra-block
+        // case is common (any `- > quote`, `- # heading`, code-fenced item)
+        // and harmless, so arming on it would only add cost, never catch
+        // real damage.
+        const e = await make("- normal\n  - > q");
+        const v = view(e);
+        expect(reparseDiff(e, v)).toBe("");
+        const doc = v.state.doc;
+        expect(reparseRefusal(doc, doc)).toBeNull();
+    });
 });
 
 describe("MAR-88 item-internal drop slots", () => {
