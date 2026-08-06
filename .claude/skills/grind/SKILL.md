@@ -54,7 +54,7 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
 
 `cd` back to the primary before every dispatch: a nested worktree is one `cleanup-worktrees.sh` never finds.
 
-**Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). Lanes then report *what they want measured and what would falsify it* — a better handoff than a number they could not trust, and naming the span makes a win landing in a different one a finding rather than a footnote. Their headlines stay unverified until you re-run them: one lane's −27.2% was −23.8% idle.
+**Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). Lanes then report *what they want measured and what would falsify it* — a better handoff than a number they could not trust, and naming the span makes a win landing in a different one a finding rather than a footnote. Their headlines stay unverified until you re-run them idle.
 
 ### On completion
 
@@ -65,7 +65,7 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
      --actual <lane-branch> --expected "path,path"
    ```
    An overlap here is a queued-lane rebrief, and far cheaper than finding it in the merge.
-3. Merge (§6). 4. Refill. 5. File its discovered work now, while the repro still runs.
+3. Merge (§6). 4. Refill. 5. Disposition its discovered work now, while the repro still runs. Small and inside the lane's own seam → resume the finished agent (`SendMessage`) to fix it with its context intact — cheaper than a ticket or a fresh brief; otherwise file.
 
 **Refill** after the predecessor merged, so the stale-HEAD sync lands on a reconciled tree. One refill per message — two lanes draining at once relaunch into the same race.
 
