@@ -42,22 +42,22 @@ export interface CapturedNavTarget {
 }
 
 /**
- * How long to wait for the text editor to show up at all. Several times the
- * probed ~26 ms; the rest is headroom for a loaded machine. On expiry we swap
- * anyway — a missed jump is a disappointment, a stalled swap is a bug.
+ * How long to wait for the text editor to show up at all. Locally probed
+ * ~26 ms; on expiry we swap anyway — a missed jump is a disappointment, a
+ * stalled swap is a bug. Sized for the slowest machine that must pass, not
+ * the laptop: the release job's floor run (ubuntu-latest under xvfb,
+ * 2026-08-06) missed a search reveal that three local runs caught.
  */
-export const EDITOR_APPEAR_BUDGET_MS = 120;
+export const EDITOR_APPEAR_BUDGET_MS = 400;
 
 /**
  * How long to wait for the navigation's selection once the editor exists.
- *
- * The probe put it ~2 ms behind the editor, so this is almost entirely margin.
- * It is also the delay every ORDINARY open pays before the swap, and the swap
- * is what the user sees: the raw text is on screen for the whole wait, so this
- * number is the difference between a flicker and a readable flash of Markdown.
- * Keep it an order of magnitude above the measurement and no more.
+ * Locally probed ~2 ms behind the editor; the release runner needed more (see
+ * above). This is also the delay every ORDINARY open pays before the swap,
+ * with the raw text on screen for the whole wait — so it buys reliability
+ * with flash duration, and 80 ms is still under a perceptible beat.
  */
-export const SELECTION_GRACE_MS = 20;
+export const SELECTION_GRACE_MS = 80;
 
 /** The vscode surface this module reads, injected so it can be unit-tested. */
 export interface NavCaptureDeps {
