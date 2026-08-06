@@ -518,6 +518,9 @@ async function abMode(baseDirArg, headDirArg, keys, runs, jsonOut, accept) {
         const report = {
             base: baseDir, head: headDir, keys, pairsPerFixture: runs - 1,
             gated: [...TYPING_GATED_FIXTURES], confirmedRegressions: [...confirmed],
+            // Carried so the PR-comment renderer reads the abstention floor
+            // from the artifact instead of quoting a copy of the constant.
+            caretFloor: TYPING_CARET_MIN_SAMPLES,
             accepted: Boolean(accept) && confirmed.size > 0, pass1, pass2,
         };
         await writeFile(jsonOut, JSON.stringify(report, null, 2));

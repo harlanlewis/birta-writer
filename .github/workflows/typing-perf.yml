@@ -129,7 +129,9 @@ jobs:
                 const cd = ac - bc;
                 const cpct = bc > 0 ? (cd / bc) * 100 : (ac > 0 ? 100 : 0);
                 const cs = cd >= 0 ? '+' : '';
-                caret = n < 8
+                // The floor travels in the JSON (caretFloor) so this renderer
+                // never quotes a stale copy of TYPING_CARET_MIN_SAMPLES.
+                caret = n < (r.caretFloor ?? 8)
                   ? `${round(bc)} → ${round(ac)} ms ⚠ abstained (n=${n})`
                   : `${round(bc)} → ${round(ac)} ms (${cs}${round(cpct)}%, n=${bn}→${an})`;
               }
