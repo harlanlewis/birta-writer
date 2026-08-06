@@ -18,7 +18,11 @@
 
 - Documents with many tables open faster. On a 95 KB document with 108 tables the editor now appears in 521 ms instead of 639 ms, because a table's row and column grips are built when you first move the pointer over it rather than for every table at startup. Selecting cells with the keyboard still brings them up.
 
+- Typing in a large document costs less than half what it did per keystroke. On a 300 KB document the median keystroke dropped from 4.6 ms to 2.0 ms, and moving the caret with the arrow keys from 1.7 ms to 0.5 ms (same-session interleaved measurement). The editor was re-answering three questions on every keystroke whose answers a typing edit cannot change: where every heading element is, what every heading's link anchor should be, and what every ordered-list item's number is. Each now updates only when an edit could actually have changed it.
+
 ### Fixed
+
+- Dragging the only real block out of a list item no longer destroys the list on reopen. An item like `- > quote` carries an invisible empty line the parser adds in front of the quote; moving the quote out left the item holding only that artifact, which saved as a bare `-`. Markdown reads a lone `-` under a line of text as an underline that turns the text into a heading, splitting the list. The move now carries the emptied item away with its content. Where the same bare-marker shape can arise for other reasons, a move that would actually damage the document on reopen is refused with a notice instead, keeping the block-editing integrity promise: content is never silently altered.
 
 - The review sidebar's last mouse-only controls work from the keyboard. The move-panel-to-the-other-side and hide buttons are a Tab stop of their own, and ArrowRight on a finding reaches its Ignore and Add-to-dictionary buttons, ArrowLeft returns to the row.
 
