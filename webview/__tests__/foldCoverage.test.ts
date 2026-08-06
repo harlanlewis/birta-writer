@@ -1,13 +1,23 @@
 /**
- * MAR-125 — fold-grammar coverage for the three structures beyond headings
+ * Two guards share this file:
+ *
+ * MAR-125 — fold-grammar BEHAVIOR for the three structures beyond headings
  * and callouts: nested list items (fold to the first line, heading-section
  * semantics applied to list nesting), tables (fold to the header row), and
  * code blocks incl. math/mermaid fences (fold to the chrome row). Driven
  * through the REAL Milkdown editor (real parser, real schema) like
  * foldPlugin.test.ts, so position math matches production.
+ *
+ * MAR-263 — fold-decision EXHAUSTIVENESS (the sweep the file's name always
+ * promised, at the bottom): every block node type must carry an explicit
+ * fold decision — proven foldable by a fixture, or allowlisted with a
+ * reason — mirroring gutterCoverage's preset-schema and $nodeSchema sweeps,
+ * so a new block type fails at build time instead of silently never folding.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, schemaCtx } from "@milkdown/core";
+import * as path from "path";
+import * as fs from "fs";
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
@@ -675,5 +685,157 @@ describe("Fold All scope (one grammar, every foldable)", () => {
         expect(
             resolveFoldAnchors(v.state.doc, { headings: [], callouts: [] } as never).size,
         ).toBe(0);
+    });
+});
+
+/**
+ * MAR-263 — the exhaustiveness sweep. The matrices above pin the BEHAVIOR of
+ * the kinds that fold; nothing above notices a kind that never entered the
+ * grammar. These sweeps mirror gutterCoverage: every block node type is
+ * either proven foldable (a fixture whose instance yields a non-null
+ * foldHiddenRange through the real editor — behavioral, so a broken kind
+ * predicate goes red here, not just unlisted) or consciously allowlisted
+ * with a reason. Adding a block node type with neither fails at build time.
+ */
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+
+/**
+ * Markdown per foldable kind, containing at least one instance of the kind
+ * that IS foldable (has a body/descendants). Listing a kind here is the
+ * "this folds" half of the decision; the liveness test below proves it.
+ */
+const FOLDABLE_FIXTURES: Record<string, string> = {
+    "heading": "# Head\n\nbody",
+    "callout": "> [!note] T\n> body",
+    "list_item": "- parent\n  - child",
+    "table": "| H |\n| --- |\n| a |",
+    "code_block": "```js\nconst x = 1;\n```",
+};
+
+/**
+ * Block node types that deliberately do NOT fold. Every entry needs a
+ * reason — this list is the single place "no fold" is allowed.
+ */
+const NOT_FOLDABLE_ALLOWLIST: Record<string, string> = {
+    "doc": "the document itself",
+    "paragraph": "single prose block — it IS its own first line; nothing beyond it to hide",
+    "blockquote": "container-body fold is planned, not shipped (MAR-116 v2); today its first line is content, not chrome",
+    "notion_callout": "callout variant outside the fold grammar — isFoldableCallout matches `callout` only (MAR-116 widening candidate)",
+    "container_directive": "directive container outside the fold grammar (MAR-116 widening candidate)",
+    "footnote_definition": "labeled definition block; no fold affordance designed for its body (MAR-116 widening candidate)",
+    "hr": "leaf atom — nothing to hide",
+    "link_definition": "leaf atom; orphaned definitions only",
+    "bullet_list": "the fold unit is the list ITEM (first-line semantics); the list node has no line of its own to fold to",
+    "ordered_list": "per-ITEM folds — same as bullet_list",
+    "table_header_row": "table interior — the TABLE folds as a unit, to this very row",
+    "table_row": "table interior — hidden by the table's own fold",
+    "table_header": "table interior",
+    "table_cell": "table interior",
+};
+
+describe("every block type has a fold decision (MAR-263)", () => {
+    it("preset schema: each block node type is foldable by fixture or allowlisted with a reason", async () => {
+        const editor = await makeEditor("seed");
+        const schema = editor.action((ctx) => ctx.get(schemaCtx));
+
+        const undecided: string[] = [];
+        for (const [name, type] of Object.entries(schema.nodes)) {
+            if (!type.isBlock) {
+                continue;
+            }
+            const foldable = name in FOLDABLE_FIXTURES;
+            const allowlisted = name in NOT_FOLDABLE_ALLOWLIST;
+            if (foldable && allowlisted) {
+                undecided.push(`${name} (in BOTH lists — resolve the contradiction)`);
+            } else if (!foldable && !allowlisted) {
+                undecided.push(name);
+            }
+        }
+        expect(
+            undecided,
+            "Block node types with NO fold decision. Either the fold grammar covers " +
+                "them (foldHiddenRange in webview/plugins/headingFold/foldModel.ts — add a " +
+                "FOLDABLE_FIXTURES entry proving it) or they consciously don't fold (add " +
+                "them to NOT_FOLDABLE_ALLOWLIST here with a reason).",
+        ).toEqual([]);
+
+        // Both lists stay honest: an entry for a node type the schema no
+        // longer has is a stale decision, not a decision.
+        const stale = [
+            ...Object.keys(FOLDABLE_FIXTURES),
+            ...Object.keys(NOT_FOLDABLE_ALLOWLIST),
+        ].filter((name) => !(name in schema.nodes));
+        expect(stale, "fold decisions for node types that no longer exist").toEqual([]);
+    });
+
+    it("each FOLDABLE_FIXTURES entry demonstrates a live fold through the real editor", async () => {
+        for (const [name, markdown] of Object.entries(FOLDABLE_FIXTURES)) {
+            const editor = await makeEditor(markdown);
+            const v = view(editor);
+            let seen = 0;
+            let foldable = false;
+            v.state.doc.descendants((node, pos) => {
+                if (node.type.name === name) {
+                    seen++;
+                    if (foldHiddenRange(v.state.doc, pos) !== null) {
+                        foldable = true;
+                    }
+                }
+                return true;
+            });
+            expect(seen, `${name}: fixture parses to no ${name} node`).toBeGreaterThan(0);
+            expect(
+                foldable,
+                `${name}: claimed foldable but no fixture instance yields a hidden range — ` +
+                    "either the fold grammar regressed or the fixture no longer builds a " +
+                    "foldable instance",
+            ).toBe(true);
+        }
+    });
+
+    it("plugin schemas: every $nodeSchema id has a fold decision", () => {
+        // Static sweep (mirrors gutterCoverage): node ids registered by our
+        // own plugins, so a plugin node the preset editor doesn't load still
+        // needs a decision. Inline node ids can't fold by construction.
+        const INLINE: Record<string, string> = {
+            "footnote_reference": "inline atom despite isBlock quirks in some presets",
+            "math_inline": "inline atom",
+            "wiki_link": "inline atom",
+            "image_ref": "inline atom (![alt][ref] chip)",
+        };
+        const files: string[] = [];
+        const walk = (dir: string): void => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (entry.name === "__tests__" || entry.name === "node_modules") continue;
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.name.endsWith(".ts")) files.push(full);
+            }
+        };
+        walk(path.join(REPO_ROOT, "webview"));
+        const ids: string[] = [];
+        for (const full of files) {
+            const source = fs.readFileSync(full, "utf8");
+            for (const match of source.matchAll(/\$nodeSchema[(<][^)]*?["']([\w-]+)["']/g)) {
+                ids.push(match[1]!);
+            }
+            // $nodeSchema(directiveId, ...) style — resolve exported id consts
+            for (const match of source.matchAll(/const (\w+Id) = ["']([\w-]+)["']/g)) {
+                if (source.includes(`$nodeSchema(${match[1]}`)) {
+                    ids.push(match[2]!);
+                }
+            }
+        }
+        expect(ids.length).toBeGreaterThanOrEqual(4); // sanity: the sweep found the known ones
+        const unexplained = [...new Set(ids)].filter(
+            (id) => !(id in FOLDABLE_FIXTURES) && !(id in NOT_FOLDABLE_ALLOWLIST) && !(id in INLINE),
+        );
+        expect(
+            unexplained,
+            "New plugin node types with no fold decision. Prove them foldable in " +
+                "FOLDABLE_FIXTURES, or record them in NOT_FOLDABLE_ALLOWLIST (or INLINE) " +
+                "with a reason.",
+        ).toEqual([]);
     });
 });
