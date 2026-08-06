@@ -28,7 +28,9 @@
  * shapes was tried and under-fired on its first adversarial review (an
  * aside-degradation reassembly and a lazy-continuation flatten both slipped
  * a B/F-specific gate), so the structural gate is deliberately COARSE: any
- * fence/aside machinery in the document at all buys the round-trip. What
+ * hazard machinery in the document at all — fence/aside shapes, or a
+ * bare-marker list item (see hazardMachineryPresent) — buys the round-trip.
+ * What
  * keeps that affordable is that the oracle is memoized per doc node
  * (ProseMirror docs are immutable), so the pre-move document — the same node
  * across consecutive gestures — is re-judged for free.
@@ -45,7 +47,7 @@ import { Plugin, PluginKey, type EditorState } from "../pm";
 import type { Node as ProseNode, Schema } from "../pm";
 import { parserCtx, serializerCtx } from "@milkdown/core";
 import { $prose } from "@milkdown/utils";
-import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "./fingerprints";
+import { diffFingerprints, fingerprintDoc, formatFingerprintDiff, isBlankParagraph } from "./fingerprints";
 
 // ── The pipeline registry ───────────────────────────────────────────────────
 
@@ -91,18 +93,28 @@ export const reparseHazardPlugin = $prose(
 // ── The structural gate ─────────────────────────────────────────────────────
 
 /**
- * Does `doc` contain any fence/aside machinery at all — a container
- * directive, a Notion aside, an `<aside`-bearing html atom (the parser's
- * degradation output for aside shapes it kept as raw bytes), or raw
- * fence-shaped prose (`:::…` that parsed as a paragraph = an unpaired fence
- * line)? Only such documents can have order/pairing-sensitive reparses, so
- * only they buy the round-trip. Code blocks are excluded from the prose
- * check: fence bytes inside them are fenced content and can never pair.
+ * Does `doc` contain any reparse-hazard machinery at all? Two families:
  *
- * Deliberately coarse — see the module header. Over-firing costs one
- * (memoized) serialize+parse on a gesture, never a false refusal.
+ *   - FENCE/ASIDE machinery — a container directive, a Notion aside, an
+ *     `<aside`-bearing html atom (the parser's degradation output for aside
+ *     shapes it kept as raw bytes), or raw fence-shaped prose (`:::…` that
+ *     parsed as a paragraph = an unpaired fence line). Only such documents
+ *     can have order/pairing-sensitive reparses. Code blocks are excluded
+ *     from the prose check: fence bytes inside them are fenced content and
+ *     can never pair.
+ *   - BARE-MARKER machinery (found under MAR-88) — a list item whose whole
+ *     content is blank paragraphs. It serializes as a bare `-` marker line,
+ *     and a bare marker directly under a paragraph line re-lexes as a
+ *     SETEXT UNDERLINE on reparse (the paragraph becomes a heading, the
+ *     list splits). Whether that actually corrupts is position-dependent —
+ *     a leading empty item round-trips fine — which is exactly what the
+ *     oracle, not a shape rule, should judge.
+ *
+ * Only documents with either family buy the round-trip. Deliberately coarse
+ * — see the module header. Over-firing costs one (memoized) serialize+parse
+ * on a gesture, never a false refusal.
  */
-function fenceMachineryPresent(doc: ProseNode): boolean {
+function hazardMachineryPresent(doc: ProseNode): boolean {
     let present = false;
     doc.descendants((node: ProseNode) => {
         if (present) {
@@ -116,6 +128,18 @@ function fenceMachineryPresent(doc: ProseNode): boolean {
         if (name === "html" && String(node.attrs["value"] ?? "").includes("<aside")) {
             present = true;
             return false;
+        }
+        if (name === "list_item") {
+            let allBlank = node.childCount > 0;
+            node.forEach((child: ProseNode) => {
+                if (!isBlankParagraph(child, node)) {
+                    allBlank = false;
+                }
+            });
+            if (allBlank) {
+                present = true;
+                return false;
+            }
         }
         if (node.isTextblock && !node.type.spec.code && node.textContent.startsWith(":::")) {
             present = true;
@@ -170,11 +194,12 @@ function roundTripDamage(pipeline: ReparsePipeline, doc: ProseNode): string | nu
  * null to allow.
  *
  * `preDoc` is the document before the gesture, `postDoc` the transaction's
- * result. Cost: zero unless the post-move document carries fence/aside
- * machinery; one memoized round-trip per distinct doc when it does.
+ * result. Cost: zero unless the post-move document carries hazard machinery
+ * (fence/aside shapes or a bare-marker list item); one memoized round-trip
+ * per distinct doc when it does.
  */
 export function reparseRefusal(preDoc: ProseNode, postDoc: ProseNode): string | null {
-    if (!fenceMachineryPresent(postDoc)) {
+    if (!hazardMachineryPresent(postDoc)) {
         return null;
     }
     const pipeline = pipelines.get(postDoc.type.schema);

@@ -20,6 +20,8 @@ import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
 import { headingInputReplacedPlugins } from "./plugins/headingInput";
+import { headingIdReplacedPlugins, headingIdSyncPlugin } from "./plugins/headingIdSync";
+import { listOrderReplacedPlugins, listOrderSyncPlugin } from "./plugins/listOrderSync";
 import { emphasisInputReplacedPlugins, mathAwareEmphasisStarInputRule } from "./plugins/emphasisInput";
 import {
     sourceStyleHandlers,
@@ -161,6 +163,12 @@ export const pureCommonmark = [
         // Stock `#` input rule ADDS hashes to an existing heading's level;
         // headingAbsoluteInputRule (plugins/headingInput.ts) replaces it.
         if (headingInputReplacedPlugins.has(plugin)) return false;
+        // Stock heading-id / list-order sync plugins walk the WHOLE document
+        // (inline content included) on every doc-changing transaction; the
+        // replacements below skip edits that provably cannot change an id or
+        // label, and prune the walk when they can (MAR-137).
+        if (headingIdReplacedPlugins.has(plugin)) return false;
+        if (listOrderReplacedPlugins.has(plugin)) return false;
         // Stock `*emphasis*` rule italicizes intraword stars, eating the `*`s
         // of typed arithmetic (`60*60*1000`); the math-aware replacement
         // (plugins/emphasisInput.ts) registers below.
@@ -179,6 +187,10 @@ export const pureCommonmark = [
     ...tableBreaksPlugin,
     // Replaces the stock star-emphasis input rule filtered out above.
     mathAwareEmphasisStarInputRule,
+    // Replace the stock heading-id / list-order sync plugins filtered out
+    // above (MAR-137 — see each module's header for the economy).
+    headingIdSyncPlugin,
+    listOrderSyncPlugin,
     // AFTER the preset: override the bullet_list / ordered_list / list_item
     // parseMarkdown runners so `spread` parses as a real boolean, not a string
     // (MAR-124). See plugins/list.ts.

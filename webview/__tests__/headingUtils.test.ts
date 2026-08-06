@@ -285,6 +285,55 @@ describe("the heading element cache", () => {
         expect(getAllHeadings(view)).toHaveLength(7);
     });
 
+    it("an inline edit in a paragraph should retain the cached elements without re-querying", async () => {
+        const view = await makeEditor(SIX_HEADINGS);
+        const before = getAllHeadings(view);
+        const query = vi.spyOn(view.dom, "querySelectorAll");
+
+        // Locate the paragraph after the first heading and type into it — the
+        // per-keystroke shape whose re-query cost this cache exists to remove
+        // (MAR-137).
+        view.dispatch(view.state.tr.insertText("X", view.state.doc.child(0).nodeSize + 2));
+
+        const after = getAllHeadings(view);
+        expect(query).not.toHaveBeenCalled();
+        expect(after).toEqual(before);
+    });
+
+    it("splitting a paragraph should retain the cached elements without re-querying", async () => {
+        const view = await makeEditor(SIX_HEADINGS);
+        const before = getAllHeadings(view);
+        const query = vi.spyOn(view.dom, "querySelectorAll");
+
+        // The Enter shape: a structural edit that still touches no heading.
+        view.dispatch(view.state.tr.split(view.state.doc.child(0).nodeSize + 2));
+
+        expect(getAllHeadings(view)).toEqual(before);
+        expect(query).not.toHaveBeenCalled();
+    });
+
+    it("deleting a heading should shrink the set on the next read", async () => {
+        const view = await makeEditor(SIX_HEADINGS);
+        expect(getAllHeadings(view)).toHaveLength(6);
+        const { doc } = view.state;
+        // Third child is the "## Two" heading (heading, p, heading, p, …).
+        const pos = doc.child(0).nodeSize + doc.child(1).nodeSize;
+
+        view.dispatch(view.state.tr.delete(pos, pos + doc.child(2).nodeSize));
+
+        expect(getAllHeadings(view)).toHaveLength(5);
+    });
+
+    it("changing a heading's level should serve the rebuilt element, not the stale one", async () => {
+        const view = await makeEditor(SIX_HEADINGS);
+        getAllHeadings(view);
+        const pos = view.state.doc.child(0).nodeSize + view.state.doc.child(1).nodeSize;
+
+        view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { level: 4 }));
+
+        expect(getAllHeadings(view).map((el) => el.tagName)).toContain("H4");
+    });
+
     it("a heading element rebuilt without an edit should be dropped rather than served detached", async () => {
         const view = await makeEditor(SIX_HEADINGS);
         const before = getAllHeadings(view);

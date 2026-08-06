@@ -33,6 +33,8 @@ export function bodyLineHeightPx(): number {
     return (Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 14) * 1.6;
 }
 
+let stickyTitleEl: HTMLElement | null = null;
+
 /**
  * Height reserved for the sticky heading title. When it is currently shown
  * we measure it exactly. When hidden it may still appear right after the
@@ -42,8 +44,16 @@ export function bodyLineHeightPx(): number {
  * computeInsets() absorbs that difference.
  */
 export function measureStickyHeadingHeight(): number {
-    const sticky = document.querySelector<HTMLElement>(".heading-sticky-title:not([hidden])");
-    if (sticky) {
+    // The sticky title is a singleton headingSticky creates once per mount and
+    // thereafter only toggles [hidden] on, so cache the element rather than
+    // re-running a whole-document querySelector — this is read twice per
+    // caret-scroll pass, which is every keystroke (MAR-137). A stale cache
+    // (editor re-created) leaves the element detached; isConnected catches it.
+    if (!stickyTitleEl?.isConnected) {
+        stickyTitleEl = document.querySelector<HTMLElement>(".heading-sticky-title");
+    }
+    const sticky = stickyTitleEl;
+    if (sticky && !sticky.hidden) {
         return sticky.getBoundingClientRect().height;
     }
     const fontSize = parseFloat(window.getComputedStyle(document.body).fontSize);
