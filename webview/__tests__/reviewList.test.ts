@@ -269,6 +269,138 @@ describe("initReviewList — the toolbar row is a keyboard region", () => {
     });
 });
 
+describe("initReviewList — per-row action cluster (MAR-295)", () => {
+    beforeEach(() => { document.body.innerHTML = ""; });
+
+    /** Two flat rows, each with Learn + Ignore actions (the proofreading shape). */
+    function mkWithActions() {
+        const learn = vi.fn();
+        const ignore = vi.fn();
+        const ctx = mk(false);
+        ctx.render({ rows: [
+            row({ label: "first", actions: [
+                { label: "Learn", run: learn },
+                { label: "Ignore", run: ignore },
+            ] }),
+            row({ label: "second", actions: [{ label: "Ignore", run: vi.fn() }] }),
+        ] });
+        return { ...ctx, learn, ignore };
+    }
+    const mains = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>(".review-item__main")];
+    const actions = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>(".review-item__action")];
+
+    it("ArrowRight from a focused row body should enter its action cluster", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight");
+        expect(document.activeElement).toBe(actions(element)[0]);
+        expect((document.activeElement as HTMLElement).textContent).toBe("Learn");
+    });
+
+    it("ArrowRight should walk the cluster and clamp at the last action", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight"); // → Learn
+        press("ArrowRight"); // → Ignore
+        expect((document.activeElement as HTMLElement).textContent).toBe("Ignore");
+        press("ArrowRight"); // clamps
+        expect((document.activeElement as HTMLElement).textContent).toBe("Ignore");
+    });
+
+    it("ArrowLeft at the first action should return to the row body", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight");
+        press("ArrowLeft");
+        expect(document.activeElement).toBe(mains(element)[0]);
+    });
+
+    it("ArrowDown from an action should step the LIST from its row, not from the top", () => {
+        const { element } = mkWithActions();
+        mains(element)[0]!.focus();
+        press("ArrowRight"); // into row 0's cluster
+        press("ArrowDown");
+        expect(document.activeElement).toBe(mains(element)[1]);
+    });
+
+    it("the action buttons should stay OUT of the Tab order (one Tab stop per list)", () => {
+        const { element } = mkWithActions();
+        for (const btn of actions(element)) { expect(btn.tabIndex).toBe(-1); }
+        // …and entering the cluster must not steal the roving slot from the row.
+        mains(element)[0]!.focus();
+        press("ArrowRight");
+        expect(mains(element)[0]!.tabIndex).toBe(0);
+    });
+
+    it("ArrowRight on a row with no actions should stay put (Notes rows)", () => {
+        const ctx = mk(false);
+        ctx.render({ rows: [row({ label: "bare" })] });
+        const main = ctx.element.querySelector<HTMLElement>(".review-item__main")!;
+        main.focus();
+        press("ArrowRight");
+        expect(document.activeElement).toBe(main);
+    });
+});
+
+describe("initReviewList — a rebuild keeps keyboard focus (MAR-295 follow-up)", () => {
+    beforeEach(() => { document.body.innerHTML = ""; });
+
+    const mains = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>(".review-item__main")];
+
+    it("removing the focused row should focus the row now at its index, not <body>", () => {
+        const { element, render } = mk(false);
+        render({ rows: [row({ label: "one" }), row({ label: "two" }), row({ label: "three" })] });
+        mains(element)[1]!.focus(); // "two"
+        // The focused row disappears (an Ignore landed elsewhere in the stack).
+        render({ rows: [row({ label: "one" }), row({ label: "three" })] });
+        expect(document.activeElement).toBe(mains(element)[1]);
+        expect((document.activeElement as HTMLElement).textContent).toContain("three");
+    });
+
+    it("focus past the new end should clamp to the last row", () => {
+        const { element, render } = mk(false);
+        render({ rows: [row({ label: "one" }), row({ label: "two" })] });
+        mains(element)[1]!.focus();
+        render({ rows: [row({ label: "one" })] });
+        expect(document.activeElement).toBe(mains(element)[0]);
+    });
+
+    it("focus on an ACTION button should map back to a row position", () => {
+        const ignore = vi.fn();
+        const { element, render } = mk(false);
+        render({ rows: [
+            row({ label: "one", actions: [{ label: "Ignore", run: ignore }] }),
+            row({ label: "two", actions: [{ label: "Ignore", run: vi.fn() }] }),
+        ] });
+        element.querySelector<HTMLElement>(".review-item__action")!.focus(); // row 0's Ignore
+        render({ rows: [row({ label: "two", actions: [{ label: "Ignore", run: vi.fn() }] })] });
+        expect((document.activeElement as HTMLElement).classList.contains("review-item__main")).toBe(true);
+    });
+
+    it("a rebuild that EMPTIES the list should hand focus to the editor, never <body>", () => {
+        const view = { focus: vi.fn() };
+        const list = initReviewList("review-list", () => view as never, {
+            initialGroupByType: false,
+            onToggleGroupByType: vi.fn(),
+        });
+        document.body.appendChild(list.element);
+        list.render({ rows: [row({ label: "only" })] });
+        list.element.querySelector<HTMLElement>(".review-item__main")!.focus();
+        list.render({ empty: "No suggestions" });
+        expect(view.focus).toHaveBeenCalledTimes(1);
+    });
+
+    it("a rebuild with focus OUTSIDE the list should not steal it", () => {
+        const { element, render } = mk(false);
+        render({ rows: [row({ label: "one" })] });
+        const outside = document.createElement("button");
+        document.body.appendChild(outside);
+        outside.focus();
+        render({ rows: [row({ label: "changed" })] });
+        expect(document.activeElement).toBe(outside);
+    });
+});
+
 describe("initReviewList — view mode (driven by the shell)", () => {
     beforeEach(() => { document.body.innerHTML = ""; });
 

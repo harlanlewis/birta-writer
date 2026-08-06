@@ -118,6 +118,10 @@ export interface EditorCommandHost {
     toggleNoteHighlights(): void;
     toggleToolbar(): void;
     swapTocSide(): void;
+    /** Move keyboard focus into the review sidebar, opening it when hidden —
+     *  the inbound half of the sidebar's keyboard model (MAR-294; Escape is
+     *  the outbound half, wired per region in toc/keyboardNav). */
+    focusReviewSidebar(): void;
     // The shortcuts-help overlay (read-only cheatsheet — distinct from
     // openKeyboardShortcuts, VS Code's native customize/rebind UI). Wired by
     // webview/index.ts to webview/components/shortcutsHelp.
@@ -719,6 +723,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleNoteHighlights: () => host.toggleNoteHighlights?.(),
     toggleToolbar: () => host.toggleToolbar?.(),
     swapTocSide: () => host.swapTocSide?.(),
+    focusReviewSidebar: () => host.focusReviewSidebar?.(),
     // Keyboard canon: same commands the hardcoded ProseMirror keymaps run
     // (blockKeys / smartSelect / insertParagraph), so palette and keyboard
     // can never diverge.

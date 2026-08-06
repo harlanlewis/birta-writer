@@ -133,6 +133,7 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
         refresh,
         setMarkers,
         setGroupByType: list.setGroupByType,
+        focusFirst: list.focusFirst,
         count: (view) => scan(view.state.doc).length,
     };
 }

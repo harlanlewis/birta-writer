@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Focus Review Sidebar, a new Command Palette command, moves the keyboard into the review sidebar, opening the panel first when it is hidden; give it a keybinding in the Keyboard Shortcuts UI if you use it often. Escape hands focus back to the text, so the round trip never needs the mouse. The toolbar's Show issues action now also places the keyboard in the list it opens. Until now nothing moved focus into the panel: its lists were fully keyboard-navigable once you were there, but getting there took a click.
+
 ### Security
 
 - A link whose address is `javascript:` or `data:` is no longer clickable. Nothing could run through one before this either, because the editor already blocked that. This is a second layer, not a way in that was open. Your file is unchanged.
@@ -15,6 +19,10 @@
 - Documents with many tables open faster. On a 95 KB document with 108 tables the editor now appears in 521 ms instead of 639 ms, because a table's row and column grips are built when you first move the pointer over it rather than for every table at startup. Selecting cells with the keyboard still brings them up.
 
 ### Fixed
+
+- The review sidebar's last mouse-only controls work from the keyboard. The move-panel-to-the-other-side and hide buttons are a Tab stop of their own, and ArrowRight on a finding reaches its Ignore and Add-to-dictionary buttons, ArrowLeft returns to the row.
+
+- The keyboard is never stranded by the review sidebar. Hiding or collapsing the panel while focus was inside it dropped focus nowhere, so the next Tab press started from the top of the window; it now returns to the text. Ignoring a finding keeps the keyboard on the list instead of losing it. The collapsed panel's hover preview no longer retracts while the keyboard is inside it, and a hidden panel's buttons can no longer be reached invisibly with Tab.
 
 - Menus and palettes opened near the top of a document no longer appear behind the toolbar. Selecting text on the first line put the formatting palette underneath the toolbar, where it could be neither seen nor clicked; the link editor, the image title bar, suggestion dropdowns, footnote previews, and writing-check popups could all land there too. Every floating surface now measures the room it has from the bottom of the toolbar and sticky heading rather than from the top of the window, and one too tall for the space left scrolls instead of running off an edge.
 

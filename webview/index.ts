@@ -648,6 +648,9 @@ setEditorCommandHost({
         toc.setPosition(next);
         notifySetTocPosition(next);
     },
+    // The deliberate keyboard gesture INTO the review sidebar (MAR-294);
+    // Escape inside any of its regions is the gesture back.
+    focusReviewSidebar: () => toc.focusPanel(),
     editFrontmatter: () => focusFrontmatterPanel(),
     editRawMarkdown: switchToSource,
     // Shortcuts-help cheatsheet overlay (scaffold: no-op until it lands).

@@ -62,6 +62,10 @@ export interface ReviewListRenderer {
     render: (result: ReviewResult) => void;
     /** Apply an external group-mode change (a settings echo) without re-persisting. */
     setGroupByType: (grouped: boolean) => void;
+    /** Move focus onto the list body's first row — the deliberate keyboard
+     *  entry into this view (MAR-294). A no-op on an empty list (the empty
+     *  state has no focusable rows); the caller handles the fallback. */
+    focusFirst: () => void;
 }
 
 // How many rows a By-type group shows before the "Show K more" toggle.
@@ -174,13 +178,63 @@ export function initReviewList(
         onEscape: () => getView()?.focus(),
     });
 
+    /** The roving items currently in the body, in DOM order — group headers,
+     *  row bodies, and show-more toggles. Shared by the keyboard group and the
+     *  rebuild focus restore below. */
+    const bodyItems = (): HTMLElement[] =>
+        [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")];
+
     // Keyboard navigation: arrow through the group headers, rows, and show-more
     // toggles; Enter activates (all are <button>s); Escape returns to the editor.
     const roving = wireRoving({
         container: bodyEl,
-        items: () => [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")],
+        items: bodyItems,
         onEscape: () => getView()?.focus(),
+        // MAR-295: ArrowRight from a row body enters its trailing action
+        // cluster (Ignore / Learn) — a horizontal spur off the vertical list.
+        // The cluster's own keys are handled below; its buttons stay at
+        // tabIndex -1, so the list keeps exactly one Tab stop.
+        onHorizontal: (item, dir) => dir === 1 && enterRowActions(item),
     });
+
+    /** Focus the first trailing action of the row whose body is `item`; false
+     *  when the row has none (Notes rows), letting the arrow fall through. */
+    function enterRowActions(item: HTMLElement): boolean {
+        if (!item.classList.contains("review-item__main")) { return false; }
+        const first = item.parentElement?.querySelector<HTMLElement>(".review-item__action");
+        if (!first) { return false; }
+        first.focus();
+        return true;
+    }
+
+    // Keys while focus sits INSIDE an action cluster. Left/Right walk the
+    // cluster, with ArrowLeft at the first action returning to the row body;
+    // Up/Down first re-target the row body and then fall through to the roving
+    // handler (which reads document.activeElement at handler time), so they
+    // step the LIST from this row rather than jumping to its first item.
+    // Capture phase: the target is a descendant of bodyEl, so this runs before
+    // wireRoving's bubble-phase handler and can stop what it fully handled.
+    bodyEl.addEventListener("keydown", (e) => {
+        const target = e.target as HTMLElement;
+        if (!(target instanceof HTMLElement) || !target.classList.contains("review-item__action")) { return; }
+        const row = target.closest<HTMLElement>(".review-item");
+        if (!row) { return; }
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            e.preventDefault();
+            e.stopPropagation();
+            const actions = [...row.querySelectorAll<HTMLElement>(".review-item__action")];
+            const i = actions.indexOf(target);
+            if (e.key === "ArrowRight") {
+                actions[Math.min(actions.length - 1, i + 1)]?.focus(); // clamp at the end
+            } else if (i > 0) {
+                actions[i - 1]?.focus();
+            } else {
+                row.querySelector<HTMLElement>(".review-item__main")?.focus();
+            }
+        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            row.querySelector<HTMLElement>(".review-item__main")?.focus();
+        }
+    }, true);
 
     /** Switch modes and re-render. `persist` distinguishes a user click (echo
      *  the setting) from an external settings echo (already persisted). */
@@ -311,13 +365,36 @@ export function initReviewList(
         }
         renderedSignature = signature;
         element.classList.toggle("review-list--grouped", groupByType && hasRows);
+        // MAR-295 follow-up: a rebuild tears out the focused element — Enter
+        // on Ignore removes the row under the keyboard — and focus would drop
+        // to <body>. Capture where the keyboard was (an action button maps to
+        // its row body) BEFORE the teardown, and put it back at the same index
+        // in the fresh list, clamped to the new length. An emptied list falls
+        // back to the editor, like every path where a region stops being
+        // focusable. Focus outside the body (toolbar, editor) is untouched.
+        const active = document.activeElement;
+        const hadFocus = active instanceof HTMLElement && bodyEl.contains(active);
+        const focusIdx = hadFocus
+            ? bodyItems().indexOf(
+                active.closest(".review-item")?.querySelector<HTMLElement>(".review-item__main") ?? active)
+            : -1;
         bodyEl.replaceChildren(...buildNodes(result));
         roving.refresh(); // one tabbable item among the freshly built rows
+        if (hadFocus) {
+            const fresh = bodyItems();
+            if (fresh.length > 0) {
+                // The focusin listener carries the roving slot onto it.
+                fresh[Math.min(fresh.length - 1, Math.max(0, focusIdx))]!.focus();
+            } else {
+                getView()?.focus();
+            }
+        }
     }
 
     return {
         element,
         render: (result) => renderInto(result),
         setGroupByType: (grouped) => setMode(grouped, false),
+        focusFirst: () => roving.focusFirst(),
     };
 }

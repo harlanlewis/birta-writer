@@ -451,10 +451,35 @@ export async function run({ page, check, baseUrl }) {
         const proofActive = await page.$$eval(".toc-tab",
             (els) => els.some((el) => el.textContent === "Proofread" && el.classList.contains("toc-tab--active")));
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", proofActive);
+        // MAR-294: "Show issues" means "take me to the issues" — the action
+        // moves focus into the freshly shown list, not just the tab state.
+        check("'Show issues' moves keyboard focus into the sidebar",
+            await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
+            await page.evaluate(() => document.activeElement?.className ?? "none"));
     } else {
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", true,
             "SKIPPED — Checks button not rendered in this harness");
     }
+
+    // ── MAR-294: the Focus Review Sidebar command is the keyboard entry ────
+    // Tab can never reach the panel from the caret (it is the editor's indent
+    // key, and ~40 fold markers sit between the toolbar and the panel in DOM
+    // order), so the contributed command is THE deliberate inbound gesture.
+    // Drive it through the real message path the extension uses.
+    await page.click(".ProseMirror"); // start where a writer starts: in the text
+    check("before the command, focus is in the editor",
+        await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror")));
+    await page.evaluate(() => window.postMessage({ type: "editorCommand", command: "focusReviewSidebar" }, "*"));
+    await page.waitForTimeout(120);
+    check("the focusReviewSidebar command moves focus into the sidebar",
+        await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
+        await page.evaluate(() => document.activeElement?.className ?? "none"));
+    // …and the gesture back already exists: Escape from the focused region.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(120);
+    check("Escape after the command returns focus to the editor (round trip complete)",
+        await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror")),
+        await page.evaluate(() => document.activeElement?.className ?? "none"));
 
     // ── Links tab: every link in the doc, grouped by destination kind ─────
     await switchTab(page, "Links");
@@ -524,6 +549,122 @@ export async function run({ page, check, baseUrl }) {
     check("Show-more spans the full row width", !!widths && Math.abs(widths.more - widths.item) < 2,
         JSON.stringify(widths));
 
+    // ── MAR-295: per-row actions are keyboard-reachable from the row ──────
+    // The Ignore/Learn buttons were built at tabIndex -1 outside every group:
+    // mouse-only. ArrowRight from the focused row body now enters the trailing
+    // cluster, ArrowLeft returns, and Up/Down step the LIST from that row.
+    // Real keys against the real bundle — which listener wins (the capture-
+    // phase cluster handler vs the roving handler) is invisible to jsdom.
+    const focusedClass = () => page.evaluate(() => document.activeElement?.className ?? "none");
+    const focusedIsAction = () => page.evaluate(() =>
+        document.activeElement?.classList.contains("review-item__action") ?? false);
+    await page.locator(".review-list--proofread .review-item__main").first().focus();
+    await page.keyboard.press("ArrowRight");
+    check("ArrowRight from a focused Proofreading row enters its action cluster",
+        await focusedIsAction(), await focusedClass());
+    await page.keyboard.press("ArrowLeft");
+    check("ArrowLeft at the first action returns to the row body",
+        await page.evaluate(() => document.activeElement?.classList.contains("review-item__main") ?? false),
+        await focusedClass());
+    await page.keyboard.press("ArrowRight"); // back into the cluster
+    await page.keyboard.press("ArrowDown");
+    const rowAfterDown = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll(".review-list--proofread .review-item__main")];
+        return rows.indexOf(document.activeElement);
+    });
+    check("ArrowDown from an action steps the list from ITS row (row 0 → row 1), not from the top",
+        rowAfterDown === 1, `landed on row index ${rowAfterDown}`);
+    // Keyboard ACTIVATION: Enter on a focused Ignore must actually dismiss the
+    // finding — the whole point of reaching the button at all.
+    const findingsBefore = await page.$$eval(".review-list--proofread .review-item", (e) => e.length);
+    await page.keyboard.press("ArrowRight"); // into row 1's cluster
+    // Ignore is always the cluster's last action; bounded walk to it (a
+    // spelling row leads with Learn). The clamp keeps this finite regardless.
+    for (let i = 0; i < 3; i++) {
+        if (/Ignore/.test(await page.evaluate(() => document.activeElement?.textContent ?? ""))) { break; }
+        await page.keyboard.press("ArrowRight");
+    }
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    const findingsAfter = await page.$$eval(".review-list--proofread .review-item", (e) => e.length);
+    // Strictly fewer, not exactly one fewer: Ignore is session-scoped by
+    // kind+text (ignoreStyleSession/ignoreLintSession), so every row matching
+    // the ignored word goes at once — same as the in-text popup's Ignore.
+    check("Enter on the focused Ignore action dismisses the finding",
+        findingsAfter < findingsBefore, `${findingsBefore} -> ${findingsAfter}`);
+    // The rebuild that removed the row must not strand the keyboard: focus
+    // lands on the roving item now at the removed row's index (clamped),
+    // never on <body>.
+    check("…and focus stays on a list item after the row is removed, not <body>",
+        await page.evaluate(() => !!document.activeElement?.closest(".review-body")),
+        await focusedClass());
+
+    // ── MAR-295: the flip/hide controls are their own keyboard group ──────
+    // They sit inside the tablist but are not tabs, so they could not join its
+    // arrow set; they are now the strip's SECOND Tab stop — a two-button
+    // horizontal roving toolbar, same shape as every other region.
+    const controlsAria = await page.evaluate(() => {
+        const c = document.querySelector(".toc-controls");
+        return {
+            role: c.getAttribute("role"),
+            buttons: c.querySelectorAll("button").length,
+            tabbable: [...c.querySelectorAll("button")].filter((b) => b.tabIndex === 0).length,
+        };
+    });
+    check("the flip/hide pair is a role=toolbar with exactly ONE tab stop for its 2 buttons",
+        controlsAria.role === "toolbar" && controlsAria.buttons === 2 && controlsAria.tabbable === 1,
+        JSON.stringify(controlsAria));
+    await page.evaluate(() => document.querySelector(".toc-controls button[tabindex='0']")?.focus());
+    check("the controls' tab stop is the flip button",
+        await page.evaluate(() => document.activeElement?.classList.contains("toc-flip-btn")),
+        await focusedClass());
+    await page.keyboard.press("ArrowRight");
+    check("ArrowRight moves from flip to hide",
+        await page.evaluate(() => document.activeElement?.classList.contains("toc-hide-btn")),
+        await focusedClass());
+
+    // ── MAR-295: hiding the panel from the keyboard restores editor focus ──
+    // This is the check the reverted MAR-291 speculation lacked: drive the hide
+    // with focus INSIDE the panel and assert where focus lands. Without the
+    // restore rule it strands on <body> (or an off-screen button).
+    await page.keyboard.press("Enter"); // activate the focused hide button
+    await page.waitForTimeout(300);
+    const panelClosed = await page.evaluate(() => !document.body.classList.contains("toc-open"));
+    check("Enter on the focused hide button collapses the panel", panelClosed);
+    check("…and focus lands back in the editor, not on <body>",
+        await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror")),
+        await focusedClass());
+    // The complement of the restore rule: a CLOSED drawer must be genuinely
+    // unfocusable. Transform/opacity hiding alone left its roving stops (the
+    // flip button here) focusable off-screen — visibility now flips with the
+    // slide, so a .focus() on them must be refused.
+    await page.waitForTimeout(300); // let the 0.2s visibility delay elapse
+    check("the closed drawer's controls refuse focus (no phantom Tab stops off-screen)",
+        await page.evaluate(() => {
+            document.querySelector(".toc-flip-btn")?.focus();
+            return !document.activeElement?.closest(".toc-panel");
+        }),
+        await focusedClass());
+    // Reopen for the checks below.
+    await page.locator(".toc-toggle-tab").dispatchEvent("mousedown");
+    await page.waitForTimeout(300);
+
+    // The same rule on the other path that makes the panel unfocusable: a
+    // responsive docked→overlay collapse (the originally observed repro was a
+    // resize flip with the keyboard inside the panel).
+    const priorViewport = page.viewportSize();
+    await page.evaluate(() => window.postMessage({ type: "editorCommand", command: "focusReviewSidebar" }, "*"));
+    await page.waitForTimeout(120);
+    check("focus is inside the panel before the resize",
+        await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")), await focusedClass());
+    await page.setViewportSize({ width: 900, height: priorViewport.height }); // < 260 + 720
+    await page.waitForTimeout(300);
+    check("a docked→overlay collapse with focus inside restores focus to the editor",
+        await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror")),
+        await focusedClass());
+    await page.setViewportSize(priorViewport);
+    await page.waitForTimeout(300);
+
     // ── Overflowed tabs collapse to a select (the flip/hide controls stay
     //    top-right, so four tabs can't share the 260px row — by design the
     //    strip becomes a dropdown instead of wrapping or clipping). ──
@@ -567,6 +708,40 @@ export async function run({ page, check, baseUrl }) {
     }));
     check("the flyout measures its own width — full tab list, not the docked select",
         !flyoutMode.select && flyoutMode.tabsVisible >= 4, JSON.stringify(flyoutMode));
+
+    // ── MAR-295 follow-up: the flyout must not retract under the keyboard ──
+    // Tabbing from the focused reveal tab into the flyout fires the tab's
+    // blur, whose scheduled hide (220ms) nothing cancelled: the flyout tore
+    // itself down ~400ms later with the keyboard inside it (reproduced before
+    // the fix). Focus arriving in the panel now cancels the pending hide,
+    // mirroring mouseenter; leaving it re-arms the retract.
+    await page.mouse.move(500, 500); // park the pointer so hover keeps nothing alive
+    await page.waitForTimeout(500);  // let the hover flyout above fully retract (220ms grace + 170ms exit)
+    await page.evaluate(() => document.querySelector(".toc-toggle-tab")?.focus());
+    await page.waitForSelector(".toc-panel--flyout-in", { timeout: 3000 });
+    await page.keyboard.press("Tab");
+    check("Tab from the focused reveal tab lands inside the flyout",
+        await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
+        await focusedClass());
+    await page.waitForTimeout(700); // past the 220ms blur hide + 170ms exit teardown
+    const flyoutHeld = await page.evaluate(() => ({
+        flyoutIn: document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in"),
+        inPanel: !!document.activeElement?.closest(".toc-panel"),
+    }));
+    check("the flyout stays out while the keyboard is inside it (no retraction under focus)",
+        flyoutHeld.flyoutIn && flyoutHeld.inPanel, JSON.stringify(flyoutHeld));
+    // Escape from the strip (the region rule, now covering the tab strip too)
+    // returns to the editor, and the departing focus re-arms the retract — the
+    // fix must not have made the flyout sticky.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(600); // 220ms hide + 170ms exit
+    const flyoutGone = await page.evaluate(() => ({
+        flyoutIn: document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in"),
+        inEditor: !!document.activeElement?.closest(".ProseMirror"),
+    }));
+    check("Escape from the flyout's strip returns focus to the editor and the flyout retracts",
+        !flyoutGone.flyoutIn && flyoutGone.inEditor, JSON.stringify(flyoutGone));
+
     // Restore the docked-open state for any later checks.
     await page.locator(".toc-toggle-tab").dispatchEvent("mousedown");
     await page.waitForTimeout(300);

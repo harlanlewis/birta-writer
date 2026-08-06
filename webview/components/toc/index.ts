@@ -82,6 +82,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     setReviewGroupByType: (grouped: boolean) => void;
     /** Reveal the sidebar and switch to the Proofreading tab (toolbar menu action). */
     showProofreadingTab: () => void;
+    /** Reveal the sidebar (if hidden) and move keyboard focus into it — the
+     *  `Focus Review Sidebar` command's entry point (MAR-294). */
+    focusPanel: () => void;
     /** Unregister the panel's drop-zone provider (teardown/tests). */
     dispose: () => void;
 } {
@@ -100,12 +103,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // hide action makes sense.
     const controls = document.createElement("div");
     controls.className = "toc-controls";
+    // The pair is its own toolbar, not part of the surrounding tablist's tab
+    // set — a tablist's arrows must move between TABS (and these are not
+    // tabs; the strip's keydown handler is scoped to .toc-tab for exactly
+    // that reason), so reaching them takes the strip's second Tab stop.
+    controls.setAttribute("role", "toolbar");
+    controls.setAttribute("aria-orientation", "horizontal");
+    controls.setAttribute("aria-label", t("Sidebar controls"));
 
     // Side-switch: moves the panel to the opposite edge. Two-way arrows read as
     // "swap sides"; the tooltip names the destination.
     const flipBtn = document.createElement("button");
     flipBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-flip-btn";
-    flipBtn.tabIndex = -1;
     flipBtn.innerHTML = IconArrowLeftRight;
     controls.appendChild(flipBtn);
 
@@ -114,8 +123,19 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // the two read as one persistent control as the panel slides away.
     const hideBtn = document.createElement("button");
     hideBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-hide-btn";
-    hideBtn.tabIndex = -1;
     controls.appendChild(hideBtn);
+
+    // MAR-295: the flip/hide pair used to sit at tabIndex -1 outside every
+    // group — mouse-only. It is now the sidebar's standard shape in miniature:
+    // one roving group, one Tab stop, arrows along its own (horizontal) axis.
+    // wireRoving seeds the single tabbable slot, so the buttons no longer set
+    // tabIndex themselves.
+    wireRoving({
+        container: controls,
+        items: () => [...controls.querySelectorAll<HTMLElement>("button")],
+        orientation: "horizontal",
+        onEscape: () => getEditorView()?.focus(),
+    });
 
     const list = document.createElement("div");
     list.className = "toc-list";
@@ -296,6 +316,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // jump to the ends, Enter/Space activate the focused tab. Hidden tabs (the
     // Proofreading tab when the master switch is off) are skipped.
     tabStrip.addEventListener("keydown", (e) => {
+        // Escape from the strip returns to the editor — the region rule every
+        // other wired region already follows; the strip was the one without it
+        // (found while pinning the flyout's keyboard path). The OPEN overflow
+        // menu is excluded: its own roving handles Escape (close + refocus the
+        // select), and that bubbled event must not also yank focus away.
+        if (e.key === "Escape" && e.target instanceof HTMLElement && !tabsMenu.contains(e.target)) {
+            getEditorView()?.focus();
+            return;
+        }
         // ONLY the tab buttons. The strip also hosts the overflow select, its
         // menu, and the flip/hide controls — the select runs the menu-button
         // model instead, and this handler used to preventDefault its Enter and
@@ -362,6 +391,41 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         updateTabButtons();
         syncTabOverflow(); // select-mode label follows the active tab
         if (isPanelVisible()) { renderActiveView(); }
+    }
+
+    /**
+     * Move keyboard focus INTO the panel: the active view's first row, falling
+     * back to the tab strip's own Tab stop when the view has no rows (an empty
+     * state renders no focusable items). This is the inbound half of the
+     * sidebar's keyboard model (MAR-294) — the outbound half already exists,
+     * since Escape in every wired region returns focus to the editor.
+     */
+    function focusActiveRegion(): void {
+        if (activeTab === "contents") { outlineRoving.focusFirst(); }
+        else if (activeTab === "proofreading") { proofreadView.focusFirst(); }
+        else if (activeTab === "notes") { notesView.focusFirst(); }
+        else { linksView.focusFirst(); }
+        if (panel.contains(document.activeElement)) { return; }
+        // Empty view: land on the strip's Tab stop — the active tab button, or
+        // the overflow select when the strip is collapsed. The one that is not
+        // current is visibility:hidden, which refuses focus, so try in order
+        // and keep whichever sticks.
+        for (const el of tabStrip.querySelectorAll<HTMLElement>('[tabindex="0"]')) {
+            el.focus();
+            if (document.activeElement === el) { return; }
+        }
+    }
+
+    /** The `Focus Review Sidebar` command (and any caller wanting the same
+     *  gesture): reveal the panel if hidden — persisting the choice, exactly
+     *  like the reveal tab — then move focus into it. */
+    function focusPanel(): void {
+        hideFlyoutImmediate(); // focus wants the stable docked panel, not the transient flyout
+        if (!isOpen) {
+            applyVisiblePreference(true);
+            notifyTocVisibility("shown");
+        }
+        focusActiveRegion();
     }
 
     /** Master proofreading switch: off hides the tab immediately (and falls back
@@ -663,6 +727,21 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     /**
+     * MAR-295: when the panel stops being focusable while the keyboard is
+     * inside it — the hide button, the panel-toggle command, a responsive
+     * docked→overlay collapse, a flyout teardown — focus goes back to the
+     * editor, exactly where Escape would have put it. Without this it drops to
+     * <body>, stranding the keyboard nowhere (observed by driving a resize
+     * flip with focus in the overflow menu). Only ever called when the panel
+     * is NOT visible, so an open panel's focus is never yanked.
+     */
+    function restoreFocusToEditor(): void {
+        if (panel.contains(document.activeElement)) {
+            getEditorView()?.focus();
+        }
+    }
+
+    /**
      * Re-commit the panel's whole presentation: open/docked classes, the tab
      * glyph, the outside-click listener, and (when visible) the list. This is
      * the RARE path — a toggle, a responsive flip, an edge swap, or load —
@@ -692,6 +771,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // armed the NEXT drag against positions the doc had moved past.
         if (isPanelVisible()) {
             renderActiveView(headings ?? getHeadings());
+        } else {
+            restoreFocusToEditor(); // the panel just stopped being focusable (MAR-295)
         }
         syncTabOverflow(); // presentation (open/side/mode) may have changed the row's width
         if (initialLoad) {
@@ -1237,6 +1318,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  the dock-open path) and restore the docked drawer's CSS positioning. */
     function teardownFlyout(): void {
         cancelFlyoutCleanup();
+        // A flyout that retracts with the keyboard inside it (Tab moved focus
+        // in; the reveal tab's blur timer still fires) must not strand focus
+        // on a hidden box. Skipped when the teardown is the dock-open path,
+        // where the panel stays visible and keeps its focus.
+        if (!isOpen) { restoreFocusToEditor(); }
         panel.classList.remove("toc-panel--flyout", "toc-panel--flyout-in");
         document.body.classList.remove("toc-flyout-open");
         panel.style.left = "";
@@ -1331,6 +1417,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // click already promoted it to a persistent open, when flyoutOpen is false).
     panel.addEventListener("mouseenter", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
     panel.addEventListener("mouseleave", () => { if (flyoutOpen) { scheduleFlyoutHide(); } });
+    // The keyboard half of the hover pair (MAR-295 follow-up): Tabbing from
+    // the reveal tab into the flyout fires the tab's blur, and the hide that
+    // blur scheduled had no canceller — the flyout retracted under the
+    // keyboard ~400ms later (reproduced against the built bundle). Focus
+    // arriving anywhere in the panel cancels the pending hide, exactly like
+    // mouseenter; the focusout handler below re-arms it when focus leaves, so
+    // blur-out still retracts and the flyout never turns sticky.
+    panel.addEventListener("focusin", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
     panel.addEventListener("focusout", (e) => {
         if (flyoutOpen && !panel.contains(e.relatedTarget as Node | null)) {
             scheduleFlyoutHide();
@@ -1536,7 +1630,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                 applyVisiblePreference(true); // open + remember the intent
                 notifyTocVisibility("shown");
             }
+            // "Show issues" means "take me to the issues": moving focus into
+            // the freshly shown list makes the action keyboard-complete
+            // (MAR-294) — Escape hands focus straight back to the editor.
+            focusActiveRegion();
         },
+        focusPanel,
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
             window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);

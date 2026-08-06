@@ -510,6 +510,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.focusReviewSidebar",
+                "title": "%command.editor.focusReviewSidebar.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.duplicateBlockUp",
                 "title": "%command.editor.duplicateBlockUp.title%",
                 "category": "Birta Writer"
@@ -1099,6 +1104,10 @@
                 },
                 {
                     "command": "birta.editor.swapTocSide",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.focusReviewSidebar",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

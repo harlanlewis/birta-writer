@@ -96,6 +96,7 @@ export function initLinksList(getView: () => EditorView | null): LinksListView {
         element: list.element,
         refresh: (view) => list.render(produce(view, getView)),
         setGroupByType: list.setGroupByType,
+        focusFirst: list.focusFirst,
         count: (view) => scanLinksCached(view.state.doc).length,
     };
 }

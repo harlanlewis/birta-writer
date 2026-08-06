@@ -121,7 +121,7 @@ jobs:
               // summary reading "TYPING REGRESSED" above a table showing -0.33%,
               // which reads as a broken gate and sent a reader hunting the wrong
               // metric for an hour.
-              const bc = p[name]?.base?.caretTotal, ac = p[name]?.head?.caretTotal;
+              const bc = p[name]?.base?.caretMedian, ac = p[name]?.head?.caretMedian;
               const bn = p[name]?.base?.caretSamples, an = p[name]?.head?.caretSamples;
               let caret = '–';
               if (typeof bc === 'number' && typeof ac === 'number') {
@@ -129,9 +129,11 @@ jobs:
                 const cd = ac - bc;
                 const cpct = bc > 0 ? (cd / bc) * 100 : (ac > 0 ? 100 : 0);
                 const cs = cd >= 0 ? '+' : '';
-                caret = n < 8
+                // The floor travels in the JSON (caretFloor) so this renderer
+                // never quotes a stale copy of TYPING_CARET_MIN_SAMPLES.
+                caret = n < (r.caretFloor ?? 8)
                   ? `${round(bc)} → ${round(ac)} ms ⚠ abstained (n=${n})`
-                  : `${round(bc)} → ${round(ac)} ms (${cs}${round(cpct)}%, n=${n})`;
+                  : `${round(bc)} → ${round(ac)} ms (${cs}${round(cpct)}%, n=${bn}→${an})`;
               }
               return `| ${gated ? '**' + name + '**' : name} | ${round(b)} | ${round(a)} | ${s}${round(d)} ms (${s}${round(pct)}%) | ${caret} | ${block} |`;
             };
@@ -151,16 +153,17 @@ jobs:
               `Per-keystroke dispatch median, ${r.pairsPerFixture} interleaved pairs/fixture × ${r.keys} keystrokes `,
               `(**bold** = gated; ≥10% AND ≥0.5 ms counts as a real move).`,
               '',
-              '`caret` is per-burst TOTAL selection-only dispatch — **gated**, on the same floors. It gates on the',
-              'total rather than a median because back-to-back arrow presses coalesce `selectionchange`, so a',
-              '30-press burst yields only 2–7 transactions; a median over n=2 is noise, while the sum still',
-              'measures the whole burst. Below n=8 the caret verdict **abstains** and says so rather than guessing.',
+              '`caret` is the MEDIAN selection-only dispatch per transaction — **gated**, on the same floors.',
+              'It gates on the per-transaction median, never the burst total: how many transactions a burst',
+              'coalesces into tracks main-thread load, not caret cost (identical bundles measured 13–47 samples',
+              'per arm), so a total fires on builds that merely coalesce less — including ones whose caret path',
+              'got cheaper. Below n=8 the caret verdict **abstains** and says so rather than guessing.',
               '',
               '`block` is total main-thread longtask ms over the burst — **reported, never gated**: its 50 ms',
               'threshold makes it inflate on a slower machine (679 ms locally vs ~15,000 ms here). A median that',
               'improves while block grows means work MOVED out of dispatch rather than being removed.',
               '',
-              '| fixture | base ms | head ms | Δ | caret/burst | block |',
+              '| fixture | base ms | head ms | Δ | caret median | block |',
               '| --- | --- | --- | --- | --- | --- |',
               rows,
               '',

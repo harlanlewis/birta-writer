@@ -20,6 +20,8 @@ export interface ReviewListView {
     refresh: (view: EditorView | null) => void;
     /** Apply a birta.review.groupByType change (settings echo). */
     setGroupByType: (grouped: boolean) => void;
+    /** Keyboard entry: focus the list's first row (MAR-294). */
+    focusFirst: () => void;
 }
 
 type Label = { label: string; emphasis?: { start: number; end: number } };
@@ -102,5 +104,6 @@ export function initProofreadingList(getView: () => EditorView | null): ReviewLi
         element: list.element,
         refresh: (view) => list.render(produce(view)),
         setGroupByType: list.setGroupByType,
+        focusFirst: list.focusFirst,
     };
 }
