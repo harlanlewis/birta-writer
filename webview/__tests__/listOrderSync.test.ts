@@ -111,21 +111,60 @@ describe("listOrderSync parity with the stock plugin", () => {
         expect(listFacts(ours)).toEqual(before);
     });
 
-    it("a bullet list whose first item turns ordered should convert exactly as stock does", async () => {
-        const ours = await make(DOC, false);
-        const stock = await make(DOC, true);
-        for (const view of [ours, stock]) {
-            // The turn-into gesture the conversion branch exists for: mark the
-            // bullet list's first item ordered and let the sync rewrite the list.
-            const { node, pos } = findFirst(view, "bullet_list");
-            const first = node.child(0);
-            view.dispatch(view.state.tr.setNodeMarkup(pos + 1, undefined, {
-                ...first.attrs, listType: "ordered",
-            }));
-        }
+    // ── The conversion branch: deliberate divergence from stock ─────────────
+    // Stock passes the sub-walk's RELATIVE child positions to setNodeMarkup,
+    // which is only correct for a list at document position 0. The shape below
+    // (content before the bullet list) is reachable by dragging an ordered
+    // item into a bullet list's first slot and then making any structural
+    // list edit; in stock the append THROWS and the user's edit dies. Ours
+    // converts correctly. The stock-behavior tests are TRIPWIRES: when a
+    // Milkdown upgrade fixes upstream, they fail, and the divergence notes in
+    // listOrderSync.ts come out.
+    const CONVERT_DOC = "# Head\n\nProse before the list.\n\n- alpha\n- beta\n- gamma\n";
 
-        expect(listFacts(ours)).toEqual(listFacts(stock));
-        expect(listFacts(ours).filter((f) => f === "ordered_list")).toHaveLength(2);
+    function armConversion(view: EditorView): void {
+        const { node, pos } = findFirst(view, "bullet_list");
+        view.dispatch(view.state.tr.setNodeMarkup(pos + 1, undefined, {
+            ...node.child(0).attrs, listType: "ordered",
+        }));
+    }
+
+    it("a mid-document bullet list whose first item turns ordered should convert in place", async () => {
+        const ours = await make(CONVERT_DOC, false);
+        armConversion(ours);
+
+        const facts = listFacts(ours);
+        expect(facts[0]).toBe("ordered_list");
+        // Labels are re-derived in place. The non-first items' listType attr
+        // stays stale until a later generic pass — upstream's design, kept:
+        // the sub-walk fixes labels only, and the conversion transaction is
+        // history-exempt so the sync skips its own output. The serializer
+        // keys off the list node type, so the file is right regardless.
+        expect(facts.slice(1)).toEqual(["ordered:1.", "bullet:2.", "bullet:3."]);
+        // The heading before the list is untouched (the mis-target's victim).
+        expect(findFirst(ours, "heading").node.textContent).toBe("Head");
+    });
+
+    it("TRIPWIRE: stock still throws on the same gesture (drop the divergence when this fails)", async () => {
+        const stock = await make(CONVERT_DOC, true);
+
+        expect(() => armConversion(stock)).toThrowError(/text nodes/);
+    });
+
+    it("an item with a stale listType but a correct label should still be corrected", async () => {
+        const ours = await make(DOC, false);
+        const { node, pos } = findFirst(ours, "list_item"); // first ordered item
+        // Poison the listType while keeping the label right, then make a
+        // structural list edit so the sync pass runs.
+        ours.dispatch(ours.state.tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs, listType: "bullet",
+        }));
+        const last = (() => { let l = { node, pos }; ours.state.doc.descendants((n, p) => {
+            if (n.type.name === "list_item") l = { node: n, pos: p }; return true; }); return l; })();
+        ours.dispatch(ours.state.tr.delete(last.pos, last.pos + last.node.nodeSize));
+
+        expect(listFacts(ours)).toContain("ordered:1.");
+        expect(listFacts(ours)).not.toContain("bullet:1.");
     });
 });
 

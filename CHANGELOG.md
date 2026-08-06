@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- Dragging an ordered-list item into a bullet list no longer sets a trap that kills later edits. The moved item quietly kept its "ordered" identity, and the next structural edit inside any list (Enter, another move) then hit a crash in list renumbering: the edit was thrown away, and every further list edit died the same way until the file was reopened. The renumbering now targets the right positions, so that first edit converts the receiving list to an ordered list, in place, as intended. The file itself was never corrupted; saving always wrote a clean bullet list.
+
 - Dragging the only real block out of a list item no longer destroys the list on reopen. An item like `- > quote` carries an invisible empty line the parser adds in front of the quote; moving the quote out left the item holding only that artifact, which saved as a bare `-`. Markdown reads a lone `-` under a line of text as an underline that turns the text into a heading, splitting the list. The move now carries the emptied item away with its content. Where the same bare-marker shape can arise for other reasons, a move that would actually damage the document on reopen is refused with a notice instead, keeping the block-editing integrity promise: content is never silently altered.
 
 - The review sidebar's last mouse-only controls work from the keyboard. The move-panel-to-the-other-side and hide buttons are a Tab stop of their own, and ArrowRight on a finding reaches its Ignore and Add-to-dictionary buttons, ArrowLeft returns to the row.

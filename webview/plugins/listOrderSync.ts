@@ -17,9 +17,23 @@
  *     label's value depends on the item's index: inserting one item re-labels
  *     every later sibling, and those siblings sit OUTSIDE the diff region.
  *
- * Label and conversion semantics match upstream exactly, held to it by the
- * differential test in listOrderSync.test.ts. `pureCommonmark` filters the
- * stock plugin out via `listOrderReplacedPlugins`.
+ * Label semantics match upstream exactly, held to it by the differential
+ * test in listOrderSync.test.ts. The CONVERSION branch deliberately
+ * diverges, in two ways, each pinned by a tripwire test that fails the day
+ * upstream fixes its side (drop the divergence then):
+ *
+ *   - upstream passes `node.descendants`' RELATIVE child positions to
+ *     `tr.setNodeMarkup`, which is only correct for a list at position 0.
+ *     Anywhere else the positions land in unrelated early-document nodes,
+ *     and on a text position the append THROWS, killing the user's edit —
+ *     reachable here by dragging an ordered item into a bullet list's first
+ *     slot and then pressing Enter in any list (probe, 2026-08-06). Ours
+ *     maps them to absolute positions.
+ *   - upstream's `changed = handleNodeItem(...)` overwrite drops a pending
+ *     `listType` correction whenever the label was already right. Ours ORs.
+ *
+ * `pureCommonmark` filters the stock plugin out via
+ * `listOrderReplacedPlugins`.
  */
 import { Plugin, PluginKey } from "../pm";
 import type { Node as PmNode, NodeType } from "../pm";
@@ -101,7 +115,10 @@ export const listOrderSyncPlugin = $prose((ctx) => {
                             if (child.type === listItemType) {
                                 const attrs = { ...child.attrs };
                                 if (handleNodeItem(attrs, childIndex)) {
-                                    tr = tr.setNodeMarkup(childPos, undefined, attrs);
+                                    // childPos is relative to the list's
+                                    // content; map to a document position
+                                    // (divergence 1 in the header).
+                                    tr = tr.setNodeMarkup(pos + 1 + childPos, undefined, attrs);
                                 }
                             }
                             return false;
@@ -115,7 +132,8 @@ export const listOrderSyncPlugin = $prose((ctx) => {
                         changed = true;
                     }
                     if (parent.maybeChild(0)) {
-                        changed = handleNodeItem(attrs, index, (parent.attrs["order"] as number) ?? 1);
+                        // OR, not overwrite (divergence 2 in the header).
+                        changed = handleNodeItem(attrs, index, (parent.attrs["order"] as number) ?? 1) || changed;
                     }
                     if (changed) {
                         tr = tr.setNodeMarkup(pos, undefined, attrs);
