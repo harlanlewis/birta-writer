@@ -81,6 +81,10 @@ const VOCABULARY: readonly string[] = [
     "- first item\n- second item\n  - nested item\n    1. deep ordered\n    2. deeper still",
     "1. ordered one\n2. ordered two\n   > a quote inside an ordered item",
     "- item with a container\n\n  > [!WARNING]\n  > a callout inside a list item",
+    // Artifact-lead item (MAR-88 discovery): `- > quote` parses as [empty
+    // paragraph artifact, blockquote]; moving the quote out must dissolve
+    // the husk, never leave a bare `-` marker line.
+    "- an ordinary item\n- > a quote as an item's only block",
     "```ts\nconst answer: number = 42;\n```",
     "| alpha | beta |\n| --- | --- |\n| one | two |",
     "A paragraph with inline math $a^2 + b^2 = c^2$ in prose.",

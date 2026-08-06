@@ -75,7 +75,7 @@ import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState
 // isHiddenTargetPos is only called inside the function body, matching the
 // established contentGuard ↔ headingFold precedent.
 import { isHiddenTargetPos } from "../plugins/headingFold";
-import { markerKeyOf, showGuardNotice, tagContentGuard } from "../plugins/contentGuard";
+import { isBlankParagraph, markerKeyOf, showGuardNotice, tagContentGuard } from "../plugins/contentGuard";
 import { reparseRefusal } from "../plugins/reparseHazard";
 import { flashRange } from "./rangeIndicator";
 import { t } from "../i18n";
@@ -352,13 +352,51 @@ export function appendMove(
     // can exempt exactly them and still veto the buggy-unwrap shape.
     const dissolvedMarkers = dissolvedMarkersFor(doc, { from: coveredFrom, to: coveredTo });
 
+    // ── Artifact-husk dissolution (found under MAR-88) ──
+    // `list_item` is `paragraph block*`, so an item whose real content leads
+    // with a non-paragraph carries a parser-filled EMPTY paragraph in front
+    // (the MAR-230 artifact: `- > quote` parses as [empty paragraph,
+    // blockquote], and the serializer elides the artifact on the way out).
+    // Moving that real content away would leave the husk — an item holding
+    // only the artifact — which serializes as a bare `-` marker line, and a
+    // bare marker under a paragraph line re-lexes as a SETEXT UNDERLINE on
+    // reopen, turning the paragraph into a heading and destroying the list.
+    // The artifact is not content (no gesture creates it, the serializer
+    // already elides it, and the guard's fingerprint ignores blank
+    // paragraphs — MAR-123), so the move takes the emptied item with it:
+    // the same declared-dissolution lane as a list losing its last item,
+    // extended one artifact deep. The artifact test is the serializer's own
+    // (itemContentForMarkdown, plugins/list.ts): a blank lead paragraph is
+    // an artifact exactly when the child AFTER it is not a paragraph — a
+    // paragraph there means the blank was an authored line, which is not
+    // ours to delete (that residual shape is the save-survival check's job;
+    // see bare-marker machinery in plugins/reparseHazard.ts).
+    let deleteFrom = source.from;
+    let deleteTo = source.to;
+    const $vacated = doc.resolve(source.from);
+    if ($vacated.depth > 0 && $vacated.parent.type.name === "list_item") {
+        const item = $vacated.parent;
+        const lead = item.maybeChild(0);
+        if (
+            lead !== null &&
+            item.childCount >= 2 &&
+            source.from === $vacated.start() + lead.nodeSize &&
+            source.to === $vacated.end() &&
+            isBlankParagraph(lead, item) &&
+            item.child(1).type.name !== "paragraph"
+        ) {
+            deleteFrom = $vacated.before();
+            deleteTo = $vacated.after();
+        }
+    }
+
     // ── The move: delete + insert on the caller's transaction ──
     // deleteRange (not delete): removing a list's last item must dissolve
     // the emptied list instead of leaving a schema-invalid empty node — the
     // single allowed normalization. The delete is appended, and the target is
     // mapped through `tr.mapping`, so any steps the caller already staged (the
     // checklist's checkbox flip is position-preserving) are accounted for.
-    tr.deleteRange(source.from, source.to);
+    tr.deleteRange(deleteFrom, deleteTo);
     const sizeAfterDelete = tr.doc.content.size;
     const insertAt = tr.mapping.map(targetPos);
     tr.insert(insertAt, content);

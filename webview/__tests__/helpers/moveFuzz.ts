@@ -19,6 +19,7 @@ import {
     moveRangeAt,
     visibleBoundaryPositions,
 } from "../../components/blockMenu";
+import { isContainerNode, isListNode, nestedChildSpec } from "../../plugins/headingFold";
 
 // ── Corpus fixtures ─────────────────────────────────────────────────────────
 
@@ -199,10 +200,71 @@ export interface MoveSource {
 }
 
 /**
+ * The positions of every MARKER-reachable nested block: the non-list,
+ * non-paragraph children of list items (offset > 0) and of containers, at
+ * every depth — mirroring the gutter's own emission walk (emitItemGutters /
+ * emitContainerChildGutters) via its own decision function, nestedChildSpec.
+ * These blocks have grabbers (PR #56 / MAR-88) and therefore drag, but most
+ * carry no blockBoundaryPositions entry, so a boundary-derived source sweep
+ * missed them — the blind spot that let the vacated-item bare-marker
+ * corruption (found under MAR-88) stay green while being one user drag away.
+ */
+function markerReachablePositions(doc: ProseNode): number[] {
+    const positions: number[] = [];
+    const visitContainer = (container: ProseNode, containerPos: number): void => {
+        container.forEach((child: ProseNode, offset: number) => {
+            const childPos = containerPos + 1 + offset;
+            if (isListNode(child)) {
+                visitList(child, childPos);
+                return;
+            }
+            if (nestedChildSpec(child) !== null) {
+                positions.push(childPos);
+            }
+            if (isContainerNode(child)) {
+                visitContainer(child, childPos);
+            }
+        });
+    };
+    const visitList = (list: ProseNode, listPos: number): void => {
+        list.forEach((item: ProseNode, offset: number) => {
+            const itemPos = listPos + 1 + offset;
+            item.forEach((child: ProseNode, childOffset: number) => {
+                const childPos = itemPos + 1 + childOffset;
+                if (isListNode(child)) {
+                    visitList(child, childPos);
+                    return;
+                }
+                // childOffset 0 is the item's own first line — the item
+                // marker is its handle (emitItemGutters).
+                if (childOffset > 0) {
+                    if (nestedChildSpec(child) !== null) {
+                        positions.push(childPos);
+                    }
+                    if (isContainerNode(child)) {
+                        visitContainer(child, childPos);
+                    }
+                }
+            });
+        });
+    };
+    doc.forEach((node: ProseNode, offset: number) => {
+        if (isListNode(node)) {
+            visitList(node, offset);
+        } else if (isContainerNode(node)) {
+            visitContainer(node, offset);
+        }
+    });
+    return positions;
+}
+
+/**
  * Every block a gesture could pick up: the node-start boundaries of
  * blockBoundaryPositions (end-of-list / end-of-doc slots carry no node),
- * with the SAME range derivation the block menu / drag / keyboard movers
- * use (moveRangeAt).
+ * PLUS the marker-reachable nested blocks the gutter grabbers expose
+ * (markerReachablePositions above) — all with the SAME range derivation the
+ * block menu / drag / keyboard movers use (moveRangeAt). Nested grabbers
+ * drag as blocks (wireMarkerDrag: only a list_item resolves to kind "item").
  */
 export function enumerateMoveSources(view: EditorView): MoveSource[] {
     const sources: MoveSource[] = [];
@@ -218,6 +280,16 @@ export function enumerateMoveSources(view: EditorView): MoveSource[] {
         const range = moveRangeAt(view, boundary.pos);
         if (range) {
             sources.push({ pos: boundary.pos, kind: boundary.kind, ...range });
+        }
+    }
+    for (const pos of markerReachablePositions(view.state.doc)) {
+        if (seen.has(pos)) {
+            continue;
+        }
+        seen.add(pos);
+        const range = moveRangeAt(view, pos);
+        if (range) {
+            sources.push({ pos, kind: "block", ...range });
         }
     }
     return sources;
