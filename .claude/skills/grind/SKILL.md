@@ -54,7 +54,7 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
 
 `cd` back to the primary before every dispatch: a nested worktree is one `cleanup-worktrees.sh` never finds.
 
-**Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). Lanes then report *what they want measured and what would falsify it* — a better handoff than a number they could not trust, and naming the span makes a win landing in a different one a finding rather than a footnote. Their headlines stay unverified until you re-run them idle.
+**Measurement is exclusive, so lanes cannot share it.** Worktrees isolate files, not cores: concurrent `perf:*` captures are not evidence and concurrent suites go red for nothing. On a perf session forbid every browser capture in the brief and say the orchestrator runs the A/B idle at reconciliation (`perf:bundle` is browser-free and fine; node-level micro-measurement survives). When lane 1 is itself the perf ticket, capture its baseline and attribution profiles BEFORE the first dispatch — the machine then needs to be idle exactly twice, at the start and at reconciliation, and lanes never wait on it. Lanes report *what they want measured and what would falsify it*; their headlines stay unverified until you re-run them idle.
 
 ### On completion
 
