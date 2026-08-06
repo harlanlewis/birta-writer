@@ -3,8 +3,9 @@
  * (invalid mermaid included) opens in the real custom editor on whichever
  * VS Code BIRTA_ITEST_VSCODE selected, paints, and keeps answering. The
  * motivating freeze started ~1s AFTER paint (lazy mermaid chunk), so the test
- * polls the live getPerfMarks round trip past that window — a frozen webview
- * stops answering and the Mocha timeout converts silence into failure.
+ * polls getPerfMarks past that window. The provider resolves a poll with `{}`
+ * after its own 3s timeout when the webview never replies, so liveness is
+ * counted in ANSWERED polls (marks present), not completed calls.
  */
 import * as assert from "assert";
 import * as path from "path";
@@ -14,9 +15,12 @@ import * as vscode from "vscode";
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** How long the webview must keep answering after paint. The motivating
- *  freeze began ~1 s after paint; 8 s covers slow chunk loads on CI. */
-const LIVENESS_WINDOW_MS = 8000;
+ *  freeze began ~1 s after paint; 10 s covers slow chunk loads on CI. */
+const LIVENESS_WINDOW_MS = 10000;
 const LIVENESS_POLL_MS = 500;
+/** A frozen webview answers ~2 polls before the freeze; a healthy one on a
+ *  slow runner (500 ms per command round trip) still clears 10. */
+const MIN_ANSWERED_POLLS = 8;
 
 function workspaceUri(): vscode.Uri {
     const folders = vscode.workspace.workspaceFolders;
@@ -51,18 +55,20 @@ describe("Birta integration: a real-shaped document opens and stays alive", () =
         }
         assert.ok(painted, "editor painted the real-shaped document");
 
-        // Each poll is a full host→webview→back round trip; a wedged webview
-        // stops answering and the test dies on its timeout.
+        // Each poll is a full host→webview→back round trip. A wedged webview
+        // makes the provider's 3s timeout return `{}` — an UNANSWERED poll.
         const until = Date.now() + LIVENESS_WINDOW_MS;
-        let polls = 0;
+        let answered = 0;
         while (Date.now() < until) {
-            await vscode.commands.executeCommand("birta._test.getPerfMarks");
-            polls += 1;
+            const marks = await vscode.commands.executeCommand<Record<string, number>>(
+                "birta._test.getPerfMarks",
+            );
+            if (marks?.["editor-painted"] != null) { answered += 1; }
             await wait(LIVENESS_POLL_MS);
         }
         assert.ok(
-            polls >= LIVENESS_WINDOW_MS / LIVENESS_POLL_MS / 2,
-            `webview answered throughout the liveness window (${polls} polls)`,
+            answered >= MIN_ANSWERED_POLLS,
+            `webview answered throughout the liveness window (${answered} answered polls)`,
         );
     });
 });

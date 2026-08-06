@@ -11,16 +11,18 @@
 import type { NodeViewConstructor } from "./pm";
 import { reportNodeViewFailure } from "./crashReporter";
 
-/** Guarded methods, each with the return that makes ProseMirror take its own
- *  fallback. Void methods swallow the throw. */
-const METHOD_FALLBACKS: Record<string, unknown> = {
-    update: false, // false → ProseMirror recreates the view
-    ignoreMutation: false, // false → ProseMirror re-reads the DOM itself
-    stopEvent: false, // false → the event flows to the editor normally
-    setSelection: undefined,
-    selectNode: undefined,
-    deselectNode: undefined,
-    destroy: undefined,
+/** Guarded methods, each with the fallback that makes ProseMirror take its
+ *  own path. Void methods swallow the throw. `ignoreMutation` gets `true` for
+ *  attribute mutations (chrome writes attrs constantly; `false` there is the
+ *  B085 reconcile loop) and `false` otherwise so real content edits re-read. */
+const METHOD_FALLBACKS: Record<string, (args: unknown[]) => unknown> = {
+    update: () => false, // false → ProseMirror recreates the view
+    ignoreMutation: (args) => (args[0] as MutationRecord | undefined)?.type === "attributes",
+    stopEvent: () => false, // false → the event flows to the editor normally
+    setSelection: () => undefined,
+    selectNode: () => undefined,
+    deselectNode: () => undefined,
+    destroy: () => undefined,
 };
 
 function guardMethods(nodeId: string, nv: Record<string, unknown>): void {
@@ -32,7 +34,7 @@ function guardMethods(nodeId: string, nv: Record<string, unknown>): void {
                 return (original as (...a: unknown[]) => unknown).apply(this, args);
             } catch (err) {
                 reportNodeViewFailure(nodeId, method, err);
-                return fallback;
+                return fallback(args);
             }
         };
     }
@@ -53,7 +55,13 @@ export function guardNodeViewFactory(
             return undefined as unknown as ReturnType<NodeViewConstructor>;
         }
         if (nv && typeof nv === "object") {
-            guardMethods(nodeId, nv as unknown as Record<string, unknown>);
+            // The wrap itself can throw on a frozen/getter-only NodeView; the
+            // boundary must never become the thrower. Degrade to unguarded.
+            try {
+                guardMethods(nodeId, nv as unknown as Record<string, unknown>);
+            } catch (err) {
+                reportNodeViewFailure(nodeId, "guard", err);
+            }
         }
         return nv;
     };

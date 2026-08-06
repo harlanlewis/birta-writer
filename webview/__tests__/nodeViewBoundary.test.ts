@@ -86,17 +86,32 @@ describe("guardNodeViewFactory", () => {
         expect(messages.some((m) => m.includes("callout.destroy"))).toBe(true);
     });
 
-    it("ignoreMutation and stopEvent throws should fall back to false, not unwind the observer", () => {
+    it("ignoreMutation and stopEvent throws should fall back without unwinding the observer", () => {
         const factory = (() => ({
             dom: document.createElement("div"),
             ignoreMutation: () => { throw new Error("im"); },
             stopEvent: () => { throw new Error("se"); },
         })) as unknown as NodeViewConstructor;
         const nv = guardNodeViewFactory("html", factory)(...factoryArgs) as {
-            ignoreMutation: () => boolean; stopEvent: () => boolean;
+            ignoreMutation: (m?: unknown) => boolean; stopEvent: () => boolean;
         };
 
-        expect(nv.ignoreMutation()).toBe(false);
+        // Attribute mutations ignore (chrome writes attrs; false there is the
+        // B085 reconcile loop); content mutations re-read.
+        expect(nv.ignoreMutation({ type: "attributes" })).toBe(true);
+        expect(nv.ignoreMutation({ type: "childList" })).toBe(false);
         expect(nv.stopEvent()).toBe(false);
+    });
+
+    it("a NodeView the guard itself cannot wrap should pass through unguarded, reported", () => {
+        // Object.freeze makes guardMethods' strict-mode assignment throw; the
+        // boundary must not become the thrower it exists to contain.
+        const frozen = Object.freeze({ dom: document.createElement("div"), update: () => true });
+        const factory = (() => frozen) as unknown as NodeViewConstructor;
+
+        const nv = guardNodeViewFactory("callout", factory)(...factoryArgs);
+        expect(nv).toBe(frozen);
+        expect(notifyCrash).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(notifyCrash).mock.calls[0][0]).toContain("callout.guard");
     });
 });

@@ -74,21 +74,21 @@ async function openDoc(browser, baseUrl, content) {
         // Mermaid renders lazily AFTER paint (~1s of chunk load first), so a
         // paint-time ping misses a loop that starts late — the pre-fix bundle
         // passed a paint-only version of this suite. Wait for every VISIBLE
-        // pane to settle (diagram or error card) before probing. Visibility is
-        // computed style: every code block carries a hidden pane, and inactive
-        // ones keep an empty inline style.
-        if (content.includes("```mermaid")) {
-            await Promise.race([
-                page.waitForFunction(() => {
-                    const panes = [...document.querySelectorAll(".mermaid-preview")]
-                        .filter((p) => getComputedStyle(p).display !== "none");
-                    return panes.every((p) =>
-                        p.querySelector(".mermaid-svg-container > svg") ||
-                        p.querySelector(".mermaid-error"));
-                }, { timeout: RENDER_SETTLE_MS, polling: 100 }),
-                deadline(RENDER_SETTLE_MS + 1000, "mermaid settle"),
-            ]);
-        }
+        // pane to settle (diagram or error card) before probing. Runs
+        // unconditionally: with no active panes the predicate is immediately
+        // true, and content-sniffing for fences would miss ~~~mermaid.
+        // Visibility is computed style: every code block carries a hidden
+        // pane, and inactive ones keep an empty inline style.
+        await Promise.race([
+            page.waitForFunction(() => {
+                const panes = [...document.querySelectorAll(".mermaid-preview")]
+                    .filter((p) => getComputedStyle(p).display !== "none");
+                return panes.every((p) =>
+                    p.querySelector(".mermaid-svg-container > svg") ||
+                    p.querySelector(".mermaid-error"));
+            }, { timeout: RENDER_SETTLE_MS, polling: 100 }),
+            deadline(RENDER_SETTLE_MS + 1000, "mermaid settle"),
+        ]);
 
         // A timer that fires proves the main thread escaped its microtask
         // chain; the rAF proves frames still paint.

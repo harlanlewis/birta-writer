@@ -15,6 +15,7 @@ import * as vscode from "vscode";
 import {
     captureNavTarget,
     navTargetFromSelection,
+    versionAcceptsUndefinedKindReveal,
     EDITOR_APPEAR_BUDGET_MS,
     SELECTION_GRACE_MS,
     type NavCaptureDeps,
@@ -37,8 +38,10 @@ const selection = (
 const editorFor = (uri: vscode.Uri): vscode.TextEditor =>
     ({ document: { uri } }) as unknown as vscode.TextEditor;
 
-/** A controllable stand-in for the two vscode events the capture listens to. */
-function makeHarness() {
+/** A controllable stand-in for the two vscode events the capture listens to.
+ *  `acceptUndefinedKindReveal` defaults to the floor's behavior so the
+ *  fallback path is what most kind-related cases exercise. */
+function makeHarness(acceptUndefinedKindReveal = true) {
     const selectionListeners: Array<(e: vscode.TextEditorSelectionChangeEvent) => void> = [];
     const visibleListeners: Array<(e: readonly vscode.TextEditor[]) => void> = [];
     let visible: vscode.TextEditor[] = [];
@@ -56,6 +59,7 @@ function makeHarness() {
         visibleEditors: () => visible,
         setTimeout: (fn, ms) => setTimeout(fn, ms),
         clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        acceptUndefinedKindReveal,
     };
 
     return {
@@ -207,6 +211,28 @@ describe("captureNavTarget", () => {
             column: 28,
             anchor: { line: 79, column: 22 },
         });
+    });
+
+    it("on modern VS Code an undefined-kind selection should be ignored even when non-empty", async () => {
+        // Modern builds stamp reveals Command, so an undefined-kind non-empty
+        // change there is a RESTORED selection — acting on it would jump to a
+        // stale line and hand typing a selected range to replace.
+        const harness = makeHarness(false);
+        const captured = captureNavTarget(URI, harness.deps);
+
+        harness.showEditor(URI);
+        harness.applySelection(URI, selection(78, 22, 78, 28), undefined);
+        await vi.advanceTimersByTimeAsync(SELECTION_GRACE_MS);
+
+        await expect(captured).resolves.toBeUndefined();
+    });
+
+    it("the undefined-kind fallback should switch on the version floor", () => {
+        expect(versionAcceptsUndefinedKindReveal("1.95.0")).toBe(true);
+        expect(versionAcceptsUndefinedKindReveal("1.99.3")).toBe(true);
+        expect(versionAcceptsUndefinedKindReveal("1.100.0")).toBe(false);
+        expect(versionAcceptsUndefinedKindReveal("1.132.0")).toBe(false);
+        expect(versionAcceptsUndefinedKindReveal("2.0.0")).toBe(false);
     });
 
     it("an undefined-kind BARE CARET should not read as a navigation (editor-state restore)", async () => {

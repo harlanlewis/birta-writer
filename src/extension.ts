@@ -163,6 +163,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                 // A `#L10` fragment (some external openers use one) already
                 // states the target, so take it without waiting for anything.
+                const eventViewColumn = tab.group.viewColumn;
                 const fragMatch = uri.fragment?.match(/^L?(\d+)/);
                 const fragLine = fragMatch ? parseInt(fragMatch[1], 10) : 0;
                 // Otherwise the open may BE a navigation — a search-result
@@ -189,15 +190,17 @@ export function activate(context: vscode.ExtensionContext) {
                 // the same file (verified in a live Extension Host).
                 //
                 // The capture yields to the event loop, so RE-FIND the tab by
-                // uri rather than trusting the event's handle: Tab object
-                // identity is not stable across an await on every supported
-                // VS Code. On the 1.95.0 floor the preview-state update
-                // replaces the object, an identity check read "closed", and
-                // the swap silently never happened — every ordinary open
-                // stranded the user in the raw text editor.
+                // uri IN THE EVENT TAB'S GROUP rather than trusting the
+                // event's handle: Tab object identity is not stable across an
+                // await on every supported VS Code (on the 1.95.0 floor the
+                // preview-state update replaces the object, an identity check
+                // read "closed", and every ordinary open stranded the user in
+                // the raw text editor). Scoped to the group so the same file
+                // sitting as a deliberate raw editor in ANOTHER group is
+                // never the one closed.
                 const liveTab = vscode.window.tabGroups.all
-                    .flatMap((group) => group.tabs)
-                    .find((t) =>
+                    .find((group) => group.viewColumn === eventViewColumn)
+                    ?.tabs.find((t) =>
                         t.input instanceof vscode.TabInputText &&
                         t.input.uri.toString() === uriStr);
                 if (!liveTab || liveTab.isDirty) { continue; }
