@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.806.0] - 2026, August 6
+
 ### Added
 
 - Focus Review Sidebar, a new Command Palette command, moves the keyboard into the review sidebar, opening the panel first when it is hidden; give it a keybinding in the Keyboard Shortcuts UI if you use it often. Escape hands focus back to the text, so the round trip never needs the mouse. The toolbar's Show issues action now also places the keyboard in the list it opens. Until now nothing moved focus into the panel: its lists were fully keyboard-navigable once you were there, but getting there took a click.
