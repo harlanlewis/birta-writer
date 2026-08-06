@@ -15,6 +15,10 @@ releases/
 .docs
 .idea
 .claude/settings.local.json
+# The private-material guard's pattern list is the roster of what is
+# private, so committing it to a public repo would publish what it
+# protects. Untracked on purpose; a fresh clone starts unguarded.
+.claude/private-material-guard
 # Agent worktrees are created under the repo root; without this they show up as
 # untracked files in the main checkout's `git status`.
 .claude/worktrees/

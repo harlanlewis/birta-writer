@@ -19,9 +19,8 @@
  */
 
 /**
- * The disappointment question (Vohra's product/market-fit instrument, see
- * `docs/research/superhuman-case-study.md` §6). Always optional — it must
- * never stand between a user and filing a bug.
+ * The disappointment question (Vohra's product/market-fit instrument). Always
+ * optional — it must never stand between a user and filing a bug.
  */
 export type Disappointment = "very" | "somewhat" | "not";
 
