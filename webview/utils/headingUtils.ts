@@ -70,6 +70,38 @@ export function getTopbarBottom(): number {
 }
 
 /**
+ * The height of the sticky heading title, or 0 when it is not showing.
+ *
+ * NOT the same as `measureStickyHeadingHeight` in plugins/caretScrollMargin.ts,
+ * and the difference is deliberate: that one reserves an ESTIMATED height even
+ * while the title is hidden, because a caret scroll may summon it mid-flight.
+ * Placement needs the opposite — a popup must not be pushed down to clear a bar
+ * that is not on screen — so this reports only what is actually painted.
+ */
+function visibleStickyHeadingHeight(): number {
+    const sticky = document.querySelector<HTMLElement>(".heading-sticky-title:not([hidden])");
+    return sticky ? sticky.getBoundingClientRect().height : 0;
+}
+
+/**
+ * The top of the area a popup may actually occupy.
+ *
+ * Two opaque fixed layers stack above the document — the topbar (z 10002) and,
+ * under it, the sticky heading title (z 1100) — and almost every floating
+ * surface paints BELOW both. Anything placed above this line is not merely
+ * awkward, it is invisible and unclickable, so "does it fit?" has to be asked
+ * against this edge rather than against y=0 (`viewportSize()` in
+ * ui/anchoredPlacement.ts is what feeds it to the placement engine).
+ *
+ * Approximation, on purpose: the sticky title spans only the content column,
+ * but this treats it as full-width. That over-insets a popup opening outside
+ * that column, which costs a few pixels of placement and never occlusion.
+ */
+export function safeAreaTop(): number {
+    return getTopbarBottom() + visibleStickyHeadingHeight();
+}
+
+/**
  * Scroll the window so `el` sits `margin` px below the topbar (or below the
  * viewport top when the toolbar is hidden). The single place for this offset
  * math — TOC clicks, anchor links, footnote jumps, find matches, and sticky

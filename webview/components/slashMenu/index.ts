@@ -265,7 +265,10 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
             { gap: 0, fitSlack: 0 },
         );
         if (placed.above) {
-            root.style.top = `${Math.max(0, placed.top)}px`;
+            // The engine floors this at the fixed chrome's bottom edge. Floored
+            // at 0 instead, a flip near the top of the document put the menu
+            // behind the opaque topbar (z 1000 against z 10002).
+            root.style.top = `${placed.top}px`;
         }
     }
 

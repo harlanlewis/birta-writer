@@ -49,8 +49,10 @@
    type is marked with the shared leading check glyph. */
 .block-menu {
     position: fixed;
-    /* Above the fixed topbar (1200) and sticky heading (1100) — a clamped
-       menu must never be occluded by editor chrome. */
+    /* Above the sticky heading (1100), but BELOW the topbar, which is 10002 —
+       not the 1200 this comment used to claim. What actually keeps the menu
+       clear of the bar is geometric: it clamps its own top to the usable area
+       (see blockMenu/menu.ts), never the z-order. */
     z-index: 1300;
     display: flex;
     flex-direction: column;
@@ -2719,7 +2721,9 @@ body.block-marqueeing .milkdown .editor {
 .embed-lightbox {
     position: fixed;
     inset: 0;
-    z-index: 9999;
+    /* Above the topbar (10002) — see .img-editor-lightbox: a fullscreen
+       surface must cover the fixed chrome, not sit under it. */
+    z-index: 10010;
     display: flex;
     align-items: center;
     justify-content: center;

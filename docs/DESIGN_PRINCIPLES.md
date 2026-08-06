@@ -114,6 +114,18 @@ Every marker is the block's slash-menu icon: headings an `H1`-`H6` badge, list i
 
 All color comes from `--vscode-*` variables so light and dark themes both work, and accents use `var(--vscode-focusBorder)` with no literal fallback. No custom hex. (See `AGENTS.md`, Architecture constraints.)
 
+### A floating surface fits the visible area, not the window
+
+The window's top is not where the usable area begins. The toolbar and, under it, the sticky heading title are fixed and opaque, and nearly every floating surface paints beneath them. A popup placed in that band is not merely awkward. It is invisible and unclickable, and the code that placed it has no idea. `safeAreaTop()` (`webview/utils/headingUtils.ts`) is that edge, and `viewportSize()` carries it into the placement engine, so anything routed through `ui/anchoredPlacement.ts` inherits it.
+
+Three rules follow, and the worked example of all three is `webview/components/blockMenu/menu.ts`:
+
+- Clamp the start line before measuring the room, never after. Measuring from an anchor hidden under the chrome and clamping the result moves the surface without shrinking it, which just relocates the overflow to the opposite edge.
+- When neither side fits, take the larger one and scroll inside it. `computeAnchoredPosition` returns the `maxHeight` that actually exists for exactly this, because clipping a surface can put its buttons out of reach.
+- A surface anchored to something that moves must re-anchor. `trackEditorReflow()` (`webview/ui/editorReflow.ts`) is the primitive, giving capture-phase scroll plus a `ResizeObserver`, coalesced to one frame. Placing once and never revisiting strands the surface as soon as the document scrolls. Dismissing on scroll instead is equally valid, and cheaper. Doing neither is not.
+
+Deciding to open below the anchor and overlap the text underneath is normal and correct. Opening into occluded space is not.
+
 ## The gutter is the handle
 
 Every block, whether top-level, nested in a container, or an individual list item, gets exactly one control: its gutter marker. One affordance, two verbs. Click opens the block menu, drag moves the block. No anonymous `⠿` badge, and no `+` insert button: insertion belongs to the slash menu and to typing.

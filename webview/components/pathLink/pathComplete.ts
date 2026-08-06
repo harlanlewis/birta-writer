@@ -17,6 +17,7 @@ import { getFileIcon } from "./fileIcons";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
     createSuggestMenuFromRows,
+    trackSuggestMenuAnchor,
     type LinkSuggestMenu,
 } from "@/ui/suggestList";
 import type { EditorView } from "@/pm";
@@ -96,7 +97,11 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): () =
     let savedRange: { from: number; to: number } | null = null;
     let isDestroyed = false;
 
+    let reflowOff: (() => void) | null = null;
+
     function closeDropdown(): void {
+        reflowOff?.();
+        reflowOff = null;
         menu?.destroy();
         menu = null;
         lastItems = [];
@@ -175,6 +180,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): () =
             (_text, i) => applySelection(lastItems[i]),
             { className: "path-complete-menu", initialActive: 0 },
         );
+        reflowOff ??= trackSuggestMenuAnchor(code, () => menu);
     }
 
     function triggerSuggest(code: HTMLElement): void {

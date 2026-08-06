@@ -29,6 +29,10 @@ import { onOutsideClick } from "../../ui/outsideClick";
 // key → callback for the fmSuggestions reply. Only one menu is open at a
 // time, so keying by the frontmatter key (mirroring the message shape) is
 // unambiguous; stale entries are dropped when the menu closes.
+/** Mirrors `.fm-suggest-menu`'s max-width in style.css — see the placement
+ *  call below, which must reserve the grown width, not the empty one. */
+const FM_MENU_MAX_WIDTH = 320;
+
 const _pendingSuggestions = new Map<string, (values: string[]) => void>();
 
 /** Called by messageHandlers.ts to route an fmSuggestions reply. */
@@ -115,10 +119,16 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
     // the measured one, and an above-placement pins `bottom` instead of
     // `top`: rows arrive async, so the menu must be able to grow in place
     // without drifting over its anchor.
+    //
+    // Width is reserved for the same reason and was not: this runs before
+    // renderList() populates the rows, so `offsetWidth` here is the EMPTY box
+    // (min-width 180) while the filled menu reaches max-width 320. Clamping
+    // the smaller figure let a chip near the right edge overflow by the
+    // difference. Reserving the max only ever shifts the menu inward.
     const rect = opts.anchor.getBoundingClientRect();
     const placed = computeAnchoredPosition(
         rect,
-        { width: menu.offsetWidth, height: menu.offsetHeight },
+        { width: Math.max(menu.offsetWidth, FM_MENU_MAX_WIDTH), height: menu.offsetHeight },
         viewportSize(),
         { gap: 2, fitSlack: 0, fitHeight: 240, minLeft: 0 },
     );

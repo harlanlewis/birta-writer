@@ -460,7 +460,9 @@ body.mermaid-canvas-dark {
 .mermaid-lightbox {
     position: fixed;
     inset: 0;
-    z-index: 9999;
+    /* Above the topbar (10002) — see .img-editor-lightbox: a fullscreen
+       surface must cover the fixed chrome, not sit under it. */
+    z-index: 10010;
     /* The shared fullscreen wash (embed + image lightboxes use the same
        recipe) — one overlay surface across every fullscreen preview. The
        code editing sheet below stays opaque. */

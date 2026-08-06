@@ -20,6 +20,7 @@
  * separate ticket. `suggestList.css` carries the surface deltas.
  */
 import { computeAnchoredPosition, viewportSize } from "./anchoredPlacement";
+import { trackEditorReflow } from "./editorReflow";
 
 // Monotonic per-menu counter, so each rendered suggest menu's option ids are
 // globally unique (aria-activedescendant / option-id references never collide
@@ -36,8 +37,47 @@ export interface LinkSuggestMenu {
     moveActive(delta: 1 | -1): void;
     /** Applies onPick to the highlighted row; false when none is highlighted. */
     pickActive(): boolean;
+    /**
+     * Re-place the menu against a fresh anchor. These menus are
+     * `position: fixed`, so their opening coordinates go stale the moment the
+     * document scrolls — an owner that can re-derive its anchor (the caret, an
+     * input's rect) should drive this from `trackEditorReflow`.
+     */
+    reposition(anchor: SuggestMenuAnchor): void;
     /** Removes the menu DOM. */
     destroy(): void;
+}
+
+/**
+ * Keep an element-anchored suggest menu glued to its anchor as the document
+ * moves under it, and return the disposer.
+ *
+ * These menus are `position: fixed` and placed once from a rect measured at
+ * build time, so a scroll used to leave them stranded at their opening
+ * coordinates while the input or code span they belong to travelled away.
+ * Every element-anchored dropdown derives its anchor the same way (`bottom +
+ * gap` as the drop point, `top - gap` as the flip line), so that rule lives
+ * here rather than being copied into each one — the three path dropdowns were
+ * near-verbatim copies that had already diverged into user-visible bugs once
+ * (MAR-220).
+ */
+export function trackSuggestMenuAnchor(
+    anchorEl: HTMLElement,
+    getMenu: () => LinkSuggestMenu | null,
+    opts: { gap?: number; pinWidth?: boolean } = {},
+): () => void {
+    const gap = opts.gap ?? 2;
+    return trackEditorReflow(anchorEl, () => {
+        const menu = getMenu();
+        if (!menu) { return; }
+        const r = anchorEl.getBoundingClientRect();
+        menu.reposition({
+            left: r.left,
+            top: r.bottom + gap,
+            flipTop: r.top - gap,
+            ...(opts.pinWidth ? { minWidth: r.width } : {}),
+        });
+    });
 }
 
 /** Anchor geometry shared by every suggest-menu placement. */
@@ -212,23 +252,58 @@ export function createSuggestMenuFromRows(
     document.body.appendChild(div);
     if (activeIndex >= 0) { updateActive(); }
 
-    // Viewport-bottom clamp: measured after appending (the height depends on
-    // the rendered rows). Flip above the anchor when the menu would overflow
-    // the bottom edge and the space above the anchor is larger than below —
-    // the drop point (`top`) and flip line (`flipTop`) form a zero-gap rect.
-    // Horizontal is untouched: the menu is min-width-pinned to its input.
-    if (anchor.flipTop !== undefined) {
-        const rect = div.getBoundingClientRect();
+    // Edge placement: measured after appending (both dimensions depend on the
+    // rendered rows). Flip above the anchor when the menu would overflow the
+    // bottom edge and the space above the anchor is larger than below — the
+    // drop point (`top`) and flip line (`flipTop`) form a zero-gap rect. The
+    // engine floors a flip at the fixed chrome's bottom, so a menu that flips
+    // near the top of the document no longer lands over the toolbar.
+    // Rows are fixed once the menu is built (every consumer destroys and
+    // rebuilds rather than re-rendering in place), so the natural box is
+    // measured ONCE and reused by every reposition. Clearing the cap and
+    // re-measuring per scroll frame instead would force two extra layouts a
+    // frame and clamp the list's own scrollTop out from under the user — the
+    // trap blockMenu/menu.ts records at its own `naturalHeight`.
+    // Measured with the stylesheet's cap already applied, so `natural` means
+    // "as tall as the design allows", not "as tall as the rows would run".
+    let naturalHeight = 0;
+    let naturalListHeight = 0;
+    let naturalWidth = 0;
+
+    function place(at: SuggestMenuAnchor): void {
+        div.style.top = `${at.top}px`;
+        div.style.left = `${at.left}px`;
+        if (at.minWidth !== undefined) {
+            div.style.minWidth = `${at.minWidth}px`;
+        }
+        if (naturalHeight === 0) {
+            const box = div.getBoundingClientRect();
+            naturalHeight = box.height;
+            naturalWidth = box.width;
+            naturalListHeight = list.getBoundingClientRect().height;
+        }
         const placed = computeAnchoredPosition(
-            { left: anchor.left, right: anchor.left, top: anchor.flipTop, bottom: anchor.top },
-            { width: rect.width, height: rect.height },
+            { left: at.left, right: at.left, top: at.flipTop ?? at.top, bottom: at.top },
+            { width: naturalWidth, height: naturalHeight },
             viewportSize(),
             { gap: 0, fitSlack: 0 },
         );
-        if (placed.above) {
-            div.style.top = `${Math.max(0, placed.top)}px`;
+        // Shrink ONLY when the room demands it. Setting a cap unconditionally
+        // would override the stylesheet's 200px list cap with whatever space
+        // happened to be free, so a tall pane grew every menu past its design.
+        const chromeHeight = naturalHeight - naturalListHeight;
+        list.style.maxHeight = naturalHeight > placed.maxHeight
+            ? `${Math.floor(Math.max(48, placed.maxHeight - chromeHeight))}px`
+            : "";
+        // `minWidth` pins the menu to its input, but it does not BOUND it —
+        // .link-target-menu allows 480px and the path dropdowns pass no
+        // minWidth at all, so a long row could run off the right edge.
+        div.style.left = `${placed.left}px`;
+        if (at.flipTop !== undefined && placed.above) {
+            div.style.top = `${placed.top}px`;
         }
     }
+    place(anchor);
 
     return {
         el: div,
@@ -244,6 +319,9 @@ export function createSuggestMenuFromRows(
             if (activeIndex < 0 || activeIndex >= rows.length) { return false; }
             onPick(rows[activeIndex], activeIndex);
             return true;
+        },
+        reposition(next: SuggestMenuAnchor): void {
+            place(next);
         },
         destroy(): void {
             div.remove();

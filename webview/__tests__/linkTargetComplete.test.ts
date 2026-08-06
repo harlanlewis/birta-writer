@@ -420,7 +420,7 @@ describe("link suggest menu — viewport-bottom clamp", () => {
         menu!.destroy();
     });
 
-    it("a flipped menu taller than the space above should clamp to the viewport top", () => {
+    it("a flipped menu taller than the space above should clamp below the fixed chrome", () => {
         vi.spyOn(Element.prototype, "getBoundingClientRect")
             .mockReturnValue(domRect({ height: 900 }));
 
@@ -430,7 +430,10 @@ describe("link suggest menu — viewport-bottom clamp", () => {
             () => {},
         );
 
-        expect(menu!.el.style.top).toBe("0px");
+        // Not 0: the topbar is fixed and opaque and paints over this menu, so
+        // the usable area starts at its bottom edge (40px is getTopbarBottom's
+        // no-element fallback). Clamping to 0 put the menu behind the bar.
+        expect(menu!.el.style.top).toBe("40px");
         menu!.destroy();
     });
 

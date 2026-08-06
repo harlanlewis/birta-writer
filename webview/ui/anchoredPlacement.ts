@@ -21,16 +21,37 @@
  *
  * All functions are pure over plain numbers so they unit-test without layout;
  * the thin DOM appliers (`placeMenu`) live beside them.
+ *
+ * The viewport these engines fit against is asymmetric: its top edge is
+ * `safeAreaTop()`, not 0, because the topbar and sticky heading are fixed and
+ * opaque and nearly every popup paints beneath them. See `Viewport.top`.
  */
+import { safeAreaTop } from "../utils/headingUtils";
 
 export interface Rect { left: number; right: number; top: number; bottom: number; }
 export interface Size { width: number; height: number; }
-export interface Viewport { width: number; height: number; }
+export interface Viewport {
+    width: number;
+    height: number;
+    /**
+     * Where the usable area STARTS, in viewport coords — not 0. The topbar and
+     * the sticky heading title are fixed and opaque, and nearly every popup
+     * paints below them, so space in that band is not space at all. Optional
+     * and defaulting to 0 so the pure functions stay callable from tests
+     * without a DOM; `viewportSize()` fills it in for every live caller.
+     */
+    top?: number;
+}
 
 /** Default gap between the anchor and the popup. */
 export const MENU_GAP = 6;
 /** Default minimum distance kept from a viewport edge. */
 export const EDGE_MARGIN = 8;
+/**
+ * Floor for the reported `maxHeight`. A popup squeezed below this is better off
+ * scrolling internally at a useless-but-honest size than collapsing to nothing.
+ */
+export const MIN_POPUP_HEIGHT = 48;
 
 /**
  * Clamp a popup's left edge so it stays on screen: never past the right-edge
@@ -96,6 +117,14 @@ export interface AnchoredPosition {
      * content changes (suggest menus anchored via `style.bottom`).
      */
     cssBottom: number;
+    /**
+     * Space actually available on the chosen side, for callers to apply as a
+     * `max-height`. A popup that cannot fit either side should SCROLL at this
+     * height rather than overflow an edge — clamping a full-height popup after
+     * the fact moves it without shrinking it, which just pushes the overflow
+     * to the opposite edge (the bug recorded at blockMenu/menu.ts:1176-1181).
+     */
+    maxHeight: number;
 }
 
 /**
@@ -116,8 +145,15 @@ export function computeAnchoredPosition(
     const fitHeight = opts.fitHeight ?? size.height;
     const policy = opts.flipPolicy ?? "larger-side";
 
-    const spaceBelow = viewport.height - anchor.bottom;
-    const spaceAbove = anchor.top;
+    const safeTop = viewport.top ?? 0;
+
+    // Both measurements start at the safe edge, not at 0: an anchor that has
+    // scrolled under the fixed chrome has no room above it, however large its
+    // `top` reads. The below-side start line is likewise clamped BEFORE the
+    // space is measured, so a squeezed popup shrinks instead of sliding down.
+    const belowTop = Math.max(anchor.bottom + gap, safeTop);
+    const spaceBelow = viewport.height - Math.max(anchor.bottom, safeTop);
+    const spaceAbove = anchor.top - safeTop;
     const fitsBelow = spaceBelow >= fitHeight + fitSlack;
     const above = policy === "larger-side"
         ? !fitsBelow && spaceAbove > spaceBelow
@@ -125,9 +161,13 @@ export function computeAnchoredPosition(
 
     return {
         left: clampLeft(anchor.left, size.width, viewport, margin, opts.minLeft),
-        top: above ? anchor.top - gap - size.height : anchor.bottom + gap,
+        top: above ? Math.max(safeTop, anchor.top - gap - size.height) : belowTop,
         above,
         cssBottom: viewport.height - anchor.top + gap,
+        maxHeight: Math.max(
+            MIN_POPUP_HEIGHT,
+            above ? spaceAbove - gap : viewport.height - margin - belowTop,
+        ),
     };
 }
 
@@ -162,7 +202,7 @@ export function computeMenuPlacement(
     const alignRight = overflowsRight && rightAlignFits;
 
     const overflowsBottom = anchor.bottom + gap + menu.height > viewport.height - margin;
-    const flipUpFits = anchor.top - gap - menu.height >= margin;
+    const flipUpFits = anchor.top - gap - menu.height >= (viewport.top ?? 0) + margin;
     const flipUp = overflowsBottom && flipUpFits;
 
     return { alignRight, flipUp };
@@ -178,7 +218,7 @@ export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
     const { alignRight, flipUp } = computeMenuPlacement(
         { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
         { width, height },
-        { width: window.innerWidth, height: window.innerHeight },
+        viewportSize(),
     );
     menu.style.left = alignRight ? "auto" : "0";
     menu.style.right = alignRight ? "0" : "auto";
@@ -186,7 +226,13 @@ export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
     menu.style.bottom = flipUp ? `calc(100% + ${MENU_GAP}px)` : "auto";
 }
 
-/** The live viewport, as every DOM-side caller measures it. */
+/**
+ * The live usable area, as every DOM-side caller measures it.
+ *
+ * `top` is the single seam through which the fixed chrome reaches the geometry:
+ * every surface already passing this to `computeAnchoredPosition` becomes
+ * topbar-aware without touching its own call site.
+ */
 export function viewportSize(): Viewport {
-    return { width: window.innerWidth, height: window.innerHeight };
+    return { width: window.innerWidth, height: window.innerHeight, top: safeAreaTop() };
 }

@@ -16,6 +16,18 @@
 
 ### Fixed
 
+- Menus and palettes opened near the top of a document no longer appear behind the toolbar. Selecting text on the first line put the formatting palette underneath the toolbar, where it could be neither seen nor clicked; the link editor, the image title bar, suggestion dropdowns, footnote previews, and writing-check popups could all land there too. Every floating surface now measures the room it has from the bottom of the toolbar and sticky heading rather than from the top of the window, and one too tall for the space left scrolls instead of running off an edge.
+
+- Fullscreen image, diagram, and embed previews now cover the toolbar instead of opening underneath it, so the close button is fully clickable.
+
+- A suggestion list stays with the text it belongs to while you scroll. The link, heading, wiki-link, calculation, and file-path dropdowns were placed once when they opened and then stayed where they were, drifting away from the cursor or field they were completing.
+
+- The image toolbar picks its side again after the page moves. It chose above or below the image when you selected it and never reconsidered, so scrolling could slide it under the toolbar.
+
+- A long file path in a suggestion list no longer runs off the right edge of the window, and the code block's language menu stays on screen for a code block near the right edge.
+
+- The offer to replace a pasted link with its page title appears next to that link. If the page took a moment to load and you scrolled meanwhile, the offer appeared adrift from the link it was about.
+
 - Splitting a highlight in two keeps both halves highlighted. Pressing Enter inside `==one two==` previously produced `==one ==`, which reopens as ordinary text with the `==` visible, so the highlight was gone from the file.
 
 - The release notes you read when the extension updates carry every kind of change. A Security, Removed, or Deprecated note had no section to land in. Worse, when the notes were generated without an API key the changelog was not read at all, so a reviewed Security note was dropped and a raw commit subject published in its place.

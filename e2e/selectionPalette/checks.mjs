@@ -205,11 +205,22 @@ export async function run({ page, check, baseUrl }) {
     // ── Agent-reference button: the one-click "copy for my AI agent" path ──
     await page.keyboard.press("Escape"); // leave block mode
     await page.waitForTimeout(150);
-    await selectWord("plain");
+    // Collapse the block selection with its OWN click before double-clicking a
+    // word. Escape hides the palette but leaves the block selection standing,
+    // and folding the collapse and the word-select into one double-click is
+    // unreliable: the collapse re-renders the paragraph between the two
+    // mousedowns, so the browser's word selection lands on replaced DOM and
+    // yields an empty selection. (Order-dependent, not a palette bug — a
+    // second identical double-click always succeeds.)
+    const plainPoint = await wordPoint("plain");
+    await page.mouse.click(plainPoint.x, plainPoint.y);
+    await page.waitForTimeout(150);
+    const agentSel = await selectWord("plain");
     const agentBtn = page.locator(".sel-tb-agent-btn");
     check(
         "a text selection shows the agent-reference button",
         await agentBtn.isVisible(),
+        `selection: ${JSON.stringify(agentSel)}`,
     );
     // Chrome buttons act on mousedown (see webview/ui/dom.ts); a synthetic
     // click with detail 0 would read as a keyboard activation and double-fire.
@@ -225,5 +236,44 @@ export async function run({ page, check, baseUrl }) {
         "clicking the agent-reference button asks the extension to copy the reference",
         agentPosts === 1,
         `copyAgentReference messages: ${agentPosts}`,
+    );
+
+    // ── The palette never opens inside the fixed topbar's band ──
+    // The topbar is fixed, opaque, and z 10002 against the palette's 1200, so
+    // a palette placed above it is not merely awkward — it is invisible and
+    // unclickable. A selection in the FIRST block is the reachable case: the
+    // content starts one topbar-height down, so the space above the selection
+    // looks ample measured from y=0 and is nil measured from the bar.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const firstLine = await selectWord("Heading");
+    const band = await page.evaluate(() => {
+        const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const tb = document.querySelector(".sel-toolbar").getBoundingClientRect();
+        const sel = window.getSelection().getRangeAt(0).getBoundingClientRect();
+        return {
+            barBottom: bar.bottom,
+            paletteTop: tb.top,
+            paletteHeight: tb.height,
+            selTop: sel.top,
+        };
+    });
+    check(
+        "the first-line word is selected",
+        firstLine === "Heading",
+        JSON.stringify(firstLine),
+    );
+    // Precondition, so the assertion below cannot pass vacuously: there must
+    // be too little room above the selection to hold the palette clear of the
+    // bar. Without this, a fixture that simply had room would "pass".
+    check(
+        "the first-line selection genuinely has no room above it for the palette",
+        band.selTop - band.barBottom < band.paletteHeight + 8,
+        JSON.stringify(band),
+    );
+    check(
+        "the palette opens clear of the topbar rather than behind it",
+        band.paletteTop >= band.barBottom,
+        JSON.stringify(band),
     );
 }

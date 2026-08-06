@@ -212,6 +212,22 @@ export async function run({ page, check, baseUrl }) {
     await suggestMenu.waitFor({ state: "visible", timeout: 3000 });
 
     check("typing a path opens the suggest dropdown", await suggestMenu.isVisible());
+    // With room to spare, placement must leave the stylesheet's own height cap
+    // alone. Applying the available space as a max-height unconditionally would
+    // override .fm-suggest-list's 200px and let a tall pane grow every menu
+    // past its design, which is invisible in a short-viewport test.
+    check(
+        "a dropdown with room to spare keeps its designed height cap",
+        await page.evaluate(() => {
+            const list = document.querySelector(".fm-suggest-menu .fm-suggest-list");
+            return list.style.maxHeight === ""
+                && list.getBoundingClientRect().height <= 200;
+        }),
+        await page.evaluate(() => {
+            const list = document.querySelector(".fm-suggest-menu .fm-suggest-list");
+            return `inline maxHeight ${JSON.stringify(list.style.maxHeight)}, height ${list.getBoundingClientRect().height}`;
+        }),
+    );
     check(
         "non-image files are filtered out (dir + 2 images)",
         (await suggestRows.count()) === 3,
@@ -288,15 +304,34 @@ export async function run({ page, check, baseUrl }) {
     const menuBox = await suggestMenu.boundingBox();
     const fieldBox = await lowInput.boundingBox();
     const vh = page.viewportSize().height;
+    // The usable area's top edge, which is what placement is actually fitted
+    // against: the topbar plus the sticky heading title, both fixed and opaque.
+    const safeTop = await page.evaluate(() => {
+        const sticky = document.querySelector(".heading-sticky-title:not([hidden])");
+        const bar = document.querySelector(".editor-topbar");
+        return (bar ? bar.getBoundingClientRect().height : 0)
+            + (sticky ? sticky.getBoundingClientRect().height : 0);
+    });
     check(
         "a dropdown near the bottom edge stays fully on screen",
         menuBox.y >= 0 && menuBox.y + menuBox.height <= vh + 1,
         `menu ${menuBox.y}..${menuBox.y + menuBox.height} of ${vh}`,
     );
+    // Precondition: this pane really is too short to hold the menu above the
+    // field, so the assertion below cannot pass just because there was room.
     check(
-        "it flips above the field rather than overflowing below it",
-        menuBox.y + menuBox.height <= fieldBox.y + 1,
-        `menu bottom ${menuBox.y + menuBox.height}, field top ${fieldBox.y}`,
+        "the short pane genuinely cannot fit the dropdown above the field",
+        fieldBox.y - safeTop < menuBox.height,
+        `room above ${fieldBox.y - safeTop}, menu ${menuBox.height}`,
+    );
+    // It does NOT flip above here, and that is correct: with a topbar and a
+    // sticky heading title stacked above, the space that looks free from y=0
+    // is opaque chrome, and a flipped menu would be painted over. Neither side
+    // fits, so it takes the larger one and scrolls inside the room it has.
+    check(
+        "the dropdown never intrudes into the fixed chrome",
+        menuBox.y >= safeTop,
+        `menu top ${menuBox.y}, safe top ${safeTop}`,
     );
 
     await page.keyboard.press("Escape");

@@ -13,6 +13,7 @@ import { notifyGetPathSuggestions, notifyResolveImagePath } from "@/messaging";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
     createSuggestMenuFromRows,
+    trackSuggestMenuAnchor,
     type LinkSuggestMenu,
 } from "@/ui/suggestList";
 import { getFileIcon } from "../pathLink/fileIcons";
@@ -89,8 +90,12 @@ export function attachImgPathComplete(
 
     // ── Dropdown management ─────────────────────────────────────
 
+    let reflowOff: (() => void) | null = null;
+
     function closeDropdown(): void {
         closeGeneration++;
+        reflowOff?.();
+        reflowOff = null;
         menu?.destroy();
         menu = null;
         lastItems = [];
@@ -167,6 +172,7 @@ export function attachImgPathComplete(
             (_text, i) => applySelection(lastItems[i]),
             { className: "img-path-complete-menu", initialActive: 0 },
         );
+        reflowOff ??= trackSuggestMenuAnchor(input, () => menu, { pinWidth: true });
     }
 
     // ── Trigger a completion request ────────────────────────────
