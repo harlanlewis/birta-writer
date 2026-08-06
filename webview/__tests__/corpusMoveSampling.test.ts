@@ -546,6 +546,66 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         ).toBe("lost: (none); gained: (none)");
     });
 
+    it("merge hazard M3 (MAR-322, fixed): a tab sublist moved to a depth only it witnessed keeps the file's tabs through the merge", async () => {
+        // The raw serialization is clean, so the refuse lane rightly stays
+        // quiet; the corruption lived only in the MERGED bytes. The moved
+        // sublist held the file's only depth-2 marker line, so this merge's
+        // keeps could not spell the landing depth — before the fix the
+        // insertion shipped the serializer's 4-space lines beside kept tabs,
+        // and the sublist reparsed one level shallower: `lost:
+        // count:bullet_list`. Found by MDW_MOVE_SEED=20260712 with MAR-88's
+        // item-internal drop slots; the target below is the same landing slot,
+        // reached directly since the shipped enumeration does not offer it
+        // yet. The distilled string-level pins live in minimalDiff.test.ts.
+        const fixture = fixtures.find((f) => f.name === "logseq/page.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+
+        // Source: the innermost sublist opening with "A nested child block" —
+        // the only lines in the file at their depths.
+        let srcPos = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (
+                node.type.name === "bullet_list" &&
+                node.firstChild?.textContent.startsWith("A nested child block")
+            ) {
+                srcPos = pos; // deepest match wins: keep descending
+            }
+            return true;
+        });
+        expect(srcPos).toBeGreaterThan(-1);
+        const src = v.state.doc.nodeAt(srcPos)!;
+        // Target: the last boundary inside the fence-holding bullet item — the
+        // INNERMOST item containing the text (findContaining stops at the
+        // outermost ancestor, whose landing depth the live keeps CAN spell,
+        // which does not reproduce the bug).
+        let itemPos = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (
+                node.type.name === "list_item" &&
+                node.textContent.includes("A fenced code block inside a bullet:")
+            ) {
+                itemPos = pos; // deepest match wins: keep descending
+            }
+            return true;
+        });
+        expect(itemPos).toBeGreaterThan(-1);
+        const item = v.state.doc.nodeAt(itemPos)!;
+
+        expect(
+            moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, itemPos + item.nodeSize - 1),
+        ).toBe(true);
+
+        const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
     it("a move in a document that ALREADY fails round-trip is not refused (the gesture didn't cause it)", async () => {
         const editor = await makeEditor(
             "First.\n\n:::caution\nBody.\n:::\n\nLast.",

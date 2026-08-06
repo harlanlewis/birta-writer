@@ -129,6 +129,12 @@ export interface FormatProfile {
      * a run it rewrote deeply enough that no correspondence is visible in the
      * bytes (`pairBaselineLines`). Lines arrive as content, without their line
      * endings.
+     *
+     * Return `undefined` to mean "nothing to teach". The distinction matters
+     * for a file whose round trip is CLEAN: it needs no repair regions, but its
+     * keeps are still evidence, so `computeRoundTripProtection` returns a
+     * zero-region protection carrying whatever this hook distilled — and stays
+     * null only when this hook is absent or returns `undefined` (MAR-322).
      */
     baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
     /**
@@ -561,9 +567,25 @@ export function computeRoundTripProtection(
     // yields the same regions either way. `applyMinimalChanges` — including
     // the self-check below — remains the single place endings are reconciled.
     const { edits, savedLines } = computeEditScript(saved, baselineSerialized, profile);
-    if (!edits.some((e) => e.op !== "keep")) return null;
 
     const baselineFacts = profile.baselineFacts?.(pairBaselineLines(edits, savedLines.length - 1));
+    if (!edits.some((e) => e.op !== "keep")) {
+        // A clean round trip needs no repair regions — but its keeps are the
+        // richest baseline evidence a file ever offers, since EVERY line is a
+        // witnessed (saved, rendered) pair. Returning null here discarded them,
+        // which left exactly the files most exposed to indent re-spelling with
+        // nothing to consult: a plain tab outline keys equal to the spaces it
+        // renders as, so it is always clean, and a block moved within one then
+        // shipped the serializer's spaces beside kept tabs whenever the only
+        // line witnessing the landing depth was inside the moved region itself
+        // (MAR-322). A zero-region protection performs no repairs — it exists
+        // purely to carry the facts to the merge hooks, whose own gates govern
+        // every use. `undefined` from the profile still means "nothing to
+        // teach", and a profile without the hook keeps the old null. The
+        // replay self-check below is deliberately skipped: it verifies that
+        // REGIONS reproduce the baseline, and there are none.
+        return baselineFacts === undefined ? null : { regions: [], baselineFacts };
+    }
 
     // Self-check: protection must reproduce the saved bytes exactly when the
     // serializer output is the baseline itself. The per-construct split
