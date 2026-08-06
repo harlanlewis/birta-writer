@@ -203,6 +203,43 @@ describe("MAR-88 item-internal drop slots", () => {
         expect(itemSlots(v)).toEqual([]);
     });
 
+    it("an ARTIFACT-LEAD item should emit no item-internal slots (its every interior drop corrupts)", async () => {
+        // `- > quote` parses as [artifact empty paragraph, blockquote]. While
+        // the item holds one real block the serializer rides it on the marker
+        // line and the artifact never reaches the file (MAR-230); a SECOND
+        // real block forces the artifact out as a bare `-` line with the
+        // content indented under it, which re-lexes as a setext underline and
+        // destroys the list on reopen. Reproduced before this guard existed:
+        // dropping a paragraph at the slot before the quote serialized to
+        // "- normal\n  -\n    payload\n    > q\n" and reparsed as
+        // "lost: count:bullet_list, count:list_item, count:paragraph;
+        //  gained: count:heading".
+        //
+        // The move path does NOT refuse it — `moveBlocks` returned true with
+        // no notice, because `reparseHazard`'s structural gate arms on an
+        // ENTIRELY blank item, and this one has real content after the
+        // artifact. So withholding the slots is the whole defense here, and
+        // it has to hold for the file-drop path too, which shares these
+        // positions and commits an insert no refuse lane inspects.
+        const e = await make("- normal\n  - > q");
+        const v = view(e);
+        let innerPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "list_item") innerPos = pos; // deepest wins
+            return true;
+        });
+        const inner = v.state.doc.nodeAt(innerPos)!;
+        // Precondition: this IS the multi-child shape that would otherwise
+        // qualify — the guard is what withholds it, not the child count.
+        expect(inner.childCount).toBe(2);
+        expect(inner.child(0).type.name).toBe("paragraph");
+        expect(inner.child(0).content.size).toBe(0);
+        expect(
+            blockBoundaryPositions(v.state.doc)
+                .filter((b) => b.kind === "block" && b.ownerPos === innerPos),
+        ).toEqual([]);
+    });
+
     it("a container nested in an item should contribute its own interior slots", async () => {
         const e = await make("- para A\n\n  > quote B\n\n- item two");
         const v = view(e);

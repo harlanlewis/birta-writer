@@ -675,22 +675,40 @@ function indentFamily(line: string): string {
  * whose leading whitespace happens to be content) can only ever cost a
  * respelling that would have been made, never cause a wrong one.
  */
+/**
+ * An indent spelling is leading whitespace, so a `\x00` value can only be this:
+ * a family the evidence saw spelled two ways. It is recorded rather than
+ * deleted because a CONSULTED map cannot otherwise tell "this family was never
+ * witnessed" from "this family was witnessed as MIXED" — `Map.get` answers
+ * `undefined` to both, and the two deserve opposite treatments. Silence may be
+ * answered from weaker evidence (the baseline, under MAR-322's fallback);
+ * observed ambiguity is direct, current evidence that the file has no single
+ * spelling at that depth, and must not be overridden by an older fact.
+ */
+const AMBIGUOUS = "\x00ambiguous";
+
+/** The spelling this evidence gives `family`, or undefined when it has none —
+ * whether unwitnessed or witnessed as mixed. The single reader of the
+ * tombstone, so no consumer has to know the encoding. */
+function spellingOf(map: Map<string, string>, family: string): string | undefined {
+    const source = map.get(family);
+    return source === undefined || source === AMBIGUOUS ? undefined : source;
+}
+
 function mergeIndents(pairs: readonly BaselineLinePair[]): Map<string, string> {
     const spelling = new Map<string, string>();
-    const ambiguous = new Set<string>();
     for (const pair of pairs) {
         // A pair whose two sides disagree about being a marker line is not one
         // line in two spellings of the same thing; it teaches nothing safely.
         if (LIST_MARKER_RE.test(pair.saved) !== LIST_MARKER_RE.test(pair.serial)) continue;
         const canonical = indentFamily(pair.serial);
-        if (ambiguous.has(canonical)) continue;
-        const source = indentOf(pair.saved);
         const prev = spelling.get(canonical);
+        if (prev === AMBIGUOUS) continue;
+        const source = indentOf(pair.saved);
         if (prev === undefined) {
             spelling.set(canonical, source);
         } else if (prev !== source) {
-            spelling.delete(canonical);
-            ambiguous.add(canonical);
+            spelling.set(canonical, AMBIGUOUS);
         }
     }
     return spelling;
@@ -732,7 +750,9 @@ function baselineFactsOf(pairs: readonly BaselineLinePair[]): MarkdownBaselineFa
     const spelledByFamily = mergeIndents(pairs);
     const teaches =
         [...rendered].some(([source, canonical]) => source !== canonical) ||
-        [...spelledByFamily].some(([family, source]) => source !== family.slice(1));
+        [...spelledByFamily].some(
+            ([family, source]) => source !== AMBIGUOUS && source !== family.slice(1),
+        );
     return teaches ? { rendered, spelledByFamily } : undefined;
 }
 
@@ -848,15 +868,23 @@ function reconcileInsertion(
     if (!(facts instanceof Map)) return serial;
     const spelling = facts as Map<string, string>;
     // Every source spelling this merge is writing back verbatim — the file's
-    // own indentation vocabulary, as observed rather than computed.
-    const spelled = new Set(spelling.values());
+    // own indentation vocabulary, as observed rather than computed. Tombstoned
+    // families contribute nothing: an ambiguity is the absence of a spelling,
+    // not one more of them, and it must not vouch for anything.
+    const spelled = new Set([...spelling.values()].filter((s) => s !== AMBIGUOUS));
     const baselineFacts = asBaselineFacts(baseline);
     // The load-time baseline, source → canonical. Only ever consulted to GRANT
     // (see below), so its documented staleness can cost a respelling that would
     // have been made, never cause a wrong one.
     const rendered = baselineFacts?.rendered ?? null;
     // The load-time counterpart of `spelling`, consulted only where this
-    // merge's own keeps are silent (MAR-322). They go silent exactly when the
+    // merge's own keeps are SILENT — never where they are ambiguous. The
+    // distinction needs the tombstone (`AMBIGUOUS`) to exist at all, since a
+    // deleted entry and an unwitnessed one are the same `undefined`: a family
+    // this merge is watching two spellings of is direct, current evidence that
+    // the file has no single answer there, and letting an older fact override
+    // it would be the one thing every rule in this file refuses to do — decide
+    // from weaker evidence than it holds. They go silent exactly when the
     // moved block itself held the only line witnessing its landing depth: a
     // plain tab outline whose sole `\t\t` bullet is the thing being moved
     // teaches the live map nothing about that family, and the insertion then
@@ -872,7 +900,10 @@ function reconcileInsertion(
     // nothing, and the fallback refuses — the safe direction, costing a
     // respelling that would have been made, never inventing one.
     const baselineSpelling = (family: string): string | undefined => {
-        const witnessed = baselineFacts?.spelledByFamily.get(family);
+        if (spelling.get(family) === AMBIGUOUS) return undefined;
+        const witnessed = baselineFacts
+            ? spellingOf(baselineFacts.spelledByFamily, family)
+            : undefined;
         if (witnessed === undefined) return undefined;
         for (const s of spelled) {
             if (s !== "" && (witnessed.startsWith(s) || s.startsWith(witnessed))) {
@@ -891,7 +922,7 @@ function reconcileInsertion(
     return serial.map((line, i) => {
         if (!lines[i].key.startsWith("\x00")) {
             const family = indentFamily(line);
-            const source = spelling.get(family) ?? baselineSpelling(family);
+            const source = spellingOf(spelling, family) ?? baselineSpelling(family);
             if (typeof source === "string") carried = { canonical: indentOf(line), source };
         }
         const sub = carried;
@@ -1581,6 +1612,21 @@ export const markdownProfile: FormatProfile = {
         const classes = classifyLines(lines);
         return lines.map((line, i) =>
             line.trim() === "" ? "" : normLineForCompare(line, classes[i]),
+        );
+    },
+    // The merge's output self-check (see the engine's `lineRoles` doc):
+    // fence interiors are the one role markdown reports, DELIBERATELY
+    // excluding indented code and setext — those classes read meaning out of
+    // blank runs and marker adjacency, and the merge legitimately emits saved
+    // spacing beside serializer lines, so a finer role would fire on merges
+    // that are fine. Fence classification hangs only on the marker lines'
+    // spelling and pairing (a ``` run cannot close a `~~~` fence, in the
+    // classifier exactly as in CommonMark), which is what makes a
+    // mismatched-pair splice visible as a role flip on the lines after it.
+    lineRoles(lines) {
+        const classes = classifyLines(lines as string[]);
+        return classes.map((c) =>
+            c === "fence-raw" || c === "fence-nested" ? "verbatim" : "content",
         );
     },
     glueChangesConstruct,

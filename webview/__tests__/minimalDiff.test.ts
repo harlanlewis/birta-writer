@@ -937,6 +937,44 @@ describe("applyMinimalChanges — an inserted line's depth can be spelled from t
         );
     });
 
+    it("a family this merge is watching TWO spellings of should decline the baseline", () => {
+        // Silence and ambiguity are opposite states that `Map.get` reports
+        // identically, so without the tombstone the fallback answers both from
+        // the load-time baseline. A family the merge is currently writing back
+        // two ways is direct evidence the file has no single spelling at that
+        // depth; an older fact must not override it.
+        //
+        // Here the file loaded as a pure tab outline (teaching family "m  " →
+        // "\t") and has since drifted: "child A" still carries a tab while
+        // "child B" carries two spaces, so the live map tombstones "m  ". The
+        // deep "\t\t" line stays put purely so corroboration EXISTS — without
+        // it the non-empty-spelling gate would refuse for a different reason
+        // and the test could not see this one.
+        const loadText = "- alpha\n\t- child A\n\t\t- deep leaf\n- beta\n\t- child B\n\ngrand A\n";
+        const protection = computeRoundTripProtection(
+            loadText,
+            "- alpha\n  - child A\n    - deep leaf\n- beta\n  - child B\n\ngrand A\n",
+        );
+        expect(protection).not.toBeNull();
+        const facts = protection!.baselineFacts as { spelledByFamily: Map<string, string> };
+        // Precondition: the baseline DOES hold a tab spelling for the family,
+        // so refusing below is the tombstone's doing and not an absent fact.
+        expect(facts.spelledByFamily.get("m  ")).toBe("\t");
+
+        const driftedSaved =
+            "- alpha\n\t- child A\n\t\t- deep leaf\n- beta\n  - child B\n\ngrand A\n";
+        // The move makes "grand A" a child of alpha, landing it directly under
+        // the kept "\t\t- deep leaf" — so the anchor gate GRANTS (the anchor is
+        // prefix-compatible with the stale "\t"), and the tombstone is the only
+        // thing left to refuse. Without it this writes "\t- grand A".
+        const movedSerialized =
+            "- alpha\n  - child A\n    - deep leaf\n  - grand A\n- beta\n  - child B\n";
+
+        const merged = applyMinimalChanges(driftedSaved, movedSerialized, protection);
+        expect(merged).toContain("  - grand A");
+        expect(merged).not.toContain("\t- grand A");
+    });
+
     it("a baseline spelling nothing live corroborates should be declined", () => {
         // The corroboration gate. A baseline fact is not self-corroborating —
         // the merge is not currently writing that spelling back — so before it

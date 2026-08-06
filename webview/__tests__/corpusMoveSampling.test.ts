@@ -554,9 +554,12 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         // insertion shipped the serializer's 4-space lines beside kept tabs,
         // and the sublist reparsed one level shallower: `lost:
         // count:bullet_list`. Found by MDW_MOVE_SEED=20260712 with MAR-88's
-        // item-internal drop slots; the target below is the same landing slot,
-        // reached directly since the shipped enumeration does not offer it
-        // yet. The distilled string-level pins live in minimalDiff.test.ts.
+        // item-internal drop slots, which ship in this same change — so the
+        // target below is now an ENUMERATED slot (the fence item has two
+        // children, so `itemPos + nodeSize - 1` is its end-of-item slot) and
+        // the sampler draws it on its own. It is addressed directly here so
+        // the pin holds the exact pair regardless of seed. The distilled
+        // string-level pins live in minimalDiff.test.ts.
         const fixture = fixtures.find((f) => f.name === "logseq/page.md")!;
         const editor = await makeEditor(fixture.content);
         const v = editorView(editor);

@@ -33,6 +33,7 @@ import {
     moveBlocks,
 } from "../../editing/blockOps";
 import { isContainerNode, isListNode, selectionCoverRange } from "../../plugins/headingFold";
+import { isBlankParagraph } from "../../plugins/fingerprints";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
@@ -74,18 +75,35 @@ export function blockBoundaryPositions(
             lastEnd = itemPos + item.nodeSize;
             // Item-internal BLOCK slots (MAR-88): between an item's
             // continuation blocks, and after the last one, so a block can be
-            // dropped into (or reordered within) the item. Two deliberate
+            // dropped into (or reordered within) the item. Three deliberate
             // gaps: no slot before the LEAD child — `list_item` is
             // `paragraph block*`, so a non-paragraph drop there fails
             // canReplace and moveBlocks would refuse LOUDLY (its
             // caller-bug lane), and slot emission is content-blind so it
-            // cannot offer that slot only to paragraphs — and no slots at
+            // cannot offer that slot only to paragraphs — no slots at
             // all for a single-child item, whose interior has no
-            // between-continuation boundary (scope of the MAR-88 defer).
+            // between-continuation boundary (scope of the MAR-88 defer) —
+            // and none in an ARTIFACT-LEAD item, below.
+            //
+            // `- > quote` parses as [artifact empty paragraph, blockquote]:
+            // the empty lead is a schema artifact the user cannot see. While
+            // the item holds one real block the serializer rides it on the
+            // marker line and the artifact never reaches the file (MAR-230),
+            // but any SECOND real block forces the artifact out as a bare `-`
+            // marker line with the content indented beneath — which re-lexes
+            // as a setext underline and destroys the list on reopen. So every
+            // interior slot of such an item is a slot whose drop corrupts the
+            // document, and the emission is content-blind, so it cannot offer
+            // only the safe ones. Withheld outright, and the withholding is
+            // load-bearing rather than tidy: the same positions feed the image
+            // FILE-DROP path (`editing/fileDrop.ts`), which commits a plain
+            // async insert that no refuse lane inspects.
+            const artifactLead =
+                item.childCount > 0 && isBlankParagraph(item.child(0), item);
             let childEnd = itemPos + 1;
             item.forEach((child: ProseNode, childOffset: number, index: number) => {
                 const childPos = itemPos + 1 + childOffset;
-                if (index > 0) {
+                if (index > 0 && !artifactLead) {
                     positions.push({ pos: childPos, kind: "block", ownerPos: itemPos });
                 }
                 childEnd = childPos + child.nodeSize;
@@ -95,7 +113,7 @@ export function blockBoundaryPositions(
                     walkContainer(child, childPos);
                 }
             });
-            if (item.childCount > 1) {
+            if (item.childCount > 1 && !artifactLead) {
                 positions.push({ pos: childEnd, kind: "block", ownerPos: itemPos });
             }
         });

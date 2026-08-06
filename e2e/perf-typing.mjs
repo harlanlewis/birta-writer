@@ -255,11 +255,6 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     await page.waitForTimeout(300);
     await page.evaluate(() => {
         performance.clearMeasures("mdw:tx-apply");
-        // A warmup-scheduled rescan can fire after this clear (its 350 ms
-        // debounce races the measured burst's first keystroke, which would
-        // reset it); clearing here at least guarantees nothing OLDER than the
-        // warmup's tail is counted. No-ops on bundles predating the measure.
-        performance.clearMeasures("mdw:proofread-rescan");
         if (window.__longtasks) {
             // Flush warmup-era entries still queued in the observer so they
             // can't be delivered into the measured burst, then drop both.
@@ -271,6 +266,21 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     let typed = "";
     while (typed.length < keys) typed += TYPING_TEXT;
     await page.keyboard.type(typed.slice(0, keys), { delay: 30 });
+    // Drop rescan entries HERE, not with the tx-apply clear above, and the
+    // ordering is the whole guard. The warmup's own rescan is still pending at
+    // that earlier point (350 ms debounce against a 300 ms settle) and the
+    // burst's first keystroke is what normally resets it — but under load that
+    // gap closes, the warmup rescan lands after the clear, and the `length > 0`
+    // wait below would be satisfied by THAT entry: the burst's own rescan then
+    // fires during the caret burst (the pollution the wait exists to prevent)
+    // and `rescanMs` medians two scans. By the end of the burst — thousands of
+    // ms of keystrokes — any warmup tail has certainly fired, and the burst's
+    // own certainly has not, since its debounce runs from the last keystroke.
+    // So this clear leaves exactly one candidate. If severe jank opened a
+    // 350 ms hole mid-burst, the rescan it triggered is cleared here and the
+    // wait times out: reported as `n/a`, which is honest, rather than a
+    // mid-burst scan reported as the burst's own.
+    await page.evaluate(() => performance.clearMeasures("mdw:proofread-rescan"));
     // Let the last keystroke's transaction land before reading.
     await page.waitForTimeout(200);
 
