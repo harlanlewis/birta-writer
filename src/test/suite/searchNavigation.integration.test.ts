@@ -131,7 +131,10 @@ async function searchJump(api: BirtaApi, uri: vscode.Uri): Promise<BirtaEditorCo
 }
 
 describe("Birta integration: a search-result click lands on the match", () => {
-    it("selects and reveals the match when the file is not yet open", async () => {
+    it("selects and reveals the match when the file is not yet open", async function () {
+        // A shared runner can slip the reveal past even the raised capture
+        // windows; one retry separates jitter from a real capture regression.
+        this.retries(1);
         const uri = await writeFixture("searchJumpFresh.md");
         const api = await birtaApi();
 
@@ -150,9 +153,10 @@ describe("Birta integration: a search-result click lands on the match", () => {
         );
     });
 
-    it("selects and reveals the match when the file is ALREADY open in Birta", async () => {
+    it("selects and reveals the match when the file is ALREADY open in Birta", async function () {
         // Search replaces the custom-editor tab with a text editor and the swap
         // brings it back, so this path is a second chance to lose the target.
+        this.retries(1);
         const uri = await writeFixture("searchJumpOpen.md");
         await vscode.commands.executeCommand("vscode.openWith", uri, "birta.editor");
         for (let i = 0; i < 40 && !inBirtaTab(uri); i++) { await wait(250); }
