@@ -129,8 +129,43 @@ export interface FormatProfile {
      * a run it rewrote deeply enough that no correspondence is visible in the
      * bytes (`pairBaselineLines`). Lines arrive as content, without their line
      * endings.
+     *
+     * Return `undefined` to mean "nothing to teach". The distinction matters
+     * for a file whose round trip is CLEAN: it needs no repair regions, but its
+     * keeps are still evidence, so `computeRoundTripProtection` returns a
+     * zero-region protection carrying whatever this hook distilled — and stays
+     * null only when this hook is absent or returns `undefined` (MAR-322).
      */
     baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
+    /**
+     * Classify each line's structural role for the merge's OUTPUT SELF-CHECK:
+     * "verbatim" for a line whose bytes are opaque enclosed content (fenced
+     * code interior, in markdown's case), "content" for everything else.
+     *
+     * WHY the check exists: the diff keys equivalent spellings of a construct
+     * equal so both spellings can survive as keeps — markdown keys a fence
+     * marker line by its info string alone, so a saved `~~~` stays beside a
+     * serializer ```` ``` ````. Safe when the document's order is unchanged;
+     * under a block MOVE the LCS may pair one marker line of a fence with a
+     * DIFFERENT fence's marker, keeping one end's saved spelling while the
+     * other end takes the serializer's — and a ``` run cannot close a `~~~`
+     * fence, so the mismatched pair swallows everything to the next matching
+     * run on reopen. The raw serialization is clean, so no pre-merge refusal
+     * can see it; only the merged bytes are wrong.
+     *
+     * The check: after the rebuild, the merged text's significant lines must
+     * carry the same role sequence as the text the diff ran on. A mismatched
+     * pair flips later lines between "verbatim" and "content", which is
+     * exactly the flip this detects. On mismatch the merge DEGRADES to the
+     * raw serializer output (EOL-matched): canonicalization churn, never
+     * corruption — the trade this engine prefers everywhere.
+     *
+     * Keep the roles COARSE and blank-insensitive. A finer classification
+     * (indented code, setext) reads meaning out of blank runs, and the merge
+     * legitimately emits saved blank spacing beside serializer lines — a
+     * role that depends on a blank would fire on merges that are fine.
+     */
+    lineRoles?(lines: readonly string[]): readonly ("content" | "verbatim")[];
     /**
      * Distill what the merge NOW BEING PERFORMED teaches about how this file is
      * written, from its own `keep` pairs — each one a saved line beside the
@@ -561,9 +596,25 @@ export function computeRoundTripProtection(
     // yields the same regions either way. `applyMinimalChanges` — including
     // the self-check below — remains the single place endings are reconciled.
     const { edits, savedLines } = computeEditScript(saved, baselineSerialized, profile);
-    if (!edits.some((e) => e.op !== "keep")) return null;
 
     const baselineFacts = profile.baselineFacts?.(pairBaselineLines(edits, savedLines.length - 1));
+    if (!edits.some((e) => e.op !== "keep")) {
+        // A clean round trip needs no repair regions — but its keeps are the
+        // richest baseline evidence a file ever offers, since EVERY line is a
+        // witnessed (saved, rendered) pair. Returning null here discarded them,
+        // which left exactly the files most exposed to indent re-spelling with
+        // nothing to consult: a plain tab outline keys equal to the spaces it
+        // renders as, so it is always clean, and a block moved within one then
+        // shipped the serializer's spaces beside kept tabs whenever the only
+        // line witnessing the landing depth was inside the moved region itself
+        // (MAR-322). A zero-region protection performs no repairs — it exists
+        // purely to carry the facts to the merge hooks, whose own gates govern
+        // every use. `undefined` from the profile still means "nothing to
+        // teach", and a profile without the hook keeps the old null. The
+        // replay self-check below is deliberately skipped: it verifies that
+        // REGIONS reproduce the baseline, and there are none.
+        return baselineFacts === undefined ? null : { regions: [], baselineFacts };
+    }
 
     // Self-check: protection must reproduce the saved bytes exactly when the
     // serializer output is the baseline itself. The per-construct split
@@ -1055,7 +1106,15 @@ export function applyMinimalChanges(
     // so repair splices saved bytes among lines that already agree with them.
     const eol = dominantEol(saved);
     const matched = matchEol(serialized, eol);
-    const effective = protection ? repairSerialized(matched, protection, profile, eol) : matched;
+    // A zero-region protection carries facts only (a clean file's witnessed
+    // spellings — see `baselineFacts`), and `repairSerialized` with no regions
+    // is a string identity. Skipping it matters because it is not a cheap
+    // identity: it re-analyzes and re-keys the whole document, on every sync of
+    // every clean file, to return what it was given.
+    const effective =
+        protection && protection.regions.length > 0
+            ? repairSerialized(matched, protection, profile, eol)
+            : matched;
     const { edits, savedLines, serialLines } = computeEditScript(saved, effective, profile);
 
     // NOTE: there is deliberately no "every edit is a keep, so return `saved`"
@@ -1330,5 +1389,38 @@ export function applyMinimalChanges(
     }
 
     const result = out.join("\n");
-    return result === saved ? saved : result;
+    if (result === saved) return saved;
+    // Output self-check (see `lineRoles`): a splice that flips any
+    // significant line between verbatim and content — a mismatched fence
+    // pair, in markdown — is corruption the keys cannot prevent, so the
+    // merge stands down and the serializer's own text is written instead.
+    // Skipped when the result IS the saved bytes: writing them changes
+    // nothing, so no new structure can have been introduced.
+    if (profile.lineRoles && rolesDiverge(profile, result, effective)) {
+        return matched;
+    }
+    return result;
+}
+
+/** Do `merged` and `effective` disagree on any significant line's role?
+ *  Roles are computed over the FULL line arrays (classification is
+ *  contextual) and compared only at significant lines, so blank-run
+ *  differences — saved spacing beside serializer lines — cannot fire this. */
+function rolesDiverge(profile: FormatProfile, merged: string, effective: string): boolean {
+    const significantRoles = (text: string): string[] => {
+        const lines = text.split("\n").map(stripEol);
+        const roles = profile.lineRoles!(lines);
+        const sig: string[] = [];
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim() !== "") sig.push(roles[i]);
+        }
+        return sig;
+    };
+    const m = significantRoles(merged);
+    const e = significantRoles(effective);
+    if (m.length !== e.length) return true;
+    for (let i = 0; i < m.length; i++) {
+        if (m[i] !== e[i]) return true;
+    }
+    return false;
 }

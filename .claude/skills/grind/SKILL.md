@@ -24,7 +24,7 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 - **Check `Closes MAR-NN` against ancestry** — `git merge-base --is-ancestor <sha> main`. A ticket closed on a pushed branch rather than a merged PR leaves no signal anywhere.
 - **Pick: first High-or-Urgent down the spine** — `phase-0-fidelity` → `phase-1-performance` → `phase-2-syntax` → `phase-3-interaction` → `phase-4-differentiators`, then by `priority`. `phase-5-surfaces` never ranks (D8). With no High anywhere, take the spine's top by priority.
   - **Readiness is not a filter.** Unscoped and unreproduced is what existential work looks like; making it ready IS the work. Only *blocked* — needing something outside the session — releases it, and name the blocker in the ticket. The spine item is the session's opener, not its leftover.
-- **Burn down deferred residue** (follow-ups, cleanups, polish batches): absorb, merge, or close with a reason — "below the value bar" is one. Never close maintainer-authored ideas to hit a count, and never manufacture phase-0 tickets so the spine has something to point at.
+- **Burn down deferred residue** — at least 5 of the oldest each session (follow-ups, cleanups, polish batches): absorb, merge, or close with a reason — "below the value bar" is one. Never close maintainer-authored ideas to hit the quota, and never manufacture phase-0 tickets so the spine has something to point at.
 - **Work MAR-141's do-inline ledger** when a session touches a line's area. Prune lines sessions have worked past.
 - If grooming finds nothing open, say so and ask.
 
@@ -65,7 +65,7 @@ Send the filled-in brief from [references/lane-brief.md](references/lane-brief.m
      --actual <lane-branch> --expected "path,path"
    ```
    An overlap here is a queued-lane rebrief, and far cheaper than finding it in the merge.
-3. Merge (§6). 4. Refill. 5. Disposition its discovered work now, while the repro still runs. Small and inside the lane's own seam → resume the finished agent (`SendMessage`) to fix it with its context intact — cheaper than a ticket or a fresh brief; otherwise file.
+3. Merge (§6). 4. Refill. 5. Disposition its discovered work now, while the repro still runs — and the default disposition is *resolve*, not *file*. Inside the lane's seam → resume the finished agent (`SendMessage`) with its context intact; outside it → take it yourself or fold it into a queued brief. File only the truly large or blocked, naming why.
 
 **Refill** after the predecessor merged, so the stale-HEAD sync lands on a reconciled tree. One refill per message — two lanes draining at once relaunch into the same race.
 
@@ -93,7 +93,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 2. **Implement** the smallest correct fix in the surrounding idiom. Grep for the mechanism that already exists before building one — if you're citing a function to justify your design, call it instead. Prefer observing the result to predicting it.
 3. **Critique the design before hardening it.** Is there less of it? Churn is the tell: a predicate written, reverted, rewritten means the design isn't settled. Act on findings here — carried to step 5 they cost a test suite.
 4. **Test.** Pin a regression test; promote a fidelity `it.fails`. **Prove each new test can fail by reverting the exact line it pins.** Assert what the user would lose, not the state your fix sets — and watch for assertions satisfied by something else in the fixture. **A differential test against the path your code falls back to cannot fail**: if the function verifies its own result and degrades on mismatch, the two agree by construction however broken the fast path is. Assert the fallback never RAN. Then `pnpm test`, `pnpm typecheck`, `pnpm build` — via `scripts/gate.sh --tail N -- <cmd>` when you want short output, because piping a gate through a filter masks its exit code and the repo hook (`no-piped-gate.sh`) blocks the attempt. `/verify` for runtime behavior beyond jsdom.
-   - **Read the `Errors:` line of a passing vitest run, not just `Tests:`.** Unhandled errors exit non-zero with every test green. Contention explains *varying* failures across *different* suites; it does not explain the same error from the same file every time.
+   - Unhandled vitest errors exit non-zero with every test green — the gate hook surfaces them; don't re-green them by eye. Contention explains *varying* failures across *different* suites; it does not explain the same error from the same file every time.
 5. **Critique the diff** — `/constructive-critique` (`/code-review` for pure bug-hunting).
 6. **Disposition every finding where it was raised**, by value, never effort:
    - **Fixed** — the default for anything that matters. Cheapest now.
@@ -111,7 +111,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 ## 5. Tracking
 
 - **Never file a repro you haven't run.** Paste observed output, not expected. If it can't be reproduced in-session, say so in the ticket.
-- Watch the filing ratio — more created than closed is a deficit worth justifying.
+- **The backlog ledger rule (user-level CLAUDE.md) is canonical here.** Discovered work resolves in flight (§1.5, §3.6); a ticket is the exception, filed with the session's running opened/closed tally beside it — and session end is not a blocker. Net-positive is a failure the report justifies ticket by ticket.
 
 ## 6. Reconcile and land
 
@@ -128,7 +128,7 @@ Lanes merge into the integration branch as they finish — never into `main`, ne
 | `conflict` | 1 | Tree untouched, `conflict_files` listed. Resolve by hand or rebrief the lane. Either way it's a lane-plan finding: rebrief every queued lane sharing those files. |
 | `merge_failed` | 1 | Refused *without* conflicts — usually an untracked file, named in `reason`. Clear it, re-run. |
 | `gate_failed` | 2 | Reverted. Belongs to the lane that caused it — rebrief with `gate_output`. **First check `uptime`:** a gate run while lanes still hold the machine fails with every test passing, `Errors: N` worker timeouts, and 2–3× normal duration. Re-run idle before blaming a lane. **A contention red reproduces, including across branches**, so reproducibility is not evidence the failure is real. Re-run idle first, then bisect. |
-| `dirty` / `refused` | 3 | Your own uncommitted work, or a bad HEAD/branch. `reason` says which. |
+| `dirty` / `refused` | 3 | Your own uncommitted work, or a bad HEAD/branch. `reason` says which. Stashing around a merge: `git stash list` first, and pop only the entry YOU pushed — a pathspec'd push of committed paths saves nothing, and a blind pop then drops someone else's stash (it happened; the printed SHA + `git stash store` recovers it). |
 | `empty` | 4 | The lane committed nothing, whatever it reported. |
 
 **`merged` is not `shippable`.** Neither git nor the gate can tell you the change is correct. Reverting a green lane is legitimate: a `revert:` commit keeping the diagnosis, the branch pushed somewhere durable, the ticket re-scoped. **A lane's own "what is still exposed" note is your next probe, not a severity to accept** — the author who just chose to accept a risk is the worst-placed person to price it.

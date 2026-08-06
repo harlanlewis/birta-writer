@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- A block can be dropped inside a list item, between the blocks that make it up. Dragging into the gap between an item's paragraph and the quote, code block, or sublist under it now shows a drop target at the item's content column, and the drop nests the block into the item; until now a drag could only land beside the item, and a block already inside one could only be pulled out. Items holding a single block offer no interior target, no target is offered ahead of an item's first paragraph, and an item written as `- > quote` (whose first block is not a paragraph) offers none at all, because a second block there would break the list open on reopen.
+
+### Fixed
+
+- Moving a block within a tab-indented outline (the Logseq convention, where indentation is the block tree) could silently flatten the moved list's nesting in the saved file. The moved lines were written with the editor's space indentation while the untouched lines around them kept their tabs, and a tab is four columns against the editor's two, so the file reopened with the moved sublist one level shallower. The document looked right on screen and was wrong on disk. The save now writes moved lines the way the file itself spells that depth, learned from the document's own round trip. Where the file has never spelled that depth, or spells it two ways, the moved lines keep the editor's own indentation rather than a guess at yours. The one gesture known to reach this was the new in-item drop target above, which was withheld until this was fixed, but other block moves in tab outlines could plausibly reach the same splice.
+
 ---
 
 ## [2026.806.0] - 2026, August 6

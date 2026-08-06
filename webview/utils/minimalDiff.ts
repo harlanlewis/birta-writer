@@ -586,9 +586,10 @@ const LEADING_WS_RE = /^[ \t]*/;
 const indentOf = (line: string): string => LEADING_WS_RE.exec(line)![0];
 
 /**
- * Markdown's `FormatProfile.baselineFacts` (MAR-222): which SOURCE indent this
- * file's serializer renders as which CANONICAL indent, learned from the file's
- * own zero-edit round trip.
+ * The forward half of markdown's `FormatProfile.baselineFacts` (MAR-222):
+ * which SOURCE indent this file's serializer renders as which CANONICAL
+ * indent, learned from the file's own zero-edit round trip. Stored alongside
+ * the family-keyed inversion in `MarkdownBaselineFacts` (see `baselineFactsOf`).
  *
  * List depth is not a property of a line. It is the relationship between the
  * line's indent and its ancestors' marker widths, so no rule reading one indent
@@ -650,11 +651,13 @@ function indentFamily(line: string): string {
  *     back verbatim, so a spelling it hands out is one the output already
  *     contains at that depth. `baselineFacts`' hazard — a fact distilled once
  *     from a document that has since moved on — cannot arise.
- *   - It exists exactly when it is needed. A file that round-trips cleanly gets
- *     NO protection object and therefore no baseline facts at all, yet still
- *     breaks under a move (`fixtures/logseq/journal.md`: 4 of 22 executable
- *     moves, with `computeRoundTripProtection` returning null). Keeps are
- *     available on every merge, protected or not.
+ *   - It exists exactly when it is needed. When this map shipped, a file that
+ *     round-tripped cleanly got NO protection object and therefore no baseline
+ *     facts at all, yet still broke under a move (`fixtures/logseq/journal.md`:
+ *     4 of 22 executable moves, with `computeRoundTripProtection` returning
+ *     null); keeps are available on every merge, protected or not. MAR-322
+ *     closed that facts gap (a clean file now carries zero-region facts), but
+ *     the live map keeps first claim because it cannot be stale.
  *
  * Entries are filed under `indentFamily`, because a canonical indent width does
  * NOT identify a depth on its own: a marker line and the continuation lines of
@@ -672,25 +675,96 @@ function indentFamily(line: string): string {
  * whose leading whitespace happens to be content) can only ever cost a
  * respelling that would have been made, never cause a wrong one.
  */
+/**
+ * An indent spelling is leading whitespace, so a `\x00` value can only be this:
+ * a family the evidence saw spelled two ways. It is recorded rather than
+ * deleted because a CONSULTED map cannot otherwise tell "this family was never
+ * witnessed" from "this family was witnessed as MIXED" — `Map.get` answers
+ * `undefined` to both, and the two deserve opposite treatments. Silence may be
+ * answered from weaker evidence (the baseline, under MAR-322's fallback);
+ * observed ambiguity is direct, current evidence that the file has no single
+ * spelling at that depth, and must not be overridden by an older fact.
+ */
+const AMBIGUOUS = "\x00ambiguous";
+
+/** The spelling this evidence gives `family`, or undefined when it has none —
+ * whether unwitnessed or witnessed as mixed. The single reader of the
+ * tombstone, so no consumer has to know the encoding. */
+function spellingOf(map: Map<string, string>, family: string): string | undefined {
+    const source = map.get(family);
+    return source === undefined || source === AMBIGUOUS ? undefined : source;
+}
+
 function mergeIndents(pairs: readonly BaselineLinePair[]): Map<string, string> {
     const spelling = new Map<string, string>();
-    const ambiguous = new Set<string>();
     for (const pair of pairs) {
         // A pair whose two sides disagree about being a marker line is not one
         // line in two spellings of the same thing; it teaches nothing safely.
         if (LIST_MARKER_RE.test(pair.saved) !== LIST_MARKER_RE.test(pair.serial)) continue;
         const canonical = indentFamily(pair.serial);
-        if (ambiguous.has(canonical)) continue;
-        const source = indentOf(pair.saved);
         const prev = spelling.get(canonical);
+        if (prev === AMBIGUOUS) continue;
+        const source = indentOf(pair.saved);
         if (prev === undefined) {
             spelling.set(canonical, source);
         } else if (prev !== source) {
-            spelling.delete(canonical);
-            ambiguous.add(canonical);
+            spelling.set(canonical, AMBIGUOUS);
         }
     }
     return spelling;
+}
+
+/**
+ * What markdown's `baselineFacts` hook actually stores (MAR-322): the forward
+ * source→canonical map (`baselineIndents`), and the SAME family-keyed
+ * distillation the live merge uses (`mergeIndents`), applied to the load-time
+ * baseline pairs. The second map exists because the forward map cannot be
+ * inverted with roles intact — a tab outline renders both `\t\t` (a depth-2
+ * marker) and `\t  ` (a depth-1 continuation) as four spaces, so the role-blind
+ * inversion (`sourceSpellingOf`) rightly refuses that width as ambiguous, while
+ * under `indentFamily` the two spellings never met. One distiller, both
+ * evidence sets: reusing `mergeIndents` is what keeps "how does this file spell
+ * that family" a single definition.
+ */
+interface MarkdownBaselineFacts {
+    /** Source indent → canonical rendering; rule 2's grant and the insertion
+     * anchor's rendered-equivalence grant read this. */
+    rendered: Map<string, string>;
+    /** `indentFamily` of the canonical line → source spelling; the insertion
+     * hook's fallback vocabulary where this merge's own keeps are silent. */
+    spelledByFamily: Map<string, string>;
+}
+
+/** Markdown's `FormatProfile.baselineFacts`. Returns `undefined` when the
+ * round trip witnessed no spelling DIFFERENCE, which tells the engine such a
+ * file has nothing to carry (`computeRoundTripProtection` then stays null —
+ * the pre-MAR-322 contract, kept for every file that does not need the new
+ * one). All-identity maps are not "small facts", they are no facts: an entry
+ * whose source and rendering agree can never change what either consulting
+ * rule writes, and carrying them would put a protection object on every clean
+ * file in exchange for nothing. When any real difference exists the maps are
+ * kept WHOLE, identities included — an identity entry can still vouch for an
+ * anchor (`rendered.get(anchor)`), which is evidence, not a rewrite. */
+function baselineFactsOf(pairs: readonly BaselineLinePair[]): MarkdownBaselineFacts | undefined {
+    const rendered = baselineIndents(pairs);
+    const spelledByFamily = mergeIndents(pairs);
+    const teaches =
+        [...rendered].some(([source, canonical]) => source !== canonical) ||
+        [...spelledByFamily].some(
+            ([family, source]) => source !== AMBIGUOUS && source !== family.slice(1),
+        );
+    return teaches ? { rendered, spelledByFamily } : undefined;
+}
+
+/** The shape check every consumer of the stored facts goes through — cheap,
+ * and what keeps a protection built by some OTHER profile from being read as
+ * this one's maps once a second format exists. */
+function asBaselineFacts(facts: unknown): MarkdownBaselineFacts | null {
+    if (facts === null || typeof facts !== "object") return null;
+    const f = facts as Partial<MarkdownBaselineFacts>;
+    return f.rendered instanceof Map && f.spelledByFamily instanceof Map
+        ? (f as MarkdownBaselineFacts)
+        : null;
 }
 
 /**
@@ -794,12 +868,50 @@ function reconcileInsertion(
     if (!(facts instanceof Map)) return serial;
     const spelling = facts as Map<string, string>;
     // Every source spelling this merge is writing back verbatim — the file's
-    // own indentation vocabulary, as observed rather than computed.
-    const spelled = new Set(spelling.values());
+    // own indentation vocabulary, as observed rather than computed. Tombstoned
+    // families contribute nothing: an ambiguity is the absence of a spelling,
+    // not one more of them, and it must not vouch for anything.
+    const spelled = new Set([...spelling.values()].filter((s) => s !== AMBIGUOUS));
+    const baselineFacts = asBaselineFacts(baseline);
     // The load-time baseline, source → canonical. Only ever consulted to GRANT
     // (see below), so its documented staleness can cost a respelling that would
     // have been made, never cause a wrong one.
-    const rendered = baseline instanceof Map ? (baseline as Map<string, string>) : null;
+    const rendered = baselineFacts?.rendered ?? null;
+    // The load-time counterpart of `spelling`, consulted only where this
+    // merge's own keeps are SILENT — never where they are ambiguous. The
+    // distinction needs the tombstone (`AMBIGUOUS`) to exist at all, since a
+    // deleted entry and an unwitnessed one are the same `undefined`: a family
+    // this merge is watching two spellings of is direct, current evidence that
+    // the file has no single answer there, and letting an older fact override
+    // it would be the one thing every rule in this file refuses to do — decide
+    // from weaker evidence than it holds. They go silent exactly when the
+    // moved block itself held the only line witnessing its landing depth: a
+    // plain tab outline whose sole `\t\t` bullet is the thing being moved
+    // teaches the live map nothing about that family, and the insertion then
+    // shipped the serializer's spaces beside kept tabs — a tab is four columns
+    // against canonical two, so the untouched neighbours reparsed at different
+    // depths and a nested list dissolved, silently, only in the merged bytes.
+    // Unlike the live map, a baseline fact is not self-corroborating (the
+    // merge is not currently writing that spelling back), so it must be
+    // vouched for before it may START a substitution: prefix-compatible with a
+    // NON-EMPTY spelling this merge is live-observing. The empty spelling is
+    // excluded because it prefixes everything and so witnesses nothing; a file
+    // whose live keeps show no indentation convention at all corroborates
+    // nothing, and the fallback refuses — the safe direction, costing a
+    // respelling that would have been made, never inventing one.
+    const baselineSpelling = (family: string): string | undefined => {
+        if (spelling.get(family) === AMBIGUOUS) return undefined;
+        const witnessed = baselineFacts
+            ? spellingOf(baselineFacts.spelledByFamily, family)
+            : undefined;
+        if (witnessed === undefined) return undefined;
+        for (const s of spelled) {
+            if (s !== "" && (witnessed.startsWith(s) || s.startsWith(witnessed))) {
+                return witnessed;
+            }
+        }
+        return undefined;
+    };
     // The substitution in force, carried across verbatim lines and past widths
     // the file has taught nothing about. Null until a line whose indentation is
     // structure has resolved one.
@@ -809,7 +921,8 @@ function reconcileInsertion(
     let anchor = preceding === null ? "" : indentOf(preceding);
     return serial.map((line, i) => {
         if (!lines[i].key.startsWith("\x00")) {
-            const source = spelling.get(indentFamily(line));
+            const family = indentFamily(line);
+            const source = spellingOf(spelling, family) ?? baselineSpelling(family);
             if (typeof source === "string") carried = { canonical: indentOf(line), source };
         }
         const sub = carried;
@@ -992,12 +1105,15 @@ function depthPrefixOf(savedWs: string, serialWs: string): string | undefined {
  *      that renders to the serializer's canonical indent — the file's spelling
  *      of that depth as witnessed by this very line, which is current by
  *      construction and needs no facts at all. This is the arm that matters:
- *      the documents most exposed to the bug are plain tab outlines, and they
- *      carry NO baseline facts to consult, because a tab keys equal to the two
- *      spaces it renders as (`normalizeOutlineIndent`), so the file round-trips
- *      under the profile's own keys and `computeRoundTripProtection` returns
- *      null. Of the seven losses this rule closed across the swept shapes, six
- *      are this arm's and only one is arm 2's.
+ *      when this rule shipped, the documents most exposed to the bug — plain
+ *      tab outlines — carried NO baseline facts to consult, because a tab keys
+ *      equal to the two spaces it renders as (`normalizeOutlineIndent`), so the
+ *      file round-trips under the profile's own keys and
+ *      `computeRoundTripProtection` returned null. (MAR-322 has since made a
+ *      clean file carry zero-region facts; this arm keeps first claim because
+ *      the line's own bytes cannot be stale.) Of the seven losses this rule
+ *      closed across the swept shapes, six are this arm's and only one is
+ *      arm 2's.
  *   2. THE FILE'S OWN TESTIMONY, read backwards (`sourceSpellingOf`). Rule 1
  *      cannot see a unit the serializer does not use: a four-space outline
  *      writes depth 1 as four spaces where the serializer writes two, and no
@@ -1159,7 +1275,7 @@ function reconcileReplacement(
     facts: unknown,
     keys: ReplacementKeys,
 ): string {
-    const baseline = facts instanceof Map ? (facts as Map<string, string>) : null;
+    const baseline = asBaselineFacts(facts)?.rendered ?? null;
     return carrySavedTableCells(
         saved,
         carrySavedIndent(saved, serial, baseline, isStructuralPair(keys)),
@@ -1498,6 +1614,21 @@ export const markdownProfile: FormatProfile = {
             line.trim() === "" ? "" : normLineForCompare(line, classes[i]),
         );
     },
+    // The merge's output self-check (see the engine's `lineRoles` doc):
+    // fence interiors are the one role markdown reports, DELIBERATELY
+    // excluding indented code and setext — those classes read meaning out of
+    // blank runs and marker adjacency, and the merge legitimately emits saved
+    // spacing beside serializer lines, so a finer role would fire on merges
+    // that are fine. Fence classification hangs only on the marker lines'
+    // spelling and pairing (a ``` run cannot close a `~~~` fence, in the
+    // classifier exactly as in CommonMark), which is what makes a
+    // mismatched-pair splice visible as a role flip on the lines after it.
+    lineRoles(lines) {
+        const classes = classifyLines(lines as string[]);
+        return classes.map((c) =>
+            c === "fence-raw" || c === "fence-nested" ? "verbatim" : "content",
+        );
+    },
     glueChangesConstruct,
     // Two arms:
     //   - a blank line between two quote-context (`>`-prefixed) lines SPLITS
@@ -1521,7 +1652,7 @@ export const markdownProfile: FormatProfile = {
         joinsAsLazyContinuation(prev, next) ||
         blankOrphansItemContent(prev, next),
     reconcileReplacement,
-    baselineFacts: baselineIndents,
+    baselineFacts: baselineFactsOf,
     mergeFacts: mergeIndents,
     reconcileInsertion,
 };

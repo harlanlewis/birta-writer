@@ -115,15 +115,18 @@ node e2e/perf-typing.mjs --compare before.json after.json
 
 The same marks work in the webview devtools against any real document (Performance panel → User Timing), which is how to profile a user-reported slow file.
 
-## The three columns, and which of them decide
+## The columns, and which of them decide
 
 | column | span | gated? |
 | --- | --- | --- |
 | `median` / `p95` / `max` | `mdw:tx-apply` — a doc-changing edit | ✅ ≥10% AND ≥0.5 ms |
 | `caret` | `mdw:tx-select` — a selection-only transaction | ✅ same floors |
+| `rescan` | `mdw:proofread-rescan` — the burst's debounced proofread rescan | ❌ reported only |
 | `block` | buffered longtasks summed over the burst | ❌ reported only |
 
 **`caret` exists because selection-only transactions were once dispatched unmeasured**, on the reasoning that they were "not the cost being tracked". That left caret movement as the one class of transaction nothing in the repo measured — no harness, no CI gate, not `block` — and a plugin doing whole-document work on every arrow key sat there unnoticed as long as that held. **A cost no instrument reports is a cost that regresses freely.** It is a separate span so the headline typing median still means exactly what it did and is never diluted by caret moves.
+
+**`rescan` is reported and never gated** (MAR-314). Typing schedules a whole-document proofread rescan on a 350 ms trailing debounce, so it fires exactly once, after the burst — outside `tx-apply`, previously visible only through `block`. Measure mode waits for it (which also keeps its meta dispatch out of the caret pool) and reports its `mdw:proofread-rescan` duration; one sample per capture is attribution, not stability evidence, so it never decides. A/B mode does not collect it at all: the merge-base bundle may predate the measure, and waiting would cost the full timeout on every base sample — the same ADR that keeps the launch A/B from waiting on post-paint marks.
 
 **`block` is reported and never gated.** Its longtask threshold is a fixed 50 ms, so a slower or loaded machine pushes sub-threshold tasks over it and the number inflates super-linearly — a null A/B on identical bundles moves it while dispatch medians hold, and the same burst reads more than an order of magnitude higher on a CI runner than on a laptop. So it informs — including the "median improved but block regressed → work was *moved*, not removed" warning — and never decides. (`--compare` does fail on it; that runs on a machine you control, CI does not.)
 

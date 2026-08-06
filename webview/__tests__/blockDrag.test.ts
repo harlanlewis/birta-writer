@@ -95,7 +95,9 @@ describe("blockBoundaryPositions", () => {
         const itemStarts = items.filter(({ pos }) => doc.nodeAt(pos)?.type.name === "list_item");
         expect(itemStarts).toHaveLength(3);
         const blocks = positions.filter((b) => b.kind === "block");
-        expect(blocks).toHaveLength(3); // list, para, doc end
+        // list, para, doc end, plus item "two"'s two item-internal slots
+        // (before its nested list + end-of-item; MAR-88 drop slots).
+        expect(blocks).toHaveLength(5);
     });
 });
 

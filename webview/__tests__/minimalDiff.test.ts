@@ -766,12 +766,16 @@ describe("applyMinimalChanges — a moved item takes the file's spelling of its 
     // ordinary gesture reaches.
 
     it("an item outdented to a shallower depth should be spelled from its own saved bytes", () => {
-        // A plain tab outline. It gets NO protection at all — a tab keys equal
-        // to the two spaces it renders as, so the file round-trips under the
-        // profile's own keys — which is exactly why the first arm consults no
-        // facts: on this shape there are none to consult.
+        // A plain tab outline round-trips clean — a tab keys equal to the two
+        // spaces it renders as — so when MAR-299 shipped it carried no facts
+        // at all, which is why the first arm answers from the line's own
+        // bytes. Since MAR-322 the clean round trip DOES carry its witnessed
+        // spellings (zero repair regions, facts only); this pin passes no
+        // protection, holding that arm 1 still needs none.
         const saved = "- alpha\n\t- beta\n\t\t- gamma\n\t- delta\n";
-        expect(computeRoundTripProtection(saved, "- alpha\n  - beta\n    - gamma\n  - delta\n")).toBeNull();
+        const protection = computeRoundTripProtection(saved, "- alpha\n  - beta\n    - gamma\n  - delta\n");
+        expect(protection).not.toBeNull();
+        expect(protection!.regions).toEqual([]);
 
         expect(applyMinimalChanges(saved, "- alpha\n  - beta\n  - gamma\n  - delta\n")).toBe(
             "- alpha\n\t- beta\n\t- gamma\n\t- delta\n",
@@ -861,6 +865,135 @@ describe("applyMinimalChanges — a moved item takes the file's spelling of its 
         const serialized = "```make\n  gcc x\n```\n";
 
         expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+});
+
+describe("applyMinimalChanges — an inserted line's depth can be spelled from the baseline (MAR-322)", () => {
+    // The insertion hook's live facts go silent exactly when the moved block
+    // itself held the only line witnessing its landing depth: nothing else in
+    // the file sits at that depth, so no keep pair teaches its family, and the
+    // insertion shipped the serializer's spaces beside kept tabs. A tab is four
+    // columns against canonical two, so the untouched neighbours reparsed at
+    // different depths and a nested list dissolved — silently, only in the
+    // merged on-disk bytes (the raw serialization is clean). The fixture-level
+    // repro is corpusMoveSampling's M3 pin; this is the distilled string form.
+    //
+    // A plain tab outline round-trips clean, so the facts here ride the
+    // zero-region protection MAR-322 added — reverting the engine's clean-file
+    // facts carry reddens this test exactly like reverting the fallback itself.
+    const saved =
+        "- top level intro\n" +
+        "\t- first child\n" +
+        "\t- second child has a fence:\n" +
+        "\t  ```js\n" +
+        "\t  code()\n" +
+        "\t  ```\n" +
+        "- mover parent\n" +
+        "\t- mover child\n" +
+        "\t\t- mover grandchild\n";
+    const baseline =
+        "- top level intro\n" +
+        "  - first child\n" +
+        "  - second child has a fence:\n" +
+        "    ```js\n" +
+        "    code()\n" +
+        "    ```\n" +
+        "- mover parent\n" +
+        "  - mover child\n" +
+        "    - mover grandchild\n";
+
+    it("a moved sublist landing at a depth only it witnessed should take the file's tab spelling from the baseline", () => {
+        const protection = computeRoundTripProtection(saved, baseline);
+        expect(protection).not.toBeNull();
+        expect(protection!.regions).toEqual([]);
+
+        // The move: mover parent's sublist re-nests under the fence bullet.
+        const movedSerialized =
+            "- top level intro\n" +
+            "  - first child\n" +
+            "  - second child has a fence:\n" +
+            "    ```js\n" +
+            "    code()\n" +
+            "    ```\n" +
+            "    - mover child\n" +
+            "      - mover grandchild\n" +
+            "- mover parent\n";
+
+        // The landing depth's family (`m` at four canonical columns) has no
+        // live keep — its only witness moved — so the spelling comes from the
+        // baseline, corroborated by the tabs this merge is still writing back
+        // elsewhere. The grandchild's family is witnessed nowhere and carries
+        // the run's substitution, the documented uniformity rule.
+        expect(applyMinimalChanges(saved, movedSerialized, protection)).toBe(
+            "- top level intro\n" +
+                "\t- first child\n" +
+                "\t- second child has a fence:\n" +
+                "\t  ```js\n" +
+                "\t  code()\n" +
+                "\t  ```\n" +
+                "\t\t- mover child\n" +
+                "\t\t  - mover grandchild\n" +
+                "- mover parent\n",
+        );
+    });
+
+    it("a family this merge is watching TWO spellings of should decline the baseline", () => {
+        // Silence and ambiguity are opposite states that `Map.get` reports
+        // identically, so without the tombstone the fallback answers both from
+        // the load-time baseline. A family the merge is currently writing back
+        // two ways is direct evidence the file has no single spelling at that
+        // depth; an older fact must not override it.
+        //
+        // Here the file loaded as a pure tab outline (teaching family "m  " →
+        // "\t") and has since drifted: "child A" still carries a tab while
+        // "child B" carries two spaces, so the live map tombstones "m  ". The
+        // deep "\t\t" line stays put purely so corroboration EXISTS — without
+        // it the non-empty-spelling gate would refuse for a different reason
+        // and the test could not see this one.
+        const loadText = "- alpha\n\t- child A\n\t\t- deep leaf\n- beta\n\t- child B\n\ngrand A\n";
+        const protection = computeRoundTripProtection(
+            loadText,
+            "- alpha\n  - child A\n    - deep leaf\n- beta\n  - child B\n\ngrand A\n",
+        );
+        expect(protection).not.toBeNull();
+        const facts = protection!.baselineFacts as { spelledByFamily: Map<string, string> };
+        // Precondition: the baseline DOES hold a tab spelling for the family,
+        // so refusing below is the tombstone's doing and not an absent fact.
+        expect(facts.spelledByFamily.get("m  ")).toBe("\t");
+
+        const driftedSaved =
+            "- alpha\n\t- child A\n\t\t- deep leaf\n- beta\n  - child B\n\ngrand A\n";
+        // The move makes "grand A" a child of alpha, landing it directly under
+        // the kept "\t\t- deep leaf" — so the anchor gate GRANTS (the anchor is
+        // prefix-compatible with the stale "\t"), and the tombstone is the only
+        // thing left to refuse. Without it this writes "\t- grand A".
+        const movedSerialized =
+            "- alpha\n  - child A\n    - deep leaf\n  - grand A\n- beta\n  - child B\n";
+
+        const merged = applyMinimalChanges(driftedSaved, movedSerialized, protection);
+        expect(merged).toContain("  - grand A");
+        expect(merged).not.toContain("\t- grand A");
+    });
+
+    it("a baseline spelling nothing live corroborates should be declined", () => {
+        // The corroboration gate. A baseline fact is not self-corroborating —
+        // the merge is not currently writing that spelling back — so before it
+        // may start a substitution it must be prefix-compatible with a
+        // NON-EMPTY spelling this merge is live-observing. Here the only
+        // indented line in the file is the one being moved: after the move
+        // every keep sits at column 0, the live vocabulary is empty, and the
+        // baseline's `\t` finds no corroboration. The serializer's spaces are
+        // kept — depth-consistent with every kept neighbour, so refusal is
+        // safe, where a stale tab could be four columns nobody meant. The
+        // empty spelling is excluded deliberately: it prefixes everything and
+        // so witnesses nothing; delete the exclusion and this test reddens.
+        const cleanSaved = "- alpha\n\t- child\n- beta\n";
+        const protection = computeRoundTripProtection(cleanSaved, "- alpha\n  - child\n- beta\n");
+        expect(protection).not.toBeNull();
+
+        expect(
+            applyMinimalChanges(cleanSaved, "- alpha\n- beta\n  - child\n", protection),
+        ).toBe("- alpha\n- beta\n  - child\n");
     });
 });
 

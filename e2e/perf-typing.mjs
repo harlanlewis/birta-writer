@@ -15,6 +15,15 @@
  * 50 ms are invisible to it, so `block` only carries signal on fixtures whose
  * per-keystroke tasks already blow the frame budget (large/xlarge) — on the
  * small fixtures it reads 0 and the dispatch median is the only gate.
+ * The `rescan` column (MAR-314) is the debounced whole-document proofread
+ * rescan that typing schedules: it fires once, ~350 ms after the burst's last
+ * keystroke (a trailing debounce never fires mid-burst at 30 ms/key), and the
+ * bundle stamps it as `mdw:proofread-rescan`. Reported, never gated — it is a
+ * single sample per capture, so it attributes cost like `block` does rather
+ * than deciding anything. Measure mode only: A/B mode does not wait for it,
+ * because the merge-base bundle may predate the measure and every wait would
+ * cost the full timeout on that side (the same ADR that keeps the launch A/B
+ * from waiting on post-paint marks).
  *
  * Usage:
  *   pnpm build && pnpm perf:typing               # all fixtures, table output
@@ -151,9 +160,19 @@ async function compareMode(beforePath, afterPath) {
                 improvedAny = true;
             }
         }
+        // Rescan (MAR-314): reported, never a verdict. One whole-document scan
+        // per capture is a single sample — there is no stability evidence to
+        // gate on, so it attributes (like `block`) rather than decides.
+        let rescanNote = "";
+        if (typeof b.rescanMs === "number" && typeof a.rescanMs === "number") {
+            const dRescan = a.rescanMs - b.rescanMs;
+            const dRescanPct = b.rescanMs > 0 ? (dRescan / b.rescanMs) * 100 : (a.rescanMs > 0 ? 100 : 0);
+            const rSign = dRescan >= 0 ? "+" : "";
+            rescanNote = `  rescan ${round(b.rescanMs)}ms → ${round(a.rescanMs)}ms (${rSign}${round(dRescanPct)}%)`;
+        }
         console.log(
             `  ${fixture.padEnd(8)} median ${round(b.median)}ms → ${round(a.median)}ms ` +
-            `(${sign}${round(dMs)}ms, ${sign}${round(dPct)}%)  p95 ${round(b.p95)}ms → ${round(a.p95)}ms  ${verdict}${blockNote}`,
+            `(${sign}${round(dMs)}ms, ${sign}${round(dPct)}%)  p95 ${round(b.p95)}ms → ${round(a.p95)}ms  ${verdict}${rescanNote}${blockNote}`,
         );
     }
     if (compared === 0) {
@@ -185,7 +204,7 @@ async function loadPlaywright() {
  * the harness must not silently average over. `side` labels which bundle
  * aborted so an A/B failure is diagnosable without a second script.
  */
-async function sampleTyping(browser, url, content, keys, fixture = "?", side = "") {
+async function sampleTyping(browser, url, content, keys, fixture = "?", side = "", collectRescan = false) {
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
     const errors = [];
     // Same strict posture as the launch harness: any page error aborts the
@@ -247,8 +266,39 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     let typed = "";
     while (typed.length < keys) typed += TYPING_TEXT;
     await page.keyboard.type(typed.slice(0, keys), { delay: 30 });
+    // Drop rescan entries HERE, not with the tx-apply clear above, and the
+    // ordering is the whole guard. The warmup's own rescan is still pending at
+    // that earlier point (350 ms debounce against a 300 ms settle) and the
+    // burst's first keystroke is what normally resets it — but under load that
+    // gap closes, the warmup rescan lands after the clear, and the `length > 0`
+    // wait below would be satisfied by THAT entry: the burst's own rescan then
+    // fires during the caret burst (the pollution the wait exists to prevent)
+    // and `rescanMs` medians two scans. By the end of the burst — thousands of
+    // ms of keystrokes — any warmup tail has certainly fired, and the burst's
+    // own certainly has not, since its debounce runs from the last keystroke.
+    // So this clear leaves exactly one candidate. If severe jank opened a
+    // 350 ms hole mid-burst, the rescan it triggered is cleared here and the
+    // wait times out: reported as `n/a`, which is honest, rather than a
+    // mid-burst scan reported as the burst's own.
+    await page.evaluate(() => performance.clearMeasures("mdw:proofread-rescan"));
     // Let the last keystroke's transaction land before reading.
     await page.waitForTimeout(200);
+
+    // ── Proofread rescan (MAR-314) ──────────────────────────────────────
+    // The burst's debounced whole-document rescan fires ~350 ms after the
+    // last keystroke — after the settle above, racing the caret burst below.
+    // Waiting for it here makes the reading deterministic AND keeps its meta
+    // dispatch (a selection-only transaction) out of the caret pool. Measure
+    // mode only: in A/B the base bundle may predate the measure, and a
+    // timeout paid on every base sample is exactly the cost the launch A/B's
+    // no-post-paint-waits ADR exists to avoid. `?proofreading=0` (or a scan
+    // that never fires) falls through the catch and reports null.
+    if (collectRescan) {
+        await page.waitForFunction(
+            () => performance.getEntriesByName("mdw:proofread-rescan").length > 0,
+            { timeout: 3000 },
+        ).catch(() => {});
+    }
 
     // ── Caret burst (MAR-137) ───────────────────────────────────────────
     // Selection-only transactions, which no other metric here can see. Two
@@ -271,7 +321,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     }
     await page.waitForTimeout(150);
 
-    const { durations, longtasks, caret } = await page.evaluate(() => ({
+    const { durations, longtasks, caret, rescans } = await page.evaluate(() => ({
         durations: performance.getEntriesByName("mdw:tx-apply").map((e) => e.duration),
         // Delivered entries plus a takeRecords() flush — observer dispatch
         // is queued, not guaranteed ordered before this task, so drain the
@@ -280,6 +330,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
             ? [...window.__longtasks, ...window.__longtaskObs.takeRecords().map((e) => e.duration)]
             : null,
         caret: performance.getEntriesByName("mdw:tx-select").map((e) => e.duration),
+        rescans: performance.getEntriesByName("mdw:proofread-rescan").map((e) => e.duration),
     }));
     await page.close();
     const where = side ? `${side} bundle, fixture "${fixture}"` : `fixture "${fixture}"`;
@@ -296,6 +347,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     return {
         durations,
         caret,
+        rescans,
         blockMs: longtasks ? round(longtasks.reduce((s, d) => s + d, 0)) : null,
         blockTasks: longtasks ? longtasks.length : null,
     };
@@ -305,7 +357,7 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
     const browser = await chromium.launch();
     let s;
     try {
-        s = await sampleTyping(browser, baseUrl, content, keys, fixture);
+        s = await sampleTyping(browser, baseUrl, content, keys, fixture, "", true);
     } catch (e) {
         console.error(`\n  ${e.message}`);
         process.exit(3);
@@ -321,6 +373,11 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
         // way, because nothing else in the repo can see this cost (MAR-137).
         caretMedian: caret ? caret.median : null,
         caretMoves: caret ? caret.keystrokes : null,
+        // The burst's debounced proofread rescan (MAR-314): normally exactly
+        // one sample, so the median IS the sample; null when it never fired
+        // (proofreading off, or a bundle predating the measure).
+        rescanMs: s.rescans && s.rescans.length ? stats(s.rescans).median : null,
+        rescanCount: s.rescans ? s.rescans.length : 0,
     };
 }
 
@@ -347,14 +404,14 @@ async function measureMode(only, keys, jsonOut, flags = null) {
         const agg = await measureFixture(chromium, baseUrl, TYPING_FIXTURES[name], keys, name);
         const kb = round(TYPING_FIXTURES[name].length / 1024);
         report.fixtures[name] = { ...agg, kb };
-        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.caretMedian ?? "n/a"), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.keystrokes)]);
+        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.caretMedian ?? "n/a"), String(agg.rescanMs ?? "n/a"), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.keystrokes)]);
     }
     server.close();
 
-    const header = ["fixture", "size", "median", "p95", "max", "caret", "block", "tasks", "keystrokes"];
+    const header = ["fixture", "size", "median", "p95", "max", "caret", "rescan", "block", "tasks", "keystrokes"];
     const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
     const fmt = (cells) => cells.map((c, i) => String(c).padEnd(widths[i])).join("  ");
-    console.log(`\ntyping perf — per-keystroke dispatch, ms (mdw:tx-apply) + total longtask block over the burst (block)\n`);
+    console.log(`\ntyping perf — per-keystroke dispatch, ms (mdw:tx-apply) + the burst's debounced proofread rescan (rescan) + total longtask block over the burst (block)\n`);
     console.log(fmt(header));
     console.log(widths.map((w) => "─".repeat(w)).join("  "));
     for (const r of rows) console.log(fmt(r));
