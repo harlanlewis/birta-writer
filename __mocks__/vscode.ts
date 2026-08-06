@@ -78,6 +78,11 @@ export class Range {
             this.end = b as Position;
         }
     }
+
+    /** Mirrors vscode.Range#isEmpty: true when start and end coincide. */
+    get isEmpty(): boolean {
+        return this.start.line === this.end.line && this.start.character === this.end.character;
+    }
 }
 
 /** Mirrors vscode.Selection (anchor→active order preserved, like the real one) */

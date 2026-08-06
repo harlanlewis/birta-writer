@@ -46,7 +46,8 @@ export type MermaidPane = {
     el: HTMLElement;
     /** Render (or repaint) the diagram. Single-flight, latest-wins. */
     render: (code: string) => void;
-    /** The code the current SVG was rendered from ("" = nothing rendered). */
+    /** The code the pane last settled on ("" = nothing yet). Failed renders
+     *  memoize too — the error card is the settled outcome for that input. */
     lastCode: () => string;
     /** Forget the render memo (used when the block stops being a diagram). */
     resetMemo: () => void;
@@ -72,6 +73,12 @@ export function createMermaidPane(opts: {
     // The theme key the current SVG was rendered with — the memo is
     // (code, theme), so theme changes invalidate it naturally (MAR-203).
     let lastRenderedTheme = "";
+    // True when the memoized (code, theme) render threw. Explicit state, not
+    // a DOM probe: the error card's icon is itself an inline <svg>, and a
+    // querySelector("svg") check once read a failed render as a painted
+    // diagram, retried it on an all-cached microtask chain, and froze the
+    // window on any document with one invalid diagram.
+    let lastRenderFailed = false;
     let inFlightRender = false;
     // Latest-wins slot: code that arrived while a render was in flight, run
     // when that render settles instead of being dropped (MAR-203).
@@ -243,7 +250,7 @@ export function createMermaidPane(opts: {
         if (
             code === lastRenderedCode &&
             lastRenderedTheme === mermaidThemeKey() &&
-            svgContainer.querySelector("svg")
+            (lastRenderFailed || svgContainer.querySelector("svg"))
         ) return;
 
         // Claim the render slot synchronously (before any await) so a second
@@ -275,6 +282,7 @@ export function createMermaidPane(opts: {
             // What THIS render was initialized with (not the live key — the
             // theme may have moved on mid-flight; the finally settles that).
             lastRenderedTheme = lastInitializedThemeKey();
+            lastRenderFailed = false;
             fitToView();
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -283,16 +291,21 @@ export function createMermaidPane(opts: {
                     <span>${IconAlertCircle}</span>
                     <pre class="mermaid-error-msg">${escapeHtml(msg)}</pre>
                 </div>`;
+            // A failure memoizes like a success, so nothing retries it until
+            // the code or effective theme changes (see lastRenderFailed).
+            lastRenderedCode = code;
+            lastRenderedTheme = lastInitializedThemeKey();
+            lastRenderFailed = true;
         } finally {
             inFlightRender = false;
             const next = pendingCode;
             pendingCode = null;
             // Re-run for parked code, or when the theme moved on while this
             // render was in flight — the (code, theme) memo guard settles
-            // what actually needs repainting. The svg check keeps a FAILED
-            // render from retrying itself in a loop over a theme mismatch.
+            // what actually needs repainting. Failed renders never re-enter
+            // from here: same input, same failure.
             if (next !== null) void renderMermaid(next);
-            else if (svgContainer.querySelector("svg") && lastRenderedTheme !== mermaidThemeKey()) {
+            else if (!lastRenderFailed && svgContainer.querySelector("svg") && lastRenderedTheme !== mermaidThemeKey()) {
                 void renderMermaid(code);
             }
         }
@@ -373,8 +386,9 @@ export function createMermaidPane(opts: {
         el: mermaidPreview,
         render: (code: string) => void renderMermaid(code),
         lastCode: () => lastRenderedCode,
-        resetMemo() { lastRenderedCode = ""; },
-        hasSvg: () => svgContainer.querySelector("svg") !== null,
+        resetMemo() { lastRenderedCode = ""; lastRenderFailed = false; },
+        // Not a bare DOM probe: the error card's icon is an <svg> too.
+        hasSvg: () => !lastRenderFailed && svgContainer.querySelector("svg") !== null,
         svgHtml: () => svgContainer.innerHTML,
         destroy() {
             unregister();

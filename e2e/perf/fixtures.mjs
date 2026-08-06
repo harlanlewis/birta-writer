@@ -168,7 +168,113 @@ const linkHeavy = (() => {
     return out;
 })();
 
-export const FIXTURES = { tiny, medium, large, "code-heavy": codeHeavy, math, "link-heavy": linkHeavy };
+// ── realistic ───────────────────────────────────────────────────────────────
+// A working-file construct MIX the homogeneous fixtures can't produce: 7-row
+// tables, HTML-labeled mermaid (subgraphs, stateDiagram, styled nodes),
+// 900-char single-line paragraphs, style-seeded prose. A real document's cost
+// cliff is usually an interaction between constructs. All five diagrams are
+// valid — the invalid-diagram path is pinned by e2e/corpus and mermaidRender.
+
+const REALISTIC_DIAGRAMS = [
+    `\`\`\`mermaid
+flowchart TB
+    JOBS(["<b>Jobs running<br/>in production</b>"])
+    JOBS --> RETRY["<b>Retry</b><br/>an operator re-runs the job"]
+    RETRY -->|"hours"| JOBS
+    JOBS --> REG["<b>Regression</b><br/>failures become test cases"]
+    REG -->|"days"| JOBS
+    JOBS --> REP["<b>Reporting</b><br/>the results roll up"]
+    REP -->|"weeks"| JOBS
+\`\`\``,
+    `\`\`\`mermaid
+stateDiagram-v2
+    [*] --> Staging
+    Staging --> Canary: smoke suite green
+    Canary --> Gradual: error budget holds
+    Gradual --> Full: p99 stable over N hours
+    Full --> Gradual: regression detected, auto-rollback
+\`\`\``,
+    `\`\`\`mermaid
+flowchart LR
+    A["Ingest"] --> B["Validator"]
+    B --> C["Enrichment<br/>& joins"]
+    C --> D["Quality gate"]
+    D --> E["The load"]
+    E --> F["Report"]
+    F -.->|"the correction returns"| A
+    style A fill:#1f6feb,color:#fff
+    style F fill:#8957e5,color:#fff
+\`\`\``,
+    `\`\`\`mermaid
+flowchart TB
+    subgraph BASE["<b>PLATFORM</b> - standing, not per-dataset"]
+        S["Connectors · Scheduler<br/>Rules · Observability"]
+    end
+    subgraph ONB["<b>ONBOARDING</b> - per dataset"]
+        direction LR
+        C1["Request"] --> C2["Profiling"] --> C3["Contract"] --> C4["Sandbox"]
+    end
+    BASE ==> ONB
+    C4 --> HAND["Handed back<br/><i>next day</i>"]
+    HAND -->|"<b>correction</b>"| C2
+    HAND ==> RUN["<b>RUNNING</b>"]
+    RUN -.->|"rule contributions"| BASE
+\`\`\``,
+    `\`\`\`mermaid
+flowchart LR
+    REQ["Dataset request"] --> PROF["Profiling<br/>+ rule match"]
+    PROF --> MAP["Contracts · mapping"]
+    MAP --> SBX["Sandbox<br/>sample runs"]
+    SBX --> BACK["Handed back"]
+    BACK -->|"<b>'not our layout'</b>"| PROF
+    PROF -.->|"no rule matched"| LIB["Rule backlog"]
+    LIB -.-> PROF
+\`\`\``,
+];
+
+/** One ~900-char paragraph on ONE line, varied by index. */
+function longLine(i) {
+    const clause = `the rollout for cohort ${i} keeps its numbers linked at the point of claim rather than restated, because a figure that is recomputed drifts and a figure that is linked stays honest`;
+    let line = `Paragraph ${i} runs long without a break the way pasted meeting notes do: `;
+    while (line.length < 900) line += clause + ", and ";
+    return line + "which is where it stops.";
+}
+
+/** A 7-row × 6-column table, the shape the 3×3 generated tables never reach. */
+function wideTable(i) {
+    const rows = ["retry", "regression", "reporting", "access", "schema", "tooling", "billing"];
+    let out = "| Cycle | Owner | Needs | Clock | Status | Note |\n|---|---|---|---|---|---|\n";
+    rows.forEach((r, j) => {
+        out += `| **${r}** | Owner ${i}-${j} | \`need-${i}-${j}\` | ${j + 1}d | ${j % 2 ? "live" : "planned"} | [ref](https://example.com/${i}/${j}) |\n`;
+    });
+    return out;
+}
+
+function realisticSection(i) {
+    const flavors = [
+        `${longLine(i)}\n\n${stylePara(i)}\n`,
+        `${wideTable(i)}\n${stylePara(i)}\n`,
+        `> A quoted claim for section ${i} that spans\n> two source lines.\n\n- [ ] Open item ${i}\n- [x] Closed item ${i}\n- A bullet with a [link](https://example.com/s/${i}) and \`inline code\`\n\n${stylePara(i)}\n`,
+    ];
+    return `## Realistic section ${i}\n\n${flavors[i % flavors.length]}`;
+}
+
+const realistic = (() => {
+    let out = "# Realistic document\n\nA working file's construct mix: wide tables, HTML-labeled diagrams, unwrapped paragraphs.\n\n";
+    // 65 sections ≈ 60 KB, the size of the motivating document. Re-derive the
+    // count if a section's content changes (see the medium/large note above).
+    for (let i = 1; i <= 65; i++) {
+        out += realisticSection(i) + "\n";
+        // Five diagrams total, interspersed rather than appended, so their
+        // NodeViews land between tables and long paragraphs like a real doc.
+        if (i % 13 === 0 && i / 13 <= REALISTIC_DIAGRAMS.length) {
+            out += REALISTIC_DIAGRAMS[i / 13 - 1] + "\n\n";
+        }
+    }
+    return out;
+})();
+
+export const FIXTURES = { tiny, medium, large, "code-heavy": codeHeavy, math, "link-heavy": linkHeavy, realistic };
 
 // ~300 KB — the MAR-137 typing-lag tail (bites from ~40 KB up). Typing-harness
 // only: kept out of FIXTURES so `pnpm perf` runtimes and baseline.json stay

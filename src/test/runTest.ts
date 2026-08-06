@@ -23,13 +23,11 @@ async function main(): Promise<void> {
 
     try {
         await runTests({
-            // PINNED, not preference (2026-07-29, MAR-257): VS Code 1.131.0's
-            // macOS bundle no longer ships `Contents/MacOS/Electron`, and
-            // @vscode/test-electron@3.0.0 spawns exactly that path — so
-            // resolving "stable" makes the suite die with ENOENT before a
-            // single test runs. Pinning is the stopgap; the real fix is
-            // upgrading test-electron, and this pin comes off with it.
-            version: "1.130.0",
+            // BIRTA_ITEST_VSCODE selects the build under test; the release
+            // job runs the engines floor and stable (nothing else ever
+            // launches the floor). The old 1.130.0 pin (MAR-257) retired
+            // with the @vscode/test-electron 3.1 upgrade.
+            version: process.env.BIRTA_ITEST_VSCODE || "stable",
             extensionDevelopmentPath,
             extensionTestsPath,
             launchArgs: [

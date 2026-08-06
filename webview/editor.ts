@@ -16,6 +16,7 @@ import {
 } from "@birta/minimal-diff";
 import { markdownFormat } from "./format/markdown";
 import type { FormatModule } from "./format/types";
+import { guardNodeViewFactory } from "./nodeViewBoundary";
 import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { instrumentTransactions, mark, measure } from "./perf";
@@ -525,8 +526,15 @@ export async function createEditor(
                 configureRefractor: () => refractor,
             });
             // Format-supplied NodeViews (code-block chrome, callouts,
-            // directives, footnotes, math, tables, inline HTML, images).
-            ctx.set(nodeViewCtx, [...format.nodeViews]);
+            // directives, footnotes, math, tables, inline HTML, images),
+            // each behind the per-node crash boundary: a NodeView that
+            // throws degrades ITS node to default rendering instead of
+            // failing the mount or unwinding a keystroke's dispatch.
+            ctx.set(
+                nodeViewCtx,
+                format.nodeViews.map(([nodeId, factory]) =>
+                    [nodeId, guardNodeViewFactory(nodeId, factory)] as [string, typeof factory]),
+            );
         })
         // Registered BEFORE the commonmark/base keymap so table Tab/Enter/Delete
         // win over the defaults (e.g. base Backspace only clears cell contents).

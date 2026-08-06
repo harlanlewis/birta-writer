@@ -66,6 +66,22 @@ export interface NavCaptureDeps {
     visibleEditors: () => readonly vscode.TextEditor[];
     setTimeout: (fn: () => void, ms: number) => unknown;
     clearTimeout: (handle: unknown) => void;
+    /** Accept an undefined-kind non-empty selection as a navigation. Old
+     *  VS Code (the 1.95 floor) applies a search reveal without stamping
+     *  `Command`, so there it is the only signal — at the cost of also
+     *  matching a restored selection, which modern builds must not pay:
+     *  a false positive arrives SELECTED, and typing would replace it. */
+    acceptUndefinedKindReveal: boolean;
+}
+
+/** Builds newer than this stamp reveals `Command`; the exact cutover between
+ *  1.95 and 1.132 is unpinned, so builds in between keep the strict filter
+ *  (their search jump behaves as before this fix, nothing worse). */
+const UNDEFINED_KIND_REVEAL_CEILING_MINOR = 100;
+
+export function versionAcceptsUndefinedKindReveal(version: string): boolean {
+    const [major, minor] = version.split(".").map(Number);
+    return major === 1 && minor < UNDEFINED_KIND_REVEAL_CEILING_MINOR;
 }
 
 function defaultDeps(): NavCaptureDeps {
@@ -75,6 +91,7 @@ function defaultDeps(): NavCaptureDeps {
         visibleEditors: () => vscode.window.visibleTextEditors,
         setTimeout: (fn, ms) => setTimeout(fn, ms),
         clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        acceptUndefinedKindReveal: versionAcceptsUndefinedKindReveal(vscode.version),
     };
 }
 
@@ -130,12 +147,19 @@ export function captureNavTarget(
             resolve(target);
         };
 
-        // THE signal: an explicit navigation applying its selection.
+        // THE signal: an explicit navigation applying its selection, stamped
+        // Command — except on old builds, where a reveal carries no kind and
+        // the non-empty fallback applies (see acceptUndefinedKindReveal).
         subscriptions.push(
             deps.onSelectionChange((event) => {
                 if (event.textEditor.document.uri.toString() !== key) { return; }
-                if (event.kind !== vscode.TextEditorSelectionChangeKind.Command) { return; }
-                finish(navTargetFromSelection(event.selections[0]));
+                const selection = event.selections[0];
+                const isCommand = event.kind === vscode.TextEditorSelectionChangeKind.Command;
+                const isFloorReveal =
+                    deps.acceptUndefinedKindReveal &&
+                    event.kind === undefined && selection != null && !selection.isEmpty;
+                if (!isCommand && !isFloorReveal) { return; }
+                finish(navTargetFromSelection(selection));
             }),
         );
 

@@ -170,6 +170,17 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: pnpm typecheck && pnpm test
 
+      # The only place the engines floor is ever LAUNCHED. The suite opens a
+      # real-shaped document (invalid mermaid included) in the real custom
+      # editor and fails if the webview stops answering — a freeze class no
+      # unit test or delta gate can see. xvfb: Electron needs a display.
+      - name: Open the corpus in the engines floor and in stable
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          FLOOR=$(node -p "require('./package.json').engines.vscode.replace(/^\D+/, '')")
+          BIRTA_ITEST_VSCODE="$FLOOR" xvfb-run -a pnpm test:integration
+          BIRTA_ITEST_VSCODE=stable xvfb-run -a pnpm test:integration
+
       - name: Stamp package.json to the release version
         if: steps.plan.outputs.release == 'true'
         run: pnpm version "${{ steps.plan.outputs.version }}" --no-git-tag-version --allow-same-version

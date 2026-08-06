@@ -19,6 +19,8 @@ const mermaidMock = vi.hoisted(() => {
         calls: [] as { code: string; hostInBody: boolean; hostInNodeView: boolean; hostHidden: boolean }[],
         /** When set, render() stalls on this promise (simulates a slow render). */
         gate: null as Promise<void> | null,
+        /** When true, render() throws (simulates an invalid diagram). */
+        fail: false,
     };
     const mermaid = {
         initialize: (): void => {},
@@ -31,6 +33,7 @@ const mermaidMock = vi.hoisted(() => {
                 hostHidden: !!el && el.style.visibility === "hidden",
             });
             if (state.gate) await state.gate;
+            if (state.fail) throw new Error("Parse error on line 2");
             return { svg: `<svg viewBox="0 0 300 150"><text>${code}</text></svg>` };
         },
     };
@@ -132,6 +135,7 @@ describe("mermaid code-block rendering", () => {
         delete window.__i18n;
         mermaidMock.state.calls = [];
         mermaidMock.state.gate = null;
+        mermaidMock.state.fail = false;
     });
     afterEach(async () => {
         // Destroy NodeViews first: they deregister from the module-level
@@ -248,6 +252,55 @@ describe("mermaid code-block rendering", () => {
         expect(calcPane.style.display).toBe("none");
         expect(mermaidPane.style.display).toBe("flex");
         expect(renderedCodes()).toEqual(["2 + 3"]);
+    });
+
+    it("a failing render should settle on the error card after ONE attempt, never a retry loop", async () => {
+        // The shipped bug: the finally's retry guard probed the DOM for an
+        // <svg> and found the error card's own icon, while the theme half of
+        // the memo was only written on success — so a failed render re-entered
+        // itself forever on an all-cached microtask chain. In production that
+        // froze the entire VS Code window the moment a document containing one
+        // invalid diagram was opened. With the bug present this test dies on
+        // its timeout (the starved event loop never runs the timers).
+        mermaidMock.state.fail = true;
+        const { nv, view, getPos } = await makeCodeBlockView("```mermaid\nflowchart TB\n  A[[[bad\n```\n");
+        await wait(40);
+        expect(mermaidMock.state.calls.length).toBe(1);
+        expect(nv.dom.querySelector(".mermaid-error")).not.toBeNull();
+        expect(nv.dom.querySelector(".mermaid-error-msg")?.textContent).toContain("Parse error");
+
+        // A decoration-churn update() with unchanged code must not schedule
+        // another attempt (pre-fix, every update retried the failure on the
+        // 600 ms debounce, forever).
+        nv.update(view.state.doc.nodeAt(getPos())!);
+        await wait(700);
+        expect(mermaidMock.state.calls.length).toBe(1);
+
+        // Editing the code is what retries — and a now-valid diagram replaces
+        // the error card.
+        mermaidMock.state.fail = false;
+        clickToggle(nv); // to code mode
+        replaceCode(nv, view, getPos(), "graph TD; fixed");
+        clickToggle(nv); // back to preview
+        await waitUntil(() => renderedCodes().includes("graph TD; fixed"));
+        await wait(0);
+        expect(nv.dom.querySelector(".mermaid-error")).toBeNull();
+        expect(nv.dom.querySelector(".mermaid-svg-container svg")?.textContent).toBe("graph TD; fixed");
+    });
+
+    it("a failed diagram should re-attempt exactly once per real theme change", async () => {
+        mermaidMock.state.fail = true;
+        await makeCodeBlockView("```mermaid\nflowchart TB\n  A[[[bad\n```\n");
+        await wait(40);
+        expect(mermaidMock.state.calls.length).toBe(1);
+
+        // The palette genuinely changed, so the error could plausibly render
+        // differently: one fresh attempt, then memoized again as failed.
+        setMermaidThemeMode("dark");
+        await wait(40);
+        expect(mermaidMock.state.calls.length).toBe(2);
+        await wait(100);
+        expect(mermaidMock.state.calls.length).toBe(2);
     });
 
     it("fit-to-view should cap the zoom at natural size (100%) (MAR-205)", async () => {

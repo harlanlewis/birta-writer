@@ -50,6 +50,16 @@
     "",
     "after prose",
     "",
+    // An INVALID diagram, deliberately last so the first-match selectors in
+    // checks.mjs keep addressing the valid one. Real Mermaid throws on it at
+    // mount; the pane must settle on its error card. The pinned regression: a
+    // failed render retried itself on an all-cached microtask chain — one bad
+    // diagram anywhere in a document froze the entire window on open.
+    "```mermaid",
+    "flowchart TB",
+    "  A[[[this does not parse",
+    "```",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

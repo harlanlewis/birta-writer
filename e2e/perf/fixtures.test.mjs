@@ -23,6 +23,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { FIXTURES, TYPING_FIXTURES } from "./fixtures.mjs";
+import { GATED_FIXTURES } from "./verdict.mjs";
 import { compileStyleMatcher } from "../../webview/utils/styleMatcher.ts";
 import {
     AI_ARTIFACTS,
@@ -66,9 +67,10 @@ describe("launch-perf prose fixtures", () => {
     });
 
     it("the gated fixtures should trip at a density a real document reaches", () => {
-        // The launch gate can only fail on medium and large (GATED_FIXTURES), so
-        // those two are the ones whose decoration cost has to be real.
-        for (const name of ["medium", "large"]) {
+        // The launch gate can only fail on GATED_FIXTURES, so those are the
+        // ones whose decoration cost has to be real. Iterated from the gate's
+        // own set so a fixture added to the gate cannot skip this bar.
+        for (const name of GATED_FIXTURES) {
             const hits = match(FIXTURES[name]).length;
             expect(hits, `${name}: ${hits} phrase hits in ${FIXTURES[name].length} chars`)
                 .toBeGreaterThan(FIXTURES[name].length / MAX_CHARS_PER_HIT);

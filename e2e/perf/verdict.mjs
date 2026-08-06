@@ -54,7 +54,10 @@ export const SUB_SPANS = SPANS
 
 // Only these fixtures can FAIL the gate — their launch medians dwarf the 10 ms
 // floor so a real move is unambiguous. The small ones are reported, never gated.
-export const GATED_FIXTURES = new Set(["medium", "large"]);
+// `realistic` gates the mixed-construct shape (wide tables, mermaid, unwrapped
+// paragraphs) that the homogeneous size fixtures cannot: a regression that
+// only real documents pay was previously invisible to this gate.
+export const GATED_FIXTURES = new Set(["medium", "large", "realistic"]);
 
 // A launch move counts as real only at ≥3% AND ≥10 ms (the laptop/runner noise
 // floor shared with --compare). Both conditions guard against different noise:
