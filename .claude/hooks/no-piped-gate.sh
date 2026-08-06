@@ -12,8 +12,11 @@
 # tail/head/grep/sed/awk/tee/wc/cut. Everything else passes untouched.
 #
 # Sanctioned alternatives (what the pipe was reaching for, minus the
-# masking): .claude/skills/grind/scripts/gate.sh --tail N -- <cmd>, or
-# redirect to a file and print $? explicitly.
+# masking): the grind skill's own scripts/gate.sh, invoked as
+# `gate.sh --tail N -- <cmd>`, or redirect to a file and print $?
+# explicitly. The skill ships in the harlanlewis plugin, whose install
+# path is content-hashed and changes on every update, so resolve it from
+# the skill's base directory rather than writing a path here.
 #
 # To retire this policy: rm .claude/gate-pipe-guard
 set -uo pipefail
@@ -51,7 +54,7 @@ if re.search(GATE + SEG + FILTER, cmd):
     print(
         "gate-pipe-guard: this pipes a gate through a filter, which replaces the\n"
         "gate's exit code with the filter's — a red gate reads green (MAR-141).\n"
-        "Use .claude/skills/grind/scripts/gate.sh --tail N -- <cmd> for short\n"
+        "Use the grind skill's scripts/gate.sh (--tail N -- <cmd>) for short\n"
         "output with the real exit code, or redirect to a file and print $?.\n"
         "To retire this policy: rm .claude/gate-pipe-guard",
         file=sys.stderr,
