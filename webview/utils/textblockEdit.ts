@@ -38,13 +38,41 @@ export type TextblockEdit =
           delta: number;
       };
 
-// `changedRange` used to live here — the coarser sibling of
-// `singleTextblockInlineEdit`, returning the span two docs differ over without
-// claiming anything about structure. Its only caller was
-// `plugins/keepTableAlign.ts`, which narrowed gfm's whole-document walk to the
-// tables a change touched. That fix is upstream as of Milkdown 7.22.0 (#2436),
-// which carries its own copy of the same scan, so the function had no callers
-// and no tests and is gone. Reinstate it here if a second caller ever needs it.
+/** The span two docs differ over, with no claim about structure. */
+export interface ChangedRange {
+    /** First position (valid in both docs) where content diverges. */
+    start: number;
+    /** End of the changed span in the PREVIOUS doc (clamped ≥ start). */
+    endA: number;
+    /** End of the changed span in the NEXT doc (clamped ≥ start). */
+    endB: number;
+}
+
+/**
+ * The coarser sibling of `singleTextblockInlineEdit`: the span two docs differ
+ * over, or null when they are value-identical. Outside [start, endA] / [start,
+ * endB] the trees are value-identical, so a node whose bytes lie wholly outside
+ * cannot have appeared, vanished, or changed markup. Pure; cost is bounded by
+ * structure sharing, not document size.
+ */
+export function changedRange(prev: PmNode, next: PmNode): ChangedRange | null {
+    const start = prev.content.findDiffStart(next.content);
+    if (start == null) {
+        return null;
+    }
+    const diff = prev.content.findDiffEnd(next.content);
+    if (!diff) {
+        return null;
+    }
+    let { a: endA, b: endB } = diff;
+    // Repeated content ("aa" → "aaa") lets the end scan overrun the start; clamp
+    // to a consistent placement (readDOMChange's normalization). Any placement
+    // inside the repeated run resolves to the same textblock, so parent tests on
+    // the endpoints are placement-independent.
+    if (endA < start) { endB += start - endA; endA = start; }
+    if (endB < start) { endA += start - endB; endB = start; }
+    return { start, endA, endB };
+}
 
 /**
  * Localize the change between two docs to a single textblock, or return null
@@ -52,21 +80,11 @@ export type TextblockEdit =
  * full walk). Pure.
  */
 export function singleTextblockInlineEdit(prev: PmNode, next: PmNode): TextblockEdit | null {
-    const start = prev.content.findDiffStart(next.content);
-    if (start == null) {
+    const range = changedRange(prev, next);
+    if (!range) {
         return { kind: "identical" };
     }
-    const diff = prev.content.findDiffEnd(next.content);
-    if (!diff) {
-        return { kind: "identical" };
-    }
-    let { a: endA, b: endB } = diff;
-    // Repeated content ("aa" → "aaa") lets the end scan overrun the start; clamp
-    // to a consistent placement (readDOMChange's normalization). Any placement
-    // inside the repeated run resolves to the same textblock, so the parent test
-    // below is placement-independent.
-    if (endA < start) { endB += start - endA; endA = start; }
-    if (endB < start) { endA += start - endB; endB = start; }
+    const { start, endA, endB } = range;
     const $a0 = prev.resolve(start);
     const $a1 = prev.resolve(endA);
     const $b0 = next.resolve(start);

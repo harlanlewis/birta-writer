@@ -11,6 +11,7 @@
  */
 
 import type { EditorView, Node as PmNode } from "../pm";
+import { changedRange } from "./textblockEdit";
 
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
 
@@ -125,20 +126,66 @@ export function scrollElementBelowTopbar(
  * re-derive the same list (MAR-316).
  *
  * A heading element exists only because the document holds a heading node, so
- * the document's identity is the natural key: any edit replaces it and the next
- * read re-queries. What that key does NOT cover is a decoration-only change
- * that makes ProseMirror rebuild a heading's DOM without touching the document.
- * So rather than reason about which decorations do that, the cache checks: a
- * rebuilt heading leaves the element we cached detached, and `isConnected` is a
- * flag read, cheap enough to run over every entry and still be far below the
- * query it replaces.
+ * the document is the natural key — but doc IDENTITY alone is too coarse a key:
+ * every keystroke replaces the doc, and re-querying 75,000 nodes per keystroke
+ * put this walk at ~2 ms/key of the xlarge dispatch median (MAR-137). A doc
+ * change whose diff region contains no heading in either doc cannot have
+ * added, removed, or re-typed one, so the element set is provably intact:
+ * re-key the cache to the new doc instead of re-querying. `changedRange` costs
+ * structure sharing, not document size, so the check is far below the query.
+ *
+ * What the doc key does NOT cover is a decoration-only change that makes
+ * ProseMirror rebuild a heading's DOM without touching the document. So rather
+ * than reason about which decorations do that, the cache checks: a rebuilt
+ * heading leaves the element we cached detached, and `isConnected` is a flag
+ * read, cheap enough to run over every entry on every read.
  */
 const headingCache = new WeakMap<EditorView, { doc: PmNode; elements: HTMLElement[] }>();
 
+/**
+ * Could the edit between these two docs have changed the set of heading
+ * ELEMENTS the view renders? False only when the diff region provably contains
+ * no heading in either doc. Exported for the heading-id sync plugin, whose
+ * skip condition is exactly this one (plugins/headingIdSync.ts).
+ */
+export function changeTouchesHeading(prev: PmNode, next: PmNode): boolean {
+    const range = changedRange(prev, next);
+    if (!range) {
+        return false;
+    }
+    return rangeTouchesHeading(prev, range.start, range.endA)
+        || rangeTouchesHeading(next, range.start, range.endB);
+}
+
+function rangeTouchesHeading(doc: PmNode, from: number, to: number): boolean {
+    let found = false;
+    const max = doc.content.size;
+    doc.nodesBetween(Math.min(from, max), Math.min(to, max), (node) => {
+        if (found) {
+            return false;
+        }
+        if (node.type.name === "heading") {
+            found = true;
+            return false;
+        }
+        // Prune inline content: a heading is a textblock and can never sit
+        // inside another textblock (collectDocHeadings makes the same claim).
+        return !node.isTextblock;
+    });
+    return found;
+}
+
 function cachedHeadings(view: EditorView): HTMLElement[] {
     const hit = headingCache.get(view);
-    if (hit && hit.doc === view.state.doc && hit.elements.every((el) => el.isConnected)) {
-        return hit.elements;
+    if (hit && hit.elements.every((el) => el.isConnected)) {
+        if (hit.doc === view.state.doc) {
+            return hit.elements;
+        }
+        if (!changeTouchesHeading(hit.doc, view.state.doc)) {
+            // Re-key so the next read takes the identity fast path.
+            hit.doc = view.state.doc;
+            return hit.elements;
+        }
     }
     const elements = Array.from(view.dom.querySelectorAll<HTMLElement>(HEADING_SELECTOR));
     headingCache.set(view, { doc: view.state.doc, elements });

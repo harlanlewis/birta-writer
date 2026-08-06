@@ -25,7 +25,9 @@ import { describe, it, expect } from "vitest";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
 import { gfm, keepTableAlignPlugin } from "@milkdown/preset-gfm";
 import { emphasisInputReplacedPlugins } from "../plugins/emphasisInput";
+import { headingIdReplacedPlugins } from "../plugins/headingIdSync";
 import { headingInputReplacedPlugins } from "../plugins/headingInput";
+import { listOrderReplacedPlugins } from "../plugins/listOrderSync";
 import { imageStringAttrReplacedPlugins } from "../plugins/image";
 import { listSpreadReplacedPlugins } from "../plugins/list";
 import { strikethroughHtmlReplacedPlugins } from "../plugins/pasteHtml";
@@ -45,6 +47,8 @@ const COMMONMARK_SETS: [string, Set<unknown>][] = [
     ["imageStringAttrReplacedPlugins", imageStringAttrReplacedPlugins],
     ["headingInputReplacedPlugins", headingInputReplacedPlugins],
     ["emphasisInputReplacedPlugins", emphasisInputReplacedPlugins],
+    ["headingIdReplacedPlugins", headingIdReplacedPlugins],
+    ["listOrderReplacedPlugins", listOrderReplacedPlugins],
 ];
 
 describe("preset filter identity", () => {
@@ -111,6 +115,8 @@ describe("preset filter identity", () => {
             imageStringAttrReplacedPlugins.size +
             headingInputReplacedPlugins.size +
             emphasisInputReplacedPlugins.size +
+            headingIdReplacedPlugins.size +
+            listOrderReplacedPlugins.size +
             2 + // remarkPreserveEmptyLinePlugin.plugin + .options
             2; // remarkInlineLinkPlugin's Remark + RemarkConfig halves
         const kept = pureCommonmark.filter((plugin) => commonmark.includes(plugin));
