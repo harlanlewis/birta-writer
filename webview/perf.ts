@@ -54,6 +54,31 @@ export function measure(name: string, startMark?: string, endMark?: string): voi
 }
 
 /**
+ * Record a duration from explicit clock readings (`performance.now()`), with no
+ * start/end marks. This is the form for a span that repeats for the life of the
+ * tab (every proofread rescan, every transaction): named marks would accumulate
+ * alongside the measures, and a re-entered span of the same name would silently
+ * move the outer measure's start point — the same two reasons
+ * `instrumentTransactions` below uses the options form inline.
+ */
+export function measureSpan(name: string, start: number, end: number): void {
+    try {
+        performance.measure?.(PREFIX + name, { start, end });
+    } catch {
+        // A runtime without the options form of measure must not break the editor.
+    }
+}
+
+/**
+ * Drop every recorded measure of `name` (prefix applied). Repeating spans pair
+ * this with a counter for a rolling window, so a long-lived tab doesn't retain
+ * one PerformanceMeasure per occurrence forever.
+ */
+export function clearMeasures(name: string): void {
+    performance.clearMeasures?.(PREFIX + name);
+}
+
+/**
  * Wrap the view's transaction dispatch so every doc-changing transaction stamps
  * an `mdw:tx-apply` measure: the synchronous main-thread block of applying the
  * transaction and reconciling the view (DOM update + every plugin view's

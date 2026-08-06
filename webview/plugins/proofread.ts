@@ -41,7 +41,7 @@ import {
 import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { requestIdle } from "../utils/idle";
-import { mark, measure } from "../perf";
+import { clearMeasures, mark, measure, measureSpan } from "../perf";
 import { t } from "../i18n";
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -624,6 +624,11 @@ export const proofreadPlugin = $prose(() => {
             let firstPassIdle: { cancel: () => void } | null = null;
             // One-shot latch for the launch-time `proofread` measure below.
             let firstScanMarked = false;
+            // Rolling window for the repeating `proofread-rescan` measure, in
+            // the `instrumentTransactions` tradition: rescans fire at most once
+            // per debounce pause, so 1000 is hours of editing, but a long-lived
+            // tab must not retain one PerformanceMeasure per pause forever.
+            let sinceClearRescan = 0;
 
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
@@ -659,6 +664,14 @@ export const proofreadPlugin = $prose(() => {
                 // (MAR-310); a pass that finds nothing measures the cheap half.
                 const firstPass = !firstScanMarked;
                 if (firstPass) { firstScanMarked = true; mark("proofread-start"); }
+                // Every LATER completed scan stamps `proofread-rescan` instead:
+                // the debounced whole-document rescan behind typing. It sits
+                // outside `tx-apply` (it is not a keystroke's dispatch), so
+                // without its own span the only instrument that sees it is
+                // `block`, which is reported and never gated (MAR-314). A
+                // separate name keeps the launch-time `proofread` measure
+                // meaning exactly "the first pass" for `pnpm perf`.
+                const scanStart = performance.now();
 
                 const styleDecos = computeDecorations(view.state.doc, state.config);
                 if (styleDecos !== DecorationSet.empty || state.styleSet !== DecorationSet.empty) {
@@ -678,6 +691,12 @@ export const proofreadPlugin = $prose(() => {
                 if (firstPass) {
                     mark("proofread-end");
                     measure("proofread", "proofread-start", "proofread-end");
+                } else {
+                    if (++sinceClearRescan > 1000) {
+                        clearMeasures("proofread-rescan");
+                        sinceClearRescan = 1;
+                    }
+                    measureSpan("proofread-rescan", scanStart, performance.now());
                 }
             };
 
