@@ -8,7 +8,10 @@
  *   - edit → back to preview re-renders CLEAN (the user-reported corruption),
  *   - fit-to-view rests at ≤100% and never blows small-enough content up,
  *   - a theme-changed event actually repaints an already-rendered diagram
- *     (regression: the memo guard made the theme re-render a silent no-op).
+ *     (regression: the memo guard made the theme re-render a silent no-op),
+ *   - an INVALID diagram settles on its error card with the main thread alive
+ *     (regression: a failed render retried itself on an all-cached microtask
+ *     chain — one bad diagram froze the whole window on document open).
  */
 
 /** Max px a label's real content may exceed Mermaid's allotted width. */
@@ -141,4 +144,20 @@ export async function run({ page, check, baseUrl }) {
     const themedStats = await clipStats(page);
     check("theme-triggered re-render is clean too",
         worstOverflow(themedStats) <= CLIP_TOLERANCE, JSON.stringify(themedStats));
+
+    // ── The invalid last diagram: error card, and the window is still alive ──
+    // Every check above already ran beside it (it renders — and fails — at
+    // mount), so reaching this point at all is most of the pin. These make the
+    // settled state explicit.
+    await page.waitForSelector(".mermaid-error-msg", { timeout: 10000 });
+    const errText = await page.evaluate(
+        () => document.querySelector(".mermaid-error-msg")?.textContent ?? "");
+    check("invalid diagram settles on its error card", errText.trim().length > 0,
+        JSON.stringify(errText.slice(0, 80)));
+    // With the retry loop, timers never fire again — this evaluate never
+    // returns and the suite dies on its timeout instead of passing slowly.
+    const t0 = Date.now();
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
+    check("main thread stays responsive beside the error card",
+        Date.now() - t0 < 2000, `${Date.now() - t0}ms`);
 }

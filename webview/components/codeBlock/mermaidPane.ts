@@ -46,7 +46,12 @@ export type MermaidPane = {
     el: HTMLElement;
     /** Render (or repaint) the diagram. Single-flight, latest-wins. */
     render: (code: string) => void;
-    /** The code the current SVG was rendered from ("" = nothing rendered). */
+    /**
+     * The code the current pane content was rendered from ("" = nothing
+     * rendered yet). A render that FAILED memoizes its code too — the error
+     * card is the settled outcome for that input, so update()'s "did the code
+     * change" probe must not treat it as never-rendered and keep retrying.
+     */
     lastCode: () => string;
     /** Forget the render memo (used when the block stops being a diagram). */
     resetMemo: () => void;
@@ -72,6 +77,15 @@ export function createMermaidPane(opts: {
     // The theme key the current SVG was rendered with — the memo is
     // (code, theme), so theme changes invalidate it naturally (MAR-203).
     let lastRenderedTheme = "";
+    // True when the memoized (code, theme) render threw and the pane shows the
+    // error card instead of a diagram. The flag exists because the DOM can't
+    // answer "did the render succeed": the error card's icon is itself an
+    // inline <svg>, so a querySelector("svg") probe reads a FAILED render as a
+    // painted diagram. That misread once combined with lastRenderedTheme only
+    // being written on success into an unbounded retry: every await in the
+    // retry resolved from caches, so the loop never yielded and froze the
+    // whole window (a document with one invalid diagram hung VS Code on open).
+    let lastRenderFailed = false;
     let inFlightRender = false;
     // Latest-wins slot: code that arrived while a render was in flight, run
     // when that render settles instead of being dropped (MAR-203).
@@ -243,7 +257,7 @@ export function createMermaidPane(opts: {
         if (
             code === lastRenderedCode &&
             lastRenderedTheme === mermaidThemeKey() &&
-            svgContainer.querySelector("svg")
+            (lastRenderFailed || svgContainer.querySelector("svg"))
         ) return;
 
         // Claim the render slot synchronously (before any await) so a second
@@ -275,6 +289,7 @@ export function createMermaidPane(opts: {
             // What THIS render was initialized with (not the live key — the
             // theme may have moved on mid-flight; the finally settles that).
             lastRenderedTheme = lastInitializedThemeKey();
+            lastRenderFailed = false;
             fitToView();
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -283,16 +298,24 @@ export function createMermaidPane(opts: {
                     <span>${IconAlertCircle}</span>
                     <pre class="mermaid-error-msg">${escapeHtml(msg)}</pre>
                 </div>`;
+            // A failure memoizes exactly like a success — same (code, theme)
+            // slot, plus the failed flag — so nothing retries it until the
+            // code or the effective theme actually changes. Retrying the same
+            // input can only fail again, and doing so from the finally was
+            // the window-freezing loop described at lastRenderFailed's decl.
+            lastRenderedCode = code;
+            lastRenderedTheme = lastInitializedThemeKey();
+            lastRenderFailed = true;
         } finally {
             inFlightRender = false;
             const next = pendingCode;
             pendingCode = null;
             // Re-run for parked code, or when the theme moved on while this
             // render was in flight — the (code, theme) memo guard settles
-            // what actually needs repainting. The svg check keeps a FAILED
-            // render from retrying itself in a loop over a theme mismatch.
+            // what actually needs repainting. Failed renders never re-enter
+            // from here: same input, same failure.
             if (next !== null) void renderMermaid(next);
-            else if (svgContainer.querySelector("svg") && lastRenderedTheme !== mermaidThemeKey()) {
+            else if (!lastRenderFailed && svgContainer.querySelector("svg") && lastRenderedTheme !== mermaidThemeKey()) {
                 void renderMermaid(code);
             }
         }
@@ -373,8 +396,10 @@ export function createMermaidPane(opts: {
         el: mermaidPreview,
         render: (code: string) => void renderMermaid(code),
         lastCode: () => lastRenderedCode,
-        resetMemo() { lastRenderedCode = ""; },
-        hasSvg: () => svgContainer.querySelector("svg") !== null,
+        resetMemo() { lastRenderedCode = ""; lastRenderFailed = false; },
+        // Failed renders leave the error card's icon <svg> in the container,
+        // so the DOM probe alone would let the lightbox open on an error card.
+        hasSvg: () => !lastRenderFailed && svgContainer.querySelector("svg") !== null,
         svgHtml: () => svgContainer.innerHTML,
         destroy() {
             unregister();
