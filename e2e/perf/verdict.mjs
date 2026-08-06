@@ -161,19 +161,22 @@ export const TYPING_BLOCK_MIN_MS = 250;
 // `block` — and a cost no instrument reports is a cost that regresses freely
 // (MAR-137).
 //
-// It gates on the burst TOTAL, never the median. A burst does not yield
-// CARET_MOVES independent samples: back-to-back arrow presses coalesce
-// `selectionchange`, so 30 presses collapse into 2–7 transactions and a median
-// over that is an order statistic on n=2, which swings wildly against
-// effectively identical changes. A total is not an order statistic —
-// coalescing changes how the burst's work is split across transactions, but
-// not how much of it there is, so the sum is invariant to exactly the thing
-// that makes the median unstable.
+// It gates on the per-transaction MEDIAN, never the burst total. How many
+// transactions a burst of arrow presses coalesces into is a property of how
+// busy the main thread is, not of caret cost: identical bundles measured
+// back-to-back produced 13–47 samples per arm, and a total is
+// n × per-transaction cost, so it moves with n — it fired REGRESSED, confirmed
+// across two CI passes, on a branch whose caret path got cheaper (PR #246).
+// The per-transaction median held to two decimals across those same runs.
+// Worse, n rises when a change reduces main-thread jank (less coalescing), so
+// a total penalises exactly the changes it should reward — and the
+// double-confirm cannot catch it, because both passes draw on the same
+// load-dependent quantity (MAR-259).
 //
-// The sample floor is a second, independent guard: below it the caret verdict
-// ABSTAINS rather than guessing. Abstention is always printed — a gate that
-// quietly stops gating is worse than one that fails, because nothing tells you
-// it stopped.
+// The sample floor is the median's guard: below it the caret verdict ABSTAINS
+// rather than comparing order statistics over a handful of coalesced
+// transactions. Abstention is always printed — a gate that quietly stops
+// gating is worse than one that fails, because nothing tells you it stopped.
 export const TYPING_CARET_MIN_PCT = 10;
 export const TYPING_CARET_MIN_MS = 0.5;
 export const TYPING_CARET_MIN_SAMPLES = 8;
@@ -215,10 +218,10 @@ export function typingAbVerdict(pass) {
                 blockNote = "⚠ main-thread block grew (reported, not gated)";
             }
         }
-        // Caret (selection-only dispatch). Gated on the per-burst TOTAL; the
-        // median rides along as reported context only. See the note on
-        // TYPING_CARET_MIN_SAMPLES for why the median cannot carry the gate.
-        const bc = r.base?.caretTotal, ac = r.head?.caretTotal;
+        // Caret (selection-only dispatch). Gated on the per-transaction MEDIAN
+        // with an abstention floor — see the note on TYPING_CARET_MIN_SAMPLES
+        // for why the burst total cannot carry the gate.
+        const bc = r.base?.caretMedian, ac = r.head?.caretMedian;
         const bn = r.base?.caretSamples, an = r.head?.caretSamples;
         let caret = null;
         if (typeof bc === "number" && typeof ac === "number") {
@@ -226,17 +229,16 @@ export function typingAbVerdict(pass) {
             const dCaretPct = bc > 0 ? (dCaret / bc) * 100 : (ac > 0 ? 100 : 0);
             // A missing count is treated as insufficient, not as "plenty": an
             // older merge-base predates the field, and reading absent as OK
-            // would gate on a bundle we cannot characterize.
-            const samples = Math.min(bn ?? 0, an ?? 0);
+            // would gate on a bundle we cannot characterize. Both sides are
+            // kept visible because their disagreement is the coalescing signal
+            // that retired the total.
+            const bSamples = bn ?? 0, aSamples = an ?? 0;
+            const samples = Math.min(bSamples, aSamples);
             const insufficient = samples < TYPING_CARET_MIN_SAMPLES;
             const realCaret = !insufficient
                 && Math.abs(dCaretPct) >= TYPING_CARET_MIN_PCT
                 && Math.abs(dCaret) >= TYPING_CARET_MIN_MS;
-            caret = {
-                bc, ac, dCaret, dCaretPct, realCaret, insufficient, samples,
-                bMedian: r.base?.caretMedian ?? null,
-                aMedian: r.head?.caretMedian ?? null,
-            };
+            caret = { bc, ac, dCaret, dCaretPct, realCaret, insufficient, samples, bSamples, aSamples };
             if (realCaret && dCaret > 0 && gated) { regressed.add(name); }
         }
         rows.push({ name, bm, am, dMs, dPct, gated, mark, block, blockNote, caret });
