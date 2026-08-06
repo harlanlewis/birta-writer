@@ -451,10 +451,35 @@ export async function run({ page, check, baseUrl }) {
         const proofActive = await page.$$eval(".toc-tab",
             (els) => els.some((el) => el.textContent === "Proofread" && el.classList.contains("toc-tab--active")));
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", proofActive);
+        // MAR-294: "Show issues" means "take me to the issues" — the action
+        // moves focus into the freshly shown list, not just the tab state.
+        check("'Show issues' moves keyboard focus into the sidebar",
+            await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
+            await page.evaluate(() => document.activeElement?.className ?? "none"));
     } else {
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", true,
             "SKIPPED — Checks button not rendered in this harness");
     }
+
+    // ── MAR-294: the Focus Review Sidebar command is the keyboard entry ────
+    // Tab can never reach the panel from the caret (it is the editor's indent
+    // key, and ~40 fold markers sit between the toolbar and the panel in DOM
+    // order), so the contributed command is THE deliberate inbound gesture.
+    // Drive it through the real message path the extension uses.
+    await page.click(".ProseMirror"); // start where a writer starts: in the text
+    check("before the command, focus is in the editor",
+        await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror")));
+    await page.evaluate(() => window.postMessage({ type: "editorCommand", command: "focusReviewSidebar" }, "*"));
+    await page.waitForTimeout(120);
+    check("the focusReviewSidebar command moves focus into the sidebar",
+        await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
+        await page.evaluate(() => document.activeElement?.className ?? "none"));
+    // …and the gesture back already exists: Escape from the focused region.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(120);
+    check("Escape after the command returns focus to the editor (round trip complete)",
+        await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror")),
+        await page.evaluate(() => document.activeElement?.className ?? "none"));
 
     // ── Links tab: every link in the doc, grouped by destination kind ─────
     await switchTab(page, "Links");

@@ -133,6 +133,7 @@ describe("editorCommands registry — host-delegating entries", () => {
         customizeToolbar: vi.fn(),
         openExtensionSettings: vi.fn(),
         openKeyboardShortcuts: vi.fn(),
+        focusReviewSidebar: vi.fn(),
     };
 
     beforeEach(() => {
@@ -154,6 +155,7 @@ describe("editorCommands registry — host-delegating entries", () => {
         ["customizeToolbar", "customizeToolbar"],
         ["openExtensionSettings", "openExtensionSettings"],
         ["openKeyboardShortcuts", "openKeyboardShortcuts"],
+        ["focusReviewSidebar", "focusReviewSidebar"],
     ] as const)("%s should delegate to host.%s", (id, hook) => {
         editorCommands[id](() => null);
         expect(hooks[hook]).toHaveBeenCalledTimes(1);

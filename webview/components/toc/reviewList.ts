@@ -62,6 +62,10 @@ export interface ReviewListRenderer {
     render: (result: ReviewResult) => void;
     /** Apply an external group-mode change (a settings echo) without re-persisting. */
     setGroupByType: (grouped: boolean) => void;
+    /** Move focus onto the list body's first row — the deliberate keyboard
+     *  entry into this view (MAR-294). A no-op on an empty list (the empty
+     *  state has no focusable rows); the caller handles the fallback. */
+    focusFirst: () => void;
 }
 
 // How many rows a By-type group shows before the "Show K more" toggle.
@@ -319,5 +323,6 @@ export function initReviewList(
         element,
         render: (result) => renderInto(result),
         setGroupByType: (grouped) => setMode(grouped, false),
+        focusFirst: () => roving.focusFirst(),
     };
 }

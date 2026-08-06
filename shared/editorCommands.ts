@@ -179,6 +179,14 @@ export const EDITOR_COMMANDS = [
     // toolbar and the TOC dock side (mirroring the panel's own flip button).
     { id: "toggleToolbar", title: "Toggle Toolbar", palette: true, sections: [] },
     { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [] },
+    // MAR-294: once focus is inside the review sidebar its keyboard model is
+    // complete (Escape returns to the editor from every region), but no gesture
+    // moved focus there in the first place — Tab is the editor's indent key and
+    // cannot be repurposed. This is the deliberate inbound gesture, mirroring
+    // VS Code's own workbench.action.focusSideBar: palette + rebindable, and it
+    // opens the panel when hidden. No default chord — the editor's own chords
+    // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
+    { id: "focusReviewSidebar", title: "Focus Review Sidebar", palette: true, sections: [] },
     // Keyboard canon (VS Code text-editing parity). Duplicate/smart-select/
     // insert-paragraph default chords are hardcoded ProseMirror keymaps —
     // they collide with native contenteditable behavior and need synchronous

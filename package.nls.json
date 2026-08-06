@@ -173,6 +173,7 @@
   "command.editor.toggleNoteHighlights.title": "Highlight Note Markers",
   "command.editor.toggleToolbar.title": "Toggle Toolbar",
   "command.editor.swapTocSide.title": "Swap Table of Contents Side",
+  "command.editor.focusReviewSidebar.title": "Focus Review Sidebar",
   "command.editor.duplicateBlockUp.title": "Duplicate Block Up",
   "command.editor.duplicateBlockDown.title": "Duplicate Block Down",
   "command.editor.moveBlockUp.title": "Move Block Up",

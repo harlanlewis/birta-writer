@@ -82,6 +82,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     setReviewGroupByType: (grouped: boolean) => void;
     /** Reveal the sidebar and switch to the Proofreading tab (toolbar menu action). */
     showProofreadingTab: () => void;
+    /** Reveal the sidebar (if hidden) and move keyboard focus into it — the
+     *  `Focus Review Sidebar` command's entry point (MAR-294). */
+    focusPanel: () => void;
     /** Unregister the panel's drop-zone provider (teardown/tests). */
     dispose: () => void;
 } {
@@ -362,6 +365,41 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         updateTabButtons();
         syncTabOverflow(); // select-mode label follows the active tab
         if (isPanelVisible()) { renderActiveView(); }
+    }
+
+    /**
+     * Move keyboard focus INTO the panel: the active view's first row, falling
+     * back to the tab strip's own Tab stop when the view has no rows (an empty
+     * state renders no focusable items). This is the inbound half of the
+     * sidebar's keyboard model (MAR-294) — the outbound half already exists,
+     * since Escape in every wired region returns focus to the editor.
+     */
+    function focusActiveRegion(): void {
+        if (activeTab === "contents") { outlineRoving.focusFirst(); }
+        else if (activeTab === "proofreading") { proofreadView.focusFirst(); }
+        else if (activeTab === "notes") { notesView.focusFirst(); }
+        else { linksView.focusFirst(); }
+        if (panel.contains(document.activeElement)) { return; }
+        // Empty view: land on the strip's Tab stop — the active tab button, or
+        // the overflow select when the strip is collapsed. The one that is not
+        // current is visibility:hidden, which refuses focus, so try in order
+        // and keep whichever sticks.
+        for (const el of tabStrip.querySelectorAll<HTMLElement>('[tabindex="0"]')) {
+            el.focus();
+            if (document.activeElement === el) { return; }
+        }
+    }
+
+    /** The `Focus Review Sidebar` command (and any caller wanting the same
+     *  gesture): reveal the panel if hidden — persisting the choice, exactly
+     *  like the reveal tab — then move focus into it. */
+    function focusPanel(): void {
+        hideFlyoutImmediate(); // focus wants the stable docked panel, not the transient flyout
+        if (!isOpen) {
+            applyVisiblePreference(true);
+            notifyTocVisibility("shown");
+        }
+        focusActiveRegion();
     }
 
     /** Master proofreading switch: off hides the tab immediately (and falls back
@@ -1536,7 +1574,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                 applyVisiblePreference(true); // open + remember the intent
                 notifyTocVisibility("shown");
             }
+            // "Show issues" means "take me to the issues": moving focus into
+            // the freshly shown list makes the action keyboard-complete
+            // (MAR-294) — Escape hands focus straight back to the editor.
+            focusActiveRegion();
         },
+        focusPanel,
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
             window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);
