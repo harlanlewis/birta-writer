@@ -67,12 +67,18 @@ function makeHarness() {
             visible = [...visible, editorFor(uri)];
             for (const listener of [...visibleListeners]) { listener(visible); }
         },
-        /** A navigation applying its target, as search does ~2 ms later. */
+        /** A navigation applying its target, as search does ~2 ms later.
+         *  The kind is a rest tuple, not a defaulted parameter: the 1.95
+         *  floor's reveal fires with kind UNDEFINED, and a default would
+         *  silently turn an explicit `undefined` back into Command. */
         applySelection(
             uri: vscode.Uri,
             sel: vscode.Selection,
-            kind: vscode.TextEditorSelectionChangeKind = vscode.TextEditorSelectionChangeKind.Command,
+            ...kindArg: [vscode.TextEditorSelectionChangeKind | undefined] | []
         ) {
+            const kind = kindArg.length
+                ? kindArg[0]
+                : vscode.TextEditorSelectionChangeKind.Command;
             for (const listener of [...selectionListeners]) {
                 listener({
                     textEditor: editorFor(uri),
@@ -178,6 +184,45 @@ describe("captureNavTarget", () => {
         const captured = captureNavTarget(URI, harness.deps);
 
         await vi.advanceTimersByTimeAsync(EDITOR_APPEAR_BUDGET_MS);
+
+        await expect(captured).resolves.toBeUndefined();
+    });
+
+    it("an undefined-kind NON-EMPTY selection should read as a navigation (the 1.95 floor's search reveal)", async () => {
+        // VS Code 1.95.0 applies a search-result reveal programmatically, with
+        // no kind stamped — newer builds stamp Command. Caught by the release
+        // corpus step the first time the engines floor was actually launched.
+        const harness = makeHarness();
+        const captured = captureNavTarget(URI, harness.deps);
+
+        harness.showEditor(URI);
+        harness.applySelection(
+            URI,
+            selection(78, 22, 78, 28),
+            undefined,
+        );
+
+        await expect(captured).resolves.toEqual({
+            line: 79,
+            column: 28,
+            anchor: { line: 79, column: 22 },
+        });
+    });
+
+    it("an undefined-kind BARE CARET should not read as a navigation (editor-state restore)", async () => {
+        // The other thing that fires an undefined-kind change: reopening a
+        // file restores its previous caret. Acting on that would turn every
+        // reopen into a jump and discard the panel's remembered scroll.
+        const harness = makeHarness();
+        const captured = captureNavTarget(URI, harness.deps);
+
+        harness.showEditor(URI);
+        harness.applySelection(
+            URI,
+            selection(40, 5, 40, 5),
+            undefined,
+        );
+        await vi.advanceTimersByTimeAsync(SELECTION_GRACE_MS);
 
         await expect(captured).resolves.toBeUndefined();
     });

@@ -187,13 +187,26 @@ export function activate(context: vscode.ExtensionContext) {
                 // interchangeable: `openWith` over a still-open tab does NOT
                 // replace it when the document is dirty — it leaves two tabs on
                 // the same file (verified in a live Extension Host).
-                const isPreview = tab.isPreview;
-                const viewCol = tab.group.viewColumn;
-                // The capture above yields to the event loop, so re-check: the
-                // user may have closed or moved this tab in the meantime, and
-                // closing a stale handle would take the wrong editor with it.
-                if (!vscode.window.tabGroups.all.some((group) => group.tabs.includes(tab))) { continue; }
-                await vscode.window.tabGroups.close(tab);
+                //
+                // The capture above yields to the event loop, so RE-FIND the
+                // tab rather than re-checking the handle from the event: the
+                // user may have closed or moved it, and — the part that bit —
+                // Tab object identity is not stable across an await on every
+                // VS Code we support. On 1.95.0 (the engines floor) the tab's
+                // own preview-state update replaces the object, an
+                // identity-based `tabs.includes(tab)` reads "closed", and the
+                // swap silently never happens: every ordinary open strands the
+                // user in the raw text editor. Caught the first time the floor
+                // was actually launched (the release corpus step).
+                const liveTab = vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs)
+                    .find((t) =>
+                        t.input instanceof vscode.TabInputText &&
+                        t.input.uri.toString() === uriStr);
+                if (!liveTab || liveTab.isDirty) { continue; }
+                const isPreview = liveTab.isPreview;
+                const viewCol = liveTab.group.viewColumn;
+                await vscode.window.tabGroups.close(liveTab);
                 await vscode.commands.executeCommand(
                     "vscode.openWith",
                     uri,

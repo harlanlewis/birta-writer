@@ -130,12 +130,23 @@ export function captureNavTarget(
             resolve(target);
         };
 
-        // THE signal: an explicit navigation applying its selection.
+        // THE signal: an explicit navigation applying its selection. Newer
+        // VS Code stamps those TextEditorSelectionChangeKind.Command. The
+        // engines floor (1.95.0) applies a search-result reveal
+        // programmatically with kind UNDEFINED, so an undefined kind is
+        // accepted too — but only with a NON-EMPTY selection, which is what
+        // separates a reveal highlighting its match from an editor-state
+        // restore parking a bare caret (an ordinary reopen must never read as
+        // "jump"). Caught by the release corpus step's floor matrix.
         subscriptions.push(
             deps.onSelectionChange((event) => {
                 if (event.textEditor.document.uri.toString() !== key) { return; }
-                if (event.kind !== vscode.TextEditorSelectionChangeKind.Command) { return; }
-                finish(navTargetFromSelection(event.selections[0]));
+                const selection = event.selections[0];
+                const isCommand = event.kind === vscode.TextEditorSelectionChangeKind.Command;
+                const isFloorReveal =
+                    event.kind === undefined && selection != null && !selection.isEmpty;
+                if (!isCommand && !isFloorReveal) { return; }
+                finish(navTargetFromSelection(selection));
             }),
         );
 

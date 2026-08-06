@@ -170,6 +170,20 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: pnpm typecheck && pnpm test
 
+      # The only place the declared engines floor is ever LAUNCHED. The
+      # integration suite opens real documents — including a real-shaped one
+      # with an invalid mermaid diagram — in the real custom editor and fails
+      # if the webview stops answering, so a freeze class that every unit test
+      # and delta gate missed blocks the release here, on both the oldest VS
+      # Code we claim (engines.vscode's floor) and the newest that exists.
+      # xvfb because the Electron host needs a display on a headless runner.
+      - name: Open the corpus in the engines floor and in stable
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          FLOOR=$(node -p "require('./package.json').engines.vscode.replace(/^\D+/, '')")
+          BIRTA_ITEST_VSCODE="$FLOOR" xvfb-run -a pnpm test:integration
+          BIRTA_ITEST_VSCODE=stable xvfb-run -a pnpm test:integration
+
       - name: Stamp package.json to the release version
         if: steps.plan.outputs.release == 'true'
         run: pnpm version "${{ steps.plan.outputs.version }}" --no-git-tag-version --allow-same-version
