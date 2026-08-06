@@ -18,6 +18,13 @@ samples/**
 __mocks__/**
 releases/**
 .vscode-test/**
+# The bare entry too: in a git worktree `.vscode-test` is a SYMLINK to the main
+# checkout's directory, `dir/**` matches contents but never the symlink itself,
+# and vsce then collects it as a file entry — vsce 3's secret scanner tries to
+# read() the directory and packaging dies with EISDIR (vsce 2 silently packaged
+# the entry). Same reasoning applies to any dir glob here, but this is the only
+# path worktree setup symlinks today.
+.vscode-test
 .e2e-shots/**
 # Built by `pnpm perf:ab` / `perf:typing:ab`, which create them and never
 # remove them. Gitignored, but .vscodeignore does not honor .gitignore — so
