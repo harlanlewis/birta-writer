@@ -24,7 +24,7 @@ Lanes are the default shape: concurrent worktree-isolated agents, reconciled thr
 - **Check `Closes MAR-NN` against ancestry** — `git merge-base --is-ancestor <sha> main`. A ticket closed on a pushed branch rather than a merged PR leaves no signal anywhere.
 - **Pick: first High-or-Urgent down the spine** — `phase-0-fidelity` → `phase-1-performance` → `phase-2-syntax` → `phase-3-interaction` → `phase-4-differentiators`, then by `priority`. `phase-5-surfaces` never ranks (D8). With no High anywhere, take the spine's top by priority.
   - **Readiness is not a filter.** Unscoped and unreproduced is what existential work looks like; making it ready IS the work. Only *blocked* — needing something outside the session — releases it, and name the blocker in the ticket. The spine item is the session's opener, not its leftover.
-- **Burn down deferred residue** (follow-ups, cleanups, polish batches): absorb, merge, or close with a reason — "below the value bar" is one. Never close maintainer-authored ideas to hit a count, and never manufacture phase-0 tickets so the spine has something to point at.
+- **Burn down deferred residue** — at least 5 of the oldest each session (follow-ups, cleanups, polish batches): absorb, merge, or close with a reason — "below the value bar" is one. Never close maintainer-authored ideas to hit the quota, and never manufacture phase-0 tickets so the spine has something to point at.
 - **Work MAR-141's do-inline ledger** when a session touches a line's area. Prune lines sessions have worked past.
 - If grooming finds nothing open, say so and ask.
 
@@ -111,7 +111,7 @@ Read the repro → the implementation → `AGENTS.md` / `docs/DESIGN_PRINCIPLES.
 ## 5. Tracking
 
 - **Never file a repro you haven't run.** Paste observed output, not expected. If it can't be reproduced in-session, say so in the ticket.
-- **The standard outcome is closing significantly more work than the session opens.** Discovered work is resolved in flight (§1.5, §3.6); a ticket is the exception, for the truly large or blocked. Ending with more open tickets than you started is a failure — justify it explicitly in the report.
+- **The backlog ledger rule (user-level CLAUDE.md) is canonical here.** Discovered work resolves in flight (§1.5, §3.6); a ticket is the exception, filed with the session's running opened/closed tally beside it — and session end is not a blocker. Net-positive is a failure the report justifies ticket by ticket.
 
 ## 6. Reconcile and land
 
