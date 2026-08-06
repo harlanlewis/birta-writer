@@ -49,10 +49,10 @@
    type is marked with the shared leading check glyph. */
 .block-menu {
     position: fixed;
-    /* Above the sticky heading (1100), but BELOW the topbar, which is 10002 —
-       not the 1200 this comment used to claim. What actually keeps the menu
-       clear of the bar is geometric: it clamps its own top to the usable area
-       (see blockMenu/menu.ts), never the z-order. */
+    /* Above the sticky heading, but BELOW the topbar. What keeps the menu clear
+       of the bar is geometric, not the z-order: it clamps its own top to the
+       usable area (see blockMenu/menu.ts). This comment used to assert the
+       opposite, having been written when the topbar sat lower in the stack. */
     z-index: 1300;
     display: flex;
     flex-direction: column;
@@ -1679,8 +1679,8 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
     left: 0;
     right: 0;
     /* The toolbar and its downward-opening menus must sit above ALL content-area
-       chrome below it — the selection/link palettes and, notably, the ToC flyout
-       (z 10000) — so a menu opened over the flyout is never occluded by it. */
+       chrome below it — the selection/link palettes and, notably, the ToC
+       flyout — so a menu opened over the flyout is never occluded by it. */
     z-index: 10002;
     display: flex;
     align-items: center;
@@ -1834,7 +1834,7 @@ body.toolbar-hidden::before {
        suggest-selection token. */
     --ui-menu-hover-bg: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
     position: fixed;
-    /* Above every anchoring surface (the link editor is z 9999): the URL
+    /* Above every anchoring surface, the link editor included: the URL
        autocomplete drops over the popup that hosts its input, never under. */
     z-index: 10003;
     min-width: 180px;
@@ -2180,9 +2180,9 @@ body.handles-rest-hover:where(:not(.handles-quiet)) .milkdown .editor :where(.he
 .block-drag-indicator {
     display: none;
     position: fixed;
-    /* Above the ToC flyout (z 10000): a reorder drag INSIDE the flyout must show
-       its drop line over the panel, not lost beneath it. Still below the toolbar
-       (10002), which the line never needs to cross. */
+    /* Above the ToC flyout: a reorder drag INSIDE the flyout must show its drop
+       line over the panel, not lost beneath it. Still below the toolbar, which
+       the line never needs to cross. */
     z-index: 10001;
     height: 2px;
     border-radius: 1px;
@@ -2721,8 +2721,8 @@ body.block-marqueeing .milkdown .editor {
 .embed-lightbox {
     position: fixed;
     inset: 0;
-    /* Above the topbar (10002) — see .img-editor-lightbox: a fullscreen
-       surface must cover the fixed chrome, not sit under it. */
+    /* Above the topbar, like .img-editor-lightbox: a fullscreen surface must
+       cover the fixed chrome, not sit under it. */
     z-index: 10010;
     display: flex;
     align-items: center;

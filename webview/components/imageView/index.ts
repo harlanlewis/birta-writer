@@ -486,7 +486,7 @@ export function createImageView(
     // Open the toolbar above the image, or below it when the space above is
     // inside the fixed chrome. The band ends at the chrome's bottom edge, not
     // at y=0 — measured from y=0 an image sitting just under the topbar kept
-    // its toolbar above and drew it behind the bar (z 600 against z 10002).
+    // its toolbar above and drew it behind the bar, which paints over it.
     function placeToolbar(): void {
         const rect = wrapper.getBoundingClientRect();
         const clearance = toolbar.offsetHeight + 10; // 6px gap + margin

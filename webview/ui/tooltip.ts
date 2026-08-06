@@ -57,9 +57,9 @@ function position(
     let x = elRect.left + elRect.width / 2 - tipRect.width / 2;
     let y: number;
 
-    // The fixed chrome (topbar z 10002, sticky heading z 1100) covers the
-    // tooltip (z 10000), so every vertical decision below is taken against
-    // this line rather than the viewport top.
+    // The fixed chrome (the topbar, and the sticky heading under it) paints
+    // over the tooltip, so every vertical decision below is taken against this
+    // line rather than the viewport top.
     const safeTop = safeAreaTop();
 
     if (placement === "left") {

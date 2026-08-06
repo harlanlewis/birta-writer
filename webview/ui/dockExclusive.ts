@@ -3,7 +3,7 @@
  *
  * Mutual exclusion for the right-docked overlay slot below the topbar. The
  * find bar and the Keyboard Shortcuts Help overlay occupy the IDENTICAL
- * fixed rect (same top / right:16px / z-index:1180 band — see findBar.css
+ * fixed rect (same top / right / z-index band — see findBar.css
  * and shortcutsHelp.css), so if both were visible at once, whichever opened
  * second would sit invisibly underneath by DOM order — with focus in an
  * unseeable input. Opening either surface claims the dock, closing whatever

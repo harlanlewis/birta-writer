@@ -86,8 +86,8 @@ function visibleStickyHeadingHeight(): number {
 /**
  * The top of the area a popup may actually occupy.
  *
- * Two opaque fixed layers stack above the document — the topbar (z 10002) and,
- * under it, the sticky heading title (z 1100) — and almost every floating
+ * Two opaque fixed layers stack above the document — the topbar and, under it,
+ * the sticky heading title — and almost every floating
  * surface paints BELOW both. Anything placed above this line is not merely
  * awkward, it is invisible and unclickable, so "does it fit?" has to be asked
  * against this edge rather than against y=0 (`viewportSize()` in
