@@ -300,7 +300,7 @@ export function notifyResolveSyncConflict(): void {
 export function notifyCrash(
     message: string,
     stack: string | undefined,
-    source: "error" | "unhandledrejection",
+    source: "error" | "unhandledrejection" | "nodeview",
 ): void {
     vscode.postMessage({ type: "crash", message, ...(stack ? { stack } : {}), source });
 }

@@ -30,7 +30,7 @@ export function _resetCrashReporterForTests(): void {
 
 /** Rate-limited, never-throwing report. */
 function report(
-    source: "error" | "unhandledrejection",
+    source: "error" | "unhandledrejection" | "nodeview",
     message: string,
     stack: string | undefined,
 ): void {
@@ -42,6 +42,30 @@ function report(
         // Reporting must never become a second crash (and never recurse
         // through the global handlers below).
     }
+}
+
+/** One report per (node type, method) per session: a NodeView broken in
+ *  update() re-throws per keystroke, and letting each throw spend the shared
+ *  session budget would hide every later, DIFFERENT failure behind the first
+ *  noisy one. */
+const reportedNodeViewFailures = new Set<string>();
+
+/** TEST-ONLY: reset the per-(node, method) dedupe. */
+export function _resetNodeViewFailuresForTests(): void {
+    reportedNodeViewFailures.clear();
+}
+
+/**
+ * Scoped report for the per-node crash boundary (nodeViewBoundary.ts): the
+ * node type and method name the failure was contained to, deduped, through
+ * the same rate limit as the global handlers.
+ */
+export function reportNodeViewFailure(nodeId: string, method: string, err: unknown): void {
+    const key = `${nodeId}.${method}`;
+    if (reportedNodeViewFailures.has(key)) { return; }
+    reportedNodeViewFailures.add(key);
+    const { message, stack } = describe(err);
+    report("nodeview", `NodeView ${key} failed (degraded to default rendering): ${message}`, stack);
 }
 
 /** Best-effort message/stack from an arbitrary thrown/rejected value. */

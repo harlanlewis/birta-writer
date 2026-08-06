@@ -322,12 +322,13 @@ export type ToExtensionMessage =
     // because its tab is the active custom editor with focus parked in the
     // Explorer (MAR-104).
     | { type: "focusState"; focused: boolean }
-    // An uncaught webview error (window.onerror) or unhandled promise
-    // rejection, reported by the crash boundary in webview/crashReporter.ts
-    // (MAR-169). Rate-limited webview-side; the extension logs it and shows a
-    // single deduped notification. Decoration only — never part of the content
-    // sync protocol.
-    | { type: "crash"; message: string; stack?: string; source: "error" | "unhandledrejection" }
+    // An uncaught webview error (window.onerror), unhandled promise
+    // rejection, or a NodeView failure the per-node crash boundary contained
+    // (webview/crashReporter.ts, webview/nodeViewBoundary.ts; MAR-169).
+    // Rate-limited webview-side; the extension logs it and shows a single
+    // deduped notification. Decoration only — never part of the content sync
+    // protocol.
+    | { type: "crash"; message: string; stack?: string; source: "error" | "unhandledrejection" | "nodeview" }
     // TEST-ONLY reply to `__getPerfMarks`: the webview's `mdw:` User-Timing marks
     // (prefix stripped), so the @vscode/test-electron suite can read real launch
     // timings from a live VS Code webview and validate the headless harness
