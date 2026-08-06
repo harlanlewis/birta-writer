@@ -24,11 +24,14 @@ const CORPUS_DIRS = ["webview/__tests__/fixtures", "samples"];
 /** A corpus small enough to be a glob accident fails the suite. */
 const MIN_CORPUS_SIZE = 30;
 
-/** Generous by design: these are hang watchdogs, not perf gates. */
+/** Generous by design: these are hang watchdogs, not perf gates. The outer
+ *  deadline is a last resort for a renderer that hangs Playwright itself, so
+ *  it must exceed the SUM of the stage budgets (~48s) — otherwise a slow but
+ *  diagnosable document dies on the outer deadline with no stage named. */
 const PAINT_CEILING_MS = 15000;
 const RENDER_SETTLE_MS = 20000;
 const PING_CEILING_MS = 2000;
-const DOC_DEADLINE_MS = 45000;
+const DOC_DEADLINE_MS = 60000;
 
 async function collectCorpus() {
     const files = [];
