@@ -219,10 +219,13 @@ describe("MAR-88 discovered: vacated-item bare marker", () => {
         // while the gate stayed unarmed. It does not — every one of these
         // rides too — but the question was the right one, so the answer is
         // pinned rather than left to the next reader to re-derive.
+        // A task item is deliberately NOT here: `- - [ ] task` parses
+        // identically to the nested bullet list above, and `checked` is not
+        // in the fingerprint, so it costs an editor spin-up and pins nothing
+        // the previous line does not.
         ["a nested bullet list", "- normal\n  - - inner"],
         ["a nested ordered list", "- normal\n  - 1. inner"],
         ["a table", "- normal\n  - | a | b |\n    | - | - |\n    | 1 | 2 |"],
-        ["a task item", "- normal\n  - - [ ] task"],
     ];
     for (const [label, md] of artifactLead) {
         it(`an artifact-lead item leading ${label} with one real block should round-trip clean (MAR-324 boundary)`, async () => {

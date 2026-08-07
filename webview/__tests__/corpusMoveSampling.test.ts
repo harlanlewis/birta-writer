@@ -823,11 +823,21 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
     // the round trip, and the oracle then judges the real damage.
     //
     // The consequence to protect against: if some OTHER machinery is ever
-    // added to this fixture (a container directive, a Notion aside, an
-    // all-blank item), the gate would arm without MAR-324's clause and M8
-    // would pass against the pre-MAR-324 implementation too — still green,
-    // pinning nothing. The armer assertion below exists to make that failure
-    // loud. Do not delete it because it looks unrelated to the move.
+    // added to this fixture, the gate would arm without MAR-324's clause and
+    // M8 would pass against the pre-MAR-324 implementation too — still green,
+    // pinning nothing.
+    //
+    // The armer assertion below is the guard against that, and it is NARROWER
+    // than it looks: it enumerates only `hazardMachineryPresent`'s artifact-
+    // lead disjunct, not its other families (an all-blank item, a container
+    // directive, a Notion aside, an `<aside>` html atom, `:::`-shaped prose).
+    // Adding one of those to this fixture would arm the gate WITHOUT tripping
+    // this assertion. In practice the size tripwire above catches it first,
+    // because any such addition changes the document size, and that is the
+    // load-bearing half of the pair. Stated rather than fixed: making the
+    // predicate call the production gate's own enumeration would couple this
+    // pin to `hazardMachineryPresent`'s internals, which is the coupling the
+    // size tripwire exists to avoid.
     //
     // AND DO NOT QUOTE M8 AS A USER-FACING GUARANTEE. Target 921 is not a
     // drop slot: blockBoundaryPositions for this fixture emits
