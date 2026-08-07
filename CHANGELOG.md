@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Moving a block within a tab-indented outline could still corrupt the saved file in three ways the previous fix did not reach: a moved sublist could nest one level too deep, an unrelated table could degrade into a run of loose text lines, and pulling a paragraph out of a quote inside a list could leave a stray marker that broke the list open on reopen. The cause turned out to be shared. A tab is resolved by the real Markdown reader at the next four-column stop rather than as a fixed width, and a move can place a line beside a neighbour whose content starts inside the span a tab jumps over. The save now checks the nesting depth of what it is about to write against the editor's own text, and where the two disagree it writes the editor's version instead. Indentation may be tidied, but structure is never lost. Found by widening the nightly fidelity sweep rather than by any report.
+
+- Dragging a block into a list item whose content is a quote, heading, or code block no longer silently destroys the list when the item already holds more than one block. The editor's save-survival check, which quietly refuses a move it can prove would not survive a save and reopen, did not recognize that shape and let the move through. The one drag known to reach it was already withheld, so this closes the remaining paths (a paste, or a paragraph split inside such an item) rather than a gesture you could reach today.
+
 ---
 
 ## [2026.806.1] - 2026, August 6

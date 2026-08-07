@@ -138,9 +138,11 @@ export interface FormatProfile {
      */
     baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
     /**
-     * Classify each line's structural role for the merge's OUTPUT SELF-CHECK:
-     * "verbatim" for a line whose bytes are opaque enclosed content (fenced
-     * code interior, in markdown's case), "content" for everything else.
+     * Classify each line's structural role for the merge's OUTPUT SELF-CHECK.
+     * Opaque strings — the engine only compares them for equality — but
+     * markdown's profile reports "verbatim" for a line whose bytes are an
+     * opaque enclosed span (fenced code interior) and otherwise
+     * `content:<depth>` or `content:<depth>:<adjacency>` (see its own doc).
      *
      * WHY the check exists: the diff keys equivalent spellings of a construct
      * equal so both spellings can survive as keeps — markdown keys a fence
@@ -151,21 +153,40 @@ export interface FormatProfile {
      * other end takes the serializer's — and a ``` run cannot close a `~~~`
      * fence, so the mismatched pair swallows everything to the next matching
      * run on reopen. The raw serialization is clean, so no pre-merge refusal
-     * can see it; only the merged bytes are wrong.
+     * can see it; only the merged bytes are wrong. (MAR-323 added a second,
+     * unrelated hazard the same mechanism catches: a `keep` line's saved
+     * bytes landing at a real column — tab stop 4 — that collides with a
+     * container the file's own canonical-depth approximation never priced
+     * in, once a move relocates it beside new neighbours.)
      *
      * The check: after the rebuild, the merged text's significant lines must
      * carry the same role sequence as the text the diff ran on. A mismatched
-     * pair flips later lines between "verbatim" and "content", which is
-     * exactly the flip this detects. On mismatch the merge DEGRADES to the
-     * raw serializer output (EOL-matched): canonicalization churn, never
+     * fence pair flips later lines between "verbatim" and "content"; a
+     * collided real column flips a depth number; either is exactly the kind
+     * of divergence this detects. On mismatch the merge DEGRADES to the raw
+     * serializer output (EOL-matched): canonicalization churn, never
      * corruption — the trade this engine prefers everywhere.
      *
-     * Keep the roles COARSE and blank-insensitive. A finer classification
-     * (indented code, setext) reads meaning out of blank runs, and the merge
-     * legitimately emits saved blank spacing beside serializer lines — a
-     * role that depends on a blank would fire on merges that are fine.
+     * Keep the roles COARSE and, beyond the one profile-chosen exception,
+     * blank-insensitive. A finer classification (indented code, setext)
+     * reads meaning out of blank runs, and the merge legitimately emits
+     * saved blank spacing beside serializer lines, so a role that depends on
+     * a blank fires on merges that are fine wherever it is not scoped to a
+     * construct whose MEANING actually turns on that adjacency.
+     *
+     * `hadRelocatedContent` reports whether this merge deleted a line at one
+     * position and inserted an otherwise-identical line (same normalized
+     * key) at another — the engine's own signal that a block MOVE happened,
+     * computed once and handed to both calls (see `rolesDiverge`). A
+     * profile whose role can only diverge on genuinely relocated content
+     * (MAR-323's depth) should gate on it: an ordinary in-place edit can
+     * leave two indent conventions sitting beside each other for reasons
+     * this check has no business re-litigating (MAR-222's "ambiguous, drop
+     * rather than guess" is exactly such a case — no move, both spellings
+     * legitimately unresolved), and firing there would degrade a save that
+     * is fine by this profile's OWN other rules.
      */
-    lineRoles?(lines: readonly string[]): readonly ("content" | "verbatim")[];
+    lineRoles?(lines: readonly string[], hadRelocatedContent: boolean): readonly string[];
     /**
      * Distill what the merge NOW BEING PERFORMED teaches about how this file is
      * written, from its own `keep` pairs — each one a saved line beside the
@@ -1173,6 +1194,51 @@ export function applyMinimalChanges(
     let prevSavedIdx = -1; // saved lineIdx of the last emitted keep/replacement
     let prevSerialIdx = -1; // serialized lineIdx of the last emitted line
     let dirty = false;
+    // Did this merge relocate content beside new neighbours — the one
+    // shape `profile.lineRoles`' depth-sensitive role (MAR-323) is meant to
+    // police? An ordinary in-place edit never sets this, which is what
+    // keeps that role from firing on documents no move ever touched (see
+    // the role's own doc for why that distinction matters).
+    //
+    // The tell: a deletion and an insertion, anywhere in this edit script —
+    // paired or not — whose CORE content (`coreOf`) matches. A genuine
+    // block move is exactly this: content that existed at one position and
+    // now exists, essentially unchanged, at another. Two things make this
+    // the right level rather than the position level or the exact-bytes
+    // level:
+    //
+    //   - `positionalRunPairs`'s reasoning ("a serializer re-emits a span
+    //     rather than reordering it") is exactly backwards for a genuine
+    //     reorder, so the LCS/run-pairing above can route a relocated span
+    //     through as a PURE deletion at its old position and a PURE
+    //     insertion at its new one, with no keep or replacement pair ever
+    //     connecting them (found reproducing MAR-323's outline-tables case:
+    //     a moved table's header/marker line was a leftover del and a
+    //     leftover ins in the SAME walk, both singletons, with every
+    //     neighbouring keep perfectly contiguous on the saved side — a
+    //     position-based check never sees it).
+    //   - The moved span's OWN bytes do not have to survive verbatim for
+    //     this to be a move: MAR-323's logseq case dissolves a blockquote
+    //     in transit (the saved line carries a `> ` the new position never
+    //     had), so an exact-key match misses it too. `coreOf` strips the
+    //     wrapper syntax — a run of leading non-alphanumeric characters,
+    //     covering list markers, quote arrows, and their combinations —
+    //     without needing to know what construct it belongs to, so the
+    //     comparison survives exactly this kind of in-transit reshaping.
+    //
+    // A leftover (unpaired) del/ins always feeds the sets below; a PAIRED
+    // one only when its own two sides' cores differ from EACH OTHER (see
+    // the pairing loop) — an ordinary re-indent is a paired del/ins whose
+    // core is trivially identical on both sides, and counting that as
+    // relocation evidence would fire the depth role on every reindent,
+    // including the ones MAR-299's baseline-spelling rule already handles
+    // correctly on its own.
+    function coreOf(text: string): string {
+        return text.replace(/^[^\p{L}\p{N}]+/u, "");
+    }
+    const delCoreKeys = new Set<string>();
+    const insCoreKeys = new Set<string>();
+    let hadRelocatedContent = false;
 
     // Where the saved file's UNTERMINATED final segment landed in `out`, if it
     // was emitted at all (it is blank, and so never a significant line, in the
@@ -1303,9 +1369,38 @@ export function applyMinimalChanges(
             if (dels.length > 1 || inses.length === 0) dirty = true;
 
             const paired = Math.min(dels.length, inses.length);
+            // Leftover (unpaired) dels/inses always feed the relocation
+            // check (see `coreOf`'s doc) — they have no partner in this run
+            // at all, so a match elsewhere in the document is real evidence.
+            for (let k = paired; k < dels.length; k++) {
+                const core = coreOf(dels[k].text);
+                if (core !== "") delCoreKeys.add(core);
+            }
+            for (let k = paired; k < inses.length; k++) {
+                const core = coreOf(inses[k].text);
+                if (core !== "") insCoreKeys.add(core);
+            }
             for (let k = 0; k < paired; k++) {
                 const savedLine = dels[k];
                 const serialLine = inses[k];
+                // A PAIRED del/ins feeds the relocation check too, but only
+                // when the two sides' OWN cores differ — MAR-323's logseq
+                // case is exactly this: a del paired with an unrelated
+                // bare-marker insertion (the blockquote dissolving in
+                // place), whose cores ("A blockquote…" vs "") disagree, so
+                // both sides go in and the del's core later matches a
+                // SEPARATE pure insertion elsewhere in the script. Skipping
+                // an EQUAL pair matters: an ordinary re-indent — MAR-299's
+                // "file whose indent unit is wider than the serializer's"
+                // — is ALSO a paired del/ins whose only difference is the
+                // marker, so its two cores are trivially identical, and
+                // adding both would report every reindent as a relocation.
+                const delCore = coreOf(savedLine.text);
+                const insCore = coreOf(serialLine.text);
+                if (delCore !== insCore) {
+                    if (delCore !== "") delCoreKeys.add(delCore);
+                    if (insCore !== "") insCoreKeys.add(insCore);
+                }
                 const text = reconcileLine(
                     profile,
                     savedLine.text,
@@ -1388,15 +1483,23 @@ export function applyMinimalChanges(
         out[unterminatedAt] += "\r";
     }
 
+    for (const key of delCoreKeys) {
+        if (insCoreKeys.has(key)) {
+            hadRelocatedContent = true;
+            break;
+        }
+    }
+
     const result = out.join("\n");
     if (result === saved) return saved;
     // Output self-check (see `lineRoles`): a splice that flips any
-    // significant line between verbatim and content — a mismatched fence
-    // pair, in markdown — is corruption the keys cannot prevent, so the
+    // significant line's role — a mismatched fence pair, or (MAR-323) a
+    // `keep` line's saved bytes landing at a real column that changes its
+    // list-nesting depth — is corruption the keys cannot prevent, so the
     // merge stands down and the serializer's own text is written instead.
     // Skipped when the result IS the saved bytes: writing them changes
     // nothing, so no new structure can have been introduced.
-    if (profile.lineRoles && rolesDiverge(profile, result, effective)) {
+    if (profile.lineRoles && rolesDiverge(profile, result, effective, hadRelocatedContent)) {
         return matched;
     }
     return result;
@@ -1405,11 +1508,22 @@ export function applyMinimalChanges(
 /** Do `merged` and `effective` disagree on any significant line's role?
  *  Roles are computed over the FULL line arrays (classification is
  *  contextual) and compared only at significant lines, so blank-run
- *  differences — saved spacing beside serializer lines — cannot fire this. */
-function rolesDiverge(profile: FormatProfile, merged: string, effective: string): boolean {
+ *  differences — saved spacing beside serializer lines — cannot fire this.
+ *  `hadRelocatedContent` is threaded through unchanged to both sides: it is a
+ *  property of the merge (did content get deleted at one position and
+ *  reinserted, unchanged, at another), not of either individual text, and
+ *  markdown's profile uses it to scope its depth-sensitive role to merges a
+ *  block move actually touched (see its own doc for why an ordinary
+ *  in-place edit must not trip it). */
+function rolesDiverge(
+    profile: FormatProfile,
+    merged: string,
+    effective: string,
+    hadRelocatedContent: boolean,
+): boolean {
     const significantRoles = (text: string): string[] => {
         const lines = text.split("\n").map(stripEol);
-        const roles = profile.lineRoles!(lines);
+        const roles = profile.lineRoles!(lines, hadRelocatedContent);
         const sig: string[] = [];
         for (let i = 0; i < lines.length; i++) {
             if (lines[i].trim() !== "") sig.push(roles[i]);
