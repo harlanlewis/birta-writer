@@ -554,6 +554,65 @@ graph TD
     B -->|No| D[Skip]
 ```
 
+### Diagrams (PlantUML)
+
+Fenced [PlantUML](https://plantuml.com) diagrams render through the same preview as Mermaid, with the same zoom, pan and fullscreen controls — the two are adapters over one pane. Rendering is **offline**: the engine ships with the editor, so no diagram source leaves the machine.
+
+```plantuml
+@startuml
+Alice -> Bob : hello
+Bob --> Alice : hi
+@enduml
+```
+
+Both `plantuml` and `puml` open a diagram, and each round-trips in the spelling it was written in. Diagram families laid out by Graphviz — class above all — work the same as the natively laid-out ones:
+
+```puml
+@startuml
+class Order {
+  +id: UUID
+  +total(): Money
+}
+Order "1" *-- "many" LineItem
+@enduml
+```
+
+An opening directive is optional; the engine implies `@startuml`:
+
+```plantuml
+Alice -> Bob : no @startuml here
+```
+
+`@startjson` and `@startyaml` bodies are **data, not PlantUML**. They always render in their own palette regardless of `birta.plantuml.theme`, because re-skinning them would mean writing a `skinparam` line into the data and breaking the parse:
+
+```plantuml
+@startjson
+{
+  "id": 42,
+  "tags": ["a", "b"]
+}
+@endjson
+```
+
+**Expected-failure states.** An invalid diagram settles on an error card and leaves the rest of the document alive; the unrenderable source still round-trips untouched. Note PlantUML is lenient — most malformed input renders *something*, so a genuine failure takes input the engine refuses outright:
+
+```plantuml
+@startuml
+!!!!! %%%% @@@@
+@enduml
+```
+
+A diagram reaching for the network **fails closed rather than fetching**. `!theme <name>` and `!include <url>` resolve over HTTP in other PlantUML tools; here they error with the engine's own message. This is deliberate: a document cannot make the editor request anything by containing a diagram, whatever `birta.network.enabled` is set to.
+
+```plantuml
+@startuml
+!theme spacelab
+A -> B : still just text on disk
+@enduml
+```
+
+Two families are unsupported, both because upstream delegates them to Java-only image libraries: **DITAA** and **JCCKIT**. They render as error cards.
+
 ### Calc
 
 Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator-) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
