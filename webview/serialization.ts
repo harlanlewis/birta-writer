@@ -410,6 +410,8 @@ type FlowNode = {
     marker?: unknown;
     setext?: unknown;
     depth?: number;
+    ordered?: unknown;
+    start?: unknown;
     children?: unknown[];
 };
 
@@ -629,6 +631,25 @@ function beginsWithProseLine(node: FlowNode): boolean {
 }
 
 /**
+ * Would this list be written with a first number that is NOT 1 (MAR-327)?
+ *
+ * CommonMark lets an ordered list interrupt a paragraph only when it starts at
+ * 1, so `5.` glued beneath an open paragraph line is not a list at all — it is
+ * that paragraph's lazy continuation, and the whole list becomes hardbreak-
+ * joined text on reopen. `1.` in the same position starts a list normally,
+ * which is why this is a property of the START NUMBER and of nothing else.
+ * Measured against the parser, at the item's content column and past it:
+ * `5.`, `0.` and `10.` are all absorbed, `1.` and `1)` are not, and `5)` is —
+ * so the delimiter and the indentation are both irrelevant.
+ *
+ * `start` is what the PM `order` attr serializes to (plugins/list.ts), and it
+ * defaults the same way, so a list with no recorded start is a `1.` list.
+ */
+function startsAwayFromOne(node: FlowNode): boolean {
+    return node.type === "list" && node.ordered === true && (node.start ?? 1) !== 1;
+}
+
+/**
  * Must this gap between two of a list item's flow children carry a blank line —
  * i.e. would gluing the two change what the file reparses as?
  *
@@ -668,18 +689,30 @@ function gapMustBeBlank(
         if (QUOTE_TYPES.has(left.type ?? "") && QUOTE_TYPES.has(right.type ?? "")) return true;
     }
     // 2. A left whose LAST source line is an ordinary paragraph line, in the
-    //    item's own container — prose, and a directive's closing `:::`. Both
-    //    arms are ones `glueChangesConstruct` already names at the merge layer:
-    //    a `:::` run cannot interrupt a paragraph, so glued under one it becomes
-    //    lazy continuation text and the directive is lost; and a solid dash run
-    //    glued under a paragraph is a SETEXT UNDERLINE rather than a thematic
-    //    break, so `- alpha\n  ---` reopens as a heading. The dash arm is
-    //    restricted to a dash-SPELLED rule (`***`/`___` underline nothing) and
-    //    to a paragraph-line left for the same reason the merge's arm excludes
-    //    quote, list and table lines: under those the run interrupts and parses
-    //    as an hr either way.
-    if ((left.type === "paragraph" && !isEmptyParagraph(left))
-        || left.type === "containerDirective") {
+    //    item's own container — prose, and a directive's closing `:::`. The
+    //    first two arms are ones `glueChangesConstruct` already names at the
+    //    merge layer: a `:::` run cannot interrupt a paragraph, so glued under
+    //    one it becomes lazy continuation text and the directive is lost; and a
+    //    solid dash run glued under a paragraph is a SETEXT UNDERLINE rather
+    //    than a thematic break, so `- alpha\n  ---` reopens as a heading. The
+    //    dash arm is restricted to a dash-SPELLED rule (`***`/`___` underline
+    //    nothing) and to a paragraph-line left for the same reason the merge's
+    //    arm excludes quote, list and table lines: under those the run
+    //    interrupts and parses as an hr either way. The third arm (2a) is an
+    //    ordered list that does not start at 1, which is the same laziness with
+    //    a wider left set.
+    const proseLeft = (left.type === "paragraph" && !isEmptyParagraph(left))
+        || left.type === "containerDirective";
+    // 2a. An ordered list that does not start at 1 (MAR-327). It is the only
+    //     right-hand type here that a link DEFINITION also absorbs, so the
+    //     left set is one wider than the arms below: `[ref]: url` is lifted out
+    //     of a content run that the following line joins, so it leaves that run
+    //     open exactly as prose does. Measured — a definition glued to a `:::`
+    //     directive, a dash rule, a setext heading, a paragraph or a second
+    //     definition all reopen intact, so widening the arms below to match
+    //     would only loosen items that were never broken.
+    if ((proseLeft || left.type === "definition") && startsAwayFromOne(right)) return true;
+    if (proseLeft) {
         if (right.type === "containerDirective") return true;
         if (right.type === "thematicBreak" && emitsDashRule(right, state)) return true;
         // 3. Gaps mdast's own default join blank-separates. Restated here

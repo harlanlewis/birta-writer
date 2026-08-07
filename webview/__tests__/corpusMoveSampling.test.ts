@@ -903,6 +903,113 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         expect(v.state.doc.eq(preDoc)).toBe(true);
     });
 
+    // M9 is the pair MDW_MOVE_SEED=987654321 MDW_MOVE_SAMPLE=200 drew, and
+    // its damage — like M8's — is upstream of the merge: the raw
+    // serialize->reparse is already broken before applyMinimalChanges runs.
+    // Unlike M8 it is FIXED rather than refused, and the fix is in the
+    // serializer, so this asserts the move goes through with a clean reparse.
+    //
+    // WHAT ACTUALLY DAMAGES IS THE START NUMBER, not the indentation. The
+    // ticket's stated cause was that the sublist is re-emitted at an
+    // indentation short of its parent's content column; measured against the
+    // parser, that is wrong twice over. Four spaces IS `* child star two`'s
+    // content column, and pushing the same list out to SIX spaces is
+    // corrupted identically. What breaks it is CommonMark's rule that an
+    // ordered list may interrupt a paragraph only when it starts at 1: `5.`
+    // glued beneath the item's own paragraph line is lazy continuation text,
+    // so the three items become three hardbreak-joined text lines. `1.` and
+    // `1)` in the same slot are fine; `0.`, `10.` and `5)` are not.
+    // `webview/__tests__/tightItemSpacing.test.ts` carries the enumeration
+    // (its "an ordered list not starting at 1" row, which turned up sixteen
+    // broken cells), and `webview/serialization.ts` carries the fix. The gate
+    // in plugins/reparseHazard.ts is deliberately NOT widened: with the
+    // serializer correct there is nothing left for it to refuse, and arming it
+    // costs a serialize+reparse per gesture across the whole file (MAR-324).
+    //
+    // UNLIKE M8, this pair IS reachable from the UI, so it can be quoted as a
+    // user-facing fix: `blockBoundaryPositions` emits the target as
+    // `{pos: 926, kind: "block", ownerPos: 909}` — a real drop slot inside
+    // `* child star two`, ahead of its `+ grandchild plus` sublist. Checked,
+    // not assumed; M8's target 921 is not in that list and its comment says so.
+    it("merge hazard M9 (MAR-327, fixed): an ordered list not starting at 1, dropped into a list item, keeps its list-ness", async () => {
+        const fixture = fixtures.find((f) => f.name === "list-marker-dialects.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+
+        // Source: the `5. five / 6. six / 7. seven` list — the fixture's one
+        // ordered list that does not start at 1.
+        let srcPos = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (node.type.name === "ordered_list" && node.attrs["order"] !== 1) {
+                expect(srcPos, "exactly one ordered list away from 1").toBe(-1);
+                srcPos = pos;
+            }
+            return true;
+        });
+        expect(srcPos).toBeGreaterThan(-1);
+        const src = v.state.doc.nodeAt(srcPos)!;
+        expect(src.attrs["order"]).toBe(5);
+        expect(src.textContent).toBe("fivesixseven");
+
+        // Target: the item-internal slot inside `* child star two`, just past
+        // its own paragraph and ahead of its `+ grandchild plus` sublist —
+        // derived from the item rather than written as an offset, so a
+        // fixture edit retargets it instead of silently pinning some other
+        // gesture. The item must hold exactly [paragraph, bullet_list] for
+        // that derivation to name the slot the sampler drew.
+        let itemPos = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (node.type.name === "list_item" && node.textContent.startsWith("child star two")) {
+                itemPos = pos;
+            }
+            return true;
+        });
+        expect(itemPos).toBeGreaterThan(-1);
+        const item = v.state.doc.nodeAt(itemPos)!;
+        expect(item.childCount).toBe(2);
+        expect(item.child(0).type.name).toBe("paragraph");
+        expect(item.child(1).type.name).toBe("bullet_list");
+        const target = itemPos + 1 + item.child(0).nodeSize;
+
+        expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
+        // The move must LAND, not be waved through as a no-op: the item now
+        // holds the ordered list between its paragraph and its sublist. The
+        // item is re-found rather than re-read at `itemPos`, which the
+        // earlier-in-the-document deletion has already shifted.
+        let landed: ProseNode | null = null;
+        v.state.doc.descendants((node: ProseNode) => {
+            if (node.type.name === "list_item" && node.textContent.startsWith("child star two")) {
+                landed = node;
+            }
+            return true;
+        });
+        expect(landed, "the target item should survive the move").not.toBeNull();
+        expect(
+            Array.from({ length: landed!.childCount }, (_, i) => landed!.child(i).type.name),
+        ).toEqual(["paragraph", "ordered_list", "bullet_list"]);
+
+        // The raw serialize->reparse, which is where the damage lived — the
+        // merge only carried it. Asserted ahead of the merged form so a
+        // regression names the layer it is in.
+        const raw = editor.action(getMarkdown());
+        const rawReparsed = editor.action((ctx) => ctx.get(parserCtx)(raw)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(rawReparsed)),
+            ),
+            `raw serializer output: ${JSON.stringify(raw)}`,
+        ).toBe("lost: (none); gained: (none)");
+
+        const merged = applyMinimalChanges(fixture.content, raw, protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
     it("a move in a document that ALREADY fails round-trip is not refused (the gesture didn't cause it)", async () => {
         const editor = await makeEditor(
             "First.\n\n:::caution\nBody.\n:::\n\nLast.",
