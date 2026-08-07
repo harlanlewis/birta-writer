@@ -828,6 +828,18 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
     // would pass against the pre-MAR-324 implementation too — still green,
     // pinning nothing. The armer assertion below exists to make that failure
     // loud. Do not delete it because it looks unrelated to the move.
+    //
+    // AND DO NOT QUOTE M8 AS A USER-FACING GUARANTEE. Target 921 is not a
+    // drop slot: blockBoundaryPositions for this fixture emits
+    // `... block:917 item:918 block:922 ...`, so no drag can land here. A
+    // corpus-wide A/B measured MAR-324's widening as adding ZERO refusals
+    // anywhere in the UI-reachable move space (2067 sampled pairs over 39
+    // fixtures, plus an exhaustive 402-pair sweep of this fixture: refused=81
+    // both before and after). This pin guards a safety property of the gate
+    // against regression, which is worth having, and it is NOT evidence that
+    // any gesture a user can perform changed behavior. A CHANGELOG entry
+    // claiming otherwise was written and then withdrawn on exactly this
+    // measurement.
     it("merge hazard M8 (MAR-323 pair 4, refused via MAR-324): extracting the blockquote's paragraph is refused, not silently corrupted", async () => {
         const fixture = fixtures.find((f) => f.name === "logseq/page.md")!;
         const editor = await makeEditor(fixture.content);
