@@ -213,21 +213,45 @@ describe("MAR-88 discovered: vacated-item bare marker", () => {
         ["a blockquote", "- normal\n  - > q"],
         ["a heading", "- normal\n  - # h"],
         ["a code fence", "- normal\n  - ```\n    x\n    ```"],
+        // An adversarial review of the shipped predicate observed that the
+        // three above all have a second block that CAN ride the marker line,
+        // and asked whether a container that cannot would emit the bare `-`
+        // while the gate stayed unarmed. It does not — every one of these
+        // rides too — but the question was the right one, so the answer is
+        // pinned rather than left to the next reader to re-derive.
+        // A task item is deliberately NOT here: `- - [ ] task` parses
+        // identically to the nested bullet list above, and `checked` is not
+        // in the fingerprint, so it costs an editor spin-up and pins nothing
+        // the previous line does not.
+        ["a nested bullet list", "- normal\n  - - inner"],
+        ["a nested ordered list", "- normal\n  - 1. inner"],
+        ["a table", "- normal\n  - | a | b |\n    | - | - |\n    | 1 | 2 |"],
     ];
     for (const [label, md] of artifactLead) {
         it(`an artifact-lead item leading ${label} with one real block should round-trip clean (MAR-324 boundary)`, async () => {
             const e = await make(md);
             const v = view(e);
+            // Select the ARTIFACT-LEAD item by its defining property, not by
+            // depth: a nested-list case contains an inner list_item that is
+            // not artifact-lead, and "deepest wins" would silently pin that
+            // one instead of the shape under test.
             let inner: ProseNode | null = null;
             v.state.doc.descendants((node) => {
-                if (node.type.name === "list_item") inner = node;
+                if (
+                    !inner &&
+                    node.type.name === "list_item" &&
+                    node.childCount > 0 &&
+                    isBlankParagraph(node.child(0), node)
+                ) {
+                    inner = node;
+                }
                 return true;
             });
             // The shape under test: artifact empty paragraph + exactly one
             // real block. If this stops holding, the case below is no longer
             // testing the boundary the predicate is drawn at.
+            expect(inner, `${label}: no artifact-lead item in this fixture`).not.toBeNull();
             expect(inner && (inner as ProseNode).childCount).toBe(2);
-            expect(inner && isBlankParagraph((inner as ProseNode).child(0), inner as ProseNode)).toBe(true);
             expect(reparseDiff(e, v)).toBe("");
         });
     }
