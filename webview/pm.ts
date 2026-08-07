@@ -81,7 +81,20 @@ export { gapCursor, GapCursor } from "@milkdown/prose/gapcursor";
 export { history, redo, undo } from "@milkdown/prose/history";
 
 // ─── prose/inputrules: text-trigger rules ───
-export { InputRule, textblockTypeInputRule } from "@milkdown/prose/inputrules";
+// `undoInputRule` reverts the most recent input rule, restoring the characters
+// the user actually typed. It is the standard escape hatch for a rule that
+// fired when the author meant literal text, and plugins/list.ts chains it ahead
+// of its own Backspace handling so a list marker stays undoable there too.
+// `wrappingInputRule` is the stock list/quote rule builder; plugins/
+// listMarkerInput.ts constructs one and delegates to its handler for the prose
+// half of its own rules, rather than vendoring the body (the emphasisInput
+// precedent), so that half stays upstream's by construction.
+export {
+    InputRule,
+    textblockTypeInputRule,
+    undoInputRule,
+    wrappingInputRule,
+} from "@milkdown/prose/inputrules";
 
 // ─── prose/keymap: key bindings ───
 export { keydownHandler, keymap } from "@milkdown/prose/keymap";

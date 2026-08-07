@@ -7,7 +7,7 @@ import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
 import type { Node as ProseNode } from "../pm";
 import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
-import { joinTextblockBackward, liftListItem } from "../pm";
+import { joinTextblockBackward, liftListItem, undoInputRule } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
 
@@ -889,7 +889,20 @@ export const listLiftPlugin = $prose((ctx) => {
     };
 
     return keymap({
-        Backspace: backspaceAtItemStart,
+        // A list marker the user JUST typed is undone first, restoring the
+        // characters rather than acting on the item the rule created. Milkdown's
+        // base keymap chains undoInputRule ahead of its own Backspace commands
+        // for exactly this, but every list input rule leaves the caret at
+        // parentOffset 0 — where this handler answers first and would lift the
+        // brand-new item instead, leaving no way to say "I meant text". It
+        // declines unless the LAST transaction was an input rule, so nothing
+        // else about Backspace changes.
+        //
+        // Deliberately NOT on Mod-Backspace below: delete-to-line-start is a
+        // deletion the user asked for by name, and answering it with an undo
+        // would be a different action than the one they pressed.
+        Backspace: (state, dispatch) =>
+            undoInputRule(state, dispatch) || backspaceAtItemStart(state, dispatch),
         // Delete-to-line-start with nothing left to delete: same join/delete
         // as Backspace (the handler only ever acts at parentOffset 0, so a
         // mid-line Cmd+Backspace still reaches the DOM's own deletion).

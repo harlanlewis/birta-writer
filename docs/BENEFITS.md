@@ -122,6 +122,8 @@ Blank lines are part of that judgement. The ones that are your spacing are left 
 
 Markdown offers the same construct several spellings, and a serializer normally picks one: `*` or `_` for emphasis, `***`/`___`/`---` for a divider, ATX or underlined headings, `-`/`*`/`+` bullets, `.` or `)` after an ordered item's number, and whether a numbered list counts up or repeats `1.`. Birta reads which one your file used and writes that one back. The same holds for the file's line endings: a document written with Windows CRLF endings stays CRLF, down to the lines an edit passes through.
 
+A list you start by typing has no file to read the choice from, so the choice is the marker you typed: type `* ` and the file gets `*`, type `1) ` and it gets `1)`. It is the same principle one step earlier — the spelling is yours either way, whether you wrote it in the file or in the editor.
+
 This is the difference between a choice _surviving_ and a choice being _restored_. Protection (below) works per region, so editing one item in a list would otherwise re-canonicalize every other item in it. Reproducing the style means an edit changes only what you edited, however much of the document the construct spans.
 
 ### Syntax it can't perfectly reproduce is protected, not rewritten
