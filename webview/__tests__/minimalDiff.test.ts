@@ -798,6 +798,34 @@ describe("applyMinimalChanges — a moved item takes the file's spelling of its 
         ).toBe("- alpha\n    - beta\n    - gamma\n    - delta\n");
     });
 
+    it("a verbatim line sharing the outline's indent width should not make that depth ambiguous", () => {
+        // MAR-325. The same four-space file as above, plus a fence at column 0
+        // whose body happens to sit at four spaces too. That body is verbatim,
+        // so the round trip reproduces it byte for byte and its pair "agrees"
+        // — reporting `"    " -> "    "` beside the outline's real
+        // `"    " -> "  "`. Two renderings for one source is the ambiguous
+        // case, so the depth's fact was dropped and `beta`'s level came back
+        // spelled the serializer's way while its untouched neighbours kept
+        // four, which reparses shallower. In `hostile-content.md` a mermaid
+        // body did this and levels 4 through 8 of an 8-level list flattened.
+        const saved =
+            "- alpha\n    - beta\n        - gamma\n    - delta\n\n" +
+            "```text\n    not a list level\n```\n";
+        const baseline =
+            "- alpha\n  - beta\n    - gamma\n  - delta\n\n" +
+            "```text\n    not a list level\n```\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        expect(protection).not.toBeNull();
+
+        expect(
+            applyMinimalChanges(
+                saved,
+                "- alpha\n  - beta\n  - gamma\n  - delta\n\n```text\n    not a list level\n```\n",
+                protection,
+            ),
+        ).toBe("- alpha\n    - beta\n    - gamma\n    - delta\n\n```text\n    not a list level\n```\n");
+    });
+
     it("a re-spelling that does NOT move the depth is the user's own edit and must land", () => {
         // The gate that keeps MAR-161 closed against the new rule. Fence content
         // compares raw, so a whitespace-only edit inside a top-level fence

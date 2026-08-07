@@ -586,6 +586,57 @@ const LEADING_WS_RE = /^[ \t]*/;
 const indentOf = (line: string): string => LEADING_WS_RE.exec(line)![0];
 
 /**
+ * Whether a baseline pair's leading whitespace is literal user bytes on either
+ * side, and so teaches the indent learners below nothing (MAR-325).
+ *
+ * A verbatim span is reproduced byte for byte, so its two sides always agree —
+ * and agreement is what the learners read as evidence. That makes such a line a
+ * confident WITNESS to an identity it has no opinion about: three lines of a
+ * mermaid diagram indented four spaces reported `"    " → "    "` in
+ * `hostile-content.md` beside the outline's real `"    " → "  "`, two renderings
+ * for one source, so `baselineIndents` correctly called that depth ambiguous and
+ * dropped it. The file did have one spelling at that depth; only a line that was
+ * never talking about depth said otherwise. Levels 4 through 8 of an 8-level
+ * list flattened on the next save carrying an edit.
+ *
+ * EITHER side disqualifies the pair, not both: `!==` alone (the shape the
+ * marker-role gate in `mergeIndents` uses) catches a disagreement, and the
+ * hazard here is two lines that agree about being irrelevant.
+ *
+ * Deliberately NOT a marker-line test, which is the blunter rule this replaced
+ * and which regressed MAR-322: a tab-indented CONTINUATION line inside an item
+ * is not a marker line, yet it is exactly the evidence that fix leans on to
+ * learn a file's tab spelling. Excluding every non-marker line threw that away
+ * and re-spelled whole documents to two spaces. The fence is the thing that
+ * lies, so the fence is what gets excluded.
+ */
+function indentIsLiteral(pair: BaselineLinePair): boolean {
+    return pair.savedIndentIsContent || pair.serialIndentIsContent;
+}
+
+/**
+ * Markdown's `FormatProfile.indentIsContent`: the classes whose leading
+ * whitespace belongs to the user's bytes rather than to the document's
+ * structure.
+ *
+ * `fence-raw` is a fence opened at column 0 — everything inside it, indentation
+ * included, is content by definition. `code` is an indented code block, whose
+ * leading whitespace past the four-space opener is likewise the user's own
+ * layout, and whose opener is not an outline level either.
+ *
+ * `fence-nested` is deliberately absent. A fence nested in a list item carries
+ * real outline structure in its leading whitespace — that is precisely why the
+ * classifier depth-normalizes it (MAR-131) — so its round trip witnesses a
+ * genuine spelling (`"\t\t" → "    "`) that the learners should keep. Excluding
+ * it would withdraw a concession rather than grant one, which is the direction
+ * this file's rules are not allowed to move in.
+ */
+function indentIsContent(lines: readonly string[]): boolean[] {
+    const classes = classifyLines(lines as string[]);
+    return classes.map((c) => c === "fence-raw" || c === "code");
+}
+
+/**
  * The forward half of markdown's `FormatProfile.baselineFacts` (MAR-222):
  * which SOURCE indent this file's serializer renders as which CANONICAL
  * indent, learned from the file's own zero-edit round trip. Stored alongside
@@ -607,6 +658,7 @@ function baselineIndents(pairs: readonly BaselineLinePair[]): Map<string, string
     const canonical = new Map<string, string>();
     const ambiguous = new Set<string>();
     for (const pair of pairs) {
+        if (indentIsLiteral(pair)) continue;
         const source = indentOf(pair.saved);
         if (ambiguous.has(source)) continue;
         const rendered = indentOf(pair.serial);
@@ -701,6 +753,12 @@ function mergeIndents(pairs: readonly BaselineLinePair[]): Map<string, string> {
         // A pair whose two sides disagree about being a marker line is not one
         // line in two spellings of the same thing; it teaches nothing safely.
         if (LIST_MARKER_RE.test(pair.saved) !== LIST_MARKER_RE.test(pair.serial)) continue;
+        // Nor does one whose indentation is the user's own bytes (MAR-325).
+        // Families keep markers and continuations apart, so the fence lines
+        // that poisoned `baselineIndents` land in the `c` family here rather
+        // than on top of a marker fact — but two verbatim spans sharing a width
+        // with a real continuation collide inside that family just the same.
+        if (indentIsLiteral(pair)) continue;
         const canonical = indentFamily(pair.serial);
         const prev = spelling.get(canonical);
         if (prev === AMBIGUOUS) continue;
@@ -1804,6 +1862,7 @@ export const markdownProfile: FormatProfile = {
         blankOrphansItemContent(prev, next),
     reconcileReplacement,
     baselineFacts: baselineFactsOf,
+    indentIsContent,
     mergeFacts: mergeIndents,
     reconcileInsertion,
 };
