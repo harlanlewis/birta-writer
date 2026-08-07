@@ -52,6 +52,7 @@ import {
     fingerprintDoc,
     formatFingerprintDiff,
 } from "../plugins/contentGuard";
+import { isBlankParagraph } from "../plugins/fingerprints";
 import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 import {
@@ -754,6 +755,12 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         // Target: the item-internal slot just ahead of "A closing top-level
         // block.", addressed directly (an item-internal drop slot, not a
         // node boundary `findContaining` can name — M3's same reasoning).
+        // A raw offset cannot assert its own identity the way `src` does
+        // above, so pin the document size instead: any edit to this fixture
+        // shifts the offset onto a different gesture, which most likely
+        // round-trips clean and goes green having tested nothing. This fires
+        // first, and names the cause.
+        expect(v.state.doc.content.size, "outline-tables.md changed; M6's target offset is stale").toBe(390);
         const target = 356;
 
         expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
@@ -780,7 +787,9 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         expect(srcPos).toBeGreaterThan(-1);
         const src = v.state.doc.nodeAt(srcPos)!;
         // Target: the end-of-document drop slot, addressed directly — it
-        // carries no node of its own (same reasoning as M6's target above).
+        // carries no node of its own (same reasoning as M6's target above,
+        // including the size tripwire and why a raw offset needs one).
+        expect(v.state.doc.content.size, "logseq/page.md changed; M7's target offset is stale").toBe(1048);
         const target = 1046;
 
         expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
@@ -797,13 +806,28 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
     // M8 is the FOURTH pair from the same MAR-323 sweep, and the one that
     // commit 0134015 reported rather than fixed: its damage is upstream of
     // the merge (the raw serialize->reparse is already broken), so it belongs
-    // to the refuse lane, not to applyMinimalChanges. MAR-324 widened the
-    // bare-marker hazard gate to arm on an artifact-lead item holding more
-    // than one real block, and that is what now catches this pair — a result
-    // NEITHER ticket could see alone: MAR-323 handed the pair off, MAR-324
-    // never knew it closed one. Pinned so the handoff cannot silently rot: if
-    // the gate narrows again, this goes red instead of the pair quietly
-    // corrupting a document.
+    // to the refuse lane, not to applyMinimalChanges. MAR-324's widened gate
+    // is what catches it — a result NEITHER ticket could see alone: MAR-323
+    // handed the pair off, MAR-324 never knew it closed one.
+    //
+    // READ THIS BEFORE EDITING logseq/page.md OR QUOTING M8 AS COVERAGE.
+    // How the gate arms here is NOT what you would guess, and an earlier
+    // version of this comment said the wrong thing. The moved item does not
+    // arm it: [blank artifact, blockquote] becomes [blank artifact,
+    // paragraph], childCount 2 both before and after, so `leadBlank &&
+    // childCount > 2` is false for the gesture's own product. What arms the
+    // gate is `- # Project Atlas` near the top of the fixture — an unrelated
+    // heading-lead item at childCount 3, ~800 positions away. That is by
+    // design, not by accident: hazardMachineryPresent is deliberately COARSE
+    // and doc-global (see its header), so ANY hazard machinery anywhere buys
+    // the round trip, and the oracle then judges the real damage.
+    //
+    // The consequence to protect against: if some OTHER machinery is ever
+    // added to this fixture (a container directive, a Notion aside, an
+    // all-blank item), the gate would arm without MAR-324's clause and M8
+    // would pass against the pre-MAR-324 implementation too — still green,
+    // pinning nothing. The armer assertion below exists to make that failure
+    // loud. Do not delete it because it looks unrelated to the move.
     it("merge hazard M8 (MAR-323 pair 4, refused via MAR-324): extracting the blockquote's paragraph is refused, not silently corrupted", async () => {
         const fixture = fixtures.find((f) => f.name === "logseq/page.md")!;
         const editor = await makeEditor(fixture.content);
@@ -816,10 +840,44 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         expect(src.type.name).toBe("paragraph");
         expect(src.textContent).toBe("A blockquote nested inside a bullet.");
 
-        // The gesture must be REFUSED — moveBlocks returns false and the doc
-        // is untouched. Before MAR-324 it returned true with no notice and
-        // the list was destroyed on reopen.
-        expect(moveBlocks(v, { from: 922, to: 960 }, 921)).toBe(false);
+        // The armer, asserted because the whole pin depends on it: exactly
+        // one artifact-lead item at childCount > 2, and it is NOT the item
+        // being moved. If a future fixture edit removes it, or adds hazard
+        // machinery of a different family, this fires and tells you M8 has
+        // stopped testing MAR-324 — rather than passing for a new reason.
+        const armers: number[] = [];
+        preDoc.descendants((node, pos) => {
+            if (
+                node.type.name === "list_item" &&
+                node.childCount > 2 &&
+                isBlankParagraph(node.child(0), node)
+            ) {
+                armers.push(pos);
+            }
+            return true;
+        });
+        expect(armers, "M8 arms via exactly one artifact-lead item").toHaveLength(1);
+        expect(armers[0]).toBeLessThan(922); // the Project Atlas item, not the move
+        // Same tripwire as M6/M7, plus the target's own identity: 921 is the
+        // blockquote the paragraph is being lifted out of.
+        expect(preDoc.content.size, "logseq/page.md changed; M8's offsets are stale").toBe(1048);
+        expect(preDoc.nodeAt(921)!.type.name).toBe("blockquote");
+
+        // The gesture must be REFUSED, and refused for the RIGHT reason.
+        // moveBlocks returns false from six distinct paths (no-op put-back,
+        // three resolveMove refusals, the insert backstop, the content-guard
+        // veto), so the boolean alone would not tell MAR-324's refusal apart
+        // from any of them. The warn line names the path.
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            expect(moveBlocks(v, { from: 922, to: 960 }, 921)).toBe(false);
+            expect(
+                warn.mock.calls.map((c) => c.join(" ")).join("\n"),
+                "must be the save-survival refusal, not one of the other five",
+            ).toMatch(/move refused: document would not survive save\+reopen/);
+        } finally {
+            warn.mockRestore();
+        }
         expect(v.state.doc.eq(preDoc)).toBe(true);
     });
 
