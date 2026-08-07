@@ -16,7 +16,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 ## Landing
 
-- One PR per session with the tickets and the verification done; wait for CI, squash, delete branch, pull `main`. A red on an ADVISORY gate is a measurement — reproduce it idle before accepting or ignoring it.
+- One PR per session with the tickets and the verification done; wait for CI, squash, delete branch, pull `main`.
 - Merging deploys: no.
 
 ## Lanes
@@ -39,6 +39,6 @@ Read before touching code: `AGENTS.md`, `docs/DESIGN_PRINCIPLES.md`.
 
 - Every CHANGELOG sentence is one you checked; it describes the product to someone who can't read the diff.
 - On a perf ticket: four phase-1 tickets named a mechanism nobody profiled, and all four were wrong. Take a CDP sampling profile and fold native self-time into the nearest JS caller — unfolded, the top frames name no code you own.
-- Vitest: read the `Errors:` line of a passing run, not just `Tests:` — unhandled errors exit non-zero with every test green. Contention explains *varying* failures across *different* suites, not the same error from the same file every time.
-- Commit: convention prefix, why in the body, `Closes MAR-NN`.
-- Run AGENTS.md's end-of-work handoff whenever `src/`, `webview/`, `shared/`, or `package.json` changed; end by telling the user to reload.
+- Vitest: read the `Errors:` line of a passing run, not just `Tests:` — unhandled errors exit non-zero with every test green.
+- A contended machine FABRICATES failures. The tell is shape: one red each across unrelated suites, moving between runs, in files your diff cannot reach. `[vitest-worker]: Timeout calling ...` is a runner RPC timeout, not a result — treat that run as void. Check `uptime` before believing a red; the suite ran 74 s idle and 558 s at load 50.
+- `cd` persists between Bash calls, so inspecting a lane's worktree silently moves later commands, `git commit` included.
