@@ -128,6 +128,64 @@ describe("convertListTreeAt", () => {
         expect(markdown(editor)).toBe("- step one\n- step two\n  - note a\n  - note b\n");
     });
 
+    it("a nested list of a DIFFERENT kind should be left alone", async () => {
+        // The sublist was deliberately made ordered — by the block menu or by
+        // typing its marker — and converting its parent is not a request to
+        // undo that.
+        const editor = await makeEditor("- item\n  1. foo\n  2. bar\n- other\n");
+        const v = view(editor);
+
+        expect(convertListTreeAt(v, 0, "taskList")).toBe(true);
+
+        expect(listShapes(v)).toEqual(["bullet_list@0", "ordered_list@2"]);
+        expect(markdown(editor)).toBe("- [ ] item\n  1. foo\n  2. bar\n- [ ] other\n");
+    });
+
+    it("a same-kind list UNDER an exempt one should still convert", async () => {
+        // The exemption is a per-list predicate, not a prune: `bar` is the
+        // selected kind, so it converts even though it sits inside the ordered
+        // branch that did not.
+        const editor = await makeEditor("- item\n  1. foo\n     - bar\n");
+        const v = view(editor);
+
+        expect(convertListTreeAt(v, 0, "taskList")).toBe(true);
+
+        expect(markdown(editor)).toBe("- [ ] item\n  1. foo\n     - [ ] bar\n");
+    });
+
+    it("an alternating tree should convert only its selected-kind levels", async () => {
+        const editor = await makeEditor("- a\n  1. b\n     - c\n       1. d\n");
+        const v = view(editor);
+
+        expect(convertListTreeAt(v, 0, "orderedList")).toBe(true);
+
+        // Every bullet level becomes ordered; the already-ordered levels are
+        // exempt and unchanged, so the whole tree ends up ordered.
+        expect(listShapes(v)).toEqual([
+            "ordered_list@0", "ordered_list@2", "ordered_list@4", "ordered_list@6",
+        ]);
+    });
+
+    it("a plain bullet sublist under a TASK list should keep its bullets", async () => {
+        // Notes under a to-do: the sublist is a bullet list, not a task list,
+        // so converting the task list to numbered leaves the notes alone.
+        const editor = await makeEditor("- [ ] task\n  - note\n");
+        const v = view(editor);
+
+        expect(convertListTreeAt(v, 0, "orderedList")).toBe(true);
+
+        expect(markdown(editor)).toBe("1. task\n   - note\n");
+    });
+
+    it("a nested TASK list should survive its plain parent being converted", async () => {
+        const editor = await makeEditor("- plain\n  - [x] done\n");
+        const v = view(editor);
+
+        expect(convertListTreeAt(v, 0, "orderedList")).toBe(true);
+
+        expect(markdown(editor)).toBe("1. plain\n   - [x] done\n");
+    });
+
     it("bullet → task should mark every item at every level checkable", async () => {
         const editor = await makeEditor(NESTED_BULLET);
         const v = view(editor);
@@ -249,16 +307,32 @@ describe("toggleList (toolbar Lists menu / slash menu commands)", () => {
         ]);
     });
 
-    it("caret in a NESTED sublist of another flavor should still convert from the outermost list", async () => {
+    it("caret in a NESTED sublist of another flavor should convert THAT sublist", async () => {
         const editor = await makeEditor(MIXED);
         const v = view(editor);
         placeCaretAt(v, "note a"); // inside the nested BULLET sublist
 
         runEditorCommand("toggleOrderedList", getEditor);
 
-        // The nested list is bullet (≠ ordered), so this is a conversion —
-        // and it applies to the whole tree, making both levels ordered.
+        // The caret's own list is the one converted. Applying from the
+        // outermost instead would convert nothing here: that list is already
+        // ordered, and the caret's bullet sublist is a different kind, so the
+        // tree walk exempts it.
         expect(listShapes(v)).toEqual(["ordered_list@0", "ordered_list@2"]);
+    });
+
+    it("caret in a nested sublist of the SAME flavor should leave the parent alone", async () => {
+        const editor = await makeEditor(NESTED_BULLET);
+        const v = view(editor);
+        placeCaretAt(v, "nested one");
+
+        runEditorCommand("toggleOrderedList", getEditor);
+
+        // The caret's sublist and the same-kind list below it convert; the
+        // top-level list the caret is not in stays bulleted.
+        expect(listShapes(v)).toEqual([
+            "bullet_list@0", "ordered_list@2", "ordered_list@4",
+        ]);
     });
 
     it("caret in a list of the SAME flavor should lift (toggle off), not convert", async () => {

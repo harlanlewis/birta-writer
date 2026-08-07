@@ -133,21 +133,35 @@ const HIDDEN_IN_TABLE_CELL = [
 
 export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
     const hidden = new Set<string>();
+    // Only the INNERMOST list ancestor has a say. The list rows act on the list
+    // the caret is in (editorCommands' toggleList), so an outer list of another
+    // kind is not evidence about them — and letting it vote hid a row that was
+    // a real conversion: a caret in a bullet sublist of an ordered list saw
+    // BOTH Bullet List (correctly, it would lift) and Numbered List (wrongly,
+    // it converts that sublist), leaving the slash menu unable to do what the
+    // toolbar could. The walk still visits every ancestor, because blockquotes
+    // and table cells below genuinely do accumulate.
+    let listDecided = false;
     for (let depth = $from.depth; depth > 0; depth--) {
         const node = $from.node(depth);
         switch (node.type.name) {
             case "bullet_list":
+                if (listDecided) { break; }
+                listDecided = true;
                 // Hide only the flavor this list ALREADY is — that row would
                 // lift, and lifting out is the toolbar's job. The OTHER list
-                // rows stay: they CONVERT the whole tree in place
-                // (editing/listConvert), so inside a task list "Bullet List"
-                // is the make-these-plain conversion, not a lift. Flavor is
-                // read off the first item, like the capability classifier.
+                // rows stay: they CONVERT this list and its same-kind nested
+                // lists in place (editing/listConvert), so inside a task list
+                // "Bullet List" is the make-these-plain conversion, not a lift.
+                // Flavor is read off the first item, like the capability
+                // classifier.
                 hidden.add(
                     node.firstChild?.attrs["checked"] != null ? "taskList" : "bulletList",
                 );
                 break;
             case "ordered_list":
+                if (listDecided) { break; }
+                listDecided = true;
                 hidden.add("orderedList");
                 break;
             case "blockquote":
