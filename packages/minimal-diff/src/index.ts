@@ -138,6 +138,32 @@ export interface FormatProfile {
      */
     baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
     /**
+     * Which lines' LEADING WHITESPACE is literal user content rather than
+     * document structure — the one question the facts hooks above cannot ask,
+     * because they receive pairs and the answer needs the whole document.
+     *
+     * A verbatim span reproduces its own bytes by construction, so both sides
+     * of its pair carry identical leading whitespace and the pair "agrees"
+     * about an indent that means nothing structural. Fed to a learner that is
+     * distilling how the file spells its indentation, that agreement is not
+     * weak evidence, it is a CONFLICTING witness: a fenced diagram indented
+     * four spaces reports `"    " → "    "` beside an outline's genuine
+     * `"    " → "  "`, and a learner that drops what it sees two ways then
+     * drops a fact the file really has (MAR-325 — five nesting levels flatten
+     * on the next save that carries an edit).
+     *
+     * Distinguishing the two is exactly what a whole-document classification
+     * already does, and no rule reading a line in isolation can: four leading
+     * spaces are one outline level, an indented code block, and a diagram's own
+     * layout, and one file holds all three.
+     *
+     * Optional — a profile that does not answer leaves every pair marked
+     * structural, which is the pre-MAR-325 behaviour. Called at most once per
+     * document, and only when a facts hook is actually going to consume the
+     * result.
+     */
+    indentIsContent?(lines: readonly string[]): readonly boolean[];
+    /**
      * Classify each line's structural role for the merge's OUTPUT SELF-CHECK.
      * Opaque strings — the engine only compares them for equality — but
      * markdown's profile reports "verbatim" for a line whose bytes are an
@@ -310,6 +336,13 @@ export interface ReplacementKeys {
 export interface BaselineLinePair {
     saved: string;
     serial: string;
+    /** Whether each side's LEADING WHITESPACE is literal user content rather
+     *  than document structure — `indentIsContent`'s verdict for that line, or
+     *  false when the profile does not answer the question. Carried on the pair
+     *  because the hooks receive pairs, not documents, and the question is
+     *  contextual: no rule reading one line in isolation can answer it. */
+    savedIndentIsContent: boolean;
+    serialIndentIsContent: boolean;
 }
 
 // ─── Line endings ───────────────────────────────────────────────────────────
@@ -616,9 +649,11 @@ export function computeRoundTripProtection(
     // serializer side only as keys, so an LF baseline against a CRLF file
     // yields the same regions either way. `applyMinimalChanges` — including
     // the self-check below — remains the single place endings are reconciled.
-    const { edits, savedLines } = computeEditScript(saved, baselineSerialized, profile);
+    const { edits, savedLines, serialLines } = computeEditScript(saved, baselineSerialized, profile);
 
-    const baselineFacts = profile.baselineFacts?.(pairBaselineLines(edits, savedLines.length - 1));
+    const baselineFacts = profile.baselineFacts?.(
+        pairBaselineLines(edits, savedLines.length - 1, indentRoles(profile, savedLines, serialLines)),
+    );
     if (!edits.some((e) => e.op !== "keep")) {
         // A clean round trip needs no repair regions — but its keeps are the
         // richest baseline evidence a file ever offers, since EVERY line is a
@@ -694,14 +729,24 @@ export function computeRoundTripProtection(
  * content rather than an ending (see "Line endings" above); every other line is
  * handed over stripped, exactly as `reconcileLine` does.
  */
-function pairBaselineLines(edits: Edit[], lastSavedIdx: number): BaselineLinePair[] {
+function pairBaselineLines(
+    edits: Edit[],
+    lastSavedIdx: number,
+    indent: IndentRoles,
+): BaselineLinePair[] {
     const pairs: BaselineLinePair[] = [];
     const savedContent = (line: SigLine): string =>
         line.lineIdx === lastSavedIdx ? line.text : stripEol(line.text);
+    const pairOf = (saved: SigLine, serial: SigLine): BaselineLinePair => ({
+        saved: savedContent(saved),
+        serial: stripEol(serial.text),
+        savedIndentIsContent: indent.saved(saved.lineIdx),
+        serialIndentIsContent: indent.serial(serial.lineIdx),
+    });
     for (let i = 0; i < edits.length; i++) {
         const edit = edits[i];
         if (edit.op === "keep") {
-            pairs.push({ saved: savedContent(edit.saved), serial: stripEol(edit.serial.text) });
+            pairs.push(pairOf(edit.saved, edit.serial));
             continue;
         }
         // Walk the whole non-keep run, then take it only if it is a lone
@@ -711,17 +756,16 @@ function pairBaselineLines(edits: Edit[], lastSavedIdx: number): BaselineLinePai
         const run = edits.slice(start, i);
         i--; // the outer loop's own increment steps past the run's last edit
         if (run.length === 2 && run[0].op === "del" && run[1].op === "ins") {
-            pairs.push({
-                saved: savedContent((run[0] as Extract<Edit, { op: "del" }>).saved),
-                serial: stripEol((run[1] as Extract<Edit, { op: "ins" }>).serial.text),
-            });
+            pairs.push(
+                pairOf(
+                    (run[0] as Extract<Edit, { op: "del" }>).saved,
+                    (run[1] as Extract<Edit, { op: "ins" }>).serial,
+                ),
+            );
             continue;
         }
         for (const pair of positionalRunPairs(run, lastSavedIdx) ?? []) {
-            pairs.push({
-                saved: savedContent(pair.saved),
-                serial: stripEol(pair.serial.text),
-            });
+            pairs.push(pairOf(pair.saved, pair.serial));
         }
     }
     return pairs;
@@ -782,7 +826,11 @@ function positionalRunPairs(
  * del/ins couple and a run that corresponds line by line: see `mergeFacts` for
  * why only a `keep` is a witness strong enough to spell an inserted line from.
  */
-function pairKeptLines(edits: Edit[], lastSavedIdx: number): BaselineLinePair[] {
+function pairKeptLines(
+    edits: Edit[],
+    lastSavedIdx: number,
+    indent: IndentRoles,
+): BaselineLinePair[] {
     const pairs: BaselineLinePair[] = [];
     for (const edit of edits) {
         if (edit.op !== "keep") continue;
@@ -791,9 +839,34 @@ function pairKeptLines(edits: Edit[], lastSavedIdx: number): BaselineLinePair[] 
                 ? edit.saved.text
                 : stripEol(edit.saved.text),
             serial: stripEol(edit.serial.text),
+            savedIndentIsContent: indent.saved(edit.saved.lineIdx),
+            serialIndentIsContent: indent.serial(edit.serial.lineIdx),
         });
     }
     return pairs;
+}
+
+/** Per-line `indentIsContent` lookups for the two documents of one merge. */
+interface IndentRoles {
+    saved(lineIdx: number): boolean;
+    serial(lineIdx: number): boolean;
+}
+
+/**
+ * Ask the profile which lines' leading whitespace is content, once per
+ * document, lazily — a caller builds this only when it is about to distill
+ * facts, so a merge that learns nothing never pays for the classification and
+ * a profile without the hook never allocates.
+ */
+function indentRoles(
+    profile: FormatProfile,
+    savedLines: readonly string[],
+    serialLines: readonly string[],
+): IndentRoles {
+    if (!profile.indentIsContent) return { saved: () => false, serial: () => false };
+    const saved = profile.indentIsContent(savedLines);
+    const serial = profile.indentIsContent(serialLines);
+    return { saved: (i) => saved[i] === true, serial: (i) => serial[i] === true };
 }
 
 /** Build protected regions from a baseline edit script. */
@@ -1181,7 +1254,13 @@ export function applyMinimalChanges(
         profile.reconcileInsertion &&
         profile.mergeFacts &&
         edits.some((e) => e.op === "ins")
-            ? profile.mergeFacts(pairKeptLines(edits, savedLines.length - 1))
+            ? profile.mergeFacts(
+                  pairKeptLines(
+                      edits,
+                      savedLines.length - 1,
+                      indentRoles(profile, savedLines, serialLines),
+                  ),
+              )
             : null;
 
     // Rebuild the file. Walk the edit script emitting one significant line at
