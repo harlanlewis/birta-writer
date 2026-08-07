@@ -164,6 +164,35 @@ export interface FormatProfile {
      */
     indentIsContent?(lines: readonly string[]): readonly boolean[];
     /**
+     * Does rewriting `before` as `after` DEMOTE a construct whose contents are
+     * opaque — code that stops being code?
+     *
+     * Asked of the round-trip repair, not of the merge. The output self-check
+     * below compares the merged text against `effective` (the serializer's text
+     * with each protected region's saved bytes spliced back in), which catches
+     * anything the MERGE broke. It cannot catch anything `effective` itself got
+     * wrong, because both sides of that comparison then carry the identical
+     * defect — and the repair can get it wrong, because splicing saved bytes
+     * beside a NEW neighbour changes what those bytes mean. A fenced block the
+     * serializer emitted correctly was replaced by the saved indented-code
+     * bytes, which had just acquired a list item above them, so four spaces
+     * stopped being a code block and became a list-item continuation: the code
+     * was silently demoted to prose on disk (MAR-326).
+     *
+     * Deliberately NOT "did the repair change any line's role". That was
+     * measured over 285 corpus merges and would stand down on 34 of them — one
+     * in eight — discarding the protection repairs on all of them. Repairs
+     * change roles for a living; that is what they are for. Only a repair that
+     * demotes CODE is asking to be overruled, because no repair's purpose is to
+     * stop code being code, and the same measurement puts that at zero
+     * occurrences outside the defect itself.
+     *
+     * Optional. Line counts may differ — `after` can hold constructs the
+     * serializer dropped entirely, which is the ordinary reason a region is
+     * protected at all — so an implementation must not compare positionally.
+     */
+    losesOpaqueContent?(before: readonly string[], after: readonly string[]): boolean;
+    /**
      * Classify each line's structural role for the merge's OUTPUT SELF-CHECK.
      * Opaque strings — the engine only compares them for equality — but
      * markdown's profile reports "verbatim" for a line whose bytes are an
@@ -1579,6 +1608,19 @@ export function applyMinimalChanges(
     // Skipped when the result IS the saved bytes: writing them changes
     // nothing, so no new structure can have been introduced.
     if (profile.lineRoles && rolesDiverge(profile, result, effective, hadRelocatedContent)) {
+        return matched;
+    }
+    // The blind spot the check above has by construction (MAR-326): it compares
+    // two texts that both descend from `effective`, so a defect `effective`
+    // already carries is on both sides and the roles agree. Only the repair can
+    // introduce one, and only one KIND of repair damage is worth overruling a
+    // repair for — see `losesOpaqueContent`. Deliberately after the role check,
+    // and reached only when a repair actually ran: with no regions `effective`
+    // IS `matched` and the question is vacuous.
+    if (
+        effective !== matched &&
+        profile.losesOpaqueContent?.(matched.split("\n").map(stripEol), effective.split("\n").map(stripEol))
+    ) {
         return matched;
     }
     return result;

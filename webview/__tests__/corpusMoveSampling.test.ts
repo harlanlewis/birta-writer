@@ -903,6 +903,64 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         expect(v.state.doc.eq(preDoc)).toBe(true);
     });
 
+    // M10 is the one hazard in this list the merge's own role self-check could
+    // never have caught, however widely it were scoped. Every other pin here
+    // compares the merged text against `effective` and finds a difference; here
+    // `effective` — the serializer's text with the protected region's saved
+    // bytes spliced back in — is ALREADY wrong, so both sides of that
+    // comparison carry the identical defect and agree. The repair is what broke
+    // it: the saved indented-code bytes were correct where they came from and
+    // mean something else once `- list item` sits above them.
+    //
+    // The rule that catches it is deliberately narrow (`losesOpaqueContent`).
+    // The obvious wider rule — stand down whenever the repair changed any
+    // line's role — was measured across 285 corpus merges and would have stood
+    // down on 34 of them, discarding those files' protection repairs to fix
+    // one. Changing roles is what a repair DOES; demoting code is not.
+    it("merge hazard M10 (MAR-326, fixed): a moved block cannot leave a fenced code block reparsing as a paragraph", async () => {
+        const fixture = fixtures.find((f) => f.name === "fence-edges.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+
+        // Source: the `- list item` bullet, moved down past the fence below
+        // it. Both ends are raw offsets, which cannot assert their own
+        // identity, so the node they name is checked directly and the document
+        // size pins the target — any edit to this fixture shifts these onto a
+        // different gesture, which most likely round-trips clean and goes green
+        // having tested nothing. These fire first, and name the cause.
+        expect(
+            v.state.doc.content.size,
+            "fence-edges.md changed; M10's offsets are stale",
+        ).toBe(409);
+        const src = v.state.doc.nodeAt(218)!;
+        expect(src.textContent, "M10's source is no longer the `- list item` bullet").toContain(
+            "list item",
+        );
+        expect(moveBlocks(v, { from: 218, to: 233 }, 271)).toBe(true);
+
+        // The raw serializer is CLEAN here — it emits the code as a fence at
+        // column 0. Asserting that first is what makes the pin's subject the
+        // MERGE: if this ever goes red the bug has moved upstream and the
+        // assertion below would be blaming the wrong layer.
+        const serialized = editor.action(getMarkdown());
+        const rawReparse = editor.action((ctx) => ctx.get(parserCtx)(serialized)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(rawReparse)),
+            ),
+            "the serializer itself regressed; M10 is no longer a merge pin",
+        ).toBe("lost: (none); gained: (none)");
+
+        const merged = applyMinimalChanges(fixture.content, serialized, protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
     it("a move in a document that ALREADY fails round-trip is not refused (the gesture didn't cause it)", async () => {
         const editor = await makeEditor(
             "First.\n\n:::caution\nBody.\n:::\n\nLast.",

@@ -636,6 +636,39 @@ function indentIsContent(lines: readonly string[]): boolean[] {
     return classes.map((c) => c === "fence-raw" || c === "code");
 }
 
+/** Lines whose CONTENTS are opaque — code, however the file spells it. Both
+ *  fence classes and the indented form count, because the question is whether
+ *  the text is still code, not which of the two syntaxes carries it: a repair
+ *  restoring a file's indented code over a fence the serializer chose is doing
+ *  its job, and must not read as a loss. */
+function opaqueLineCount(lines: readonly string[]): number {
+    let n = 0;
+    for (const c of classifyLines(lines as string[])) {
+        if (c === "fence-raw" || c === "fence-nested" || c === "code") n++;
+    }
+    return n;
+}
+
+/**
+ * Markdown's `FormatProfile.losesOpaqueContent`: did this rewrite leave the
+ * document holding less code than it started with?
+ *
+ * A COUNT, not a positional comparison, because the two texts legitimately
+ * differ in length — a protected region exists precisely because the serializer
+ * could not reproduce something, so `after` routinely holds lines `before` does
+ * not. Counting also makes the test one-directional, which is the point: gaining
+ * opaque lines is a repair restoring a construct, and only losing them says code
+ * stopped being code.
+ *
+ * Measured over 285 corpus merges when it shipped: zero firings, against seven
+ * for the merge's own role check and thirty-four for the "any role changed"
+ * rule this replaced. It is meant to be a rare, specific veto, so a version of
+ * it that starts firing broadly is wrong rather than thorough.
+ */
+function losesOpaqueContent(before: readonly string[], after: readonly string[]): boolean {
+    return opaqueLineCount(after) < opaqueLineCount(before);
+}
+
 /**
  * The forward half of markdown's `FormatProfile.baselineFacts` (MAR-222):
  * which SOURCE indent this file's serializer renders as which CANONICAL
@@ -1863,6 +1896,7 @@ export const markdownProfile: FormatProfile = {
     reconcileReplacement,
     baselineFacts: baselineFactsOf,
     indentIsContent,
+    losesOpaqueContent,
     mergeFacts: mergeIndents,
     reconcileInsertion,
 };
