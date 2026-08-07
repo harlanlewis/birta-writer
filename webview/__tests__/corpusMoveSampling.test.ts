@@ -794,6 +794,35 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         ).toBe("lost: (none); gained: (none)");
     });
 
+    // M8 is the FOURTH pair from the same MAR-323 sweep, and the one that
+    // commit 0134015 reported rather than fixed: its damage is upstream of
+    // the merge (the raw serialize->reparse is already broken), so it belongs
+    // to the refuse lane, not to applyMinimalChanges. MAR-324 widened the
+    // bare-marker hazard gate to arm on an artifact-lead item holding more
+    // than one real block, and that is what now catches this pair — a result
+    // NEITHER ticket could see alone: MAR-323 handed the pair off, MAR-324
+    // never knew it closed one. Pinned so the handoff cannot silently rot: if
+    // the gate narrows again, this goes red instead of the pair quietly
+    // corrupting a document.
+    it("merge hazard M8 (MAR-323 pair 4, refused via MAR-324): extracting the blockquote's paragraph is refused, not silently corrupted", async () => {
+        const fixture = fixtures.find((f) => f.name === "logseq/page.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const preDoc = v.state.doc;
+        const src = v.state.doc.nodeAt(922)!;
+        // The sweep addresses this pair positionally; assert the position
+        // still names the node the pair was found on, so a fixture edit
+        // retargets loudly rather than pinning some unrelated gesture.
+        expect(src.type.name).toBe("paragraph");
+        expect(src.textContent).toBe("A blockquote nested inside a bullet.");
+
+        // The gesture must be REFUSED — moveBlocks returns false and the doc
+        // is untouched. Before MAR-324 it returned true with no notice and
+        // the list was destroyed on reopen.
+        expect(moveBlocks(v, { from: 922, to: 960 }, 921)).toBe(false);
+        expect(v.state.doc.eq(preDoc)).toBe(true);
+    });
+
     it("a move in a document that ALREADY fails round-trip is not refused (the gesture didn't cause it)", async () => {
         const editor = await makeEditor(
             "First.\n\n:::caution\nBody.\n:::\n\nLast.",
