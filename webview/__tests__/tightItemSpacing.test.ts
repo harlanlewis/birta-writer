@@ -74,6 +74,14 @@ const BLOCKS: Array<[name: string, source: string]> = [
     ["a table", "  | x | y |\n  | - | - |\n  | 9 | 8 |"],
     ["a bullet list", "  - sub one\n  - sub two"],
     ["an ordered list", "  1. sub one\n  2. sub two"],
+    // Starting at anything but 1 is a DIFFERENT construct to the parser, not a
+    // spelling of the row above: CommonMark lets an ordered list interrupt a
+    // paragraph only when it starts at 1, so this one cannot begin a block from
+    // an absorbed position while `1.` can (MAR-327). Adding this one row turned
+    // up SIXTEEN broken cells while the file reported "every ordered pair" —
+    // the third time (after the Notion aside and the footnote definition named
+    // above) that a matrix claiming its own completeness had to earn it again.
+    ["an ordered list not starting at 1", "  5. five\n  6. six"],
     ["a task list", "  - [ ] todo\n  - [x] done"],
     ["a blockquote", "  > quoted"],
     ["a callout", "  > [!NOTE]\n  > careful"],

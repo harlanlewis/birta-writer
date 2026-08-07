@@ -336,30 +336,72 @@ describe("baselineFacts — what the zero-edit round trip teaches about a file (
                 return null;
             },
         };
-        return { profile, pairs: () => seen[0] ?? [] };
+        return {
+            profile,
+            pairs: () => seen[0] ?? [],
+            /** Just the two lines of each pair — the subject of every test that
+             *  is about WHICH lines got paired rather than what the profile was
+             *  told about them. */
+            pairing: () => (seen[0] ?? []).map(({ saved, serial }) => ({ saved, serial })),
+        };
     }
 
     it("a keep should pair the saved line with the bytes the serializer emitted for it", () => {
         // The whole point: `alpha` and `  alpha  ` key EQUAL under this
         // profile, so the pair records a difference the diff itself hides.
-        const { profile, pairs } = recorder();
+        const { profile, pairs, pairing } = recorder();
         computeRoundTripProtection("  alpha  \nBETA\n", "alpha\nbeta rewritten\n", profile);
 
-        expect(pairs()).toContainEqual({ saved: "  alpha  ", serial: "alpha" });
+        expect(pairing()).toContainEqual({ saved: "  alpha  ", serial: "alpha" });
     });
 
     it("an isolated del/ins couple should pair the two lines", () => {
-        const { profile, pairs } = recorder();
+        const { profile, pairs, pairing } = recorder();
         computeRoundTripProtection("alpha\nBETA\ngamma\n", "alpha\nbeta rewritten\ngamma\n", profile);
 
-        expect(pairs()).toContainEqual({ saved: "BETA", serial: "beta rewritten" });
+        expect(pairing()).toContainEqual({ saved: "BETA", serial: "beta rewritten" });
+    });
+
+    it("a pair should carry the profile's indentIsContent verdict for each of its two lines", () => {
+        // The engine's whole share of MAR-325: the facts hooks receive pairs,
+        // and whether a line's leading whitespace is structure or user bytes is
+        // a question only the whole document can answer. Marking the SECOND
+        // line of each document pins that the two sides are looked up
+        // independently, against their own document — a single mask applied to
+        // both would still satisfy an all-lines-marked fixture.
+        const { profile, pairs } = recorder();
+        const marked: FormatProfile = {
+            ...indentSignificant(profile),
+            indentIsContent: (lines) => lines.map((_l, i) => i === 1),
+        };
+        computeRoundTripProtection("alpha\n\tONE\n\tTWO\nomega\n", "alpha\n  ONE\n  TWO\nomega\n", marked);
+
+        expect(pairs()).toContainEqual({
+            saved: "\tONE",
+            serial: "  ONE",
+            savedIndentIsContent: true,
+            serialIndentIsContent: true,
+        });
+        expect(pairs()).toContainEqual({
+            saved: "\tTWO",
+            serial: "  TWO",
+            savedIndentIsContent: false,
+            serialIndentIsContent: false,
+        });
+    });
+
+    it("a profile without indentIsContent should see every pair marked structural", () => {
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection("  alpha  \nBETA\n", "alpha\nbeta rewritten\n", profile);
+
+        expect(pairs().every((p) => !p.savedIndentIsContent && !p.serialIndentIsContent)).toBe(true);
     });
 
     it("a multi-line del/ins run should contribute no pairs at all", () => {
         // The LCS emits a run's dels first and its inses after, so "a del
         // followed by an ins" pairs the LAST saved line with the FIRST
         // serialized one. Here that would claim `TWO` became `one rewritten`.
-        const { profile, pairs } = recorder();
+        const { profile, pairs, pairing } = recorder();
         computeRoundTripProtection(
             "alpha\nONE\nTWO\ngamma\n",
             "alpha\none rewritten\ntwo rewritten\ngamma\n",
@@ -373,15 +415,15 @@ describe("baselineFacts — what the zero-edit round trip teaches about a file (
         // MAR-231. Two neighbouring lines the round trip merely re-indented
         // form ONE 2-del/2-ins run, which used to teach nothing at all — and
         // an indent fact is exactly what such a run is evidence of.
-        const { profile, pairs } = recorder();
+        const { profile, pairs, pairing } = recorder();
         computeRoundTripProtection(
             "alpha\n\tONE\n\tTWO\nomega\n",
             "alpha\n  ONE\n  TWO\nomega\n",
             indentSignificant(profile),
         );
 
-        expect(pairs()).toContainEqual({ saved: "\tONE", serial: "  ONE" });
-        expect(pairs()).toContainEqual({ saved: "\tTWO", serial: "  TWO" });
+        expect(pairing()).toContainEqual({ saved: "\tONE", serial: "  ONE" });
+        expect(pairing()).toContainEqual({ saved: "\tTWO", serial: "  TWO" });
     });
 
     it("a run with equal line counts but a differing body should contribute no pairs", () => {
@@ -390,7 +432,7 @@ describe("baselineFacts — what the zero-edit round trip teaches about a file (
         // correspondence at all. The bytes have to show one, and here the
         // second line's body was rewritten, so the whole run is refused
         // rather than partly believed.
-        const { profile, pairs } = recorder();
+        const { profile, pairs, pairing } = recorder();
         computeRoundTripProtection(
             "alpha\n\tONE\n\tTWO\nomega\n",
             "alpha\n  ONE\n  two rewritten\nomega\n",
@@ -401,7 +443,7 @@ describe("baselineFacts — what the zero-edit round trip teaches about a file (
     });
 
     it("a run whose two sides have different line counts should contribute no pairs", () => {
-        const { profile, pairs } = recorder();
+        const { profile, pairs, pairing } = recorder();
         computeRoundTripProtection(
             "alpha\n\tONE\n\tTWO\nomega\n",
             "alpha\n  ONE\nomega\n",
@@ -412,7 +454,7 @@ describe("baselineFacts — what the zero-edit round trip teaches about a file (
     });
 
     it("a construct the serializer drops should contribute no pair", () => {
-        const { profile, pairs } = recorder();
+        const { profile, pairs, pairing } = recorder();
         computeRoundTripProtection("alpha\nDROPPED\ngamma\n", "alpha\ngamma\n", profile);
 
         expect(pairs().map((p) => p.saved)).toEqual(["alpha", "gamma"]);
