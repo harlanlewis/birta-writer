@@ -10,6 +10,7 @@ import type { ContentWidthMode } from "./contentWidth";
 import type { BlockHandlesMode } from "./blockHandles";
 import type { FoldingControlsMode } from "./foldingControls";
 import type { MermaidThemeMode } from "./mermaid";
+import type { PlantUmlThemeMode } from "./plantuml";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -462,6 +463,8 @@ export type ToWebviewMessage =
     | { type: "setLineNumbers"; enabled: boolean }
     // Live Mermaid theme-mode update, after `birta.mermaid.theme` changes.
     | { type: "setMermaidTheme"; mode: MermaidThemeMode }
+    // Live PlantUML theme-mode update, after `birta.plantuml.theme` changes.
+    | { type: "setPlantUmlTheme"; mode: PlantUmlThemeMode }
     // Live fold-affordance update after `editor.showFoldingControls` /
     // `editor.folding` changes. Resource-scoped: the extension re-resolves
     // per open document and posts per-webview (never one global broadcast).

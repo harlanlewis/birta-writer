@@ -3,6 +3,7 @@ import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import { resolveFontFamily, clampFontSizePercent } from "../shared/fontPresets";
 import { normalizeBlockHandlesMode, BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../shared/blockHandles";
 import { normalizeMermaidThemeMode } from "../shared/mermaid";
+import { normalizePlantUmlThemeMode } from "../shared/plantuml";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
@@ -601,6 +602,10 @@ export function activate(context: vscode.ExtensionContext) {
             if (e.affectsConfiguration("birta.mermaid.theme")) {
                 const mode = normalizeMermaidThemeMode(readBirtaSetting("mermaidTheme"));
                 MarkdownEditorProvider.current?.postToAll({ type: "setMermaidTheme", mode });
+            }
+            if (e.affectsConfiguration("birta.plantuml.theme")) {
+                const mode = normalizePlantUmlThemeMode(readBirtaSetting("plantumlTheme"));
+                MarkdownEditorProvider.current?.postToAll({ type: "setPlantUmlTheme", mode });
             }
             if (e.affectsConfiguration("editor.showFoldingControls")
                 || e.affectsConfiguration("editor.folding")) {

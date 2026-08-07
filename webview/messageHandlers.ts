@@ -20,7 +20,7 @@ import { clampFontSizePercent } from "../shared/fontPresets";
 // normal case, so this costs the mount path nothing.
 import { computeLineMap } from "../shared/lineMap";
 import { applyBlockHandles } from "./utils/blockHandles";
-import { setMermaidThemeMode } from "./components/codeBlock";
+import { setMermaidThemeMode, setPlantUmlThemeMode } from "./components/codeBlock";
 import { applyFoldingControls } from "./utils/foldingControls";
 import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
 import { setImageUriMap } from "./components/imageView";
@@ -403,6 +403,9 @@ export function createMessageHandlers(
         },
         setMermaidTheme(msg) {
             setMermaidThemeMode(msg.mode);
+        },
+        setPlantUmlTheme(msg) {
+            setPlantUmlThemeMode(msg.mode);
         },
         setFoldingControls(msg) {
             // Chevron residency is pure CSS (body classes); the enabled flag

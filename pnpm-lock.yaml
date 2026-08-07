@@ -11,6 +11,12 @@ importers:
       '@birta/minimal-diff':
         specifier: workspace:*
         version: link:packages/minimal-diff
+      '@hpcc-js/wasm-graphviz':
+        specifier: ^1.28.0
+        version: 1.28.0
+      '@kookyleo/plantuml-little-web':
+        specifier: 1.2026.2-3
+        version: 1.2026.2-3
       '@milkdown/core':
         specifier: 7.22.0
         version: 7.22.0
@@ -386,6 +392,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@hpcc-js/wasm-graphviz@1.28.0':
+    resolution: {integrity: sha512-KqvPy7ckxPc1xv8Kt7H3bo9cj8U4gfOXxQ8grLZvDZxyQQjnXsKxrweJLLJtEoWWtQqAk4biUB0g2qsjkTiMVA==}
+
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
 
@@ -412,6 +421,14 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@kookyleo/plantuml-little-web@1.2026.2-3':
+    resolution: {integrity: sha512-BKwhOhQD+ZtBOnzWlAcMrd0Y1itSeAyCCqXoSR9qQhS1BwbJel47N06NGkBMJzITqDviSRdrqFE4g6BCCjLHOA==}
+    peerDependencies:
+      '@kookyleo/graphviz-anywhere-web': '>=0.1.7'
+    peerDependenciesMeta:
+      '@kookyleo/graphviz-anywhere-web':
+        optional: true
 
   '@mermaid-js/parser@1.2.0':
     resolution: {integrity: sha512-oYPyv8A4As1yH5Bx+04iQEQxXuIQDe0GKCNSRgao6z8AM9jixXIfP0vsppRLvGf+nKIOb9/LdpWA4YuJiVvESA==}
@@ -3262,6 +3279,8 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
+  '@hpcc-js/wasm-graphviz@1.28.0': {}
+
   '@iconify/types@2.0.0': {}
 
   '@iconify/utils@3.1.4':
@@ -3294,6 +3313,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@kookyleo/plantuml-little-web@1.2026.2-3': {}
 
   '@mermaid-js/parser@1.2.0':
     dependencies:

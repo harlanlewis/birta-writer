@@ -77,6 +77,48 @@ const refractorSingletonPlugin = {
     },
 };
 
+/**
+ * Resolve the two `plantuml-little` internals the PlantUML loader imports.
+ *
+ * The package's `exports` map publishes only `.` and `./wasm`, and both lead to
+ * the wasm-pack `bundler`-target entry whose `import * as wasm from
+ * "./plantuml_little_web_bg.wasm"` esbuild cannot resolve (it does not
+ * implement the WebAssembly ESM integration proposal). `plantUmlLoader.ts`
+ * therefore instantiates the module itself and needs the glue and the binary
+ * as two separate imports, which the exports map does not expose.
+ *
+ * Mapping them here — rather than reaching into `node_modules` from the
+ * loader's import specifiers — keeps the coupling to upstream's internal
+ * layout in ONE place, next to the other build-time package surgery, where a
+ * version bump that moves these files fails the build loudly instead of
+ * silently resolving to something else. The paths are asserted at build time
+ * for exactly that reason.
+ */
+const plantUmlWasmPlugin = {
+    name: 'plantuml-wasm',
+    setup(build) {
+        const base = './node_modules/@kookyleo/plantuml-little-web/dist/wasm';
+        const files = {
+            '@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.js':
+                path.resolve(`${base}/plantuml_little_web_bg.js`),
+            '@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.wasm':
+                path.resolve(`${base}/plantuml_little_web_bg.wasm`),
+        };
+        for (const [specifier, file] of Object.entries(files)) {
+            if (!fs.existsSync(file)) {
+                throw new Error(
+                    `plantuml-wasm: ${file} is missing, so "${specifier}" cannot be resolved. ` +
+                    `@kookyleo/plantuml-little-web has probably changed its dist layout.`,
+                );
+            }
+        }
+        build.onResolve({ filter: /^@kookyleo\/plantuml-little-web\/dist\/wasm\// }, (args) => {
+            const file = files[args.path];
+            return file ? { path: file } : null;
+        });
+    },
+};
+
 // WebView frontend (Browser) - ESM + code splitting, lazy-loads Mermaid etc.
 const webviewBuild = {
     ...commonOptions,
@@ -96,11 +138,18 @@ const webviewBuild = {
         // URIs so no extra webview resource fetch (or CSP host) is needed.
         '.woff2': 'dataurl',
         '.woff': 'dataurl',
+        // PlantUML's engine ships as a wasm-bindgen "bundler"-target binary.
+        // `binary` inlines it as a Uint8Array inside the lazy chunk that
+        // imports it, which keeps the CSP at one added directive: the webview
+        // never fetches the module, so `connect-src` stays absent and
+        // `default-src 'none'` keeps blocking every request the webview could
+        // make. See webview/utils/plantUmlLoader.ts for the instantiation.
+        '.wasm': 'binary',
     },
     alias: {
         '@': path.resolve('./webview'),
     },
-    plugins: [refractorSingletonPlugin],
+    plugins: [refractorSingletonPlugin, plantUmlWasmPlugin],
     metafile: withMetafile,
 };
 

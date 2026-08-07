@@ -1549,6 +1549,22 @@
                     "default": "light",
                     "description": "%config.mermaid.theme.description%"
                 },
+                "birta.plantuml.theme": {
+                    "order": 13,
+                    "type": "string",
+                    "enum": [
+                        "light",
+                        "dark",
+                        "auto"
+                    ],
+                    "enumDescriptions": [
+                        "%config.plantuml.theme.light%",
+                        "%config.plantuml.theme.dark%",
+                        "%config.plantuml.theme.auto%"
+                    ],
+                    "default": "light",
+                    "description": "%config.plantuml.theme.description%"
+                },
                 "birta.defaultMode": {
                     "order": 1,
                     "type": "string",
@@ -2197,6 +2213,8 @@
     },
     "dependencies": {
         "@birta/minimal-diff": "workspace:*",
+        "@hpcc-js/wasm-graphviz": "^1.28.0",
+        "@kookyleo/plantuml-little-web": "1.2026.2-3",
         "@milkdown/core": "7.22.0",
         "@milkdown/plugin-diff": "7.22.0",
         "@milkdown/plugin-prism": "7.22.0",

@@ -83,7 +83,7 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "mouse-modifier check (Ctrl/Cmd+click), not a keybinding",
         "webview/components/codeBlock/langPicker.ts":
             "plain-key bail in the language-search keydown scope check, not a chord",
-        "webview/components/codeBlock/mermaidPane.ts":
+        "webview/components/codeBlock/diagramPane.ts":
             "Ctrl+wheel pinch-zoom on the inline diagram (mouse modifier), not a keybinding",
         "webview/components/codeBlock/lightbox.ts":
             "Ctrl+wheel pinch-zoom on the fullscreen diagram (mouse modifier), not a keybinding",

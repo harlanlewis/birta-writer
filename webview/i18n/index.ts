@@ -79,6 +79,8 @@ declare global {
             maxContentWidth?: number;
             /** Mermaid diagram theme mode: light / dark / auto (birta.mermaid.theme). */
             mermaidTheme?: MermaidThemeMode;
+            /** PlantUML diagram theme mode: light / dark / auto (birta.plantuml.theme). */
+            plantumlTheme?: import("../../shared/plantuml").PlantUmlThemeMode;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
             /** The extension's display name (package.json), for UI that names the product. */

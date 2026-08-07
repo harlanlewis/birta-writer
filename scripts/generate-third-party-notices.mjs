@@ -102,6 +102,31 @@ export const LICENSE_ELECTIONS = {
             "Elected Apache-2.0. The MPL-2.0 alternative would attach a standing " +
             "source-availability duty (§3.2) to a dependency we bundle unmodified.",
     },
+
+    // plantuml-little (the PlantUML rendering engine) is offered under five
+    // licenses at the author's choice: GPL-3.0-or-later, LGPL-3.0-or-later,
+    // Apache-2.0, EPL-2.0, or MIT. We elect MIT.
+    //
+    // This election is load-bearing rather than cosmetic. We ship a bundle
+    // (`vsce package --no-dependencies`), so the engine is inlined into
+    // `dist/webview.js`'s chunks as part of a single distributed artifact.
+    // Under the GPL-3.0 arm that inlining would carry copyleft obligations to
+    // the whole of Birta Writer, which is licensed FSL-1.1-ALv2 and could not
+    // satisfy them. The LGPL arm would demand relinking freedom that a
+    // base64-inlined wasm module inside a minified chunk does not offer. MIT
+    // asks only for the notice reproduced below, which is what this appendix
+    // exists to do — and it is the least restrictive of the five, so nothing is
+    // given up by choosing it.
+    "@kookyleo/plantuml-little-web": {
+        elected: "MIT",
+        // Verbatim as upstream declares it — the guard test compares this
+        // string to the manifest so a relicence cannot slip past the election.
+        offered: "GPL-3.0-or-later OR LGPL-3.0-or-later OR Apache-2.0 OR EPL-2.0 OR MIT",
+        rationale:
+            "Elected MIT. We inline the engine into a shipped bundle, which the " +
+            "GPL-3.0 arm would extend copyleft over and the LGPL arm would " +
+            "require relinking freedom for; MIT asks only for this notice.",
+    },
 };
 
 /** Package directories that are ours, not third-party. */

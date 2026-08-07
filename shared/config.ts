@@ -24,6 +24,7 @@ import { DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, FONT_PRESET_STACKS } fr
 import { DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH } from "./contentWidth";
 import { DEFAULT_BLOCK_HANDLES_MODE } from "./blockHandles";
 import { DEFAULT_MERMAID_THEME_MODE } from "./mermaid";
+import { DEFAULT_PLANTUML_THEME_MODE } from "./plantuml";
 
 /**
  * Snapshot of every `birta.*` setting the extension reads. Fields whose values
@@ -58,6 +59,8 @@ export interface BirtaConfig extends ProofreadConfig {
     lineNumbers: boolean;
     /** Raw `mermaid.theme` value; normalize with normalizeMermaidThemeMode. */
     mermaidTheme: string;
+    /** Raw `plantuml.theme` value; normalize with normalizePlantUmlThemeMode. */
+    plantumlTheme: string;
     /** Raw `contentWidth` value; normalize with normalizeContentWidthMode. */
     contentWidth: string;
     maxContentWidth: number;
@@ -257,6 +260,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     blockHandles: "blockHandles",
     lineNumbers: "lineNumbers",
     mermaidTheme: "mermaid.theme",
+    plantumlTheme: "plantuml.theme",
     contentWidth: "contentWidth",
     maxContentWidth: "maxContentWidth",
     tocContentGap: "tocContentGap",
@@ -330,6 +334,7 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     blockHandles: DEFAULT_BLOCK_HANDLES_MODE,
     lineNumbers: false,
     mermaidTheme: DEFAULT_MERMAID_THEME_MODE,
+    plantumlTheme: DEFAULT_PLANTUML_THEME_MODE,
     contentWidth: DEFAULT_CONTENT_WIDTH_MODE,
     maxContentWidth: DEFAULT_MAX_WIDTH_CH,
     tocContentGap: 100,
