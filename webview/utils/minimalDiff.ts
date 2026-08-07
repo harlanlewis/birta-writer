@@ -1602,6 +1602,125 @@ const glueChangesConstruct = (prev: string, next: string): boolean => {
     return joinsAsLazyContinuation(prev, next);
 };
 
+// ─── Output self-check: real list-nesting depth (MAR-323) ──────────────────
+//
+// A `keep` line writes the SAVED bytes verbatim (by design — that is what a
+// minimal diff means), with no anchor-consistency check at all: the engine's
+// keep branch is a straight push, unlike `reconcileInsertion`'s inserted
+// lines. That is fine as long as a kept line's SURROUNDINGS have not
+// changed — but a MOVE can relocate a block whose internal lines still key
+// equal (same content, same `normalizeOutlineIndent`-canonical depth) to
+// where they sat in the saved file, while the file's literal tab bytes now
+// land at a REAL column (CommonMark tab stop 4) that collides with a
+// DIFFERENT container newly adjacent to them. `normalizeOutlineIndent`
+// treats one tab as exactly two canonical spaces — the approximation every
+// rule in this file already leans on — but the real parser expands a tab to
+// the next multiple of 4, and the two only coincide when nothing else in the
+// document happens to have a content column sitting in the gap. A moved
+// block's new neighbours are exactly where that stops being guaranteed.
+//
+// Getting the SPELLING right for every such case (extending the `reconcile*`
+// machinery to keeps) would mean re-deriving, per line, whether the file's
+// evidence for a depth is still safe in a brand new position — the general
+// version of what `reconcileInsertion`'s anchor argument already fights hard
+// to keep narrow. Cheaper and safer: compute what depth the merge ACTUALLY
+// produced and compare it to what the serializer says it should be, the same
+// output self-check `lineRoles` already runs for fence pairing (MAR-312/M4).
+// A divergence degrades that one save to the serializer's own canonical
+// bytes (cosmetic churn, borne once) rather than shipping a doc that
+// reparses with an extra list level or a degraded table — the failure this
+// exists to prevent is silent content loss, and a churned save is not that.
+//
+// `blankBefore` rides beside depth in the same role string because a bare
+// marker line's hazard is adjacency, not nesting: a vacated item's `-`
+// landing directly under a paragraph (no blank between) reads as a SETEXT
+// UNDERLINE on reparse, converting that paragraph into a heading — the
+// depth number alone is unchanged (the bogus heading is not a list
+// construct at all), so the divergence would otherwise slip through.
+
+/** A list marker's lead — bullet/ordinal plus its one required space/tab, or
+ * end of line for a bare marker — consumed off the FRONT of already
+ * whitespace-stripped text. `listDepths` walks a same-line marker CHAIN one
+ * of these at a time: a vacated item whose only content is a nested list
+ * collapses both onto one line (the serializer's own `- - foo` for "an item
+ * with no text of its own"), opening two nesting levels at once. */
+const MARKER_HEAD_RE = /^(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+
+interface ListFrame {
+    /** Real column (tab stop 4) of the marker that opened this level. */
+    markerCol: number;
+    /** Real column its content — and any sibling marker at this level —
+     * must reach. */
+    contentCol: number;
+}
+
+/**
+ * The list/outline nesting DEPTH of every line — how many list items
+ * contain it — resolved the way the real parser does: REAL columns
+ * (`leadingColumns`, tab stop 4) rather than this file's own canonical
+ * approximation, and DEPTH-FIRST (a marker indented deep enough to satisfy
+ * the INNERMOST open item nests inside it, even where a shallower list
+ * would also have accepted it — CommonMark does not prefer the shallow
+ * reading just because one exists).
+ *
+ * Fence interiors and indented code do not participate in marker chaining —
+ * their leading whitespace is user bytes, not structure — but they still
+ * pop the stack on a genuine outdent, so depth stays meaningful for
+ * whatever follows them.
+ */
+function listDepths(lines: readonly string[], classes: readonly LineClass[]): number[] {
+    const stack: ListFrame[] = [];
+    const depths: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim() === "") {
+            depths.push(stack.length);
+            continue;
+        }
+        const startCol = leadingColumns(line);
+        // A spaced thematic break (`- - -`) matches MARKER_HEAD_RE as a
+        // chain of bare markers — the chain that opens a level per marker is
+        // exactly right for a vacated item's `- - foo` collapse, and exactly
+        // wrong for a `-`-style hr, which is one line of styling, not three
+        // nested empty items. Verbatim spans skip the chain for the same
+        // reason: their leading whitespace is content, not structure.
+        if (
+            classes[i] === "fence-raw" ||
+            classes[i] === "fence-nested" ||
+            classes[i] === "code" ||
+            THEMATIC_BREAK_RE.test(line)
+        ) {
+            while (stack.length > 0 && startCol < stack[stack.length - 1].contentCol) stack.pop();
+            depths.push(stack.length);
+            continue;
+        }
+        let col = startCol;
+        let rest = line.slice(indentOf(line).length);
+        for (;;) {
+            const m = MARKER_HEAD_RE.exec(rest);
+            if (!m) break;
+            const width = m[0].length;
+            if (stack.length > 0 && col >= stack[stack.length - 1].contentCol) {
+                // Deep enough to nest inside whatever is currently open.
+                stack.push({ markerCol: col, contentCol: col + width });
+            } else {
+                while (stack.length > 0 && col < stack[stack.length - 1].markerCol) stack.pop();
+                if (stack.length > 0 && col < stack[stack.length - 1].contentCol) {
+                    // A sibling at the now-current level.
+                    stack[stack.length - 1] = { markerCol: col, contentCol: col + width };
+                } else {
+                    stack.push({ markerCol: col, contentCol: col + width });
+                }
+            }
+            col += width;
+            rest = rest.slice(width);
+        }
+        while (stack.length > 0 && col < stack[stack.length - 1].contentCol) stack.pop();
+        depths.push(stack.length);
+    }
+    return depths;
+}
+
 // ─── The markdown FormatProfile, and the profile-bound public API ───────────
 
 /** Markdown's `@birta/minimal-diff` profile. Exported for the FormatModule
@@ -1614,20 +1733,52 @@ export const markdownProfile: FormatProfile = {
             line.trim() === "" ? "" : normLineForCompare(line, classes[i]),
         );
     },
-    // The merge's output self-check (see the engine's `lineRoles` doc):
-    // fence interiors are the one role markdown reports, DELIBERATELY
-    // excluding indented code and setext — those classes read meaning out of
-    // blank runs and marker adjacency, and the merge legitimately emits saved
-    // spacing beside serializer lines, so a finer role would fire on merges
-    // that are fine. Fence classification hangs only on the marker lines'
-    // spelling and pairing (a ``` run cannot close a `~~~` fence, in the
-    // classifier exactly as in CommonMark), which is what makes a
-    // mismatched-pair splice visible as a role flip on the lines after it.
-    lineRoles(lines) {
-        const classes = classifyLines(lines as string[]);
-        return classes.map((c) =>
-            c === "fence-raw" || c === "fence-nested" ? "verbatim" : "content",
-        );
+    // The merge's output self-check. Two independent signals, both compared
+    // positionally against the serializer's own text (see the engine's
+    // `lineRoles` doc) and both cheap to get wrong in the SAFE direction —
+    // over-firing only costs a churned save, never a wrong one:
+    //   - fence pairing: a ``` run cannot close a `~~~` fence, in the
+    //     classifier exactly as in CommonMark, so a mismatched-pair splice
+    //     shows up as a verbatim/content flip on the lines after it
+    //     (MAR-312/M4). Unconditional — every merge pays this, as before.
+    //   - real list-nesting depth (MAR-323, `listDepths`), GATED on
+    //     `hadRelocatedContent`: a `keep` line's saved bytes can land at a REAL
+    //     column (tab stop 4) the file's own canonical-depth model never
+    //     priced in, once a move relocates it beside a different container.
+    //     Outside a relocated merge this file's normal indent-carrying rules
+    //     (`carrySavedIndent` and friends) can legitimately leave two
+    //     conventions beside each other on purpose — MAR-222's "an indent
+    //     the file renders two ways is dropped, not guessed" is exactly
+    //     that, no move involved — and this profile's real-tab-stop-4 model
+    //     disagreeing with its OWN two-canonical-spaces approximation there
+    //     is not a bug to report, just two ways of counting columns. Gating
+    //     is what keeps this role from re-litigating a settled trade-off.
+    //   - ONE exception to blank-insensitivity, scoped as narrowly as the
+    //     hazard it answers and gated the same way: a BARE list marker
+    //     (`BARE_LIST_MARKER_RE`) is a construct whose MEANING turns on the
+    //     blank immediately above it — glued to a paragraph, it is a setext
+    //     underline, converting that paragraph into a heading, with the
+    //     depth number unchanged (the bogus heading is not a list construct
+    //     at all, so depth alone would miss it). Every other line's blank
+    //     spacing is styling the merge legitimately preserves from the saved
+    //     file even when the serializer would have written it differently.
+    lineRoles(lines, hadRelocatedContent) {
+        const ls = lines as string[];
+        const classes = classifyLines(ls);
+        if (!hadRelocatedContent) {
+            return classes.map((c) =>
+                c === "fence-raw" || c === "fence-nested" ? "verbatim" : "content",
+            );
+        }
+        const depths = listDepths(ls, classes);
+        return classes.map((c, i) => {
+            if (c === "fence-raw" || c === "fence-nested") return "verbatim";
+            if (BARE_LIST_MARKER_RE.test(ls[i])) {
+                const blankBefore = i === 0 || ls[i - 1].trim() === "";
+                return `content:${depths[i]}:${blankBefore ? "b" : "-"}`;
+            }
+            return `content:${depths[i]}`;
+        });
     },
     glueChangesConstruct,
     // Two arms:

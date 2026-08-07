@@ -645,6 +645,155 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         ).toBe("lost: (none); gained: (none)");
     });
 
+    // ── MAR-323: the rotated-seed sweep's four survivors ────────────────────
+    //
+    // A boosted sweep standing in for the nightly (MDW_MOVE_SAMPLE=40 across
+    // seeds 7, 99, 31337, 20260806, 20260807) surfaced four (source, target)
+    // pairs the M1-M4 fixes did not close. Diagnosed on their own terms, per
+    // the ticket's own instruction not to assume one mechanism:
+    //
+    //   - M5/M6 (outline-tables.md): a `keep` table row's saved TAB bytes are
+    //     correct under this file's OWN "one tab = two canonical spaces"
+    //     depth model, but the REAL parser resolves nesting from tab stop 4,
+    //     and the two only coincide when nothing else in the document has a
+    //     content column sitting in the gap a tab jumps past. A move can
+    //     relocate the row beside a NEW container whose content column lands
+    //     exactly in that gap — M5 nests a sibling one level too deep (an
+    //     extra `bullet_list`); M6 pushes an unrelated row past the
+    //     indented-code threshold and the whole table degrades to
+    //     hardbreak-joined text, the worst of the four.
+    //   - M7 (logseq/page.md): extracting a paragraph out of a blockquote
+    //     dissolves the blockquote to a bare list marker. The merge's own
+    //     "keep" bookkeeping had no reason to reconcile that marker's saved
+    //     tab against its new neighbours, so it kept sitting exactly where
+    //     M5/M6's hazard lives.
+    //
+    // The fourth pair (logseq/page.md [922,960)->921) is NOT pinned here: it
+    // turned out to be a DIFFERENT bug, upstream of this lane's scope. Its
+    // raw serialize→reparse is ALREADY damaged before any merge runs — the
+    // ticket's premise that "the refuse lane correctly stays quiet" does not
+    // hold for this specific pair, because the vacated blockquote item's
+    // FIRST child is a blank paragraph while its SECOND is not, and
+    // `reparseHazard.ts`'s bare-marker detector (`hazardMachineryPresent`)
+    // requires the item's WHOLE content to be blank. That gap belongs to the
+    // refuse lane (MAR-324, owned by a different lane this session), not to
+    // `applyMinimalChanges` — reported, not fixed here.
+    //
+    // The general fix (`listDepths` + `hadRelocatedContent` in
+    // packages/minimal-diff/src/index.ts and the `lineRoles` role in
+    // webview/utils/minimalDiff.ts) reuses the merge's existing output
+    // self-check (MAR-312/M4's `lineRoles`/`rolesDiverge`): compute the real
+    // list-nesting depth of the merged output and of the serializer's own
+    // (repaired) text, and degrade to the serializer's bytes — canonicaliz-
+    // ation churn, never corruption — on any divergence. Gated on
+    // `hadRelocatedContent` (did a deletion's core content resurface as an
+    // insertion elsewhere) so it never re-litigates an ordinary in-place
+    // edit's OWN settled indent-carrying rules — MAR-222's "an indent the
+    // file renders two ways is dropped, not guessed" has no move in it at
+    // all, and would otherwise false-fire under the real-tab-stop-4 model.
+    it("merge hazard M5 (MAR-323, fixed): a moved sublist's table row cannot nest one level deeper than its neighbours", async () => {
+        const fixture = fixtures.find((f) => f.name === "outline-tables.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+
+        // Source: the sublist under "Traffic by source…" holding the table,
+        // "A sibling block after the table.", and "A grandchild…".
+        let srcPos = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (
+                node.type.name === "bullet_list" &&
+                node.textContent.includes("Source") &&
+                node.textContent.includes("A sibling block") &&
+                node.textContent.includes("A grandchild")
+            ) {
+                srcPos = pos; // deepest match wins: keep descending
+            }
+            return true;
+        });
+        expect(srcPos).toBeGreaterThan(-1);
+        const src = v.state.doc.nodeAt(srcPos)!;
+        // Target: inside the FIRST item ("# Weekly metrics"), ahead of its
+        // own heading — the vacated-marker collapse that puts the moved
+        // sublist's first line on the same source line as item 0's marker.
+        const target = findPos(v.state.doc, "heading", "Weekly metrics");
+        expect(target).toBeGreaterThan(-1);
+
+        expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
+
+        const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
+    it("merge hazard M6 (MAR-323, fixed): a moved table cannot degrade to hardbreak-joined text", async () => {
+        const fixture = fixtures.find((f) => f.name === "outline-tables.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+
+        // Source: the table itself. It sits at offset > 0 inside its list
+        // item (behind an empty leading paragraph the vacated-marker
+        // collapse writes), so it is independently grabbable
+        // (markerReachablePositions, helpers/moveFuzz.ts) rather than
+        // needing its enclosing list_item.
+        let srcPos = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (srcPos === -1 && node.type.name === "table") {
+                srcPos = pos;
+            }
+            return srcPos === -1;
+        });
+        expect(srcPos).toBeGreaterThan(-1);
+        const src = v.state.doc.nodeAt(srcPos)!;
+        expect(src.type.name).toBe("table");
+        // Target: the item-internal slot just ahead of "A closing top-level
+        // block.", addressed directly (an item-internal drop slot, not a
+        // node boundary `findContaining` can name — M3's same reasoning).
+        const target = 356;
+
+        expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
+
+        const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
+    it("merge hazard M7 (MAR-323, fixed): extracting a paragraph out of a blockquote cannot leave a bare marker beside stray tab bytes", async () => {
+        const fixture = fixtures.find((f) => f.name === "logseq/page.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+
+        // Source: the blockquote's own paragraph, "A blockquote nested
+        // inside a bullet." — extracting it (rather than moving the whole
+        // blockquote) is what dissolves the blockquote to a bare marker.
+        const srcPos = findPos(v.state.doc, "paragraph", "A blockquote nested inside a bullet.");
+        expect(srcPos).toBeGreaterThan(-1);
+        const src = v.state.doc.nodeAt(srcPos)!;
+        // Target: the end-of-document drop slot, addressed directly — it
+        // carries no node of its own (same reasoning as M6's target above).
+        const target = 1046;
+
+        expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
+
+        const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
     it("a move in a document that ALREADY fails round-trip is not refused (the gesture didn't cause it)", async () => {
         const editor = await makeEditor(
             "First.\n\n:::caution\nBody.\n:::\n\nLast.",
