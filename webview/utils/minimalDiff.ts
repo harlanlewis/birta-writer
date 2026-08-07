@@ -624,12 +624,25 @@ function indentIsLiteral(pair: BaselineLinePair): boolean {
  * leading whitespace past the four-space opener is likewise the user's own
  * layout, and whose opener is not an outline level either.
  *
- * `fence-nested` is deliberately absent. A fence nested in a list item carries
- * real outline structure in its leading whitespace — that is precisely why the
- * classifier depth-normalizes it (MAR-131) — so its round trip witnesses a
- * genuine spelling (`"\t\t" → "    "`) that the learners should keep. Excluding
- * it would withdraw a concession rather than grant one, which is the direction
- * this file's rules are not allowed to move in.
+ * `fence-nested` is absent, and UNLIKE the two above that choice is currently
+ * undefended: adding it changes no test in the fidelity suites (403 cases
+ * across the corpus, the move gate, and this file's own unit pins). Say so
+ * rather than dress it up — the reasoning is that a fence nested in a list item
+ * carries real outline structure in its leading whitespace, which is precisely
+ * why the classifier depth-normalizes it (MAR-131), so its round trip witnesses
+ * a genuine spelling (`"\t\t" → "    "`) the learners should keep, and dropping
+ * that would withdraw a concession rather than grant one. That argument is
+ * sound and no fixture currently depends on it, which means a future reader
+ * must not treat this line as load-bearing evidence. If you need it to be, add
+ * the fixture that reddens when it flips: a tab outline whose ONLY witness to
+ * some depth is a nested fence's indent.
+ *
+ * Note this set is deliberately not `losesOpaqueContent`'s, which asks a
+ * different question about the same classes and answers `fence-nested` the
+ * other way. Opaque CONTENT and literal INDENTATION are independent: a nested
+ * fence's body is code (so losing it is a demotion) while its leading
+ * whitespace is outline structure (so it is evidence). One predicate serving
+ * both would have to be wrong about one of them.
  */
 function indentIsContent(lines: readonly string[]): boolean[] {
     const classes = classifyLines(lines as string[]);
