@@ -11,6 +11,7 @@ import { moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { moveBlocks } from "../editing/moveBlocks";
 import { blockBoundaryPositions } from "../components/blockMenu";
 import { reparseRefusal } from "../plugins/reparseHazard";
+import { isBlankParagraph } from "../plugins/fingerprints";
 
 vi.mock("../editing/rangeIndicator", () => ({ flashRange: vi.fn(), showRangeVeil: vi.fn(), hideRangeVeil: vi.fn() }));
 
@@ -199,16 +200,52 @@ describe("MAR-88 discovered: vacated-item bare marker", () => {
         expect(String(reparseRefusal(preDoc, postDoc))).toMatch(/would not survive/);
     });
 
-    it("a 2-child artifact-lead item (the shape the serializer still rides safely) should not arm the gate", async () => {
-        // Confirms the childCount > 2 boundary: the exact-one-extra-block
-        // case is common (any `- > quote`, `- # heading`, code-fenced item)
-        // and harmless, so arming on it would only add cost, never catch
-        // real damage.
+    // The `childCount > 2` predicate in hazardMachineryPresent rests on one
+    // claim: an artifact-lead item holding EXACTLY ONE real block still
+    // rides on the marker line, and only a SECOND one forces the bare `-`.
+    // That claim is about the serializer, so pin it there — asserting it
+    // through reparseRefusal(doc, doc) cannot work, because identical
+    // pre/post docs return null unconditionally (the "damage didn't grow"
+    // branch), passing whatever the predicate is. If the serializer ever
+    // stops riding the one-extra case, `childCount > 2` silently becomes a
+    // correctness hole and these cases go red.
+    const artifactLead: Array<[string, string]> = [
+        ["a blockquote", "- normal\n  - > q"],
+        ["a heading", "- normal\n  - # h"],
+        ["a code fence", "- normal\n  - ```\n    x\n    ```"],
+    ];
+    for (const [label, md] of artifactLead) {
+        it(`an artifact-lead item leading ${label} with one real block should round-trip clean (MAR-324 boundary)`, async () => {
+            const e = await make(md);
+            const v = view(e);
+            let inner: ProseNode | null = null;
+            v.state.doc.descendants((node) => {
+                if (node.type.name === "list_item") inner = node;
+                return true;
+            });
+            // The shape under test: artifact empty paragraph + exactly one
+            // real block. If this stops holding, the case below is no longer
+            // testing the boundary the predicate is drawn at.
+            expect(inner && (inner as ProseNode).childCount).toBe(2);
+            expect(inner && isBlankParagraph((inner as ProseNode).child(0), inner as ProseNode)).toBe(true);
+            expect(reparseDiff(e, v)).toBe("");
+        });
+    }
+
+    it("an artifact-lead item holding two real blocks should NOT round-trip clean (the damage boundary)", async () => {
+        // The other side of the same boundary, and the reason the predicate
+        // arms at 3: one more block flips the serializer to the bare marker.
         const e = await make("- normal\n  - > q");
         const v = view(e);
-        expect(reparseDiff(e, v)).toBe("");
-        const doc = v.state.doc;
-        expect(reparseRefusal(doc, doc)).toBeNull();
+        let innerPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "list_item") innerPos = pos;
+            return true;
+        });
+        const schema = v.state.doc.type.schema;
+        const payload = schema.nodes["paragraph"]!.createChecked(null, schema.text("payload"));
+        v.dispatch(v.state.tr.insert(innerPos + 1 + 2, payload));
+        expect(reparseDiff(e, v)).not.toBe("");
     });
 });
 
