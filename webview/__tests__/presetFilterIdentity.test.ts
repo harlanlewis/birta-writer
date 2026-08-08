@@ -28,6 +28,10 @@ import { emphasisInputReplacedPlugins } from "../plugins/emphasisInput";
 import { headingIdReplacedPlugins } from "../plugins/headingIdSync";
 import { headingInputReplacedPlugins } from "../plugins/headingInput";
 import { listOrderReplacedPlugins } from "../plugins/listOrderSync";
+import {
+    listMarkerInputReplacedPlugins,
+    taskMarkerInputReplacedPlugins,
+} from "../plugins/listMarkerInput";
 import { imageStringAttrReplacedPlugins } from "../plugins/image";
 import { listSpreadReplacedPlugins } from "../plugins/list";
 import { strikethroughHtmlReplacedPlugins } from "../plugins/pasteHtml";
@@ -49,6 +53,7 @@ const COMMONMARK_SETS: [string, Set<unknown>][] = [
     ["emphasisInputReplacedPlugins", emphasisInputReplacedPlugins],
     ["headingIdReplacedPlugins", headingIdReplacedPlugins],
     ["listOrderReplacedPlugins", listOrderReplacedPlugins],
+    ["listMarkerInputReplacedPlugins", listMarkerInputReplacedPlugins],
 ];
 
 describe("preset filter identity", () => {
@@ -61,12 +66,17 @@ describe("preset filter identity", () => {
         });
     }
 
-    it("every plugin in strikethroughHtmlReplacedPlugins should still be a member of the gfm preset", () => {
-        expect(strikethroughHtmlReplacedPlugins.size).toBeGreaterThan(0);
-        for (const plugin of strikethroughHtmlReplacedPlugins) {
-            expect(gfm).toContain(plugin);
-        }
-    });
+    for (const [name, set] of [
+        ["strikethroughHtmlReplacedPlugins", strikethroughHtmlReplacedPlugins],
+        ["taskMarkerInputReplacedPlugins", taskMarkerInputReplacedPlugins],
+    ] as [string, Set<unknown>][]) {
+        it(`every plugin in ${name} should still be a member of the gfm preset`, () => {
+            expect(set.size).toBeGreaterThan(0);
+            for (const plugin of set) {
+                expect(gfm, `${name}: a member is no longer in gfm`).toContain(plugin);
+            }
+        });
+    }
 
     it("remarkPreserveEmptyLinePlugin's two halves should still be members of the commonmark preset", () => {
         // Filtered by identity on `.plugin` and `.options` separately; a
@@ -117,12 +127,14 @@ describe("preset filter identity", () => {
             emphasisInputReplacedPlugins.size +
             headingIdReplacedPlugins.size +
             listOrderReplacedPlugins.size +
+            listMarkerInputReplacedPlugins.size +
             2 + // remarkPreserveEmptyLinePlugin.plugin + .options
             2; // remarkInlineLinkPlugin's Remark + RemarkConfig halves
         const kept = pureCommonmark.filter((plugin) => commonmark.includes(plugin));
         expect(kept).toHaveLength(commonmark.length - commonmarkRemoved);
 
-        const gfmRemoved = strikethroughHtmlReplacedPlugins.size;
+        const gfmRemoved =
+            strikethroughHtmlReplacedPlugins.size + taskMarkerInputReplacedPlugins.size;
         const gfmKept = gfmFidelity.filter((plugin) => gfm.includes(plugin));
         expect(gfmKept).toHaveLength(gfm.length - gfmRemoved);
     });

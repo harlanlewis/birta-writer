@@ -56,7 +56,6 @@ import {
     convertListTreeAt,
     innermostListAt,
     listKindOf,
-    outermostListAt,
     type ListKind,
 } from "@/editing/listConvert";
 import { insertInlineMathCommand } from "@/plugins/math";
@@ -277,10 +276,10 @@ function toggleWrap(
 /**
  * List toggle, one grammar for all three flavors (toolbar Lists menu, slash
  * menu, palette commands):
- *   - caret in a list of ANOTHER flavor → CONVERT the whole tree in place
- *     (the outermost list, every nested list and item — editing/listConvert;
- *     the same converter the block menu's Turn-into runs), never a nested
- *     re-wrap;
+ *   - caret in a list of ANOTHER flavor → CONVERT the caret's own list in place
+ *     — it, its items, and every nested list of the same kind
+ *     (editing/listConvert; the same converter the block menu's Turn-into
+ *     runs), never a nested re-wrap;
  *   - caret in a list of the SAME flavor → toggle off (lift out — the
  *     historical behavior);
  *   - caret not in a list → wrap the selection (the stock commands).
@@ -293,12 +292,20 @@ function toggleList(getEditor: GetEditor, kind: ListKind): void {
         const $from = view.state.selection.$from;
         const inner = innermostListAt($from);
         if (inner) {
-            // Flavor identity is judged at the list the caret is IN (what the
-            // toolbar's active state highlights); the conversion applies to
-            // the whole tree from the outermost list.
+            // BOTH the flavor test and the conversion target are the list the
+            // caret is IN — the one the toolbar's active state highlights, and
+            // the only list a caret can be said to have selected.
+            //
+            // The conversion used to apply from the OUTERMOST list instead,
+            // which stopped being coherent when convertListTreeAt began exempting
+            // nested lists of a different kind: the caret's own list is exempt by
+            // definition whenever it differs from the outermost, so "caret in a
+            // bullet sublist + Numbered List" converted nothing at all. Judging
+            // one list and converting another was always the odd part; this
+            // makes the two agree, and matches the block menu, where a handle
+            // can only ever point at one list.
             if (listKindOf(inner.node) !== kind) {
-                const outer = outermostListAt($from) ?? inner;
-                convertListTreeAt(view, outer.pos, kind);
+                convertListTreeAt(view, inner.pos, kind);
             } else {
                 lift(view.state, view.dispatch);
             }

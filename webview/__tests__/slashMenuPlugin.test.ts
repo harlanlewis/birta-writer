@@ -602,6 +602,16 @@ describe("contextHiddenItemIds — nesting policy", () => {
         expect(hidden.has("orderedList")).toBe(false);
     });
 
+    it("only the INNERMOST list ancestor should hide a row", async () => {
+        // The rows act on the caret's own list, so the ordered list above is
+        // not evidence about them — Numbered List converts this sublist.
+        const $from = await fromInside("1. step\n   - note text\n", "note text");
+        const hidden = contextHiddenItemIds($from);
+        expect(hidden.has("bulletList")).toBe(true);
+        expect(hidden.has("orderedList")).toBe(false);
+        expect(hidden.has("taskList")).toBe(false);
+    });
+
     it("a table cell should still hide every block-level row (no table in table)", async () => {
         const $from = await fromInside("| a |\n| --- |\n| cell text |", "cell text");
         const hidden = contextHiddenItemIds($from);

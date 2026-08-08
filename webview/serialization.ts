@@ -20,6 +20,12 @@ import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
 import { headingInputReplacedPlugins } from "./plugins/headingInput";
+import {
+    listMarkerInputReplacedPlugins,
+    listMarkerInputRules,
+    taskMarkerInputReplacedPlugins,
+    taskMarkerInputRules,
+} from "./plugins/listMarkerInput";
 import { headingIdReplacedPlugins, headingIdSyncPlugin } from "./plugins/headingIdSync";
 import { listOrderReplacedPlugins, listOrderSyncPlugin } from "./plugins/listOrderSync";
 import { emphasisInputReplacedPlugins, mathAwareEmphasisStarInputRule } from "./plugins/emphasisInput";
@@ -163,6 +169,12 @@ export const pureCommonmark = [
         // Stock `#` input rule ADDS hashes to an existing heading's level;
         // headingAbsoluteInputRule (plugins/headingInput.ts) replaces it.
         if (headingInputReplacedPlugins.has(plugin)) return false;
+        // Both stock list input rules are `wrappingInputRule`s, which cannot
+        // fire at the head of an existing item (a list may not sit at index 0
+        // of `paragraph block*`). listMarkerInputRules replaces them with rules
+        // that retype the item there instead of refusing — see
+        // plugins/listMarkerInput.ts.
+        if (listMarkerInputReplacedPlugins.has(plugin)) return false;
         // Stock heading-id / list-order sync plugins walk the WHOLE document
         // (inline content included) on every doc-changing transaction; the
         // replacements below skip edits that provably cannot change an id or
@@ -187,6 +199,10 @@ export const pureCommonmark = [
     ...tableBreaksPlugin,
     // Replaces the stock star-emphasis input rule filtered out above.
     mathAwareEmphasisStarInputRule,
+    // Replaces the stock bullet/ordered list input rules filtered out above.
+    // (The task-marker rule of the same family replaces a GFM rule, so it
+    // registers with gfmFidelity below rather than here.)
+    ...listMarkerInputRules,
     // Replace the stock heading-id / list-order sync plugins filtered out
     // above (MAR-137 — see each module's header for the economy).
     headingIdSyncPlugin,
@@ -233,9 +249,16 @@ export const pureCommonmark = [
  * so the replacement is gone and gfm's own plugin runs again.
  */
 export const gfmFidelity = [
-    gfm.filter((plugin) => !strikethroughHtmlReplacedPlugins.has(plugin)),
+    gfm.filter(
+        (plugin) =>
+            !strikethroughHtmlReplacedPlugins.has(plugin) &&
+            !taskMarkerInputReplacedPlugins.has(plugin),
+    ),
     tableAlignDefaultPlugin,
     listItemSpreadBoolPlugins,
+    // Replaces gfm's task-marker input rule, which took effect on the wrong
+    // line and could not tick an existing box (plugins/listMarkerInput.ts).
+    taskMarkerInputRules,
     // Recognise <s>/<strike> on paste; parse-only, serialization unchanged.
     strikethroughHtmlPlugins,
 ].flat();

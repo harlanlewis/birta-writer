@@ -156,11 +156,12 @@ export function unwrapListTo(view: EditorView, pos: number, level: number): bool
     return true;
 }
 
-/** list ↔ list: retype the WHOLE TREE — the list, its items, and every
- * nested list — via the shared converter (editing/listConvert), so a bullet
- * list with ordered sub-steps converts through and through, never just its
- * top layer. Task flavor rides as a per-item `checked` sweep in the same
- * transaction. */
+/** list ↔ list: retype the list at `pos`, its items, and every nested list of
+ * the SAME KIND, via the shared converter (editing/listConvert), so a bullet
+ * outline converts through and through rather than just its top layer — while
+ * an ordered sub-list inside it, deliberately made different, stays ordered.
+ * That exemption and its cost live in the converter's header. Task flavor
+ * rides as a per-item `checked` sweep in the same transaction. */
 export function retypeList(view: EditorView, pos: number, target: ConversionKind): boolean {
     if (target !== "bulletList" && target !== "orderedList" && target !== "taskList") {
         return false;
