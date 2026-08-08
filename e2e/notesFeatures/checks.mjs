@@ -217,6 +217,13 @@ export async function run({ page, check, baseUrl }) {
         return String(sel);
     });
     check("the selection really covers 'word'", selected === "word", selected);
+    // ProseMirror adopts a DOM-set range on a later tick (a `selectionchange`
+    // its observer flushes), so a keystroke sent straight after `addRange`
+    // races it and can act on the editor's PREVIOUS selection — here, the
+    // earlier `2+3=` code span, which is why a rare failure reported that as
+    // the wrapped text. Every other suite that sets a range this way settles
+    // first (gapCursor 120ms, embedsOnline 250ms, pasteMarkdown 400ms).
+    await page.waitForTimeout(150);
     await page.keyboard.type("`", { delay: 25 });
     await page.waitForTimeout(200);
     const wrapped = await page.evaluate(() =>

@@ -14,7 +14,27 @@
 
 - The full-screen view of a diagram or image now dims the page behind it properly. The wash was mixed from your editor's own background colour, which on most themes left it within a few points of the diagram's own canvas. The diagram floated on a field of nearly the same shade and its edges disappeared. It is now a neutral dark scrim on every theme, the way a photo viewer dims, so what you opened full screen is the only thing lit.
 
+---
+
+## [2026.808.0] - 2026, August 8
+
+### Added
+
+- Typing a list marker at the start of an existing list item now changes that item's kind, which is what finally makes mixed lists reachable from the keyboard. Type `1. ` at the head of a bulleted item and it becomes a numbered one; `- `, `* ` or `+ ` at the head of a numbered item makes it a bullet. So the ordinary way to number a sub-list is now the obvious one: Enter, Tab, `1. `, and you have a numbered list nested inside a bulleted one, no menu involved. Until now the marker was simply text, and saved as an escaped `1\.`, so the only route to a mixed list was the gutter menu. Know what it changes: the marker describes _that line_, so a marker typed in the middle of a list splits it, exactly as the same characters would in the file — three bullets with the middle one numbered are three lists, and the editor shows them as three blocks. A marker that changes nothing (`- ` on a line that is already a bullet) stays as text, so a literal dash is still typeable. If a marker fires when you meant text, Backspace puts the characters back, as it does after any typed shortcut.
+
+### Changed
+
+- Changing a list's kind now leaves nested lists of a *different* kind alone. Converting `- item` with a numbered sub-list under it to a task list gives you checkboxes on the bulleted lines and leaves the numbered ones numbered; it used to flatten every level to the new kind, so a mixed outline came back all one kind. A sub-list you deliberately made different stays different, at any depth — and the exemption follows the list, not the branch, so a bulleted list nested under an exempt numbered one still gets converted along with its own kind. Worth knowing at the boundary: because Task List is offered as a kind of its own, converting an outline to a checklist leaves a numbered branch inside it without boxes. Convert that branch as well if you want them; it is one more gesture and it does not disturb anything else.
+
+- The Lists control and the `/` menu now convert the list your cursor is *in*, rather than the outermost list containing it. With the cursor in a bulleted sub-list of a numbered list, "Numbered List" makes that sub-list numbered and leaves its parent alone. Previously the two disagreed — the highlight told you which list you were in, and the command acted on a different one — and with the change above, acting on the outermost would have done nothing at all in exactly that case. The `/` menu also stops hiding a list row because of an outer list: in that same spot it now offers "Numbered List", which it used to withhold.
+
+- The bullet character you type is now the character written to the file. A list started with `* ` used to be saved as `-`, the editor's default; it is now saved as `*`, matching what Birta already did for the markers it reads out of a file. `1) ` also starts a numbered list now. It used to be saved as the escaped text `1\)` and never became a list at all. This is about starting a list. A marker typed on the line directly below an existing list still continues that list, as it always has, and the list keeps the character it already had.
+
 ### Fixed
+
+- A `[ ] ` typed on a list item's second line put the checkbox on the item's _first_ line. Typing the marker below `- alpha`, on a continuation line of the same item, consumed the characters where you typed them and moved the checkbox to `alpha` — a marker that took effect on a line you were not on. A continuation line has no marker of its own, so the characters now stay as text there.
+
+- There was no way to tick a checkbox by typing. `[x] ` on an existing task item was ignored and left behind the escaped literal `\[x]` in the item's own text. It now ticks the box, and `[ ] ` on a ticked one clears it. Typing a task marker in a numbered item works too, and keeps the item numbered (`1. [ ] step`), rather than being available only in bulleted lists.
 
 - A list indented four spaces per level, the spelling most other Markdown tools write, could silently lose its deepest nesting levels on any save that carried an edit. It took a second thing in the same file: something whose own indentation happens to match one of the list's levels but means nothing structural, such as a diagram or code sample indented four spaces inside a fence. The editor learns how your file spells each nesting level by reading its own round trip, and those fence lines were allowed to vote, reporting that four spaces stay four spaces while the list said four spaces mean one level. Two answers for one question is a tie, so the editor dropped what it knew about that level and every level below it flattened. On one of our own test documents an eight-level list came back with five of them gone, as one paragraph of loose lines. Text inside a fence or an indented code block is now read as content rather than as evidence about your outline, so the tie never happens. Lists whose indentation matches the editor's own two-space spelling were never affected, which is why this went unseen.
 
