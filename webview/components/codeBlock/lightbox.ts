@@ -54,6 +54,18 @@ import { createPanPad, ZOOM_BTN, ZOOM_MAX, ZOOM_MIN, type DiagramRenderer } from
 const FULLSCREEN_MAX_FIT = 4.0;
 
 /**
+ * The margin fit-to-view leaves on every side: the band `fullscreen.css`
+ * reserves for the floating clusters, READ FROM the surface rather than
+ * restated here. A copy of `--fs-band` in this file would be right until the
+ * day someone adjusts the CSS, and wrong silently after it.
+ */
+function chromeBandPx(surface: FullscreenSurface): number {
+    const declared = getComputedStyle(surface.overlay).getPropertyValue("--fs-band");
+    const parsed = parseFloat(declared);
+    return Number.isFinite(parsed) ? parsed : 44;
+}
+
+/**
  * The NodeView's single lightbox slot. Held by the NodeView (not by this
  * module) because a view can die with its lightbox open — an external sync or
  * revert replacing the node — and `destroy()` has to drop the Escape-layer
@@ -240,7 +252,7 @@ export function openCodeLightbox(ctx: LightboxContext & {
         copyBtn.innerHTML = IconCheck;
         setTimeout(() => { copyBtn.innerHTML = IconCopy; }, 1500);
     });
-    surface.addActions(copyBtn);
+    surface.addActionGroup(copyBtn);
 
     // Local undo/redo: VS Code's Electron layer swallows Cmd/Ctrl+Z before the
     // native textarea sees it.
@@ -343,9 +355,13 @@ export function openDiagramLightbox(ctx: LightboxContext & {
         const natH = parseFloat(svgEl.getAttribute("height") ?? "0");
         if (!natW || !natH || !boxW || !boxH) return;
         panX = 0; panY = 0;
+        // Reserve the chrome band top and bottom. The clusters float over the
+        // canvas, so a fit computed against the raw viewport puts the diagram's
+        // own top-left corner under the title.
+        const band = 2 * chromeBandPx(surface);
         zoom = Math.max(
             ZOOM_MIN,
-            Math.min((boxW - 80) / natW, (boxH - 80) / natH, FULLSCREEN_MAX_FIT),
+            Math.min((boxW - band) / natW, (boxH - band) / natH, FULLSCREEN_MAX_FIT),
         );
         applyTransform();
     }
@@ -363,9 +379,11 @@ export function openDiagramLightbox(ctx: LightboxContext & {
     const modeBtn = fsButton(IconCode, t("Edit Code"));
     const modeTip = applyTooltip(modeBtn, t("Edit Code"), { placement: "below" });
 
-    surface.addActions(zoomOutBtn, zoomValue, zoomInBtn);
-    surface.addActionSeparator();
-    surface.addActions(modeBtn);
+    // Two groups: the view controls, then the mode toggle Close joins. The
+    // divider between them is the surface's to draw, and it disappears with the
+    // view group in code mode.
+    const viewGroup = surface.addActionGroup(zoomOutBtn, zoomValue, zoomInBtn);
+    surface.addActionGroup(modeBtn);
 
     // ── Bottom-right: the same pan pad the inline pane carries ──
     const panPad = createPanPad({
@@ -405,7 +423,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
         // never runs under the action cluster.
         surface.setGround("sheet");
         surface.overlay.classList.add("diagram-lightbox--code");
-        [zoomOutBtn, zoomValue, zoomInBtn].forEach((b) => (b.style.display = "none"));
+        surface.setActionGroupHidden(viewGroup, true);
         surface.nav.style.display = "none";
         modeBtn.innerHTML = IconEye;
         modeTip.setText(t("Preview Diagram"));
@@ -417,7 +435,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
         isCodeMode = false;
         surface.setGround("canvas");
         surface.overlay.classList.remove("diagram-lightbox--code");
-        [zoomOutBtn, zoomValue, zoomInBtn].forEach((b) => (b.style.display = ""));
+        surface.setActionGroupHidden(viewGroup, false);
         surface.nav.style.display = "";
         modeBtn.innerHTML = IconCode;
         modeTip.setText(t("Edit Code"));

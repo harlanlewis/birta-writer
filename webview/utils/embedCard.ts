@@ -144,7 +144,10 @@ function openEmbedLightbox(provider: EmbedProvider, id: string): void {
     // put the same button over a diagram, with no special case here.
     const surface = openFullscreenSurface({
         ground: "scrim",
-        title: t(provider.playerTitle ?? "Embedded content"),
+        // The SERVICE, not the widget. `playerTitle` ("Loom video player") is
+        // the iframe's accessible name and reads as a label for a control;
+        // what belongs in the identity corner is what you opened: "Loom".
+        title: provider.name,
         className: "embed-lightbox",
     });
 

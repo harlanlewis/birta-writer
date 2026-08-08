@@ -113,12 +113,19 @@
     user-select: none;
 }
 
-/* On a sheet the band is reserved, nothing floats, and a pill would be an
-   affordance for a control that is not there. */
-.fs-surface--sheet .fs-title {
-    padding-left: 4px;
+/* On a sheet the band is reserved real estate, so nothing in it is floating
+   and nothing should claim to be. The chrome sits IN the band: no card ground,
+   no border, no shadow. A pill here would be an affordance for a surface that
+   is not there. */
+.fs-surface--sheet .fs-title,
+.fs-surface--sheet .fs-actions {
     background: none;
     border-color: transparent;
+    box-shadow: none;
+}
+
+.fs-surface--sheet .fs-title {
+    padding-left: 4px;
     opacity: 0.65;
 }
 
@@ -143,11 +150,27 @@
     box-shadow: var(--ui-card-shadow);
 }
 
-.fs-actions__rule {
-    width: 1px;
-    align-self: stretch;
-    margin: 2px 3px;
-    background: var(--ui-card-border);
+.fs-actions__group {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+}
+
+/* `display: flex` above outranks the UA's `[hidden] { display: none }`, so a
+   group set hidden stayed on screen while every other signal said it was gone. */
+.fs-actions__group[hidden] {
+    display: none;
+}
+
+/* The divider belongs to the group on its right, and only when a visible
+   group precedes it — `data-divided` is recomputed on every show/hide, so a
+   hidden group takes its hairline with it. Drawn by hand instead, it outlived
+   its neighbours: with the zoom controls gone in code mode, a rule was left
+   dividing nothing from Close. */
+.fs-actions__group[data-divided] {
+    margin-left: 3px;
+    padding-left: 4px;
+    border-left: 1px solid var(--ui-card-border);
 }
 
 .fs-nav {

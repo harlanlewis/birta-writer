@@ -76,10 +76,19 @@ export type FullscreenSurface = {
     readonly content: HTMLElement;
     /** The bottom-right navigation cluster. Empty (and invisible) until used. */
     readonly nav: HTMLElement;
-    /** Add controls to the top-right cluster, always BEFORE Close. */
-    addActions(...controls: HTMLElement[]): void;
-    /** A hairline between groups in the top-right cluster. */
-    addActionSeparator(): void;
+    /**
+     * Add a group of controls to the top-right cluster, before the group Close
+     * lives in. Returns the group, for `setActionGroupHidden`.
+     *
+     * Groups rather than loose controls plus a manual separator, because the
+     * divider is a statement about what is on either side of it. Drawn by hand
+     * it outlives its neighbours: hiding the zoom controls in code mode left a
+     * hairline dividing nothing from Close.
+     */
+    addActionGroup(...controls: HTMLElement[]): HTMLElement;
+    /** Show or hide a group. Dividers recompute; only the gaps that separate
+     *  two VISIBLE groups are drawn. */
+    setActionGroupHidden(group: HTMLElement, hidden: boolean): void;
     /** Set the top-left identity text. */
     setTitle(text: string): void;
     /** Swap the ground after opening (a diagram lightbox flipping to code). */
@@ -154,7 +163,26 @@ export function openFullscreenSurface(opts: {
     closeBtn.innerHTML = IconX;
     closeBtn.setAttribute("aria-label", t("Close"));
     applyTooltip(closeBtn, t("Close"), { placement: "below" });
-    actions.appendChild(closeBtn);
+
+    // Close's own group, always last, and never divided from what precedes it:
+    // the hairline separates the CALLER's groups from each other, and Close is
+    // the terminal control that sits with the last of them. Its own group only
+    // so a caller's groups have somewhere to be inserted before.
+    const closeGroup = document.createElement("div");
+    closeGroup.className = "fs-actions__group fs-actions__group--close";
+    closeGroup.appendChild(closeBtn);
+    actions.appendChild(closeGroup);
+
+    /**
+     * Mark every visible group after the first, which is what the CSS draws a
+     * divider from. Recomputed rather than set once, because a group hidden by
+     * a mode change must take its divider with it.
+     */
+    function syncDividers(): void {
+        const visible = [...actions.querySelectorAll<HTMLElement>(".fs-actions__group")]
+            .filter((group) => !group.hidden && group !== closeGroup);
+        visible.forEach((group, i) => group.toggleAttribute("data-divided", i > 0));
+    }
 
     overlay.append(content, title, actions, nav);
     document.body.appendChild(overlay);
@@ -166,13 +194,17 @@ export function openFullscreenSurface(opts: {
         content,
         nav,
         dismissCleanup: null,
-        addActions(...controls) {
-            for (const control of controls) actions.insertBefore(control, closeBtn);
+        addActionGroup(...controls) {
+            const group = document.createElement("div");
+            group.className = "fs-actions__group";
+            group.append(...controls);
+            actions.insertBefore(group, closeGroup);
+            syncDividers();
+            return group;
         },
-        addActionSeparator() {
-            const rule = document.createElement("span");
-            rule.className = "fs-actions__rule";
-            actions.insertBefore(rule, closeBtn);
+        setActionGroupHidden(group, hidden) {
+            group.hidden = hidden;
+            syncDividers();
         },
         setTitle(text) {
             title.textContent = text;
