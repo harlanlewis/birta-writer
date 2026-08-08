@@ -275,11 +275,13 @@ export function retypeListItemAt(
 
 /**
  * The OUTERMOST list containing `$pos`, as {pos, node}, or null when the
- * position is not inside a list — the conversion TARGET (a caret anywhere in
- * a tree converts the whole tree, matching the block menu, whose item
- * markers also target the enclosing list). The toggle-off test uses
- * `innermostListAt` instead: flavor identity at the caret is the list the
- * caret is actually in (the one the toolbar's active state highlights).
+ * position is not inside a list. Its one caller is the block menu's
+ * Tighten/Loosen row, which is genuinely a whole-tree property: spread is how
+ * the list is SPELLED, and a tree spelled two ways round-trips as neither.
+ *
+ * Conversion does NOT use it — `toggleList` judges and converts the list the
+ * caret is IN (`innermostListAt`, the one the toolbar's active state
+ * highlights), so that the command and the highlight name the same list.
  * Both take a ResolvedPos (a selection's own `$from` works directly).
  */
 export function outermostListAt(

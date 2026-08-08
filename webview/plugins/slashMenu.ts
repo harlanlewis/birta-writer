@@ -175,8 +175,8 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
             // hard restriction (cells are paragraph-only).
             //
             // (No per-item task check here: the list-level flavor above
-            // covers task lists, and in a MIXED list the Task List row now
-            // usefully converts the whole tree to tasks.)
+            // covers task lists, and in a MIXED list the Task List row is a
+            // real conversion of the caret's own list, not a no-op.)
             case "table_cell":
             case "table_header":
                 for (const id of HIDDEN_IN_TABLE_CELL) {

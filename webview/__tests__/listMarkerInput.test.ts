@@ -25,9 +25,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView, Node as ProseNode } from "../pm";
-import { TextSelection } from "../pm";
+import { TextSelection, undo } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
+    historyPlugin,
     listAutoJoinPlugin,
     listEnterPlugin,
     listLiftPlugin,
@@ -36,10 +37,15 @@ import {
 
 let editors: Editor[] = [];
 
-async function makeEditor(markdown: string): Promise<Editor> {
+/**
+ * `withHistory` is opt-in: history is what separates the two ways back from a
+ * rule (Cmd+Z reverts the whole thing, Backspace leaves the marker as text),
+ * and only the test that asserts that distinction needs it wired.
+ */
+async function makeEditor(markdown: string, withHistory = false): Promise<Editor> {
     const root = document.createElement("div");
     document.body.appendChild(root);
-    const editor = await Editor.make()
+    let editor = Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, root);
             ctx.set(defaultValueCtx, markdown);
@@ -50,10 +56,11 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(listLiftPlugin)
         .use(listEnterPlugin)
         .use(listAutoJoinPlugin)
-        .use(listSpreadNormalizePlugin)
-        .create();
-    editors.push(editor);
-    return editor;
+        .use(listSpreadNormalizePlugin);
+    if (withHistory) editor = editor.use(historyPlugin);
+    const created = await editor.create();
+    editors.push(created);
+    return created;
 }
 
 afterEach(async () => {
@@ -335,6 +342,19 @@ describe("typed list markers — prose is unchanged", () => {
         expect(markdown(editor)).toBe("- alpha\n- world\n");
     });
 
+    it("a marker that CONTINUES a list should leave that list's own character alone", async () => {
+        // The bound on "the character you type is the character written": the
+        // typed marker names a NEW list, and this is a join into an existing
+        // one (stock `wrappingInputRule`'s own behavior, which the prose half
+        // delegates to). A list has one marker, so the one already there wins.
+        const editor = await makeEditor("- alpha\n\nworld\n");
+        const v = view(editor);
+        caretAtStartOf(v, "world");
+        typeText(v, "* ");
+        v.state.doc.check();
+        expect(markdown(editor)).toBe("- alpha\n- world\n");
+    });
+
     it("`- ` on an item's continuation line should nest a sublist", async () => {
         const md = await typeAtHeadOf("- alpha\n\n  second\n", "second", "- ");
         expect(md).toBe("- alpha\n\n  - second\n");
@@ -371,6 +391,21 @@ describe("typed list markers — reversibility", () => {
         typeText(v, "1. ");
         expect(pressKey(v, "Backspace", { ctrlKey: true })).toBe(true);
         expect(markdown(editor)).not.toContain("1\\.");
+    });
+
+    it("Cmd+Z should revert to the line as it stood before the marker was typed", async () => {
+        // The other way back, and it is NOT the same one. History groups the
+        // rule's transaction with the keystrokes that triggered it, so one undo
+        // takes the characters with it; Backspace above is the gesture that
+        // keeps them as text.
+        const editor = await makeEditor("- alpha\n- beta\n", true);
+        const v = view(editor);
+        caretAtStartOf(v, "beta");
+        typeText(v, "1. ");
+        expect(markdown(editor)).toBe("- alpha\n\n1. beta\n");
+        undo(v.state, v.dispatch);
+        v.state.doc.check();
+        expect(markdown(editor)).toBe("- alpha\n- beta\n");
     });
 
     it("Backspace at an item start with no rule to undo should still lift", async () => {

@@ -14,7 +14,7 @@
 
 - The Lists control and the `/` menu now convert the list your cursor is *in*, rather than the outermost list containing it. With the cursor in a bulleted sub-list of a numbered list, "Numbered List" makes that sub-list numbered and leaves its parent alone. Previously the two disagreed — the highlight told you which list you were in, and the command acted on a different one — and with the change above, acting on the outermost would have done nothing at all in exactly that case. The `/` menu also stops hiding a list row because of an outer list: in that same spot it now offers "Numbered List", which it used to withhold.
 
-- The bullet character you type is now the character written to the file. A list started with `* ` used to be saved as `-`, the editor's default; it is now saved as `*`, matching what Birta already did for the markers it reads out of a file. `1) ` also starts a numbered list now — it used to be saved as the escaped text `1\)` and never became a list at all.
+- The bullet character you type is now the character written to the file. A list started with `* ` used to be saved as `-`, the editor's default; it is now saved as `*`, matching what Birta already did for the markers it reads out of a file. `1) ` also starts a numbered list now. It used to be saved as the escaped text `1\)` and never became a list at all. This is about starting a list. A marker typed on the line directly below an existing list still continues that list, as it always has, and the list keeps the character it already had.
 
 ### Fixed
 

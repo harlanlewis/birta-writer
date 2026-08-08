@@ -41,9 +41,12 @@
  * typeable at the head of an item, which is otherwise unreachable. The rule a
  * user can hold: the marker either changes the line's shape, or it is text.
  *
- * Every firing is one transaction, so one Cmd+Z restores the typed characters —
- * and so does Backspace, which plugins/list.ts chains through `undoInputRule`
- * before its own list handling for exactly this.
+ * TWO WAYS BACK, and they differ. Backspace runs `undoInputRule`, which puts
+ * the marker back as literal text — plugins/list.ts chains it ahead of its own
+ * list handling for exactly this. Cmd+Z is history, which groups the rule's
+ * transaction with the keystrokes that triggered it, so it reverts to the line
+ * as it stood BEFORE the marker was typed. Backspace is the one that says "I
+ * meant text"; Cmd+Z is the one that says "forget I typed anything".
  */
 import {
     bulletListSchema,

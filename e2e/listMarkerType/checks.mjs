@@ -38,11 +38,24 @@ export async function run({ page, check, baseUrl }) {
         ul: document.querySelectorAll(".ProseMirror ul").length,
         ol: document.querySelectorAll(".ProseMirror ol").length,
     }));
+    /**
+     * Click, then let ProseMirror read the click's text selection out of the
+     * DOM. The read is deferred (a `selectionchange` the observer flushes on a
+     * later tick), so a keystroke sent immediately after the click acts on the
+     * editor's PREVIOUS selection — for a freshly-booted document, position 1.
+     * Without this the whole suite silently exercises the first item instead of
+     * the one it clicked, and still produces plausible-looking lists. The same
+     * settle wait is why imageView's checks carry one.
+     */
+    const clickInto = async (selector) => {
+        await page.click(selector);
+        await page.waitForTimeout(150);
+    };
 
     // ── 1. The motivating gesture: a nested ordered list, keyboard only. ──
     // Caret at the end of "steps", Enter for a fresh sibling item, Tab to
     // indent it into a sublist, then type the marker.
-    await page.click(".ProseMirror li:has-text('steps')");
+    await clickInto(".ProseMirror li:has-text('steps')");
     await page.keyboard.press("End");
     await page.keyboard.press("Enter");
     await page.keyboard.press("Tab");
@@ -71,7 +84,7 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 3. A marker on a top-level item splits its list — three blocks, which
     // is what the bytes say, and the user can see it. ──
-    await page.click(".ProseMirror li:has-text('notes') p");
+    await clickInto(".ProseMirror li:has-text('notes') p");
     await page.keyboard.press("Home");
     await page.keyboard.type("1. ");
     const split = await waitForUpdate((doc) => hasLine(doc, "1. notes"));
@@ -89,7 +102,7 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 5. A task marker ticks a box from the keyboard, on the same line it
     // was typed on. ──
-    await page.click(".ProseMirror li:has-text('groceries') p");
+    await clickInto(".ProseMirror li:has-text('groceries') p");
     await page.keyboard.press("Home");
     await page.keyboard.type("[ ] ");
     const tasked = await waitForUpdate((doc) => hasLine(doc, "- [ ] groceries"));
