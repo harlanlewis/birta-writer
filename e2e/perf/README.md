@@ -64,7 +64,7 @@ node e2e/perf-bundle.mjs --compare bundle-before.json bundle-after.json  # eager
 
 Removing eager bytes therefore produces no CI signal on its own: `--check` just passes with more room, and the space is immediately re-spendable. Finish a bytes win with `--set-budget` so the ratchet sticks.
 
-`baseline.json` is a checked-in historical reference, not the gate, and nothing reads it. It records a measurement; it is not one. Its figures also predate MAR-310's fixture reseeding, so the documents behind them no longer exist, so rebuild and re-run rather than quoting it.
+`baseline.json` is a checked-in historical reference, not the gate, and nothing reads it. It records a measurement; it is not one. Its figures also predate MAR-310's fixture reseeding, so the documents behind them no longer exist. Rebuild and re-run rather than quoting it.
 
 ## Automated launch gate (`pnpm perf:ab`, CI job `launch-perf`)
 
