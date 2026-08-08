@@ -21,7 +21,19 @@
 <script>
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
   window.__posted = [];
+  window.__state = undefined;
   const DOC = [
+    // A task-only ordered list and a MIXED one. A task item draws a checkbox
+    // instead of its marker, so Numbering is a dead control on the first and a
+    // live one on the second.
+    "1. [ ] task one",
+    "2. [ ] task two",
+    "",
+    "separator prose",
+    "",
+    "1. plain one",
+    "2. [ ] mixed task",
+    "",
     "- groceries",
     "- steps",
     "- notes",
@@ -33,7 +45,10 @@
       if (msg.type === "ready")
         window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
     },
-    getState: () => undefined, setState: () => {},
+    // A real state bag, so the checks can observe a numbering preference
+    // being persisted the way VS Code's webview state would carry it.
+    getState: () => window.__state,
+    setState: (next) => { window.__state = next; },
   });
 </script>
 <link rel="stylesheet" href="dist/webview.css">

@@ -228,7 +228,9 @@ export async function run({ page, check, baseUrl }) {
     );
 
     // Select the image so its toolbar (and the width button) shows.
-    await page.locator("img.image-node").click();
+    // .first(): the fixture carries a SECOND use of the same image for the
+    // block-identity checks at the end, so a bare locator is now ambiguous.
+    await page.locator("img.image-node").first().click();
     await page.waitForSelector(".img-tb-width", { state: "visible", timeout: 5000 });
 
     await page.locator(".img-tb-width").dispatchEvent("click");
@@ -404,4 +406,115 @@ export async function run({ page, check, baseUrl }) {
     const updates = await page.evaluate(() =>
         window.__posted.filter((m) => m.type === "update" || m.type === "flushResult").length);
     check("no width action ever serialized the document", updates === 0, `updates=${updates}`);
+
+    // ── Block identity: two tables under one header row are two tables ──
+    //    (MAR-334). Runs after the fidelity check above because Duplicate,
+    //    at the end, is a real document edit.
+    const tableState = () => page.evaluate(() => ({
+        full: [...document.querySelectorAll(".ProseMirror .mw-table")]
+            .map((w) => w.classList.contains("bw-full")),
+        keys: Object.keys(window.__state?.blockWidths ?? {}).filter((k) => k.startsWith("table:")),
+    }));
+    const flipTable = async (n) => {
+        const w = page.locator(".ProseMirror .mw-table").nth(n);
+        await w.hover();
+        await page.waitForTimeout(150);
+        await w.locator(".mw-bc-width").first().dispatchEvent("click");
+        await page.waitForTimeout(120);
+    };
+
+    check(
+        "the fixture really has two same-header tables (no vacuous pass)",
+        (await tableState()).full.length === 2,
+    );
+
+    await flipTable(0);
+    let tables = await tableState();
+    check(
+        "a width set on one table does NOT reach its same-header twin",
+        tables.full[0] === true && tables.full[1] === false,
+        JSON.stringify(tables),
+    );
+    check(
+        "the first occurrence stores under the bare content base",
+        tables.keys.length === 1 && tables.keys[0] === "table:NameAge",
+        JSON.stringify(tables.keys),
+    );
+
+    await flipTable(1);
+    tables = await tableState();
+    check(
+        "the twin stores under an occurrence-numbered key of its own",
+        tables.full[0] === true && tables.full[1] === true
+        && tables.keys.includes("table:NameAge") && tables.keys.includes("table:NameAge#2"),
+        JSON.stringify(tables),
+    );
+
+    await flipTable(1);
+    tables = await tableState();
+    check(
+        "clearing the twin's width leaves the original full",
+        tables.full[0] === true && tables.full[1] === false
+        && tables.keys.length === 1,
+        JSON.stringify(tables),
+    );
+
+    // ── Duplicate carries the preference to the copy, and only to it ──
+    await page.locator(".ProseMirror table").nth(0).locator("th, td").first().click();
+    await page.waitForTimeout(100);
+    await page.keyboard.press("Shift+Alt+ArrowDown");
+    await page.waitForTimeout(400);
+    tables = await tableState();
+    check(
+        "duplicating a full-width table yields THREE tables",
+        tables.full.length === 3,
+        JSON.stringify(tables),
+    );
+    check(
+        "the copy inherits full width from the block it copied",
+        tables.full[0] === true && tables.full[1] === true,
+        JSON.stringify(tables),
+    );
+    check(
+        "the unrelated same-header table is NOT widened by the duplicate",
+        tables.full[2] === false,
+        JSON.stringify(tables),
+    );
+
+    await flipTable(1);
+    tables = await tableState();
+    check(
+        "narrowing the copy afterwards leaves the original full",
+        tables.full[0] === true && tables.full[1] === false && tables.full[2] === false,
+        JSON.stringify(tables),
+    );
+
+    // ── The same identity rule for an image used twice ──
+    const imageState = () => page.evaluate(() => ({
+        n: document.querySelectorAll(".ProseMirror .image-wrapper").length,
+        sized: [...document.querySelectorAll(".ProseMirror .image-wrapper")]
+            .map((w) => w.classList.contains("bw-fixed") || w.classList.contains("bw-full")),
+        keys: Object.keys(window.__state?.blockWidths ?? {}).filter((k) => k.startsWith("img:")),
+    }));
+    check(
+        "the fixture really has two uses of one image (no vacuous pass)",
+        (await imageState()).n === 2,
+        JSON.stringify(await imageState()),
+    );
+    const firstImage = page.locator(".ProseMirror .image-wrapper").nth(0);
+    await firstImage.hover();
+    await page.waitForTimeout(150);
+    await firstImage.locator(".img-tb-width").first().dispatchEvent("click");
+    await page.waitForTimeout(150);
+    const images = await imageState();
+    check(
+        "sizing one use of an image leaves the other at its natural size",
+        images.sized[0] === true && images.sized[1] === false,
+        JSON.stringify(images),
+    );
+    check(
+        "the second use would store under its own occurrence key",
+        images.keys.length === 1 && !images.keys[0].includes("#"),
+        JSON.stringify(images.keys),
+    );
 }

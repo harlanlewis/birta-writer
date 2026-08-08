@@ -180,6 +180,12 @@ The point of staying in WYSIWYG is that you never _need_ the raw text editor. Th
 
 Every block has a gutter handle: click it for the block menu (turn into, duplicate, move, delete), drag it to move the block. A handle click selects or opens a menu, and never edits the block, including task-list checkboxes. The handle is a safe, predictable grip you can reach for without worrying it'll change what you're pointing at.
 
+### Lettered and roman numbered lists, without writing them into your file
+
+An ordered list can be drawn `1.`, `a.`, `A.`, `i.` or `I.`, chosen from the block menu or by typing `a. `, `A. `, `i. ` or `I. ` where you'd type `1. `. Nested levels already alternate decimal, letters, roman by depth; this is that choice made explicit at any level.
+
+What the file gets is `1.`, `2.`, `3.`, always. CommonMark has no lettered or roman marker. To GitHub, to VS Code's own preview, and to every other CommonMark reader, `a. alpha` is a paragraph, so writing one would trade a display preference for a document other tools disagree with. The list is an ordinary numbered list that this editor draws differently, which is why it stays portable. The choice is remembered per list alongside your folds and widths, so it survives closing the file, and it lives with the workspace rather than in the document: a colleague opening the same file sees a numbered list, correctly.
+
 ### Keyboard-first block editing
 
 Select, move, duplicate, and fold blocks entirely from the keyboard, with a slash menu for inserts and find/replace with match-case, whole-word, and regex. The fast paths you already have muscle memory for in VS Code work here too.

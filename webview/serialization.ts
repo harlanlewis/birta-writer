@@ -28,6 +28,7 @@ import {
 } from "./plugins/listMarkerInput";
 import { headingIdReplacedPlugins, headingIdSyncPlugin } from "./plugins/headingIdSync";
 import { listOrderReplacedPlugins, listOrderSyncPlugin } from "./plugins/listOrderSync";
+import { listNumberingPlugin } from "./plugins/listNumbering";
 import { emphasisInputReplacedPlugins, mathAwareEmphasisStarInputRule } from "./plugins/emphasisInput";
 import {
     sourceStyleHandlers,
@@ -207,6 +208,10 @@ export const pureCommonmark = [
     // above (MAR-137 — see each module's header for the economy).
     headingIdSyncPlugin,
     listOrderSyncPlugin,
+    // Bridges an ordered list's presentation-only `numbering` attr and the
+    // state bag that outlives the session. Costs one boolean per transaction
+    // until a document actually carries a numbering (plugins/listNumbering.ts).
+    listNumberingPlugin,
     // AFTER the preset: override the bullet_list / ordered_list / list_item
     // parseMarkdown runners so `spread` parses as a real boolean, not a string
     // (MAR-124). See plugins/list.ts.

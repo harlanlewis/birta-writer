@@ -13,9 +13,11 @@ import {
     IconImageOff,
 } from "@/ui/icons";
 import {
+    anchorAt,
     applyBlockWidthClass,
     getBlockWidth,
     imageWidthAnchor,
+    registerAnchorKind,
     renameBlockWidthAnchor,
     setBlockWidth,
 } from "@/blockWidth";
@@ -48,6 +50,16 @@ export function setImageUriMap(map: Record<string, string>): void {
 function toDisplayPath(src: string): string {
     return _uriToRel.get(src) ?? src;
 }
+
+/**
+ * The image kind's anchor base (blockWidth.ts). It lives here rather than in
+ * blockWidth.ts because the DISPLAY path is what anchors — a webview URI's
+ * resource authority is session-scoped — and `_uriToRel` is this module's.
+ */
+const imageAnchorBase = registerAnchorKind(
+    "image",
+    (node) => imageWidthAnchor(toDisplayPath((node.attrs["src"] as string) ?? "")),
+);
 
 /** Convert a relPath to a webviewUri that renders directly in the NodeView (returns the input as-is if not found) */
 function toWebviewUri(src: string): string {
@@ -267,7 +279,12 @@ export function createImageView(
     // the DISPLAY path (webview URIs are session-scoped), re-anchored on src
     // edits in update(). Icon + tooltip name the NEXT state (the word-wrap
     // toggle's contract).
-    const widthMode = (): "natural" | "fixed" | "full" => getBlockWidth(widthAnchor) ?? "natural";
+    // Re-anchors before reading — see resolveAnchor's declaration below for why
+    // a cached ordinal goes stale without this view's update() ever firing.
+    const widthMode = (): "natural" | "fixed" | "full" => {
+        widthAnchor = resolveAnchor();
+        return getBlockWidth(widthAnchor) ?? "natural";
+    };
     // In FULL-width page mode the cycle's third step (full = break out of a
     // fixed column) is identical to fit-column, so it drops out: the toggle
     // never offers a state the user can't see.
@@ -279,7 +296,7 @@ export function createImageView(
         onClick: () => {
             const mode = widthMode();
             setBlockWidth(
-                widthAnchor,
+                widthAnchor, // freshly resolved by widthMode() above
                 mode === "natural" ? "fixed"
                 : mode === "fixed" && !pageIsFullWidth() ? "full"
                 : null,
@@ -351,7 +368,15 @@ export function createImageView(
 
     // ── Initialize the info area, caption, title row, and width ──────
     let rawSrc = (node.attrs["src"] as string) ?? "";
-    let widthAnchor = imageWidthAnchor(toDisplayPath(rawSrc));
+    // Occurrence-disambiguated (blockWidth.ts): the same file referenced twice
+    // is two images, so sizing one leaves the other where the author put it.
+    // Re-resolved on every use rather than cached: an ordinal is a fact about
+    // the whole document, and this view's update() never fires for an insertion
+    // elsewhere that renumbered it (blockWidth.ts, "Block identity").
+    let widthBase = imageWidthAnchor(toDisplayPath(rawSrc));
+    const resolveAnchor = (): string =>
+        anchorAt(view.state.doc, getPos(), imageAnchorBase) ?? widthBase;
+    let widthAnchor = resolveAnchor();
     updateInfo(rawSrc);
     updateCaption(img.alt);
     updateTitleField(img.title);
@@ -495,11 +520,15 @@ export function createImageView(
                     errorPlaceholder.style.display = "none";
                 }
                 // Carry a stored width preference across the src edit.
-                const newAnchor = imageWidthAnchor(toDisplayPath(newSrc));
-                if (newAnchor !== widthAnchor) {
-                    renameBlockWidthAnchor(widthAnchor, newAnchor);
-                    widthAnchor = newAnchor;
-                    syncWidthBtn();
+                const newBase = imageWidthAnchor(toDisplayPath(newSrc));
+                if (newBase !== widthBase) {
+                    widthBase = newBase;
+                    const from = widthAnchor;
+                    const to = resolveAnchor();
+                    if (to !== from) {
+                        renameBlockWidthAnchor(from, to);
+                        syncWidthBtn();
+                    }
                 }
             }
             if (img.alt !== newAlt) {

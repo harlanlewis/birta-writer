@@ -100,6 +100,20 @@ Content that arrives from the raw editor or a git checkout is the author's text,
 
 A new dependent artifact (transcluded values, computed tables, cross-file links) should slot into this ladder rather than invent its own consent model.
 
+## A display choice Markdown cannot spell stays a display choice
+
+Some things a user wants are about how a block is DRAWN, not about what it says: this table full-width, this code block wrapped, this ordered list lettered rather than numbered. Markdown has nowhere to put any of them, and inventing a spelling is the trade to refuse. A file whose `a. alpha` renders as a paragraph everywhere else is a document the editor has damaged on the author's behalf, however good it looks here. So the bytes stay canonical (`1.`), the preference lives beside the document in the webview state bag, and the drawing is the only thing that changes.
+
+Three consequences follow, and a new presentation preference should accept all three rather than negotiate them.
+
+It never dirties the file. A width flip writes only to the store. A numbering choice is a node attr, so it is a real transaction and undoable, but it is absent from the serializer, so the document serializes byte-identically and the sync's equality check no-ops.
+
+Its lifetime is the workspace, and that is stated plainly. It survives closing the file and does not travel with it. A reader who needs the distinction to be portable needs different content, not a different store.
+
+It degrades to the default, never to a guess. These are keyed by content, so an anchor that stops matching reverts its block to the ordinary rendering. Reverting is legible; a preference silently applied to the wrong block is not (`blockWidth.ts`, "Block identity").
+
+The counter-case is a choice Markdown CAN spell: a bullet character, an ordered delimiter, a callout's fold marker. Those belong in the file, recorded as the author typed them, and `sourceStyle.ts` exists for exactly that. The test is not whether a choice is cosmetic, it is whether the file can say it.
+
 ## Analysis never blocks interactivity
 
 Decoration and analysis settle in after first paint, on idle. Never on the mount path, and never as a reaction to the user's first keystroke. The editor is interactive before the first proofread pass runs. (Enforced by the deferred first pass in `proofread.ts`; measured by `e2e/perf/`.)

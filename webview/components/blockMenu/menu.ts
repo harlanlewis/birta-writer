@@ -8,6 +8,9 @@
  *     accent-filled row (the toolbar Format-menu idiom). Row art (icons,
  *     badges, markdown hints) comes straight from the slash-menu registry, so
  *     the two menus can never drift apart visually.
+ *   - **Numbering** (ordered lists only): how the list DRAWS its markers —
+ *     `1.`, `a.`, `A.`, `i.`, `I.`. Presentation, never source: the file keeps
+ *     `1.` because CommonMark has no lettered marker (utils/orderedMarkers.ts).
  *   - **Actions**: Duplicate, Copy as Markdown, Move Up/Down, Delete, and
  *     Copy Link on headings (slug anchors are the only block identity
  *     markdown has).
@@ -62,7 +65,14 @@ import {
     IconList,
     IconTrash2,
 } from "../../ui/icons";
-import { getBlockWidth, setBlockWidth, tableWidthAnchor } from "../../blockWidth";
+import {
+    anchorAt,
+    getBlockWidth,
+    inheritDuplicatedAnchors,
+    setBlockWidth,
+    tableAnchorBase,
+    tableWidthAnchor,
+} from "../../blockWidth";
 import {
     isChecklistSinkEnabled,
     setChecklistSinkEnabled,
@@ -72,6 +82,8 @@ import { mergeableListBoundary, mergeListsAt } from "../../editing/listMerge";
 import { outermostListAt } from "../../editing/listConvert";
 import { listTreeIsLoose, setListTreeSpread } from "../../plugins/list";
 import { blockMarkdownAt, selectInto } from "./turnInto";
+import { setListNumberingAt } from "../../plugins/listNumbering";
+import { isOrderedNumbering, type OrderedNumbering } from "../../utils/orderedMarkers";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
     canConvert,
@@ -91,6 +103,50 @@ let getEditor: GetEditor = () => null;
 export function setBlockMenuContext(ctx: { getEditor: GetEditor }): void {
     getEditor = ctx.getEditor;
 }
+
+/**
+ * The Numbering rows, in the order a reader would expect them: the default
+ * first, then letters, then roman, lower before upper. The `hint` shows the
+ * actual markers rather than naming the CSS keyword, because the markers are
+ * what the user is choosing between.
+ */
+const NUMBERING_CHOICES: readonly {
+    style: OrderedNumbering;
+    label: string;
+    hint: string;
+    keywords: readonly string[];
+}[] = [
+    {
+        style: "decimal",
+        label: t("Numbers"),
+        hint: "1. 2. 3.",
+        keywords: ["numbering", "numbers", "decimal", "digits", "123", "default"],
+    },
+    {
+        style: "lower-alpha",
+        label: t("Lowercase letters"),
+        hint: "a. b. c.",
+        keywords: ["numbering", "letters", "alpha", "lowercase", "abc"],
+    },
+    {
+        style: "upper-alpha",
+        label: t("Uppercase letters"),
+        hint: "A. B. C.",
+        keywords: ["numbering", "letters", "alpha", "uppercase", "capital", "ABC"],
+    },
+    {
+        style: "lower-roman",
+        label: t("Lowercase roman"),
+        hint: "i. ii. iii.",
+        keywords: ["numbering", "roman", "lowercase", "numerals"],
+    },
+    {
+        style: "upper-roman",
+        label: t("Uppercase roman"),
+        hint: "I. II. III.",
+        keywords: ["numbering", "roman", "uppercase", "capital", "numerals"],
+    },
+];
 
 // ── Block actions ───────────────────────────────────────────────────────────
 
@@ -203,6 +259,20 @@ export function duplicateBlockRange(
         return false;
     }
     view.focus();
+    // A copy reads the way the block it copied does (MAR-334). Presentation
+    // preferences live beside the document under occurrence-disambiguated keys,
+    // so inserting a twin renumbers them: without this the copy would paint at
+    // its default width beside a full-width original, and a duplicate-UP would
+    // hand the original's preference to the copy. Not a document edit, so it
+    // stays outside the transaction and outside undo history — the same footing
+    // as every other write to this store.
+    inheritDuplicatedAnchors({
+        before: docBefore,
+        after: view.state.doc,
+        sourceFrom: range.from,
+        insertAt,
+        size: content.size,
+    });
     // "Here's where it landed" — the same landing flash a move gets. A
     // block-range duplicate already reads its destination from the selection
     // tint on the copy, but a caret duplicate otherwise makes a second block
@@ -860,7 +930,7 @@ export function openBlockMenu(
     interface RowSpec {
         label: string;
         keywords: readonly string[];
-        section: "turnInto" | "actions";
+        section: "turnInto" | "numbering" | "actions";
         build: () => HTMLElement;
     }
     const specs: RowSpec[] = [];
@@ -931,7 +1001,11 @@ export function openBlockMenu(
         // false — the markdown never changes and nothing lands in undo
         // history); the table NodeView listens and applies the class.
         // Top-level only: a nested table's box isn't the content column.
-        const widthAnchor = tableWidthAnchor(anchorNode.firstChild?.textContent ?? "");
+        // The SAME occurrence-disambiguated key the table's own NodeView uses
+        // (blockWidth.ts) — two surfaces for one preference, so they must
+        // resolve identically or the row and the in-table toggle disagree.
+        const widthAnchor = anchorAt(view.state.doc, blockPos, tableAnchorBase)
+            ?? tableWidthAnchor(anchorNode.firstChild?.textContent ?? "");
         const isFullWidth = getBlockWidth(widthAnchor) === "full";
         action(t("Full Width"), ["width", "full", "wide", "fixed", "narrow", "size"], {
             icon: IconExpandHorizontal,
@@ -1016,6 +1090,66 @@ export function openBlockMenu(
         });
     }
     if (isItem) {
+        // ── Numbering: how THIS ordered list draws its markers ──
+        // A real, undoable transaction (the style is a node attr), unlike the
+        // width rows next door which write only to the store — so `mutates`
+        // keeps its default and the caret is placed first, which is what makes
+        // undo land back on this list. It still never dirties the FILE: the
+        // attr is absent from ordered_list's toMarkdown, so the document
+        // serializes byte-identically and editor.ts's sync equality check
+        // no-ops. The bag write follows from the reconcile pass
+        // (plugins/listNumbering.ts).
+        //
+        // `conversionPos` already IS this item's own parent list (see its
+        // derivation above), which is the right target for the same reason
+        // Turn-into uses it: the marker you clicked belongs to that list, so a
+        // numbering choice restyles the level the marker is on and never a
+        // parent from inside a sublist.
+        const listNode = view.state.doc.nodeAt(conversionPos);
+        // A task item draws a checkbox INSTEAD of its marker (`list-style: none`
+        // and an emptied `::marker`, style.css), so a list whose every item is a
+        // task has no marker for a numbering to change. Offering the rows there
+        // is a dead control, the same reason Full Width hides itself in
+        // full-width page mode. A MIXED list keeps them: its plain items still
+        // draw markers.
+        const everyItemIsTask = listNode?.type.name === "ordered_list"
+            && listNode.childCount > 0
+            && (() => {
+                let allTasks = true;
+                listNode.forEach((item: ProseNode) => {
+                    if (item.attrs["checked"] == null) {
+                        allTasks = false;
+                    }
+                });
+                return allTasks;
+            })();
+        if (listNode?.type.name === "ordered_list" && !everyItemIsTask) {
+            const list = { pos: conversionPos, node: listNode };
+            const current = isOrderedNumbering(listNode.attrs["numbering"])
+                ? listNode.attrs["numbering"]
+                : "decimal";
+            for (const choice of NUMBERING_CHOICES) {
+                const active = choice.style === current;
+                specs.push({
+                    label: choice.label,
+                    keywords: choice.keywords,
+                    section: "numbering",
+                    build: () => addRow(choice.label, {
+                        radio: true,
+                        active,
+                        hint: choice.hint,
+                        action: () => {
+                            if (active) {
+                                return;
+                            }
+                            if (setListNumberingAt(view, list.pos, choice.style)) {
+                                view.focus();
+                            }
+                        },
+                    }),
+                });
+            }
+        }
         // Adjacent same-type sibling lists are the file's own split (a
         // `-`→`*` marker change — edit-created adjacency auto-joins, see
         // listAutoJoinPlugin), so merging is offered, never assumed. Rows
@@ -1098,6 +1232,14 @@ export function openBlockMenu(
             if (turnInto.length > 0) {
                 addHeader(isItem ? t("Turn list into") : t("Turn into"));
                 for (const spec of turnInto) {
+                    spec.build();
+                }
+                addDivider();
+            }
+            const numbering = specs.filter((spec) => spec.section === "numbering");
+            if (numbering.length > 0) {
+                addHeader(t("Numbering"));
+                for (const spec of numbering) {
                     spec.build();
                 }
                 addDivider();

@@ -47,7 +47,7 @@ import { queueEmbedMetaResolution } from "../embedMeta";
 import { deleteBlockRange } from "../components/blockMenu";
 // Per-embed width preference (presentation-only, never in the markdown):
 // the widget host carries the bw-full class so the card can span the pane.
-import { embedWidthAnchor, getBlockWidth } from "../blockWidth";
+import { anchorAt, embedWidthAnchor, getBlockWidth, registerAnchorKind } from "../blockWidth";
 
 /** Upper bound on how long after first paint the first embed pass may wait. */
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
@@ -102,6 +102,18 @@ function bareLinkHref(node: ProseNode): string | null {
 }
 
 /**
+ * The embed kind's anchor base (blockWidth.ts). Registered on the PARAGRAPH,
+ * because that is the node an embed widget decorates — an embed has no node of
+ * its own. It counts every bare-autolink paragraph, embeddable or not, which
+ * is harmless: only an embeddable URL ever carries a preference, and two
+ * paragraphs sharing a base URL are by definition both embeddable.
+ */
+const embedAnchorBase = registerAnchorKind("paragraph", (node) => {
+    const href = bareLinkHref(node);
+    return href === null ? null : embedWidthAnchor(href);
+});
+
+/**
  * The widget DOM: a host div that fills asynchronously once the card module
  * loads. Returning synchronously (PM calls this at render) keeps the lazy import
  * off the render frame; a failed import degrades to the inline URL fallback
@@ -116,7 +128,22 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, g
         host.setAttribute("contenteditable", "false");
         // Stored width preference (the card's own toggle keeps this in sync
         // on later flips; a rebuilt host re-reads the store here).
-        if (getBlockWidth(embedWidthAnchor(sourceUrl)) === "full") {
+        //
+        // The paragraph's live position, re-derived per use (edits move it; the
+        // widget key is position-independent so the DOM survives them). It sits
+        // above the width read because that read needs it: the stored key is
+        // occurrence-disambiguated, so the same URL embedded twice is two
+        // cards with two preferences (blockWidth.ts, "Block identity").
+        const liveFrom = (): number | undefined => {
+            const pos = getPos();
+            if (pos === undefined || view.isDestroyed) { return undefined; }
+            const from = pos - 1;
+            const node = view.state.doc.nodeAt(from);
+            return node && bareLinkHref(node) !== null ? from : undefined;
+        };
+        const widthAnchor = (): string =>
+            anchorAt(view.state.doc, liveFrom(), embedAnchorBase) ?? embedWidthAnchor(sourceUrl);
+        if (getBlockWidth(widthAnchor()) === "full") {
             host.classList.add("bw-full");
         }
         // Click-to-select (the image model, via horizontalRule.ts's hand-rolled
@@ -151,15 +178,6 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, g
                 syncPalette(view);
             }
         });
-        // The paragraph's live position, re-derived per use (edits move it;
-        // the widget key is position-independent so the DOM survives them).
-        const liveFrom = (): number | undefined => {
-            const pos = getPos();
-            if (pos === undefined || view.isDestroyed) { return undefined; }
-            const from = pos - 1;
-            const node = view.state.doc.nodeAt(from);
-            return node && bareLinkHref(node) !== null ? from : undefined;
-        };
         // The card's document-touching verbs (it has no view of its own):
         // edit = select + palette on the URL field; removePreview = convert to
         // the labeled, never-carded text-link form.
@@ -188,7 +206,9 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, g
             },
         };
         loadEmbedCard()
-            .then((mod) => host.replaceChildren(mod.renderEmbedCard(match, sourceUrl, actions)))
+            .then((mod) => host.replaceChildren(
+                mod.renderEmbedCard(match, sourceUrl, actions, widthAnchor()),
+            ))
             .catch(() => {
                 // The card chunk failed to load. An empty host reads as "all
                 // clear" while hiding the link (a silent absence) — degrade to

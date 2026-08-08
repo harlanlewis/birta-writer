@@ -31,6 +31,12 @@ const sent = vi.hoisted(() => [] as string[]);
 vi.mock("../messaging", () => ({
     notifyUploadImage: (id: string) => { sent.push(id); },
     notifyGetProjectImages: () => {},
+    // The editor's plugin stack reads the webview state bag at mount
+    // (plugins/listNumbering.ts hydrates ordered-list numbering from it), so a
+    // partial mock of this module has to answer it. No stored bag: an empty
+    // read is the "nothing to restore" path.
+    getWebviewState: () => undefined,
+    setWebviewState: () => {},
 }));
 
 // `vi.mock` is hoisted above this, so it binds the stub above.
