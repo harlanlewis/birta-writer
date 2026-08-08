@@ -48,12 +48,12 @@ import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so the check that blocks every PR is
 // unit-testable (this file runs Playwright/process.exit on import and can't be).
 import {
+    TYPING_GATED_FIXTURES, TYPING_CARET_MIN_SAMPLES, typingAbVerdict, confirmRegressions,
+} from "./perf/verdict.mjs";
 import { acquireHarnessLock } from "./harnessLock.mjs";
 
 // A timing capture is worthless on a contended machine (e2e/harnessLock.mjs).
 acquireHarnessLock("perf:typing");
-    TYPING_GATED_FIXTURES, TYPING_CARET_MIN_SAMPLES, typingAbVerdict, confirmRegressions,
-} from "./perf/verdict.mjs";
 
 // Plain prose, no characters that trigger input rules ([, ^, #, *, `, $...),
 // so every keystroke measures the same "insert one character" transaction.
