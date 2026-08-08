@@ -40,7 +40,11 @@ function makeViewFake() {
         focus: vi.fn(),
         dispatch: vi.fn(),
         get state() {
-            return { tr: makeTr() };
+            // An EMPTY doc: these cases drive the NodeView in isolation, with no
+            // surrounding document, so the occurrence lookup for a width anchor
+            // (blockWidth.ts) finds nothing and the view falls back to the bare
+            // content base — which is what every width assertion below expects.
+            return { tr: makeTr(), doc: { content: { size: 0 }, nodeAt: () => null } };
         },
     };
     return { view: view as never, dispatch: view.dispatch, focus: view.focus, markupCalls };

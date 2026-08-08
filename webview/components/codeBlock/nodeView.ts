@@ -33,7 +33,9 @@ import {
     IconExpandHorizontal, IconShrinkHorizontal,
 } from "@/ui/icons";
 import {
+    anchorAt,
     applyBlockWidthClass,
+    codeAnchorBase,
     codeWidthAnchor,
     getBlockWidth,
     getBlockWrap,
@@ -142,7 +144,15 @@ export function createCodeBlockView(
     const lightbox: LightboxHost = { active: null, dismissCleanup: null };
     // The block's content anchor (blockWidth.ts) — shared by the width AND
     // word-wrap preferences, declared before either seeds from the store.
-    let widthAnchor = codeWidthAnchor(node.textContent);
+    // Occurrence-disambiguated, so two blocks opening on the same first line
+    // (`#!/bin/sh`, `import React from "react"`) stay independent.
+    // Re-resolved on every use rather than cached: an ordinal is a fact about
+    // the whole document, and this view's update() never fires for an insertion
+    // elsewhere that renumbered it (blockWidth.ts, "Block identity").
+    let widthBase = codeWidthAnchor(node.textContent);
+    const resolveAnchor = (): string =>
+        anchorAt(view.state.doc, getPos(), codeAnchorBase) ?? widthBase;
+    let widthAnchor = resolveAnchor();
     // A remembered per-block override beats the global setting; absent means
     // follow birta.codeBlockWordWrap (and keep following it if it changes).
     let isWordWrap = getBlockWrap(widthAnchor) ?? shouldWordWrapCodeBlock();
@@ -179,6 +189,7 @@ export function createCodeBlockView(
     widthBtn.tabIndex = -1;
     const widthTooltip = applyTooltip(widthBtn, "", { placement: "left" });
     const syncWidthBtn = (): void => {
+        widthAnchor = resolveAnchor();
         const full = getBlockWidth(widthAnchor) === "full";
         applyBlockWidthClass(wrapper, full ? "full" : null);
         widthBtn.innerHTML = full ? IconShrinkHorizontal : IconExpandHorizontal;
@@ -196,7 +207,8 @@ export function createCodeBlockView(
     widthBtn.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        setBlockWidth(widthAnchor, getBlockWidth(widthAnchor) === "full" ? null : "full");
+        const anchor = resolveAnchor();
+        setBlockWidth(anchor, getBlockWidth(anchor) === "full" ? null : "full");
         syncWidthBtn();
         hideTooltip();
     });
@@ -255,7 +267,7 @@ export function createCodeBlockView(
         isWordWrap = !isWordWrap;
         // Remember the choice per block — cleared when it matches the global
         // setting again, so an un-overridden block keeps following it.
-        setBlockWrap(widthAnchor, isWordWrap === shouldWordWrapCodeBlock() ? null : isWordWrap);
+        setBlockWrap(resolveAnchor(), isWordWrap === shouldWordWrapCodeBlock() ? null : isWordWrap);
         applyWordWrapState();
         scheduleLineNumberRefresh();
         hideTooltip();
@@ -630,13 +642,19 @@ export function createCodeBlockView(
 
             // Carry the stored width and wrap preferences across a
             // first-line edit (codeWidthAnchor scans only to the first
-            // newline — cheap).
-            const newWidthAnchor = codeWidthAnchor(updatedNode.textContent);
-            if (newWidthAnchor !== widthAnchor) {
-                renameBlockWidthAnchor(widthAnchor, newWidthAnchor);
-                renameBlockWrapAnchor(widthAnchor, newWidthAnchor);
-                widthAnchor = newWidthAnchor;
-                syncWidthBtn();
+            // newline — cheap). Gated on the BASE so the ordinal lookup, which
+            // walks the document on a cache miss, never rides a keystroke that
+            // edits a later line.
+            const newBase = codeWidthAnchor(updatedNode.textContent);
+            if (newBase !== widthBase) {
+                widthBase = newBase;
+                const from = widthAnchor;
+                const to = resolveAnchor();
+                if (to !== from) {
+                    renameBlockWidthAnchor(from, to);
+                    renameBlockWrapAnchor(from, to);
+                    syncWidthBtn();
+                }
             }
 
             if (!wasPreviewable && nowPreviewable) {

@@ -16,8 +16,9 @@
  *   - The live store is this module's Map, keyed by CONTENT-derived anchors
  *     (`embed:<url>`, `img:<path>`, `code:<first line>`, `table:<header>`) —
  *     the fold-anchor lesson: positions rot across external edits, content
- *     keys don't. Duplicated content shares one width (deliberate: the same
- *     video embedded twice reads best at the same size).
+ *     keys don't. Identical content is disambiguated by OCCURRENCE (`base`,
+ *     `base#2`, `base#3`, … in document order) so two blocks are two blocks;
+ *     see "Block identity" below for why that replaced sharing.
  *   - Persistence rides the webview STATE BAG (setWebviewState → VS Code's
  *     webview state + the extension's per-URI mirror, handed back on init) —
  *     exactly the fold/scroll/frontmatter-collapse lifetime, with the same
@@ -34,6 +35,7 @@
  * by initPaneWidthVar(), one rAF-throttled resize listener.
  */
 import { getWebviewState, setWebviewState } from "./messaging";
+import type { Node as PmNode } from "./pm";
 
 /** Stored, non-default modes. Absence means the block's own default —
  * capped card (embeds), natural size (images), column width (code/tables). */
@@ -113,19 +115,32 @@ function bagMap<T>(stateKey: string, validate: (value: unknown) => value is T) {
         },
         /** Carry a stored value across a content edit that changes the
          * block's anchor (src edit, first-line edit) — from NodeView
-         * update(). */
+         * update().
+         *
+         * Two guards, both of them bugs this had. It REFUSES an occupied
+         * destination: the source block is moving into a key another block
+         * already answers to, and overwriting would hand one block's width
+         * to a different one. And it NOTIFIES, because a rename changes what
+         * `get(oldAnchor)` returns — chrome still anchored there (the other
+         * table under a shared key, before occurrence anchors) otherwise
+         * kept a class the store no longer backs, and reverted on reload
+         * with nothing on screen having changed. */
         rename(oldAnchor: string, newAnchor: string): void {
             if (oldAnchor === newAnchor) {
                 return;
             }
             const map = load();
             const value = map.get(oldAnchor);
-            if (value === undefined) {
+            if (value === undefined || map.has(newAnchor)) {
                 return;
             }
             map.delete(oldAnchor);
             map.set(newAnchor, value);
             persist(map);
+            for (const listener of [...listeners]) {
+                listener(oldAnchor, null);
+                listener(newAnchor, value);
+            }
         },
         subscribe(listener: Listener): () => void {
             listeners.add(listener);
@@ -180,6 +195,200 @@ export function renameBlockWrapAnchor(oldAnchor: string, newAnchor: string): voi
     wraps.rename(oldAnchor, newAnchor);
 }
 
+// ─── Block identity ─────────────────────────────────────────────────────────
+
+/**
+ * A content anchor names CONTENT, and two blocks can hold the same content —
+ * so on its own it is not an identity. It read as one until MAR-334: "Full
+ * Width" on a table moved its twin too, and Duplicate made a twin in one
+ * click. Any two tables under the same header row ("Name | Value") coupled,
+ * a code block sharing a first line coupled, and a header edit MOVED the one
+ * shared entry to whichever block was typed in, silently reverting the other
+ * on reload. The module had this as deliberate ("the same video embedded
+ * twice reads best at the same size"); a user meeting it called it a side
+ * effect, which is the more honest reading — a copy is a second block, and a
+ * preference set on one block belongs to that block.
+ *
+ * So a stored key is CONTENT plus OCCURRENCE: `base` for the first block with
+ * that content in document order, `base#2`, `base#3`, … for the rest. Content
+ * still carries the persistence (positions rot across external edits, the
+ * fold-anchor lesson), and the ordinal only separates ties.
+ *
+ * WHAT THIS DOES NOT FIX, and deliberately: an ordinal is document order, so
+ * reordering two identical blocks swaps their widths, and retitling one so it
+ * leaves (or joins) a tie group renumbers the rest. Those revert a block to
+ * its default width — exactly the graceful degradation this module already
+ * promises for an anchor that stops matching, and never a change to the file.
+ * Eliminating it needs true per-node identity, which markdown has nowhere to
+ * put. Duplicate, the gesture that made ties common, instead carries every
+ * affected block's preference across explicitly (inheritDuplicatedAnchors).
+ */
+
+/**
+ * Derives a block's anchor base, or null for a node this kind doesn't own.
+ * Must be a module-level function: the per-document index memoizes on its
+ * identity, so a fresh closure per call would index the document per call.
+ */
+export type AnchorBaseOf = (node: PmNode) => string | null;
+
+/** Registered by node type name so the index walk is one map lookup per node
+ * rather than a call into every kind. */
+const anchorKinds = new Map<string, AnchorBaseOf[]>();
+
+/** Declare a width-carrying block kind, from the module that owns it.
+ * Returns `baseOf` so a call site can register and name it in one statement. */
+export function registerAnchorKind(typeName: string, baseOf: AnchorBaseOf): AnchorBaseOf {
+    const existing = anchorKinds.get(typeName);
+    if (existing) {
+        if (!existing.includes(baseOf)) {
+            existing.push(baseOf);
+        }
+    } else {
+        anchorKinds.set(typeName, [baseOf]);
+    }
+    return baseOf;
+}
+
+/** base -> the positions holding it, in document order. */
+type AnchorIndex = Map<AnchorBaseOf, Map<string, number[]>>;
+
+/**
+ * One walk per document VERSION, shared by every kind and every block — the
+ * launch-perf constraint. A NodeView asks at mount and again only when its
+ * own base changed, so a keystroke that leaves every base alone costs
+ * nothing. Keyed on the doc node, so a new document version simply misses
+ * and nothing has to be invalidated by hand.
+ */
+const indexCache = new WeakMap<PmNode, AnchorIndex>();
+
+function anchorIndex(doc: PmNode): AnchorIndex {
+    const cached = indexCache.get(doc);
+    if (cached) {
+        return cached;
+    }
+    const index: AnchorIndex = new Map();
+    doc.descendants((node: PmNode, pos: number) => {
+        const derivers = anchorKinds.get(node.type.name);
+        if (derivers) {
+            for (const baseOf of derivers) {
+                const base = baseOf(node);
+                if (base === null) {
+                    continue;
+                }
+                let byBase = index.get(baseOf);
+                if (!byBase) {
+                    byBase = new Map();
+                    index.set(baseOf, byBase);
+                }
+                const positions = byBase.get(base);
+                if (positions) {
+                    positions.push(pos);
+                } else {
+                    byBase.set(base, [pos]);
+                }
+            }
+        }
+        return true;
+    });
+    indexCache.set(doc, index);
+    return index;
+}
+
+/** `base`, `base#2`, `base#3`, … — `#` cannot appear in an ordinal, so a base
+ * that itself ends in `#2` still can't be confused for one. */
+export function occurrenceAnchor(base: string, ordinal: number): string {
+    return ordinal <= 0 ? base : `${base}#${ordinal + 1}`;
+}
+
+/**
+ * The stored-preference key for the block at `pos`, or null when the node
+ * there isn't of `baseOf`'s kind. An unrecognized position degrades to the
+ * bare base rather than throwing: a NodeView asking mid-teardown gets the
+ * key it would have had as the sole occurrence.
+ */
+export function anchorAt(doc: PmNode, pos: number | undefined, baseOf: AnchorBaseOf): string | null {
+    if (pos === undefined || pos < 0 || pos > doc.content.size) {
+        return null;
+    }
+    const node = doc.nodeAt(pos);
+    // The node must be one this kind was REGISTERED for, not merely one the
+    // deriver can produce a string from: a table deriver handed a paragraph
+    // reads its first child's text and returns a plausible `table:…` key for a
+    // block that is not a table. Checking the registration is what makes the
+    // null contract above true.
+    if (!node || !anchorKinds.get(node.type.name)?.includes(baseOf)) {
+        return null;
+    }
+    const base = baseOf(node);
+    if (base === null) {
+        return null;
+    }
+    const ordinal = anchorIndex(doc).get(baseOf)?.get(base)?.indexOf(pos) ?? 0;
+    return occurrenceAnchor(base, Math.max(ordinal, 0));
+}
+
+/**
+ * Carry presentation preferences across a Duplicate, so the copy reads the way
+ * the block it copied does and every OTHER block keeps what it had.
+ *
+ * Both halves are needed because an insertion renumbers ordinals: with one
+ * `Fruit` table full-width, duplicating it downward makes the copy `Fruit#2`
+ * (stored nothing, so it would paint narrow next to its original), and
+ * duplicating UPWARD makes the COPY `Fruit` and pushes the original to
+ * `Fruit#2` — the original would go narrow and the copy would inherit. So
+ * this maps every occurrence in the new document back to the block it came
+ * from and rewrites the bag to match.
+ *
+ * The mapping is exact rather than a diff, because a duplicate's geometry is
+ * known: `size` bytes of a verbatim copy of `[sourceFrom, …]` landed at
+ * `insertAt`. Values are read from `before` and applied in one pass at the
+ * end, so an entry can't be clobbered by an earlier write in the same sweep.
+ */
+export function inheritDuplicatedAnchors(opts: {
+    before: PmNode;
+    after: PmNode;
+    sourceFrom: number;
+    insertAt: number;
+    size: number;
+}): void {
+    const { before, after, sourceFrom, insertAt, size } = opts;
+    if (size <= 0 || anchorKinds.size === 0) {
+        return;
+    }
+    /** The position in `before` that the block now at `pos` came from. */
+    const originOf = (pos: number): number =>
+        pos < insertAt ? pos
+        : pos < insertAt + size ? sourceFrom + (pos - insertAt)
+        : pos - size;
+
+    const widthWrites: [string, BlockWidthMode | null][] = [];
+    const wrapWrites: [string, boolean | null][] = [];
+    for (const [baseOf, byBase] of anchorIndex(after)) {
+        for (const positions of byBase.values()) {
+            // A base held by exactly one block cannot have been renumbered,
+            // and its key is unchanged — nothing to carry.
+            if (positions.length < 2) {
+                continue;
+            }
+            for (const pos of positions) {
+                const from = anchorAt(before, originOf(pos), baseOf);
+                const to = anchorAt(after, pos, baseOf);
+                if (to === null || to === from) {
+                    continue;
+                }
+                widthWrites.push([to, from === null ? null : getBlockWidth(from)]);
+                wrapWrites.push([to, from === null ? null : getBlockWrap(from)]);
+            }
+        }
+    }
+    for (const [anchor, mode] of widthWrites) {
+        setBlockWidth(anchor, mode);
+    }
+    for (const [anchor, wrap] of wrapWrites) {
+        setBlockWrap(anchor, wrap);
+    }
+}
+
 // ─── Anchors ────────────────────────────────────────────────────────────────
 
 export function embedWidthAnchor(url: string): string {
@@ -200,6 +409,23 @@ export function codeWidthAnchor(text: string): string {
 export function tableWidthAnchor(headerText: string): string {
     return `table:${headerText.slice(0, 120)}`;
 }
+
+/**
+ * The two kinds whose base needs nothing but the node register here; images
+ * and embeds register from their own modules, because their bases need a
+ * display-path rewrite and a sole-bare-link read that live there. Every kind
+ * must reach `registerAnchorKind` before the first `anchorAt` call, which
+ * holds because all four owners are on the eager launch graph.
+ */
+export const tableAnchorBase = registerAnchorKind(
+    "table",
+    (node) => tableWidthAnchor(node.firstChild?.textContent ?? ""),
+);
+
+export const codeAnchorBase = registerAnchorKind(
+    "code_block",
+    (node) => codeWidthAnchor(node.textContent),
+);
 
 // ─── DOM application ────────────────────────────────────────────────────────
 

@@ -184,14 +184,19 @@ function externalButton(provider: EmbedProvider, id: string, sourceUrl?: string)
  * stable, so the toggled class survives decoration redraws, and a fresh host
  * re-reads the store (plugins/embed.ts).
  */
-function widthButton(card: HTMLElement, url: string): HTMLElement {
+function widthButton(card: HTMLElement, url: string, widthAnchor?: string): HTMLElement {
+    // The host resolves the occurrence-disambiguated key (it has the document
+    // and the widget's position); the bare base is the fallback for a caller
+    // that has neither, which then behaves as it did before occurrence
+    // anchors — one shared preference. See blockWidth.ts, "Block identity".
+    const anchor = widthAnchor ?? embedWidthAnchor(url);
     const control = makeBlockControlButton({
         className: "embed-card__width",
         icon: IconExpandHorizontal,
         label: t("Full width"),
         onClick: () => {
-            const full = getBlockWidth(embedWidthAnchor(url)) !== "full";
-            setBlockWidth(embedWidthAnchor(url), full ? "full" : null);
+            const full = getBlockWidth(anchor) !== "full";
+            setBlockWidth(anchor, full ? "full" : null);
             card.closest(".embed-card-host")?.classList.toggle("bw-full", full);
             sync();
         },
@@ -199,7 +204,7 @@ function widthButton(card: HTMLElement, url: string): HTMLElement {
     // The icon and label name the NEXT state (the word-wrap toggle's
     // tooltip contract).
     const sync = (): void => {
-        const full = getBlockWidth(embedWidthAnchor(url)) === "full";
+        const full = getBlockWidth(anchor) === "full";
         control.setVerb(
             full ? IconShrinkHorizontal : IconExpandHorizontal,
             full ? t("Fixed width") : t("Full width"),
@@ -247,7 +252,7 @@ function brandBlock(provider: EmbedProvider): HTMLElement {
  * which selects the card and raises the palette. Media area does the media
  * verb; text area does the edit verbs.
  */
-function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: string, actions?: EmbedCardActions): HTMLElement {
+function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: string, actions?: EmbedCardActions, widthAnchor?: string): HTMLElement {
     const card = cardShell(provider);
     if (provider.aspect) {
         card.style.setProperty("--embed-aspect", provider.aspect);
@@ -400,7 +405,7 @@ function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: strin
     controls.className = "embed-card__controls";
     controls.appendChild(stop);
     controls.appendChild(externalButton(provider, id, sourceUrl));
-    controls.appendChild(widthButton(card, sourceUrl ?? provider.externalUrl(id)));
+    controls.appendChild(widthButton(card, sourceUrl ?? provider.externalUrl(id), widthAnchor));
     controls.appendChild(makeBlockControlButton({
         className: "embed-card__fullscreen",
         icon: IconMaximize2,
@@ -490,9 +495,14 @@ export interface EmbedCardActions {
  * caret; the only paths that can reach the serialized markdown are the two
  * host-supplied actions above — explicit user verbs, never side effects.
  */
-export function renderEmbedCard(match: EmbedMatch, sourceUrl?: string, actions?: EmbedCardActions): HTMLElement {
+export function renderEmbedCard(
+    match: EmbedMatch,
+    sourceUrl?: string,
+    actions?: EmbedCardActions,
+    widthAnchor?: string,
+): HTMLElement {
     const provider = providerFor(match.kind);
     return provider.playerUrl
-        ? renderPlayerCard(provider, match.id, sourceUrl, actions)
+        ? renderPlayerCard(provider, match.id, sourceUrl, actions, widthAnchor)
         : renderInfoCard(provider, match.id, sourceUrl);
 }

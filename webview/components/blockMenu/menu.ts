@@ -62,7 +62,14 @@ import {
     IconList,
     IconTrash2,
 } from "../../ui/icons";
-import { getBlockWidth, setBlockWidth, tableWidthAnchor } from "../../blockWidth";
+import {
+    anchorAt,
+    getBlockWidth,
+    inheritDuplicatedAnchors,
+    setBlockWidth,
+    tableAnchorBase,
+    tableWidthAnchor,
+} from "../../blockWidth";
 import {
     isChecklistSinkEnabled,
     setChecklistSinkEnabled,
@@ -203,6 +210,20 @@ export function duplicateBlockRange(
         return false;
     }
     view.focus();
+    // A copy reads the way the block it copied does (MAR-334). Presentation
+    // preferences live beside the document under occurrence-disambiguated keys,
+    // so inserting a twin renumbers them: without this the copy would paint at
+    // its default width beside a full-width original, and a duplicate-UP would
+    // hand the original's preference to the copy. Not a document edit, so it
+    // stays outside the transaction and outside undo history — the same footing
+    // as every other write to this store.
+    inheritDuplicatedAnchors({
+        before: docBefore,
+        after: view.state.doc,
+        sourceFrom: range.from,
+        insertAt,
+        size: content.size,
+    });
     // "Here's where it landed" — the same landing flash a move gets. A
     // block-range duplicate already reads its destination from the selection
     // tint on the copy, but a caret duplicate otherwise makes a second block
@@ -931,7 +952,11 @@ export function openBlockMenu(
         // false — the markdown never changes and nothing lands in undo
         // history); the table NodeView listens and applies the class.
         // Top-level only: a nested table's box isn't the content column.
-        const widthAnchor = tableWidthAnchor(anchorNode.firstChild?.textContent ?? "");
+        // The SAME occurrence-disambiguated key the table's own NodeView uses
+        // (blockWidth.ts) — two surfaces for one preference, so they must
+        // resolve identically or the row and the in-table toggle disagree.
+        const widthAnchor = anchorAt(view.state.doc, blockPos, tableAnchorBase)
+            ?? tableWidthAnchor(anchorNode.firstChild?.textContent ?? "");
         const isFullWidth = getBlockWidth(widthAnchor) === "full";
         action(t("Full Width"), ["width", "full", "wide", "fixed", "narrow", "size"], {
             icon: IconExpandHorizontal,

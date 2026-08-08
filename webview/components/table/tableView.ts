@@ -58,11 +58,13 @@ import { tagContentGuard } from "@/editing/blockOps";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import {
+    anchorAt,
     applyBlockWidthClass,
     getBlockWidth,
     onBlockWidthChange,
     renameBlockWidthAnchor,
     setBlockWidth,
+    tableAnchorBase,
     tableWidthAnchor,
 } from "@/blockWidth";
 
@@ -1294,16 +1296,32 @@ export function createTableView(
     // Full Width row as the discoverable home. This view applies the stored
     // class, listens for changes from either surface, and re-anchors when
     // the header row is edited. Presentation-only — never serialized.
-    let widthAnchor = tableWidthAnchor(node.firstChild?.textContent ?? "");
+    // Occurrence-disambiguated (blockWidth.ts): two tables under the same
+    // header row are two tables, so a width set on one leaves the other alone.
+    //
+    // The anchor is RE-RESOLVED on every apply rather than cached, because an
+    // ordinal is a fact about the whole document: inserting a twin renumbers
+    // every later occurrence, and this view's update() never fires for an edit
+    // that didn't touch its own node. A cached string then names a key that now
+    // belongs to a different table — the observed symptom was duplicating a
+    // table silently widening an unrelated one further down. `widthBase` stays
+    // cached only as the cheap gate that keeps the ordinal lookup (a document
+    // walk on a cache miss) off the keystroke path.
+    let widthBase = tableWidthAnchor(node.firstChild?.textContent ?? "");
+    const resolveAnchor = (): string =>
+        anchorAt(view.state.doc, getPos(), tableAnchorBase) ?? widthBase;
+    let widthAnchor = resolveAnchor();
     const widthControl = makeBlockControlButton({
         className: "mw-bc-width",
         icon: IconExpandHorizontal,
         label: t("Full width"),
         onClick: () => {
-            setBlockWidth(widthAnchor, getBlockWidth(widthAnchor) === "full" ? null : "full");
+            const anchor = resolveAnchor();
+            setBlockWidth(anchor, getBlockWidth(anchor) === "full" ? null : "full");
         },
     });
     const applyWidth = (): void => {
+        widthAnchor = resolveAnchor();
         const full = getBlockWidth(widthAnchor) === "full";
         applyBlockWidthClass(wrapper, full ? "full" : null);
         widthControl.setVerb(
@@ -1313,11 +1331,10 @@ export function createTableView(
         widthControl.setOn(full);
     };
     applyWidth();
-    const offWidthChange = onBlockWidthChange((anchor) => {
-        if (anchor === widthAnchor) {
-            applyWidth();
-        }
-    });
+    // Unfiltered: any write to the store can renumber this table's ordinal, so
+    // "was it MY anchor" is the wrong question. Writes are user gestures, and
+    // the per-document index makes each re-resolve a map lookup.
+    const offWidthChange = onBlockWidthChange(() => applyWidth());
     {
         // Top-level tables only: a nested table's box isn't the content
         // column, so the toggle would be a dead control there.
@@ -1344,11 +1361,22 @@ export function createTableView(
             node = newNode;
             controller.setNode(newNode);
             foldEllipsis.setCount(Math.max(0, newNode.childCount - 1));
-            const newWidthAnchor = tableWidthAnchor(newNode.firstChild?.textContent ?? "");
-            if (newWidthAnchor !== widthAnchor) {
-                renameBlockWidthAnchor(widthAnchor, newWidthAnchor);
-                widthAnchor = newWidthAnchor;
-                applyWidth();
+            // Only a changed BASE can move this table's key, and the base is a
+            // string slice — so the ordinal lookup (a document walk on a cache
+            // miss) stays off the keystroke path for every edit that leaves the
+            // header row alone.
+            const newBase = tableWidthAnchor(newNode.firstChild?.textContent ?? "");
+            if (newBase !== widthBase) {
+                const from = widthAnchor;
+                widthBase = newBase;
+                const to = resolveAnchor();
+                if (to !== from) {
+                    renameBlockWidthAnchor(from, to);
+                    // rename() notifies, which re-applies through the
+                    // subscriber above; call it anyway for the no-stored-value
+                    // case, where rename is a no-op and nothing else would.
+                    applyWidth();
+                }
             }
             return true;
         },

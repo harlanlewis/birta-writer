@@ -75,6 +75,14 @@
             "",
             "tail text",
             "",
+            // A SECOND table under the same header row. Its anchor base is
+            // therefore identical to the first's, which is what the block
+            // identity checks need to be non-vacuous: before occurrence
+            // anchors these two shared one stored width (MAR-334).
+            "| Name | Age |",
+            "| ---- | --- |",
+            "| Grace | 45 |",
+            "",
           ].join("\n"),
           imageUriMap: { [ORIGIN + "/img/swatch.png"]: "img/swatch.png" },
           syncVersion: 1,
