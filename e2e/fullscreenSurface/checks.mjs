@@ -20,44 +20,58 @@
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector("img.image-node", { timeout: 20000 });
-    await new Promise(r => setTimeout(r, 700));
+
+    // Every wait here is on a CONDITION, never a duration. A fixed sleep is
+    // both slower than it needs to be and weaker: it passes on a machine where
+    // the thing never happened, as long as it never happens within the sleep.
+    const gone = () => page.waitForFunction(
+        () => !document.querySelector(".fs-surface"), { timeout: 8000 });
+
     const open = async () => {
         await page.evaluate(() => {
             const w = document.querySelector(".image-wrapper");
+            // The control column attaches its buttons on first reveal.
             w.dispatchEvent(new PointerEvent("pointerenter"));
-            const btn = [...w.querySelectorAll("button")]
-                .find(b => /full ?screen|zoom/i.test(b.getAttribute("aria-label") || ""));
-            btn.click();
+            [...w.querySelectorAll("button")]
+                .find((b) => /full ?screen|zoom/i.test(b.getAttribute("aria-label") || ""))
+                .click();
         });
+        // The overlay animates in; the close paths below need it settled, and
+        // "settled" is the animation ending, not a guessed number of ms.
         await page.waitForSelector(".fs-surface", { timeout: 8000 });
-        await new Promise(r => setTimeout(r, 400));
+        await page.waitForFunction(
+            () => !document.querySelector(".fs-surface")?.getAnimations()
+                .some((a) => a.playState === "running"),
+            { timeout: 8000 },
+        );
     };
+
     await open();
     check("body scroll is locked while a lightbox is open",
-        await page.evaluate(() => document.body.style.overflow === "hidden"), "");
-    // Backdrop click: the wrapper covers the overlay, so this is the path that
-    // silently stopped working when the image left the overlay's direct children.
+        await page.evaluate(() => document.body.style.overflow === "hidden"));
+
+    // The wrapper covers the overlay, so this is the path that silently stopped
+    // working when the image left the overlay's direct children.
     await page.evaluate(() => {
-        const c = document.querySelector(".fs-content");
-        const r = c.getBoundingClientRect();
-        c.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: r.left + 8, clientY: r.top + 8 }));
+        const content = document.querySelector(".fs-content");
+        const box = content.getBoundingClientRect();
+        content.dispatchEvent(new MouseEvent("mousedown", {
+            bubbles: true, clientX: box.left + 8, clientY: box.top + 8,
+        }));
     });
-    await new Promise(r => setTimeout(r, 600));
-    check("a backdrop click dismisses the surface",
-        await page.evaluate(() => !document.querySelector(".fs-surface")), "");
+    await gone();
+    check("a backdrop click dismisses the surface", true);
     check("body scroll is restored after close",
-        await page.evaluate(() => document.body.style.overflow !== "hidden"), "");
-    // Escape
+        await page.evaluate(() => document.body.style.overflow !== "hidden"));
+
     await open();
     await page.keyboard.press("Escape");
-    await new Promise(r => setTimeout(r, 600));
-    check("Escape dismisses the surface",
-        await page.evaluate(() => !document.querySelector(".fs-surface")), "");
-    // Close button
+    await gone();
+    check("Escape dismisses the surface", true);
+
     await open();
     await page.evaluate(() => document.querySelector(".fs-btn--close")
         .dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
-    await new Promise(r => setTimeout(r, 600));
-    check("the close button dismisses the surface",
-        await page.evaluate(() => !document.querySelector(".fs-surface")), "");
+    await gone();
+    check("the close button dismisses the surface", true);
 }
