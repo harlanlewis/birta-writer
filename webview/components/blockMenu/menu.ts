@@ -1106,7 +1106,24 @@ export function openBlockMenu(
         // numbering choice restyles the level the marker is on and never a
         // parent from inside a sublist.
         const listNode = view.state.doc.nodeAt(conversionPos);
-        if (listNode?.type.name === "ordered_list") {
+        // A task item draws a checkbox INSTEAD of its marker (`list-style: none`
+        // and an emptied `::marker`, style.css), so a list whose every item is a
+        // task has no marker for a numbering to change. Offering the rows there
+        // is a dead control, the same reason Full Width hides itself in
+        // full-width page mode. A MIXED list keeps them: its plain items still
+        // draw markers.
+        const everyItemIsTask = listNode?.type.name === "ordered_list"
+            && listNode.childCount > 0
+            && (() => {
+                let allTasks = true;
+                listNode.forEach((item: ProseNode) => {
+                    if (item.attrs["checked"] == null) {
+                        allTasks = false;
+                    }
+                });
+                return allTasks;
+            })();
+        if (listNode?.type.name === "ordered_list" && !everyItemIsTask) {
             const list = { pos: conversionPos, node: listNode };
             const current = isOrderedNumbering(listNode.attrs["numbering"])
                 ? listNode.attrs["numbering"]

@@ -23,6 +23,17 @@
   window.__posted = [];
   window.__state = undefined;
   const DOC = [
+    // A task-only ordered list and a MIXED one. A task item draws a checkbox
+    // instead of its marker, so Numbering is a dead control on the first and a
+    // live one on the second.
+    "1. [ ] task one",
+    "2. [ ] task two",
+    "",
+    "separator prose",
+    "",
+    "1. plain one",
+    "2. [ ] mixed task",
+    "",
     "- groceries",
     "- steps",
     "- notes",

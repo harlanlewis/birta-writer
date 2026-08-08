@@ -38,8 +38,14 @@ export async function run({ page, check, baseUrl }) {
     };
     const hasLine = (doc, line) => doc != null && doc.split("\n").includes(line);
     const counts = () => page.evaluate(() => ({
-        ul: document.querySelectorAll(".ProseMirror ul").length,
-        ol: document.querySelectorAll(".ProseMirror ol").length,
+        ul: document.querySelectorAll(".ProseMirror > ul").length,
+        // Scoped to lists nested in the bullet list: the fixture also carries
+        // standalone ordered lists (the Numbering checks at the end need a task
+        // list and a mixed one), and a document-wide count would conflate them
+        // with the sublist these checks are about.
+        ol: document.querySelectorAll(".ProseMirror > ul ol").length,
+        // Document-wide, for the checks that genuinely mean "every list".
+        olAll: document.querySelectorAll(".ProseMirror ol").length,
     }));
     /**
      * Click, then let ProseMirror read the click's text selection out of the
@@ -183,6 +189,7 @@ export async function run({ page, check, baseUrl }) {
     // ── 7. A marker typed on the line DIRECTLY BELOW an ordered list restyles
     // that list, because adjacency auto-joins and the alternative is a marker
     // that visibly does nothing. ──
+    const olsBeforeJoin = (await counts()).olAll;
     await page.keyboard.press("Enter");
     await page.keyboard.press("Enter");
     await page.keyboard.type("I. ");
@@ -199,8 +206,8 @@ export async function run({ page, check, baseUrl }) {
     });
     check(
         "a marker below a list joins it rather than leaving a second list",
-        joined.ols === 2 && !joined.strayParagraph,
-        JSON.stringify(joined),
+        joined.ols === olsBeforeJoin && !joined.strayParagraph,
+        `before=${olsBeforeJoin} ${JSON.stringify(joined)}`,
     );
     check(
         "…and restyles the list it joined, instead of silently doing nothing",
@@ -267,5 +274,48 @@ export async function run({ page, check, baseUrl }) {
         "Backspace puts the characters back as prose and leaves no styled list",
         restored.prose && !restored.upperAlpha,
         JSON.stringify(restored),
+    );
+
+    // ── 9. Numbering is not offered where it cannot show: a task item draws a
+    // checkbox instead of its marker, so an all-task ordered list has nothing a
+    // numbering could change. A mixed list keeps the rows. ──
+    const menuHeaders = async (itemText) => {
+        const host = await page.$$eval(".ProseMirror li", (els, t) => {
+            const el = els.find((e) => e.textContent.includes(t)) ?? els[0];
+            const r = el.getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + Math.min(14, r.height / 2) };
+        }, itemText);
+        // Hover first: the gutter marker is revealed, not resident, so its
+        // geometry only exists once the row is hovered.
+        await page.mouse.move(host.x, host.y);
+        await page.waitForTimeout(140);
+        const m = await page.$$eval(".ProseMirror li .heading-fold-marker", (els, t) => {
+            const el = els.find((e) => e.closest("li")?.textContent.includes(t)) ?? els[0];
+            const r = el.getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        }, itemText);
+        await page.mouse.click(m.x, m.y);
+        await page.waitForTimeout(180);
+        const headers = await page.evaluate(() => {
+            const el = document.querySelector(".block-menu");
+            return el
+                ? [...el.querySelectorAll(".block-menu-header")].map((h) => h.textContent)
+                : null;
+        });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(120);
+        return headers;
+    };
+    const taskOnly = await menuHeaders("task one");
+    check(
+        "an all-task ordered list does not offer Numbering (no dead control)",
+        taskOnly !== null && !taskOnly.includes("Numbering"),
+        JSON.stringify(taskOnly),
+    );
+    const mixedList = await menuHeaders("plain one");
+    check(
+        "a mixed ordered list does offer it, because its plain items draw markers",
+        mixedList !== null && mixedList.includes("Numbering"),
+        JSON.stringify(mixedList),
     );
 }
