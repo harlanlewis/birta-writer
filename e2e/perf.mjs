@@ -21,6 +21,10 @@ import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so it can be unit-tested (this file
 // runs Playwright/process.exit on import and can't be).
 import {
+import { acquireHarnessLock } from "./harnessLock.mjs";
+
+// A timing capture is worthless on a contended machine (e2e/harnessLock.mjs).
+acquireHarnessLock("perf");
     SPANS, SUB_SPANS, POST_PAINT_SPANS, GATED_FIXTURES,
     median, round, spans, aggregate, abVerdict, confirmRegressions,
 } from "./perf/verdict.mjs";

@@ -24,6 +24,10 @@ export default defineConfig({
         },
     },
     test: {
+        // One heavy harness at a time (e2e/harnessLock.mjs). It lives on the
+        // ROOT config, not on a project: globalSetup runs once per vitest
+        // process, and both projects are that one process.
+        globalSetup: ["./e2e/harnessLock.globalSetup.mjs"],
         // The two suites, formerly `vitest.workspace.ts`. `defineWorkspace` is
         // deprecated in Vitest 3 and removed in 4; `test.projects` is the same
         // thing in the main config, so the split lives here now.
