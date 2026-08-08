@@ -1,13 +1,13 @@
 ---
 title: Content inventory
-description: The complete corpus of every content type the editor supports — with the edge cases, rejection forms, and expected-failure states. For the quick human tour, open showcase.md.
+description: The complete corpus of every content type the editor supports - with the edge cases, rejection forms, and expected-failure states. For the quick human tour, open showcase.md.
 tags: [reference, corpus, regression]
 ---
 # Content inventory
 
-This document is the **complete living corpus** of every content type Birta Writer supports — including the edge cases, deliberate rejection forms, and expected-failure states that make it useful as a regression fixture (the unit-test corpus round-trips this file's body verbatim). For a quick scroll-through — one clean example per type, none of the fine print — open [the showcase](showcase.md) instead.
+Every content type Birta Writer supports has an example here. So does every edge case, deliberate rejection form, and expected-failure state, which is what makes this file a regression fixture: the unit-test corpus round-trips its body verbatim. For a quick scroll-through, one clean example per type and none of the fine print, open [the showcase](showcase.md) instead.
 
-When support for a new content type lands, add an example here *with its edge cases*; when one changes, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
+When support for a new content type lands, add an example here *with its edge cases*; when one changes, update it. Keep the "Not yet supported" section honest - move items up into the body as they land.
 
 ---
 
@@ -39,9 +39,9 @@ A line of content under a Heading 6.
 
 #### A closed ATX heading ####
 
-The trailing hashes above are the "closed" ATX form — they survive the round trip too.
+The trailing hashes above are the "closed" ATX form - they survive the round trip too.
 
-Setext headings round-trip in their original form too (these two are real setext source — open the raw file to confirm saving never rewrites them to `#` form):
+Setext headings round-trip in their original form too (these two are real setext source - open the raw file to confirm saving never rewrites them to `#` form):
 
 Setext H1
 =========
@@ -59,21 +59,21 @@ Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example
 
 ### Marker fidelity
 
-The emphasis marker you type is part of the bytes: *single stars*, _single underscores_, **double stars**, and __double underscores__ each keep their authored marker on save. Intraword star emphasis works — un*bel*ievable — and typing arithmetic like `60*60*1000` never italicizes it (the star input rule is math-aware; the expression stays in backticks here because as raw source bytes CommonMark would read those stars as emphasis).
+The emphasis marker you type is part of the bytes: *single stars*, _single underscores_, **double stars**, and __double underscores__ each keep their authored marker on save. Intraword star emphasis works - un*bel*ievable - and typing arithmetic like `60*60*1000` never italicizes it (the star input rule is math-aware; the expression stays in backticks here because as raw source bytes CommonMark would read those stars as emphasis).
 
 ### Highlight
 
-`==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
+`==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict - each of these stays plain text, byte-preserved:
 
 - spaces at the edges: == spaced ==
 - an `=` inside: ==a=b==
 - no closer: 2==2
 
-(One rejected form per line: adjacent forms on a single line can legitimately cross-match, the tail `==` of one pairing with the head of the next — the same behavior as any paired-delimiter syntax.) Nested formatting inside a highlight renders literally.
+(One rejected form per line: adjacent forms on a single line can legitimately cross-match, the tail `==` of one pairing with the head of the next - the same behavior as any paired-delimiter syntax.) Nested formatting inside a highlight renders literally.
 
 ### Hard line breaks
 
-All three hard-break spellings work. The `<br>` and backslash forms keep their authored bytes outright; the two-trailing-spaces form is kept on lines you don't touch (editing that line re-serializes the break in the backslash form — the spaces are invisible, so the editor can't promise more):
+All three hard-break spellings work. The `<br>` and backslash forms keep their authored bytes outright; the two-trailing-spaces form is kept on lines you don't touch (editing that line re-serializes the break in the backslash form - the spaces are invisible, so the editor can't promise more):
 
 An HTML break ends this line here →<br>and continues on the next.
 
@@ -103,13 +103,13 @@ Put the caret at the end of any line below and press `=` to try it:
 
 -2 ^ 2
 
-The answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
+The answer appears as a suggestion - confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
 
-What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) — same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
+What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) - same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though - `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
 
 ### Living calculations `=>`
 
-Ending an expression with `=>` unlocks the richer form: **named variables** defined earlier in the document as `name = value` lines (only definitions *above* the cursor count, read top-to-bottom), and **offline unit conversions** with `in` / `to` across the full mathjs unit catalog — length, mass, time, volume, temperature, area, data, and more. Same Tab-confirmed suggestion, same plain-text insert; expressions are evaluated by the same eval-free offline engine, and the unit catalog never sees them (currency is deliberately absent — live rates would need the network).
+Ending an expression with `=>` unlocks the richer form: **named variables** defined earlier in the document as `name = value` lines (only definitions *above* the cursor count, read top-to-bottom), and **offline unit conversions** with `in` / `to` across the full mathjs unit catalog - length, mass, time, volume, temperature, area, data, and more. Same Tab-confirmed suggestion, same plain-text insert; expressions are evaluated by the same eval-free offline engine, and the unit catalog never sees them (currency is deliberately absent - live rates would need the network).
 
 budget = 5000
 
@@ -133,13 +133,13 @@ budget² - rent² =>
 
 log(100) =>
 
-That last one won't answer, on purpose. `log` means base 10 in spreadsheets and pocket calculators, and the natural log in Python, R, and most other programming languages — so any answer here would be wrong for half the people who paste the equation somewhere else, with nothing in the number to show it. Instead the menu offers both readings with their values, and picking one rewrites the equation to say `log10` or `ln`. The same principle sets the rest of the grammar: `%` is modulo with the sign of the divisor (as in `MOD`, Python, and Wolfram, not JavaScript's `%`), trig is in radians, `round` sends halves away from zero, `^` is right-associative, and `-2 ^ 2` is `-4`.
+That last one won't answer, on purpose. `log` means base 10 in spreadsheets and pocket calculators, and the natural log in Python, R, and most other programming languages - so any answer here would be wrong for half the people who paste the equation somewhere else, with nothing in the number to show it. Instead the menu offers both readings with their values, and picking one rewrites the equation to say `log10` or `ln`. The same principle sets the rest of the grammar: `%` is modulo with the sign of the divisor (as in `MOD`, Python, and Wolfram, not JavaScript's `%`), trig is in radians, `round` sends halves away from zero, `^` is right-associative, and `-2 ^ 2` is `-4`.
 
-Accepted `=>` answers stay **alive**: edit the expression — or a definition above it — and the number updates in place. Editing the answer itself is your override; the editor never fights it. Try it: change `rent = 1500` above after accepting a result below.
+Accepted `=>` answers stay **alive**: edit the expression - or a definition above it - and the number updates in place. Editing the answer itself is your override; the editor never fights it. Try it: change `rent = 1500` above after accepting a result below.
 
-Maintenance stops at the editor's own edits, and where it stops you get a **cue** instead of a silent wrong number. Move an answer above its definition, edit the file in the raw editor or a `git checkout`, or just open a file whose answers no longer hold, and the result span picks up a faint warning tint — **stale** when the expression now computes something different, tint plus a strikethrough for **broken** when it no longer computes at all (a vanished definition, `1/0`, an impossible conversion). Click the cue for **Update**, **Remove answer**, or **Ignore**; nothing touches the file until you pick one, and each is a single undo step. Only answers whose premises live outside their own text are ever cued — a plain `=` result or a constant-only arrow like `2+3 => 5` is your prose, and the editor doesn't second-guess it. To see one: accept an answer below, then change `budget = 5000` from the raw editor (Cmd+Shift+P → "Edit Raw Markdown") and switch back.
+Maintenance stops at the editor's own edits, and where it stops you get a **cue** instead of a silent wrong number. Move an answer above its definition, edit the file in the raw editor or a `git checkout`, or just open a file whose answers no longer hold, and the result span picks up a faint warning tint - **stale** when the expression now computes something different, tint plus a strikethrough for **broken** when it no longer computes at all (a vanished definition, `1/0`, an impossible conversion). Click the cue for **Update**, **Remove answer**, or **Ignore**; nothing touches the file until you pick one, and each is a single undo step. Only answers whose premises live outside their own text are ever cued - a plain `=` result or a constant-only arrow like `2+3 => 5` is your prose, and the editor doesn't second-guess it. To see one: accept an answer below, then change `budget = 5000` from the raw editor (Cmd+Shift+P → "Edit Raw Markdown") and switch back.
 
-Both inline forms live under `birta.calc.enabled`. Fragments are never computed: `1,000 + 2 =>` offers nothing rather than answering the digits after the comma, and results display at most 6 decimals — an answer, not noise.
+Both inline forms live under `birta.calc.enabled`. Fragments are never computed: `1,000 + 2 =>` offers nothing rather than answering the digits after the comma, and results display at most 6 decimals - an answer, not noise.
 
 ---
 
@@ -149,22 +149,22 @@ Both inline forms live under `birta.calc.enabled`. Fragments are never computed:
 - Link with a title: [hover me](https://example.com "A title")
 - Formatted link text stays one link: [**bold** and `code` tail](https://example.com)
 - Autolink: <https://example.com>
-- GFM autolink literals — a bare https://example.com/path or hello@example.com links itself mid-sentence, no brackets needed
+- GFM autolink literals - a bare https://example.com/path or hello@example.com links itself mid-sentence, no brackets needed
 - Reference link (full): [see the spec][spec]
 - Reference link (collapsed): [spec][]
 - Reference link (shortcut): [spec]
 
 [spec]: https://example.com/spec "Reference definition"
 
-Hover a link for the popup (clicking pins it open): it shows **where the link actually opens** (`→ path`, straight from the resolver) and the actions `open · copy · unlink · edit` — editing covers text, URL, and (for local links) a **Local link format** switch (`markdown` ⇄ `[[wiki]]`) that converts the link in place. Edits **save on blur**; there is no confirm button. External links open through VS Code's own trusted-domains prompt, or Cmd/Ctrl+click the link itself.
+Hover a link for the popup (clicking pins it open): it shows **where the link actually opens** (`→ path`, straight from the resolver) and the actions `open · copy · unlink · edit` - editing covers text, URL, and (for local links) a **Local link format** switch (`markdown` ⇄ `[[wiki]]`) that converts the link in place. Edits **save on blur**; there is no confirm button. External links open through VS Code's own trusted-domains prompt, or Cmd/Ctrl+click the link itself.
 
-Pasting a bare URL inserts `[url](url)` immediately — one history step, offline-safe, and the final answer if you want nothing more. Paste-unfurl (`birta.pasteUnfurl.enabled`, on by default but inert until the master network switch is on) then fetches the page title in the background and **offers** it in a small pill near the link: take it to swap the link text for the title, or ignore it and it fades on its own. The document is never touched until you accept — `birta.pasteUnfurl.autoApply` opts into the silent upgrade, the same shape as `birta.calc.autoInsert`. With the master switch off the paste still inserts the plain link, makes no request, and quietly offers to turn the switch on.
+Pasting a bare URL inserts `[url](url)` immediately - one history step, offline-safe, and the final answer if you want nothing more. Paste-unfurl (`birta.pasteUnfurl.enabled`, on by default but inert until the master network switch is on) then fetches the page title in the background and **offers** it in a small pill near the link: take it to swap the link text for the title, or ignore it and it fades on its own. The document is never touched until you accept - `birta.pasteUnfurl.autoApply` opts into the silent upgrade, the same shape as `birta.calc.autoInsert`. With the master switch off the paste still inserts the plain link, makes no request, and quietly offers to turn the switch on.
 
-A URL that would render as a card (see **URL embeds** below) is never unfurled: the card is the better answer, and carding requires the link text to still equal its href — which is exactly what a fetched title would overwrite. The two features are deliberately exclusive.
+A URL that would render as a card (see **URL embeds** below) is never unfurled: the card is the better answer, and carding requires the link text to still equal its href - which is exactly what a fetched title would overwrite. The two features are deliberately exclusive.
 
 ### Smart local links
 
-With `birta.smartLinks` (default on) local links resolve the way a site generator publishes them — every link below opens a real file in this repo when clicked:
+With `birta.smartLinks` (default on) local links resolve the way a site generator publishes them - every link below opens a real file in this repo when clicked:
 
 - Workspace-root path, extension inferred: [the README](/README)
 - Nested root path: [the perf harness](/e2e/perf/README)
@@ -176,16 +176,16 @@ With `birta.smartLinks` (default on) local links resolve the way a site generato
 
 ### Section links
 
-A bare `#slug` target jumps to a heading in **this** document — the standard GitHub anchor form, resolved against the same slugs the TOC uses. Two ways to insert one without hand-typing the slug, both listing every heading in the file:
+A bare `#slug` target jumps to a heading in **this** document - the standard GitHub anchor form, resolved against the same slugs the TOC uses. Two ways to insert one without hand-typing the slug, both listing every heading in the file:
 
-- **With nothing selected** — type `#` after a space anywhere in prose, or run **Link to Section** (`birta.editor.insertSectionLink`, also the section-link button in the floating toolbar). Pick a heading and you get `[Heading title](#slug)`, link text filled in from the title.
-- **With text selected** — the same command opens a picker that turns *your selection* into the link, so the text you wrote is kept and only the target is chosen.
+- **With nothing selected** - type `#` after a space anywhere in prose, or run **Link to Section** (`birta.editor.insertSectionLink`, also the section-link button in the floating toolbar). Pick a heading and you get `[Heading title](#slug)`, link text filled in from the title.
+- **With text selected** - the same command opens a picker that turns *your selection* into the link, so the text you wrote is kept and only the target is chosen.
 
 - Jump to a section: [the Tables section](#tables)
 - Any heading level works: [Living calculations](#living-calculations-)
 - The link text is yours to change; only the target has to match a slug: [skip ahead](#footnotes)
 
-Rename a heading and every inbound `#slug` link in the file is rewritten to match, **in the same undo step** as the rename — so one Cmd+Z restores both the title and the links. Set `birta.autoUpdateAnchors` to `false` to leave the links exactly as authored instead. Duplicate heading titles are disambiguated the way GitHub does it (`foo`, `foo-1`), including when a *new* heading collides with an existing one.
+Rename a heading and every inbound `#slug` link in the file is rewritten to match, **in the same undo step** as the rename - so one Cmd+Z restores both the title and the links. Set `birta.autoUpdateAnchors` to `false` to leave the links exactly as authored instead. Duplicate heading titles are disambiguated the way GitHub does it (`foo`, `foo-1`), including when a *new* heading collides with an existing one.
 
 ### Wikilinks
 
@@ -208,21 +208,21 @@ In a table cell the alias pipe is escaped (`\|`), and it still reads as one cell
 
 ## URL embeds
 
-A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte. Cards are first-class blocks: **arrow keys stop at each card** (a selection ring appears — sequential cards are each their own stop), and selecting opens a small **palette** with the editable URL plus open / copy / show-as-link / delete. Press **Enter** on a selected card to edit its URL in place; **Backspace selects before it deletes**, so a second press removes the card's paragraph cleanly. Every player card carries a resident **identity strip** just below the frame — the **page title** (fetched from the provider when the network is on) over the **URL** — visible at all times, playing included; the edit palette takes its place while open. Branded facades name their service in the frame's upper-left corner. Click semantics split by surface: **the media area — anywhere on the facade — loads the player**, and **the identity strip selects the card** and raises the palette.
+A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte. Cards are first-class blocks: **arrow keys stop at each card** (a selection ring appears - sequential cards are each their own stop), and selecting opens a small **palette** with the editable URL plus open / copy / show-as-link / delete. Press **Enter** on a selected card to edit its URL in place; **Backspace selects before it deletes**, so a second press removes the card's paragraph cleanly. Every player card carries a resident **identity strip** just below the frame - the **page title** (fetched from the provider when the network is on) over the **URL** - visible at all times, playing included; the edit palette takes its place while open. Branded facades name their service in the frame's upper-left corner. Click semantics split by surface: **the media area - anywhere on the facade - loads the player**, and **the identity strip selects the card** and raises the palette.
 
-A YouTube link gets a player card — a static thumbnail that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it; press the player's own play button to start it (the editor never forces autoplay). The corner controls survive playback: **⨯ stops the player and restores the facade**, and ↗ always opens the provider page. The short host and the mobile/music hosts are the same card:
+A YouTube link gets a player card - a static thumbnail that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it; press the player's own play button to start it (the editor never forces autoplay). The corner controls survive playback: **⨯ stops the player and restores the facade**, and ↗ always opens the provider page. The short host and the mobile/music hosts are the same card:
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
-A Vimeo link cards the same way behind a branded facade, and its player loads with `dnt=1` — Vimeo's do-not-track flag, this provider's `youtube-nocookie`:
+A Vimeo link cards the same way behind a branded facade, and its player loads with `dnt=1` - Vimeo's do-not-track flag, this provider's `youtube-nocookie`:
 
 https://vimeo.com/1084537
 
-A Loom link gets the same click-to-load player behind a quiet branded facade (no thumbnail is fetched — nothing loads until you press play):
+A Loom link gets the same click-to-load player behind a quiet branded facade (no thumbnail is fetched - nothing loads until you press play):
 
 https://www.loom.com/share/e41353f2fe1c43eba6c6829693e0f2c5
 
-A Figma link gets a taller frame that loads the live Figma embed on click. Every Embed Kit surface cards the same way — `/design/`, `/board/` (FigJam), `/slides/`, `/deck/`, and `/proto/` — and the legacy `/file/` form is normalized to `/design/`. This is Figma's own public Embed Kit examples file, so the preview genuinely loads:
+A Figma link gets a taller frame that loads the live Figma embed on click. Every Embed Kit surface cards the same way - `/design/`, `/board/` (FigJam), `/slides/`, `/deck/`, and `/proto/` - and the legacy `/file/` form is normalized to `/design/`. This is Figma's own public Embed Kit examples file, so the preview genuinely loads:
 
 https://www.figma.com/design/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
@@ -230,7 +230,7 @@ The same file through the legacy `/file/` form (watch it normalize):
 
 https://www.figma.com/file/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
-A GitHub link gets a compact info card built **from the URL alone** — zero network, so it renders even with the network switch off. Four shapes are recognized — repo, pull request, issue, and file:
+A GitHub link gets a compact info card built **from the URL alone** - zero network, so it renders even with the network switch off. Four shapes are recognized - repo, pull request, issue, and file:
 
 https://github.com/harlanlewis/birta-writer
 
@@ -246,33 +246,33 @@ https://www.twitch.tv/videos/1234567890
 
 [watch this](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
 
-Unrecognized *shapes* of a known provider stay ordinary links too — the match is deliberately narrow, so a URL that isn't one of the shapes above never gets a card that misdescribes it:
+Unrecognized *shapes* of a known provider stay ordinary links too - the match is deliberately narrow, so a URL that isn't one of the shapes above never gets a card that misdescribes it:
 
 https://github.com/microsoft/vscode/tree/main/src
 
 https://gist.github.com/harlanlewis/0123456789abcdef0123456789abcdef
 
-**Expected failures and edge states** — this section is a fixture for the error handling, so these are *supposed* to look broken in a controlled way, never as a silent blank:
+**Expected failures and edge states** - this section is a fixture for the error handling, so these are *supposed* to look broken in a controlled way, never as a silent blank:
 
-A valid-shaped YouTube id that points at no real video: the card renders and YouTube serves its own gray placeholder artwork (the id is well-formed, so the thumbnail request succeeds). If the thumbnail request *fails outright* — offline CDN, deleted asset — the facade degrades to the branded fallback instead of a blank frame; either way, never silence:
+A valid-shaped YouTube id that points at no real video: the card renders and YouTube serves its own gray placeholder artwork (the id is well-formed, so the thumbnail request succeeds). If the thumbnail request *fails outright* - offline CDN, deleted asset - the facade degrades to the branded fallback instead of a blank frame; either way, never silence:
 
 https://www.youtube.com/watch?v=aaaaaaaaaaa
 
-A Vimeo video whose owner disabled embedding: the card renders (the URL shape is valid), no title arrives (Vimeo's oEmbed refuses), and pressing play shows Vimeo's own restriction notice inside the frame — the ↗ button remains the way through:
+A Vimeo video whose owner disabled embedding: the card renders (the URL shape is valid), no title arrives (Vimeo's oEmbed refuses), and pressing play shows Vimeo's own restriction notice inside the frame - the ↗ button remains the way through:
 
 https://vimeo.com/76979871
 
-A Loom link with a synthetic id: the card and click-to-load player render normally, and Loom itself serves its 404 page *inside* the frame — a provider-side failure our chrome survives (stop and open-external stay available in the corner):
+A Loom link with a synthetic id: the card and click-to-load player render normally, and Loom itself serves its 404 page *inside* the frame - a provider-side failure our chrome survives (stop and open-external stay available in the corner):
 
 https://www.loom.com/share/0123456789abcdef0123456789abcdef
 
-Figma links with a synthetic key (a FigJam board and a prototype here): after you press **Load Figma preview**, an auth-walled or missing file comes up blank — a clickable notice inside the frame says so and opens the file in Figma directly (the sandbox blocks in-frame sign-in by design):
+Figma links with a synthetic key (a FigJam board and a prototype here): after you press **Load Figma preview**, an auth-walled or missing file comes up blank - a clickable notice inside the frame says so and opens the file in Figma directly (the sandbox blocks in-frame sign-in by design):
 
 https://www.figma.com/board/BAZsTPbh6W1r66Bdo9xkQp/FigJam-Board
 
 https://www.figma.com/proto/BAZsTPbh6W1r66Bdo9xkQp/Prototype
 
-Two switches govern all of this. `birta.embeds.enabled` is the feature itself — turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the GitHub cards still render (they fetch nothing) while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
+Two switches govern all of this. `birta.embeds.enabled` is the feature itself - turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the GitHub cards still render (they fetch nothing) while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
 
 ---
 
@@ -310,7 +310,7 @@ Checking a box only toggles the `[x]`; with `birta.checklist.sinkChecked` (off b
 
 ### Mixed nesting
 
-A sub-list can be a different kind from its parent, and the marker decides: typing `1. ` at the head of an indented bullet numbers that branch and leaves the outline around it alone. Kinds alternate to any depth, and one can come back after another has intervened — the numbered list at the bottom here is four layers down, with a checklist between it and the numbered list it echoes:
+A sub-list can be a different kind from its parent, and the marker decides: typing `1. ` at the head of an indented bullet numbers that branch and leaves the outline around it alone. Kinds alternate to any depth, and one can come back after another has intervened - the numbered list at the bottom here is four layers down, with a checklist between it and the numbered list it echoes:
 
 - A bulleted outline
   1. with a numbered branch under it
@@ -333,7 +333,7 @@ Task state is a per-item property rather than a third kind of list, so a numbere
 1. [ ] First step
 2. [x] Second step, done
 
-A marker change at the same indent is a new list, which is what the bytes say and what the editor shows — three blocks here, not one list with an odd item in it:
+A marker change at the same indent is a new list, which is what the bytes say and what the editor shows - three blocks here, not one list with an odd item in it:
 
 - alpha
 
@@ -343,7 +343,7 @@ A marker change at the same indent is a new list, which is what the bytes say an
 
 ### List markers
 
-The list marker you type is the one you keep — none of these are rewritten to a house style on save. Star bullets:
+The list marker you type is the one you keep - none of these are rewritten to a house style on save. Star bullets:
 
 * star bullet
 * another star
@@ -363,7 +363,7 @@ A paren delimiter stays a paren:
 1) paren one
 2) paren two
 
-Lazy numbering — every line `1.` — is preserved, never rewritten to count up (the rendered list still counts correctly):
+Lazy numbering - every line `1.` - is preserved, never rewritten to count up (the rendered list still counts correctly):
 
 1. lazy one
 1. lazy two
@@ -385,7 +385,7 @@ A list item can carry any block without dissolving the list:
 
 ### Tight, loose, and partly-loose
 
-Blank lines between items make a list *loose* — every item renders as its own paragraph, with the extra vertical spacing that implies. Without them it is *tight*. Both are preserved exactly as authored, including the **partly-loose** case where only some items are separated (the Bullet list above is one: there's a blank line before its third item and none before its second).
+Blank lines between items make a list *loose* - every item renders as its own paragraph, with the extra vertical spacing that implies. Without them it is *tight*. Both are preserved exactly as authored, including the **partly-loose** case where only some items are separated (the Bullet list above is one: there's a blank line before its third item and none before its second).
 
 Tight:
 
@@ -409,7 +409,7 @@ Loose:
 
 > A single-line blockquote.
 
-> A multi-line blockquote that spans several lines and can contain **formatting** and `code` — long enough to wrap at any sane editor width, so soft-wrap rendering inside a quote gets eyeballed here too.
+> A multi-line blockquote that spans several lines and can contain **formatting** and `code` - long enough to wrap at any sane editor width, so soft-wrap rendering inside a quote gets eyeballed here too.
 >
 > A second paragraph inside the same quote.
 
@@ -420,7 +420,7 @@ Quotes nest without any callout involved:
 
 ### Callouts
 
-GitHub alerts and Obsidian callouts render with a per-kind icon and accent color. The icon is a button — click it (or Enter/Space when focused) to switch the kind; the title text is editable in place (Enter or click away saves, Escape reverts). The marker line's exact source bytes round-trip.
+GitHub alerts and Obsidian callouts render with a per-kind icon and accent color. The icon is a button - click it (or Enter/Space when focused) to switch the kind; the title text is editable in place (Enter or click away saves, Escape reverts). The marker line's exact source bytes round-trip.
 
 > [!NOTE]
 > The five GitHub types: NOTE, TIP, IMPORTANT, WARNING, CAUTION.
@@ -444,7 +444,7 @@ GitHub alerts and Obsidian callouts render with a per-kind icon and accent color
 > `faq`/`help` → question, `hint` → tip, `error` → danger, `tldr` → abstract…
 
 > [!tip]- A folded callout (click the chevron)
-> Folding is **visual only** — expanding/collapsing never edits the file. `[!tip]-` starts collapsed, `[!tip]+` starts open.
+> Folding is **visual only** - expanding/collapsing never edits the file. `[!tip]-` starts collapsed, `[!tip]+` starts open.
 
 > [!success] Callouts nest
 > Outer body.
@@ -463,7 +463,7 @@ Deliberate degradations (still byte-preserved, render as plain blockquotes): a m
 
 #### Notion export asides
 
-Notion's markdown export writes callouts as `<aside>` HTML ("there is no Markdown equivalent" — Notion's own docs). The emoji maps to an accent color, the body is fully editable markdown, and the exact byte shape round-trips:
+Notion's markdown export writes callouts as `<aside>` HTML ("there is no Markdown equivalent" - Notion's own docs). The emoji maps to an accent color, the body is fully editable markdown, and the exact byte shape round-trips:
 
 <aside>
 💡 A Notion callout: emoji icon, editable body, **markdown inside**.
@@ -523,7 +523,7 @@ this line and the fence above render as plain paragraphs.
 
 ## Images
 
-Inline image with a relative path and a title. The alt text is the editable caption under the image (revealed on selection when empty); the title is the hover tooltip, as in published HTML. Click the image for the toolbar — a file-name chip that edits the path (autocompletes workspace images), zoom, delete, and the editable title on its own row. Edits apply on Enter or click-away, Escape cancels.
+Inline image with a relative path and a title. The alt text is the editable caption under the image (revealed on selection when empty); the title is the hover tooltip, as in published HTML. Click the image for the toolbar - a file-name chip that edits the path (autocompletes workspace images), zoom, delete, and the editable title on its own row. Edits apply on Enter or click-away, Escape cancels.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
 
@@ -558,7 +558,7 @@ Plain fenced block (no language):
 no highlighting here
 ```
 
-Tilde fences are equally valid CommonMark and keep their own marker on save — this really is a `~~~` block in the raw file, and it stays one:
+Tilde fences are equally valid CommonMark and keep their own marker on save - this really is a `~~~` block in the raw file, and it stays one:
 
 ~~~js
 const fence = "tildes";
@@ -589,7 +589,7 @@ graph TD
 
 ### Diagrams (PlantUML)
 
-Fenced [PlantUML](https://plantuml.com) diagrams render through the same preview as Mermaid, with the same zoom, pan and fullscreen controls — the two are adapters over one pane. Rendering is **offline**: the engine ships with the editor, so no diagram source leaves the machine.
+Fenced [PlantUML](https://plantuml.com) diagrams render through the same preview as Mermaid, with the same zoom, pan and fullscreen controls. Rendering is offline: the engine ships with the editor, so no diagram source leaves the machine.
 
 ```plantuml
 @startuml
@@ -598,7 +598,9 @@ Bob --> Alice : hi
 @enduml
 ```
 
-Both `plantuml` and `puml` open a diagram, and each round-trips in the spelling it was written in. Diagram families laid out by Graphviz — class above all — work the same as the natively laid-out ones:
+#### Both fence spellings
+
+`plantuml` and `puml` each open a diagram, and each round-trips in the spelling it was written in. Families laid out by Graphviz, class diagrams above all, work the same as the natively laid-out ones.
 
 ```puml
 @startuml
@@ -610,13 +612,17 @@ Order "1" *-- "many" LineItem
 @enduml
 ```
 
-An opening directive is optional; the engine implies `@startuml`:
+#### The opening directive is optional
+
+A block that does not open with one is read as `@startuml`.
 
 ```plantuml
 Alice -> Bob : no @startuml here
 ```
 
-`@startjson` and `@startyaml` bodies are **data, not PlantUML**. They always render in their own palette regardless of `birta.plantuml.theme`, because re-skinning them would mean writing a `skinparam` line into the data and breaking the parse:
+#### Data bodies keep their own palette
+
+`@startjson` and `@startyaml` parse their contents as data rather than as PlantUML. They render in their own palette whatever `birta.plantuml.theme` is set to, because re-skinning them would write a `skinparam` line into the data and break the parse.
 
 ```plantuml
 @startjson
@@ -627,7 +633,9 @@ Alice -> Bob : no @startuml here
 @endjson
 ```
 
-**Expected-failure states.** An invalid diagram settles on an error card and leaves the rest of the document alive; the unrenderable source still round-trips untouched. Note PlantUML is lenient — most malformed input renders *something*, so a genuine failure takes input the engine refuses outright:
+#### Invalid diagrams settle on an error card
+
+The rest of the document stays alive, and the unrenderable source still round-trips untouched. PlantUML is lenient, so most malformed input renders something; a genuine failure takes input the engine refuses outright.
 
 ```plantuml
 @startuml
@@ -635,7 +643,9 @@ Alice -> Bob : no @startuml here
 @enduml
 ```
 
-A diagram reaching for the network **fails closed rather than fetching**. `!theme <name>` and `!include <url>` resolve over HTTP in other PlantUML tools; here they error with the engine's own message. This is deliberate: a document cannot make the editor request anything by containing a diagram, whatever `birta.network.enabled` is set to.
+#### A diagram cannot reach the network
+
+`!theme <name>` and `!include <url>` resolve over HTTP in other PlantUML tools. Here they fail with the engine's own message, whatever `birta.network.enabled` is set to. A document cannot make the editor request anything by containing a diagram.
 
 ```plantuml
 @startuml
@@ -644,7 +654,9 @@ A -> B : still just text on disk
 @enduml
 ```
 
-Two families come up short, both because upstream delegates them to Java-only image libraries. **JCCKIT** does not render at all — upstream emits it as a raster image, so it settles on an error card. **DITAA** renders its boxes, lines and text, but ignores ditaa's own colour and shape tags: `cRED` and `{s}` below draw as literal text rather than a red fill and a storage shape.
+#### Two families come up short
+
+Upstream delegates both to Java-only image libraries. JCCKIT does not render at all, so it settles on an error card. DITAA renders its boxes, lines and text but ignores ditaa's own colour and shape tags: `cRED` and `{s}` below draw as literal text rather than a red fill and a storage shape.
 
 ```plantuml
 @startditaa
@@ -673,7 +685,7 @@ log10(400+π^2)
 180 lb to kg
 ```
 
-Every line is resolved against the definitions **above** it, like a page you read down: a definition enters scope, an expression shows its value, a line that reads as a formula but can't compute is flagged, and blank/comment lines pass through. Unit conversions work here too — same offline catalog as `=>`. Blocks have their own switch, `birta.calc.blocks.enabled`, independent of the inline forms' `birta.calc.enabled`.
+Every line is resolved against the definitions **above** it, like a page you read down: a definition enters scope, an expression shows its value, a line that reads as a formula but can't compute is flagged, and blank/comment lines pass through. Unit conversions work here too - same offline catalog as `=>`. Blocks have their own switch, `birta.calc.blocks.enabled`, independent of the inline forms' `birta.calc.enabled`.
 
 ---
 
@@ -691,7 +703,7 @@ $$
 
 ## Frontmatter
 
-See the top of this file — YAML frontmatter is lossless. Flat key/value pairs get a table UI; complex/nested YAML preserved verbatim.
+See the top of this file - YAML frontmatter is lossless. Flat key/value pairs get a table UI; complex/nested YAML preserved verbatim.
 
 ---
 
@@ -747,31 +759,31 @@ An HTML comment preserved and shown dimmed:
 
 The editor proofreads prose in three layers, each with its own decoration so you can tell them apart at a glance:
 
-- **Spelling** (Harper) — dotted underline in the warning color.
-- **Grammar** (Harper) — dotted underline in the info color.
-- **Style check** (built in) — deletable hits show a dimmed **strikethrough**; judgment-call "flags" show a plain dotted underline.
+- **Spelling** (Harper) - dotted underline in the warning color.
+- **Grammar** (Harper) - dotted underline in the info color.
+- **Style check** (built in) - deletable hits show a dimmed **strikethrough**; judgment-call "flags" show a plain dotted underline.
 
-Every line below is written to trip **one** check, so you can eyeball its decoration during manual review. Only prose is scanned — code blocks, inline code, links, and paths are skipped — which is why the triggers here are deliberately bare words. (The rest of this document already contains plenty of incidental hits, so the checker lights up outside this section too.) Every check ships on by default, gated by the master **Proofreading** switch at the top of the Checks menu — flip that off to silence all of them at once.
+Every line below is written to trip **one** check, so you can eyeball its decoration during manual review. Only prose is scanned - code blocks, inline code, links, and paths are skipped - which is why the triggers here are deliberately bare words. (The rest of this document already contains plenty of incidental hits, so the checker lights up outside this section too.) Every check ships on by default, gated by the master **Proofreading** switch at the top of the Checks menu - flip that off to silence all of them at once.
 
-### Spelling — `birta.spellCheck.enabled`
+### Spelling - `birta.spellCheck.enabled`
 
 - teh quick brown fox
 - please recieve this note
 - the error occured twice
 - a small mispeling slips through
 
-### Grammar — `birta.grammarCheck.enabled`
+### Grammar - `birta.grammarCheck.enabled`
 
 Harper owns these; a couple of classic rules:
 
 - I ate a apple. (article agreement: "a" should be "an")
 - i walked home alone. (the pronoun and the sentence start need capitals)
 
-### Style check — `birta.styleCheck.enabled`
+### Style check - `birta.styleCheck.enabled`
 
 The master switch above governs every category below; each also has its own `styleCheck.<name>` toggle.
 
-**Deletable hits — dimmed strikethrough:**
+**Deletable hits - dimmed strikethrough:**
 
 - Fillers (`fillers`): This is basically fine.
 - Redundancies (`redundancies`): The end result looked great. (only "end" is struck)
@@ -781,11 +793,11 @@ The master switch above governs every category below; each also has its own `sty
 - AI artifacts (`aiArtifacts`): I hope this helps.
 - Repeated words (`repeated`, part of the master switch): We shipped the the fix. (the second "the" is struck)
 
-**Judgment flags — dotted underline:**
+**Judgment flags - dotted underline:**
 
 - Long sentences (`longSentences`): This lengthy sentence keeps adding clause after clause with ordinary words and no other traps at all, purely so that it sails past the thirty word limit that the sentence length checker quietly watches for during review.
 - Rule of three (`ruleOfThree`): The build is fast, cheap, and reliable.
-- Em dash (`emDash`): The plan is simple — ship it. (offers an ASCII fix)
+- Em dash (`emDash`): The plan is simple - ship it. (offers an ASCII fix)
 - Non-ASCII punctuation (`nonAsciiPunct`): She called it “clever,” then trailed off… (curly quotes and an ellipsis glyph)
 - Passive voice (`passive`): The report was written overnight.
 - Negative parallelism (`negativeParallelism`): It's not a bug, it's a feature.
@@ -794,18 +806,18 @@ The master switch above governs every category below; each also has its own `sty
 
 ## Editor notes
 
-The **Notes** tab in the review sidebar collects the editor-note markers you leave for yourself while drafting — the scaffolding that should never survive into the finished piece. Every marker below is plain text that round-trips byte-for-byte; the sidebar only *lists* them (click to jump), it never decorates the prose. Open the Notes tab to see these grouped by type.
+The **Notes** tab in the review sidebar collects the editor-note markers you leave for yourself while drafting - the scaffolding that should never survive into the finished piece. Every marker below is plain text that round-trips byte-for-byte; the sidebar only *lists* them (click to jump), it never decorates the prose. Open the Notes tab to see these grouped by type.
 
-- A bare placeholder: [TK] — the classic "to come" mark for a fact you'll fill in later.
-- A placeholder carrying its spec: [TK: cite the 2024 remote-work survey] — the bracketed text becomes the note's label.
+- A bare placeholder: [TK] - the classic "to come" mark for a fact you'll fill in later.
+- A placeholder carrying its spec: [TK: cite the 2024 remote-work survey] - the bracketed text becomes the note's label.
 - A colon marker: TODO: tighten this paragraph before publish.
 - A fix marker: FIXME: the figures in this draft are from an old export.
-- The bracketed forms work too — [TODO] and [FIXME: broken cross-reference] — and map to the same kinds.
+- The bracketed forms work too - [TODO] and [FIXME: broken cross-reference] - and map to the same kinds.
 - An HTML comment is a note, and a leading keyword routes it: <!-- TODO: verify these against the current style guide -->
 
 A bare comment with no keyword is just a **Note**: <!-- reminder: the intro still needs a hook -->
 
-Add your own tokens with `birta.notes.customMarkers` — a plain word like `DRAFT` matches only as a whole word, so it never lights up inside `redrafted`.
+Add your own tokens with `birta.notes.customMarkers` - a plain word like `DRAFT` matches only as a whole word, so it never lights up inside `redrafted`.
 
 ---
 
@@ -816,11 +828,11 @@ Add your own tokens with `birta.notes.customMarkers` — a plain word like `DRAF
 
 ### Raw `<video>` / `<iframe>` tags
 
-Raw `<video>` / `<iframe>` HTML tags aren't rendered as players — they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub) on its own line does render as a card, though — see **URL embeds** above.
+Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub) on its own line does render as a card, though - see **URL embeds** above.
 
 ### Wikilink embeds
 
-Obsidian's transclusion form `![[page]]` is not treated as an embed — it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched (MAR-45):
+Obsidian's transclusion form `![[page]]` is not treated as an embed - it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched (MAR-45):
 
 ![[image-target]]
 

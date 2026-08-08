@@ -1,11 +1,11 @@
 ---
 title: Birta Writer Showcase
-description: A quick scroll-through of everything the editor renders — one clean example per content type. For the exhaustive corpus with edge cases, open content-inventory.md.
+description: A quick scroll-through of everything the editor renders - one clean example per content type. For the exhaustive corpus with edge cases, open content-inventory.md.
 tags: [reference, showcase]
 ---
 # Birta Writer Showcase
 
-Scroll through this file in the editor to see every content type it renders — one example each, none of the fine print. The full corpus, with every variant, rejection form, and deliberate failure state, lives in [the content inventory](content-inventory.md).
+Scroll through this file in the editor to see every content type it renders - one example each, none of the fine print. The full corpus, with every variant, rejection form, and deliberate failure state, lives in [the content inventory](content-inventory.md).
 
 ## Headings
 
@@ -13,11 +13,11 @@ Scroll through this file in the editor to see every content type it renders — 
 
 #### And this H4
 
-Setext and closed ATX forms are in the inventory — here, one shape per idea.
+Setext and closed ATX forms are in the inventory - here, one shape per idea.
 
 ## Text styles
 
-**Bold**, _italic_, ~~strikethrough~~, ==highlight==, and `inline code` — and they nest: **bold wrapping `code`**.
+**Bold**, _italic_, ~~strikethrough~~, ==highlight==, and `inline code` - and they nest: **bold wrapping `code`**.
 
 ## Links
 
@@ -45,7 +45,7 @@ Setext and closed ATX forms are in the inventory — here, one shape per idea.
 > Callouts get an icon, an accent color, and an editable title.
 
 :::note A container directive
-Same idea, Docusaurus syntax — the body is ordinary editable markdown.
+Same idea, Docusaurus syntax - the body is ordinary editable markdown.
 :::
 
 ## Tables
@@ -101,7 +101,7 @@ left = income - rent
 
 ## Embeds
 
-A bare provider link on its own line becomes a card — YouTube, Vimeo, Loom, and Figma players, plus GitHub info cards. The GitHub card is built offline from the URL alone; the players need the network switch, which ships **off** (Cmd+Shift+P → "Toggle Network Features" — until then they stay plain links):
+A bare provider link on its own line becomes a card - YouTube, Vimeo, Loom, and Figma players, plus GitHub info cards. The GitHub card is built offline from the URL alone; the players need the network switch, which ships **off** (Cmd+Shift+P → "Toggle Network Features" - until then they stay plain links):
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
@@ -119,10 +119,10 @@ Some claims deserve a footnote.[^1]
 
 ## Frontmatter
 
-See the very top of this file — the YAML block renders as an editable table, and round-trips losslessly.
+See the very top of this file - the YAML block renders as an editable table, and round-trips losslessly.
 
 ## Horizontal rule
 
 ---
 
-That's the tour. The [content inventory](content-inventory.md) has the rest — marker fidelity, rejection grammars, proofreading fixtures, and the expected-failure states.
+That's the tour. The [content inventory](content-inventory.md) has the rest - marker fidelity, rejection grammars, proofreading fixtures, and the expected-failure states.
