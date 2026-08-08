@@ -19,6 +19,16 @@ ship their code.
 The narrative notices for bundled *data* (dictionaries and word lists, which are not
 npm dependencies) live in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
+Every component below is licensed under its own terms, which are the terms reproduced
+with it — not under Birta Writer's license. Nothing in Birta Writer's license limits or
+alters the rights any of these grant you.
+
+One limit worth knowing when reading this file: each entry states what that PACKAGE
+declares. A package that inlines a third-party library into its own published artifact
+carries a second license one layer down, which a manifest cannot reveal. Where we know
+of one it is called out on the package's own entry; the known cases are listed under
+Embedded components below.
+
 ## Summary
 
 173 bundled packages.
@@ -39,6 +49,14 @@ project relies on.
 
 - **@kookyleo/plantuml-little-web** — offered as `GPL-3.0-or-later OR LGPL-3.0-or-later OR Apache-2.0 OR EPL-2.0 OR MIT`. Elected MIT. We inline the engine into a shipped bundle, which the GPL-3.0 arm would extend copyleft over and the LGPL arm would require relinking freedom for; MIT asks only for this notice.
 - **dompurify** — offered as `(MPL-2.0 OR Apache-2.0)`. Elected Apache-2.0. The MPL-2.0 alternative would attach a standing source-availability duty (§3.2) to a dependency we bundle unmodified.
+
+## Embedded components
+
+Libraries inlined INSIDE a package above, under a license the package's own
+manifest does not state. They are listed separately because the summary table
+counts declared licenses, and would otherwise not show these at all.
+
+- **Graphviz** (`EPL-1.0`), embedded in `@hpcc-js/wasm-graphviz`. Compiled Graphviz, inlined as WebAssembly. The package declares Apache-2.0 for its own wrapper and ships no Graphviz notice of its own. Source: https://graphviz.org. License text: [`licenses/graphviz-EPL-1.0.txt`](graphviz-EPL-1.0.txt).
 
 ## Packages
 
@@ -115,6 +133,7 @@ SOFTWARE.
 
 - License: Apache-2.0
 - Source: https://hpcc-systems.github.io/hpcc-js-wasm/
+- **Embeds Graphviz (EPL-1.0)** — Compiled Graphviz, inlined as WebAssembly. The package declares Apache-2.0 for its own wrapper and ships no Graphviz notice of its own. Source: https://graphviz.org. Its license text ships at `licenses/graphviz-EPL-1.0.txt`, and the narrative notice is in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 <details><summary>License text</summary>
 

@@ -57,6 +57,17 @@
  * wasm from the crate or pick up a supramark package once one exists, not to
  * bump a version that will never move. Tracked in MAR-331.
  *
+ * IF YOU ARE AUDITING THE BUNDLE AND FOUND `License GPL`: that string is in
+ * `dist/`, and it is output data rather than a license grant. The engine can
+ * emit upstream PlantUML's own version banner —
+ * `PlantUML version 1.2026.2 / bb8550d [...]` followed by `License GPL` —
+ * because a diagram asking for `version` must print what upstream prints, byte
+ * for byte, which is the entire point of a reimplementation targeting output
+ * parity. No GPL code is bundled: what we ship is the Rust reimplementation
+ * under the MIT election recorded in `scripts/generate-third-party-notices.mjs`.
+ * The long-form answer, including why upstream's GPL/LGPL stdlib sprites are
+ * NOT in this artifact, is in `THIRD_PARTY_NOTICES.md`.
+ *
  * The engine never reaches the network. PlantUML's `!theme <name>` and
  * `!include <url>` directives resolve over HTTP in upstream Java PlantUML;
  * this build is compiled without its `remote` feature, so they fail closed
