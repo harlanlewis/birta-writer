@@ -24,7 +24,7 @@ Everything above is deeply customizable through VS Code settings.
 
 Birta Writer in VS Code is a drop-in replacement for any PKM vault (Personal Knowledge Management). It traverses local file links and supports YAML frontmatter metadata.
 
-> _**birta**_ (Icelandic)
+> _birta_ (Icelandic)
 >
 > To publish and make public, to reveal, to make manifest, to brighten.
 
@@ -54,7 +54,7 @@ Requires VS Code 1.95 or later.
 
 ## Support
 
-Run **Birta Writer: Send Feedback** from the VS Code Command Palette to open a GitHub issue in your browser.
+Run Birta Writer: Send Feedback from the VS Code Command Palette to open a GitHub issue in your browser.
 
 You may also [file an issue directly](https://github.com/harlanlewis/birta-writer/issues).
 
