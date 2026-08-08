@@ -15,6 +15,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { join, dirname, extname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { acquireHarnessLock } from "./harnessLock.mjs";
 
 const repoRoot = dirname(fileURLToPath(new URL(".", import.meta.url)));
 const e2eDir = join(repoRoot, "e2e");
@@ -95,8 +96,14 @@ if (suites.length === 0) {
     process.exit(2);
 }
 
+// One harness at a time; see e2e/harnessLock.mjs for what running two costs.
+acquireHarnessLock(only ? `e2e ${only}` : "e2e sweep");
+
 let failedTotal = 0;
+const timings = [];
+const sweepStart = Date.now();
 for (const suite of suites) {
+    const suiteStart = Date.now();
     const suiteDir = join(e2eDir, suite);
     const server = serveSuite(suiteDir);
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -147,7 +154,19 @@ for (const suite of suites) {
 
     const failed = results.filter((r) => !r.ok).length;
     failedTotal += failed;
-    console.log(`${suite}: ${results.length - failed}/${results.length} checks passed\n`);
+    const elapsed = Date.now() - suiteStart;
+    timings.push({ suite, ms: elapsed });
+    console.log(`${suite}: ${results.length - failed}/${results.length} checks passed (${(elapsed / 1000).toFixed(1)}s)\n`);
 }
+
+// Where the sweep's time actually goes. Printed every run, because a suite
+// that has quietly become the slow one is invisible from a total.
+const sweepMs = Date.now() - sweepStart;
+timings.sort((a, b) => b.ms - a.ms);
+const slowest = timings.slice(0, 8)
+    .map((t) => `${t.suite} ${(t.ms / 1000).toFixed(1)}s`)
+    .join(", ");
+console.log(`sweep: ${suites.length} suites in ${(sweepMs / 1000).toFixed(1)}s`);
+console.log(`slowest: ${slowest}`);
 
 process.exit(failedTotal ? 1 : 0);

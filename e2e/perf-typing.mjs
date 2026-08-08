@@ -50,6 +50,10 @@ import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 import {
     TYPING_GATED_FIXTURES, TYPING_CARET_MIN_SAMPLES, typingAbVerdict, confirmRegressions,
 } from "./perf/verdict.mjs";
+import { acquireHarnessLock } from "./harnessLock.mjs";
+
+// A timing capture is worthless on a contended machine (e2e/harnessLock.mjs).
+acquireHarnessLock("perf:typing");
 
 // Plain prose, no characters that trigger input rules ([, ^, #, *, `, $...),
 // so every keystroke measures the same "insert one character" transaction.

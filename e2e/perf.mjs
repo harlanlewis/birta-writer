@@ -24,6 +24,10 @@ import {
     SPANS, SUB_SPANS, POST_PAINT_SPANS, GATED_FIXTURES,
     median, round, spans, aggregate, abVerdict, confirmRegressions,
 } from "./perf/verdict.mjs";
+import { acquireHarnessLock } from "./harnessLock.mjs";
+
+// A timing capture is worthless on a contended machine (e2e/harnessLock.mjs).
+acquireHarnessLock("perf");
 
 // End marks of the POST_PAINT_SPANS. `editor-painted` is not the end of a
 // launch: both of these are scheduled from the mount path onto idle and land in
