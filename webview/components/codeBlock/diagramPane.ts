@@ -58,6 +58,13 @@ export type DiagramRenderer = {
     themeKey(): string;
     /** Register for theme-change repaints. Returns its unregister fn. */
     register(instance: { invalidate: () => void }): () => void;
+    /**
+     * Whether this engine currently paints on the dark canvas. The lightbox
+     * needs it because it lives on `<body>`, outside the pane whose class
+     * carries the canvas colour — without it a dark PlantUML diagram (which
+     * renders transparent, see plantUmlTheme.ts) landed on a white card.
+     */
+    isDark(): boolean;
 };
 
 export type DiagramPane = {
@@ -74,6 +81,12 @@ export type DiagramPane = {
     hasSvg: () => boolean;
     /** The painted SVG markup, for the fullscreen copy. */
     svgHtml: () => string;
+    /**
+     * The engine driving this pane. Published so the fullscreen lightbox
+     * renders, themes and labels itself with the SAME engine the inline pane
+     * used, rather than assuming Mermaid.
+     */
+    renderer: DiagramRenderer;
     destroy: () => void;
 };
 
@@ -422,6 +435,7 @@ export function createDiagramPane(opts: {
         // Not a bare DOM probe: the error card's icon is an <svg> too.
         hasSvg: () => !lastRenderFailed && svgContainer.querySelector("svg") !== null,
         svgHtml: () => svgContainer.innerHTML,
+        renderer,
         destroy() {
             unregister();
             previewResizeObserver?.disconnect();

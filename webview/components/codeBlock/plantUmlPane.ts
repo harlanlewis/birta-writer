@@ -15,9 +15,9 @@
  *   the markup — no second parse, and nothing untrusted is put in the document
  *   to be measured.
  * - **The canvas.** Mermaid picks a dark palette wholesale; PlantUML is
- *   re-skinned per element and renders on a transparent canvas in dark mode
- *   (see `plantUmlTheme.ts`), so the pane paints the themed surface behind it.
- *   The class is toggled per pane rather than on `<body>` because
+ *   re-skinned per element (see `plantUmlTheme.ts`) and paints its own page in
+ *   the same colour this pane does, so the two agree edge to edge. The class is
+ *   toggled per pane rather than on `<body>` because
  *   `birta.plantuml.theme` and `birta.mermaid.theme` are independent — one
  *   document can hold a light Mermaid diagram and a dark PlantUML one.
  */
@@ -78,15 +78,19 @@ export function createPlantUmlPane(opts: {
         renderer: {
             classPrefix: "puml",
             async render(code) {
-                // Capture the key BEFORE rendering: an `auto`-mode theme change
-                // mid-render must not be recorded as what this render painted.
+                // Capture BOTH before rendering: an `auto`-mode theme change
+                // mid-render must not be recorded as what this render painted,
+                // and the canvas class has to match the palette that was
+                // actually used, not the one live when the render settled.
                 const themeKey = plantUmlThemeKey();
+                const dark = isPlantUmlDark();
                 const svg = await renderPlantUmlToSvg(code);
-                el?.classList.toggle("puml-canvas-dark", isPlantUmlDark());
+                el?.classList.toggle("puml-canvas-dark", dark);
                 return { svg, ...readSvgNaturalSize(svg), themeKey };
             },
             themeKey: plantUmlThemeKey,
             register: registerPlantUmlInstance,
+            isDark: isPlantUmlDark,
         },
     });
 

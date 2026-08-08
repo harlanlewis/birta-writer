@@ -587,18 +587,20 @@ export function createCodeBlockView(
     };
     fullscreenBtn.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
+        const getLang = (): string => (node.attrs["language"] as string) || "";
         if ((isMermaid || isPuml) && isPreviewMode) {
             const pane = isPuml ? pumlPane : mermaidPane;
             openDiagramLightbox({
                 ...lightboxCtx,
+                getLang,
                 hasSvg: pane.hasSvg,
                 svgHtml: pane.svgHtml,
+                // The engine the pane rendered with — the lightbox labels,
+                // highlights, re-renders and themes itself from it.
+                renderer: pane.renderer,
             });
         } else {
-            openCodeLightbox({
-                ...lightboxCtx,
-                getLang: () => (node.attrs["language"] as string) || "",
-            });
+            openCodeLightbox({ ...lightboxCtx, getLang });
         }
     });
 

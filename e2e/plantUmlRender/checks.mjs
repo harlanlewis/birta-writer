@@ -107,4 +107,71 @@ export async function run({ page, check, baseUrl }) {
     });
     check("PlantUML panes carry the shared zoom/pan chrome",
         chrome.zoom && chrome.pan, JSON.stringify(chrome));
+
+    // The fullscreen checks below want a DARK diagram, which is what makes the
+    // canvas assertion meaningful (a light one is white either way).
+    await page.evaluate(() => window.postMessage({ type: "setPlantUmlTheme", mode: "dark" }, "*"));
+    await page.waitForFunction(
+        () => document.querySelector(".puml-preview")?.querySelector(".puml-svg-container > svg"),
+        { timeout: 30000 },
+    );
+
+    // ── Fullscreen is the SAME engine, not Mermaid ──
+    // The lightbox is shared with Mermaid and used to hardcode it: a
+    // fullscreened PlantUML diagram was titled "Mermaid", highlighted as
+    // Mermaid, drawn on Mermaid's canvas, and — the damaging one — handed to
+    // Mermaid's parser the moment the user edited it there.
+    await page.evaluate(() => {
+        const wrapper = document.querySelector(".code-block-wrapper");
+        // The control column attaches its buttons on first reveal, so hover first.
+        wrapper.dispatchEvent(new PointerEvent("pointerenter"));
+        document.querySelector(".code-block-fullscreen-btn")
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    await page.waitForSelector(".mermaid-lightbox", { timeout: 10000 });
+    const lb = await page.evaluate(() => {
+        const overlay = document.querySelector(".mermaid-lightbox");
+        const canvas = overlay.querySelector(".mermaid-lightbox-svg");
+        return {
+            title: overlay.querySelector(".mermaid-lightbox-title")?.textContent ?? "",
+            canvasBg: getComputedStyle(canvas).backgroundColor,
+            paneBg: getComputedStyle(document.querySelector(".puml-preview")).backgroundColor,
+            codeClass: overlay.querySelector(".lb-mermaid-code-pane code")?.className ?? "",
+        };
+    });
+    check("the fullscreen header names PlantUML, not Mermaid",
+        /plantuml/i.test(lb.title), lb.title);
+    check("the fullscreen canvas matches the inline pane's",
+        lb.canvasBg === lb.paneBg, JSON.stringify(lb));
+    check("the fullscreen code pane is highlighted as PlantUML",
+        !/language-mermaid\b/.test(lb.codeClass), lb.codeClass);
+
+    // Edit in the fullscreen editor, then switch back to the preview: the
+    // re-render must go through PlantUML. Fed to Mermaid it produced "No
+    // diagram type detected" over a diagram that was fine a moment ago.
+    await page.evaluate(() => {
+        const overlay = document.querySelector(".mermaid-lightbox");
+        const toggle = overlay.querySelector(".mermaid-lightbox-header button");
+        toggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+        const textarea = overlay.querySelector(".code-lightbox-textarea");
+        textarea.value = "@startuml\nAlice -> Bob : edited\n@enduml";
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        toggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    await page.waitForFunction(
+        () => {
+            const c = document.querySelector(".mermaid-lightbox-svg");
+            return !!c && !c.querySelector(".puml-loading") && !c.querySelector(".mermaid-loading");
+        },
+        { timeout: 30000 },
+    );
+    const edited = await page.evaluate(() => {
+        const c = document.querySelector(".mermaid-lightbox-svg");
+        return {
+            hasSvg: !!c.querySelector("svg[data-diagram-type]"),
+            err: (c.querySelector(".puml-error-msg, .mermaid-error-msg")?.textContent ?? "").trim().slice(0, 80),
+        };
+    });
+    check("editing in fullscreen re-renders through PlantUML",
+        edited.hasSvg && !edited.err, JSON.stringify(edited));
 }

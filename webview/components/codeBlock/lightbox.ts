@@ -5,7 +5,8 @@
  * share:
  *
  *   openCodeLightbox    — an editable, syntax-highlighted full-window editor
- *   openDiagramLightbox — the same editor beside a pan/zoomable Mermaid canvas
+ *   openDiagramLightbox — the same editor beside a pan/zoomable diagram canvas,
+ *                         for whichever engine rendered the inline pane
  *
  * They live together because they share more than a file: one `LightboxHost`
  * (only ever one open at a time, and the NodeView's `destroy()` has to be able
@@ -31,7 +32,7 @@ import { escapeHtml } from "./escapeHtml";
 import { getLangLabel } from "./langPicker";
 import { getVisualLineCounts, updateLineNumbers } from "./lineNumbers";
 import { makeMermaidBtn, ZOOM_BTN, ZOOM_MAX, ZOOM_MIN } from "./mermaidPane";
-import { renderMermaidToSvg } from "./mermaidRuntime";
+import type { DiagramRenderer } from "./diagramPane";
 
 /**
  * The NodeView's single lightbox slot. Held by the NodeView (not by this
@@ -227,16 +228,28 @@ export function openCodeLightbox(ctx: LightboxContext & {
     host.dismissCleanup = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
 }
 
-// ── Mermaid diagram fullscreen ─────────────────────────
+// ── Diagram fullscreen (engine-agnostic: Mermaid or PlantUML) ─────────────────
 export function openDiagramLightbox(ctx: LightboxContext & {
     /** Whether the inline pane has a painted diagram to clone. */
     hasSvg: () => boolean;
     /** The inline pane's painted SVG markup. */
     svgHtml: () => string;
+    /** The block's language token, for the header label and the code pane. */
+    getLang: () => string;
+    /**
+     * The engine the INLINE pane rendered with. Everything engine-specific in
+     * here reads it — the re-render after an edit, the error card's classes,
+     * and the canvas colour. Hardcoding Mermaid meant a fullscreened PlantUML
+     * diagram was titled "Mermaid", highlighted as Mermaid, drawn on Mermaid's
+     * canvas, and fed to Mermaid's parser the moment the user edited it.
+     */
+    renderer: DiagramRenderer;
 }): void {
-    const { host, codeEl, isWordWrap } = ctx;
+    const { host, codeEl, isWordWrap, renderer } = ctx;
     if (host.active) return;
     if (!ctx.hasSvg()) return;
+    const lang = ctx.getLang();
+    const px = renderer.classPrefix;
 
     let lbPanX = 0, lbPanY = 0, lbZoom = 1.0;
     let lbIsCodeMode = false;
@@ -255,7 +268,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
 
     const lbTitle = document.createElement("span");
     lbTitle.className = "mermaid-lightbox-title";
-    lbTitle.textContent = "Mermaid";
+    lbTitle.textContent = getLangLabel(lang);
 
     const lbToggleBtn = document.createElement("button");
     lbToggleBtn.className = "ui-btn mermaid-zoom-btn";
@@ -283,6 +296,9 @@ export function openDiagramLightbox(ctx: LightboxContext & {
 
     const lbSvgContainer = document.createElement("div");
     lbSvgContainer.className = "mermaid-lightbox-svg";
+    // The canvas colour lives on the pane for PlantUML and on <body> for
+    // Mermaid; this surface is outside both, so it asks the engine directly.
+    lbSvgContainer.classList.toggle("diagram-canvas-dark", renderer.isDark());
     lbSvgContainer.innerHTML = ctx.svgHtml();
     const lbSvgEl = lbSvgContainer.querySelector("svg");
     if (lbSvgEl) lbSvgEl.style.display = "block";
@@ -303,7 +319,8 @@ export function openDiagramLightbox(ctx: LightboxContext & {
     lbPre.className = "code-lightbox-pre";
     lbPre.setAttribute("aria-hidden", "true");
     const lbCodeEl = document.createElement("code");
-    lbCodeEl.className = "language-mermaid";
+    const classLang = normalizeCodeLanguage(lang);
+    if (classLang) lbCodeEl.className = `language-${classLang}`;
     lbPre.appendChild(lbCodeEl);
 
     const textarea = document.createElement("textarea");
@@ -313,7 +330,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
     textarea.setAttribute("autocorrect", "off");
     textarea.setAttribute("autocapitalize", "off");
     textarea.value = originalCode;
-    lbCodeEl.innerHTML = highlight(originalCode, "mermaid");
+    lbCodeEl.innerHTML = highlight(originalCode, lang);
 
     codeArea.append(lbPre, textarea);
     lbCodePane.append(gutter, codeArea);
@@ -348,7 +365,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
 
     // ── Live highlight + scroll sync ──────────────────────
     const updateHighlight = (): void => {
-        lbCodeEl.innerHTML = highlight(textarea.value, "mermaid");
+        lbCodeEl.innerHTML = highlight(textarea.value, lang);
         updateGutter();
         lbPre.scrollTop = textarea.scrollTop;
         lbPre.scrollLeft = textarea.scrollLeft;
@@ -392,12 +409,13 @@ export function openDiagramLightbox(ctx: LightboxContext & {
 
     requestAnimationFrame(fitLbView);
 
-    // ── Mermaid rendering inside the lightbox ────────────────────────
-    async function renderLbMermaid(code: string): Promise<void> {
-        lbSvgContainer.innerHTML = `<div class="mermaid-loading">${t("Rendering...")}</div>`;
+    // ── Rendering inside the lightbox (whichever engine opened it) ───────────
+    async function renderLbDiagram(code: string): Promise<void> {
+        lbSvgContainer.innerHTML = `<div class="${px}-loading">${t("Rendering...")}</div>`;
         try {
             const { svg, width, height } =
-                await renderMermaidToSvg(code, lbPreviewPane.clientWidth || 800);
+                await renderer.render(code, lbPreviewPane.clientWidth || 800);
+            lbSvgContainer.classList.toggle("diagram-canvas-dark", renderer.isDark());
             lbSvgContainer.innerHTML = svg;
             const svgEl = lbSvgContainer.querySelector("svg");
             if (svgEl) {
@@ -408,7 +426,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
             requestAnimationFrame(fitLbView);
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            lbSvgContainer.innerHTML = `<div class="mermaid-error"><span>${IconAlertCircle}</span><pre class="mermaid-error-msg">${escapeHtml(msg)}</pre></div>`;
+            lbSvgContainer.innerHTML = `<div class="${px}-error"><span>${IconAlertCircle}</span><pre class="${px}-error-msg">${escapeHtml(msg)}</pre></div>`;
         }
     }
 
@@ -432,7 +450,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
         lbToggleBtn.innerHTML = IconCode;
         lbToggleTip.setText(t("Edit Code"));
         hideTooltip();
-        if (textarea.value !== originalCode) renderLbMermaid(textarea.value);
+        if (textarea.value !== originalCode) void renderLbDiagram(textarea.value);
     }
 
     lbToggleBtn.addEventListener("mousedown", (e) => {

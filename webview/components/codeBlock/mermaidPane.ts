@@ -21,6 +21,7 @@ import {
 } from "./diagramPane";
 import {
     lastInitializedThemeKey,
+    mermaidCanvasIsDark,
     mermaidThemeKey,
     registerMermaidInstance,
     renderMermaidToSvg,
@@ -50,6 +51,7 @@ export function createMermaidPane(opts: {
             },
             themeKey: mermaidThemeKey,
             register: registerMermaidInstance,
+            isDark: mermaidCanvasIsDark,
         },
     });
 }
