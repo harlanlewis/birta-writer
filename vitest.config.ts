@@ -7,6 +7,20 @@ export default defineConfig({
             // Redirect the vscode module to the mock implementation (needed by extension-side unit tests)
             vscode: path.resolve(__dirname, "__mocks__/vscode.ts"),
             "@": path.resolve(__dirname, "webview"),
+            // `@kookyleo/plantuml-little-web`'s exports map publishes only `.`
+            // and `./wasm`, both leading to the wasm-pack `bundler` entry we
+            // deliberately bypass (see webview/utils/plantUmlLoader.ts). The
+            // esbuild build resolves these two internals via plantUmlWasmPlugin;
+            // this is the same mapping for Vitest, which would otherwise fail
+            // every webview suite that transitively reaches the loader.
+            "@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.js": path.resolve(
+                __dirname,
+                "node_modules/@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.js",
+            ),
+            "@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.wasm": path.resolve(
+                __dirname,
+                "node_modules/@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.wasm",
+            ),
         },
     },
     test: {

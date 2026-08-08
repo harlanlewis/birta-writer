@@ -74,6 +74,13 @@ graph LR
     B --> A
 ```
 
+```plantuml
+@startuml
+Alice -> Bob : hello
+Bob --> Alice : hi
+@enduml
+```
+
 ## Math
 
 Inline $E = mc^2$, and block:

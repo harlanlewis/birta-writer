@@ -47,7 +47,7 @@ While superficially a single-document editor, Birta Writer has deep system aware
 
 - Display and edit both basic Markdown and extended syntax used by [Obsidian](https://obsidian.md), [Foam](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), [GitHub](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax), [Notion exports](https://www.notion.com/help/export-your-content), and others.
 - Crosslink local documents with Markdown links, [wikilinks](https://obsidian.md/help/links), or even [Logseq](https://www.markdownguide.org/tools/logseq/) with an inline file browser UI.
-- Interactive [Mermaid](https://mermaid.js.org) diagrams, [LaTeX](https://en.wikipedia.org/wiki/LaTeX) rendering, images, and a full-featured visual table editor with drag-and-drop rows and columns.
+- Interactive [Mermaid](https://mermaid.js.org) and [PlantUML](https://plantuml.com) diagrams, [LaTeX](https://en.wikipedia.org/wiki/LaTeX) rendering, images, and a full-featured visual table editor with drag-and-drop rows and columns. Both diagram languages render offline, on your machine.
 - Optionally display rich link previews or embedded documents and videos.
 
 It's not a wiki, knowledge base, or [PKM](https://en.wikipedia.org/wiki/Personal_knowledge_management) - but it sure can act like one:
@@ -165,7 +165,7 @@ Editing alongside tools that also write your files is normal now. Birta surfaces
 CommonMark is the floor. On top of it Birta renders, live as you type, the extensions that show up in real documents:
 
 - GitHub Flavored Markdown: tables, task lists, strikethrough, autolinks, and footnotes.
-- Math (`$...$` and `$$...$$`, rendered with KaTeX) and Mermaid diagrams.
+- Math (`$...$` and `$$...$$`, rendered with KaTeX), Mermaid diagrams, and PlantUML diagrams.
 - Wikilinks (`[[target]]`, `[[target|alias]]`, `[[target#heading]]`) that render, navigate, and autocomplete.
 - Highlights (`==text==`) and callouts or admonitions, in both the GitHub (`> [!NOTE]`) and Obsidian (`> [!tip]- Title`) spellings, plus `:::` container directives.
 - Reference-style links, raw HTML (rendered read-only, preserved), and image handling with local, deduplicated storage.

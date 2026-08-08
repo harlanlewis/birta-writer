@@ -2727,7 +2727,7 @@ body.block-marqueeing .milkdown .editor {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: color-mix(in srgb, var(--vscode-editor-background) 25%, transparent);
+    background: var(--ui-lightbox-scrim);
     backdrop-filter: blur(2px);
 }
 

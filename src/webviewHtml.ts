@@ -26,6 +26,7 @@ import { resolveFontFamily, clampFontSizePercent } from "../shared/fontPresets";
 import { clampMaxWidthCh } from "../shared/contentWidth";
 import { normalizeBlockHandlesMode, blockHandlesBodyClass } from "../shared/blockHandles";
 import { normalizeMermaidThemeMode } from "../shared/mermaid";
+import { normalizePlantUmlThemeMode } from "../shared/plantuml";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { foldingBodyClasses } from "../shared/foldingControls";
 
@@ -248,6 +249,7 @@ export function buildWebviewHtml(
     // gutter's module is never even fetched unless this is on.
     const lineNumbers = config.lineNumbers === true;
     const mermaidTheme = normalizeMermaidThemeMode(config.mermaidTheme);
+    const plantumlTheme = normalizePlantUmlThemeMode(config.plantumlTheme);
     const folding = readFoldingConfig(document.uri);
     const proofread = getProofreadConfig(config);
     const toolbar = getToolbarConfig(config);
@@ -261,7 +263,7 @@ export function buildWebviewHtml(
     // .replace(/</g, "\\u003c"): JSON.stringify leaves "<" intact, so a string
     // setting containing "</script>" would close the inline script element
     // early (no code execution under the nonce CSP, but style injection).
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName }).replace(/</g, "\\u003c")};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri, productName }).replace(/</g, "\\u003c")};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -270,6 +272,19 @@ export function buildWebviewHtml(
         ...foldingBodyClasses(folding.controls, folding.enabled),
     ].filter(Boolean).join(" ");
 
+    // `'wasm-unsafe-eval'` in script-src is what lets the PlantUML engine
+    // (a WebAssembly build, see webview/utils/plantUmlLoader.ts) compile. Blink
+    // refuses `WebAssembly.instantiate` without it, verified both ways in
+    // headless Chromium against this exact policy.
+    //
+    // It is narrower than it looks, and deliberately not `'unsafe-eval'`: it
+    // permits WebAssembly compilation and NOTHING else. `eval`, `new Function`,
+    // and string-to-code in JavaScript all stay blocked, and it adds no script
+    // source — running a wasm module still requires script that the nonce
+    // already had to admit. It also grants no network reach: `default-src
+    // 'none'` still applies to `connect-src`, so the webview cannot fetch, and
+    // the engine is inlined into its own lazy chunk rather than being fetched
+    // from disk precisely so this stays true.
     return `<!DOCTYPE html>
 <html lang="${vscode.env.language}"${contentFontStyleAttr}>
 <head>
@@ -277,7 +292,7 @@ export function buildWebviewHtml(
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none';
              style-src ${webview.cspSource} 'unsafe-inline';
-             script-src 'nonce-${nonce}' ${webview.cspSource};
+             script-src 'nonce-${nonce}' ${webview.cspSource} 'wasm-unsafe-eval';
              img-src ${webview.cspSource} data:${embedImgHosts};${embedFrameSrc}
              font-src ${webview.cspSource} data:;">
 	  <meta name="viewport" content="width=device-width, initial-scale=1.0">

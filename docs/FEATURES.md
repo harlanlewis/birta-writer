@@ -77,6 +77,7 @@ Full GFM support. Hover a border for the + insert bars, click a ⠿ handle to se
 
 - Syntax highlighting for ~66 languages, with a searchable language picker, one-click copy, drag-to-resize height, and a full-screen editor. Grammars load lazily, so they cost nothing at launch.
 - Mermaid diagrams render inline with a source/preview toggle, zoom, pan, and a full-screen lightbox. The theme follows your editor (`birta.mermaid.theme`).
+- PlantUML diagrams (```` ```plantuml ````/```` ```puml ````) render the same way, through the same preview, with the same zoom, pan and lightbox. Rendering is offline: the engine ships with the editor, so no diagram source leaves your machine and directives that would fetch a remote theme or include fail rather than reaching out. Palette via `birta.plantuml.theme`.
 
 ## Images
 
@@ -150,6 +151,7 @@ The settings you're most likely to touch. The full list is searchable in VS Code
 | `birta.tableWrap` | `"normal"` | Table cell wrapping: `normal`, `aggressive`, or `none` |
 | `birta.codeBlockMaxHeight` | `600` | Max code block height in pixels |
 | `birta.mermaid.theme` | `"light"` | Mermaid palette: `light`, `dark`, or `auto` (follow VS Code) |
+| `birta.plantuml.theme` | `"light"` | PlantUML palette: `light`, `dark`, or `auto` (follow VS Code) |
 | `birta.imageLocalPath` | `""` | Workspace-relative folder for pasted and dropped images |
 
 ***

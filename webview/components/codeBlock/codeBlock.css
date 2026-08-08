@@ -316,9 +316,26 @@ body.mermaid-canvas-dark {
     --mermaid-canvas: var(--vscode-textCodeBlock-background);
     --mermaid-canvas-fg: var(--vscode-editor-foreground);
 }
+/* PlantUML's dark canvas is per-PANE, not on <body> like Mermaid's, because
+   birta.plantuml.theme and birta.mermaid.theme are independent: one document
+   can hold a light Mermaid diagram and a dark PlantUML one, and a body class
+   could not say that. Redefining the variables on the pane itself works
+   because the same element's own `background: var(--mermaid-canvas)` reads
+   them. In dark mode the engine paints its page in this same colour (see
+   plantUmlTheme.ts), so this surface IS the diagram's background. */
+/* …and the fullscreen canvas asks the engine directly (see lightbox.ts). The
+   overlay lives on <body>, OUTSIDE the pane whose class carries the colour, so
+   it inherits neither of the two rules above: a dark PlantUML diagram landed on
+   the default white card while its inline pane was dark. */
+.puml-preview.puml-canvas-dark,
+.mermaid-lightbox-svg.diagram-canvas-dark {
+    --mermaid-canvas: var(--vscode-textCodeBlock-background);
+    --mermaid-canvas-fg: var(--vscode-editor-foreground);
+}
 
 /* ─── Inline preview area ─── */
-.mermaid-preview {
+.mermaid-preview,
+.puml-preview {
     /* display is controlled by JS (none / flex) */
     display: none;
     /* flex centering: SVG at its natural size, not stretched to fill via % */
@@ -336,7 +353,8 @@ body.mermaid-canvas-dark {
     user-select: none;
 }
 
-.mermaid-preview--panning {
+.mermaid-preview--panning,
+.puml-preview--panning {
     cursor: grabbing;
 }
 
@@ -344,19 +362,22 @@ body.mermaid-canvas-dark {
 /* Deliberately no will-change: transform, to avoid the browser rasterizing the
    compositing layer at CSS-pixel size, which would blur the diagram after scaling
    down on high-DPR (Retina) screens */
-.mermaid-svg-container {
+.mermaid-svg-container,
+.puml-svg-container {
     display: inline-block;
     flex-shrink: 0;
     transform-origin: center center;
 }
 
-.mermaid-svg-container svg {
+.mermaid-svg-container svg,
+.puml-svg-container svg {
     display: block;
     text-rendering: geometricPrecision;
     shape-rendering: geometricPrecision;
 }
 
-.mermaid-loading {
+.mermaid-loading,
+.puml-loading {
     position: absolute;
     inset: 0;
     display: flex;
@@ -368,7 +389,8 @@ body.mermaid-canvas-dark {
     font-size: var(--ui-fs-l);
 }
 
-.mermaid-error {
+.mermaid-error,
+.puml-error {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -379,7 +401,8 @@ body.mermaid-canvas-dark {
     overflow: auto;
 }
 
-.mermaid-error-msg {
+.mermaid-error-msg,
+.puml-error-msg {
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--ui-fs-s);
     white-space: pre-wrap;
@@ -412,7 +435,8 @@ body.mermaid-canvas-dark {
 
 
 /* ─── Top-right zoom overlay (floating over the preview area) ─── */
-.mermaid-zoom-overlay {
+.mermaid-zoom-overlay,
+.puml-zoom-overlay {
     position: absolute;
     top: 8px;
     right: 8px;
@@ -463,10 +487,10 @@ body.mermaid-canvas-dark {
     /* Above the topbar, like .img-editor-lightbox: a fullscreen surface must
        cover the fixed chrome, not sit under it. */
     z-index: 10010;
-    /* The shared fullscreen wash (embed + image lightboxes use the same
-       recipe) — one overlay surface across every fullscreen preview. The
+    /* The shared fullscreen scrim (embed + image lightboxes use the same
+       token) — one overlay surface across every fullscreen preview. The
        code editing sheet below stays opaque. */
-    background: color-mix(in srgb, var(--vscode-editor-background) 25%, transparent);
+    background: var(--ui-lightbox-scrim);
     backdrop-filter: blur(2px);
     display: flex;
     flex-direction: column;
@@ -548,7 +572,8 @@ body.mermaid-canvas-dark {
 }
 
 /* ─── Directional pan controls (cross layout at the bottom-right of the preview) ─── */
-.mermaid-pan-controls {
+.mermaid-pan-controls,
+.puml-pan-controls {
     position: absolute;
     bottom: 10px;
     right: 10px;
@@ -556,7 +581,8 @@ body.mermaid-canvas-dark {
     pointer-events: none;
 }
 
-.mermaid-pan-grid {
+.mermaid-pan-grid,
+.puml-pan-grid {
     display: grid;
     grid-template-columns: repeat(3, 22px);
     grid-template-rows: repeat(3, 22px);
@@ -883,6 +909,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     visibility: visible;
 }
 .code-block-wrapper.collapsed > .mermaid-preview,
+.code-block-wrapper.collapsed > .puml-preview,
 .code-block-wrapper.collapsed > .latex-preview,
 .code-block-wrapper.collapsed > .calc-preview,
 .code-block-wrapper.collapsed > .code-block-resize-handle {

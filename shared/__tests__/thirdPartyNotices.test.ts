@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
     ALLOWED_LICENSES,
+    EMBEDDED_COMPONENTS,
     LICENSE_ELECTIONS,
     OUT_FILE,
     // @ts-expect-error — plain-JS CLI module, intentionally untyped.
@@ -80,6 +81,45 @@ describe("third-party attribution appendix", () => {
                 election.offered,
             );
             expect(appendix).toContain(`**${name}** — offered as \`${election.offered}\``);
+        }
+    });
+
+    // ── Embedded components ──────────────────────────────────────────
+    // These attribute code that a package INLINES under other terms — the one
+    // thing the generator cannot derive, so it is the one thing most able to
+    // rot silently. Each check below is a way it could rot.
+
+    it("every embedded component should name a package the appendix actually attributes", () => {
+        // Drop the dependency and this entry becomes a claim about code we no
+        // longer ship — attribution for something absent is its own defect.
+        for (const name of Object.keys(EMBEDDED_COMPONENTS)) {
+            expect(appendix, `${name} has an embedded-component entry but is not in the appendix`)
+                .toContain(`### ${name}@`);
+        }
+    });
+
+    it("every embedded component should ship the license text it points at", () => {
+        for (const [name, e] of Object.entries(EMBEDDED_COMPONENTS) as [string, {
+            licenseFile: string; component: string; spdx: string;
+        }][]) {
+            const file = path.join(repoRoot, "licenses", e.licenseFile);
+            const text = readFileSync(file, "utf8");
+            // A stub or a fetch that silently returned an error page would
+            // satisfy "the file exists" but discharge nothing.
+            expect(text.length, `${name}: ${e.licenseFile} is too short to be a license`)
+                .toBeGreaterThan(1000);
+        }
+    });
+
+    it("an embedded component's license should NOT be silently added to the allowed set", () => {
+        // The allowlist answers "may this package's own license be bundled".
+        // EPL and friends are deliberately outside it; an embedded component is
+        // discharged by its notice and shipped text instead. If one ever lands
+        // in ALLOWED_LICENSES, that decision was made somewhere it is not
+        // visible, and the header's reasoning has been quietly overridden.
+        for (const [name, e] of Object.entries(EMBEDDED_COMPONENTS) as [string, { spdx: string }][]) {
+            expect(ALLOWED_LICENSES.has(e.spdx), `${e.spdx} (embedded in ${name}) is in ALLOWED_LICENSES`)
+                .toBe(false);
         }
     });
 

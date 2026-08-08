@@ -102,6 +102,75 @@ export const LICENSE_ELECTIONS = {
             "Elected Apache-2.0. The MPL-2.0 alternative would attach a standing " +
             "source-availability duty (§3.2) to a dependency we bundle unmodified.",
     },
+
+    // plantuml-little (the PlantUML rendering engine) is offered under five
+    // licenses at the author's choice: GPL-3.0-or-later, LGPL-3.0-or-later,
+    // Apache-2.0, EPL-2.0, or MIT. We elect MIT.
+    //
+    // This election is load-bearing rather than cosmetic. We ship a bundle
+    // (`vsce package --no-dependencies`), so the engine is inlined into
+    // `dist/webview.js`'s chunks as part of a single distributed artifact.
+    // Under the GPL-3.0 arm that inlining would carry copyleft obligations to
+    // the whole of Birta Writer, which is licensed FSL-1.1-ALv2 and could not
+    // satisfy them. The LGPL arm would demand relinking freedom that a
+    // base64-inlined wasm module inside a minified chunk does not offer. MIT
+    // asks only for the notice reproduced below, which is what this appendix
+    // exists to do — and it is the least restrictive of the five, so nothing is
+    // given up by choosing it.
+    "@kookyleo/plantuml-little-web": {
+        elected: "MIT",
+        // Verbatim as upstream declares it — the guard test compares this
+        // string to the manifest so a relicence cannot slip past the election.
+        offered: "GPL-3.0-or-later OR LGPL-3.0-or-later OR Apache-2.0 OR EPL-2.0 OR MIT",
+        rationale:
+            "Elected MIT. We inline the engine into a shipped bundle, which the " +
+            "GPL-3.0 arm would extend copyleft over and the LGPL arm would " +
+            "require relinking freedom for; MIT asks only for this notice.",
+    },
+};
+
+/**
+ * Packages that INLINE third-party code licensed differently from what they
+ * themselves declare.
+ *
+ * This is the generator's structural blind spot, recorded rather than papered
+ * over. Everything else here is derived from what a package's own manifest and
+ * license file say. A package that vendors a foreign library into its published
+ * artifact is invisible to that: its manifest is entirely self-consistent, and
+ * the second license lives one layer below anything we read.
+ *
+ * Found the hard way. `@hpcc-js/wasm-graphviz` declares Apache-2.0, ships the
+ * Apache text, and says nothing about Graphviz anywhere in the package — yet
+ * what it exists to deliver is Graphviz itself, compiled to WebAssembly and
+ * inlined into its single `dist/index.js` (the bundle exposes `CGraphviz` and
+ * the full `dot`/`neato`/`fdp`/`sfdp`/`circo`/`twopi`/`osage`/`patchwork`
+ * engine set). Graphviz is EPL-1.0. hpcc's Apache grant covers hpcc's wrapper;
+ * it cannot relicense the library inside it, and we redistribute that object
+ * code in `dist/`.
+ *
+ * Entries here are NOT added to ALLOWED_LICENSES. That set answers "may this
+ * package's own license be bundled", and EPL is deliberately outside it: the
+ * header above says source-availability terms impose duties the appendix alone
+ * does not discharge, and that is exactly right. An embedded component is the
+ * other question — the duty is discharged by the narrative notice in
+ * THIRD_PARTY_NOTICES.md and the license text shipped at `licenseFile`, and
+ * this map exists so the appendix POINTS at that rather than silently implying
+ * the parent's license covers everything inside it.
+ *
+ * Adding an entry is a claim that someone looked. Removing a dependency without
+ * removing its entry is caught by `thirdPartyNotices.test.ts`.
+ */
+export const EMBEDDED_COMPONENTS = {
+    "@hpcc-js/wasm-graphviz": {
+        component: "Graphviz",
+        spdx: "EPL-1.0",
+        homepage: "https://graphviz.org",
+        // Path relative to licenses/, shipped in the VSIX (see .vscodeignore).
+        licenseFile: "graphviz-EPL-1.0.txt",
+        note:
+            "Compiled Graphviz, inlined as WebAssembly. The package declares Apache-2.0 " +
+            "for its own wrapper and ships no Graphviz notice of its own.",
+    },
 };
 
 /** Package directories that are ours, not third-party. */
@@ -409,6 +478,16 @@ function render(packages) {
         "The narrative notices for bundled *data* (dictionaries and word lists, which are not",
         "npm dependencies) live in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).",
         "",
+        "Every component below is licensed under its own terms, which are the terms reproduced",
+        "with it — not under Birta Writer's license. Nothing in Birta Writer's license limits or",
+        "alters the rights any of these grant you.",
+        "",
+        "One limit worth knowing when reading this file: each entry states what that PACKAGE",
+        "declares. A package that inlines a third-party library into its own published artifact",
+        "carries a second license one layer down, which a manifest cannot reveal. Where we know",
+        "of one it is called out on the package's own entry; the known cases are listed under",
+        "Embedded components below.",
+        "",
     );
 
     out.push(`## Summary`);
@@ -438,6 +517,26 @@ function render(packages) {
         out.push("");
     }
 
+    const embeddedEntries = Object.entries(EMBEDDED_COMPONENTS)
+        .filter(([name]) => packages.some((p) => p.name === name));
+    if (embeddedEntries.length) {
+        out.push("## Embedded components");
+        out.push("");
+        out.push(
+            "Libraries inlined INSIDE a package above, under a license the package's own",
+            "manifest does not state. They are listed separately because the summary table",
+            "counts declared licenses, and would otherwise not show these at all.",
+            "",
+        );
+        for (const [name, e] of embeddedEntries) {
+            out.push(
+                `- **${e.component}** (\`${e.spdx}\`), embedded in \`${name}\`. ${e.note} ` +
+                `Source: ${e.homepage}. License text: [\`licenses/${e.licenseFile}\`](${e.licenseFile}).`,
+            );
+        }
+        out.push("");
+    }
+
     out.push("## Packages");
     out.push("");
     for (const p of packages) {
@@ -446,6 +545,18 @@ function render(packages) {
         out.push(`- License: ${p.spdx}`);
         if (p.homepage) out.push(`- Source: ${p.homepage.replace(/^git\+/, "").replace(/\.git$/, "")}`);
         if (p.copyright) out.push(`- ${p.copyright}`);
+        const embedded = EMBEDDED_COMPONENTS[p.name];
+        if (embedded) {
+            // The package's own license does NOT cover what it inlines. Say so
+            // right here, where a reader checking this package would otherwise
+            // conclude the line above is the whole story.
+            out.push(
+                `- **Embeds ${embedded.component} (${embedded.spdx})** — ${embedded.note} ` +
+                `Source: ${embedded.homepage}. Its license text ships at ` +
+                `\`licenses/${embedded.licenseFile}\`, and the narrative notice is in ` +
+                `[\`THIRD_PARTY_NOTICES.md\`](../THIRD_PARTY_NOTICES.md).`,
+            );
+        }
         out.push("");
         if (p.notice) {
             out.push("NOTICE (reproduced per Apache-2.0 §4(d)):");

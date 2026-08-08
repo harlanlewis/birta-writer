@@ -41,6 +41,15 @@ function mermaidDarkNow(): boolean {
     return isMermaidDark(mermaidThemeMode, mermaidThemeMode === "auto" ? currentEditorBg() : "");
 }
 
+/**
+ * Whether Mermaid currently paints on the dark canvas. The same answer the
+ * `<body>` class carries, published for surfaces that live outside the pane
+ * (the fullscreen lightbox) and must ask rather than inherit.
+ */
+export function mermaidCanvasIsDark(): boolean {
+    return mermaidDarkNow();
+}
+
 /** The Mermaid init-theme key for the current effective mode. */
 export function mermaidThemeKey(): "dark" | "default" {
     return mermaidDarkNow() ? "dark" : "default";

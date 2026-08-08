@@ -696,7 +696,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: rgba(0, 0, 0, 0.75); /* color-literal-ok: always-dark lightbox scrim (photo-viewer chrome, theme-independent by design) */
+    background: var(--ui-lightbox-scrim);
     display: flex;
     align-items: center;
     justify-content: center;

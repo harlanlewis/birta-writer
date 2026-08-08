@@ -74,7 +74,7 @@ async function openDoc(browser, baseUrl, content) {
         );
         const paintedMs = Date.now() - t0;
 
-        // Mermaid renders lazily AFTER paint (~1s of chunk load first), so a
+        // Diagrams render lazily AFTER paint (~1s of chunk load first), so a
         // paint-time ping misses a loop that starts late — the pre-fix bundle
         // passed a paint-only version of this suite. Wait for every VISIBLE
         // pane to settle (diagram or error card) before probing. Runs
@@ -82,15 +82,24 @@ async function openDoc(browser, baseUrl, content) {
         // true, and content-sniffing for fences would miss ~~~mermaid.
         // Visibility is computed style: every code block carries a hidden
         // pane, and inactive ones keep an empty inline style.
+        //
+        // `.diagram-preview` is the class BOTH engines' panes carry (they are
+        // adapters over one pane, diagramPane.ts), so this covers PlantUML too
+        // — which matters now that the sample corpus contains PlantUML: a
+        // Mermaid-only predicate would let the responsiveness probe below run
+        // while the PlantUML engine was still loading, and "still loading"
+        // reads exactly like "escaped its microtask chain" from here.
         await Promise.race([
             page.waitForFunction(() => {
-                const panes = [...document.querySelectorAll(".mermaid-preview")]
+                const panes = [...document.querySelectorAll(".diagram-preview")]
                     .filter((p) => getComputedStyle(p).display !== "none");
                 return panes.every((p) =>
                     p.querySelector(".mermaid-svg-container > svg") ||
-                    p.querySelector(".mermaid-error"));
+                    p.querySelector(".puml-svg-container > svg") ||
+                    p.querySelector(".mermaid-error") ||
+                    p.querySelector(".puml-error"));
             }, { timeout: RENDER_SETTLE_MS, polling: 100 }),
-            deadline(RENDER_SETTLE_MS + 1000, "mermaid settle"),
+            deadline(RENDER_SETTLE_MS + 1000, "diagram settle"),
         ]);
 
         // A timer that fires proves the main thread escaped its microtask

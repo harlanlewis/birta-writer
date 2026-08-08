@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- PlantUML diagrams render. A ```` ```plantuml ```` (or ```` ```puml ````) block now shows the diagram instead of its source, with the same preview toggle, zoom, pan, fit-to-view and fullscreen view Mermaid has had — they are two front ends onto one preview, so anything that works on a Mermaid diagram works here. Sequence, class, state, component, activity, use case, ERD, mindmap, gantt, WBS, JSON, YAML, salt wireframes and the rest of PlantUML's families are covered. It all happens on your machine: the engine is a WebAssembly build bundled with the editor, so no diagram source is ever sent anywhere and none of it depends on `birta.network.enabled`. PlantUML's `!theme name` and `!include url` directives fetch over the network in other tools; here they fail with an explanatory message rather than reaching out, which is deliberate — a document you opened cannot make the editor request anything. The engine loads only when a document actually contains a diagram, so files without one pay nothing for this. Two gaps are worth knowing: JCCKIT does not render at all (upstream emits it as a raster image, so you get an error card instead), and DITAA renders its boxes, lines and text but ignores ditaa's own colour and shape tags — a `cRED` or `{s}` marker draws as literal text rather than a red fill or a storage shape.
+
+- `birta.plantuml.theme` sets the palette for PlantUML diagrams: `light` (the default, PlantUML's own palette on a light canvas, so a diagram reads like an embedded image under any editor theme), `dark` (re-skinned with your editor's own foreground, surface and border colors), or `auto` (follow the editor). It mirrors `birta.mermaid.theme` and is independent of it, so one document can hold a light Mermaid diagram and a dark PlantUML one. `@startjson` and `@startyaml` blocks always use their own palette; their contents are data, and re-skinning them would corrupt the diagram.
+
+### Changed
+
+- The full-screen view of a diagram or image now dims the page behind it properly. The wash was mixed from your editor's own background colour, which on most themes left it within a few points of the diagram's own canvas. The diagram floated on a field of nearly the same shade and its edges disappeared. It is now a neutral dark scrim on every theme, the way a photo viewer dims, so what you opened full screen is the only thing lit.
+
 ---
 
 ## [2026.808.0] - 2026, August 8
