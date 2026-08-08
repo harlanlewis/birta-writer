@@ -29,6 +29,7 @@ Setext and closed ATX forms are in the inventory — here, one shape per idea.
 
 - Bullets
   - and nesting
+  1. or a numbered branch, typed right there
 
 1. Ordered lists
 2. count up
