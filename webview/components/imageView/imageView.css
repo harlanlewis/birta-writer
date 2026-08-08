@@ -250,7 +250,7 @@
        paints across is not fullscreen, and the close button sits at top: 16px
        — under the bar, its upper half was unclickable. */
     z-index: 10010;
-    background: color-mix(in srgb, var(--vscode-editor-background) 25%, transparent);
+    background: var(--ui-lightbox-scrim);
     backdrop-filter: blur(2px);
     display: flex;
     align-items: center;

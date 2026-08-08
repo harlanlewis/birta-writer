@@ -10,6 +10,10 @@
 
 - `birta.plantuml.theme` sets the palette for PlantUML diagrams: `light` (the default, PlantUML's own palette on a light canvas, so a diagram reads like an embedded image under any editor theme), `dark` (re-skinned with your editor's own foreground, surface and border colors), or `auto` (follow the editor). It mirrors `birta.mermaid.theme` and is independent of it, so one document can hold a light Mermaid diagram and a dark PlantUML one. `@startjson` and `@startyaml` blocks always use their own palette; their contents are data, and re-skinning them would corrupt the diagram.
 
+### Changed
+
+- The full-screen view of a diagram or image now dims the page behind it properly. The wash was mixed from your editor's own background colour, which on most themes left it within a few points of the diagram's own canvas. The diagram floated on a field of nearly the same shade and its edges disappeared. It is now a neutral dark scrim on every theme, the way a photo viewer dims, so what you opened full screen is the only thing lit.
+
 ### Fixed
 
 - A list indented four spaces per level, the spelling most other Markdown tools write, could silently lose its deepest nesting levels on any save that carried an edit. It took a second thing in the same file: something whose own indentation happens to match one of the list's levels but means nothing structural, such as a diagram or code sample indented four spaces inside a fence. The editor learns how your file spells each nesting level by reading its own round trip, and those fence lines were allowed to vote, reporting that four spaces stay four spaces while the list said four spaces mean one level. Two answers for one question is a tie, so the editor dropped what it knew about that level and every level below it flattened. On one of our own test documents an eight-level list came back with five of them gone, as one paragraph of loose lines. Text inside a fence or an indented code block is now read as content rather than as evidence about your outline, so the tie never happens. Lists whose indentation matches the editor's own two-space spelling were never affected, which is why this went unseen.

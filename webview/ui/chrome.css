@@ -74,6 +74,19 @@
        the shadow signals height only. */
     --ui-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 5px 14px rgba(0, 0, 0, 0.11);
     --ui-card-shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.16);
+
+    /* Fullscreen scrim: the wash behind a lightbox (diagram, image, embed
+       player). Deliberately NOT theme-derived. It used to be
+       `color-mix(--vscode-editor-background 25%, transparent)`, which on a dark
+       theme is the editor's own background at low alpha over the editor's own
+       background — so the scrim landed within a few points of the surface it
+       was supposed to separate, and a diagram card drawn on
+       `--vscode-textCodeBlock-background` disappeared into it entirely. What a
+       scrim has to do is be DARKER than whatever it frames, in both themes,
+       which only a theme-independent ink can promise. This is the same recipe
+       the toolbar's image lightbox already used, now shared rather than
+       re-decided per surface. */
+    --ui-lightbox-scrim: rgba(0, 0, 0, 0.62); /* color-literal-ok: always-dark fullscreen scrim (photo-viewer chrome, theme-independent by design) */
 }
 
 /* ── Button primitive ────────────────────────────────────────────────────
