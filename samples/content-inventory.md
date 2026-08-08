@@ -1,6 +1,6 @@
 ---
-title: Content inventory
-description: The complete corpus of every content type the editor supports - with the edge cases, rejection forms, and expected-failure states. For the quick human tour, open showcase.md.
+title: "Content inventory"
+description: "The complete corpus of every content type the editor supports - with the edge cases, rejection forms, and expected-failure states. For the quick human tour, open showcase.md."
 tags: [reference, corpus, regression]
 ---
 # Content inventory
@@ -176,10 +176,12 @@ With `birta.smartLinks` (default on) local links resolve the way a site generato
 
 ### Section links
 
-A bare `#slug` target jumps to a heading in **this** document - the standard GitHub anchor form, resolved against the same slugs the TOC uses. Two ways to insert one without hand-typing the slug, both listing every heading in the file:
+A bare `#slug` target jumps to a heading in **this** document - the standard GitHub anchor form, resolved against the same slugs the TOC uses. Two ways to insert a section link without hand-typing its slug, both listing every heading in the file:
 
 - **With nothing selected** - type `#` after a space anywhere in prose, or run **Link to Section** (`birta.editor.insertSectionLink`, also the section-link button in the floating toolbar). Pick a heading and you get `[Heading title](#slug)`, link text filled in from the title.
 - **With text selected** - the same command opens a picker that turns *your selection* into the link, so the text you wrote is kept and only the target is chosen.
+
+The result is an ordinary link:
 
 - Jump to a section: [the Tables section](#tables)
 - Any heading level works: [Living calculations](#living-calculations-)
@@ -212,15 +214,23 @@ A bare provider link on its own line renders as an inline card. Every card is **
 
 A YouTube link gets a player card - a static thumbnail that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it; press the player's own play button to start it (the editor never forces autoplay). The corner controls survive playback: **⨯ stops the player and restores the facade**, and ↗ always opens the provider page. The short host and the mobile/music hosts are the same card:
 
+### YouTube
+
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+### Vimeo
 
 A Vimeo link cards the same way behind a branded facade, and its player loads with `dnt=1` - Vimeo's do-not-track flag, this provider's `youtube-nocookie`:
 
 https://vimeo.com/1084537
 
+### Loom
+
 A Loom link gets the same click-to-load player behind a quiet branded facade (no thumbnail is fetched - nothing loads until you press play):
 
 https://www.loom.com/share/e41353f2fe1c43eba6c6829693e0f2c5
+
+### Figma
 
 A Figma link gets a taller frame that loads the live Figma embed on click. Every Embed Kit surface cards the same way - `/design/`, `/board/` (FigJam), `/slides/`, `/deck/`, and `/proto/` - and the legacy `/file/` form is normalized to `/design/`. This is Figma's own public Embed Kit examples file, so the preview genuinely loads:
 
@@ -229,6 +239,8 @@ https://www.figma.com/design/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 The same file through the legacy `/file/` form (watch it normalize):
 
 https://www.figma.com/file/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
+
+### GitHub
 
 A GitHub link gets a compact info card built **from the URL alone** - zero network, so it renders even with the network switch off. Four shapes are recognized - repo, pull request, issue, and file:
 
@@ -333,7 +345,7 @@ Task state is a per-item property rather than a third kind of list, so a numbere
 1. [ ] First step
 2. [x] Second step, done
 
-A marker change at the same indent is a new list, which is what the bytes say and what the editor shows - three blocks here, not one list with an odd item in it:
+A marker change at the same indent starts a new list, which is what the bytes say and what the editor shows. Three blocks follow, rather than a single list with an odd item in it:
 
 - alpha
 
@@ -343,27 +355,55 @@ A marker change at the same indent is a new list, which is what the bytes say an
 
 ### List markers
 
-The list marker you type is the one you keep - none of these are rewritten to a house style on save. Star bullets:
+Markdown list items may be denoted with varied symbols and syntaxes. Birta Writer presents all styles consistently, according to likely author intent, and never modifies the underlying raw Markdown.
+
+
+
+#### Unordered list markers
+
+Unordered lists of all types are rendered as bullet list.
+
+```
+- dash bullet
+- another dash
 
 * star bullet
 * another star
 
-Plus bullets:
++ plus bullet
++ another plus
+```
+
+- dash bullet
+- another dash
+
+* star bullet
+* another star
 
 + plus bullet
 + another plus
 
-An ordered list starting at 3 keeps its start number:
+#### Ordered list markers
 
-3. starts at three
+Ordered list markers respect arbitrary starts, parens, and lazy lists (all numbered items start with 1 to allow  re-sort without re-numbering).
+
+```
+3. list starts at three
 4. counts up from there
-
-A paren delimiter stays a paren:
 
 1) paren one
 2) paren two
 
-Lazy numbering - every line `1.` - is preserved, never rewritten to count up (the rendered list still counts correctly):
+1. lazy one
+1. lazy two
+1. lazy three
+```
+
+3. list starts starts at three
+4. counts up from there
+
+1) paren one
+2) paren two
 
 1. lazy one
 1. lazy two
@@ -512,6 +552,12 @@ this line and the fence above render as plain paragraphs.
 ---
 
 ## Tables
+
+| Feature | Supported | Notes |
+|---|:---:|---|
+| Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
+| Line breaks | yes | first line<br>second line |
+| Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
 
 | Feature | Supported | Notes |
 |---|:---:|---|
@@ -689,11 +735,19 @@ Every line is resolved against the definitions **above** it, like a page you rea
 
 ---
 
-## Math
+## Rendered math equations
 
-Inline math renders in place and is **edited in place**: arrow into $E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character editing, exactly like inline code; leave it and KaTeX re-renders. Currency like $5 and $10 stays as plain text.
+### Inline equations
 
-Block math:
+Inline math renders in place and is edited in place. You can edit this LaTeX-rendered equation just like any other text: $E = mc^2$. It's denoted with `$` on either side:
+
+```
+$E = mc^2$
+```
+
+Currency stays as plain text, such as $5 or $5000.
+
+### Block equations
 
 $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
@@ -704,6 +758,14 @@ $$
 ## Frontmatter
 
 See the top of this file - YAML frontmatter is lossless. Flat key/value pairs get a table UI; complex/nested YAML preserved verbatim.
+
+```
+---
+title: "Content inventory"
+description: "The complete corpus of every content type the editor supports - with the edge cases, rejection forms, and expected-failure states. For the quick human tour, open showcase.md."
+tags: [reference, corpus, regression]
+---
+```
 
 ---
 
@@ -725,6 +787,16 @@ Named labels work too,[^named] and a definition can hold more than one paragraph
 
 Three marker styles plus the spaced form, all preserved in their original bytes on save. Each demo rule is labeled by the line above it, so an unlabeled rule elsewhere in this file is a *section separator*, not part of this demo (that ambiguity once got two of these deleted as clutter):
 
+```
+---
+
+***
+
+___
+
+- - -
+```
+
 This one is `---`:
 
 ---
@@ -740,8 +812,6 @@ ___
 And the spaced `- - -` form keeps its spaces:
 
 - - -
-
----
 
 ## Raw HTML
 
