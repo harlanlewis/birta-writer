@@ -87,6 +87,15 @@ async function setNumbering(v: EditorView, style: string | null): Promise<void> 
     await setNumberingAt(v, firstList(v.state.doc).pos, style);
 }
 
+/**
+ * Let a deferred reconcile run. An INCIDENTAL document edit schedules the bag
+ * write on an idle window rather than doing it inline — measured, because inline
+ * it cost a keystroke burst a quarter of its time (plugins/listNumbering.ts) —
+ * and in jsdom `requestIdle` degrades to `setTimeout(0)`. An explicit numbering
+ * choice needs none of this: it reconciles synchronously.
+ */
+const flushIdle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 0); });
+
 const LIST = "1. one\n2. two\n3. three\n";
 
 describe("numbering is presentation, never source", () => {
@@ -179,6 +188,7 @@ describe("the state bag mirrors the document", () => {
         const firstItem = node.firstChild!;
         const textEnd = pos + 1 + 1 + 1 + firstItem.firstChild!.content.size;
         v.dispatch(v.state.tr.insertText("X", textEnd));
+        await flushIdle();
         expect(bag?.["listNumbering"]).toEqual({ "list:oneX": "lower-alpha" });
     });
 
@@ -189,6 +199,7 @@ describe("the state bag mirrors the document", () => {
         expect(Object.keys(bag?.["listNumbering"] as object)).toHaveLength(1);
         const { pos, node } = firstList(v.state.doc);
         v.dispatch(v.state.tr.delete(pos, pos + node.nodeSize));
+        await flushIdle();
         expect(bag?.["listNumbering"]).toEqual({});
     });
 
@@ -207,6 +218,32 @@ describe("the state bag mirrors the document", () => {
         expect(lists).toHaveLength(2);
         await setNumberingAt(v, lists[1]!.pos, "upper-roman");
         expect(bag?.["listNumbering"]).toEqual({ "list:same#2": "upper-roman" });
+    });
+});
+
+describe("the reconcile stays off the keystroke path", () => {
+    it("an incidental edit should NOT write the bag inline, only after an idle window", async () => {
+        // The measured regression this exists to prevent: reconciling inline
+        // cost a 40-keystroke burst 51ms → 65ms on a 521-block document the
+        // moment one list was styled.
+        const editor = await make(LIST);
+        const v = view(editor);
+        await setNumbering(v, "lower-alpha");
+        const { pos, node } = firstList(v.state.doc);
+        const textEnd = pos + 1 + 1 + 1 + node.firstChild!.firstChild!.content.size;
+        v.dispatch(v.state.tr.insertText("X", textEnd));
+        // Still the OLD key: nothing ran inline.
+        expect(bag?.["listNumbering"]).toEqual({ "list:one": "lower-alpha" });
+        await flushIdle();
+        expect(bag?.["listNumbering"]).toEqual({ "list:oneX": "lower-alpha" });
+    });
+
+    it("an explicit choice should persist synchronously, not wait for idle", async () => {
+        // The webview can be disposed (a switch to the raw editor) before an
+        // idle callback would ever run, so the user's own choice cannot wait.
+        const editor = await make(LIST);
+        await setNumbering(view(editor), "upper-roman");
+        expect(bag?.["listNumbering"]).toEqual({ "list:one": "upper-roman" });
     });
 });
 

@@ -208,6 +208,39 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(joined),
     );
 
+    // ── 7b. A styled marker at the HEAD OF AN ITEM in an already-ordered list
+    // restyles that list. retypeListItemAt declines when the kind is unchanged,
+    // so without this branch there is no typed way to letter a numbered list. ──
+    await clickInto(".ProseMirror li:has-text('beta') p");
+    await page.keyboard.press("Home");
+    await page.keyboard.type("a. ");
+    await page.waitForTimeout(250);
+    const restyled = await page.evaluate(() => {
+        const ols = [...document.querySelectorAll(".ProseMirror ol")];
+        const ol = ols.find((el) => el.textContent.includes("beta"));
+        return {
+            style: ol ? getComputedStyle(ol).listStyleType : null,
+            // The marker must be CONSUMED, not left as literal text.
+            literal: ol ? ol.textContent.includes("a. beta") : null,
+        };
+    });
+    check(
+        "a marker at an ordered item's head restyles its list",
+        restyled.style === "lower-alpha",
+        JSON.stringify(restyled),
+    );
+    check(
+        "…and the typed marker is consumed rather than left as text",
+        restyled.literal === false,
+        JSON.stringify(restyled),
+    );
+    const restyledDoc = await waitForUpdate((doc) => doc != null && !doc.includes("a\\. beta"));
+    check(
+        "…and the file still holds ordinary digit markers",
+        restyledDoc != null && !restyledDoc.includes("a. beta") && hasLine(restyledDoc, "2. beta"),
+        `doc=${JSON.stringify(restyledDoc)}`,
+    );
+
     // ── 8. A misfire in plain prose is answerable with one Backspace, the digit
     // rule's own mitigation — the accepted cost of `A. Smith` converting. ──
     await clickInto(".ProseMirror li:has-text('groceries') p");

@@ -228,7 +228,9 @@ export async function run({ page, check, baseUrl }) {
     );
 
     // Select the image so its toolbar (and the width button) shows.
-    await page.locator("img.image-node").click();
+    // .first(): the fixture carries a SECOND use of the same image for the
+    // block-identity checks at the end, so a bare locator is now ambiguous.
+    await page.locator("img.image-node").first().click();
     await page.waitForSelector(".img-tb-width", { state: "visible", timeout: 5000 });
 
     await page.locator(".img-tb-width").dispatchEvent("click");
@@ -485,5 +487,34 @@ export async function run({ page, check, baseUrl }) {
         "narrowing the copy afterwards leaves the original full",
         tables.full[0] === true && tables.full[1] === false && tables.full[2] === false,
         JSON.stringify(tables),
+    );
+
+    // ── The same identity rule for an image used twice ──
+    const imageState = () => page.evaluate(() => ({
+        n: document.querySelectorAll(".ProseMirror .image-wrapper").length,
+        sized: [...document.querySelectorAll(".ProseMirror .image-wrapper")]
+            .map((w) => w.classList.contains("bw-fixed") || w.classList.contains("bw-full")),
+        keys: Object.keys(window.__state?.blockWidths ?? {}).filter((k) => k.startsWith("img:")),
+    }));
+    check(
+        "the fixture really has two uses of one image (no vacuous pass)",
+        (await imageState()).n === 2,
+        JSON.stringify(await imageState()),
+    );
+    const firstImage = page.locator(".ProseMirror .image-wrapper").nth(0);
+    await firstImage.hover();
+    await page.waitForTimeout(150);
+    await firstImage.locator(".img-tb-width").first().dispatchEvent("click");
+    await page.waitForTimeout(150);
+    const images = await imageState();
+    check(
+        "sizing one use of an image leaves the other at its natural size",
+        images.sized[0] === true && images.sized[1] === false,
+        JSON.stringify(images),
+    );
+    check(
+        "the second use would store under its own occurrence key",
+        images.keys.length === 1 && !images.keys[0].includes("#"),
+        JSON.stringify(images.keys),
     );
 }

@@ -28,6 +28,17 @@
  * COST WHEN UNUSED IS ZERO, the disabled-feature rule: the reconcile is gated on
  * `inUse`, which stays false for a document with an empty bag and no styled
  * list, so an ordinary document pays one boolean per transaction.
+ *
+ * COST WHEN USED IS OFF THE KEYSTROKE, which took a measurement to get right.
+ * The reconcile walks the lists and then resolves an occurrence anchor, and that
+ * builds the per-document anchor index, which every keystroke invalidates —
+ * inline, one styled list cost a 40-keystroke burst 51ms → 65ms on a 521-block
+ * document, and the cost scaled with the DOCUMENT rather than with how many
+ * lists were styled. So an incidental edit schedules a coalesced idle reconcile
+ * instead ("analysis never blocks interactivity" applies: nothing reads the bag
+ * mid-session, only the next mount does), while the user's explicit choice
+ * reconciles synchronously, because the webview can be disposed before an idle
+ * callback runs.
  */
 import { Plugin, PluginKey } from "../pm";
 import type { EditorState, EditorView, Node as PmNode, Transaction } from "../pm";
@@ -40,6 +51,7 @@ import {
     setListNumbering,
 } from "../blockWidth";
 import { isOrderedNumbering, type OrderedNumbering } from "../utils/orderedMarkers";
+import { requestIdle } from "../utils/idle";
 
 export const listNumberingPluginKey = new PluginKey("BIRTA_LIST_NUMBERING");
 
@@ -50,6 +62,17 @@ export const listNumberingPluginKey = new PluginKey("BIRTA_LIST_NUMBERING");
  * able to arm it.
  */
 let inUse = false;
+
+/**
+ * Bounds how long the bag may trail the document. Generous because nothing
+ * READS the bag mid-session — it is consulted once, at the next mount — and the
+ * one path where staleness would be observable (the user's explicit choice)
+ * reconciles synchronously instead.
+ */
+const RECONCILE_IDLE_TIMEOUT_MS = 500;
+
+/** The coalesced reconcile, so a burst of keystrokes reconciles once. */
+let pendingReconcile: { cancel: () => void } | null = null;
 
 /**
  * Arm the reconcile pass. Every path that puts a `numbering` attr into the
@@ -86,6 +109,10 @@ export function setListNumberingAt(
         ...node.attrs,
         numbering: style === "decimal" ? null : style,
     }));
+    // Synchronously, not on the idle path the incidental case uses: this is the
+    // user's explicit choice, and the webview can be disposed (a switch to the
+    // raw editor) before an idle callback would ever run.
+    reconcileListNumbering(view.state.doc);
     return true;
 }
 
@@ -139,9 +166,11 @@ export function hydrateListNumbering(state: EditorState): Transaction | null {
 }
 
 /**
- * Restate the bag as the document currently has it. Idempotent, and cheap
- * enough to run on any doc change once `inUse`: one pass over the lists plus one
- * pass over the stored entries.
+ * Restate the bag as the document currently has it. Idempotent, which is what
+ * lets the caller schedule it freely — but NOT cheap: it walks the lists and
+ * resolves an occurrence anchor per styled list, and that builds the anchor
+ * index (a full-document walk on a cache miss). Callers keep it off the
+ * keystroke path; see the plugin's `update` below.
  */
 export function reconcileListNumbering(doc: PmNode): void {
     const claimed = new Set<string>();
@@ -183,10 +212,32 @@ export const listNumberingPlugin = $prose(() =>
                 // belongs here rather than in appendTransaction, which exists to
                 // append document steps. Doc identity, not eq() — a value
                 // comparison would be O(document) on every keystroke.
+                //
+                // IDLE, NOT SYNCHRONOUS, and measured: running it inline cost a
+                // 40-keystroke burst 51ms → 65ms on a 521-block document the
+                // moment ONE list was styled, because it walks the lists and
+                // then builds the per-document anchor index, which a keystroke
+                // invalidates. The bag only has to be right by the time the
+                // document is reopened, so this is analysis, and the same rule
+                // applies: it settles in after the edit rather than riding it.
+                // Coalesced — a burst of keystrokes reconciles once.
                 update(updated, prevState) {
-                    if (inUse && prevState.doc !== updated.state.doc) {
-                        reconcileListNumbering(updated.state.doc);
+                    if (!inUse || prevState.doc === updated.state.doc) {
+                        return;
                     }
+                    pendingReconcile?.cancel();
+                    pendingReconcile = requestIdle(() => {
+                        pendingReconcile = null;
+                        if (!updated.isDestroyed) {
+                            reconcileListNumbering(updated.state.doc);
+                        }
+                    }, RECONCILE_IDLE_TIMEOUT_MS);
+                },
+                destroy() {
+                    // A pending reconcile would otherwise write the bag from a
+                    // document this view no longer shows.
+                    pendingReconcile?.cancel();
+                    pendingReconcile = null;
                 },
             };
         },
