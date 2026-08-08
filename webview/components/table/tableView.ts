@@ -1303,10 +1303,10 @@ export function createTableView(
     // ordinal is a fact about the whole document: inserting a twin renumbers
     // every later occurrence, and this view's update() never fires for an edit
     // that didn't touch its own node. A cached string then names a key that now
-    // belongs to a different table — the observed symptom was duplicating a
-    // table silently widening an unrelated one further down. `widthBase` stays
-    // cached only as the cheap gate that keeps the ordinal lookup (a document
-    // walk on a cache miss) off the keystroke path.
+    // belongs to a different table, which paints a width on a block that never
+    // asked for one. `widthBase` stays cached only as the cheap gate that keeps
+    // the ordinal lookup (a document walk on a cache miss) off the keystroke
+    // path.
     let widthBase = tableWidthAnchor(node.firstChild?.textContent ?? "");
     const resolveAnchor = (): string =>
         anchorAt(view.state.doc, getPos(), tableAnchorBase) ?? widthBase;

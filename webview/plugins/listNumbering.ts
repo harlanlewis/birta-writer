@@ -5,40 +5,27 @@
  * node attr (`numbering` on ordered_list, plugins/list.ts) and the browser draws
  * it from an inline `list-style-type`, so nothing here renders anything.
  *
- * WHY AN ATTR AND A BAG, when width and wrap need only a bag. A content anchor
- * cannot name a block that has no content yet, and a list is BORN empty: typing
- * `a. ` creates an ordered list whose first item is the empty string, so a bag
- * write at that moment would key on `list:` and collide with every other
- * just-created list. The attr is therefore the live truth — it survives editing,
- * undo and redo for free, because it rides the document — and the bag is only
- * the reload mirror.
+ * WHY AN ATTR AND A BAG, where width and wrap need only a bag: a content anchor
+ * cannot name a block with no content, and a list is BORN empty. Typing `a. `
+ * makes a list whose first item is "", so every just-created list would key on
+ * `list:` and collide. The attr is the live truth (it rides the document, so
+ * editing, undo and redo carry it for free); the bag is the reload mirror.
  *
- * That split makes the sync one-directional and idempotent, which is what keeps
- * it small:
- *
- *   - ON LOAD, a list with no attr adopts the style stored under its content
- *     anchor. One pass, `addToHistory: false`, so it is not an edit the user can
- *     undo and it never dirties the document.
- *   - ON CHANGE, the bag is REBUILT from the document: every list carrying a
- *     non-default attr writes its current anchor, and any stored anchor no
- *     longer claimed by a list is dropped. Rebuilding rather than renaming is
- *     why editing a list's first item needs no migration path — the next
- *     reconcile simply states the new truth.
+ * The sync is therefore one-directional. On load, a list with no attr adopts the
+ * style stored under its anchor, `addToHistory: false` so it is neither undoable
+ * nor a change to the file. On change, the bag is REBUILT from the document,
+ * which is why editing a list's first item needs no migration path.
  *
  * COST WHEN UNUSED IS ZERO, the disabled-feature rule: the reconcile is gated on
- * `inUse`, which stays false for a document with an empty bag and no styled
- * list, so an ordinary document pays one boolean per transaction.
+ * `inUse`, so a document with an empty bag and no styled list pays one boolean
+ * per transaction.
  *
- * COST WHEN USED IS OFF THE KEYSTROKE, which took a measurement to get right.
- * The reconcile walks the lists and then resolves an occurrence anchor, and that
- * builds the per-document anchor index, which every keystroke invalidates —
- * inline, one styled list cost a 40-keystroke burst 51ms → 65ms on a 521-block
- * document, and the cost scaled with the DOCUMENT rather than with how many
- * lists were styled. So an incidental edit schedules a coalesced idle reconcile
- * instead ("analysis never blocks interactivity" applies: nothing reads the bag
- * mid-session, only the next mount does), while the user's explicit choice
- * reconciles synchronously, because the webview can be disposed before an idle
- * callback runs.
+ * COST WHEN USED STAYS OFF THE KEYSTROKE. The reconcile walks every ordered list
+ * and resolves an occurrence anchor, which builds the per-document anchor index
+ * that a keystroke invalidates, so its cost scales with the DOCUMENT rather than
+ * with how many lists are styled. It must never run inline. An incidental edit
+ * schedules a coalesced idle reconcile; an explicit choice reconciles
+ * synchronously, because the webview can be disposed before idle runs.
  */
 import { Plugin, PluginKey } from "../pm";
 import type { EditorState, EditorView, Node as PmNode, Transaction } from "../pm";
@@ -63,12 +50,8 @@ export const listNumberingPluginKey = new PluginKey("BIRTA_LIST_NUMBERING");
  */
 let inUse = false;
 
-/**
- * Bounds how long the bag may trail the document. Generous because nothing
- * READS the bag mid-session — it is consulted once, at the next mount — and the
- * one path where staleness would be observable (the user's explicit choice)
- * reconciles synchronously instead.
- */
+/** Bounds how long the bag may trail the document. Generous: nothing reads the
+ * bag mid-session, and an explicit choice reconciles synchronously anyway. */
 const RECONCILE_IDLE_TIMEOUT_MS = 500;
 
 /** The coalesced reconcile, so a burst of keystrokes reconciles once. */
@@ -213,14 +196,9 @@ export const listNumberingPlugin = $prose(() =>
                 // append document steps. Doc identity, not eq() — a value
                 // comparison would be O(document) on every keystroke.
                 //
-                // IDLE, NOT SYNCHRONOUS, and measured: running it inline cost a
-                // 40-keystroke burst 51ms → 65ms on a 521-block document the
-                // moment ONE list was styled, because it walks the lists and
-                // then builds the per-document anchor index, which a keystroke
-                // invalidates. The bag only has to be right by the time the
-                // document is reopened, so this is analysis, and the same rule
-                // applies: it settles in after the edit rather than riding it.
-                // Coalesced — a burst of keystrokes reconciles once.
+                // Idle, never inline: the reconcile's cost scales with the
+                // document (see the header), and the bag only has to be right by
+                // the next mount. Coalesced, so a burst reconciles once.
                 update(updated, prevState) {
                     if (!inUse || prevState.doc === updated.state.doc) {
                         return;

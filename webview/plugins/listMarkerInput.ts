@@ -225,21 +225,14 @@ export const orderedMarkerInputRule = $inputRule((ctx) => {
 
 /**
  * `a. `, `A. `, `i. `, `I. ` build an ordered list DRAWN in that style. The file
- * gets `1.`, because CommonMark has no lettered or roman marker and writing one
- * produces a document GitHub renders as prose; the style is a presentation attr
- * (utils/orderedMarkers.ts holds the whole argument).
+ * gets `1.`, and `order: 1` is reused because every style this can start begins
+ * at its first item (utils/orderedMarkers.ts).
  *
- * So this rule is the digit rule plus one attr, and it deliberately reuses
- * `order: 1` — every style it can start begins at its first item.
- *
- * THE MISFIRE IS REAL AND ACCEPTED. `A. Smith said so` opens a paragraph whose
- * first three characters are a marker, and this converts it, where the digit
- * rule's equivalent (`1. `) is not something prose starts with. Two things make
- * that the right trade. Only a SEQUENCE START fires, so `B. Jones` and the rest
- * of a name-initial list are untouched; and the mitigation is the one the digit
- * rule already documents, Backspace to put the characters back as text or Cmd+Z
- * to forget the keystrokes. The alternative — no typed path to a lettered list —
- * charges every outline author for a collision a single Backspace answers.
+ * THE MISFIRE IS ACCEPTED, and this is the trap: `A. Smith said so` converts,
+ * where the digit rule's `1. ` is not something prose opens with. Only a
+ * sequence start fires, so `B. Jones` and the rest of a name-initial list are
+ * untouched, and Backspace restores the characters as text. Refusing the rule
+ * instead charges every outline author for a collision one Backspace answers.
  */
 export const styledOrderedMarkerInputRule = $inputRule((ctx) => {
     const wrap = stockWrap(

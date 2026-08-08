@@ -89,10 +89,10 @@ async function setNumbering(v: EditorView, style: string | null): Promise<void> 
 
 /**
  * Let a deferred reconcile run. An INCIDENTAL document edit schedules the bag
- * write on an idle window rather than doing it inline — measured, because inline
- * it cost a keystroke burst a quarter of its time (plugins/listNumbering.ts) —
- * and in jsdom `requestIdle` degrades to `setTimeout(0)`. An explicit numbering
- * choice needs none of this: it reconciles synchronously.
+ * write on an idle window instead of doing it inline, because the reconcile's
+ * cost scales with the document (plugins/listNumbering.ts), and in jsdom
+ * `requestIdle` degrades to `setTimeout(0)`. An explicit numbering choice needs
+ * none of this: it reconciles synchronously.
  */
 const flushIdle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 0); });
 
@@ -223,9 +223,8 @@ describe("the state bag mirrors the document", () => {
 
 describe("the reconcile stays off the keystroke path", () => {
     it("an incidental edit should NOT write the bag inline, only after an idle window", async () => {
-        // The measured regression this exists to prevent: reconciling inline
-        // cost a 40-keystroke burst 51ms → 65ms on a 521-block document the
-        // moment one list was styled.
+        // What this pins: the reconcile walks every list and builds the anchor
+        // index, so inline it would put a document-sized cost on each keystroke.
         const editor = await make(LIST);
         const v = view(editor);
         await setNumbering(v, "lower-alpha");

@@ -186,9 +186,9 @@ function externalButton(provider: EmbedProvider, id: string, sourceUrl?: string)
  */
 function widthButton(card: HTMLElement, url: string, widthAnchor?: string): HTMLElement {
     // The host resolves the occurrence-disambiguated key (it has the document
-    // and the widget's position); the bare base is the fallback for a caller
-    // that has neither, which then behaves as it did before occurrence
-    // anchors — one shared preference. See blockWidth.ts, "Block identity".
+    // and the widget's position). The bare base is the fallback for a caller
+    // with neither, and it shares one preference across identical URLs. See
+    // blockWidth.ts, "Block identity".
     const anchor = widthAnchor ?? embedWidthAnchor(url);
     const control = makeBlockControlButton({
         className: "embed-card__width",

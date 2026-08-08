@@ -118,14 +118,12 @@ function bagMap<T>(stateKey: string, validate: (value: unknown) => value is T) {
          * block's anchor (src edit, first-line edit) — from NodeView
          * update().
          *
-         * Two guards, both of them bugs this had. It REFUSES an occupied
-         * destination: the source block is moving into a key another block
-         * already answers to, and overwriting would hand one block's width
-         * to a different one. And it NOTIFIES, because a rename changes what
-         * `get(oldAnchor)` returns — chrome still anchored there (the other
-         * table under a shared key, before occurrence anchors) otherwise
-         * kept a class the store no longer backs, and reverted on reload
-         * with nothing on screen having changed. */
+         * Two guards. It REFUSES an occupied destination, because another block
+         * already answers to that key and overwriting hands one block's width to
+         * a different one. And it NOTIFIES both keys, because a rename changes
+         * what `get(oldAnchor)` returns and chrome anchored there has no other
+         * way to hear it — without this a peer paints a width the store does not
+         * back, and disagrees with itself on reload. */
         rename(oldAnchor: string, newAnchor: string): void {
             if (oldAnchor === newAnchor) {
                 return;
@@ -230,30 +228,25 @@ export function listNumberingEntries(): [string, OrderedNumbering][] {
 // ─── Block identity ─────────────────────────────────────────────────────────
 
 /**
- * A content anchor names CONTENT, and two blocks can hold the same content —
- * so on its own it is not an identity. It read as one until MAR-334: "Full
- * Width" on a table moved its twin too, and Duplicate made a twin in one
- * click. Any two tables under the same header row ("Name | Value") coupled,
- * a code block sharing a first line coupled, and a header edit MOVED the one
- * shared entry to whichever block was typed in, silently reverting the other
- * on reload. The module had this as deliberate ("the same video embedded
- * twice reads best at the same size"); a user meeting it called it a side
- * effect, which is the more honest reading — a copy is a second block, and a
- * preference set on one block belongs to that block.
+ * A content anchor names CONTENT, which is not an identity: two blocks can hold
+ * the same content. A preference set on one block belongs to that block, so a
+ * stored key is CONTENT plus OCCURRENCE — `base` for the first block with that
+ * content in document order, `base#2`, `base#3`, … for the rest. Content still
+ * carries the persistence (positions rot across external edits, the fold-anchor
+ * lesson); the ordinal only separates ties (MAR-334).
  *
- * So a stored key is CONTENT plus OCCURRENCE: `base` for the first block with
- * that content in document order, `base#2`, `base#3`, … for the rest. Content
- * still carries the persistence (positions rot across external edits, the
- * fold-anchor lesson), and the ordinal only separates ties.
+ * Ties are ordinary, not exotic: two tables under the same header row
+ * ("Name | Value"), two code blocks opening on the same line, one image used
+ * twice, one URL embedded twice. Duplicate makes one in a click.
  *
- * WHAT THIS DOES NOT FIX, and deliberately: an ordinal is document order, so
+ * WHAT AN ORDINAL CANNOT DO, and this is the trap: it is document ORDER, so
  * reordering two identical blocks swaps their widths, and retitling one so it
- * leaves (or joins) a tie group renumbers the rest. Those revert a block to
- * its default width — exactly the graceful degradation this module already
- * promises for an anchor that stops matching, and never a change to the file.
- * Eliminating it needs true per-node identity, which markdown has nowhere to
- * put. Duplicate, the gesture that made ties common, instead carries every
- * affected block's preference across explicitly (inheritDuplicatedAnchors).
+ * leaves or joins a tie group renumbers the rest. Both revert a block to its
+ * default width, which is the graceful degradation this module already promises
+ * for an anchor that stops matching, and neither touches the file. Per-node
+ * identity would fix it and markdown has nowhere to store one. Duplicate
+ * carries every affected block's preference across explicitly instead
+ * (inheritDuplicatedAnchors).
  */
 
 /**

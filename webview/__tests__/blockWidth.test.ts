@@ -93,11 +93,10 @@ describe("blockWidth store", () => {
     });
 
     /**
-     * Rename USED to stay silent. It notifies now (MAR-334) because a rename
-     * changes what `get(oldAnchor)` answers, and chrome anchored there has no
-     * other way to hear it: with occurrence-numbered keys a rename can move a
-     * peer's ordinal, and a silent rename left that peer painting a width the
-     * store no longer backed until a reload disagreed with the screen.
+     * A rename notifies BOTH keys. It changes what `get(oldAnchor)` answers, and
+     * chrome anchored there has no other way to hear it: a rename can move a
+     * peer's ordinal, and a silent one leaves that peer painting a width the
+     * store does not back (MAR-334).
      */
     it("subscribers should hear set and rename, and nothing after unsubscribing", async () => {
         const bw = await loadBlockWidth();

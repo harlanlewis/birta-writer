@@ -61,9 +61,9 @@ describe("orderedMarkerText", () => {
     });
 
     /**
-     * The width the gutter offsets by is the POINT of this function, so the
-     * boundary that matters is where a styled marker is wider than the number
-     * it replaces — the case the digit-count stamp used to get wrong.
+     * Width is what the gutter offsets by, so the boundary that matters is a
+     * styled marker wider than the number it replaces. A digit count cannot see
+     * it.
      */
     it("a roman marker should be wider than its decimal equivalent where it is", () => {
         expect(orderedMarkerText(8, "lower-roman").length).toBe(4);

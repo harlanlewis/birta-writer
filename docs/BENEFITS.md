@@ -184,7 +184,7 @@ Every block has a gutter handle: click it for the block menu (turn into, duplica
 
 An ordered list can be drawn `1.`, `a.`, `A.`, `i.` or `I.`, chosen from the block menu or by typing `a. `, `A. `, `i. ` or `I. ` where you'd type `1. `. Nested levels already alternate decimal, letters, roman by depth; this is that choice made explicit at any level.
 
-What the file gets is `1.`, `2.`, `3.`, always. CommonMark has no lettered or roman marker — `a. alpha` is a paragraph to GitHub, to VS Code's own preview, and to every other CommonMark reader — so writing one would be trading a display preference for a document other tools disagree with. The list is an ordinary numbered list that this editor draws differently, which is why it stays portable. The choice is remembered per list alongside your folds and widths, so it survives closing the file, and it lives with the workspace rather than in the document: a colleague opening the same file sees a numbered list, correctly.
+What the file gets is `1.`, `2.`, `3.`, always. CommonMark has no lettered or roman marker. To GitHub, to VS Code's own preview, and to every other CommonMark reader, `a. alpha` is a paragraph, so writing one would trade a display preference for a document other tools disagree with. The list is an ordinary numbered list that this editor draws differently, which is why it stays portable. The choice is remembered per list alongside your folds and widths, so it survives closing the file, and it lives with the workspace rather than in the document: a colleague opening the same file sees a numbered list, correctly.
 
 ### Keyboard-first block editing
 

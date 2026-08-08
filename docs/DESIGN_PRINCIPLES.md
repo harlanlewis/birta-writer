@@ -102,7 +102,7 @@ A new dependent artifact (transcluded values, computed tables, cross-file links)
 
 ## A display choice Markdown cannot spell stays a display choice
 
-Some things a user wants are about how a block is DRAWN, not about what it says: this table full-width, this code block wrapped, this ordered list lettered rather than numbered. Markdown has nowhere to put any of them, and inventing a spelling is the trade to refuse — a file whose `a. alpha` renders as a paragraph everywhere else is a document the editor has damaged on the author's behalf, however good it looks here. So the bytes stay canonical (`1.`), the preference lives beside the document in the webview state bag, and the drawing is the only thing that changes.
+Some things a user wants are about how a block is DRAWN, not about what it says: this table full-width, this code block wrapped, this ordered list lettered rather than numbered. Markdown has nowhere to put any of them, and inventing a spelling is the trade to refuse. A file whose `a. alpha` renders as a paragraph everywhere else is a document the editor has damaged on the author's behalf, however good it looks here. So the bytes stay canonical (`1.`), the preference lives beside the document in the webview state bag, and the drawing is the only thing that changes.
 
 Three consequences follow, and a new presentation preference should accept all three rather than negotiate them.
 
@@ -112,7 +112,7 @@ Its lifetime is the workspace, and that is stated plainly. It survives closing t
 
 It degrades to the default, never to a guess. These are keyed by content, so an anchor that stops matching reverts its block to the ordinary rendering. Reverting is legible; a preference silently applied to the wrong block is not (`blockWidth.ts`, "Block identity").
 
-The counter-case is a choice Markdown CAN spell — a bullet character, an ordered delimiter, a callout's fold marker. Those belong in the file, recorded as the author typed them, and `sourceStyle.ts` exists for exactly that. The test is not whether a choice is cosmetic, it is whether the file can say it.
+The counter-case is a choice Markdown CAN spell: a bullet character, an ordered delimiter, a callout's fold marker. Those belong in the file, recorded as the author typed them, and `sourceStyle.ts` exists for exactly that. The test is not whether a choice is cosmetic, it is whether the file can say it.
 
 ## Analysis never blocks interactivity
 

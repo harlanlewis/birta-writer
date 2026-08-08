@@ -171,6 +171,14 @@ Three things about `typing-perf` are deliberate and easy to get wrong:
 - `block` (total longtask ms) is reported, never gated. Its threshold is a fixed 50 ms, so a slower machine pushes sub-threshold tasks over it and the number inflates super-linearly. A null A/B on identical bundles moves it while dispatch medians hold, and the same burst reads more than an order of magnitude higher on a CI runner than on a laptop.
 - Size it from a completed CI job, never from local timings; the runner is roughly twice as slow per keystroke. The cost is dominated by the largest fixture itself (mount plus burst), not by how many fixtures are in the list, so dropping a smaller one buys little. Cut keystrokes or pairs.
 
+## Prose and comments
+
+A comment states the current contract and the constraint that must hold, not the history. A sentence in the past tense belongs in git: "strictly read then write, and it must stay that way" is a constraint, "it used to interleave them" is a changelog in the wrong file. A ticket id at the end of a line is a pointer and is useful; a paragraph about what that ticket found is not.
+
+Never put a measured figure in a comment or a doc. A bare number reads exactly like a checked one, which is how a stale figure gets quoted forward in good faith, and the same rule already governs `bundle-baseline.json` and `baseline.json` above. Three ways out, in order: name the command (`pnpm perf large` never rots), assert the figure in a test where it cannot drift silently, or state the mechanism the code already shows. "It walks the whole document per keystroke" needs no measurement. When a figure goes, the claim goes with it: swapping it for a vague magnitude keeps the claim and destroys the only thing that made it checkable.
+
+`.claude/changelog-guard` opts this repository into the mechanical layer: no em dash, no emphasis markup, and no absolute claim about a performance cost unless the line quantifies it. It covers `CHANGELOG.md` and every file in `docs/`, and it judges BULLET lines only, so paragraph prose in those files is on you. Two things are deliberately outside it and must stay outside: `webview/__tests__/fixtures/**` and `samples/**`, which are content under test (`emphasis-styles.md` exists to carry emphasis), and `licenses/THIRD_PARTY_LICENSES.md`, which is generated. Everything about comments is judgement and is not automated; see the plugin's `technical-prose` skill for the genre rules.
+
 ## Issue tracking
 
 All bugs and planned work live in Linear, team "Birta Writer", `MAR-` prefix. Never GitHub Issues, and never local files. The `MAR-` prefix predates the rebrand and is unchanged. The team name is what the Linear tools take, and querying a wrong one returns an empty list that reads exactly like an empty queue.
