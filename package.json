@@ -9,6 +9,7 @@
         "url": "https://www.harlanlewis.com"
     },
     "license": "FSL-1.1-ALv2",
+    "icon": "media/icon.png",
     "engines": {
         "vscode": "^1.95.0"
     },
