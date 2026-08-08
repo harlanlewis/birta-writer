@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.808.0] - 2026, August 8
+
 ### Added
 
 - Typing a list marker at the start of an existing list item now changes that item's kind, which is what finally makes mixed lists reachable from the keyboard. Type `1. ` at the head of a bulleted item and it becomes a numbered one; `- `, `* ` or `+ ` at the head of a numbered item makes it a bullet. So the ordinary way to number a sub-list is now the obvious one: Enter, Tab, `1. `, and you have a numbered list nested inside a bulleted one, no menu involved. Until now the marker was simply text, and saved as an escaped `1\.`, so the only route to a mixed list was the gutter menu. Know what it changes: the marker describes _that line_, so a marker typed in the middle of a list splits it, exactly as the same characters would in the file — three bullets with the middle one numbered are three lists, and the editor shows them as three blocks. A marker that changes nothing (`- ` on a line that is already a bullet) stays as text, so a literal dash is still typeable. If a marker fires when you meant text, Backspace puts the characters back, as it does after any typed shortcut.
