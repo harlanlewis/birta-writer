@@ -38,7 +38,7 @@ async function paneStates(page) {
 }
 
 export async function run({ page, check, baseUrl }) {
-    await page.goto(`${baseUrl}/e2e/plantUmlRender/index.html`);
+    await page.goto(`${baseUrl}/index.html`);
 
     // Four fenced diagrams, all auto-previewing at mount. The engine is a ~3 MB
     // lazy chunk plus a Graphviz load, so this is the slow wait in the suite.

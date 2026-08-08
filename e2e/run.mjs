@@ -109,6 +109,21 @@ for (const suite of suites) {
     page.on("console", (m) => {
         if (m.type() === "error") pageErrors.push(m.text());
     });
+    // A suite serves its OWN directory as `/`, so `page.goto` takes
+    // `${baseUrl}/index.html` — a repo-relative `${baseUrl}/e2e/<suite>/…` 404s.
+    // Playwright resolves that navigation happily, and the suite then dies 30s
+    // later on a waitFor timeout that reads like a product failure. Name it at
+    // the moment it happens instead: plantUmlRender shipped with exactly this
+    // typo and its nine checks had never run.
+    page.on("response", (r) => {
+        const req = r.request();
+        if (req.isNavigationRequest() && req.frame() === page.mainFrame() && !r.ok()) {
+            pageErrors.push(
+                `navigation to ${r.url()} returned ${r.status()} — a suite is served at the ` +
+                `ROOT of its own directory, so page.goto wants \`\${baseUrl}/index.html\``,
+            );
+        }
+    });
 
     const results = [];
     const check = (name, ok, detail = "") => {
