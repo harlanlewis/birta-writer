@@ -611,7 +611,16 @@ A -> B : still just text on disk
 @enduml
 ```
 
-Two families are unsupported, both because upstream delegates them to Java-only image libraries: **DITAA** and **JCCKIT**. They render as error cards.
+Two families come up short, both because upstream delegates them to Java-only image libraries. **JCCKIT** does not render at all — upstream emits it as a raster image, so it settles on an error card. **DITAA** renders its boxes, lines and text, but ignores ditaa's own colour and shape tags: `cRED` and `{s}` below draw as literal text rather than a red fill and a storage shape.
+
+```plantuml
+@startditaa
++--------+   +-------+
+|  cRED  +-->|{s}    |
+| Input  |   | Store |
++--------+   +-------+
+@endditaa
+```
 
 ### Calc
 
