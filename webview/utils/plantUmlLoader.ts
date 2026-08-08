@@ -32,6 +32,31 @@
  *    own young optional peer, and the bridge is installed before the first
  *    `convert()` can run.
  *
+ * PROVENANCE, and what "update the engine" means here (checked 2026-08-08).
+ * The npm package we depend on is a frozen snapshot, and updating it is not a
+ * `pnpm update`. Know this before reaching for one:
+ *
+ * - The Rust crate `plantuml-little` is alive and maintained. It sits at
+ *   1.2026.2-4 on crates.io (July 2026), and its home is now
+ *   `Actrium/plantuml-little`, having also been merged into `Actrium/supramark`
+ *   by git subtree.
+ * - The npm WASM wrapper `@kookyleo/plantuml-little-web` is NOT. It has exactly
+ *   one published version, 1.2026.2-3 (April 2026), and `kookyleo/plantuml-little`
+ *   — the repository that published it — is archived. It is not deprecated and
+ *   installs fine; it simply has no maintained publishing home.
+ * - Supramark's own `@supramark/*` packages are documented but unpublished, so
+ *   there is currently nothing to migrate TO.
+ *
+ * So we are one patch behind a live crate, with no npm path to it. The
+ * consequences are bounded and worth naming: no upstream fix reaches us
+ * automatically, and the engine tracks upstream PlantUML 1.2026.2, so syntax
+ * added to PlantUML after that release will not render. Neither is urgent —
+ * the version is lockfile-pinned, vendored into our bundle at build time (so
+ * the registry is not a runtime dependency), and verified end-to-end by
+ * `e2e/plantUmlRender`. When an update IS wanted, the route is to build the
+ * wasm from the crate or pick up a supramark package once one exists, not to
+ * bump a version that will never move. Tracked in MAR-331.
+ *
  * The engine never reaches the network. PlantUML's `!theme <name>` and
  * `!include <url>` directives resolve over HTTP in upstream Java PlantUML;
  * this build is compiled without its `remote` feature, so they fail closed
