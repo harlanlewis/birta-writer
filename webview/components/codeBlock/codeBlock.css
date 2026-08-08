@@ -323,12 +323,14 @@ body.mermaid-canvas-dark {
    because the same element's own `background: var(--mermaid-canvas)` reads
    them. In dark mode the engine paints its page in this same colour (see
    plantUmlTheme.ts), so this surface IS the diagram's background. */
-/* …and the fullscreen canvas asks the engine directly (see lightbox.ts). The
+/* …and the fullscreen surface asks the engine directly (see lightbox.ts). The
    overlay lives on <body>, OUTSIDE the pane whose class carries the colour, so
    it inherits neither of the two rules above: a dark PlantUML diagram landed on
-   the default white card while its inline pane was dark. */
+   the default white card while its inline pane was dark. On the canvas ground
+   this variable is the whole backdrop, which is why the class sits on the
+   overlay itself. */
 .puml-preview.puml-canvas-dark,
-.mermaid-lightbox-svg.diagram-canvas-dark {
+.fs-surface.diagram-canvas-dark {
     --mermaid-canvas: var(--vscode-textCodeBlock-background);
     --mermaid-canvas-fg: var(--vscode-editor-foreground);
 }
@@ -471,105 +473,10 @@ body.mermaid-canvas-dark {
     letter-spacing: -0.3px;
 }
 
-/* ─── Fullscreen lightbox ─── */
-@keyframes lb-open {
-    from { opacity: 0; transform: scale(0.97); }
-    to   { opacity: 1; transform: scale(1); }
-}
-@keyframes lb-close {
-    from { opacity: 1; transform: scale(1); }
-    to   { opacity: 0; transform: scale(0.97); }
-}
-
-.mermaid-lightbox {
-    position: fixed;
-    inset: 0;
-    /* Above the topbar, like .img-editor-lightbox: a fullscreen surface must
-       cover the fixed chrome, not sit under it. */
-    z-index: 10010;
-    /* The shared fullscreen scrim (embed + image lightboxes use the same
-       token) — one overlay surface across every fullscreen preview. The
-       code editing sheet below stays opaque. */
-    background: var(--ui-lightbox-scrim);
-    backdrop-filter: blur(2px);
-    display: flex;
-    flex-direction: column;
-    animation: lb-open 0.18s ease;
-    /* The overlay takes focus on open so the editor behind it stops receiving
-       keystrokes (MAR-267). It is a surface, not a control — no focus ring. */
-    outline: none;
-}
-
-.mermaid-lightbox.lb-closing {
-    animation: lb-close 0.15s ease forwards;
-    pointer-events: none;
-}
-
-.mermaid-lightbox-header {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 12px;
-    /* Theme-aware chrome — the scrim is the shared translucent wash now,
-       not an always-dark backdrop. */
-    background: var(--vscode-editorWidget-background);
-    border-bottom: 1px solid var(--vscode-editorWidget-border);
-    color: var(--vscode-foreground);
-    flex-shrink: 0;
-}
-
-.mermaid-lightbox-title {
-    flex: 1;
-    font-size: var(--ui-fs-l);
-    font-weight: 500;
-    opacity: 0.8;
-}
-
-.mermaid-lightbox-body {
-    flex: 1;
-    overflow: hidden;
-    position: relative;
-    cursor: grab;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 0;
-}
-
-/* lightbox SVG container: likewise avoids % sizing to prevent zoom jumps.
-   Floated on the same canvas as the inline preview, so a light-theme diagram
-   (dark strokes) stays legible against the dark lightbox scrim. The canvas is
-   the card here — it takes the overlay elevation, same as a lightboxed image.
-   The DIAGRAM never casts one: a drop-shadow on the <svg> traces its own
-   strokes, so every node and edge would grow a halo the exported diagram
-   doesn't have. */
-.mermaid-lightbox-svg {
-    display: inline-block;
-    flex-shrink: 0;
-    transform-origin: center center;
-    background: var(--mermaid-canvas);
-    padding: 20px;
-    border-radius: var(--ui-radius-xl);
-    box-shadow: var(--ui-card-shadow-overlay);
-}
-
-.mermaid-lightbox-svg svg {
-    display: block;
-    text-rendering: geometricPrecision;
-    shape-rendering: geometricPrecision;
-}
-
-.mermaid-lightbox-header .mermaid-zoom-btn {
-    color: var(--vscode-foreground);
-    min-width: 38px;
-    opacity: 0.8;
-}
-
-.mermaid-lightbox-header .mermaid-zoom-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground);
-    border-color: var(--vscode-panel-border);
-    opacity: 1;
-}
+/* ─── Fullscreen surfaces ───
+   The overlay, its grounds, and the four-corner control geography live in
+   ui/fullscreen.css — one anatomy for diagrams, code, images and players.
+   What remains here is only what a CODE BLOCK's two surfaces add on top. */
 
 /* ─── Directional pan controls (cross layout at the bottom-right of the preview) ─── */
 .mermaid-pan-controls,
@@ -618,12 +525,13 @@ body.mermaid-canvas-dark {
     opacity: 1;
 }
 
-/* ─── Mermaid lightbox dual panels ─── */
+/* ─── The diagram surface's two panes ─── */
 
-/* Preview panel: inherits the original lbBody pan/zoom behavior. Carries
-   its own canvas ground so diagram readability never depends on the
-   translucent lightbox wash behind it. */
-.lb-mermaid-preview-pane {
+/* The pan/zoom viewport. It paints NOTHING: on the canvas ground the overlay
+   itself is already the diagram's paper, edge to edge, and a pane with its own
+   background would draw a rectangle inside a field of the same colour — the
+   card-on-a-scrim look this design deliberately dropped. */
+.lb-diagram-preview-pane {
     flex: 1;
     align-self: stretch;
     display: flex;
@@ -633,14 +541,33 @@ body.mermaid-canvas-dark {
     position: relative;
     cursor: grab;
     min-height: 0;
-    background: var(--mermaid-canvas);
 }
 
-/* Code panel: reuses the code-lightbox-body flex-row layout */
-.lb-mermaid-code-pane {
+.lb-diagram-preview-pane--panning {
+    cursor: grabbing;
+}
+
+/* The transform target. No background, radius or shadow, for the reason
+   above; scaling is the only thing that happens here. */
+.lb-diagram-svg {
+    display: inline-block;
+    flex-shrink: 0;
+    transform-origin: center center;
+}
+
+.lb-diagram-svg svg {
+    display: block;
+    text-rendering: geometricPrecision;
+    shape-rendering: geometricPrecision;
+}
+
+/* The code pane, hidden until the surface flips to its sheet ground. Both
+   selectors carry the surface class so they outrank `.code-lightbox-body`'s
+   own `display: flex` — the code pane composes that class, and a bare
+   `.lb-diagram-code-pane { display: none }` ties with it and loses on order. */
+.lb-diagram-code-pane {
     flex: 1;
     align-self: stretch;
-    display: none;   /* switched to flex by switchToCodeMode() */
     flex-direction: row;
     overflow: hidden;
     min-height: 0;
@@ -648,10 +575,18 @@ body.mermaid-canvas-dark {
     background: var(--vscode-textCodeBlock-background);
 }
 
+.diagram-lightbox .lb-diagram-code-pane { display: none; }
+.diagram-lightbox--code .lb-diagram-preview-pane { display: none; }
+.diagram-lightbox--code .lb-diagram-code-pane { display: flex; }
+
 /* ─── Fullscreen code lightbox — editable editor ─── */
 
 /* body becomes flex-row: line-number area + code area side by side */
-.mermaid-lightbox-body.code-lightbox-body {
+.code-lightbox-body {
+    flex: 1;
+    align-self: stretch;
+    min-height: 0;
+    display: flex;
     flex-direction: row;
     align-items: stretch;
     justify-content: flex-start;
@@ -709,18 +644,18 @@ body.mermaid-canvas-dark {
     box-sizing: border-box;
 }
 
-body.code-block-word-wrap .mermaid-lightbox:not(.code-lightbox-no-word-wrap) .code-lightbox-pre,
-body.code-block-word-wrap .mermaid-lightbox:not(.code-lightbox-no-word-wrap) .code-lightbox-textarea,
-.mermaid-lightbox.code-lightbox-word-wrap .code-lightbox-pre,
-.mermaid-lightbox.code-lightbox-word-wrap .code-lightbox-textarea {
+body.code-block-word-wrap .fs-surface:not(.code-lightbox-no-word-wrap) .code-lightbox-pre,
+body.code-block-word-wrap .fs-surface:not(.code-lightbox-no-word-wrap) .code-lightbox-textarea,
+.fs-surface.code-lightbox-word-wrap .code-lightbox-pre,
+.fs-surface.code-lightbox-word-wrap .code-lightbox-textarea {
     white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: anywhere;
     overflow-x: hidden;
 }
 
-body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lightbox-pre,
-body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lightbox-textarea {
+body.code-block-word-wrap .fs-surface.code-lightbox-no-word-wrap .code-lightbox-pre,
+body.code-block-word-wrap .fs-surface.code-lightbox-no-word-wrap .code-lightbox-textarea {
     white-space: pre;
     word-wrap: normal;
     overflow-wrap: normal;
@@ -759,26 +694,6 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
 .code-lightbox-textarea::selection {
     background: var(--vscode-editor-selectionBackground);
     -webkit-text-fill-color: transparent;
-}
-
-/* ─── Fullscreen code editor (VSCode theme colors) ─── */
-.mermaid-lightbox.code-editor-lightbox {
-    background: var(--vscode-editor-background);
-}
-
-.mermaid-lightbox.code-editor-lightbox .mermaid-lightbox-header {
-    background: var(--vscode-editor-background, var(--vscode-textCodeBlock-background));
-    border-bottom: 1px solid var(--vscode-panel-border);
-    color: var(--vscode-editor-foreground);
-}
-
-.mermaid-lightbox.code-editor-lightbox .mermaid-zoom-btn {
-    color: var(--vscode-editor-foreground);
-}
-
-.mermaid-lightbox.code-editor-lightbox .mermaid-zoom-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground);
-    border-color: transparent;
 }
 
 /* ─── LaTeX block preview (KaTeX) ─── */

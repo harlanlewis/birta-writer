@@ -2715,58 +2715,30 @@ body.block-marqueeing .milkdown .editor {
     text-decoration: underline;
 }
 
-/* Fullscreen player lightbox (the embed control column's fullscreen verb):
-   backdrop + a viewport-sized aspect-correct frame. Same containment as the
-   inline player — the iframe builder is shared. */
-.embed-lightbox {
-    position: fixed;
-    inset: 0;
-    /* Above the topbar, like .img-editor-lightbox: a fullscreen surface must
-       cover the fixed chrome, not sit under it. */
-    z-index: 10010;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--ui-lightbox-scrim);
-    backdrop-filter: blur(2px);
-}
-
+/* Fullscreen player lightbox (the embed control column's fullscreen verb).
+   The overlay, scrim and close button are the shared fullscreen surface
+   (ui/fullscreen.css); the aspect-correct frame is all this adds. It is inset
+   inside the viewport ON PURPOSE — the surface positions its chrome against
+   the viewport, so that inset is what puts our Close button in the margin
+   BESIDE the player rather than over the provider's own controls. */
 .embed-lightbox__frame {
     position: relative;
-    width: min(92vw, calc(86vh * 16 / 9));
+    width: min(88vw, calc(82vh * 16 / 9));
     aspect-ratio: var(--embed-aspect, 16 / 9);
-    max-height: 86vh;
+    /* Never taller than the viewport minus a chrome band top and bottom. The
+       surface's Close cluster is pinned to the viewport's top-right corner, so
+       a frame that reaches within a band of the top clips under it — which
+       only shows up on a short window, where nobody looks for it. */
+    max-height: min(82vh, calc(100vh - 2 * var(--fs-band)));
     background: var(--vscode-editorWidget-background);
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-l);
     overflow: hidden;
-    box-shadow: var(--ui-card-shadow-overlay);
 }
 
 .embed-lightbox__frame .embed-card__iframe {
     width: 100%;
     height: 100%;
-}
-
-.embed-lightbox__close {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: var(--ui-radius-m);
-    background: var(--vscode-editorWidget-background);
-    color: var(--vscode-foreground);
-    cursor: pointer;
-
-    & svg {
-        width: 16px;
-        height: 16px;
-    }
 }
 
 /* The chunk-load failure fallback: never an empty host — the URL, clickable. */

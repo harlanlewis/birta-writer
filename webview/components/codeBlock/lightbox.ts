@@ -1,38 +1,69 @@
 /**
  * components/codeBlock/lightbox.ts
  *
- * The two fullscreen surfaces a code block can open, and the host record they
- * share:
+ * The two fullscreen surfaces a code block can open:
  *
  *   openCodeLightbox    — an editable, syntax-highlighted full-window editor
- *   openDiagramLightbox — the same editor beside a pan/zoomable diagram canvas,
- *                         for whichever engine rendered the inline pane
+ *   openDiagramLightbox — a pan/zoomable diagram canvas beside that same
+ *                         editor, for whichever engine rendered the inline pane
  *
- * They live together because they share more than a file: one `LightboxHost`
- * (only ever one open at a time, and the NodeView's `destroy()` has to be able
- * to tear down whichever it is), the same gutter+`<pre>`+`<textarea>` anatomy,
- * and the same write-back-on-close protocol — dismiss synchronously, diff the
- * textarea against the node's text, replace the node's content, then fade.
+ * Both are built on `ui/fullscreenSurface.ts`, which owns the overlay, the
+ * dismiss layer, the ground, and the four-corner control geography that every
+ * fullscreen surface in the editor shares. What stays here is what is specific
+ * to a code block: the gutter+`<pre>`+`<textarea>` anatomy, the diagram's
+ * transform, and the write-back-on-close protocol.
+ *
+ * They still share a `LightboxHost` (only ever one open at a time, and the
+ * NodeView's `destroy()` has to be able to tear down whichever it is) and the
+ * same write-back: dismiss synchronously, diff the textarea against the node's
+ * text, replace the node's content, then fade.
  *
  * The two editor panes are deliberately NOT merged into one helper: the code
  * lightbox attaches local undo and auto-focuses on the next frame, and its Tab
  * handler dispatches a synthetic `input` (so the insertion enters that undo
  * history) where the diagram lightbox calls its highlighter directly. Those
  * are behavior differences, not incidental drift.
+ *
+ * Two grounds are in play, and the diagram surface uses both. A diagram is a
+ * CANVAS — the backdrop is its own paper, edge to edge — until you flip it to
+ * the code pane, at which point it is a SHEET and the chrome stops floating
+ * over text. `fullscreenSurface.ts` explains why those are the categories.
  */
 import type { EditorView } from "@/pm";
-import { IconCheck, IconCode, IconCopy, IconEye, IconAlertCircle, IconX, IconZoomIn, IconZoomOut } from "@/ui/icons";
+import { IconCheck, IconCode, IconCopy, IconEye, IconAlertCircle, IconZoomIn, IconZoomOut } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { normalizeCodeLanguage } from "@/codeLanguages";
 import { highlight } from "@/highlighter";
-import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
+import { createButton } from "@/ui/dom";
+import { openFullscreenSurface, type FullscreenSurface } from "@/ui/fullscreenSurface";
 import { attachInputUndo } from "@/utils/inputUndo";
 import { escapeHtml } from "./escapeHtml";
 import { getLangLabel } from "./langPicker";
 import { getVisualLineCounts, updateLineNumbers } from "./lineNumbers";
-import { makeMermaidBtn, ZOOM_BTN, ZOOM_MAX, ZOOM_MIN } from "./mermaidPane";
-import type { DiagramRenderer } from "./diagramPane";
+import { createPanPad, ZOOM_BTN, ZOOM_MAX, ZOOM_MIN, type DiagramRenderer } from "./diagramPane";
+
+/**
+ * How far past its natural size a diagram may be scaled to fill the fullscreen
+ * viewport. The inline pane caps fit at 1.0 — a small diagram inside a text
+ * column should not balloon — but fullscreen is the opposite request: the
+ * gesture means "show me this bigger", and a 120px diagram centred at 100% in
+ * a 1400px viewport answers a question nobody asked. These are vectors, so
+ * scaling up costs no fidelity.
+ */
+const FULLSCREEN_MAX_FIT = 4.0;
+
+/**
+ * The margin fit-to-view leaves on every side: the band `fullscreen.css`
+ * reserves for the floating clusters, READ FROM the surface rather than
+ * restated here. A copy of `--fs-band` in this file would be right until the
+ * day someone adjusts the CSS, and wrong silently after it.
+ */
+function chromeBandPx(surface: FullscreenSurface): number {
+    const declared = getComputedStyle(surface.overlay).getPropertyValue("--fs-band");
+    const parsed = parseFloat(declared);
+    return Number.isFinite(parsed) ? parsed : 44;
+}
 
 /**
  * The NodeView's single lightbox slot. Held by the NodeView (not by this
@@ -63,6 +94,31 @@ type LightboxContext = {
 };
 
 /**
+ * The NodeView's handle on a surface's dismiss layer. It must CLEAR the
+ * surface's own handle as well as running it: the NodeView tears a lightbox
+ * down by calling this and then removing the element, and a surface still
+ * holding a live cleanup would let a later close() run a second time over a
+ * detached overlay.
+ */
+function hostCleanupFor(surface: FullscreenSurface): () => void {
+    return () => {
+        surface.dismissCleanup?.();
+        surface.dismissCleanup = null;
+    };
+}
+
+/** A control for the surface's top-right cluster. */
+function fsButton(icon: string, tip: string): HTMLButtonElement {
+    return createButton({
+        className: "ui-btn fs-btn",
+        icon,
+        tabIndex: -1,
+        title: tip,
+        tooltipPlacement: "below",
+    });
+}
+
+/**
  * Replace the code block's content with the textarea's, if it changed. Shared
  * by both closers — the same `replaceWith` over the node's inner range.
  */
@@ -81,42 +137,30 @@ function writeBackCode(ctx: LightboxContext, newCode: string, originalCode: stri
     );
 }
 
-// ── Code fullscreen (editable + syntax highlighting) ─────────────────────────
-export function openCodeLightbox(ctx: LightboxContext & {
-    /** The block's current language token, read once at open time. */
-    getLang: () => string;
-}): void {
-    const { host, codeEl, isWordWrap } = ctx;
-    if (host.active) return;
-    const overlay = document.createElement("div");
-    overlay.className = "mermaid-lightbox code-editor-lightbox";
-    overlay.classList.toggle("code-lightbox-word-wrap", isWordWrap());
-    overlay.classList.toggle("code-lightbox-no-word-wrap", !isWordWrap());
+/**
+ * The gutter + highlighted `<pre>` + `<textarea>` stack both surfaces edit in.
+ * Returns the element plus the handful of things a caller drives.
+ */
+function buildCodeEditor(opts: {
+    lang: string;
+    initialCode: string;
+    isWordWrap: () => boolean;
+}): {
+    el: HTMLElement;
+    textarea: HTMLTextAreaElement;
+    /** Re-highlight, re-number, and resync the scroll layers. */
+    refresh: () => void;
+    destroy: () => void;
+} {
+    const { lang, initialCode, isWordWrap } = opts;
 
-    const lbHeader = document.createElement("div");
-    lbHeader.className = "mermaid-lightbox-header";
-    lbHeader.contentEditable = "false";
+    const el = document.createElement("div");
+    el.className = "code-lightbox-body";
 
-    const lang = ctx.getLang();
-    const lbTitle = document.createElement("span");
-    lbTitle.className = "mermaid-lightbox-title";
-    lbTitle.textContent = getLangLabel(lang);
-
-    const lbCopyBtn = makeMermaidBtn(IconCopy, t("Copy Code"));
-    const lbCloseBtn = makeMermaidBtn(IconX, t("Close"));
-
-    lbHeader.append(lbTitle, lbCopyBtn, lbCloseBtn);
-
-    // ── Editor body: line-number area + code area (highlighted pre + textarea overlay)
-    const lbBody = document.createElement("div");
-    lbBody.className = "mermaid-lightbox-body code-lightbox-body";
-
-    // Line-number bar
     const gutter = document.createElement("div");
     gutter.className = "code-lightbox-gutter";
     gutter.setAttribute("aria-hidden", "true");
 
-    // Code area (pre highlight layer + textarea input layer)
     const codeArea = document.createElement("div");
     codeArea.className = "code-lightbox-editor-wrap";
 
@@ -134,98 +178,104 @@ export function openCodeLightbox(ctx: LightboxContext & {
     textarea.autocomplete = "off";
     textarea.setAttribute("autocorrect", "off");
     textarea.setAttribute("autocapitalize", "off");
-
-    const rawCode = codeEl.textContent ?? "";
-    textarea.value = rawCode;
-    codeClone.innerHTML = highlight(rawCode, lang);
+    textarea.value = initialCode;
+    codeClone.innerHTML = highlight(initialCode, lang);
 
     codeArea.append(pre, textarea);
-    lbBody.append(gutter, codeArea);
-    overlay.append(lbHeader, lbBody);
-    document.body.appendChild(overlay);
-    lockBodyScroll();
-    host.active = overlay;
+    el.append(gutter, codeArea);
 
-    // ── Line-number update
     const updateGutter = (): void => {
-        updateLineNumbers(
-            gutter,
-            textarea.value,
-            getVisualLineCounts(textarea, textarea.value, isWordWrap()),
-        );
+        updateLineNumbers(gutter, textarea.value, getVisualLineCounts(textarea, textarea.value, isWordWrap()));
+    };
+    const syncScroll = (): void => {
+        pre.scrollTop = textarea.scrollTop;
+        pre.scrollLeft = textarea.scrollLeft;
+        gutter.scrollTop = textarea.scrollTop;
+    };
+    const refresh = (): void => {
+        codeClone.innerHTML = highlight(textarea.value, lang);
+        updateGutter();
+        syncScroll();
     };
     updateGutter();
+    textarea.addEventListener("scroll", syncScroll);
+
     const gutterResizeObserver = typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(updateGutter)
         : null;
     gutterResizeObserver?.observe(textarea);
 
-    // Auto-focus
-    requestAnimationFrame(() => {
-        textarea.focus();
-        updateGutter();
-    });
-
-    // ── Live highlight + line numbers + scroll sync
-    const updateHighlight = (): void => {
-        codeClone.innerHTML = highlight(textarea.value, lang);
-        updateGutter();
-        pre.scrollTop = textarea.scrollTop;
-        pre.scrollLeft = textarea.scrollLeft;
-        gutter.scrollTop = textarea.scrollTop;
+    return {
+        el,
+        textarea,
+        refresh,
+        destroy() { gutterResizeObserver?.disconnect(); },
     };
-    textarea.addEventListener("input", updateHighlight);
-    textarea.addEventListener("scroll", () => {
-        pre.scrollTop = textarea.scrollTop;
-        pre.scrollLeft = textarea.scrollLeft;
-        gutter.scrollTop = textarea.scrollTop;
+}
+
+// ── Code fullscreen (editable + syntax highlighting) ─────────────────────────
+export function openCodeLightbox(ctx: LightboxContext & {
+    /** The block's current language token, read once at open time. */
+    getLang: () => string;
+}): void {
+    const { host, codeEl, isWordWrap } = ctx;
+    if (host.active) return;
+    const lang = ctx.getLang();
+    const originalCode = codeEl.textContent ?? "";
+
+    const editor = buildCodeEditor({ lang, initialCode: originalCode, isWordWrap });
+    let detachTextareaUndo = (): void => {};
+
+    const surface = openFullscreenSurface({
+        ground: "sheet",
+        title: getLangLabel(lang),
+        // `code-editor-lightbox` styles nothing; it NAMES this surface, which
+        // the ground cannot — a diagram flipped to its code pane is a sheet
+        // too. It is how a caller (and codeBlockLightbox.test.ts) tells the two
+        // apart.
+        className: `code-editor-lightbox ${isWordWrap() ? "code-lightbox-word-wrap" : "code-lightbox-no-word-wrap"}`,
+        onClose() {
+            writeBackCode(ctx, editor.textarea.value, originalCode);
+            editor.destroy();
+            detachTextareaUndo();
+            host.active = null;
+        },
     });
+    surface.content.appendChild(editor.el);
+    host.active = surface.overlay;
+    host.dismissCleanup = hostCleanupFor(surface);
 
-    // Local undo/redo: VS Code's Electron layer swallows Cmd/Ctrl+Z
-    // before the native textarea sees it
-    const detachTextareaUndo = attachInputUndo(textarea);
+    const copyBtn = fsButton(IconCopy, t("Copy Code"));
+    copyBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        navigator.clipboard?.writeText(editor.textarea.value).catch(() => {});
+        copyBtn.innerHTML = IconCheck;
+        setTimeout(() => { copyBtn.innerHTML = IconCopy; }, 1500);
+    });
+    surface.addActionGroup(copyBtn);
 
-    // Tab inserts 4 spaces (instead of moving focus)
-    textarea.addEventListener("keydown", (e) => {
+    // Local undo/redo: VS Code's Electron layer swallows Cmd/Ctrl+Z before the
+    // native textarea sees it.
+    detachTextareaUndo = attachInputUndo(editor.textarea);
+    editor.textarea.addEventListener("input", editor.refresh);
+    editor.textarea.addEventListener("keydown", (e) => {
         if (e.key === "Tab") {
             e.preventDefault();
-            const s = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            textarea.value = textarea.value.slice(0, s) + "    " + textarea.value.slice(end);
-            textarea.selectionStart = textarea.selectionEnd = s + 4;
-            // Synthetic input event: refreshes the highlight layer AND
-            // records the insertion in the local undo history
-            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            const s = editor.textarea.selectionStart;
+            const end = editor.textarea.selectionEnd;
+            editor.textarea.value =
+                editor.textarea.value.slice(0, s) + "    " + editor.textarea.value.slice(end);
+            editor.textarea.selectionStart = editor.textarea.selectionEnd = s + 4;
+            // Synthetic input event: refreshes the highlight layer AND records
+            // the insertion in the local undo history.
+            editor.textarea.dispatchEvent(new Event("input", { bubbles: true }));
         }
     });
 
-    // ── Copy the current textarea content
-    lbCopyBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        navigator.clipboard?.writeText(textarea.value).catch(() => {});
-        lbCopyBtn.innerHTML = IconCheck;
-        setTimeout(() => { lbCopyBtn.innerHTML = IconCopy; }, 1500);
+    requestAnimationFrame(() => {
+        editor.textarea.focus();
+        editor.refresh();
     });
-
-    // ── Close (with fade-out animation + write back to ProseMirror)
-    function closeLb(): void {
-        if (!host.dismissCleanup) return; // close already ran (e.g. X during the fade)
-        // Synchronous teardown of the Escape layer + document listener:
-        // deferring it to animationend swallowed a second Escape during
-        // the close fade (and re-ran this close). Only the DOM/animation
-        // teardown stays deferred.
-        host.dismissCleanup();
-        host.dismissCleanup = null;
-        writeBackCode(ctx, textarea.value, codeEl.textContent ?? "");
-        unlockBodyScroll();
-        gutterResizeObserver?.disconnect();
-        detachTextareaUndo();
-        animateCloseLightbox(overlay, () => {
-            host.active = null;
-        });
-    }
-
-    host.dismissCleanup = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
 }
 
 // ── Diagram fullscreen (engine-agnostic: Mermaid or PlantUML) ─────────────────
@@ -250,263 +300,216 @@ export function openDiagramLightbox(ctx: LightboxContext & {
     if (!ctx.hasSvg()) return;
     const lang = ctx.getLang();
     const px = renderer.classPrefix;
-
-    let lbPanX = 0, lbPanY = 0, lbZoom = 1.0;
-    let lbIsCodeMode = false;
     const originalCode = codeEl.textContent ?? "";
 
-    // ── Overlay ───────────────────────────────────────────
-    const overlay = document.createElement("div");
-    overlay.className = "mermaid-lightbox";
-    overlay.classList.toggle("code-lightbox-word-wrap", isWordWrap());
-    overlay.classList.toggle("code-lightbox-no-word-wrap", !isWordWrap());
+    let panX = 0, panY = 0, zoom = 1.0;
+    let isCodeMode = false;
 
-    // ── Header ────────────────────────────────────────────
-    const lbHeader = document.createElement("div");
-    lbHeader.className = "mermaid-lightbox-header";
-    lbHeader.contentEditable = "false";
+    const editor = buildCodeEditor({ lang, initialCode: originalCode, isWordWrap });
+    let detachSurface = (): void => {};
 
-    const lbTitle = document.createElement("span");
-    lbTitle.className = "mermaid-lightbox-title";
-    lbTitle.textContent = getLangLabel(lang);
+    const surface: FullscreenSurface = openFullscreenSurface({
+        ground: "canvas",
+        title: getLangLabel(lang),
+        className: `diagram-lightbox ${isWordWrap() ? "code-lightbox-word-wrap" : "code-lightbox-no-word-wrap"}`,
+        onClose() {
+            writeBackCode(ctx, editor.textarea.value, originalCode);
+            editor.destroy();
+            detachSurface();
+            host.active = null;
+        },
+    });
+    host.active = surface.overlay;
+    host.dismissCleanup = hostCleanupFor(surface);
 
-    const lbToggleBtn = document.createElement("button");
-    lbToggleBtn.className = "ui-btn mermaid-zoom-btn";
-    lbToggleBtn.tabIndex = -1;
-    lbToggleBtn.innerHTML = IconCode;
-    const lbToggleTip = applyTooltip(lbToggleBtn, t("Edit Code"), { placement: "above" });
-    const lbZoomOutBtn  = makeMermaidBtn(IconZoomOut, t("Zoom Out"));
-    const lbZoomResetBtn = document.createElement("button");
-    lbZoomResetBtn.className = "ui-btn mermaid-zoom-btn";
-    lbZoomResetBtn.tabIndex = -1;
-    lbZoomResetBtn.textContent = "100%";
-    applyTooltip(lbZoomResetBtn, t("Reset Zoom"), { placement: "above" });
-    const lbZoomInBtn = makeMermaidBtn(IconZoomIn, t("Zoom In"));
-    const lbCloseBtn  = makeMermaidBtn(IconX, t("Close"));
+    // The canvas ground IS the diagram's paper, so it has to track the engine's
+    // own light/dark decision the same way the inline pane's does.
+    surface.overlay.classList.toggle("diagram-canvas-dark", renderer.isDark());
+    surface.setCanvasColor("var(--mermaid-canvas)");
 
-    lbHeader.append(lbTitle, lbToggleBtn, lbZoomOutBtn, lbZoomResetBtn, lbZoomInBtn, lbCloseBtn);
+    // ── Panes ──
+    const previewPane = document.createElement("div");
+    previewPane.className = "lb-diagram-preview-pane";
 
-    // ── Body ──────────────────────────────────────────────
-    const lbBody = document.createElement("div");
-    lbBody.className = "mermaid-lightbox-body";
+    const svgHolder = document.createElement("div");
+    svgHolder.className = "lb-diagram-svg";
+    svgHolder.innerHTML = ctx.svgHtml();
+    const initialSvg = svgHolder.querySelector("svg");
+    if (initialSvg) initialSvg.style.display = "block";
+    previewPane.appendChild(svgHolder);
 
-    // Preview pane
-    const lbPreviewPane = document.createElement("div");
-    lbPreviewPane.className = "lb-mermaid-preview-pane";
+    editor.el.classList.add("lb-diagram-code-pane");
+    surface.content.append(previewPane, editor.el);
 
-    const lbSvgContainer = document.createElement("div");
-    lbSvgContainer.className = "mermaid-lightbox-svg";
-    // The canvas colour lives on the pane for PlantUML and on <body> for
-    // Mermaid; this surface is outside both, so it asks the engine directly.
-    lbSvgContainer.classList.toggle("diagram-canvas-dark", renderer.isDark());
-    lbSvgContainer.innerHTML = ctx.svgHtml();
-    const lbSvgEl = lbSvgContainer.querySelector("svg");
-    if (lbSvgEl) lbSvgEl.style.display = "block";
-    lbPreviewPane.appendChild(lbSvgContainer);
+    // ── Transform ──
+    function applyTransform(): void {
+        svgHolder.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+        zoomValue.textContent = `${Math.round(zoom * 100)}%`;
+    }
 
-    // Code editing pane (reuses the code lightbox structure)
-    const lbCodePane = document.createElement("div");
-    lbCodePane.className = "lb-mermaid-code-pane";
-
-    const gutter = document.createElement("div");
-    gutter.className = "code-lightbox-gutter";
-    gutter.setAttribute("aria-hidden", "true");
-
-    const codeArea = document.createElement("div");
-    codeArea.className = "code-lightbox-editor-wrap";
-
-    const lbPre = document.createElement("pre");
-    lbPre.className = "code-lightbox-pre";
-    lbPre.setAttribute("aria-hidden", "true");
-    const lbCodeEl = document.createElement("code");
-    const classLang = normalizeCodeLanguage(lang);
-    if (classLang) lbCodeEl.className = `language-${classLang}`;
-    lbPre.appendChild(lbCodeEl);
-
-    const textarea = document.createElement("textarea");
-    textarea.className = "code-lightbox-textarea";
-    textarea.spellcheck = false;
-    textarea.autocomplete = "off";
-    textarea.setAttribute("autocorrect", "off");
-    textarea.setAttribute("autocapitalize", "off");
-    textarea.value = originalCode;
-    lbCodeEl.innerHTML = highlight(originalCode, lang);
-
-    codeArea.append(lbPre, textarea);
-    lbCodePane.append(gutter, codeArea);
-
-    lbBody.append(lbPreviewPane, lbCodePane);
-    overlay.append(lbHeader, lbBody);
-    document.body.appendChild(overlay);
-    // Take focus off the editor (MAR-267). This overlay covers the document
-    // and — unlike the code lightbox, whose textarea focuses itself — nothing
-    // in it is focusable while it shows the diagram, so the caret stayed live
-    // BEHIND it and every keystroke edited a document the user couldn't see.
-    // The overlay is the focus home for the rest of its life; Escape is
-    // unaffected, since `bindLightboxDismiss` listens on the document.
-    overlay.tabIndex = -1;
-    overlay.focus();
-    lockBodyScroll();
-    host.active = overlay;
-
-    // ── Line numbers ───────────────────────────────────────
-    const updateGutter = (): void => {
-        updateLineNumbers(
-            gutter,
-            textarea.value,
-            getVisualLineCounts(textarea, textarea.value, isWordWrap()),
+    function fitToView(): void {
+        const svgEl = svgHolder.querySelector("svg");
+        if (!svgEl) return;
+        const boxW = previewPane.clientWidth, boxH = previewPane.clientHeight;
+        const natW = parseFloat(svgEl.getAttribute("width") ?? "0");
+        const natH = parseFloat(svgEl.getAttribute("height") ?? "0");
+        if (!natW || !natH || !boxW || !boxH) return;
+        panX = 0; panY = 0;
+        // Reserve the chrome band top and bottom. The clusters float over the
+        // canvas, so a fit computed against the raw viewport puts the diagram's
+        // own top-left corner under the title.
+        const band = 2 * chromeBandPx(surface);
+        zoom = Math.max(
+            ZOOM_MIN,
+            Math.min((boxW - band) / natW, (boxH - band) / natH, FULLSCREEN_MAX_FIT),
         );
-    };
-    updateGutter();
-    const gutterResizeObserver = typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(updateGutter)
-        : null;
-    gutterResizeObserver?.observe(textarea);
-
-    // ── Live highlight + scroll sync ──────────────────────
-    const updateHighlight = (): void => {
-        lbCodeEl.innerHTML = highlight(textarea.value, lang);
-        updateGutter();
-        lbPre.scrollTop = textarea.scrollTop;
-        lbPre.scrollLeft = textarea.scrollLeft;
-        gutter.scrollTop = textarea.scrollTop;
-    };
-    textarea.addEventListener("input", updateHighlight);
-    textarea.addEventListener("scroll", () => {
-        lbPre.scrollTop = textarea.scrollTop;
-        lbPre.scrollLeft = textarea.scrollLeft;
-        gutter.scrollTop = textarea.scrollTop;
-    });
-    textarea.addEventListener("keydown", (e) => {
-        if (e.key === "Tab") {
-            e.preventDefault();
-            const s = textarea.selectionStart, end = textarea.selectionEnd;
-            textarea.value = textarea.value.slice(0, s) + "    " + textarea.value.slice(end);
-            textarea.selectionStart = textarea.selectionEnd = s + 4;
-            updateHighlight();
-        }
-    });
-
-    // ── Preview-pane transform ─────────────────────────────
-    function applyLbTransform(): void {
-        lbSvgContainer.style.transform = `translate(${lbPanX}px, ${lbPanY}px) scale(${lbZoom})`;
-        lbZoomResetBtn.textContent = `${Math.round(lbZoom * 100)}%`;
+        applyTransform();
     }
 
-    function fitLbView(): void {
-        const svgEl2 = lbSvgContainer.querySelector("svg");
-        if (!svgEl2) return;
-        const bW = lbPreviewPane.clientWidth, bH = lbPreviewPane.clientHeight;
-        const sW = parseFloat(svgEl2.getAttribute("width") ?? "0");
-        const sH = parseFloat(svgEl2.getAttribute("height") ?? "0");
-        if (sW && sH && bW && bH) {
-            lbPanX = 0; lbPanY = 0;
-            // Cap at natural size, same as the inline fitToView.
-            lbZoom = Math.max(ZOOM_MIN, Math.min((bW - 80) / sW, (bH - 80) / sH, 1.0));
-            applyLbTransform();
-        }
-    }
+    // ── Top-right cluster: zoom, then the mode toggle, then Close ──
+    const zoomOutBtn = fsButton(IconZoomOut, t("Zoom Out"));
+    const zoomValue = createButton({
+        className: "ui-btn fs-btn fs-btn--value",
+        tabIndex: -1,
+        title: t("Reset Zoom"),
+        tooltipPlacement: "below",
+    });
+    zoomValue.textContent = "100%";
+    const zoomInBtn = fsButton(IconZoomIn, t("Zoom In"));
+    const modeBtn = fsButton(IconCode, t("Edit Code"));
+    const modeTip = applyTooltip(modeBtn, t("Edit Code"), { placement: "below" });
 
-    requestAnimationFrame(fitLbView);
+    // Two groups: the view controls, then the mode toggle Close joins. The
+    // divider between them is the surface's to draw, and it disappears with the
+    // view group in code mode.
+    const viewGroup = surface.addActionGroup(zoomOutBtn, zoomValue, zoomInBtn);
+    surface.addActionGroup(modeBtn);
+
+    // ── Bottom-right: the same pan pad the inline pane carries ──
+    const panPad = createPanPad({
+        classPrefix: px,
+        onPan: (dx, dy) => { panX += dx; panY += dy; applyTransform(); },
+        onReset: fitToView,
+    });
+    surface.nav.appendChild(panPad);
+
+    requestAnimationFrame(fitToView);
 
     // ── Rendering inside the lightbox (whichever engine opened it) ───────────
-    async function renderLbDiagram(code: string): Promise<void> {
-        lbSvgContainer.innerHTML = `<div class="${px}-loading">${t("Rendering...")}</div>`;
+    async function renderDiagram(code: string): Promise<void> {
+        svgHolder.innerHTML = `<div class="${px}-loading">${t("Rendering...")}</div>`;
         try {
-            const { svg, width, height } =
-                await renderer.render(code, lbPreviewPane.clientWidth || 800);
-            lbSvgContainer.classList.toggle("diagram-canvas-dark", renderer.isDark());
-            lbSvgContainer.innerHTML = svg;
-            const svgEl = lbSvgContainer.querySelector("svg");
+            const { svg, width, height } = await renderer.render(code, previewPane.clientWidth || 800);
+            surface.overlay.classList.toggle("diagram-canvas-dark", renderer.isDark());
+            svgHolder.innerHTML = svg;
+            const svgEl = svgHolder.querySelector("svg");
             if (svgEl) {
                 svgEl.setAttribute("width", String(width));
                 svgEl.setAttribute("height", String(height));
                 svgEl.style.display = "block";
             }
-            requestAnimationFrame(fitLbView);
+            requestAnimationFrame(fitToView);
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            lbSvgContainer.innerHTML = `<div class="${px}-error"><span>${IconAlertCircle}</span><pre class="${px}-error-msg">${escapeHtml(msg)}</pre></div>`;
+            svgHolder.innerHTML =
+                `<div class="${px}-error"><span>${IconAlertCircle}</span><pre class="${px}-error-msg">${escapeHtml(msg)}</pre></div>`;
         }
     }
 
-    // ── Toggle code / preview ──────────────────────────────
-    function switchToCodeMode(): void {
-        lbIsCodeMode = true;
-        lbPreviewPane.style.display = "none";
-        lbCodePane.style.display = "flex";
-        [lbZoomOutBtn, lbZoomResetBtn, lbZoomInBtn].forEach(b => (b.style.display = "none"));
-        lbToggleBtn.innerHTML = IconEye;
-        lbToggleTip.setText(t("Preview Diagram"));
+    // ── Toggle code / preview ──
+    function toCodeMode(): void {
+        isCodeMode = true;
+        // A sheet, not a canvas: the chrome band is reserved so the source
+        // never runs under the action cluster.
+        surface.setGround("sheet");
+        surface.overlay.classList.add("diagram-lightbox--code");
+        surface.setActionGroupHidden(viewGroup, true);
+        surface.nav.style.display = "none";
+        modeBtn.innerHTML = IconEye;
+        modeTip.setText(t("Preview Diagram"));
         hideTooltip();
-        requestAnimationFrame(() => textarea.focus());
+        requestAnimationFrame(() => editor.textarea.focus());
     }
 
-    function switchToPreviewMode(): void {
-        lbIsCodeMode = false;
-        lbPreviewPane.style.display = "";
-        lbCodePane.style.display = "none";
-        [lbZoomOutBtn, lbZoomResetBtn, lbZoomInBtn].forEach(b => (b.style.display = ""));
-        lbToggleBtn.innerHTML = IconCode;
-        lbToggleTip.setText(t("Edit Code"));
+    function toPreviewMode(): void {
+        isCodeMode = false;
+        surface.setGround("canvas");
+        surface.overlay.classList.remove("diagram-lightbox--code");
+        surface.setActionGroupHidden(viewGroup, false);
+        surface.nav.style.display = "";
+        modeBtn.innerHTML = IconCode;
+        modeTip.setText(t("Edit Code"));
         hideTooltip();
-        if (textarea.value !== originalCode) void renderLbDiagram(textarea.value);
+        if (editor.textarea.value !== originalCode) void renderDiagram(editor.textarea.value);
     }
 
-    lbToggleBtn.addEventListener("mousedown", (e) => {
+    modeBtn.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
-        if (lbIsCodeMode) switchToPreviewMode(); else switchToCodeMode();
+        if (isCodeMode) toPreviewMode(); else toCodeMode();
+    });
+    editor.textarea.addEventListener("input", editor.refresh);
+    editor.textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") {
+            e.preventDefault();
+            const s = editor.textarea.selectionStart, end = editor.textarea.selectionEnd;
+            editor.textarea.value =
+                editor.textarea.value.slice(0, s) + "    " + editor.textarea.value.slice(end);
+            editor.textarea.selectionStart = editor.textarea.selectionEnd = s + 4;
+            editor.refresh();
+        }
     });
 
-    // ── Preview-pane interaction (drag to pan + wheel to zoom) ────────────────
-    lbPreviewPane.addEventListener("mousedown", (e) => {
+    // ── Preview-pane interaction (drag to pan + wheel to zoom) ──
+    const onPaneMouseDown = (e: MouseEvent): void => {
         if (e.button !== 0 || (e.target as Element).closest("button")) return;
         e.preventDefault();
-        const sx = e.clientX - lbPanX, sy = e.clientY - lbPanY;
-        lbPreviewPane.style.cursor = "grabbing";
-        const onMove = (ev: MouseEvent) => { lbPanX = ev.clientX - sx; lbPanY = ev.clientY - sy; applyLbTransform(); };
-        const onUp = () => { lbPreviewPane.style.cursor = "grab"; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+        const startX = e.clientX - panX, startY = e.clientY - panY;
+        previewPane.classList.add("lb-diagram-preview-pane--panning");
+        const onMove = (ev: MouseEvent): void => {
+            panX = ev.clientX - startX; panY = ev.clientY - startY; applyTransform();
+        };
+        const onUp = (): void => {
+            previewPane.classList.remove("lb-diagram-preview-pane--panning");
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+        };
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
-    });
-
-    lbPreviewPane.addEventListener("wheel", (e) => {
+    };
+    const onPaneWheel = (e: WheelEvent): void => {
         e.preventDefault();
         if (e.ctrlKey) {
-            let nz = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, lbZoom * Math.pow(0.98, e.deltaY)));
-            const rect = lbPreviewPane.getBoundingClientRect();
+            const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * Math.pow(0.98, e.deltaY)));
+            const rect = previewPane.getBoundingClientRect();
             const mx = e.clientX - rect.left - rect.width / 2;
             const my = e.clientY - rect.top - rect.height / 2;
-            const r = nz / lbZoom;
-            lbPanX = mx + (lbPanX - mx) * r;
-            lbPanY = my + (lbPanY - my) * r;
-            lbZoom = nz;
+            const ratio = next / zoom;
+            panX = mx + (panX - mx) * ratio;
+            panY = my + (panY - my) * ratio;
+            zoom = next;
         } else {
-            lbPanX -= e.deltaX;
-            lbPanY -= e.deltaY;
+            panX -= e.deltaX;
+            panY -= e.deltaY;
         }
-        applyLbTransform();
-    }, { passive: false });
+        applyTransform();
+    };
+    previewPane.addEventListener("mousedown", onPaneMouseDown);
+    previewPane.addEventListener("wheel", onPaneWheel, { passive: false });
+    detachSurface = () => {
+        previewPane.removeEventListener("mousedown", onPaneMouseDown);
+        previewPane.removeEventListener("wheel", onPaneWheel);
+    };
 
-    lbZoomInBtn.addEventListener("mousedown",  (e) => { e.preventDefault(); e.stopPropagation(); lbZoom = Math.min(ZOOM_MAX, lbZoom + ZOOM_BTN); applyLbTransform(); });
-    lbZoomOutBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); lbZoom = Math.max(ZOOM_MIN, lbZoom - ZOOM_BTN); applyLbTransform(); });
-    lbZoomResetBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); lbPanX = 0; lbPanY = 0; lbZoom = 1.0; applyLbTransform(); });
-
-    // ── Close (write back to ProseMirror) ──────────────────────────
-    function closeLb(): void {
-        if (!host.dismissCleanup) return; // close already ran (e.g. X during the fade)
-        // Synchronous teardown of the Escape layer + document listener
-        // (see the code lightbox's closeLb): only DOM/animation teardown
-        // stays deferred to animationend.
-        host.dismissCleanup();
-        host.dismissCleanup = null;
-        writeBackCode(ctx, textarea.value, originalCode);
-        unlockBodyScroll();
-        gutterResizeObserver?.disconnect();
-        animateCloseLightbox(overlay, () => {
-            host.active = null;
-        });
-    }
-
-    host.dismissCleanup = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
+    zoomInBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        zoom = Math.min(ZOOM_MAX, zoom + ZOOM_BTN); applyTransform();
+    });
+    zoomOutBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        zoom = Math.max(ZOOM_MIN, zoom - ZOOM_BTN); applyTransform();
+    });
+    zoomValue.addEventListener("mousedown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        fitToView();
+    });
 }

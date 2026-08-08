@@ -10,7 +10,6 @@ import {
     IconShrinkHorizontal,
     IconMaximize2,
     IconPencil,
-    IconX,
     IconImageOff,
 } from "@/ui/icons";
 import {
@@ -26,7 +25,7 @@ import { applyTooltip } from "@/ui/tooltip";
 import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
-import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { openFullscreenSurface, type FullscreenSurface } from "@/ui/fullscreenSurface";
 import { trackEditorReflow } from "@/ui/editorReflow";
 import { safeAreaTop } from "@/utils/headingUtils";
 import './imageView.css';
@@ -58,68 +57,46 @@ function toWebviewUri(src: string): string {
 type ViewMutationRecord = MutationRecord | { type: "selection"; target: Node };
 
 // ─── Lightbox ──────────────────────────────────────────────
-let activeLightbox: HTMLElement | null = null;
+// An image is an OBJECT, not a canvas: it has its own edges, and what those
+// edges need behind them is contrast, so this opens on the scrim ground rather
+// than the diagram surface's paper-coloured one. Everything else — the
+// overlay, the Escape layer, the backdrop click, the body-scroll lock, the
+// close button and its position — comes from the shared surface. Hand-rolling
+// them here is what let this one silently skip lockBodyScroll for as long as
+// it existed.
+let activeLightbox: FullscreenSurface | null = null;
 
 function showGlobalLightbox(src: string, alt: string): void {
     if (activeLightbox) {
         return;
     }
 
-    const lb = document.createElement("div");
-    lb.className = "img-editor-lightbox";
-
     const img = document.createElement("img");
     img.className = "img-editor-lightbox-img";
     img.src = src;
     img.alt = alt;
 
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "img-editor-lightbox-close";
-    closeBtn.innerHTML = IconX;
-    closeBtn.title = t("Close");
+    const surface = openFullscreenSurface({
+        ground: "scrim",
+        title: alt,
+        className: "img-editor-lightbox",
+        onClose() { activeLightbox = null; },
+    });
+    surface.content.appendChild(img);
+    activeLightbox = surface;
+}
 
-    lb.appendChild(img);
-    lb.appendChild(closeBtn);
-    document.body.appendChild(lb);
-    activeLightbox = lb;
-
-    // Escape layer: with focus still in editor content, blockKeys' Escape
-    // wiring closes the lightbox first (topmost surface) instead of
-    // block-selecting beneath it; the document listener below is the
-    // fallback for focus elsewhere.
-    const escapeLayerOff = registerEscapeLayer(close);
-
-    function close(): void {
-        escapeLayerOff();
-        if (activeLightbox && document.body.contains(activeLightbox)) {
-            document.body.removeChild(activeLightbox);
-        }
+/**
+ * Close the open lightbox if it is showing THIS image. Called from a NodeView's
+ * destroy(), because a view can die with its lightbox open. It goes through the
+ * surface's own close rather than removing the element, which is what leaves an
+ * Escape-layer entry and a locked body scroll behind.
+ */
+function dismissLightboxFor(src: string): void {
+    if (activeLightbox?.content.querySelector("img")?.src === src) {
+        activeLightbox.close();
         activeLightbox = null;
-        document.removeEventListener("keydown", onKeyDown);
     }
-
-    function onKeyDown(e: KeyboardEvent): void {
-        // defaultPrevented: a layer above (or this one, via the stack)
-        // already consumed the key — one Escape must close exactly one
-        // surface. stopPropagation keeps the chord from the workbench.
-        if (e.key === "Escape" && !e.defaultPrevented) {
-            e.preventDefault();
-            e.stopPropagation();
-            close();
-        }
-    }
-
-    lb.addEventListener("mousedown", (e) => {
-        if (e.target === lb) {
-            close();
-        }
-    });
-    closeBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        close();
-    });
-    document.addEventListener("keydown", onKeyDown);
 }
 
 // ─── Stop input events from bubbling to ProseMirror ───────
@@ -592,14 +569,7 @@ export function createImageView(
             reflowOff = null;
             detachCaptionUndo();
             detachTitleUndo();
-            // Clean up the lightbox (if the one triggered by this image is still showing)
-            if (activeLightbox && document.body.contains(activeLightbox)) {
-                const lbImg = activeLightbox.querySelector("img");
-                if (lbImg && lbImg.src === img.src) {
-                    document.body.removeChild(activeLightbox);
-                    activeLightbox = null;
-                }
-            }
+            dismissLightboxFor(img.src);
         },
     };
 }

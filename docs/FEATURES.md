@@ -76,7 +76,7 @@ Full GFM support. Hover a border for the + insert bars, click a ⠿ handle to se
 ## Code and diagrams
 
 - Syntax highlighting for ~66 languages, with a searchable language picker, one-click copy, drag-to-resize height, and a full-screen editor. Grammars load lazily, so they cost nothing at launch.
-- Mermaid diagrams render inline with a source/preview toggle, zoom, pan, and a full-screen lightbox. The theme follows your editor (`birta.mermaid.theme`).
+- Mermaid diagrams render inline with a source/preview toggle, zoom, pan, and a full-screen view. The theme follows your editor (`birta.mermaid.theme`). Full screen shows the diagram edge to edge on its own paper, with the same controls in the same corners it uses in the page.
 - PlantUML diagrams (```` ```plantuml ````/```` ```puml ````) render the same way, through the same preview, with the same zoom, pan and lightbox. Rendering is offline: the engine ships with the editor, so no diagram source leaves your machine and directives that would fetch a remote theme or include fail rather than reaching out. Palette via `birta.plantuml.theme`.
 
 ## Images

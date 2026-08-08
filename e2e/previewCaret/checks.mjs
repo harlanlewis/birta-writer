@@ -177,7 +177,7 @@ export async function run({ page, check, baseUrl }) {
             (w) => !w.querySelector("pre").classList.contains("code-pre--preview-hidden")],
         ["width button", ".code-width-toggle-btn", false, (w) => w.classList.contains("bw-full")],
         ["fullscreen button", ".code-block-fullscreen-btn", false,
-            () => document.querySelectorAll(".mermaid-lightbox").length === 1],
+            () => document.querySelectorAll(".fs-surface").length === 1],
         ["language pill", ".lang-picker-btn", false,
             () => getComputedStyle(document.querySelector(".lang-picker-dropdown")).display !== "none"],
         ["resize handle", ".code-block-resize-handle", false, null],
@@ -298,7 +298,7 @@ export async function run({ page, check, baseUrl }) {
             await page.mouse.click(fs.x, fs.y);
             await page.waitForTimeout(400);
             const open = await page.evaluate(() =>
-                document.querySelectorAll(".mermaid-lightbox").length);
+                document.querySelectorAll(".fs-surface").length);
             check("lightbox: the diagram lightbox opened", open === 1, `count ${open}`);
 
             const editorFocused = await page.evaluate(() =>

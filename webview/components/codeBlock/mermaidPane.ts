@@ -11,14 +11,7 @@
  * `mermaidRuntime.ts`; the NodeView owns whether this pane is visible at all
  * and supplies that as `isActive`.
  */
-import {
-    createDiagramPane,
-    makeDiagramBtn,
-    ZOOM_MIN,
-    ZOOM_MAX,
-    ZOOM_BTN,
-    type DiagramPane,
-} from "./diagramPane";
+import { createDiagramPane, type DiagramPane } from "./diagramPane";
 import {
     lastInitializedThemeKey,
     mermaidCanvasIsDark,
@@ -26,11 +19,6 @@ import {
     registerMermaidInstance,
     renderMermaidToSvg,
 } from "./mermaidRuntime";
-
-export { ZOOM_MIN, ZOOM_MAX, ZOOM_BTN };
-
-/** Retained name for the shared button recipe (the lightbox imports it). */
-export const makeMermaidBtn = makeDiagramBtn;
 
 export type MermaidPane = DiagramPane;
 

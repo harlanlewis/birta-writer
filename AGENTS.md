@@ -93,6 +93,7 @@ webview/messaging.ts                          WebView/Extension message protocol
 webview/style.css                             VS Code theming (--vscode-* CSS variables)
 webview/ui/chrome.css                         Chrome design tokens (--ui-radius/-space/-fs, card recipe) + the .ui-btn primitive; guarded by chromeTokens.test.ts
 webview/i18n/index.ts                         t() / kbd() translation functions
+webview/ui/fullscreenSurface.ts               THE fullscreen shell (grounds + control geography) every lightbox composes
 webview/ui/icons.ts                           SVG icons
 webview/ui/tooltip.ts                         Tooltip component
 webview/components/toolbar/index.ts           Top main toolbar

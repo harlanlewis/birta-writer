@@ -163,15 +163,16 @@ export async function run({ page, check, baseUrl }) {
         document.querySelector(".code-block-fullscreen-btn")
             .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     });
-    await page.waitForSelector(".mermaid-lightbox", { timeout: 10000 });
+    await page.waitForSelector(".fs-surface", { timeout: 10000 });
     const lb = await page.evaluate(() => {
-        const overlay = document.querySelector(".mermaid-lightbox");
-        const canvas = overlay.querySelector(".mermaid-lightbox-svg");
+        const overlay = document.querySelector(".fs-surface");
+        // The canvas ground IS the overlay now: no card, no shadow, so the
+        // colour to compare against the pane is the overlay's own.
         return {
-            title: overlay.querySelector(".mermaid-lightbox-title")?.textContent ?? "",
-            canvasBg: getComputedStyle(canvas).backgroundColor,
+            title: overlay.querySelector(".fs-title")?.textContent ?? "",
+            canvasBg: getComputedStyle(overlay).backgroundColor,
             paneBg: getComputedStyle(document.querySelector(".puml-preview")).backgroundColor,
-            codeClass: overlay.querySelector(".lb-mermaid-code-pane code")?.className ?? "",
+            codeClass: overlay.querySelector(".lb-diagram-code-pane code")?.className ?? "",
         };
     });
     check("the fullscreen header names PlantUML, not Mermaid",
@@ -185,8 +186,10 @@ export async function run({ page, check, baseUrl }) {
     // re-render must go through PlantUML. Fed to Mermaid it produced "No
     // diagram type detected" over a diagram that was fine a moment ago.
     await page.evaluate(() => {
-        const overlay = document.querySelector(".mermaid-lightbox");
-        const toggle = overlay.querySelector(".mermaid-lightbox-header button");
+        const overlay = document.querySelector(".fs-surface");
+        // The mode toggle is the last action before Close in the top-right cluster.
+        const actions = [...overlay.querySelectorAll(".fs-actions button")];
+        const toggle = actions[actions.length - 2];
         toggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
         const textarea = overlay.querySelector(".code-lightbox-textarea");
         textarea.value = "@startuml\nAlice -> Bob : edited\n@enduml";
@@ -195,13 +198,13 @@ export async function run({ page, check, baseUrl }) {
     });
     await page.waitForFunction(
         () => {
-            const c = document.querySelector(".mermaid-lightbox-svg");
+            const c = document.querySelector(".lb-diagram-svg");
             return !!c && !c.querySelector(".puml-loading") && !c.querySelector(".mermaid-loading");
         },
         { timeout: 30000 },
     );
     const edited = await page.evaluate(() => {
-        const c = document.querySelector(".mermaid-lightbox-svg");
+        const c = document.querySelector(".lb-diagram-svg");
         return {
             hasSvg: !!c.querySelector("svg[data-diagram-type]"),
             err: (c.querySelector(".puml-error-msg, .mermaid-error-msg")?.textContent ?? "").trim().slice(0, 80),

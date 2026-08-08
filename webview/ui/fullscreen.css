@@ -1,0 +1,216 @@
+/* ─── The fullscreen surface ──────────────────────────────────────────────
+ *
+ * Anatomy and geography for every "open this bigger" gesture. The reasoning
+ * for the three grounds and the four corners is in fullscreenSurface.ts; this
+ * file is only their expression.
+ */
+
+@keyframes lb-open {
+    from { opacity: 0; transform: scale(0.99); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@keyframes lb-close {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.99); }
+}
+
+.fs-surface {
+    position: fixed;
+    inset: 0;
+    /* Above the topbar (10002). A fullscreen surface the opaque toolbar paints
+       across is not fullscreen, and a close button under the bar has an
+       unclickable upper half. */
+    z-index: 10010;
+    display: flex;
+    /* STRETCH, not center. `.fs-content` centers its own child, and a centered
+       flex item takes its content height — which left the diagram viewport a
+       few hundred pixels tall inside a full-height overlay, so fit-to-view
+       solved for a box that was not the one the user was looking at. */
+    align-items: stretch;
+    justify-content: center;
+    animation: lb-open 0.18s ease;
+    outline: none;
+    /* One inset for every corner, and the band a sheet reserves. */
+    --fs-inset: 12px;
+    --fs-band: 44px;
+}
+
+.fs-surface.lb-closing {
+    animation: lb-close 0.15s ease forwards;
+    pointer-events: none;
+}
+
+/* ── Grounds ── */
+
+/* CANVAS: the backdrop IS the content's paper. Full bleed, no card, no
+   shadow — the content extends past the viewport as you zoom, so a floating
+   page is the wrong story to tell about it. */
+.fs-surface--canvas {
+    background: var(--fs-canvas, var(--vscode-editor-background));
+}
+
+/* SCRIM: a neutral dark wash. An object has its own edges; what it needs
+   behind them is contrast, never a colour match. Theme-independent by design,
+   the way a photo viewer dims. */
+.fs-surface--scrim {
+    background: var(--ui-lightbox-scrim);
+    backdrop-filter: blur(2px);
+}
+
+/* SHEET: an opaque working surface. Chrome is banded rather than floated
+   (see .fs-surface--sheet .fs-content below) so text never runs under it. */
+.fs-surface--sheet {
+    background: var(--vscode-editor-background);
+    flex-direction: column;
+}
+
+/* ── Content ── */
+
+.fs-content {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* On a sheet the chrome band is real estate, not an overlay. */
+.fs-surface--sheet .fs-content {
+    padding-top: var(--fs-band);
+}
+
+/* ── Geography ──
+ *
+ * All four clusters are positioned against the VIEWPORT, not the content.
+ * That is what puts them over a canvas (which fills it) and beside an inset
+ * object (a player), with no branch anywhere. */
+
+/* Identity. It floats over the content on the canvas and scrim grounds, so it
+   carries the same card ground the action cluster does — a diagram scaled to
+   fill the viewport has ink under this corner, and bare text on it is
+   unreadable exactly when the diagram is worth reading. Quieter ink than the
+   controls: this labels, it does not invite. */
+.fs-title {
+    position: absolute;
+    top: var(--fs-inset);
+    left: var(--fs-inset);
+    z-index: 2;
+    padding: 2px 8px;
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-m);
+    font-family: var(--vscode-font-family);
+    font-size: var(--ui-fs-l);
+    font-weight: 500;
+    line-height: 22px;
+    color: var(--vscode-foreground);
+    opacity: 0.75;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* On a sheet the band is reserved real estate, so nothing in it is floating
+   and nothing should claim to be. The chrome sits IN the band: no card ground,
+   no border, no shadow. A pill here would be an affordance for a surface that
+   is not there. */
+.fs-surface--sheet .fs-title,
+.fs-surface--sheet .fs-actions {
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.fs-surface--sheet .fs-title {
+    padding-left: 4px;
+    opacity: 0.65;
+}
+
+.fs-title:empty {
+    display: none;
+}
+
+.fs-actions {
+    position: absolute;
+    top: var(--fs-inset);
+    right: var(--fs-inset);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 2px;
+    /* The floating-card recipe: over arbitrary content, chrome needs its own
+       ground to stay legible. */
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-m);
+    box-shadow: var(--ui-card-shadow);
+}
+
+.fs-actions__group {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+}
+
+/* `display: flex` above outranks the UA's `[hidden] { display: none }`, so a
+   group set hidden stayed on screen while every other signal said it was gone. */
+.fs-actions__group[hidden] {
+    display: none;
+}
+
+/* The divider belongs to the group on its right, and only when a visible
+   group precedes it — `data-divided` is recomputed on every show/hide, so a
+   hidden group takes its hairline with it. Drawn by hand instead, it outlived
+   its neighbours: with the zoom controls gone in code mode, a rule was left
+   dividing nothing from Close. */
+.fs-actions__group[data-divided] {
+    margin-left: 3px;
+    padding-left: 4px;
+    border-left: 1px solid var(--ui-card-border);
+}
+
+.fs-nav {
+    position: absolute;
+    right: var(--fs-inset);
+    bottom: var(--fs-inset);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.fs-nav:empty {
+    display: none;
+}
+
+/* ── The surface's own button ──
+ * Composes .ui-btn; local rules are only the fullscreen sizing and the
+ * quiet-until-hovered ink every floating control here shares. */
+.fs-btn {
+    width: 26px;
+    height: 24px;
+    color: var(--vscode-foreground);
+    opacity: 0.75;
+
+    & svg {
+        width: 15px;
+        height: 15px;
+    }
+}
+
+.fs-btn:hover {
+    opacity: 1;
+}
+
+/* A value readout inside the cluster (the zoom percentage) is a button too,
+   just a wider one that shows text. */
+.fs-btn--value {
+    width: auto;
+    min-width: 42px;
+    padding: 0 4px;
+    font-size: var(--ui-fs-s);
+    font-family: var(--vscode-editor-font-family, monospace);
+    letter-spacing: -0.3px;
+}
