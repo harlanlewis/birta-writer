@@ -10,7 +10,7 @@ version: 3.2.0
 Manage the full lifecycle of Linear issues (team: Birta Writer, `MAR-` prefix), using the Linear MCP tools (`mcp__claude_ai_Linear__save_issue`, `save_comment`, `get_issue`, `list_issues` etc., loaded via ToolSearch if deferred):
 
 1. File: a Known Bug (a bug left unfixed this session, or pre-existing; never record bugs already fixed during development) or a Feature Request (planned work not yet started).
-2. Close or update: move a shipped issue to `Done`, or re-scope one the code has outgrown.
+2. Close / update: move a shipped issue to `Done`, or re-scope one the code has outgrown.
 3. Audit: reconcile the backlog against the CHANGELOG and git history, closing what's shipped and re-scoping stale tickets.
 
 Issue tracking lives ONLY in Linear. Never create GitHub issues for this project.
