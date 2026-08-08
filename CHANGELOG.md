@@ -12,7 +12,13 @@
 
 ### Changed
 
-- The full-screen view of a diagram or image now dims the page behind it properly. The wash was mixed from your editor's own background colour, which on most themes left it within a few points of the diagram's own canvas. The diagram floated on a field of nearly the same shade and its edges disappeared. It is now a neutral dark scrim on every theme, the way a photo viewer dims, so what you opened full screen is the only thing lit.
+- Full screen is one surface now, whatever you opened. A diagram, a code block, an image and an embedded player used to be four overlays that had drifted into three different designs, so the close button moved depending on what you were looking at. They share an anatomy: the title of what you opened sits top-left, the controls sit top-right with Close always last, and anything that pans has its pad bottom-right. That is also where those controls sit on a diagram in the page, so going full screen no longer moves a button out from under your pointer.
+
+- A full-screen diagram is now the diagram, edge to edge. It used to be a card floating on a tinted wash, both drawn from your editor theme, which on most themes made them near enough the same shade that the card had no visible edges. The backdrop is now the diagram's own paper, with no card and no shadow, the way a drawing canvas works. It also opens large: a small diagram used to be centred at its original size in an otherwise empty window, and it is now scaled up to fill the space, which is what asking for full screen meant.
+
+- A full-screen diagram keeps its pan pad and gains a real fit-to-view. The pad was in the page but not full screen, which is backwards: full screen is where there is most to move around in.
+
+- Images and embedded players still dim the page behind them, and now do it properly. That wash was also mixed from the editor background, so on a dark theme it barely dimmed anything; it is a neutral dark scrim on every theme, the way a photo viewer dims. For a player we deliberately add nothing but Close, and we keep it out of the frame: YouTube and Figma put their own controls in their own corners, and ours should not land on top of them.
 
 ---
 
