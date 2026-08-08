@@ -310,19 +310,25 @@ Checking a box only toggles the `[x]`; with `birta.checklist.sinkChecked` (off b
 
 ### Mixed nesting
 
-A sub-list can be a different kind from its parent, and the marker decides: typing `1. ` at the head of an indented bullet numbers that branch and leaves the outline around it alone.
+A sub-list can be a different kind from its parent, and the marker decides: typing `1. ` at the head of an indented bullet numbers that branch and leaves the outline around it alone. Kinds alternate to any depth, and one can come back after another has intervened — the numbered list at the bottom here is four layers down, with a checklist between it and the numbered list it echoes:
 
 - A bulleted outline
-  1. with a numbered branch
-  2. that stays numbered
-- and a bulleted sibling after it
+  1. with a numbered branch under it
+  2. and a second numbered item
+     - [ ] carrying a checklist
+     - [x] task state rides either kind
+       1. and numbers again below that
+       2. two layers under the last numbered list, with a checklist between
+- and a bulleted sibling, back at the top
+
+The other starting point, a numbered outline with a bulleted branch:
 
 1. A numbered outline
    - with a bulleted branch
    - that stays bulleted
 2. and a numbered sibling after it
 
-Task state is a per-item property rather than a third kind of list, so a numbered item can carry a checkbox:
+Task state is a per-item property rather than a third kind of list, so a numbered item can carry a checkbox of its own:
 
 1. [ ] First step
 2. [x] Second step, done
