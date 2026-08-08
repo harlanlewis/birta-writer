@@ -308,6 +308,33 @@ Two switches govern all of this. `birta.embeds.enabled` is the feature itself �
 
 Checking a box only toggles the `[x]`; with `birta.checklist.sinkChecked` (off by default) a checked task also sinks below its unchecked siblings.
 
+### Mixed nesting
+
+A sub-list can be a different kind from its parent, and the marker decides: typing `1. ` at the head of an indented bullet numbers that branch and leaves the outline around it alone.
+
+- A bulleted outline
+  1. with a numbered branch
+  2. that stays numbered
+- and a bulleted sibling after it
+
+1. A numbered outline
+   - with a bulleted branch
+   - that stays bulleted
+2. and a numbered sibling after it
+
+Task state is a per-item property rather than a third kind of list, so a numbered item can carry a checkbox:
+
+1. [ ] First step
+2. [x] Second step, done
+
+A marker change at the same indent is a new list, which is what the bytes say and what the editor shows — three blocks here, not one list with an odd item in it:
+
+- alpha
+
+1. beta
+
+- gamma
+
 ### List markers
 
 The list marker you type is the one you keep — none of these are rewritten to a house style on save. Star bullets:
