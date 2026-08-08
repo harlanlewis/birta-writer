@@ -43,8 +43,7 @@ import {
     IconTextInline,
     IconX,
 } from "../ui/icons";
-import { registerEscapeLayer } from "../ui/escapeLayers";
-import { lockBodyScroll, unlockBodyScroll } from "../utils";
+import { openFullscreenSurface } from "../ui/fullscreenSurface";
 // Button safety (mousedown/keyboard guarding), the 28px column-button recipe,
 // and the left-opening tooltips live in the shared block-controls primitive —
 // one anatomy for the embed, image, table, and code-block control columns.
@@ -135,14 +134,19 @@ function buildPlayerIframe(provider: EmbedProvider, id: string): HTMLIFrameEleme
  * backdrop click all dismiss it.
  */
 function openEmbedLightbox(provider: EmbedProvider, id: string): void {
-    const overlay = document.createElement("div");
-    overlay.className = "embed-lightbox";
-
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "embed-lightbox__close";
-    closeBtn.setAttribute("aria-label", t("Close"));
-    closeBtn.innerHTML = IconX;
+    // A player is the one fullscreen case where we do NOT render the interior,
+    // and that decides the chrome: we add nothing but Close. YouTube puts its
+    // play button bottom-right and Figma its toolbar bottom-centre, so every
+    // control we float over a player is a collision waiting for a viewport
+    // size. The shared surface positions its clusters against the VIEWPORT,
+    // and the frame below is inset inside it, so Close lands in the scrim
+    // margin beside the player rather than over it — the same coordinates that
+    // put the same button over a diagram, with no special case here.
+    const surface = openFullscreenSurface({
+        ground: "scrim",
+        title: t(provider.playerTitle ?? "Embedded content"),
+        className: "embed-lightbox",
+    });
 
     const frame = document.createElement("div");
     frame.className = "embed-lightbox__frame";
@@ -150,36 +154,7 @@ function openEmbedLightbox(provider: EmbedProvider, id: string): void {
         frame.style.setProperty("--embed-aspect", provider.aspect);
     }
     frame.appendChild(buildPlayerIframe(provider, id));
-
-    overlay.append(frame, closeBtn);
-    document.body.appendChild(overlay);
-    lockBodyScroll();
-
-    const escapeOff = registerEscapeLayer(close);
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === "Escape" && !e.defaultPrevented) {
-            e.preventDefault();
-            e.stopPropagation();
-            close();
-        }
-    }
-    function close(): void {
-        escapeOff();
-        document.removeEventListener("keydown", onKeyDown);
-        overlay.remove();
-        unlockBodyScroll();
-    }
-    overlay.addEventListener("mousedown", (e) => {
-        if (e.target === overlay) {
-            close();
-        }
-    });
-    closeBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        close();
-    });
-    document.addEventListener("keydown", onKeyDown);
+    surface.content.appendChild(frame);
 }
 
 /**

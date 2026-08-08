@@ -240,57 +240,23 @@
 }
 
 /* ─── In-editor image lightbox (click to zoom) ───────────
-   Same overlay recipe as the embed fullscreen lightbox (style.css
-   .embed-lightbox): a light theme-aware wash + blur, never an always-dark
-   photo scrim — every fullscreen preview reads as one surface (2026-07-28). */
+   The overlay, its scrim ground, and the close button are the shared
+   fullscreen surface (ui/fullscreen.css). An image is an OBJECT: it has its
+   own edges, so all it adds here is a size bound. No shadow — the scrim is
+   what separates it from the page, and stacking a shadow on top of a dim
+   reads as two different explanations of the same edge. */
 .img-editor-lightbox {
-    position: fixed;
-    inset: 0;
-    /* Above the topbar (10002). A fullscreen preview that the opaque toolbar
-       paints across is not fullscreen, and the close button sits at top: 16px
-       — under the bar, its upper half was unclickable. */
-    z-index: 10010;
-    background: var(--ui-lightbox-scrim);
-    backdrop-filter: blur(2px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     cursor: zoom-out;
 }
 
 .img-editor-lightbox-img {
     max-width: 90vw;
-    max-height: 90vh;
+    /* Clears the surface's chrome band top and bottom; see the same cap on
+       .embed-lightbox__frame. */
+    max-height: min(90vh, calc(100vh - 2 * var(--fs-band)));
     object-fit: contain;
     border-radius: var(--ui-radius-m);
-    box-shadow: var(--ui-card-shadow-overlay);
     cursor: default;
-}
-
-/* The embed lightbox's close recipe, verbatim — one fullscreen anatomy. */
-.img-editor-lightbox-close {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: var(--ui-radius-m);
-    background: var(--vscode-editorWidget-background);
-    color: var(--vscode-foreground);
-    cursor: pointer;
-
-    & svg {
-        width: 16px;
-        height: 16px;
-    }
-}
-
-.img-editor-lightbox-close:hover {
-    background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* The image path autocomplete dropdown now composes the shared suggest

@@ -90,7 +90,66 @@ export type DiagramPane = {
     destroy: () => void;
 };
 
-/** The zoom/overlay/lightbox-header button recipe (tooltips open above). */
+/**
+ * The directional pan pad: ↑ ← ⟲ → ↓ in a 3×3 grid, bottom-right of whatever
+ * shows a diagram.
+ *
+ * Shared by the inline pane and the fullscreen surface, which is the point.
+ * Fullscreen is where panning matters most (there is the most to pan across),
+ * and it had no pad at all while the inline pane did — so the gesture that
+ * means "give me more room" took a control away. One builder, one geography,
+ * both places.
+ */
+export function createPanPad(opts: {
+    /** DOM class prefix, so each engine's markup reads honestly. */
+    classPrefix: string;
+    /** Nudge the view by this delta, in px. */
+    onPan: (dx: number, dy: number) => void;
+    /** The centre button: fit the diagram to its container. */
+    onReset: () => void;
+}): HTMLElement {
+    const { classPrefix: px, onPan, onReset } = opts;
+
+    const controls = document.createElement("div");
+    controls.className = `${px}-pan-controls`;
+    controls.contentEditable = "false";
+
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "ui-btn mermaid-pan-btn mermaid-pan-reset";
+    resetBtn.tabIndex = -1;
+    resetBtn.innerHTML = IconResetZoom;
+    applyTooltip(resetBtn, t("Reset Zoom"), { placement: "above" });
+    resetBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        onReset();
+    });
+
+    const dirBtn = (icon: string, dx: number, dy: number): HTMLButtonElement => {
+        const btn = document.createElement("button");
+        btn.className = "ui-btn mermaid-pan-btn";
+        btn.tabIndex = -1;
+        btn.innerHTML = icon;
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault(); e.stopPropagation();
+            onPan(dx, dy);
+        });
+        return btn;
+    };
+
+    const grid = document.createElement("div");
+    grid.className = `${px}-pan-grid`;
+    const spacer = (): HTMLElement => document.createElement("span");
+    grid.append(
+        spacer(), dirBtn(IconChevronUp, 0, PAN_STEP), spacer(),
+        dirBtn(IconChevronLeft, PAN_STEP, 0), resetBtn, dirBtn(IconChevronRight, -PAN_STEP, 0),
+        spacer(), dirBtn(IconChevronDown, 0, -PAN_STEP), spacer(),
+    );
+
+    controls.appendChild(grid);
+    return controls;
+}
+
+/** The zoom/overlay button recipe (tooltips open above). */
 export function makeDiagramBtn(icon: string, tipText: string, extraClass = ""): HTMLButtonElement {
     return createButton({
         className: "ui-btn mermaid-zoom-btn" + (extraClass ? ` ${extraClass}` : ""),
@@ -158,62 +217,16 @@ export function createDiagramPane(opts: {
     preview.appendChild(zoomOverlay);
 
     // ── Bottom-right direction controls: ↑←[reset]→↓ ─────────────────────
-    const panControls = document.createElement("div");
-    panControls.className = `${px}-pan-controls`;
-    panControls.contentEditable = "false";
-
-    // Center reset button (fit-to-view)
-    const panResetBtn = document.createElement("button");
-    panResetBtn.className = "ui-btn mermaid-pan-btn mermaid-pan-reset";
-    panResetBtn.tabIndex = -1;
-    panResetBtn.innerHTML = IconResetZoom;
-    applyTooltip(panResetBtn, t("Reset Zoom"), { placement: "above" });
-    panResetBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        fitToView();
-    });
-
-    const panUp    = makePanBtn(IconChevronUp,    "up");
-    const panDown  = makePanBtn(IconChevronDown,  "down");
-    const panLeft  = makePanBtn(IconChevronLeft,  "left");
-    const panRight = makePanBtn(IconChevronRight, "right");
-
-    const panGrid = document.createElement("div");
-    panGrid.className = `${px}-pan-grid`;
-    // row1: _ ↑ _
-    panGrid.appendChild(document.createElement("span"));
-    panGrid.appendChild(panUp);
-    panGrid.appendChild(document.createElement("span"));
-    // row2: ← [reset] →
-    panGrid.appendChild(panLeft);
-    panGrid.appendChild(panResetBtn);
-    panGrid.appendChild(panRight);
-    // row3: _ ↓ _
-    panGrid.appendChild(document.createElement("span"));
-    panGrid.appendChild(panDown);
-    panGrid.appendChild(document.createElement("span"));
-
-    panControls.appendChild(panGrid);
-    preview.appendChild(panControls);
-
-    function makePanBtn(icon: string, dir: string): HTMLButtonElement {
-        const btn = document.createElement("button");
-        btn.className = "ui-btn mermaid-pan-btn";
-        btn.tabIndex = -1;
-        btn.innerHTML = icon;
-        btn.addEventListener("mousedown", (e) => {
-            e.preventDefault(); e.stopPropagation();
-            switch (dir) {
-                case "up":    panY += PAN_STEP; break;
-                case "down":  panY -= PAN_STEP; break;
-                case "left":  panX += PAN_STEP; break;
-                case "right": panX -= PAN_STEP; break;
-            }
+    // The same pad the fullscreen surface uses; see createPanPad.
+    preview.appendChild(createPanPad({
+        classPrefix: px,
+        onPan(dx, dy) {
+            panX += dx; panY += dy;
             hasManualTransform = true;
             applyTransform();
-        });
-        return btn;
-    }
+        },
+        onReset: () => fitToView(),
+    }));
 
     // Refit the diagram when the preview container's WIDTH changes (panel
     // resize): the adaptive height and fit zoom were computed for the old
