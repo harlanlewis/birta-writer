@@ -146,9 +146,9 @@ Every "open this bigger" gesture over the document - a diagram, a code block, an
 
 One preview stands outside it, and stays outside until someone answers the question it raises: the image picker's enlarge opens from inside the image-insert modal rather than from the document, so it has to stack above that modal and its Escape has to return the user to the picker. A fullscreen surface opened from within another modal is a case this shell does not model.
 
-**Do we render its interior?** We render diagrams and code. We do not render an embedded player: Figma and YouTube put their own controls in their own corners, so anything we float over one is a collision waiting for a viewport size. For content we do not own, add nothing but Close.
+Do we render its interior? We render diagrams and code. We do not render an embedded player: Figma and YouTube put their own controls in their own corners, so anything we float over one is a collision waiting for a viewport size. For content we do not own, add nothing but Close.
 
-**Is it a canvas, an object, or a sheet?** Those are the three grounds:
+Is it a canvas, an object, or a sheet? Those are the three grounds:
 
 - `canvas` - the backdrop IS the content's own paper, edge to edge. No card, no radius, no shadow. Diagrams. A card says "a page floating on a surface", which is untrue of a thing that extends past the viewport the moment you zoom; and a card whose fill is the canvas colour, sitting on a scrim mixed from the same theme, has no visible edges at all.
 - `scrim` - a neutral dark wash, theme-independent, the way a photo viewer dims. Images and players. An object has its own edges and needs contrast behind them, never a colour match.
@@ -167,7 +167,7 @@ Four corners, identical on every surface, and identical to the controls the same
 
 Close is always the final item of the top-right cluster. It is the one control a user should never have to look for.
 
-The clusters are positioned against the **viewport**, not the content, and that is what makes the embed case work with no branch in the code. A diagram fills the viewport, so the cluster floats over it. A player is inset inside it, so the same coordinates put the cluster in the margin beside the player instead of over its controls. One rule, two right answers.
+The clusters are positioned against the viewport, not the content, and that is what makes the embed case work with no branch in the code. A diagram fills the viewport, so the cluster floats over it. A player is inset inside it, so the same coordinates put the cluster in the margin beside the player instead of over its controls. One rule, two right answers.
 
 Anything floating over content carries the card ground (`--ui-card-*`), identity included. A diagram scaled to fill the viewport has ink under every corner, and bare text on it is unreadable exactly when the diagram is worth reading.
 

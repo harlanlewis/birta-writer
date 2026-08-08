@@ -33,7 +33,7 @@ The `Release` workflow (`.github/workflows/release.yml`) runs nightly at 04:00 P
 
 1. If nothing has landed since the last tag, it stops. No empty releases.
 2. It runs `pnpm typecheck && pnpm test`. `vsce package` only runs a build, and the release cron fires on its own schedule whether or not CI for the newest commit has finished, or finished green. The job proves the commit for itself rather than trusting a status lookup that may be pending or absent.
-3. It runs the integration suite (`pnpm test:integration`, under xvfb) twice: once against the `engines.vscode` floor read from `package.json`, once against stable. This is the only place the floor is ever launched — the claim is otherwise unverifiable — and the suite includes opening a real-shaped document (invalid mermaid diagram included) in the real custom editor and failing if the webview stops answering after paint. The first run of this step found two floor-only bugs that had shipped in every prior release.
+3. It runs the integration suite (`pnpm test:integration`, under xvfb) twice: once against the `engines.vscode` floor read from `package.json`, once against stable. This is the only place the floor is ever launched, so the claim is otherwise unverifiable, and the suite includes opening a real-shaped document (invalid mermaid diagram included) in the real custom editor and failing if the webview stops answering after paint. The first run of this step found two floor-only bugs that had shipped in every prior release.
 4. It rolls `CHANGELOG.md` (see below), writes end-user highlights, packages the `.vsix`, tags the commit, and publishes a GitHub Release with the `.vsix` attached.
 5. A second job, `publish`, pushes that same `.vsix` to the Marketplace.
 6. Finally it commits the rolled `CHANGELOG.md` back to `main`.
@@ -78,7 +78,7 @@ It reads the stamped section for a reason. Reading `[Unreleased]` unconditionall
 
 Without an `ANTHROPIC_API_KEY`, or when the API call fails, it re-sections those same changelog entries into the notes taxonomy itself, mechanically, and only drops to a categorized commit list when there is no changelog section to read at all. So a release never blocks on the model, and never publishes less than the changelog already said.
 
-That order matters more than it looks. The commit list used to be the only fallback, and it did not read `CHANGELOG.md` at all: a `Security` entry did not merely land in the wrong section, it never reached the notes, and the commit subject appeared in its place under `Fixes`. It also published what the observability rule excludes — `refactor: internal cleanup` went out under `Other` — and it contradicted the `_No user-visible changes_` marker by listing the commits that marker exists to suppress.
+That order matters more than it looks. The commit list used to be the only fallback, and it did not read `CHANGELOG.md` at all: a `Security` entry did not merely land in the wrong section, it never reached the notes, and the commit subject appeared in its place under `Fixes`. It also published what the observability rule excludes (`refactor: internal cleanup` went out under `Other`), and it contradicted the `_No user-visible changes_` marker by listing the commits that marker exists to suppress.
 
 The two paths differ in kind, and it is worth knowing which one produced a set of notes. The no-key path is mechanical: sections are renamed by table, nothing is dropped, and a heading the taxonomy does not know is passed through under its own name rather than discarded. The AI path is instructed, not constrained: the prompt names every section and states the mapping, and the tests pin the prompt, but the placement is the model's. Read a `Security` section in the published notes against `CHANGELOG.md` the first time one ships.
 
@@ -109,7 +109,7 @@ Every changelog section maps onto one of those, and the mapping is stated in two
 | `Deprecated` | `Deprecated` |
 | `Removed` | `Removed`, unless the user must act, which makes it a `Breaking change` |
 
-`Security` leads because the reader is scanning it to decide whether to act, which is the same reason `Breaking changes` lead. This taxonomy has no separate axis for urgency; placement is the axis. `Highlights` is a promotion out of `New`, not a source section — it is why you should never write one in `CHANGELOG.md` by hand.
+`Security` leads because the reader is scanning it to decide whether to act, which is the same reason `Breaking changes` lead. This taxonomy has no separate axis for urgency; placement is the axis. `Highlights` is a promotion out of `New`, not a source section, which is why you should never write one in `CHANGELOG.md` by hand.
 
 `shared/__tests__/releaseNotes.test.ts` holds this to the code. It fails if a Keep a Changelog section loses its route, if the prompt and the table disagree, if an entry is dropped on the way through, or if a heading appears in our own `CHANGELOG.md` that the notes cannot place.
 
@@ -152,10 +152,10 @@ When both land the migration is small: drop the `azure/login` step, swap `--azur
 
 ### The setup, once
 
-1. **A user-assigned managed identity** in the Azure portal, not an App Registration. An App Registration is free and needs no subscription, so it looks like the obvious choice; it reportedly authenticates successfully and then fails the publish itself with `InvalidAccessException: The requested operation is not allowed`. That failure was reported by others and not reproduced here. Microsoft documents this flow for Azure Pipelines only, so the GitHub Actions shape of it is community knowledge, and the one upstream report, [microsoft/vscode-vsce#1023](https://github.com/microsoft/vscode-vsce/issues/1023), was closed as not planned with no technical answer, so "unverified" is where it stays.
-2. **A federated credential** on that identity. Scenario *GitHub Actions deploying Azure resources*, entity type Environment, environment name `marketplace-publish`. Branch or Tag bindings match one literal ref and break on the next release, which is why the release job declares this environment.
-3. **`AZURE_CLIENT_ID` and `AZURE_TENANT_ID`** copied from the identity's *Properties* into repo secrets.
-4. **The identity added to the Marketplace publisher as a Contributor.** Its Azure object ID will not be found by the publisher's member search. The only id that search accepts comes from querying `https://app.vssps.visualstudio.com/_apis/profile/profiles/me` *as the identity*. A throwaway `workflow_dispatch` workflow did this once, on 2026-07-30, and has since been deleted. If the identity is ever replaced, re-create one to print the new `id`.
+1. A user-assigned managed identity in the Azure portal, not an App Registration. An App Registration is free and needs no subscription, so it looks like the obvious choice; it reportedly authenticates successfully and then fails the publish itself with `InvalidAccessException: The requested operation is not allowed`. That failure was reported by others and not reproduced here. Microsoft documents this flow for Azure Pipelines only, so the GitHub Actions shape of it is community knowledge, and the one upstream report, [microsoft/vscode-vsce#1023](https://github.com/microsoft/vscode-vsce/issues/1023), was closed as not planned with no technical answer, so "unverified" is where it stays.
+2. A federated credential on that identity. Scenario *GitHub Actions deploying Azure resources*, entity type Environment, environment name `marketplace-publish`. Branch or Tag bindings match one literal ref and break on the next release, which is why the release job declares this environment.
+3. `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` copied from the identity's *Properties* into repo secrets.
+4. The identity added to the Marketplace publisher as a Contributor. Its Azure object ID will not be found by the publisher's member search. The only id that search accepts comes from querying `https://app.vssps.visualstudio.com/_apis/profile/profiles/me` *as the identity*. A throwaway `workflow_dispatch` workflow did this once, on 2026-07-30, and has since been deleted. If the identity is ever replaced, re-create one to print the new `id`.
 
 This setup is verified by use: the first publish succeeded on 2026-07-31, and every nightly since has published on the same path.
 
