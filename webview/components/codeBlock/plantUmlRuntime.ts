@@ -72,7 +72,14 @@ function currentPalette(): PlantUmlPalette | null {
     if (!isPlantUmlDark()) return null;
     return {
         foreground: cssVar("--vscode-editor-foreground"),
-        elementBackground: cssVar("--vscode-textCodeBlock-background"),
+        // The canvas has to be what the PANE paints (codeBlock.css keys the
+        // same variable off `.puml-canvas-dark`), or the diagram stamps a
+        // second, slightly-different rectangle inside the first.
+        canvas: cssVar("--vscode-textCodeBlock-background"),
+        // Elements sit ON that canvas, so they need a different surface. The
+        // widget ground is the theme's own "panel floating over the editor",
+        // present in every theme, and the border below does the edge work.
+        elementBackground: cssVar("--vscode-editorWidget-background"),
         border: cssVar("--vscode-panel-border"),
     };
 }
@@ -112,8 +119,18 @@ export function setPlantUmlThemeMode(mode: PlantUmlThemeMode): void {
  * Re-render every PlantUML diagram after a VS Code THEME change. Only `auto`
  * mode can have changed its mind, so the other two modes short-circuit rather
  * than re-running every diagram in the document for nothing.
+ *
+ * Subscribed HERE, as a module side effect, exactly as `mermaidRuntime.ts`
+ * does — and for the same reason: the listener has to exist wherever the mode
+ * lives. Exporting it for someone else to call is how `auto` shipped inert the
+ * first time; nothing called it, and a theme switch left every diagram painted
+ * in the old palette until its source changed.
  */
-export function refreshPlantUmlForEditorTheme(): void {
+function refreshPlantUmlForEditorTheme(): void {
     if (plantUmlThemeMode !== "auto") return;
     for (const instance of plantUmlInstances) instance.invalidate();
+}
+
+if (typeof window !== "undefined") {
+    window.addEventListener("theme-changed", refreshPlantUmlForEditorTheme);
 }

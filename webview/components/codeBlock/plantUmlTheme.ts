@@ -18,10 +18,10 @@
  *
  * 2. **The preamble must not move the user's line numbers.** The engine reports
  *    parse errors as "line N", and the user counts lines in the source they
- *    wrote, not in the source we assembled. Every injected line is therefore
- *    joined into ONE physical line using PlantUML's `\n`-free multi-directive
- *    form is not available — so instead we record how many lines we added and
- *    `unshiftPlantUmlErrorLines()` subtracts them back out of the message.
+ *    wrote, not in the source we assembled. PlantUML has no way to state a
+ *    dozen skinparams on one physical line, so the preamble genuinely costs
+ *    lines; we record how many and `unshiftPlantUmlErrorLines()` subtracts them
+ *    back out of the message before the user reads it.
  *
  * Colours are supplied by the caller, read from the live `--vscode-*` theme, so
  * a dark diagram tracks the editor rather than a palette hardcoded here.
@@ -31,6 +31,8 @@
 export type PlantUmlPalette = {
     /** Ink for labels and arrows. */
     foreground: string;
+    /** The diagram's own background. Matches what the pane paints behind it. */
+    canvas: string;
     /** Fill for boxes, participants, nodes. */
     elementBackground: string;
     /** Borders and separator lines. */
@@ -55,26 +57,62 @@ export function plantUmlBodyIsData(source: string): boolean {
     return directive === "json" || directive === "yaml";
 }
 
-/** The skinparam lines re-skinning a document for a dark editor surface. */
+/**
+ * The skinparam lines re-skinning a document for a dark editor surface.
+ *
+ * The shape of this list is dictated by one fact about PlantUML that is easy to
+ * get wrong: **`skinparam backgroundColor` is the diagram's page colour, and it
+ * is the SAME parameter as `BackgroundColor`** — skinparam names are
+ * case-insensitive, so the two spellings collide and the last one wins. There
+ * is no generic "fill every element" parameter. A preamble that sets
+ * `backgroundColor transparent` and then `BackgroundColor <fill>` therefore
+ * sets neither: it paints the page in the intended element fill and leaves
+ * every box, participant and node at PlantUML's stock palette. That is what
+ * shipped first, and it showed as lavender participant boxes and #181818
+ * lifelines sitting on a dark canvas, all but invisible.
+ *
+ * Element fills are per-family and have to be named individually. The list
+ * below covers the families this editor actually renders; anything unnamed
+ * keeps PlantUML's own colour, which is a legible default rather than a
+ * regression. Verified against the engine in `e2e/plantUmlRender`.
+ *
+ * Every parameter here is one this engine honours, checked by reading the fills
+ * back out of its SVG. Three that upstream documents are NOT implemented and
+ * were removed rather than left in as decoration: `ActivityDiamond*`,
+ * `ActivityStart/EndColor`, and `StateStart/EndColor`. A decision diamond
+ * therefore stays PlantUML's near-white (dark ink on it, so it reads), and
+ * terminator discs stay `#222222`. Re-check before adding any of them back.
+ */
 function darkPreamble(palette: PlantUmlPalette): string[] {
-    const { foreground, elementBackground, border } = palette;
+    const { foreground, canvas, elementBackground, border } = palette;
+    // The families whose element fill/border/ink PlantUML exposes under a
+    // `<Family>BackgroundColor` / `…BorderColor` / `…FontColor` triple.
+    const families = [
+        "Participant", "Actor", "Boundary", "Control", "Entity", "Database", "Collections",
+        "Queue", "Note", "Legend", "Class", "Object", "State", "Component", "Node",
+        "Rectangle", "Usecase", "Activity", "Package", "Partition", "Agent", "Artifact",
+        "Cloud", "Frame", "Interface", "Storage", "Card", "File", "Folder",
+    ];
     return [
-        // The pane already paints the themed surface behind the diagram; a
-        // transparent canvas lets it through instead of stamping a second,
-        // slightly-different rectangle on top of it.
-        "skinparam backgroundColor transparent",
+        `skinparam backgroundColor ${canvas}`,
         `skinparam defaultFontColor ${foreground}`,
         `skinparam ArrowColor ${foreground}`,
         `skinparam ArrowFontColor ${foreground}`,
         `skinparam BorderColor ${border}`,
-        `skinparam BackgroundColor ${elementBackground}`,
-        `skinparam NoteBackgroundColor ${elementBackground}`,
-        `skinparam NoteBorderColor ${border}`,
-        `skinparam NoteFontColor ${foreground}`,
         `skinparam TitleFontColor ${foreground}`,
-        `skinparam LegendFontColor ${foreground}`,
-        `skinparam LegendBackgroundColor ${elementBackground}`,
-        `skinparam LegendBorderColor ${border}`,
+        // Sequence lifelines are their own parameter and default to near-black,
+        // which is the single worst artefact of leaving them alone.
+        `skinparam SequenceLifeLineBorderColor ${border}`,
+        `skinparam SequenceBoxBackgroundColor ${elementBackground}`,
+        `skinparam SequenceGroupBodyBackgroundColor ${canvas}`,
+        `skinparam SequenceDividerBackgroundColor ${elementBackground}`,
+        `skinparam ClassAttributeFontColor ${foreground}`,
+        `skinparam StereotypeFontColor ${foreground}`,
+        ...families.flatMap((family) => [
+            `skinparam ${family}BackgroundColor ${elementBackground}`,
+            `skinparam ${family}BorderColor ${border}`,
+            `skinparam ${family}FontColor ${foreground}`,
+        ]),
     ];
 }
 

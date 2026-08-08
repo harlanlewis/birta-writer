@@ -35,7 +35,7 @@ export { createCodeBlockView } from "./nodeView";
 
 export { setMermaidThemeMode, syncMermaidCanvasClass } from "./mermaidRuntime";
 
-export { setPlantUmlThemeMode, refreshPlantUmlForEditorTheme } from "./plantUmlRuntime";
+export { setPlantUmlThemeMode } from "./plantUmlRuntime";
 
 export { createLangPickerItem, isSameLanguage, langLabelHtml } from "./langPicker";
 

@@ -108,13 +108,48 @@ export async function run({ page, check, baseUrl }) {
     check("PlantUML panes carry the shared zoom/pan chrome",
         chrome.zoom && chrome.pan, JSON.stringify(chrome));
 
-    // The fullscreen checks below want a DARK diagram, which is what makes the
-    // canvas assertion meaningful (a light one is white either way).
+    // ── A live theme change reaches open diagrams ──
+    // `birta.plantuml.theme` arrives as a message, not a reload. The mode's
+    // own listener is the only thing that repaints what is already on screen,
+    // and `auto` shipped with none at all — nothing called the exported
+    // refresh, so a VS Code theme switch left every diagram in the old palette
+    // until its source changed.
     await page.evaluate(() => window.postMessage({ type: "setPlantUmlTheme", mode: "dark" }, "*"));
     await page.waitForFunction(
-        () => document.querySelector(".puml-preview")?.querySelector(".puml-svg-container > svg"),
+        () => document.querySelector(".puml-preview")?.classList.contains("puml-canvas-dark"),
         { timeout: 30000 },
     );
+    check("a live theme change repaints open diagrams onto the dark canvas", true);
+
+    // ── The dark palette actually reaches the ELEMENTS ──
+    // `skinparam BackgroundColor` is `backgroundColor` (names are
+    // case-insensitive), so the first cut set the page twice and filled
+    // nothing: participants kept PlantUML's stock lavender and lifelines
+    // stayed #181818 on a dark canvas, all but invisible. Read the fills back
+    // out of the painted SVG — the only place the collision is observable.
+    const palette = await page.evaluate(() => {
+        const svg = document.querySelector(".puml-preview .puml-svg-container > svg");
+        const css = getComputedStyle(document.documentElement);
+        // Custom-property NAMES are case-sensitive; only the values fold.
+        const themeVar = (name) => css.getPropertyValue(name).trim().toLowerCase();
+        const hex = (v) => (v ?? "").trim().toLowerCase();
+        const fills = [...svg.querySelectorAll("rect")].map((r) => hex(r.getAttribute("fill")));
+        const strokes = [...svg.querySelectorAll("line")].map((l) => (l.getAttribute("style") ?? "").toLowerCase());
+        return {
+            canvas: themeVar("--vscode-textCodeBlock-background"),
+            element: themeVar("--vscode-editorWidget-background"),
+            border: themeVar("--vscode-panel-border"),
+            fills,
+            strokes,
+        };
+    });
+    check("participants are filled from the editor's widget surface",
+        palette.fills.includes(palette.element),
+        JSON.stringify({ want: palette.element, got: palette.fills }));
+    check("lifelines are drawn in the editor's border colour, not near-black",
+        palette.strokes.some((s) => s.includes(palette.border)) &&
+        !palette.strokes.some((s) => s.includes("#181818")),
+        JSON.stringify({ want: palette.border, got: palette.strokes.slice(0, 3) }));
 
     // ── Fullscreen is the SAME engine, not Mermaid ──
     // The lightbox is shared with Mermaid and used to hardcode it: a

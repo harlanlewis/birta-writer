@@ -21,6 +21,7 @@ import {
 
 const PALETTE: PlantUmlPalette = {
     foreground: "#d4d4d4",
+    canvas: "#1f1f1f",
     elementBackground: "#2d2d30",
     border: "#6e7681",
 };
@@ -70,7 +71,7 @@ describe("applyPlantUmlTheme", () => {
         const out = applyPlantUmlTheme(src, PALETTE);
         const lines = out.source.split("\n");
         expect(lines[0]).toBe("@startuml");
-        expect(lines[1]).toBe("skinparam backgroundColor transparent");
+        expect(lines[1]).toBe(`skinparam backgroundColor ${PALETTE.canvas}`);
         // The user's own content survives, and the directive stays line 1.
         expect(out.source).toContain("Alice -> Bob : hi");
         expect(out.addedLines).toBeGreaterThan(0);
@@ -87,8 +88,36 @@ describe("applyPlantUmlTheme", () => {
     it("the palette colours should reach the emitted skinparams", () => {
         const out = applyPlantUmlTheme("@startuml\nA -> B\n@enduml", PALETTE);
         expect(out.source).toContain(`skinparam defaultFontColor ${PALETTE.foreground}`);
-        expect(out.source).toContain(`skinparam BackgroundColor ${PALETTE.elementBackground}`);
         expect(out.source).toContain(`skinparam BorderColor ${PALETTE.border}`);
+    });
+
+    it("element fills should be named per family, never as a bare BackgroundColor", () => {
+        // `skinparam BackgroundColor` IS `backgroundColor` (names are
+        // case-insensitive), so emitting it does not fill any element — it
+        // repaints the page and silently leaves every box at PlantUML's stock
+        // palette. The first cut of this preamble did exactly that.
+        const out = applyPlantUmlTheme("@startuml\nA -> B\n@enduml", PALETTE);
+        // Exactly one line may claim that parameter, and it must be the page.
+        const bare = out.source
+            .split("\n")
+            .filter((line) => /^skinparam\s+BackgroundColor\s/i.test(line));
+        expect(bare).toEqual([`skinparam backgroundColor ${PALETTE.canvas}`]);
+        for (const family of ["Participant", "Class", "State", "Note"]) {
+            expect(out.source).toContain(`skinparam ${family}BackgroundColor ${PALETTE.elementBackground}`);
+            expect(out.source).toContain(`skinparam ${family}FontColor ${PALETTE.foreground}`);
+        }
+    });
+
+    it("the sequence lifeline should be given the palette's border colour", () => {
+        // Its own parameter, and it defaults to near-black: left alone, a dark
+        // sequence diagram draws invisible lifelines.
+        const out = applyPlantUmlTheme("@startuml\nA -> B\n@enduml", PALETTE);
+        expect(out.source).toContain(`skinparam SequenceLifeLineBorderColor ${PALETTE.border}`);
+    });
+
+    it("the canvas colour should be the diagram's page background", () => {
+        const out = applyPlantUmlTheme("@startuml\nA -> B\n@enduml", PALETTE);
+        expect(out.source).toContain(`skinparam backgroundColor ${PALETTE.canvas}`);
     });
 
     it("a data-body diagram should be left untouched even in dark mode", () => {
@@ -114,7 +143,7 @@ describe("applyPlantUmlTheme", () => {
     it("a CRLF source should still place the preamble after the directive line", () => {
         const out = applyPlantUmlTheme("@startuml\r\nA -> B\r\n@enduml", PALETTE);
         expect(out.source.split(/\r?\n/)[0]).toBe("@startuml");
-        expect(out.source.split(/\r?\n/)[1]).toBe("skinparam backgroundColor transparent");
+        expect(out.source.split(/\r?\n/)[1]).toBe(`skinparam backgroundColor ${PALETTE.canvas}`);
     });
 });
 
