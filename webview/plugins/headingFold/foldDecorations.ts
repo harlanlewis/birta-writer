@@ -9,6 +9,7 @@
  */
 import type { EditorView } from "../../pm";
 import { Decoration, DecorationSet } from "../../pm";
+import { isOrderedNumbering, orderedMarkerText } from "../../utils/orderedMarkers";
 import {
     blockMarkerSpec,
     createBlockGutter,
@@ -167,7 +168,15 @@ function emitItemGutters(
     if (listNode.type.name === "ordered_list") {
         const start = (listNode.attrs["order"] ?? 1) as number;
         const maxNum = start + Math.max(listNode.childCount - 1, 0);
-        const digits = String(Math.max(maxNum, 1)).length;
+        // The stamp is a WIDTH in characters, not a digit count, and a styled
+        // list's widest marker is not its widest number: eight items of
+        // lower-roman end at `viii`, four characters where `8` is one. Reading
+        // the marker the browser will actually draw keeps the grabber clear of
+        // it (utils/orderedMarkers.ts).
+        const numbering = listNode.attrs["numbering"];
+        const digits = isOrderedNumbering(numbering)
+            ? orderedMarkerText(Math.max(maxNum, 1), numbering).length
+            : String(Math.max(maxNum, 1)).length;
         if (digits > 1) {
             parts?.push(`old${digits}`);
             decorations?.push(

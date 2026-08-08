@@ -21,6 +21,7 @@
 <script>
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
   window.__posted = [];
+  window.__state = undefined;
   const DOC = [
     "- groceries",
     "- steps",
@@ -33,7 +34,10 @@
       if (msg.type === "ready")
         window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
     },
-    getState: () => undefined, setState: () => {},
+    // A real state bag, so the checks can observe a numbering preference
+    // being persisted the way VS Code's webview state would carry it.
+    getState: () => window.__state,
+    setState: (next) => { window.__state = next; },
   });
 </script>
 <link rel="stylesheet" href="dist/webview.css">

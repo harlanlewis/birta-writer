@@ -36,6 +36,7 @@
  */
 import { getWebviewState, setWebviewState } from "./messaging";
 import type { Node as PmNode } from "./pm";
+import { isOrderedNumbering, type OrderedNumbering } from "./utils/orderedMarkers";
 
 /** Stored, non-default modes. Absence means the block's own default —
  * capped card (embeds), natural size (images), column width (code/tables). */
@@ -142,6 +143,9 @@ function bagMap<T>(stateKey: string, validate: (value: unknown) => value is T) {
                 listener(newAnchor, value);
             }
         },
+        entries(): [string, T][] {
+            return [...load().entries()];
+        },
         subscribe(listener: Listener): () => void {
             listeners.add(listener);
             return () => {
@@ -193,6 +197,34 @@ export function setBlockWrap(anchor: string, wrap: boolean | null): void {
 
 export function renameBlockWrapAnchor(oldAnchor: string, newAnchor: string): void {
     wraps.rename(oldAnchor, newAnchor);
+}
+
+/**
+ * Ordered-list NUMBERING style (`listNumbering` bag key) — the third member of
+ * the same preference class: a deliberate per-block choice about how a block is
+ * drawn, never a byte in the file. `decimal` is the default and is stored as
+ * absence, so an untouched list keeps the by-depth cascade (style.css).
+ *
+ * Unlike width and wrap, the LIVE truth is a node attr on the ordered_list
+ * (plugins/listNumbering.ts), because a list can be created empty and a
+ * content anchor for an empty list names nothing. This bag is the reload
+ * mirror, reconciled FROM the document rather than migrated, so no rename
+ * path is needed here.
+ */
+const numberings = bagMap<OrderedNumbering>("listNumbering", isOrderedNumbering);
+
+export function getListNumbering(anchor: string): OrderedNumbering | null {
+    return numberings.get(anchor);
+}
+
+export function setListNumbering(anchor: string, style: OrderedNumbering | null): void {
+    numberings.set(anchor, style === "decimal" ? null : style);
+}
+
+/** Every stored (anchor, style) pair — the reconcile pass diffs against this
+ * rather than walking the bag through the store's single-key API. */
+export function listNumberingEntries(): [string, OrderedNumbering][] {
+    return numberings.entries();
 }
 
 // ─── Block identity ─────────────────────────────────────────────────────────
@@ -425,6 +457,17 @@ export const tableAnchorBase = registerAnchorKind(
 export const codeAnchorBase = registerAnchorKind(
     "code_block",
     (node) => codeWidthAnchor(node.textContent),
+);
+
+/** A list anchors on its FIRST ITEM's text — the list's own "first line", the
+ * same choice codeWidthAnchor makes, and the part a reader would name it by. */
+export function listNumberingAnchor(firstItemText: string): string {
+    return `list:${firstItemText.slice(0, 120)}`;
+}
+
+export const listAnchorBase = registerAnchorKind(
+    "ordered_list",
+    (node) => listNumberingAnchor(node.firstChild?.textContent ?? ""),
 );
 
 // ─── DOM application ────────────────────────────────────────────────────────

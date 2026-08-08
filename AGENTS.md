@@ -86,6 +86,9 @@ webview/editing/blockOps.ts                   Published block-operations surface
 webview/utils/calc.ts                         Deterministic calc engine (eval-free parser, =/=> detection, block evaluation, refresh scanner); units via the lazy mathjs seam in calcUnits.ts
 webview/plugins/calc.ts                       Inline-calc ProseMirror wiring: advisory =/=> suggestions + the auto-insert rule
 webview/plugins/calcRefresh.ts                Answer maintenance: refresh, variable cascade, withdrawal (consent model in its header)
+webview/blockWidth.ts                         Per-block PRESENTATION preferences (width, code word-wrap, list numbering) + block identity: occurrence-disambiguated content anchors
+webview/utils/orderedMarkers.ts               Ordered-list numbering vocabulary + marker spelling; holds the argument for why a style is presentation, never source
+webview/plugins/listNumbering.ts              Numbering lifecycle: the `numbering` attr is the live truth, the state bag is the reload mirror
 webview/serialization.ts                      Serializer config (stringify options, table handler, pure-markdown preset)
 packages/minimal-diff/src/index.ts            Format-agnostic minimal-diff engine (LCS merge + round-trip protection), workspace package
 webview/utils/minimalDiff.ts                  Markdown FormatProfile (classifier + normalizers) + profile-bound minimal-diff API

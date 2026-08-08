@@ -1,7 +1,7 @@
 /**
  * plugins/listMarkerInput.ts
  *
- * ONE grammar for typing a list marker, wherever the caret is: the three rules
+ * ONE grammar for typing a list marker, wherever the caret is: the four rules
  * here replace the stock `wrapInBulletListInputRule`,
  * `wrapInOrderedListInputRule` (preset-commonmark) and
  * `wrapInTaskListInputRule` (preset-gfm).
@@ -10,8 +10,14 @@
  *   ─────────────  ───────────────────────────  ──────────────────────────────
  *   `- ` `* ` `+ ` wrap in a bullet list        retype THAT item to bullet
  *   `1. ` `1) `    wrap in an ordered list      retype THAT item to ordered
+ *   `a. ` `A. `    wrap in an ordered list      restyle an ordered list, or
+ *   `i. ` `I. `      DRAWN in that style          retype a bullet item and style
  *   `[ ] ` `[x] `  (nothing — GFM has no        set the item's checkbox
  *                   task item outside a list)
+ *
+ * The `a.`/`i.` row does NOT write a lettered marker to the file. CommonMark has
+ * no such marker, so the bytes stay `1.` and only the drawing changes;
+ * utils/orderedMarkers.ts holds that argument in full.
  *
  * WHY THE ITEM COLUMN DID NOT EXIST BEFORE. Both stock list rules are
  * `wrappingInputRule`s, and wrapping is structurally impossible inside an item:
@@ -59,6 +65,8 @@ import { $inputRule } from "@milkdown/utils";
 import { InputRule, wrappingInputRule } from "../pm";
 import type { EditorState, Node as ProseNode, NodeType, ResolvedPos, Transaction } from "../pm";
 import { retypeListItemAt } from "../editing/listConvert";
+import { armListNumbering } from "./listNumbering";
+import { orderedMarkerStart, type OrderedNumbering } from "../utils/orderedMarkers";
 
 /**
  * Leading whitespace is part of the match (as in the stock rules) so that a
@@ -69,6 +77,12 @@ import { retypeListItemAt } from "../editing/listConvert";
  */
 const BULLET_MARKER = /^\s*([-*+])\s$/;
 const ORDERED_MARKER = /^\s*(\d{1,9})([.)])\s$/;
+/**
+ * `a. `, `A. `, `i. `, `I. ` — a lettered or roman list's FIRST marker. The
+ * pattern is one letter on purpose; see orderedMarkerStart for why only a
+ * sequence-starting marker fires, and why `i` reads as roman.
+ */
+const STYLED_ORDERED_MARKER = /^\s*([aAiI])([.)])\s$/;
 /** No `\s*`: a checkbox is only a checkbox flush against its marker. */
 const TASK_MARKER = /^\[([ xX])\]\s$/;
 
@@ -210,6 +224,173 @@ export const orderedMarkerInputRule = $inputRule((ctx) => {
 });
 
 /**
+ * `a. `, `A. `, `i. `, `I. ` build an ordered list DRAWN in that style. The file
+ * gets `1.`, because CommonMark has no lettered or roman marker and writing one
+ * produces a document GitHub renders as prose; the style is a presentation attr
+ * (utils/orderedMarkers.ts holds the whole argument).
+ *
+ * So this rule is the digit rule plus one attr, and it deliberately reuses
+ * `order: 1` — every style it can start begins at its first item.
+ *
+ * THE MISFIRE IS REAL AND ACCEPTED. `A. Smith said so` opens a paragraph whose
+ * first three characters are a marker, and this converts it, where the digit
+ * rule's equivalent (`1. `) is not something prose starts with. Two things make
+ * that the right trade. Only a SEQUENCE START fires, so `B. Jones` and the rest
+ * of a name-initial list are untouched; and the mitigation is the one the digit
+ * rule already documents, Backspace to put the characters back as text or Cmd+Z
+ * to forget the keystrokes. The alternative — no typed path to a lettered list —
+ * charges every outline author for a collision a single Backspace answers.
+ */
+export const styledOrderedMarkerInputRule = $inputRule((ctx) => {
+    const wrap = stockWrap(
+        STYLED_ORDERED_MARKER,
+        orderedListSchema.type(ctx),
+        (match) => ({
+            order: 1,
+            marker: match[2] ?? ".",
+            numbering: orderedMarkerStart(match[1] ?? ""),
+        }),
+        // No join predicate: a lettered list typed under an existing ordered
+        // list is a NEW list in a different style, never a continuation of it.
+        () => false,
+    );
+    return new InputRule(STYLED_ORDERED_MARKER, (state, match, start, end) => {
+        const numbering = orderedMarkerStart(match[1] ?? "");
+        if (numbering === null) {
+            return null;
+        }
+        const item = markerLineItem(state.doc.resolve(start));
+        if (!item) {
+            const tr = wrap(state, match, start, end);
+            if (!tr) {
+                return null;
+            }
+            armListNumbering();
+            // A list typed on the line DIRECTLY BELOW an ordered one does not
+            // stay a second list: adjacency auto-joins (listAutoJoin), and the
+            // survivor keeps the FIRST list's attrs — so the style would land on
+            // a node that is about to be discarded, and the marker would appear
+            // to do nothing. Style the list it is about to become part of, which
+            // is also the reading the item branch below already gives `a. ` at
+            // an ordered item's head: restyle this list.
+            const precedingList = orderedListEndingAt(state.doc, start);
+            if (precedingList !== null) {
+                return tr.setNodeMarkup(
+                    tr.mapping.map(precedingList.pos, -1),
+                    undefined,
+                    { ...precedingList.node.attrs, numbering },
+                );
+            }
+            return tr;
+        }
+        // At the head of an item, what the marker changes depends on the list
+        // the item is ALREADY in — decided here rather than by attempting a
+        // retype, because a declined retype has already touched the
+        // transaction it was handed.
+        const enclosing = enclosingOrderedList(state.doc, item.pos);
+        if (enclosing) {
+            const current = enclosing.node.attrs["numbering"];
+            if (current === numbering) {
+                // Names the state the line is already in: left as text, the
+                // module's own rule for a marker that changes nothing.
+                return null;
+            }
+            // Already ordered, so there is nothing to retype — the marker names
+            // a STYLE change, which is a real change to the line's shape.
+            armListNumbering();
+            const tr = state.tr.delete(start, end);
+            return tr.setNodeMarkup(
+                tr.mapping.map(enclosing.pos, -1),
+                undefined,
+                { ...enclosing.node.attrs, numbering },
+            );
+        }
+        // A bullet or task item: retype it, the same one-item-and-split
+        // contract the digit rule has, then style the list that produced.
+        const tr = state.tr.delete(start, end);
+        if (!retypeListItemAt(tr, item.pos, {
+            kind: "orderedList",
+            order: 1,
+            marker: match[2] ?? ".",
+        })) {
+            return null;
+        }
+        armListNumbering();
+        return applyNumberingAroundItem(tr, item.pos, numbering);
+    });
+});
+
+/**
+ * The ordered_list that is the immediately PRECEDING sibling of the textblock
+ * containing `pos`, or null. Used to spot the adjacency that auto-joins.
+ */
+function orderedListEndingAt(
+    doc: ProseNode,
+    pos: number,
+): { pos: number; node: ProseNode } | null {
+    const $pos = doc.resolve(pos);
+    // Only a top-level-or-container paragraph can have a list as a sibling; a
+    // paragraph inside an item is handled by the item branch instead.
+    if ($pos.depth < 1) {
+        return null;
+    }
+    const index = $pos.index($pos.depth - 1);
+    if (index < 1) {
+        return null;
+    }
+    const parent = $pos.node($pos.depth - 1);
+    const previous = parent.child(index - 1);
+    if (previous.type.name !== "ordered_list") {
+        return null;
+    }
+    // The sibling's own document position: this textblock's start, back over the
+    // sibling's size.
+    return { pos: $pos.before($pos.depth) - previous.nodeSize, node: previous };
+}
+
+/**
+ * The ordered_list directly holding the item at `itemPos` (the position BEFORE
+ * a list_item), or null when its parent is a bullet list.
+ */
+function enclosingOrderedList(
+    doc: ProseNode,
+    itemPos: number,
+): { pos: number; node: ProseNode } | null {
+    const $item = doc.resolve(itemPos);
+    const parent = $item.parent;
+    return parent.type.name === "ordered_list"
+        ? { pos: $item.before($item.depth), node: parent }
+        : null;
+}
+
+/**
+ * Stamp `numbering` on whichever ordered_list now holds the item at `itemPos`.
+ * The retype rebuilt the list around it, so the list has to be found in the
+ * transaction's OWN doc rather than the state's.
+ */
+function applyNumberingAroundItem(
+    tr: Transaction,
+    itemPos: number,
+    numbering: OrderedNumbering,
+): Transaction | null {
+    const mapped = tr.mapping.map(itemPos, -1);
+    const $item = tr.doc.resolve(Math.min(Math.max(mapped, 0), tr.doc.content.size));
+    for (let depth = $item.depth; depth >= 0; depth--) {
+        const node = $item.node(depth);
+        if (node.type.name === "ordered_list") {
+            tr.setNodeMarkup($item.before(depth), undefined, {
+                ...node.attrs,
+                numbering,
+            });
+            return tr;
+        }
+    }
+    // The retype produced no ordered list (it declined, or produced a bullet):
+    // the transaction still stands, just without a style.
+    return tr;
+}
+
+/**
  * `[ ] ` and `[x] ` set the item's checkbox, on a bullet OR an ordered item
  * (`1. [ ] step` is valid GFM and already round-trips). Two divergences from
  * the upstream rule this replaces, both of them bugs it had:
@@ -250,7 +431,13 @@ export const listMarkerInputReplacedPlugins = new Set<unknown>([
     wrapInOrderedListInputRule,
 ]);
 
-export const listMarkerInputRules = [bulletMarkerInputRule, orderedMarkerInputRule].flat();
+export const listMarkerInputRules = [
+    bulletMarkerInputRule,
+    orderedMarkerInputRule,
+    // AFTER the digit rule: the two patterns cannot both match (digits vs a
+    // letter), so order is not a correctness matter, only a reading one.
+    styledOrderedMarkerInputRule,
+].flat();
 
 export const taskMarkerInputReplacedPlugins = new Set<unknown>([wrapInTaskListInputRule]);
 

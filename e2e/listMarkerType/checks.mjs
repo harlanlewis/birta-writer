@@ -12,7 +12,10 @@
  *   - the motivating gesture end to end: Enter, Tab, `1. ` — an ordered list
  *     nested inside a bulleted one, from the keyboard alone;
  *   - the retype reaching DISK, via the serialized update the webview posts;
- *   - Backspace undoing the rule rather than lifting the item it just created.
+ *   - Backspace undoing the rule rather than lifting the item it just created;
+ *   - `a. ` / `i. ` producing a list DRAWN in that style whose bytes stay `1.`,
+ *     which is the whole fidelity claim and only observable with a real
+ *     `list-style-type` resolved by a real style engine.
  */
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
@@ -115,4 +118,121 @@ export async function run({ page, check, baseUrl }) {
     check("`[x] ` on an open task ticks it instead of leaving literal text",
         hasLine(ticked, "- [x] groceries"),
         `doc=${JSON.stringify(ticked)}`);
+
+    // ── 6. `a. ` and `i. ` draw a lettered or roman list, and write digits. ──
+    // CommonMark has no lettered marker (utils/orderedMarkers.ts), so the two
+    // halves of this are inseparable: the markers on screen must change and the
+    // bytes must not.
+    await clickInto(".ProseMirror li:has-text('notes') p");
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    // Shift+Tab lifts the new item out to the top level so the list it starts
+    // is not a nested one, whose style the by-depth cascade would also set.
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.type("a. alpha");
+    const alphaDoc = await waitForUpdate((doc) => hasLine(doc, "1. alpha"));
+    check(
+        "`a. ` writes an ordinary digit marker to the file",
+        hasLine(alphaDoc, "1. alpha"),
+        `doc=${JSON.stringify(alphaDoc)}`,
+    );
+    check(
+        "`a. ` never writes a lettered marker",
+        alphaDoc != null && !alphaDoc.includes("a. alpha"),
+        `doc=${JSON.stringify(alphaDoc)}`,
+    );
+    const alphaOl = await page.evaluate(() => {
+        const ols = [...document.querySelectorAll(".ProseMirror ol")];
+        const ol = ols.find((el) => el.textContent.includes("alpha"));
+        return ol ? { style: getComputedStyle(ol).listStyleType, inline: ol.getAttribute("style") } : null;
+    });
+    check(
+        "…and the list is DRAWN with letters",
+        alphaOl?.style === "lower-alpha",
+        JSON.stringify(alphaOl),
+    );
+    check(
+        "the style rides an inline declaration, so it beats the by-depth cascade",
+        (alphaOl?.inline ?? "").includes("list-style-type"),
+        JSON.stringify(alphaOl),
+    );
+    check(
+        "the numbering persists to the webview state bag, keyed on the first item",
+        await page.evaluate(() => window.__state?.listNumbering?.["list:alpha"] === "lower-alpha"),
+        JSON.stringify(await page.evaluate(() => window.__state?.listNumbering)),
+    );
+
+    // Enter continues the styled list rather than starting a plain one.
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("beta");
+    const twoDoc = await waitForUpdate((doc) => hasLine(doc, "2. beta"));
+    check(
+        "Enter continues the list, still as digits on disk",
+        hasLine(twoDoc, "1. alpha") && hasLine(twoDoc, "2. beta"),
+        `doc=${JSON.stringify(twoDoc)}`,
+    );
+    check(
+        "…and the continued list keeps its lettering",
+        await page.evaluate(() => {
+            const ols = [...document.querySelectorAll(".ProseMirror ol")];
+            const ol = ols.find((el) => el.textContent.includes("beta"));
+            return ol && getComputedStyle(ol).listStyleType === "lower-alpha";
+        }),
+    );
+
+    // ── 7. A marker typed on the line DIRECTLY BELOW an ordered list restyles
+    // that list, because adjacency auto-joins and the alternative is a marker
+    // that visibly does nothing. ──
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("I. ");
+    await page.waitForTimeout(250);
+    const joined = await page.evaluate(() => {
+        const ols = [...document.querySelectorAll(".ProseMirror ol")];
+        const ol = ols.find((el) => el.textContent.includes("alpha"));
+        return {
+            ols: ols.length,
+            style: ol ? getComputedStyle(ol).listStyleType : null,
+            strayParagraph: [...document.querySelectorAll(".ProseMirror > p")]
+                .some((el) => el.textContent.includes("I.")),
+        };
+    });
+    check(
+        "a marker below a list joins it rather than leaving a second list",
+        joined.ols === 2 && !joined.strayParagraph,
+        JSON.stringify(joined),
+    );
+    check(
+        "…and restyles the list it joined, instead of silently doing nothing",
+        joined.style === "upper-roman",
+        JSON.stringify(joined),
+    );
+
+    // ── 8. A misfire in plain prose is answerable with one Backspace, the digit
+    // rule's own mitigation — the accepted cost of `A. Smith` converting. ──
+    await clickInto(".ProseMirror li:has-text('groceries') p");
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.type("Smith");
+    await page.keyboard.press("Home");
+    await page.keyboard.type("A. ");
+    await page.waitForTimeout(250);
+    const misfired = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror ol")]
+            .some((el) => getComputedStyle(el).listStyleType === "upper-alpha"));
+    check("`A. ` does convert (the misfire this mitigation exists for)", misfired);
+    await page.keyboard.press("Backspace");
+    await page.waitForTimeout(200);
+    const restored = await page.evaluate(() => ({
+        prose: [...document.querySelectorAll(".ProseMirror p")]
+            .some((el) => el.textContent === "A. Smith"),
+        upperAlpha: [...document.querySelectorAll(".ProseMirror ol")]
+            .some((el) => getComputedStyle(el).listStyleType === "upper-alpha"),
+    }));
+    check(
+        "Backspace puts the characters back as prose and leaves no styled list",
+        restored.prose && !restored.upperAlpha,
+        JSON.stringify(restored),
+    );
 }

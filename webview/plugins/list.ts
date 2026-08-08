@@ -358,6 +358,40 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
             // its items or repeated one number (MAR-218). `null` = unrecorded.
             marker: { default: null },
             incrementMarker: { default: null },
+            // PRESENTATION ONLY, and deliberately absent from toMarkdown below:
+            // how the browser draws this list's markers (`lower-alpha`,
+            // `lower-roman`, …). CommonMark cannot spell an alpha or roman
+            // marker, so writing one would produce a file other tools read as
+            // prose; the bytes stay `1.` and only the drawing changes. `null` =
+            // let the by-depth cascade decide (utils/orderedMarkers.ts holds
+            // the argument; plugins/listNumbering.ts owns the lifecycle).
+            numbering: { default: null },
+        },
+        // The style rides an INLINE `list-style-type`, which beats the
+        // by-depth cascade in style.css without needing !important, and which
+        // ProseMirror concatenates with the gutter's own `--ol-digits` stamp
+        // when both land on the same <ol>.
+        toDOM: (node) => {
+            const style = node.attrs["numbering"];
+            const dom = base.toDOM?.(node);
+            if (typeof style !== "string") {
+                return dom ?? ["ol", 0];
+            }
+            // Upstream's spec is `["ol", attrs, 0]`, but only the tag is
+            // guaranteed by the DOMOutputSpec type — an attrs-less `["ol", 0]`
+            // is equally legal, so read the shape rather than assuming it.
+            const spec = Array.isArray(dom) ? [...dom] : ["ol", 0];
+            const attrs = spec.length > 1 && typeof spec[1] === "object" && spec[1] !== null
+                && !Array.isArray(spec[1])
+                ? { ...(spec[1] as Record<string, unknown>) }
+                : null;
+            const declaration = `list-style-type:${style}`;
+            if (attrs) {
+                const existing = typeof attrs["style"] === "string" ? `${attrs["style"]};` : "";
+                spec[1] = { ...attrs, style: `${existing}${declaration}` };
+                return spec as [string, Record<string, unknown>, number];
+            }
+            return ["ol", { style: declaration }, 0];
         },
         parseMarkdown: {
             match: base.parseMarkdown.match,
