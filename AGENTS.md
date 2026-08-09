@@ -22,6 +22,19 @@ Adding, removing, or bumping a dependency carries two obligations beyond the loc
 1. Regenerate the attribution appendix with `pnpm notices`. The script name is `notices`, not `licenses`: `pnpm licenses` is a pnpm builtin, and a script by that name is silently shadowed. We ship a bundle (`vsce package --no-dependencies`), so every dependency is inlined into `dist/` and minification strips the license headers that would otherwise carry its notice. `licenses/THIRD_PARTY_LICENSES.md` is where MIT, ISC, and BSD attribution and Apache-2.0 section 4 are actually discharged. It is generated from the esbuild metafiles (what the bundles inline), not from the dependency tree, so it never claims we ship tree-shaken code. CI's `perf-bundle` job fails if it is stale, and `shared/__tests__/thirdPartyNotices.test.ts` fails if a direct dependency is unattributed or an upstream package changes its license out from under a recorded election.
 2. Keep `@types/vscode` pinned to `engines.vscode`'s floor: the types exactly, the engine as `^`. A caret on the types resolves to the newest 1.x, which lets the compiler bless APIs that do not exist in the oldest VS Code we claim to support. Nothing else checks that compatibility claim.
 
+### Brand assets
+
+`media/` holds the Birta Writer marks. They are drawn in a private repository, which stays the source of truth, and a refresh starts by copying from it. The copies here are deliberate rather than a reference: packaging must not depend on a private checkout being present.
+
+`media/icon.png` is the extension and Marketplace icon, generated from `media/birta-writer-logo-light.svg` at 256 square:
+
+```bash
+rsvg-convert -w 256 -h 256 media/birta-writer-logo-light.svg -o /tmp/icon-raw.png
+magick /tmp/icon-raw.png -background '#f3efe3' -alpha remove -alpha off -strip PNG24:media/icon.png
+```
+
+It has to be a PNG, and so does every image in `README.md`. `vsce` rejects an SVG icon (`SVGs can't be used as icons`) and rejects an SVG image in the readme unless it comes from a host on its own trust list, so pointing either at an SVG fails `pnpm run package` rather than degrading. The flatten is what keeps the tile opaque: the mark's ground is its own paper, not the surface behind it.
+
 ### Git commit convention
 
 Keep the English type prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `release:`) and write the description in English: `feat: add image upload`, `fix: correct table drag offset`.
