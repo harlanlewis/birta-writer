@@ -342,17 +342,17 @@ describe("typed list markers — prose is unchanged", () => {
         expect(markdown(editor)).toBe("- alpha\n- world\n");
     });
 
-    it("a marker that CONTINUES a list should leave that list's own character alone", async () => {
-        // The bound on "the character you type is the character written": the
-        // typed marker names a NEW list, and this is a join into an existing
-        // one (stock `wrappingInputRule`'s own behavior, which the prose half
-        // delegates to). A list has one marker, so the one already there wins.
+    it("a DIFFERENT marker typed under a list should start a second list", async () => {
+        // The character means the same thing wherever it is typed: `- a` then
+        // `* b` is two lists to CommonMark, so it is two lists here. The join
+        // and the auto-join that would undo it both read one verdict
+        // (listMarkersConflict); listMarkerBoundary.test.ts owns the argument.
         const editor = await makeEditor("- alpha\n\nworld\n");
         const v = view(editor);
         caretAtStartOf(v, "world");
         typeText(v, "* ");
         v.state.doc.check();
-        expect(markdown(editor)).toBe("- alpha\n- world\n");
+        expect(markdown(editor)).toBe("- alpha\n\n* world\n");
     });
 
     it("`- ` on an item's continuation line should nest a sublist", async () => {
