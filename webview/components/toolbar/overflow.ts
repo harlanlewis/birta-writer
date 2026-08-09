@@ -63,10 +63,9 @@ export function computeOverflow(
 
 export interface OverflowControllerOptions {
     /**
-     * Groups in toolbar DOM order. Groups may live in DIFFERENT zone
-     * containers (e.g. left + center): each group is restored to its home
-     * slot via a comment marker, so the controller never needs to know
-     * which zone owns it.
+     * Groups in toolbar DOM order. Groups may live in different zone
+     * containers: each group is restored to its home slot via a comment
+     * marker, so the controller never needs to know which zone owns it.
      */
     groups: OverflowGroup[];
     /** Indices into `groups`, first-to-collapse first. */
