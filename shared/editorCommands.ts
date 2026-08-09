@@ -145,9 +145,9 @@ export const EDITOR_COMMANDS = [
     // Command ids are unchanged so existing user keybindings keep working.
     { id: "openShortcutsHelp", title: "Show Keyboard Shortcuts", palette: true, sections: ["toolbar"], menuGroup: "shortcuts" },
     { id: "openKeyboardShortcuts", title: "Edit Keyboard Shortcuts", palette: false, sections: ["toolbar"], menuGroup: "shortcuts" },
-    // The full title is the SETTINGS_TITLE_TEMPLATE expansion of package.json's
-    // displayName (drift-guarded); the gear menu interpolates the runtime
-    // product name via settingsMenuTitle() instead of using this literal.
+    // The full title is the SETTINGS_TITLE_TEMPLATE expansion of PRODUCT_NAME
+    // (drift-guarded); the gear menu interpolates the product name via
+    // settingsMenuTitle() instead of using this literal.
     { id: "openExtensionSettings", title: "Birta Writer Settings", palette: false, sections: ["toolbar"], menuGroup: "settings" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
@@ -242,9 +242,9 @@ export const EDITOR_COMMANDS = [
 /**
  * Title template for the open-settings entry. The row label names the product
  * (there is no group header in the gear menu): the webview expands {product}
- * with the runtime product name via settingsMenuTitle(), while the command
- * table and package.nls.json carry the package.json displayName expansion —
- * a drift test keeps all three in lockstep.
+ * with PRODUCT_NAME via settingsMenuTitle(), while the command table and
+ * package.nls.json carry that same expansion, and a drift test keeps all three
+ * in lockstep.
  */
 export const SETTINGS_TITLE_TEMPLATE = "{product} Settings";
 

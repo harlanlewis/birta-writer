@@ -1,5 +1,6 @@
 import type { ProofreadConfig, ToolbarConfig, FontPreset, FontStacks } from "../../shared/messages";
 import type { MermaidThemeMode } from "../../shared/mermaid";
+import { PRODUCT_NAME } from "../../shared/product";
 
 declare global {
     interface Window {
@@ -83,8 +84,6 @@ declare global {
             plantumlTheme?: import("../../shared/plantuml").PlantUmlThemeMode;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
-            /** The extension's display name (package.json), for UI that names the product. */
-            productName?: string;
         };
     }
 }
@@ -97,8 +96,8 @@ export function t(key: string): string {
     return _t[key] ?? key;
 }
 
-/** The extension's display name (from package.json), or a safe fallback. */
-export const productName: string = window.__i18n?.productName ?? "Birta Writer";
+/** The product name for UI that has to say it. See shared/product.ts. */
+export const productName: string = PRODUCT_NAME;
 
 /**
  * Convert a shortcut string into the display format for the current platform.
