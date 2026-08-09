@@ -105,7 +105,9 @@ Start or end a math equation with `=` to automatically compute it. For example, 
 
 The answer appears as a suggestion - confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
 
-What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) - same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though - `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
+Functions and constants count as arithmetic here: `3+log10(2²+3²*2.3303)/π^2=` answers, as do `sqrt(9)=`, `round(2.7)=` and `2*pi=`. They mean one thing in any document, so `=` can read them without knowing what is defined above. A *variable* is the other kind of name, and stays with `=>` below.
+
+What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (a variable needs a definition, which `=` doesn't read) - same reason `=5+7` typed as `a=5+7` stays prose. `log(100)=` is refused too, since the base is a coin flip. A digits-and-operators run always computes, though - `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
 
 ### Living calculations `=>`
 

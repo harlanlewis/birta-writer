@@ -19,11 +19,13 @@
  * hand-written recursive-descent parser over a fixed token set: digits, the
  * binary operators `+ - * / % ^` (plus `**` as an alias for `^`, and the
  * Unicode glyphs `× · ⋅ ÷ −` read as `* * * / -`), parentheses, and unary
- * +/-. On the digits-only path the letter `x` between operands is also
- * multiplication (`2 x 3 =` → 6) — the one letter admitted there, still just
- * an operator alias. Anything else containing a letter or any other character
- * — identifiers, `alert(1)`, `1e3` scientific notation, hex — is rejected at
- * the tokenizer, so there are no variables and therefore no side effects. Malformed
+ * +/-. On the closed path the letter `x` between operands is also
+ * multiplication (`2 x 3 =` → 6) — an operator alias, not a name. Names reach
+ * that path only from the CLOSED VOCABULARY, a fixed table of numeric
+ * functions and constants (`log10(…)`, `π`) that resolve the same way in every
+ * document; a name outside it, `alert(1)`, `1e3` scientific notation and hex
+ * are all rejected at the tokenizer, so a call is always one of ours and a
+ * variable never resolves without a scope deliberately handed in. Malformed
  * or non-computable input (unbalanced parens, a trailing operator, division by
  * zero, an overflow to Infinity) yields `null`, and the caller shows nothing.
  *
@@ -62,8 +64,7 @@
  *   symmetry (it rounds halves toward +∞, making `round(-2.5)` -2).
  * - No scientific notation: `1e3` contains a letter and is rejected. This is a
  *   deliberate choice — it keeps the accepted grammar something a reader can
- *   see is pure arithmetic, and avoids surprising a user who typed `1e3` as
- *   prose.
+ *   see is arithmetic, and avoids surprising a user who typed `1e3` as prose.
  */
 
 /** Precedence-climbing grammar (low → high):
@@ -267,10 +268,15 @@ const GLYPH_OP_CLASS = "×·⋅÷−";
 
 /** Class body: characters of a pure-arithmetic run — the ASCII operators, the
  * Unicode operator glyphs, and the superscript digits (exponents, so `5²` is
- * arithmetic). The letter `x` is the one letter here: on this digits-only
- * grammar it can only mean multiplication (`2 x 3`, `1024x768`), and the
- * identifier-allowing paths never consult this class. */
+ * arithmetic). The letter `x` is the one letter here: on this grammar it can
+ * only mean multiplication (`2 x 3`, `1024x768`). A name from the closed
+ * vocabulary reaches the `=` path through closedRunStart, which absorbs it
+ * around this class rather than by widening it; the `=>` path, where any
+ * identifier is a variable, does not consult it at all. */
 export const ARITHMETIC_CLASS = `0-9.+\\-*/%^()⁰¹²³⁴⁵⁶⁷⁸⁹${GLYPH_OP_CLASS}x`;
+/** One character of an arithmetic run, whitespace included. The single-char
+ * form of the class, shared by every backward walk over one. */
+const ARITH_RUN_CHAR = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
 /** One arithmetic-run character, whitespace included (tokenizer pre-check). */
 const EXPR_CHAR = new RegExp(`[${ARITHMETIC_CLASS}\\s]`);
 /** The binary/unary operator characters, as a test for "contains an operator"
@@ -291,29 +297,65 @@ const IDENT_START = /[A-Za-zπτ_]/;
 const IDENT_CHAR = /[A-Za-z0-9πτ_]/;
 
 /**
+ * The CLOSED VOCABULARY: the fixed set of names that mean the same thing to
+ * every reader, whatever scope they are read in — the call names and the
+ * constants, and nothing else. A variable is the opposite kind of name: it
+ * means whatever a definition above it says, so it belongs to the `=>` path
+ * that can see those definitions.
+ *
+ * That line is what lets `=` take `log10(…)` and `π` while still refusing
+ * `total`. Both tokenizing (which names may become tokens) and detection
+ * (how far left an expression reaches) ask this one question.
+ */
+function isClosedVocabulary(name: string): boolean {
+    return isCallName(name) || CONSTANTS.has(name.toLowerCase());
+}
+
+/**
+ * How a tokenizer treats a run of identifier characters.
+ * - `closed`: only a closed-vocabulary name becomes an `ident`; any other run
+ *   is left unconsumed, so `x` still falls through to multiplication and
+ *   every other letter fails the grammar. This is the `=` path.
+ * - `open`: every run becomes an `ident`, resolved later against a scope.
+ *   This is the `=>` path, where `x` is a variable rather than an operator.
+ */
+type IdentMode = "closed" | "open";
+
+/**
  * Splits `input` into tokens, or returns null the moment it sees anything that
  * is not part of the grammar — `,`, `$`, `=`, whatever. `**` collapses to a
  * single `^` token. A number must carry at least one digit (`.` alone is not a
  * number), and may carry at most one decimal point.
  *
- * `allowIdent` gates variable support: with it false (the default arithmetic
- * path, e.g. the `=` calc) a LETTER is rejected, keeping that grammar pure
- * digits-and-operators; with it true (the `=>` path) a run of identifier
- * characters becomes an `ident` token resolved later against a scope. The two
- * modes keep the `=` feature's "no identifiers, no surprises" contract intact.
+ * `idents` gates which names are tokens at all (see IdentMode). In `closed`
+ * mode an identifier run is looked up before it is consumed, so an unknown
+ * name is not a token but a parse failure — `alert(1)` and `2 + a` are as
+ * rejected as they ever were, while `log10(4)` and `π` now tokenize. In
+ * `open` mode every run becomes an `ident` for a scope to resolve.
+ *
+ * The lookahead in `closed` mode is what keeps `x`-as-multiplication alive:
+ * the run is consumed only if the whole name is known, so `1024x768` still
+ * falls through to the `x` branch below rather than becoming an ident named
+ * `x768`.
  */
-function tokenize(input: string, allowIdent: boolean): Token[] | null {
+function tokenize(input: string, idents: IdentMode): Token[] | null {
+    const open = idents === "open";
     const tokens: Token[] = [];
     let i = 0;
     while (i < input.length) {
         const ch = input[i];
         if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") { i++; continue; }
 
-        if (allowIdent && IDENT_START.test(ch)) {
+        if (IDENT_START.test(ch)) {
             let name = "";
-            while (i < input.length && IDENT_CHAR.test(input[i])) { name += input[i]; i++; }
-            tokens.push({ kind: "ident", name });
-            continue;
+            let j = i;
+            while (j < input.length && IDENT_CHAR.test(input[j])) { name += input[j]; j++; }
+            if (open || isClosedVocabulary(name)) {
+                tokens.push({ kind: "ident", name });
+                i = j;
+                continue;
+            }
+            // Closed mode, unknown name: fall through on this ONE character.
         }
         // A superscript-digit run is an exponent: `c²` ≡ `c^2`, `2¹⁰` ≡ `2^10`.
         // Available on BOTH paths — a superscript is visibly arithmetic, so it
@@ -330,9 +372,9 @@ function tokenize(input: string, allowIdent: boolean): Token[] | null {
         }
         const glyph = GLYPH_OPS[ch];
         if (glyph) { tokens.push({ kind: "op", value: glyph }); i++; continue; }
-        // Digits-only grammar: `x` can only mean multiplication (`2 x 3`,
-        // `1024x768`). On the identifier path it was consumed as an ident above.
-        if (!allowIdent && ch === "x") { tokens.push({ kind: "op", value: "*" }); i++; continue; }
+        // Closed grammar: `x` can only mean multiplication (`2 x 3`,
+        // `1024x768`). On the open path it was consumed as an ident above.
+        if (!open && ch === "x") { tokens.push({ kind: "op", value: "*" }); i++; continue; }
         if (!EXPR_CHAR.test(ch)) { return null; } // a letter or stray symbol → not arithmetic
 
         if (ch >= "0" && ch <= "9" || ch === ".") {
@@ -523,17 +565,18 @@ class Parser {
  * for anything not a single complete, finite value: malformed syntax, leftover
  * tokens, division or remainder by zero, or an overflow to ±Infinity / NaN.
  *
- * `resolve` opts into variable support (the `=>` path): when provided,
- * identifiers are tokenized and resolved through it — an unknown name yields
- * `null`, exactly like a syntax error. Without it (the default `=` path) any
- * letter is rejected at the tokenizer, so the grammar stays pure arithmetic
- * with no identifiers and therefore no scope to consult.
+ * `resolve` opts into VARIABLE support (the `=>` path): when provided, every
+ * identifier is tokenized and resolved through it — an unknown name yields
+ * `null`, exactly like a syntax error. Without it (the `=` path) the grammar
+ * is closed: arithmetic plus the fixed vocabulary of call names and constants,
+ * which mean the same thing with no scope to consult. A name outside it is
+ * still rejected at the tokenizer, so `=` never depends on a definition.
  */
 export function evaluateExpression(
     input: string,
     resolve?: (name: string) => number | undefined,
 ): number | null {
-    const tokens = tokenize(input, resolve !== undefined);
+    const tokens = tokenize(input, resolve ? "open" : "closed");
     if (!tokens || tokens.length === 0) { return null; }
     try {
         const parser = new Parser(tokens, resolve);
@@ -552,7 +595,7 @@ export function evaluateExpression(
  * no scope is consulted, and `x *` is not.
  */
 function isValidExpressionStructure(input: string): boolean {
-    const tokens = tokenize(input, true);
+    const tokens = tokenize(input, "open");
     if (!tokens || tokens.length === 0) { return false; }
     try {
         const parser = new Parser(tokens, undefined, true);
@@ -615,7 +658,7 @@ export interface CalcMatch {
      * (leading form, `=5+7`).
      */
     length: number;
-    /** The pure arithmetic expression (trimmed), e.g. `12 * 4`. */
+    /** The expression (trimmed), e.g. `12 * 4` or `log10(100)`. */
     expr: string;
     /** The formatted result text, e.g. `48`. */
     result: string;
@@ -623,15 +666,85 @@ export interface CalcMatch {
 
 /** The `=` (with any trailing spaces/tabs) that ends the text before the caret. */
 const TRAILING_EQUALS = /=[ \t]*$/;
-/** The maximal run of arithmetic characters immediately before that `=`. */
-const TRAILING_EXPR = new RegExp(`[${ARITHMETIC_CLASS} \\t]*$`);
+
+/** What a backward run walk found: where the expression starts, and whether it
+ * had to cross a call to get there (the "this is a formula" evidence a run
+ * without operators otherwise lacks — `log10(100)` has no operator at all). */
+interface ClosedRun {
+    start: number;
+    sawCall: boolean;
+}
+
 /**
- * The LEADING form: `=<expr>` ending at the caret, with the `=` at line start
- * or after whitespace — `a=5+7` is a prose assignment (no boundary) and
- * `==x` never matches (the char class excludes `=`, and the second `=` has no
- * boundary before it).
+ * The identifier occupying the boundary at `at` — the maximal identifier-char
+ * run around it, read in BOTH directions. Reading right matters as much as
+ * reading left: an arithmetic walk stops at the first character outside its
+ * class, and a name's own digits are inside it, so a walk over `log10(` halts
+ * mid-name with `10` already behind it. Returns null when the run is not an
+ * identifier (a bare number: `1024` in `1024x768`), never a partial name.
+ *
+ * `floor` bounds the leftward read, so a caller's run cap holds even when the
+ * character at the boundary opens a very long word.
  */
-const LEADING_FORM = new RegExp(`(^|[ \\t])=([${ARITHMETIC_CLASS} \\t]+)$`);
+function identifierAt(text: string, at: number, floor: number, limit: number): { name: string; start: number } | null {
+    let s = at;
+    while (s > floor && IDENT_CHAR.test(text[s - 1])) { s--; }
+    // Stopped by the floor rather than by a non-identifier character: the name
+    // continues past where this caller may look, so what was collected is a
+    // TAIL of it (`…mylog10` cut to `log10`) and crossing it would compute a
+    // fragment. An unreadable name is no name.
+    if (s === floor && floor > 0 && IDENT_CHAR.test(text[s - 1])) { return null; }
+    let e = at;
+    while (e < limit && IDENT_CHAR.test(text[e])) { e++; }
+    if (s === e || !IDENT_START.test(text[s])) { return null; }
+    return { name: text.slice(s, e), start: s };
+}
+
+/**
+ * Walks left from `end` over an expression in the CLOSED grammar, returning
+ * where it starts. Arithmetic characters are crossed as they always were; the
+ * walk additionally steps over a closed-vocabulary name — a constant (`π`), or
+ * a call name whose `(` it just crossed (`log10(`) — and then keeps going, so
+ * `3+log10(2²)/π^2` is reached end to end.
+ *
+ * A name outside that vocabulary STOPS the walk rather than being crossed,
+ * which is the whole safety property: `total + 2 =` still reaches only ` + 2`,
+ * whose leading operator the caller then refuses. No prose word is ever
+ * crossed, so this needs none of the `=>` path's drop-a-token-and-retry
+ * machinery, and it stays a single linear pass with no backtracking.
+ *
+ * `min` bounds how far left it may walk, for the callers that run inside
+ * `appendTransaction` on the keystroke path and must stay bounded by their own
+ * run cap rather than by the length of the line.
+ */
+function closedRunStart(text: string, end: number, min = 0): ClosedRun {
+    let start = end;
+    let sawCall = false;
+    for (;;) {
+        while (start > min && ARITH_RUN_CHAR.test(text[start - 1])) { start--; }
+        if (start === min) { break; }
+        const ident = identifierAt(text, start, min, end);
+        if (!ident || !isClosedVocabulary(ident.name)) { break; }
+        // Termination, structurally rather than by table inspection: a name is
+        // only worth crossing if it reaches further left than the walk already
+        // has. No name in the vocabulary begins with an arithmetic character
+        // today, so this cannot fire — adding one must not spin the loop.
+        if (ident.start >= start) { break; }
+        if (!CONSTANTS.has(ident.name.toLowerCase())) {
+            // A call name earns its crossing only when it is actually CALLED:
+            // the first thing after it, spaces aside, must be the `(` the walk
+            // has already crossed. `sin` alone is a name we know and a value we
+            // don't, and crossing it would build an expression that cannot
+            // parse anyway.
+            let after = ident.start + ident.name.length;
+            while (after < end && (text[after] === " " || text[after] === "\t")) { after++; }
+            if (text[after] !== "(") { break; }
+            sawCall = true;
+        }
+        start = ident.start;
+    }
+    return { start, sawCall };
+}
 
 /**
  * Detects an arithmetic expression that ends, at the caret, in `=` (optionally
@@ -644,11 +757,22 @@ const LEADING_FORM = new RegExp(`(^|[ \\t])=([${ARITHMETIC_CLASS} \\t]+)$`);
  * - The text must end in `=`; the caret sits right after it. Prose like
  *   `x = y` never matches, because when the caret is at `y` the text does not
  *   end in `=`.
- * - The characters immediately before `=` must be a pure arithmetic run that
- *   parses to a finite value. `x =` (a letter), `a==b` (the char before the
- *   second `=` is `=`, not an expression char), and `==highlight==` all fail.
- * - The expression must contain at least one operator, so echoing a bare
- *   number back (`the answer is 42 =` → `42`) never triggers.
+ * - The characters immediately before `=` must be a run in the CLOSED grammar
+ *   that parses to a finite value: arithmetic, plus call names and constants
+ *   (`3+log10(2²)/π^2 =`). A name outside that vocabulary stops the walk, so
+ *   `total =` and `x =` still fail, as do `a==b` (the char before the second
+ *   `=` is `=`, not expression material) and `==highlight==`.
+ * - The expression must carry at least one operator OR a call, so echoing a
+ *   bare number back (`the answer is 42 =` → `42`) never triggers, while
+ *   `log10(100) =` — which has no operator and an answer you cannot see —
+ *   does.
+ *
+ * An ambiguous name (`log(100) =`) is refused in silence here, where `=>`
+ * offers a menu of readings. That asymmetry is the paranoia difference, not an
+ * oversight: `=>` is typed on purpose and can afford to explain itself, while
+ * `=` appears in ordinary prose and every one of its refusals is silent — a
+ * menu opening on a line the user did not mean as arithmetic is the failure
+ * this path is built to avoid.
  */
 export function detectCalcExpression(
     textBefore: string,
@@ -669,24 +793,30 @@ export function detectCalcExpression(
     const eq = TRAILING_EQUALS.exec(textBefore);
     if (!eq) { return detectLeadingForm(textBefore, opts?.boundaryUnknown ?? false); }
     const beforeEquals = textBefore.slice(0, eq.index);
-    let run = TRAILING_EXPR.exec(beforeEquals)?.[0] ?? "";
+    const walk = closedRunStart(beforeEquals, eq.index);
+    let run = beforeEquals.slice(walk.start);
+    let shedLead = 0;
     // `x` is in the arithmetic class as multiplication, but a LONE `x` heading
     // the run can't be an operator (no left operand) — it reads as prose or a
     // variable name, exactly as it did before `x` joined the grammar. Shed it,
     // so `x 12*4 =` still computes 48 while `2 x 3 =` multiplies.
-    while (/^[ \t]*x[ \t]/.test(run)) { run = run.replace(/^[ \t]*x/, ""); }
+    while (/^[ \t]*x[ \t]/.test(run)) {
+        const shorter = run.replace(/^[ \t]*x/, "");
+        shedLead += run.length - shorter.length;
+        run = shorter;
+    }
     const expr = run.trim();
-    if (!expr || !HAS_EQ_OPERATOR.test(expr)) { return null; }
-    const runStart = eq.index - run.length;
+    if (!expr || !(HAS_EQ_OPERATOR.test(expr) || walk.sawCall)) { return null; }
+    const runStart = walk.start + shedLead;
     // A run starting at position 0 of a possibly-truncated window: the char
     // before it is invisible, so the token-split guard below cannot rule out
     // that this run is the TAIL of a larger token (`1,000…` with the comma cut
     // off). Refuse rather than risk computing a fragment.
     if (runStart === 0 && opts?.boundaryUnknown) { return null; }
-    // Left-boundary discipline. The run is the MAXIMAL trailing span of
-    // arithmetic characters, so whatever precedes it is not arithmetic — but
-    // the run can still be a fragment of a larger token, and evaluating a
-    // fragment produces a silently WRONG answer, the worst possible outcome:
+    // Left-boundary discipline. The run is MAXIMAL, so whatever precedes it is
+    // either outside the grammar or a name outside the vocabulary — but the run
+    // can still be a fragment of a larger token, and evaluating a fragment
+    // produces a silently WRONG answer, the worst possible outcome:
     // - `1,000 + 2 =`: the run is `000 + 2` (the comma breaks it) — offering
     //   `2` would be a lie. When the run touches a word-ish character
     //   (letter/digit/comma/underscore) with no space between, reject.
@@ -777,22 +907,32 @@ const TOKEN_GLUE = /[\p{L}\p{N},_]/u;
  * `12=5+7` — the result lands BEFORE the `=` (see applyCalcResult's caller).
  * The `=` must sit at line start or after whitespace, so prose assignments
  * (`a=5+7`) and `==`-delimited highlights never trigger.
+ *
+ * Located by walking the closed grammar back from the caret and asking what
+ * stopped it: an `=` means everything after it is expression material and
+ * nothing else can be, which is the same question the trailing form asks from
+ * the other side. Sharing the walk is what keeps the two forms from drifting
+ * apart on what the grammar admits.
  */
 function detectLeadingForm(textBefore: string, boundaryUnknown: boolean): CalcMatch | null {
-    const lead = LEADING_FORM.exec(textBefore);
-    if (!lead) { return null; }
+    const walk = closedRunStart(textBefore, textBefore.length);
+    const start = walk.start - 1; // the `=` itself
+    if (start < 0 || textBefore[start] !== "=") { return null; }
+    // The `=` needs a real left boundary: line start, or whitespace. A letter or
+    // digit before it is a prose assignment (`a=5+7`), and a second `=` is
+    // highlight syntax (`==x`).
+    if (start > 0 && textBefore[start - 1] !== " " && textBefore[start - 1] !== "\t") { return null; }
     // `^` matched at position 0 of a possibly-truncated window: the true
     // preceding char is invisible and could be a letter (`a=5+7` — a prose
     // assignment the boundary rule exists to reject). A real whitespace
-    // boundary (lead[1] non-empty) is inside the window and stays trusted.
-    if (boundaryUnknown && lead.index === 0 && lead[1] === "") { return null; }
-    const expr = lead[2].trim();
-    if (!expr || !HAS_EQ_OPERATOR.test(expr)) { return null; }
+    // boundary is inside the window and stays trusted.
+    if (boundaryUnknown && start === 0) { return null; }
+    const expr = textBefore.slice(walk.start).trim();
+    if (!expr || !(HAS_EQ_OPERATOR.test(expr) || walk.sawCall)) { return null; }
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
     if (result === null) { return null; }
-    const start = lead.index + lead[1].length; // the `=` itself
     return { length: textBefore.length - start, expr, result };
 }
 
@@ -1070,7 +1210,7 @@ function isBareNumber(expr: string): boolean {
  * definition can shadow them.
  */
 export function expressionUsesVariables(expr: string): boolean {
-    const tokens = tokenize(expr, true);
+    const tokens = tokenize(expr, "open");
     if (!tokens) { return false; }
     return tokens.some(
         (tok, i) =>
@@ -1086,7 +1226,7 @@ export function expressionUsesVariables(expr: string): boolean {
  * visibly mid-edit is transient, not vanished.
  */
 export function unresolvedVariables(expr: string, scope: Map<string, number>): string[] {
-    const tokens = tokenize(expr, true);
+    const tokens = tokenize(expr, "open");
     if (!tokens) { return []; }
     const names: string[] = [];
     tokens.forEach((tok, i) => {
@@ -1260,7 +1400,7 @@ function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
         const head = /^[A-Za-z_]\w*/.exec(expr)![0];
         if (!scope.has(head)) { return false; }
     }
-    const tokens = tokenize(expr, true);
+    const tokens = tokenize(expr, "open");
     if (!tokens) { return false; }
     return tokens.some(
         (tok) =>
@@ -1398,7 +1538,12 @@ const RESULT_CHAR = /[\d,.]/;
 /** A char an expression can END on: digit, `)`, or a superscript exponent —
  * `5²=` is a maintainable equation just like `5^2=`. */
 const VALUE_END = /[0-9)⁰¹²³⁴⁵⁶⁷⁸⁹]/;
-const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
+/** One character of a `=` expression run, scanned FORWARD (the leading form's
+ * `result=expr`). Identifier characters are admitted so a run can reach through
+ * a call name; which names are actually legal is settled by the re-validation
+ * every candidate goes through, not here. Backward walks use closedRunStart,
+ * which can consult the vocabulary as it goes and so stays exact. */
+const CLOSED_RUN_CHAR = new RegExp(`[${ARITHMETIC_CLASS}\\wπτ \\t]`, "u");
 /** One character of an `=>` expression run (letters allowed — variables, units). */
 const ARROW_RUN_CHAR = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^×·⋅÷−().°'" \t]/u;
 
@@ -1466,10 +1611,12 @@ export function findRefreshEquations(
 
         // TRAILING `expr = result`: an arithmetic run before the `=` whose last
         // non-space char is a digit or `)`, and a number after it.
-        let runStart = e;
-        while (runStart > 0 && e - runStart < maxRun && ARITH_OR_WS.test(text[runStart - 1])) {
-            runStart--;
-        }
+        // The same closed-grammar walk the detector uses, so an equation whose
+        // expression opens with a call (`3+log10(2)= 3.301`) reports a span
+        // that reaches its own first character. A shorter span would leave an
+        // edit to that opening literal outside the candidate, and the answer
+        // would sit there stale.
+        const runStart = closedRunStart(text, e, Math.max(0, e - maxRun)).start;
         let runEnd = e; // exclusive; walk back over the spaces before `=`
         while (runEnd > runStart && (text[runEnd - 1] === " " || text[runEnd - 1] === "\t")) {
             runEnd--;
@@ -1502,7 +1649,7 @@ export function findRefreshEquations(
             let exprStart = e + 1;
             while (text[exprStart] === " " || text[exprStart] === "\t") { exprStart++; }
             let exprEnd = exprStart;
-            while (exprEnd < text.length && exprEnd - exprStart < maxRun && ARITH_OR_WS.test(text[exprEnd])) {
+            while (exprEnd < text.length && exprEnd - exprStart < maxRun && CLOSED_RUN_CHAR.test(text[exprEnd])) {
                 exprEnd++;
             }
             while (exprEnd > exprStart && !VALUE_END.test(text[exprEnd - 1])) {

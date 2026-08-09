@@ -916,9 +916,14 @@ describe("functions and constants (the identifier path)", () => {
         expect(isCalcStructurallyValid("log10(x)")).toBe(true); // known fn, unknown var — shape is fine
     });
 
-    it("functions stay OFF the pure-digits `=` path", () => {
-        expect(evaluateExpression("sqrt(9)")).toBeNull(); // letters rejected without a resolver
-        expect(detectCalcExpression("sqrt(9) =")).toBeNull();
+    it("the closed vocabulary should reach the `=` path, and nothing else should", () => {
+        // Functions and constants mean one thing in any scope, so `=` can take
+        // them; a variable means whatever a definition says, so it cannot.
+        expect(evaluateExpression("sqrt(9)")).toBe(3);
+        expect(detectCalcExpression("sqrt(9) =")?.result).toBe("3");
+        expect(evaluateExpression("x + 1")).toBeNull();
+        expect(evaluateExpression("2 + a")).toBeNull();
+        expect(detectCalcExpression("total + 2 =")).toBeNull();
     });
 
     it("=> detection should carry a function expression whole", () => {
@@ -1345,5 +1350,71 @@ describe("findRefreshEquations", () => {
         const started = performance.now();
         findRefreshEquations(text, text.length - 5, text.length, 500);
         expect(performance.now() - started).toBeLessThan(200);
+    });
+});
+
+describe("detectCalcExpression — the closed vocabulary on the `=` path", () => {
+    // The `=` grammar admits names that mean ONE thing in any scope (calls and
+    // constants) and refuses names that mean whatever a definition says
+    // (variables). These cases are the boundary between the two.
+
+    it("a call or a constant should carry the run to the expression's first character", () => {
+        expect(detectCalcExpression("3+log10(2²+3²*2.3303)/π^2=")?.expr)
+            .toBe("3+log10(2²+3²*2.3303)/π^2");
+        expect(detectCalcExpression("2*pi=")?.expr).toBe("2*pi");
+        expect(detectCalcExpression("sqrt(9)+1=")?.result).toBe("4");
+        expect(detectCalcExpression("π^2=")?.result).toBe("9.869604");
+    });
+
+    it("a call should satisfy the non-trivial test that an operator otherwise carries", () => {
+        // `log10(100)` holds no operator, and its answer is not visible in the
+        // source — the two reasons a bare number is refused do not apply.
+        expect(detectCalcExpression("log10(100)=")?.result).toBe("2");
+        expect(detectCalcExpression("the answer is 42 =")).toBeNull();
+    });
+
+    it("a name should be matched case-insensitively, and may be spaced off its parenthesis", () => {
+        expect(detectCalcExpression("LOG10(100)=")?.result).toBe("2");
+        expect(detectCalcExpression("log10 (100)=")?.result).toBe("2");
+    });
+
+    it("a name outside the vocabulary should stop the walk, not be crossed", () => {
+        expect(detectCalcExpression("total + 2 =")).toBeNull();
+        expect(detectCalcExpression("alert(1)=")).toBeNull();
+        expect(detectCalcExpression("sin=")).toBeNull(); // known name, not a call
+        expect(detectCalcExpression("π=")).toBeNull(); // a constant alone is an echo
+    });
+
+    it("a vocabulary name glued to a longer word should never be read as a call", () => {
+        expect(detectCalcExpression("mylog10(4)=")).toBeNull();
+        expect(detectCalcExpression("catalog10(2)=")).toBeNull();
+    });
+
+    it("an ambiguous name should stay refused, offering nothing rather than a guess", () => {
+        // `log` is base 10 for half the world and natural for the other half.
+        expect(detectCalcExpression("log(100)=")).toBeNull();
+    });
+
+    it("`x` should still be multiplication, not a variable", () => {
+        expect(detectCalcExpression("2 x 3=")?.result).toBe("6");
+        expect(detectCalcExpression("1024x768=")?.result).toBe("786432");
+        expect(detectCalcExpression("x 12*4 =")?.expr).toBe("12*4");
+    });
+
+    it("the leading form should admit the same vocabulary and keep its boundary rule", () => {
+        expect(detectCalcExpression("=log10(100)")?.result).toBe("2");
+        expect(detectCalcExpression("=π^2")?.result).toBe("9.869604");
+        expect(detectCalcExpression("= sqrt(16)")?.length).toBe(10);
+        expect(detectCalcExpression("a=5+7")).toBeNull();
+        expect(detectCalcExpression("==x")).toBeNull();
+    });
+
+    it("a call-bearing equation should be found by the refresh scanner from its first character", () => {
+        // The span must reach the opening literal: an edit there is what makes
+        // the answer stale, and a candidate that excludes it never refreshes.
+        const text = "3+log10(100)= 5";
+        const [eq] = findRefreshEquations(text, 0, 1, 500);
+        expect(eq?.form).toBe("trailing");
+        expect(text.slice(eq.expr[0], eq.expr[1])).toBe("3+log10(100)");
     });
 });
