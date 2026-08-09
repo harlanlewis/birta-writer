@@ -2,6 +2,7 @@ import {
     defaultValueCtx,
     Editor,
     nodeViewCtx,
+    parserCtx,
     rootCtx,
     serializerCtx,
 } from "@milkdown/core";
@@ -10,10 +11,10 @@ import { getState, getView, type EditorView } from "./pm";
 import type { Node as ProseNode } from "./pm";
 import { getMarkdown } from "@milkdown/utils";
 import {
-    applyMinimalChanges,
     computeRoundTripProtection,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
+import { mergeVerified } from "./utils/verifiedMerge";
 import { markdownFormat } from "./format/markdown";
 import type { FormatModule } from "./format/types";
 import { guardNodeViewFactory } from "./nodeViewBoundary";
@@ -257,6 +258,28 @@ let _onUpdate: ((markdown: string) => void) | null = null;
 let _onDocChange: (() => void) | null = null;
 
 /**
+ * The file-ready bytes for `markdown`: the minimal-diff merge into the saved
+ * text, verified to reopen as the document it came from (MAR-343 —
+ * `utils/verifiedMerge`). Both save paths go through here so neither can
+ * acquire the check without the other; the merge's damage does not care which
+ * one wrote it.
+ *
+ * The parser comes from the editor's own context, so this stays on the
+ * FormatModule seam: the verifier is handed a parse function and a profile
+ * rather than knowing markdown exists.
+ */
+function mergeForSave(editor: Editor, markdown: string): string {
+    return mergeVerified(
+        _savedMarkdown,
+        markdown,
+        format.formatProfile,
+        getProtection(),
+        editor.action((ctx) => getState(ctx).doc),
+        (text) => editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null,
+    );
+}
+
+/**
  * Serialize the live document, merge it into the saved bytes with round-trip
  * protection, and ship it to the extension if it substantively changed. The
  * scheduler guarantees this is never called mid-IME-composition.
@@ -264,12 +287,7 @@ let _onDocChange: (() => void) | null = null;
 function syncNow(): void {
     if (!_editor) { return; }
     const markdown = _editor.action(getMarkdown());
-    const toSave = applyMinimalChanges(
-        _savedMarkdown,
-        markdown,
-        format.formatProfile,
-        getProtection(),
-    );
+    const toSave = mergeForSave(_editor, markdown);
     if (toSave === _savedMarkdown) { return; } // no substantive change — no save
     _savedMarkdown = toSave;
     _onUpdate?.(toSave);
@@ -319,13 +337,7 @@ function onDocChanged(): void {
 export function flushPendingEdit(): string {
     _scheduler.reset();
     if (_editor) {
-        const markdown = _editor.action(getMarkdown());
-        _savedMarkdown = applyMinimalChanges(
-            _savedMarkdown,
-            markdown,
-            format.formatProfile,
-            getProtection(),
-        );
+        _savedMarkdown = mergeForSave(_editor, _editor.action(getMarkdown()));
     }
     return _savedMarkdown;
 }

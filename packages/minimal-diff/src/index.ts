@@ -442,6 +442,20 @@ function matchEol(serialized: string, eol: "\n" | "\r\n"): string {
 }
 
 /**
+ * The merge's own degradation target: the serializer's text, EOL-matched to
+ * the saved file. `applyMinimalChanges` writes exactly this whenever an output
+ * self-check trips, and a caller that verifies the merged bytes downstream
+ * needs the identical fallback — canonicalization churn, never corruption.
+ *
+ * Exported so that fallback cannot drift from the engine's. Re-deriving it at
+ * a call site would spell CRLF handling a second time, and a fallback that
+ * writes LF into a CRLF file turns a fidelity save into a whole-file diff.
+ */
+export function serializerFallback(saved: string, serialized: string): string {
+    return matchEol(serialized, dominantEol(saved));
+}
+
+/**
  * Call `profile.reconcileReplacement` defensively. The merge's line accounting
  * is one-line-in / one-line-out, so a profile that throws or hands back a
  * multi-line string degrades to the serializer's line (the behaviour before
@@ -1271,6 +1285,34 @@ export function applyMinimalChanges(
     profile: FormatProfile,
     protection?: RoundTripProtection | null,
 ): string {
+    return applyMinimalChangesDetailed(saved, serialized, profile, protection).text;
+}
+
+/** What a merge produced, plus the one property about HOW it got there that a
+ *  caller needs (see `MergeOutcome.relocatedContent`). */
+export interface MergeOutcome {
+    /** The merged text — exactly what `applyMinimalChanges` returns. */
+    text: string;
+    /**
+     * Did this merge delete a line's content at one position and reinsert it,
+     * unchanged, at another? That is the signature of a block MOVE, as opposed
+     * to an ordinary in-place edit, and it is the same signal the output
+     * self-check gates its depth-sensitive role on.
+     *
+     * Exposed so a caller can price an expensive verification against the
+     * merges that can actually need it: relocation is what puts saved bytes
+     * beside neighbours they were never spelled for.
+     */
+    relocatedContent: boolean;
+}
+
+/** `applyMinimalChanges`, reporting how the merge got there. */
+export function applyMinimalChangesDetailed(
+    saved: string,
+    serialized: string,
+    profile: FormatProfile,
+    protection?: RoundTripProtection | null,
+): MergeOutcome {
     // Give the serializer's output the document's endings BEFORE anything else,
     // so repair splices saved bytes among lines that already agree with them.
     const eol = dominantEol(saved);
@@ -1649,7 +1691,7 @@ export function applyMinimalChanges(
     }
 
     const result = out.join("\n");
-    if (result === saved) return saved;
+    if (result === saved) return { text: saved, relocatedContent: hadRelocatedContent };
     // Output self-check (see `lineRoles`): a splice that flips any
     // significant line's role — a mismatched fence pair, or (MAR-323) a
     // `keep` line's saved bytes landing at a real column that changes its
@@ -1658,7 +1700,7 @@ export function applyMinimalChanges(
     // Skipped when the result IS the saved bytes: writing them changes
     // nothing, so no new structure can have been introduced.
     if (profile.lineRoles && rolesDiverge(profile, result, effective, hadRelocatedContent)) {
-        return matched;
+        return { text: matched, relocatedContent: hadRelocatedContent };
     }
     // The blind spot the check above has by construction (MAR-326): it compares
     // two texts that both descend from `effective`, so a defect `effective`
@@ -1671,9 +1713,9 @@ export function applyMinimalChanges(
         effective !== matched &&
         profile.losesOpaqueContent?.(matched.split("\n").map(stripEol), effective.split("\n").map(stripEol))
     ) {
-        return matched;
+        return { text: matched, relocatedContent: hadRelocatedContent };
     }
-    return result;
+    return { text: result, relocatedContent: hadRelocatedContent };
 }
 
 /** Do `merged` and `effective` disagree on any significant line's role?
