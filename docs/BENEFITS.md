@@ -10,7 +10,7 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
 - Instant updates reflect changes made outside of your edits, including AI agent edits or cloud sync.
 
-- Safely opens and edits any Markdown-like content, with no risk of data loss or unexpected modification from a parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
+- Safely opens and edits any Markdown-like content. It does not lose your content, reformat what you did not touch, or change your file in ways you did not ask for, whether the syntax is one it renders or one it has never seen. Document fidelity is a first-class concern.
 
 - It sits within [VS Code](https://code.visualstudio.com) and its _vast_ (but optional!) catalog of themes and extensions. You're a keystroke away from editing files in the raw editor, or comparing changes in a diff view. Birta Writer is simple by design, but every aspect is customizable through VS Code's settings scopes at app, user, or project level.
 
