@@ -459,10 +459,15 @@ function reconcileLine(
     savedTerminated: boolean,
     facts: unknown,
     keys: ReplacementKeys,
+    /** This line is the file's own bytes, restored by `repairSerialized`, not
+     *  the serializer's — so the profile has already had its say. See
+     *  `RepairedSerialization.restored`. */
+    restored = false,
 ): string {
     const eol = savedTerminated ? eolOf(saved) : "";
     const savedContent = savedTerminated ? stripEol(saved) : saved;
     const fallback = stripEol(serial) + eol;
+    if (restored) return fallback;
     let out: string;
     try {
         out = profile.reconcileReplacement(savedContent, stripEol(serial), facts, keys);
@@ -499,6 +504,9 @@ function reconcileInsertedRun(
     preceding: string | null,
     facts: unknown,
     baselineFacts: unknown,
+    /** Output line indices `repairSerialized` wrote from the file's own bytes
+     *  (`RepairedSerialization.restored`). */
+    restored: ReadonlySet<number> = EMPTY_RESTORED,
 ): string[] {
     const raw = run.map((l) => l.text);
     if (!profile.reconcileInsertion) return raw;
@@ -515,7 +523,17 @@ function reconcileInsertedRun(
     }
     if (!Array.isArray(out) || out.length !== run.length) return raw;
     if (out.some((line) => typeof line !== "string" || /[\n\r]/.test(line))) return raw;
-    return out.map((line, i) => line + eols[i]);
+    // A restored line keeps the bytes the repair gave it. Those bytes are the
+    // file's own, so the file's conventions are already on them and re-basing
+    // them writes the same convention a second time (MAR-328). This is a
+    // per-line exemption rather than a run-level refusal because "these bytes
+    // came from the file" is a per-line fact, and it does not reopen the
+    // all-or-nothing rule above: that one keeps a rejected answer from mixing
+    // the profile's spelling with the SERIALIZER's, while both sides here are
+    // the file's.
+    return out.map((line, i) =>
+        restored.has(run[i].lineIdx) ? raw[i] : line + eols[i],
+    );
 }
 
 interface SigLine {
@@ -1010,6 +1028,27 @@ function groupByAdjacency(lines: SigLine[]): SigLine[][] {
     return groups;
 }
 
+const EMPTY_RESTORED: ReadonlySet<number> = new Set<number>();
+
+/** `repairSerialized`'s output: the repaired text, and which of its lines came
+ *  from the file rather than from the serializer. */
+interface RepairedSerialization {
+    text: string;
+    /**
+     * Line indices of `text` written from a region's `savedSpanLines`.
+     *
+     * These lines are the file's own bytes, so every convention the file spells
+     * is already on them and the merge's indent reconcilers must not spell it
+     * again. A region matches on `norm`, which carries indentation, so a
+     * construct whose canonical depth changed does not match its own region at
+     * all — repair fires only where the depth held, which is exactly where the
+     * saved bytes are still the right answer. Letting the reconcilers re-base
+     * them anyway is MAR-328: a moved sublist came back spelled to depths the
+     * document has no level for, and stopped parsing as a list.
+     */
+    restored: ReadonlySet<number>;
+}
+
 /**
  * Swap each protected region's canonical serializer output back for the
  * original saved bytes. Regions whose canonical lines are absent (the user
@@ -1022,7 +1061,7 @@ function repairSerialized(
     /** Ending for the blank separators below — the only lines this function
      *  invents rather than copying from the saved or serialized side. */
     eol: "\n" | "\r\n",
-): string {
+): RepairedSerialization {
     // Every region is matched against ONE analysis of the pristine
     // serialized text. Repairs swap serializer-canonical lines for saved
     // bytes, which can change the classification context of LATER lines
@@ -1039,7 +1078,17 @@ function repairSerialized(
     const sig = analyzeLines(pristine, profile);
     const norms = sig.map((l) => l.norm);
 
-    let lines = pristine;
+    // Copied ONCE, then spliced in place. `pristine` has to survive unmutated:
+    // anchors, neighbour probes and every raw index below are read from it
+    // after splices have already been applied.
+    const lines = [...pristine];
+    // Which of `lines` came from the file rather than the serializer, spliced
+    // in lockstep with it so the two can never disagree about an index.
+    // Deliberately not arithmetic over `offset`: that would be a second, silent
+    // account of where every splice landed, and the branch below re-inserts a
+    // dropped construct WITHOUT advancing the cursor past it, so the splices
+    // are not strictly forward-ordered and such an account can drift.
+    const flags: boolean[] = new Array(pristine.length).fill(false);
     let cursor = 0; // pristine raw-line index; repeated constructs map in document order
     let offset = 0; // lines.length delta accumulated by applied splices
     for (const region of protection.regions) {
@@ -1086,11 +1135,9 @@ function repairSerialized(
             if (best === -1) continue; // construct edited/removed by the user
             const firstRaw = sig[best].lineIdx;
             const lastRaw = sig[best + len - 1].lineIdx;
-            lines = [
-                ...lines.slice(0, firstRaw + offset),
-                ...region.savedSpanLines,
-                ...lines.slice(lastRaw + 1 + offset),
-            ];
+            const spanLen = lastRaw + 1 - firstRaw;
+            lines.splice(firstRaw + offset, spanLen, ...region.savedSpanLines);
+            flags.splice(firstRaw + offset, spanLen, ...region.savedSpanLines.map(() => true));
             offset += region.savedSpanLines.length - (lastRaw + 1 - firstRaw);
             cursor = lastRaw + 1;
         } else {
@@ -1140,16 +1187,15 @@ function repairSerialized(
             const insertion = [...region.savedSpanLines];
             if (rawAt > 0 && pristine[rawAt - 1].trim() !== "") insertion.unshift(blank);
             if (rawAt < pristine.length && pristine[rawAt].trim() !== "") insertion.push(blank);
-            lines = [
-                ...lines.slice(0, rawAt + offset),
-                ...insertion,
-                ...lines.slice(rawAt + offset),
-            ];
+            lines.splice(rawAt + offset, 0, ...insertion);
+            flags.splice(rawAt + offset, 0, ...insertion.map((line) => line.trim() !== ""));
             offset += insertion.length;
             cursor = rawAt;
         }
     }
-    return lines.join("\n");
+    const restored = new Set<number>();
+    for (let i = 0; i < flags.length; i++) if (flags[i]) restored.add(i);
+    return { text: lines.join("\n"), restored };
 }
 
 /** Index of the first significant line at or after raw line `cursor`. */
@@ -1234,10 +1280,12 @@ export function applyMinimalChanges(
     // is a string identity. Skipping it matters because it is not a cheap
     // identity: it re-analyzes and re-keys the whole document, on every sync of
     // every clean file, to return what it was given.
-    const effective =
+    const repaired =
         protection && protection.regions.length > 0
             ? repairSerialized(matched, protection, profile, eol)
-            : matched;
+            : null;
+    const effective = repaired ? repaired.text : matched;
+    const restored = repaired ? repaired.restored : EMPTY_RESTORED;
     const { edits, savedLines, serialLines } = computeEditScript(saved, effective, profile);
 
     // NOTE: there is deliberately no "every edit is a keep, so return `saved`"
@@ -1516,6 +1564,7 @@ export function applyMinimalChanges(
                     savedLine.lineIdx !== lastSavedIdx,
                     protection?.baselineFacts ?? null,
                     { saved: savedLine.norm, serial: serialLine.norm },
+                    restored.has(serialLine.lineIdx),
                 );
                 // Everything downstream must see the line actually written,
                 // not the raw serializer line: gapBefore's structure
@@ -1560,6 +1609,7 @@ export function applyMinimalChanges(
                     prevLineText === null ? null : stripEol(prevLineText),
                     mergeFacts,
                     protection?.baselineFacts ?? null,
+                    restored,
                 );
                 for (let r = 0; r < inserted.length; r++) {
                     // As in the replacement branch, everything downstream must

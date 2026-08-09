@@ -10,7 +10,11 @@
 
 ### Fixed
 
+- Moving a nested list inside a file that indents its outline more widely than the editor writes it no longer pushes the moved lines far deeper than the level they belong to. Your own indentation was being applied twice: once when your original bytes were restored, and again when the save spelled out the depth those lines had landed at. The lines came back indented past the point where Markdown still reads them as list items, so the sublist stopped being a list and reopened as one run-together paragraph. This closes that route rather than every route: moves inside a widely indented outline can still lose nesting in other ways, and that work continues.
+
 - The bullet character you type is now honored wherever you type it. Typing `* ` on the line below a `-` list used to continue that list and silently drop the character, even though those same two lines read from a file are two separate lists; it now starts a second list spelled `*`. The ordered delimiter follows the same rule, so `2) ` below a `1.` list keeps its `)`. Typing the character the list above already uses still continues that list, as it did before. Two related cases come with it, because the rule is about the character rather than about typing: deleting the paragraph between a `-` list and a `*` list used to merge them and drop the `*`, and pasting a `*` list directly below a `-` list did the same. Both now keep the two lists. Merging two differently spelled lists is still offered, in the block menu and as a quiet prompt at the cursor, so what changed is that it is no longer done for you unasked.
+
+- The same rule now reaches the head of a list item, which is where the change above left off and the place you are most likely to reach by accident. Typing `* ` at the head of an item in a `-` list used to be written to your file as escaped text, and now splits that item out as a `*` list; `2) ` at the head of an item in a `1.` list keeps its `)` the same way. To type those characters literally there, type them and then press Backspace, which puts them back as text just as it does after a numbered-list shortcut. One case comes with it: typing the character that a neighbouring list already uses now merges into that list, where it used to leave a pair Markdown has no way to spell and rewrite the untouched neighbour's own marker line to keep the two apart.
 
 ---
 

@@ -434,6 +434,46 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toBe("- alpha\n    - beta\n    - gamma\n    - delta\n");
     });
 
+    // ── MAR-328: the same loss reached through ROUND-TRIP PROTECTION ────────
+    //
+    // A file whose outline is spelled wider than the serializer writes it makes
+    // every one of its outline lines a round-trip difference, so protection
+    // records each as a region and the repair pass puts the saved bytes back
+    // before the diff ever runs. Those bytes are the file's own and are already
+    // right: a region matches on `norm`, which carries indentation, so it fires
+    // only where the canonical depth is unchanged. What went wrong is that the
+    // merge then spelled the file's convention over them a second time, and a
+    // level-4 item came back at a column the document has no level for, so the
+    // sublist stopped being a list and reopened as hardbreak-joined text.
+    //
+    // Neither test below is a spelling preference. Each asserts the reparsed
+    // tree, because what a user loses here is nesting.
+    //
+    // Every pin above this block and in mixedIndentOutline.test.ts is an
+    // ordinary edit, and they are what says the exemption is narrow: a repair
+    // keeping a neighbour's saved bytes intact across an edit (MAR-231) has to
+    // go on doing that.
+
+    const FOUR_SPACE = "- alpha\n    - beta\n        - gamma\n    - delta\n";
+
+    it("a moved item should not leave one outline spelled two ways (MAR-328)", async () => {
+        // `gamma` outdents to the top level. Every line here is a round-trip
+        // difference, so protection holds a region for each; the repair restores
+        // the ones whose canonical depth still matches, and the merge spells the
+        // rest. Both used to write the same line, and the file ended up carrying
+        // both conventions at once — `    - gamma` beside `  - beta` — which
+        // reparses `delta` as a child of `beta` rather than its sibling.
+        //
+        // The assertion is the reparsed tree, not a spelling preference: the
+        // merged bytes below are canonical throughout, which is churn on a
+        // four-space file and NOT the outcome to prefer. What matters is that
+        // one document is spelled one way, so nothing changes depth on reopen.
+        const { live, reparsed, merged } = await moveAndSave(FOUR_SPACE, { from: 18, to: 27 }, 10);
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- alpha\n  - gamma\n  - beta\n  - delta\n");
+    });
+
     it("a heading item nested under a sibling should round-trip with no move at all", async () => {
         // The same defect without any move: the serializer's own canonical
         // output for this shape does not survive its own reparse, because a

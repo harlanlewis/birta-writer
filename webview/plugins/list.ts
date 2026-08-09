@@ -12,6 +12,7 @@ import { $prose } from "@milkdown/utils";
 import {
     isListNode,
     isSameTypeListBoundary,
+    listBoundaryMarkersConflict,
     listMarkerOf,
     listMarkersConflict,
 } from "../editing/listMerge";
@@ -1081,12 +1082,24 @@ export const listAutoJoinPlugin = $prose(() => {
             // Fidelity gate: keep only adjacency the edit CREATED. A boundary
             // that maps back onto a same-type list boundary in the old doc was
             // already split there — the file's own structure.
+            //
+            // Unless that old split was a MARKER split and this edit made the
+            // two markers agree. The adjacency is then as new as a deleted
+            // separator's: `- a`/`+ b` is two lists a file can spell, `+ a`/`+ b`
+            // is not, and leaving it split makes the serializer alternate the
+            // second list's bullet — rewriting a line the user never touched,
+            // and losing the character they did type (MAR-337). Both facts are
+            // about the OLD doc, because both describe what the edit changed.
             const mapping = new Mapping();
             for (const tr of transactions) mapping.appendMapping(tr.mapping);
             const inverted = mapping.invert();
-            const fresh = [...new Set(boundaries)].filter(
-                (b) => !isSameTypeListBoundary(oldState.doc, inverted.map(b)),
-            );
+            const fresh = [...new Set(boundaries)].filter((b) => {
+                const was = inverted.map(b);
+                return (
+                    !isSameTypeListBoundary(oldState.doc, was) ||
+                    listBoundaryMarkersConflict(oldState.doc, was)
+                );
+            });
             if (fresh.length === 0) return null;
 
             // Descending order: a join removes tokens at its boundary, which

@@ -642,12 +642,21 @@ describe("applyMinimalChanges — outlines that mix indent units (MAR-222)", () 
     });
 
     it("outdenting that line should still register as a real edit", () => {
-        // A guard, not a fix pin: this also passes with no protection at all,
-        // because key equality declines here too.
+        // The claim is the OUTDENT, and the depth is what carries it. Checked
+        // against the real parser rather than reasoned about: the saved
+        // `\t   - cQ` parses to a > b > cQ, while BOTH this expectation and the
+        // serializer's `  - cQ` parse to a > [b, cQ]. Same tree, two spellings,
+        // so the outdent registers either way and the choice between them is
+        // not a correctness question.
+        //
+        // The file's own `\t` is what MAR-328's rule 3 writes, and it is the
+        // better of the two here: this file spells its nesting with tabs, and
+        // mixing the serializer's spaces into it is what leaves one outline
+        // carrying two conventions.
         const protection = computeRoundTripProtection(SAVED, BASELINE);
 
         expect(applyMinimalChanges(SAVED, "- a\n  - b\n  - cQ\n", protection)).toBe(
-            "- a\n\t- b\n  - cQ\n",
+            "- a\n\t- b\n\t- cQ\n",
         );
     });
 
