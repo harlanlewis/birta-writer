@@ -19,6 +19,7 @@ import {
     TOOLBAR_MENU_COMMANDS,
     settingsMenuTitle,
 } from "../editorCommands";
+import { PRODUCT_NAME } from "../product";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -80,13 +81,19 @@ describe("editor command contributions", () => {
         }
     });
 
-    it("the settings entry title should be the template expansion of the display name", () => {
+    it("the marketplace display name should start with the product name", () => {
+        // package.json's displayName is a listing title and may carry a
+        // descriptive suffix; PRODUCT_NAME is what the UI says. A real rename
+        // has to move both, so the prefix relation is what is guarded.
+        expect(pkg.displayName.startsWith(PRODUCT_NAME)).toBe(true);
+    });
+
+    it("the settings entry title should be the template expansion of the product name", () => {
         // The gear menu has no group header: the settings row itself names
-        // the product. The webview interpolates the RUNTIME product name via
-        // settingsMenuTitle(); table and nls carry the package.json
-        // displayName expansion, so all three must agree or the surfaces
-        // diverge on a rename.
-        const expected = settingsMenuTitle(pkg.displayName);
+        // the product. The webview interpolates the product name via
+        // settingsMenuTitle(); table and nls carry the same expansion, so all
+        // three must agree or the surfaces diverge on a rename.
+        const expected = settingsMenuTitle(PRODUCT_NAME);
         const meta = EDITOR_COMMANDS.find((m) => m.id === "openExtensionSettings");
         expect(meta?.title).toBe(expected);
         expect(nls["command.editor.openExtensionSettings.title"]).toBe(expected);

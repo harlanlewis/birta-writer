@@ -91,7 +91,7 @@ and continues on the next.
 
 Start or end a math equation with `=` to automatically compute it. For example, `5+7^4-1=` or `=32+7`
 
-Put the caret at the end of any line below and press `=` to try it:
+***Add `=` to the end of any line below to try it:***
 
 12 * 4
 
@@ -356,8 +356,6 @@ A marker change at the same indent starts a new list, which is what the bytes sa
 ### List markers
 
 Markdown list items may be denoted with varied symbols and syntaxes. Birta Writer presents all styles consistently, according to likely author intent, and never modifies the underlying raw Markdown.
-
-
 
 #### Unordered list markers
 

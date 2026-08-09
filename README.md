@@ -1,13 +1,19 @@
-Birta Writer is a visual editor for Markdown documents.
+**Birta Writer is a visual editor for rich Markdown documents.**
 
-It strives to be your favorite place to write:
+![Birta Writer interface.](./images/hero.png)
 
-1. Birta Writer is fast and responsive, with modern ergonomics like `/` slash menus, draggable blocks, and straightforward tables.
-2. Offline by default, no tracking of any kind. Your private data stays private.
-3. It won't unexpectedly reformat your file, backed by a minimal-diff engine.
-4. Embraces the many flavors of Markdown that people (and tools) actually write. Natively supports Obsidian and Foam wikilinks, `==highlights==`, frontmatter, GitHub callouts, Notion exports, and Logseq outlines.
+Birta Writer strives to be your favorite place to write.
+
+1. It's _fast and responsive_, with modern ergonomics like `/` slash menus, draggable blocks, and straightforward tables.
+2. _Offline by default_, no tracking of any kind. Your private data stays private.
+3. It _won't lose data_ or unexpectedly reformat your file, backed by a minimal-diff engine.
+4. Embraces the _many flavors of Markdown_ that people (and tools) actually write. Natively supports Obsidian and Foam wikilinks, `==highlights==`, frontmatter, GitHub callouts, Notion exports, and Logseq outlines.
+
+![Slash command menu](./images/slash-menu.png)
 
 It fully integrates with everything you'd expect of a VS Code extension, from a vast theme library to your own AI assistant in the sidebar. Pairs well with the [Claude Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code), so you can use your Claude subscription instead of API keys.
+
+![Mermaid and PlantUML rendering](./images/diagrams.png)
 
 While Birta Writer's core experience is calm and minimal by default, many powerful features emerge when you need them:
 
@@ -20,9 +26,15 @@ While Birta Writer's core experience is calm and minimal by default, many powerf
 - Editor and revision tools, such as `[TK]`, `TODO`, HTML comments, and user-defined annotation highlighting.
 - Customizable display including page width, size, fonts, optional line numbers, and a live/editable table of contents. Safe to ignore, the defaults are intentional and sophisticated.
 
-Everything above is deeply customizable through VS Code settings.
+![Math autocomplete](./images/math.png)
+
+Everything is deeply customizable through VS Code settings.
 
 Birta Writer in VS Code is a drop-in replacement for any PKM vault (Personal Knowledge Management). It traverses local file links and supports YAML frontmatter metadata.
+
+![Offline proofreading and editor note highlights](./images/proofreading.png)
+
+---
 
 > _birta_ (Icelandic)
 >

@@ -15,6 +15,11 @@ docs/**
 test/**
 e2e/**
 samples/**
+# README screenshots. `pnpm run package` passes `--baseImagesUrl`, so every
+# relative image path in the packaged readme is rewritten to an absolute
+# github.com/raw URL: the local copies inside the VSIX can never be reached by
+# anything that reads it. Verify with `unzip -p <vsix> extension/readme.md`.
+images/**
 __mocks__/**
 releases/**
 .vscode-test/**

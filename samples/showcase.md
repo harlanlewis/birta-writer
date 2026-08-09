@@ -7,52 +7,55 @@ tags: [reference, showcase]
 
 Scroll through this file in the editor to see every content type it renders - one example each, none of the fine print. The full corpus, with every variant, rejection form, and deliberate failure state, lives in [the content inventory](content-inventory.md).
 
-## Headings
-
-### Six levels, like this H3
-
-#### And this H4
-
-Setext and closed ATX forms are in the inventory - here, one shape per idea.
-
 ## Text styles
 
-**Bold**, _italic_, ~~strikethrough~~, ==highlight==, and `inline code` - and they nest: **bold wrapping `code`**.
+**Bold**, _italic_, ~~strikethrough~~, ==highlight==, and `inline code`. Combine as needed: ***italic bold ==highlight== and `code`.***
 
 ## Links
 
 - An inline link: [Birta Writer](https://example.com)
+- A section link within this file: [jump to Showcase](#showcase)
 - A wikilink: [[README]]
-- A section link within this file: [jump to Tables](#tables)
 
-## Lists
+## Showcase
 
 - Bullets
-  - and nesting
-  1. or a numbered branch, typed right there
-
-1. Ordered lists
-2. count up
-
-- [ ] Tasks wait
-- [x] and complete
-
-## Quotes and callouts
-
-> A quiet blockquote, for someone else's words.
+  1. and nesting
+     - [x] with mixed list types
 
 > [!TIP]
 > Callouts get an icon, an accent color, and an editable title.
 
-:::note A container directive
-Same idea, Docusaurus syntax - the body is ordinary editable markdown.
-:::
+| Column | Another column | A third column |
+|---|---|---|
+| first row | a **formatted** cell | `inline code` or *other formatting* |
+| second row | … | … |
 
-## Tables
+## Calculations
 
-| Column | Another column |
-|---|---|
-| a cell | a **formatted** cell |
+Type `=` at the end of a sum for an instant answer:
+
+5+7^4-1
+
+Or type `=>` for a living calculation, with variables, functions, and constants:
+
+3+log10(2²+3²*2.3303)/π^2
+
+a = 3+3^2
+
+3 + a =>
+
+Or keep a whole worksheet:
+
+```calc
+income = 5000, rent = 1500
+left = income - rent
+3 km in mi
+```
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
 
 ## Images
 
@@ -84,20 +87,6 @@ Bob --> Alice : hi
 ## Math
 
 Inline $E = mc^2$, and block:
-
-$$
-\int_0^1 x^2 \, dx = \frac{1}{3}
-$$
-
-## Calculations
-
-Type `=` at the end of a sum for an instant answer, `=>` for a living one that updates when its inputs change, or keep a whole worksheet:
-
-```calc
-income = 5000, rent = 1500
-left = income - rent
-3 km in mi
-```
 
 ## Embeds
 
