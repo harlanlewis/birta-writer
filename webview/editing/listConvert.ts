@@ -55,6 +55,7 @@
 import type { EditorView, ResolvedPos, Transaction } from "../pm";
 import type { Node as ProseNode } from "../pm";
 import { Fragment, TextSelection } from "../pm";
+import { listMarkerOf, listMarkersConflict } from "./listMerge";
 
 /** The Turn-into vocabulary for lists (blockCapabilities' ConversionKind subset). */
 export type ListKind = "bulletList" | "orderedList" | "taskList";
@@ -191,9 +192,14 @@ export interface ItemMarkerSpec {
  * the surface that can build mixed nesting — indent, type `1. `, and the
  * sublist is ordered while its parent stays bulleted.
  *
- * Returns false without touching `tr` when the item is already that flavor
- * (the caller then leaves the typed characters as literal text) or `itemPos`
- * is not a list item's position.
+ * A LIST OF ONE ITEM SPLITS INTO ITSELF, and that is the same rule rather than
+ * an exception: the item is the whole list, so what is left is one list wearing
+ * the spelling that was typed. It is also the quietest form of this gesture,
+ * because two bullet characters draw identically.
+ *
+ * Returns false without touching `tr` when the marker names the list the item
+ * is already in (see the spelling test below), or `itemPos` is not a list
+ * item's position. The caller then leaves the typed characters as literal text.
  */
 export function retypeListItemAt(
     tr: Transaction,
@@ -209,7 +215,16 @@ export function retypeListItemAt(
         return false;
     }
     const target = spec.kind === "orderedList" ? ordered : bullet;
-    if (list.type === target) {
+    // A MARKER SPLITS EVEN WHEN IT NAMES THE KIND THE ITEM IS ALREADY IN, as
+    // long as it names a different SPELLING: `- a` then `* b` is two lists in a
+    // file, so a typed `*` at the head of an item in a `-` list has to be the
+    // same two lists (MAR-337). The verdict is `listMarkersConflict`'s, the one
+    // every marker surface shares, so the item head and the line under a list
+    // reach it by the same door. Same spelling — or a list with no recorded
+    // spelling, which disagrees with nothing — changes nothing, and the caller
+    // leaves the typed characters as text.
+    const sameType = list.type === target;
+    if (sameType && !listMarkersConflict(listMarkerOf(list), spec.marker)) {
         return false;
     }
     const index = $item.index();
@@ -234,15 +249,26 @@ export function retypeListItemAt(
         item.content,
         item.marks,
     );
-    const midAttrs =
-        spec.kind === "orderedList"
-            ? {
-                  spread: list.attrs["spread"],
-                  order,
-                  marker: spec.marker ?? null,
-                  incrementMarker: null,
-              }
-            : { spread: list.attrs["spread"], marker: spec.marker ?? null };
+    // A KIND CHANGE STARTS FROM NOTHING but the list's spread: every other attr
+    // describes the type being LEFT, and the two types share no vocabulary. A
+    // marker-only split keeps them all, because the list the item lands in is
+    // the same kind of list it left — its numbering style and its recorded
+    // "the source repeated one number" both still describe it — and only the
+    // spelling the user just typed, and an ordered list's start, are replaced.
+    const midAttrs = sameType
+        ? {
+              ...list.attrs,
+              ...(spec.kind === "orderedList" ? { order } : {}),
+              marker: spec.marker ?? null,
+          }
+        : spec.kind === "orderedList"
+          ? {
+                spread: list.attrs["spread"],
+                order,
+                marker: spec.marker ?? null,
+                incrementMarker: null,
+            }
+          : { spread: list.attrs["spread"], marker: spec.marker ?? null };
     const midList = target.create(midAttrs, Fragment.from([mid]));
     if (!midList) {
         return false;

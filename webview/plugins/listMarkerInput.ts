@@ -19,6 +19,12 @@
  * no such marker, so the bytes stay `1.` and only the drawing changes;
  * utils/orderedMarkers.ts holds that argument in full.
  *
+ * BOTH COLUMNS RECORD THE CHARACTER TYPED, and in both a character that
+ * disagrees with how the list it lands in is spelled is a list boundary: `* `
+ * at the head of an item in a `-` list splits that item off as a `*` list,
+ * exactly as `* ` typed on the line under that list starts one. Two lists is
+ * what those bytes say in a file, wherever the caret was when they were typed.
+ *
  * WHY THE ITEM COLUMN DID NOT EXIST BEFORE. Both stock list rules are
  * `wrappingInputRule`s, and wrapping is structurally impossible inside an item:
  * `list_item`'s content is `paragraph block*`, so index 0 must be a paragraph
@@ -41,11 +47,12 @@
  * clickable affordance and the menus convert. A `[ ]`-toggles-off reading would
  * buy that one gesture by making the whole table conditional.)
  *
- * A MARKER THAT CHANGES NOTHING IS LEFT AS TEXT — `- ` at the head of a bullet
- * item, `[x] ` on an already-checked one. Consuming it would delete the user's
- * keystrokes and show nothing for them; declining keeps literal `- ` and `[ ]`
- * typeable at the head of an item, which is otherwise unreachable. The rule a
- * user can hold: the marker either changes the line's shape, or it is text.
+ * A MARKER THAT CHANGES NOTHING IS LEFT AS TEXT — `- ` at the head of an item
+ * in a list already spelled `-`, `[x] ` on an already-checked one. Consuming it
+ * would delete the user's keystrokes and show nothing for them. The rule a user
+ * can hold: the marker either changes the line's shape or its spelling, or it
+ * is text. Where it does change something, literal marker text costs one more
+ * keystroke: type it, then Backspace (below).
  *
  * TWO WAYS BACK, and they differ. Backspace runs `undoInputRule`, which puts
  * the marker back as literal text — plugins/list.ts chains it ahead of its own
@@ -171,7 +178,8 @@ function stockWrap(
  * `* ` under a `-` list starts a second list, exactly as those two lines parse
  * from a file. Declining is only half of it — `listAutoJoinPlugin` reads the
  * same `listMarkersConflict` verdict, or it would merge back what this refused
- * (MAR-333).
+ * (MAR-333). The item half asks that verdict too, inside `retypeListItemAt`,
+ * which is what makes an item head answer the same character the same way.
  */
 export const bulletMarkerInputRule = $inputRule((ctx) => {
     const wrap = stockWrap(

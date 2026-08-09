@@ -6,6 +6,12 @@
  * auto-join, which merges adjacency an edit created, stops at a boundary the
  * two lists spell differently.
  *
+ * WHEREVER INCLUDES THE HEAD OF AN ITEM IN A LIST OF THAT VERY KIND (MAR-337),
+ * the one position where the same characters used to become an escaped
+ * literal. The gesture there splits the item out as its own list, and the two
+ * halves of that fact are tested the same way as the line-under-a-list half:
+ * against the file holding those characters.
+ *
  * The invariant these tests hold, and the reason it is worth holding, is that
  * the typed document and the authored document are the SAME bytes: every case
  * below asserts the two against each other rather than against a string this
@@ -135,6 +141,12 @@ function typeText(v: EditorView, text: string): void {
     }
 }
 
+/** Backspace through the editor's own keymap; true when a handler took it. */
+function pressBackspace(v: EditorView): boolean {
+    const event = new KeyboardEvent("keydown", { key: "Backspace", bubbles: true });
+    return v.someProp("handleKeyDown", (f) => f(v, event)) ?? false;
+}
+
 /** Caret at the start of the first textblock whose text contains `needle`. */
 function caretAtStartOf(v: EditorView, needle: string): void {
     let found = -1;
@@ -210,6 +222,24 @@ async function listSignature(md: string): Promise<string[]> {
     return signature;
 }
 
+/**
+ * Every textblock's text, in document order, read by PARSING `md`. The other
+ * half of what `listSignature` cannot see: a marker that stayed as text is a
+ * line whose CONTENT changed, and nothing about the list structure says so.
+ */
+async function textLines(md: string): Promise<string[]> {
+    const editor = await makeEditor(md);
+    const lines: string[] = [];
+    view(editor).state.doc.descendants((node: ProseNode) => {
+        if (!node.isTextblock) {
+            return true;
+        }
+        lines.push(node.textContent);
+        return false;
+    });
+    return lines;
+}
+
 describe("listMarkersConflict", () => {
     it("two different recorded markers should conflict", () => {
         expect(listMarkersConflict("-", "*")).toBe(true);
@@ -267,6 +297,136 @@ describe("a typed bullet character means what the same character means in a file
     });
 });
 
+describe("a typed bullet character at an item head means the same thing too", () => {
+    for (const above of BULLETS) {
+        for (const typed of BULLETS) {
+            it(`\`${typed} \` typed at the head of an item in a \`${above}\` list should spell what the file spells`, async () => {
+                const typedDoc = await typeAtHeadOf(
+                    `${above} alpha\n${above} beta\n`,
+                    "beta",
+                    `${typed} `,
+                );
+                // Derived from CommonMark, not tabulated: a different character
+                // is a boundary, so the item leaves the list it was in and the
+                // file holds the two lists those bytes make. The same character
+                // describes the line the item already had, so there is nothing
+                // to do and the marker stays as text — which only the TEXT can
+                // show, the list structure being identical either way.
+                const splits = above !== typed;
+                const authored = splits
+                    ? `${above} alpha\n\n${typed} beta\n`
+                    : `${above} alpha\n${above} beta\n`;
+                expect(await listSignature(typedDoc)).toEqual(await listSignature(authored));
+                expect(await textLines(typedDoc)).toEqual(
+                    splits ? ["alpha", "beta"] : ["alpha", `${typed} beta`],
+                );
+                expect(await roundTrips(typedDoc)).toBe(true);
+            });
+        }
+    }
+
+    it("the typed character should carry its item out of the list it was in", async () => {
+        // The concrete shape behind the matrix, stated once so a reader does
+        // not have to run it: the `*` reaches the file, and takes its item with
+        // it into the list it names.
+        expect(await typeAtHeadOf("- alpha\n- beta\n", "beta", "* ")).toBe(
+            "- alpha\n\n* beta\n",
+        );
+    });
+
+    it("the head of the FIRST item should split the same way", async () => {
+        expect(await typeAtHeadOf("- alpha\n- beta\n", "alpha", "* ")).toBe(
+            "* alpha\n\n- beta\n",
+        );
+    });
+
+    it("an item between two others should leave a list on each side", async () => {
+        const typedDoc = await typeAtHeadOf("- alpha\n- beta\n- gamma\n", "beta", "* ");
+        expect(typedDoc).toBe("- alpha\n\n* beta\n\n- gamma\n");
+        expect(await roundTrips(typedDoc)).toBe(true);
+    });
+
+    it("a list of one item should be respelled rather than split", async () => {
+        // The same rule with nothing to split off: the item IS the list, so
+        // what is left is one list wearing the character that was typed.
+        expect(await typeAtHeadOf("- alpha\n", "alpha", "* ")).toBe("* alpha\n");
+    });
+
+    it("a nested item should split its own list and leave its parent alone", async () => {
+        const typedDoc = await typeAtHeadOf("- alpha\n  - beta\n  - gamma\n", "beta", "* ");
+        expect(typedDoc).toBe("- alpha\n  * beta\n  - gamma\n");
+        expect(await roundTrips(typedDoc)).toBe(true);
+    });
+
+    it("everything else in the item should travel with it", async () => {
+        // A second paragraph and a sublist are the item's own content, so the
+        // split moves them and changes nothing about them.
+        const withParagraph = await typeAtHeadOf(
+            "- alpha\n- beta\n\n  second para\n",
+            "beta",
+            "* ",
+        );
+        expect(withParagraph).toBe("- alpha\n\n* beta\n\n  second para\n");
+        expect(await roundTrips(withParagraph)).toBe(true);
+
+        const withSublist = await typeAtHeadOf(
+            "- alpha\n- beta\n  - deep\n- gamma\n",
+            "beta",
+            "* ",
+        );
+        expect(withSublist).toBe("- alpha\n\n* beta\n  - deep\n\n- gamma\n");
+        expect(await roundTrips(withSublist)).toBe(true);
+    });
+
+    it("a list with no recorded spelling should have nothing to disagree with", async () => {
+        // A converted list carries no marker, so a typed character contradicts
+        // nothing and stays text — the same clause that lets such a list still
+        // fold into whatever it lands beside.
+        const editor = await makeEditor("1. a\n1. b\n");
+        const v = view(editor);
+        convertListTreeAt(v, 0, "bulletList");
+        expect(v.state.doc.child(0).attrs["marker"]).toBeNull();
+
+        caretAtStartOf(v, "b");
+        typeText(v, "* ");
+        v.state.doc.check();
+        expect(topLevelTypes(v)).toEqual(["bullet_list"]);
+        expect(markdown(editor)).toBe("- a\n- \\* b\n");
+    });
+
+    it("Backspace should give back the characters as text", async () => {
+        // The route to literal `* ` text at an item head, which is what a
+        // marker consumed there costs: type it, then Backspace. The list
+        // keymap chains `undoInputRule` ahead of its own handling for this.
+        const editor = await makeEditor("- alpha\n- beta\n");
+        const v = view(editor);
+        caretAtStartOf(v, "beta");
+        typeText(v, "* ");
+        expect(markdown(editor)).toBe("- alpha\n\n* beta\n");
+
+        expect(pressBackspace(v)).toBe(true);
+        v.state.doc.check();
+        expect(topLevelTypes(v)).toEqual(["bullet_list"]);
+        expect(await textLines(markdown(editor))).toEqual(["alpha", "* beta"]);
+    });
+
+    it("the caret advisory should offer the split back", async () => {
+        // Two adjacent bullet lists draw alike, so the advisory is what the
+        // gesture has to show for itself: the caret lands in the first item of
+        // the list it just made, right where the merge would happen.
+        const editor = await makeEditor("- alpha\n- beta\n");
+        const v = view(editor);
+        caretAtStartOf(v, "beta");
+        typeText(v, "* ");
+        v.state.doc.check();
+
+        const boundary = caretMergeBoundary(v.state);
+        expect(boundary).toBe(v.state.doc.child(0).nodeSize);
+        expect(mergeListsAt(v, boundary as number)).toBe(true);
+        expect(markdown(editor)).toBe("- alpha\n- beta\n");
+    });
+});
+
 describe("a typed ordered delimiter is source too", () => {
     it("`2) ` under a `1.` list should start a second list rather than lose the `)`", async () => {
         const typedDoc = await typeAtHeadOf("1. alpha\n\nworld\n", "world", "2) ");
@@ -280,6 +440,27 @@ describe("a typed ordered delimiter is source too", () => {
     it("`2. ` under a `1.` list should still continue it", async () => {
         expect(await typeAtHeadOf("1. alpha\n\nworld\n", "world", "2. ")).toBe(
             "1. alpha\n2. world\n",
+        );
+    });
+
+    it("`2) ` at the head of an item in a `1.` list should split it off, `)` intact", async () => {
+        const typedDoc = await typeAtHeadOf("1. alpha\n2. beta\n", "beta", "2) ");
+        expect(typedDoc).toBe("1. alpha\n\n2) beta\n");
+        expect(await roundTrips(typedDoc)).toBe(true);
+    });
+
+    it("`2. ` at the head of an item in a `1)` list should split it off too", async () => {
+        expect(await typeAtHeadOf("1) alpha\n2) beta\n", "beta", "2. ")).toBe(
+            "1) alpha\n\n2. beta\n",
+        );
+    });
+
+    it("a number alone at an item head should still be left as text", async () => {
+        // The delimiter is source; the start number is not, because markdown
+        // cannot say one at a boundary. So a marker that changes only the
+        // number changes nothing about the file and stays text.
+        expect(await typeAtHeadOf("1. alpha\n2. beta\n", "beta", "3. ")).toBe(
+            "1. alpha\n2. 3\\. beta\n",
         );
     });
 
