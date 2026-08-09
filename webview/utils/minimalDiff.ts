@@ -1096,18 +1096,6 @@ function reconcileInsertion(
 // carry: refusing to write the saved bytes is not the same as being obliged to
 // write the serializer's, and for a moved list item the file's own spelling of
 // the NEW depth is the right third answer. See `respellMovedIndent`.
-//
-// Rule 3 answers BOTH branches below, for one reason: the serializer's canonical
-// indent is never the right answer for a line whose depth moved. The
-// identical-body branch reaches it because the whitespace is the edit; the other
-// reaches it because rules 1 and 2 have just said the depth moved, and a moved
-// depth spelled canonically inside a file that spells it otherwise mixes two
-// conventions inside one parent/child relationship — the item below reparses as
-// a child, or, past a content column, as prose (MAR-328). A changed body is
-// ordinary here: an item whose bullet character the edit also rewrote has a
-// depth like any other. `respellMovedIndent`'s four gates are what make it safe
-// in either branch, and it hands back the serializer's line whenever they
-// refuse.
 function carrySavedIndent(
     saved: string,
     serial: string,
@@ -1125,17 +1113,7 @@ function carrySavedIndent(
         (LIST_MARKER_RE.test(saved) &&
             LIST_MARKER_RE.test(serial) &&
             baseline?.get(savedWs) === serialWs);
-    if (unmoved) return savedWs + serial.slice(serialWs.length);
-    // Rule 3, on one extra condition the identical-body branch does not need:
-    // the baseline must have witnessed THIS source indent rendering to
-    // something. Without an entry the two indents disagree for a reason nobody
-    // has established — an indent the file renders two ways is dropped rather
-    // than guessed (MAR-222) — and rule 3's arm 1 would guess anyway, from a
-    // prefix of the line's own bytes. With one, the file said this indent means
-    // a depth, and the serializer just named a different one, so the depth
-    // moved and only its spelling is in question.
-    if (baseline?.get(savedWs) === undefined) return serial;
-    return respellMovedIndent(saved, savedWs, serial, serialWs, baseline, structural);
+    return unmoved ? savedWs + serial.slice(serialWs.length) : serial;
 }
 
 /**
