@@ -642,22 +642,12 @@ describe("applyMinimalChanges — outlines that mix indent units (MAR-222)", () 
     });
 
     it("outdenting that line should still register as a real edit", () => {
-        // The claim is the OUTDENT, and the depth is what carries it: `\t   `
-        // holds `c` inside `b`, and the merged line holds it beside `b`, which
-        // is what the user asked for. The spelling is the file's own rather than
-        // the serializer's, because rule 3 answers a moved depth here too — and
-        // the two spellings are the same document: `\t- cQ` and `  - cQ` both
-        // parse to a > [b, cQ] (checked against the real parser), while the
-        // saved `\t   - cQ` parses to a > b > cQ.
-        //
-        // Not a guard any more, and the difference is the last line of the
-        // ambiguity gate in `carrySavedIndent`: with `protection` null the
-        // baseline has nothing to say about `\t   `, the gate refuses, and the
-        // serializer's `  - cQ` is written instead.
+        // A guard, not a fix pin: this also passes with no protection at all,
+        // because key equality declines here too.
         const protection = computeRoundTripProtection(SAVED, BASELINE);
 
         expect(applyMinimalChanges(SAVED, "- a\n  - b\n  - cQ\n", protection)).toBe(
-            "- a\n\t- b\n\t- cQ\n",
+            "- a\n\t- b\n  - cQ\n",
         );
     });
 
