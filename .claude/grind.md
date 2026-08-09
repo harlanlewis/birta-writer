@@ -21,7 +21,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 ## Lanes
 
-- The default shape; ceiling 2, because the harness lock serializes every lane at every gate. A lane's gates are the bulk of its wall clock (`pnpm test` plus `pnpm test:e2e`), the lock is machine-wide rather than per worktree, and it refuses rather than queues: the loser exits 2 naming the holder, so a third lane spends its time failing gates and retrying them rather than waiting politely. Integration branch `lewish/<slug>`.
+- The default shape; ceiling 2, because the harness lock serializes every lane at every gate. A lane's gates are the bulk of its wall clock (`pnpm test` plus `pnpm test:e2e`), the lock is machine-wide rather than per worktree, and it refuses rather than queues: the loser exits 2 naming the holder, so a third lane spends its time failing gates and retrying them rather than waiting politely. The ceiling prices the machine, not the session: a live peer session's lanes (`ListAgents`) count against it. Integration branch `lewish/<slug>`.
 - Hot files: `webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins.
 - Orchestrator-only files: `CHANGELOG.md`, `docs/BENEFITS.md`, written once over the reconciled diff, plus BENEFITS only if a capability's story changed.
 - Exclusive resources: browser perf captures (`perf:*`). The machine is idle exactly twice, at the start and at reconciliation; `perf:bundle` is browser-free and fine, node-level micro-measurement survives.
