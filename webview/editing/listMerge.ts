@@ -110,6 +110,24 @@ export function isSameTypeListBoundary(doc: ProseNode, pos: number): boolean {
 }
 
 /**
+ * Whether the two lists meeting at `pos` disagree about their marker. False for
+ * any position that is not a same-type list boundary at all.
+ *
+ * Separate from `isSameTypeListBoundary` for the reason stated above — a marker
+ * change is a boundary nothing may cross silently — but the auto-join needs
+ * both facts about the OLD doc, not just one. A pre-existing split is the
+ * file's own structure and is left alone, EXCEPT where it was a marker split
+ * and the edit just made the two markers agree: that pair is no longer
+ * something markdown can spell, so the serializer alternates the second list's
+ * bullet to keep it apart and rewrites a line the user never touched (MAR-337).
+ */
+export function listBoundaryMarkersConflict(doc: ProseNode, pos: number): boolean {
+    if (!isSameTypeListBoundary(doc, pos)) return false;
+    const $pos = doc.resolve(pos);
+    return listMarkersConflict(listMarkerOf($pos.nodeBefore!), listMarkerOf($pos.nodeAfter!));
+}
+
+/**
  * The joinable boundary next to the list at `listPos`, in `dir` (-1 = the
  * sibling above, 1 = below), or null when the neighbor is not a same-type
  * list (or the join is structurally refused). This is what decides whether a

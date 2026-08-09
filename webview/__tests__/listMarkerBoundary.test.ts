@@ -631,6 +631,35 @@ describe("auto-join stops at a marker change", () => {
         expect(topLevelTypes(v)).toEqual(["bullet_list"]);
         expect(markdown(editor)).toBe("- alpha\n- beta\n");
     });
+
+    // ── MAR-337: the split that makes two lists AGREE ───────────────────────
+    //
+    // The auto-join's fidelity gate keeps only adjacency the edit created, and
+    // read the old doc for one fact: was this already a list boundary? It was —
+    // but it was a MARKER boundary, which a file can spell, and the edit just
+    // made both sides spell the same character. That pair is the one markdown
+    // cannot say, so leaving it split makes the serializer alternate the second
+    // list's bullet: a line the user never touched is rewritten, and in the
+    // mirror case the character they DID type never reaches the file.
+    //
+    // Pinned line: the `|| listBoundaryMarkersConflict(oldState.doc, was)` arm
+    // of the `fresh` filter in `listAutoJoinPlugin`. Drop it and both of these
+    // redden while every other case in this describe stays green.
+
+    it("typing the neighbouring list's own marker should merge into it, not rewrite it", async () => {
+        const out = await typeAtHeadOf("- alpha\n- beta\n\n+ gamma\n", "beta", "+ ");
+
+        // `+ gamma` is untouched by the gesture and must still say `+`.
+        expect(out).toBe("- alpha\n\n+ beta\n+ gamma\n");
+        expect(await roundTrips(out)).toBe(true);
+    });
+
+    it("the same, with the neighbour above — the typed character must reach the file", async () => {
+        const out = await typeAtHeadOf("+ gamma\n\n- alpha\n- beta\n", "alpha", "+ ");
+
+        expect(out).toBe("+ gamma\n+ alpha\n\n- beta\n");
+        expect(await roundTrips(out)).toBe(true);
+    });
 });
 
 describe("the merge is refused silently, never refused outright", () => {
