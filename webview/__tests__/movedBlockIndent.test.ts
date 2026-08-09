@@ -496,6 +496,51 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toBe("- alpha\n    - gamma\n    - beta\n    - delta\n");
     });
 
+    // The retry above drops EVERY re-indentation region the moment a merge
+    // relocated anything, including regions over lines the move never touched.
+    // Those lines then reach `respellMovedIndent`, whose depth gate reads a line
+    // the serializer merely re-spelled as a line that MOVED. Both of its arms
+    // can decline: arm 1 only ever offers a prefix of the line's own bytes, and
+    // arm 2 has nothing to offer when the file's depth-1 indent is AMBIGUOUS,
+    // which four spaces is the moment one list spells it and an ordered list
+    // spells the same width to a different canonical column. Declining writes
+    // the serializer's indent, so a parent is written canonically while a
+    // neighbouring region still holds its child's saved bytes: two conventions
+    // inside one parent/child relationship, which is MAR-328's own damage
+    // arriving through the door its fix opened.
+    //
+    // The document below is the smallest shape that shows it, and the shape is
+    // ordinary: a four-space bullet outline and a four-space numbered list in
+    // one file. Reproduce the scale with an exhaustive sweep over
+    // `enumerateMovePairs` (helpers/moveFuzz) rather than trusting this one
+    // pair; it is one of many, not an isolated pair.
+    //
+    // KNOWN UNFIXED (MAR-328 follow-up). `it.fails` rather than a skip, so this
+    // errors the moment the retry learns to scope itself and the pin has to be
+    // flipped back to a normal assertion. Scoping it by the relocated content's
+    // own keys was tried and is NOT the answer: it holds this shape but gives
+    // back most of the four-space outline the retry was added to fix.
+    const AMBIGUOUS_FOUR_SPACE =
+        "# T\n\n- alpha\n    - alpha one\n\n1. one\n    1. one a\n\n" +
+        "- gamma\n    - gamma one\n        - gamma nested other\n\nTrailing prose.\n";
+
+    it.fails(
+        "a move elsewhere should not re-spell an untouched outline's parent (MAR-328)",
+        async () => {
+            const { live, reparsed } = await moveAndSave(
+                AMBIGUOUS_FOUR_SPACE,
+                "alpha",
+                "START",
+                "bullet_list",
+            );
+
+            // `gamma one` is written at the serializer's two spaces while its
+            // own child keeps the file's eight, so the child stops being a list
+            // item and the reparse joins it into the parent's paragraph.
+            expect(reparsed).toEqual(live);
+        },
+    );
+
     it("a heading item nested under a sibling should round-trip with no move at all", async () => {
         // The same defect without any move: the serializer's own canonical
         // output for this shape does not survive its own reparse, because a

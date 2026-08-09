@@ -29,7 +29,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView, Node as ProseNode } from "../pm";
-import { TextSelection } from "../pm";
+import { parseFromClipboard, TextSelection } from "../pm";
+import { pasteMarkdownPlugin } from "../plugins/pasteMarkdown";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     listAutoJoinPlugin,
@@ -66,6 +67,49 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .create();
     editors.push(created);
     return created;
+}
+
+/** The same editor with the paste path wired, for the clipboard cases. */
+async function makePastingEditor(markdownSource: string): Promise<Editor> {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const created = await Editor.make()
+        .config((ctx) => {
+            ctx.set(rootCtx, root);
+            ctx.set(defaultValueCtx, markdownSource);
+            configureSerialization(ctx);
+        })
+        .use(pureCommonmark)
+        .use(gfmFidelity)
+        .use(listLiftPlugin)
+        .use(listEnterPlugin)
+        .use(listAutoJoinPlugin)
+        .use(listSpreadNormalizePlugin)
+        .use(pasteMarkdownPlugin)
+        .create();
+    editors.push(created);
+    return created;
+}
+
+/** Selects the whole text of the first top-level paragraph reading `text`. */
+function selectParagraph(v: EditorView, text: string): void {
+    let from = -1;
+    v.state.doc.forEach((child: ProseNode, offset: number) => {
+        if (from === -1 && child.type.name === "paragraph" && child.textContent === text) {
+            from = offset + 1;
+        }
+    });
+    expect(from).toBeGreaterThan(0);
+    v.dispatch(
+        v.state.tr.setSelection(TextSelection.create(v.state.doc, from, from + text.length)),
+    );
+}
+
+/** Paste `text` as a text-only clipboard, the way ProseMirror does. */
+function pasteText(v: EditorView, text: string): void {
+    const slice = parseFromClipboard(v, text, null, false, v.state.selection.$from);
+    expect(slice, "the clipboard produced no slice").not.toBeNull();
+    v.dispatch(v.state.tr.replaceSelection(slice!));
 }
 
 afterEach(async () => {
@@ -290,13 +334,29 @@ describe("listMarkerOf", () => {
         expect(listMarkerOf(ordered)).toBe(".");
     });
 
-    it("a list with no recorded marker should read as none", async () => {
+    it("a typed list should read back the character that made it", async () => {
         const editor = await makeEditor("hello\n\nworld\n");
         const v = view(editor);
         caretAtStartOf(v, "world");
         typeText(v, "* ");
         expect(listMarkerOf(v.state.doc.child(1))).toBe("*");
+    });
+
+    it("a list with no recorded marker should read as none", async () => {
+        // The clause every pre-existing auto-join case rests on: a list the
+        // editor created carries no spelling to defend, so it conflicts with
+        // nothing and still folds into whatever it lands beside. Built by hand
+        // because `convertListTreeAt` is the only producer today, and this
+        // invariant is the schema's rather than that one caller's.
+        const editor = await makeEditor("- a\n");
+        const v = view(editor);
+        const list = v.state.doc.child(0);
+        const unspelled = list.type.create({ ...list.attrs, marker: null }, list.content);
+
+        expect(listMarkerOf(unspelled)).toBeNull();
+        expect(listMarkersConflict(listMarkerOf(unspelled), "*")).toBe(false);
         expect(listMarkerOf(null)).toBeNull();
+        expect(listMarkerOf(undefined)).toBeNull();
     });
 });
 
@@ -336,10 +396,55 @@ describe("auto-join stops at a marker change", () => {
         expect(markdown(editor)).toBe("- alpha\n\n* beta\n");
     });
 
+    it("deleting the separator between two differently-delimited lists should keep both", async () => {
+        // The ordered half of the case above. `listMarkersConflict` is asserted
+        // over `.` against `)` at the top of this file; this is the only place
+        // the auto-join is asked the same question about an ordered pair.
+        const editor = await makeEditor("1. alpha\n\nsep\n\n1) beta\n");
+        const v = view(editor);
+        deleteParagraph(v, "sep");
+        v.state.doc.check();
+
+        expect(topLevelTypes(v)).toEqual(["ordered_list", "ordered_list"]);
+        expect(markdown(editor)).toBe("1. alpha\n\n1) beta\n");
+    });
+
     it("deleting the separator between two same-spelled lists should still merge", async () => {
         const editor = await makeEditor("- alpha\n\nsep\n\n- beta\n");
         const v = view(editor);
         deleteParagraph(v, "sep");
+        v.state.doc.check();
+
+        expect(topLevelTypes(v)).toEqual(["bullet_list"]);
+        expect(markdown(editor)).toBe("- alpha\n- beta\n");
+    });
+
+    // A PASTE is the third way an adjacency is born, and it reaches the same
+    // verdict by the same door: the marker test sits in the auto-join's
+    // candidate collection, upstream of the probe that asks whether this edit
+    // created the adjacency, so it applies to every edit rather than to typing
+    // alone. The pasted list carries a real marker because the paste is parsed
+    // by the document's own parser, `sourceStyle` included, so the clipboard's
+    // bytes are read exactly like a file's.
+    //
+    // Worth a test of its own rather than reasoning from the typed cases: this
+    // is the only path where the marker arrives on a node the user never typed.
+    it("pasting a differently-spelled list below one should keep both", async () => {
+        const editor = await makePastingEditor("- alpha\n\ntail\n");
+        const v = view(editor);
+        selectParagraph(v, "tail");
+        pasteText(v, "* beta");
+        v.state.doc.check();
+
+        expect(topLevelTypes(v)).toEqual(["bullet_list", "bullet_list"]);
+        expect(markdown(editor)).toBe("- alpha\n\n* beta\n");
+    });
+
+    it("pasting a same-spelled list below one should still merge", async () => {
+        const editor = await makePastingEditor("- alpha\n\ntail\n");
+        const v = view(editor);
+        selectParagraph(v, "tail");
+        pasteText(v, "- beta");
         v.state.doc.check();
 
         expect(topLevelTypes(v)).toEqual(["bullet_list"]);
