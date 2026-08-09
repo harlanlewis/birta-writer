@@ -12,7 +12,7 @@
 // always birta-writer-0.0.0.vsix; in the CI Release job it is the
 // version-stamped artifact `pnpm run package` just wrote.
 import { execFileSync } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 function newestVsix() {
@@ -51,7 +51,18 @@ const offenders = entries.filter((name) => banned.test(name));
 // above so the next occurrence reports itself.
 const MAX_FILES = 200;
 
+// The Marketplace tile. `.vscodeignore` is a deny-list, so the icon ships by
+// default and the failure mode is silent in the other direction: a broad new
+// ignore pattern drops it, `vsce package` still succeeds, and the listing falls
+// back to a gray placeholder that nobody sees until it is published. Read the
+// path out of package.json rather than hardcoding it, so moving the file cannot
+// leave this checking a stale name.
+const { icon } = JSON.parse(readFileSync("package.json", "utf8"));
+
 const problems = [];
+if (icon && !entries.includes(`extension/${icon}`)) {
+    problems.push(`package.json "icon" is ${icon}, but extension/${icon} is not in the VSIX`);
+}
 if (offenders.length > 0) {
     problems.push(`development artifacts in the VSIX:\n  ${offenders.join("\n  ")}`);
 }
