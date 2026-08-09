@@ -38,7 +38,8 @@ Read before touching code: `AGENTS.md`, `docs/DESIGN_PRINCIPLES.md`.
 ## Repo lore
 
 - Every CHANGELOG sentence is one you checked; it describes the product to someone who can't read the diff.
-- On a perf ticket: four phase-1 tickets named a mechanism nobody profiled, and all four were wrong. Take a CDP sampling profile and fold native self-time into the nearest JS caller. Unfolded, the top frames name no code you own.
+- On a perf ticket: four phase-1 tickets named a mechanism nobody profiled, and all four were wrong. Take a CDP sampling profile and fold native self-time into the nearest JS caller, or the top frames name no code you own.
+- Restore a before from `git show main:<file>`, never `git checkout <file>`: once your fix is committed the latter restores the NEW code, both columns agree, and it reads as a null result. Assert the old code is loaded before believing the number. The same trap voids an A/B and a revert-to-attribute alike.
 - Vitest: read the `Errors:` line of a passing run, not just `Tests:`. Unhandled errors exit non-zero with every test green.
 - A contended machine FABRICATES failures. The tell is shape: one red each across unrelated suites, moving between runs, in files your diff cannot reach. `[vitest-worker]: Timeout calling ...` is a runner RPC timeout, not a result, so treat that run as void. Check `uptime` before believing a red; AGENTS.md carries the measured spread.
 - `cd` persists between Bash calls, so inspecting a lane's worktree silently moves later commands, `git commit` included.
