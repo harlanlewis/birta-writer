@@ -446,10 +446,11 @@ export const calcArrowSuggestPlugin = $prose(() =>
 // ── Auto-insert mode (input rule) ────────────────────────────────────────────
 
 /**
- * A trailing arithmetic run ending in the just-typed `=`. Broad on purpose —
- * the handler validates that the run is a real, operator-bearing expression via
- * detectCalcExpression, so a false shape (a bare number, a letter mixed in)
- * falls through to normal typing.
+ * The just-typed `=`, with any run of arithmetic before it. A TRIGGER, not a
+ * test: the run is optional, so this fires on every `=` and the handler below
+ * decides, via detectCalcExpression, whether one was an equation. That is why
+ * extending the grammar (a call name, a constant) needs no change here — a
+ * false shape falls through to normal typing either way.
  */
 const CALC_AUTOINSERT_REGEX = new RegExp(`[${ARITHMETIC_CLASS} \\t]*=$`);
 

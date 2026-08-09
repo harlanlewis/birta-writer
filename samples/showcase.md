@@ -33,13 +33,11 @@ Scroll through this file in the editor to see every content type it renders - on
 
 ## Calculations
 
-Type `=` at the end of a sum for an instant answer:
-
-5+7^4-1
-
-Or type `=>` for a living calculation, with variables, functions, and constants:
+Type `=` at the end of a sum for an instant answer, functions and constants included:
 
 3+log10(2²+3²*2.3303)/π^2
+
+Or type `=>` for a living calculation, which adds variables and unit conversions:
 
 a = 3+3^2
 

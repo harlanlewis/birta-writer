@@ -41,7 +41,7 @@ Headings carry their sections, collapsed content always travels with its heading
 - Footnotes. `[^1]`-style footnotes can be inserted, edited, and followed. Their definitions render at the end with back-references.
 - Frontmatter. YAML frontmatter renders as an editable key/value table at the top of the document, collapsible via `birta.frontmatterExpanded`.
 - Occurrence editing. `Cmd+D` cycles through occurrences of the selection and `Cmd+Shift+L` selects them all, covering the common "change every X" cases without leaving WYSIWYG.
-- Inline calculator. Arithmetic with `=` at either end (`12 * 4 =` or `=5+7`) gets its answer offered as a suggestion, which Tab accepts. `birta.calc.autoInsert` opts into insert-on-`=` instead, and it is also a menu row and a palette command. The parser is deterministic, the result is plain text, and it never produces anything with letters in it.
+- Inline calculator. Arithmetic with `=` at either end (`12 * 4 =` or `=5+7`) gets its answer offered as a suggestion, which Tab accepts. Functions and constants count as arithmetic (`sqrt(9) =`, `3+log10(100)/π^2 =`), because each means one thing in any document; a variable does not, and belongs to `=>`. `birta.calc.autoInsert` opts into insert-on-`=` instead, and it is also a menu row and a palette command. The parser is deterministic, the result is plain text, and it never produces anything with letters in it.
 - Working checklists. With Move checked tasks to bottom on (toolbar Lists menu, task-list block menu, palette, or `birta.checklist.sinkChecked`), checked items sink below the unchecked ones. Uncheck All Tasks resets a whole checklist in one undo step.
 
 ## Offline proofreading
