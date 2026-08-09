@@ -15,7 +15,9 @@
  * how a transient editing artifact becomes a durable source-level split.
  * These helpers give every surface the same, canJoin-backed verdict on
  * whether a boundary is mergeable; the POLICY of when to merge (auto vs
- * advisory vs explicit) stays with each caller.
+ * advisory vs explicit) stays with each caller. `listMarkersConflict` is the
+ * one exception a policy may not decide for itself: a marker change is a
+ * boundary no surface may cross without being asked.
  */
 import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { canJoin } from "../pm";
@@ -25,6 +27,63 @@ import { flashRange } from "./rangeIndicator";
 export function isListNode(node: ProseNode | null | undefined): boolean {
     const name = node?.type.name;
     return name === "bullet_list" || name === "ordered_list";
+}
+
+/** The marker characters each list type can actually print. */
+const BULLET_MARKERS = new Set(["-", "*", "+"]);
+const ORDERED_MARKERS = new Set([".", ")"]);
+
+/**
+ * The marker `node` will be SPELLED with, or null when it has none to defend.
+ *
+ * Type-scoped, and that is the whole reason this is a function rather than an
+ * attr read. A conversion carries a list's attrs across the type change
+ * (`convertListTreeAt`), so a bullet list can be holding an ordered `.` and an
+ * ordered list a `*` — a character that type cannot print and that
+ * `serializeList` (plugins/sourceStyle.ts) discards for the global default. A
+ * marker only counts where it survives to the file, so this applies the same
+ * validity test that serializer does; reading the raw attr instead makes two
+ * lists that will print IDENTICALLY look like they disagree.
+ */
+export function listMarkerOf(node: ProseNode | null | undefined): string | null {
+    const marker = node?.attrs["marker"];
+    if (typeof marker !== "string") {
+        return null;
+    }
+    const valid = node?.type.name === "ordered_list" ? ORDERED_MARKERS : BULLET_MARKERS;
+    return valid.has(marker) ? marker : null;
+}
+
+/**
+ * Whether two same-type lists are SPELLED differently in the file: a bullet
+ * `-` against a `*`, or an ordered `.` against a `)`. A list with no recorded
+ * marker has no spelling to defend and conflicts with nothing, so a list the
+ * editor created still folds into whatever it lands beside.
+ *
+ * This is the one fact that separates a boundary worth keeping from an editing
+ * artifact, and it is why the auto-join's mandate stops here. Markdown CAN say
+ * a marker change — `- a` then `* b` parses as two lists, and
+ * docs/DESIGN_PRINCIPLES.md puts a bullet character and an ordered delimiter on
+ * the source side of the presentation line — so a differently-spelled pair
+ * serializes as the two lists it is and reparses that way. A same-spelled pair
+ * cannot: the serializer alternates the second one's bullet to keep the pair
+ * apart (`bulletOther`), inventing a split the author never made, which is the
+ * artifact the auto-join exists to prevent.
+ *
+ * The verdict is deliberately NOT part of `isSameTypeListBoundary` below: a
+ * marker change is a boundary nothing may cross SILENTLY, while merging two
+ * differently-spelled lists on purpose stays a thing a user can ask for, so
+ * the block menu's Merge rows and the caret advisory still offer it.
+ *
+ * Takes marker values rather than nodes, because the typed side of an input
+ * rule has a character and no node yet (plugins/listMarkerInput.ts). Read a
+ * node's side with `listMarkerOf` above, never the raw attr.
+ */
+export function listMarkersConflict(
+    a: string | null | undefined,
+    b: string | null | undefined,
+): boolean {
+    return typeof a === "string" && typeof b === "string" && a !== b;
 }
 
 /**
