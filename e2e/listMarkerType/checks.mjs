@@ -216,8 +216,11 @@ export async function run({ page, check, baseUrl }) {
     );
 
     // ── 7b. A styled marker at the HEAD OF AN ITEM in an already-ordered list
-    // restyles that list. retypeListItemAt declines when the kind is unchanged,
-    // so without this branch there is no typed way to letter a numbered list. ──
+    // restyles that list. The styled rule handles this before the transform is
+    // reached; `retypeListItemAt` declines only when the SPELLING is unchanged
+    // (it splits on a marker change since MAR-337), and a numbering STYLE is
+    // not a spelling, so without this branch there is no typed way to letter a
+    // numbered list. ──
     await clickInto(".ProseMirror li:has-text('beta') p");
     await page.keyboard.press("Home");
     await page.keyboard.type("a. ");

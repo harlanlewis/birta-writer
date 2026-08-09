@@ -1078,14 +1078,17 @@ function repairSerialized(
     const sig = analyzeLines(pristine, profile);
     const norms = sig.map((l) => l.norm);
 
-    let lines = pristine;
+    // Copied ONCE, then spliced in place. `pristine` has to survive unmutated:
+    // anchors, neighbour probes and every raw index below are read from it
+    // after splices have already been applied.
+    const lines = [...pristine];
     // Which of `lines` came from the file rather than the serializer, spliced
-    // in lockstep with `lines` so the two can never disagree about an index.
+    // in lockstep with it so the two can never disagree about an index.
     // Deliberately not arithmetic over `offset`: that would be a second, silent
     // account of where every splice landed, and the branch below re-inserts a
     // dropped construct WITHOUT advancing the cursor past it, so the splices
     // are not strictly forward-ordered and such an account can drift.
-    let flags: boolean[] = pristine.map(() => false);
+    const flags: boolean[] = new Array(pristine.length).fill(false);
     let cursor = 0; // pristine raw-line index; repeated constructs map in document order
     let offset = 0; // lines.length delta accumulated by applied splices
     for (const region of protection.regions) {
@@ -1132,16 +1135,9 @@ function repairSerialized(
             if (best === -1) continue; // construct edited/removed by the user
             const firstRaw = sig[best].lineIdx;
             const lastRaw = sig[best + len - 1].lineIdx;
-            lines = [
-                ...lines.slice(0, firstRaw + offset),
-                ...region.savedSpanLines,
-                ...lines.slice(lastRaw + 1 + offset),
-            ];
-            flags = [
-                ...flags.slice(0, firstRaw + offset),
-                ...region.savedSpanLines.map(() => true),
-                ...flags.slice(lastRaw + 1 + offset),
-            ];
+            const spanLen = lastRaw + 1 - firstRaw;
+            lines.splice(firstRaw + offset, spanLen, ...region.savedSpanLines);
+            flags.splice(firstRaw + offset, spanLen, ...region.savedSpanLines.map(() => true));
             offset += region.savedSpanLines.length - (lastRaw + 1 - firstRaw);
             cursor = lastRaw + 1;
         } else {
@@ -1191,16 +1187,8 @@ function repairSerialized(
             const insertion = [...region.savedSpanLines];
             if (rawAt > 0 && pristine[rawAt - 1].trim() !== "") insertion.unshift(blank);
             if (rawAt < pristine.length && pristine[rawAt].trim() !== "") insertion.push(blank);
-            lines = [
-                ...lines.slice(0, rawAt + offset),
-                ...insertion,
-                ...lines.slice(rawAt + offset),
-            ];
-            flags = [
-                ...flags.slice(0, rawAt + offset),
-                ...insertion.map((line) => line.trim() !== ""),
-                ...flags.slice(rawAt + offset),
-            ];
+            lines.splice(rawAt + offset, 0, ...insertion);
+            flags.splice(rawAt + offset, 0, ...insertion.map((line) => line.trim() !== ""));
             offset += insertion.length;
             cursor = rawAt;
         }
