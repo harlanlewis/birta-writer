@@ -434,6 +434,68 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toBe("- alpha\n    - beta\n    - gamma\n    - delta\n");
     });
 
+    // ── MAR-328: the same loss reached through ROUND-TRIP PROTECTION ────────
+    //
+    // A file whose outline is spelled wider than the serializer writes it makes
+    // every one of its outline lines a round-trip difference, so protection
+    // records each as a region and the repair pass puts the saved bytes back
+    // before the diff ever runs. That is right while the document's shape holds
+    // and wrong the moment a block moves: a region matches on its own interior
+    // neighbours, which a block carries with it, so the moved lines come back
+    // wearing the spelling of the depth they LEFT, beside a new parent the merge
+    // wrote canonically. The merge's own indent rules never see them — those
+    // answer per line and in context, which is exactly what a repair does not
+    // do.
+    //
+    // Neither test below is a spelling preference. Each asserts the reparsed
+    // tree, because what a user loses here is nesting: the sublist stops being a
+    // list and comes back as hardbreak-joined paragraph text.
+    //
+    // Both halves are scoped to a merge that RELOCATED content. Every pin above
+    // this block and in mixedIndentOutline.test.ts is an ordinary edit, and they
+    // are what says the scoping holds: a repair keeping a neighbour's saved
+    // bytes intact across an edit (MAR-231) has to go on doing that.
+
+    const FOUR_SPACE = "- alpha\n    - beta\n        - gamma\n    - delta\n";
+
+    it("a moved sublist should not be respelled to the depth it left (MAR-328)", async () => {
+        // `delta` moves in beside `gamma`, so `gamma` is a pure insertion at a
+        // new position while its saved bytes are what the repair hands over.
+        //
+        // The bytes here are the SERIALIZER's own, not the file's spelling: with
+        // the outline unprotected the merge's output self-check finally has a
+        // reference that does not carry the same defect (with a region for every
+        // outline line, the repaired text and the merged text were wrong in the
+        // same way and the roles agreed), so it sees the divergence and stands
+        // the save down. Churn, borne once, in place of a sublist that stopped
+        // being a list. Whether the save degrades is not the assertion — the
+        // reparsed tree is.
+        //
+        // Pinned line: the `hadRelocatedContent && ... reindentOnly` retry in
+        // `applyMinimalChanges`. Delete it and this test reddens while the
+        // MAR-299 pairs above stay green.
+        const { live, reparsed, merged } = await moveAndSave(FOUR_SPACE, { from: 29, to: 38 }, 18);
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- alpha\n  - beta\n    - delta\n    - gamma\n");
+    });
+
+    it("a moved item whose marker the edit rewrote should keep the file's indent (MAR-328)", async () => {
+        // The replacement path's half. `gamma` outdents to the top level, which
+        // changes its bullet character as well as its depth, so its saved and
+        // serialized bodies differ and rule 3's identical-body branch is not the
+        // one reached. Writing the serializer's canonical indent there leaves a
+        // two-space line among four-space siblings.
+        //
+        // Pinned line: the `respellMovedIndent` call at the END of
+        // `carrySavedIndent`. Restore the bare `return serial` and this reddens
+        // while the test above stays green.
+        const { live, reparsed, merged } = await moveAndSave(FOUR_SPACE, { from: 18, to: 27 }, 10);
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- alpha\n    - gamma\n    - beta\n    - delta\n");
+    });
+
     it("a heading item nested under a sibling should round-trip with no move at all", async () => {
         // The same defect without any move: the serializer's own canonical
         // output for this shape does not survive its own reparse, because a
