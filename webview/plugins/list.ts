@@ -9,7 +9,12 @@ import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { joinTextblockBackward, liftListItem, undoInputRule } from "../pm";
 import { $prose } from "@milkdown/utils";
-import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
+import {
+    isListNode,
+    isSameTypeListBoundary,
+    listMarkerOf,
+    listMarkersConflict,
+} from "../editing/listMerge";
 
 // ── Parse-time spread coercion (MAR-124) ────────────────────────────────────
 //
@@ -1007,11 +1012,16 @@ export const listEnterPlugin = $prose((ctx) => {
 //
 // Policy: adjacency the user's own edit created is merged automatically — the
 // user deleted the separator, so one list is the natural reading — while a
-// split already present in the source is the author's syntax and is NEVER
-// auto-merged (the block menu's Merge rows and the caret advisory offer that
-// merge explicitly instead). The old-doc boundary probe below is what tells
-// the two apart. Undo/redo and external file syncs are exempt: both restore
-// document states and must not be "corrected".
+// split the author can SPELL is theirs and is NEVER auto-merged (the block
+// menu's Merge rows and the caret advisory offer that merge explicitly
+// instead). Two tests tell those apart, and both must pass before a boundary
+// is touched: the old-doc probe below, which asks whether the edit created
+// this adjacency at all, and `listMarkersConflict`, which asks whether the two
+// lists disagree about their marker. The second is what bounds the mandate to
+// the artifact that motivates it — a pair spelling the SAME marker is the pair
+// the serializer would alternate apart, and a pair already spelling different
+// ones round-trips as the two lists it is. Undo/redo and external file syncs
+// are exempt: both restore document states and must not be "corrected".
 export const listAutoJoinPlugin = $prose(() => {
     return new Plugin({
         key: new PluginKey("MD_LIST_AUTO_JOIN"),
@@ -1056,7 +1066,11 @@ export const listAutoJoinPlugin = $prose(() => {
                 (node, pos, parent, index) => {
                     if (node.isTextblock) return false; // lists never nest in textblocks
                     if (!isListNode(node)) return true;
-                    if (parent?.maybeChild(index + 1)?.type === node.type) {
+                    const next = parent?.maybeChild(index + 1);
+                    if (
+                        next?.type === node.type &&
+                        !listMarkersConflict(listMarkerOf(node), listMarkerOf(next))
+                    ) {
                         boundaries.push(pos + node.nodeSize);
                     }
                     return true; // descend: nested sublists can be adjacent too

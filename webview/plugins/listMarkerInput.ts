@@ -65,6 +65,7 @@ import { $inputRule } from "@milkdown/utils";
 import { InputRule, wrappingInputRule } from "../pm";
 import type { EditorState, Node as ProseNode, NodeType, ResolvedPos, Transaction } from "../pm";
 import { retypeListItemAt } from "../editing/listConvert";
+import { listMarkerOf, listMarkersConflict } from "../editing/listMerge";
 import { armListNumbering } from "./listNumbering";
 import { orderedMarkerStart, type OrderedNumbering } from "../utils/orderedMarkers";
 
@@ -133,6 +134,9 @@ function markerLineItem($start: ResolvedPos): { pos: number; node: ProseNode } |
  * each rule below is upstream's own code rather than a copy of it — including
  * the join with a preceding same-type list, which is what makes a marker typed
  * on the line under a list continue that list instead of starting a new one.
+ * Each rule passes its own `joinPredicate` to say WHEN that continuation is the
+ * right reading; upstream's `join` keeps the FIRST node's attrs, so a predicate
+ * that says yes is a predicate that discards the typed marker.
  * Delegating rather than vendoring is the `mathAwareEmphasisStarInputRule`
  * pattern (plugins/emphasisInput.ts), and it means a Milkdown upgrade carries
  * no re-diff obligation for this half.
@@ -160,13 +164,22 @@ function stockWrap(
 /**
  * `- `, `* `, `+ `. The typed character is recorded as the list's `marker`, so
  * a list born in the editor spells itself the way its author asked, the same
- * fact `sourceStyle` records off a parsed file (MAR-218). Nothing else reads
- * the character, so this is the whole cost of honoring it.
+ * fact `sourceStyle` records off a parsed file (MAR-218).
+ *
+ * A character means the same thing wherever it is typed, which is why the
+ * prose half declines the join when the list above is spelled differently:
+ * `* ` under a `-` list starts a second list, exactly as those two lines parse
+ * from a file. Declining is only half of it — `listAutoJoinPlugin` reads the
+ * same `listMarkersConflict` verdict, or it would merge back what this refused
+ * (MAR-333).
  */
 export const bulletMarkerInputRule = $inputRule((ctx) => {
-    const wrap = stockWrap(BULLET_MARKER, bulletListSchema.type(ctx), (match) => ({
-        marker: match[1] ?? "-",
-    }));
+    const wrap = stockWrap(
+        BULLET_MARKER,
+        bulletListSchema.type(ctx),
+        (match) => ({ marker: match[1] ?? "-" }),
+        (match, node) => !listMarkersConflict(listMarkerOf(node), match[1] ?? "-"),
+    );
     return new InputRule(BULLET_MARKER, (state, match, start, end) => {
         const item = markerLineItem(state.doc.resolve(start));
         if (!item) {
@@ -203,9 +216,17 @@ export const orderedMarkerInputRule = $inputRule((ctx) => {
         ORDERED_MARKER,
         orderedListSchema.type(ctx),
         (match) => ({ order: Number(match[1]), marker: match[2] ?? "." }),
-        // Stock's own predicate: continue the list above only when the typed
-        // number is the one that comes next in it.
-        (match, node) => node.childCount + Number(node.attrs["order"] ?? 1) === Number(match[1]),
+        // Two clauses. The DELIMITER is source, the same way the bullet
+        // character is, so `1) ` under a `1.` list starts a second list rather
+        // than joining and losing the `)`. Stock's own number test then
+        // continues the list above only when the typed number is the one that
+        // comes next in it — which is advisory rather than load-bearing here,
+        // because a start number is a thing markdown cannot say at a boundary:
+        // `1. a` and a blank line and `5. b` reparse as one list numbered 1, 2,
+        // so listAutoJoin merges the pair back whatever this returns.
+        (match, node) =>
+            !listMarkersConflict(listMarkerOf(node), match[2] ?? ".") &&
+            node.childCount + Number(node.attrs["order"] ?? 1) === Number(match[1]),
     );
     return new InputRule(ORDERED_MARKER, (state, match, start, end) => {
         const item = markerLineItem(state.doc.resolve(start));

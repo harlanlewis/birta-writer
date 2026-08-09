@@ -650,6 +650,22 @@ interface ProtectedRegion {
     insNorms: string[];
     anchorPrevNorm: string | null;
     anchorNextNorm: string | null;
+    /**
+     * Does this region hold nothing but a RE-INDENTATION — lines the round trip
+     * changed in no way except how far in they sit (`positionalRunPairs`)?
+     *
+     * Such a region and the merge's own indent reconciliation answer the same
+     * question two ways. The region answers with the construct's saved bytes
+     * wherever its anchors match; the reconcilers answer per line, with the
+     * file's spelling of the depth that line now sits at. They agree while the
+     * document's shape holds, and only then: a moved block carries its own
+     * interior neighbours with it, so its anchors still match at the new
+     * position and the repair pins the spelling of the depth it LEFT beside a
+     * parent the merge wrote canonically (MAR-328). `applyMinimalChanges` drops
+     * these regions for exactly the merges that relocated content, which is why
+     * the flag is recorded rather than acted on here.
+     */
+    reindentOnly: boolean;
 }
 
 export interface RoundTripProtection {
@@ -934,6 +950,7 @@ function buildProtectedRegions(
                     insNorms: inses.map((i) => i.serial.norm),
                     anchorPrevNorm,
                     anchorNextNorm,
+                    reindentOnly: false,
                 });
             }
             continue;
@@ -954,7 +971,12 @@ function buildProtectedRegions(
         // line's canonical form is exactly its own counterpart, so the region
         // can be split that far and an edit unprotects only the line it
         // touched.
-        const perLine = allowSplit ? positionalRunPairs(run, savedLines.length - 1) : null;
+        // Asked of the run regardless of `allowSplit`, because it labels the
+        // region rather than shaping it: a re-indentation the split declined
+        // becomes ONE fused region, and it is no less a re-indentation for that
+        // (see `ProtectedRegion.reindentOnly`).
+        const reindentPairs = positionalRunPairs(run, savedLines.length - 1);
+        const perLine = allowSplit ? reindentPairs : null;
         const delGroups = groupByAdjacency(dels.map((d) => d.saved));
         const insGroups = inses.length > 0 ? groupByAdjacency(inses.map((i) => i.serial)) : [];
         const pairable = allowSplit && insGroups.length > 0 && delGroups.length === insGroups.length;
@@ -993,6 +1015,7 @@ function buildProtectedRegions(
                     ? prevSub.insSpan[prevSub.insSpan.length - 1].norm
                     : anchorPrevNorm,
                 anchorNextNorm: nextSub ? nextSub.insSpan[0].norm : anchorNextNorm,
+                reindentOnly: reindentPairs !== null,
             });
         }
     }
@@ -1600,6 +1623,27 @@ export function applyMinimalChanges(
 
     const result = out.join("\n");
     if (result === saved) return saved;
+    // This merge RELOCATED content, which is the one condition under which a
+    // re-indentation region answers for a position it knows nothing about (see
+    // `ProtectedRegion.reindentOnly`). Drop those regions and merge again: the
+    // moved lines then reach `reconcileInsertion` and `reconcileReplacement`
+    // wearing the serializer's canonical indent, which is what both hooks are
+    // written to translate, and the output self-check below finally has a
+    // reference that does not carry the repair's own defect.
+    //
+    // Deliberately a retry rather than a decision taken up front: relocation is
+    // only knowable once the edit script has been walked, and it is the same
+    // signal `lineRoles` is already gated on. An ordinary edit never reaches
+    // here, so the repairs that keep a neighbour's saved bytes intact across an
+    // edit (MAR-231) are untouched, and no save that changed nothing pays for a
+    // second pass. The filtered protection has no such region left, so the
+    // retry cannot recurse.
+    if (hadRelocatedContent && protection && protection.regions.some((r) => r.reindentOnly)) {
+        return applyMinimalChanges(saved, serialized, profile, {
+            ...protection,
+            regions: protection.regions.filter((r) => !r.reindentOnly),
+        });
+    }
     // Output self-check (see `lineRoles`): a splice that flips any
     // significant line's role — a mismatched fence pair, or (MAR-323) a
     // `keep` line's saved bytes landing at a real column that changes its

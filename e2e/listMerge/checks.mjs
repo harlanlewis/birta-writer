@@ -5,7 +5,10 @@
  *     into ONE list — the serialized doc never gains a `*` alternation,
  *   - a source-authored `-`→`*` marker split survives that edit untouched,
  *   - the caret advisory offers "Merge with list above" in the first item of
- *     the `*` list; Escape dismisses it, Tab confirms the merge.
+ *     the `*` list; Escape dismisses it, Tab confirms the merge,
+ *   - a `*` TYPED on the line under a `-` list starts a second list spelled
+ *     `*`, the same two lists those bytes make in a file, and the advisory
+ *     offers the merge it declined to make on its own.
  */
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
@@ -94,4 +97,30 @@ export async function run({ page, check, baseUrl }) {
         `doc=${JSON.stringify(afterMerge)}`);
     check("one list remains after the advisory merge", (await listCount()) === 1,
         `ulCount=${await listCount()}`);
+
+    // ── 5. A marker TYPED under a list means what the same marker means in the
+    // file: `* ` starts a second list rather than joining the `-` one. Driven
+    // through real key events, because the join it declines happens inside
+    // ProseMirror's own input-rule dispatch and an auto-join runs after it.
+    // The trailing `tail` paragraph is the prose line under the list; the
+    // triple-click selects it whole, so the typing starts at its head. ──
+    await page.click(".ProseMirror p:has-text('tail')", { clickCount: 3 });
+    await page.keyboard.type("* gamma");
+
+    const afterTyped = await waitForUpdate((doc) => hasLine(doc, "* gamma"));
+    check("a typed `*` under a `-` list starts a second list, spelled `*`",
+        hasLine(afterTyped, "* gamma") && hasLine(afterTyped, "- wingo"),
+        `doc=${JSON.stringify(afterTyped)}`);
+    check("the typed marker leaves two lists", (await listCount()) === 2,
+        `ulCount=${await listCount()}`);
+
+    // ── 6. Declined SILENTLY, not refused: the caret sits in the first item of
+    // the list it just made, so the advisory offers the merge it would once
+    // have performed unasked. ──
+    await page.waitForTimeout(400);
+    const typedMenu = await page.$eval(".fm-suggest-menu", (el) => el.textContent)
+        .catch(() => null);
+    check("the advisory offers the merge the typed marker declined",
+        typedMenu !== null && typedMenu.includes("Merge with list above"),
+        `menu=${JSON.stringify(typedMenu)}`);
 }

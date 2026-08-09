@@ -46,7 +46,11 @@
  * merges the pair — deliberately. The conversion is the user's own edit
  * creating that adjacency, which is exactly the auto-join's mandate; the
  * result ("make this bullet too" → one bullet list) is also the only shape
- * same-marker adjacency can take in the saved markdown.
+ * same-marker adjacency can take in the saved markdown. The merge is
+ * conditional on the two lists agreeing about their MARKER, which is why the
+ * retype below drops the one it cannot carry: a converted list that kept a
+ * character its new type cannot print would read as a disagreement, and the
+ * pair would stay split for the serializer to alternate apart.
  */
 import type { EditorView, ResolvedPos, Transaction } from "../pm";
 import type { Node as ProseNode } from "../pm";
@@ -92,7 +96,17 @@ export function convertListTreeAt(
      */
     const walk = (node: ProseNode, pos: number, retype: boolean): void => {
         if (retype && node.type !== targetType) {
-            tr = tr.setNodeMarkup(pos, targetType, node.attrs);
+            // THE MARKER DOES NOT SURVIVE THE TYPE CHANGE. It is the character
+            // the list PRINTS, the two types print from disjoint alphabets
+            // (`-`/`*`/`+` against `.`/`)`), and there is no translation
+            // between them, so anything carried across is a character the new
+            // type cannot spell. Null is the only true answer: a converted list
+            // has no recorded spelling and takes the editor's default, which is
+            // what `serializeList` (plugins/sourceStyle.ts) prints for it
+            // either way. The cost of writing a lie here is not in the file but
+            // in every consumer asking "how will this list print" — two lists
+            // that print identically must never read as disagreeing (MAR-333).
+            tr = tr.setNodeMarkup(pos, targetType, { ...node.attrs, marker: null });
         }
         const order = Number(node.attrs["order"] ?? 1);
         node.forEach((item: ProseNode, offset: number, index: number) => {
