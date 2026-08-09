@@ -20,6 +20,10 @@ samples/**
 # github.com/raw URL: the local copies inside the VSIX can never be reached by
 # anything that reads it. Verify with `unzip -p <vsix> extension/readme.md`.
 images/**
+# Brand sources. `media/icon.png` is generated from them and is the only thing
+# the manifest points at; nothing reads an SVG at runtime, and vsce refuses an
+# SVG icon outright, so shipping them would be bytes no reader can reach.
+media/*.svg
 __mocks__/**
 releases/**
 .vscode-test/**

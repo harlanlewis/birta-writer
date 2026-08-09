@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The extension icon is the current Birta Writer wordmark. The Extensions view and the Marketplace listing were showing an earlier drawing of it, set lighter and smaller in the tile; the mark is heavier and fills more of the square, so it stays legible at the size the tile is actually drawn.
+
 ### Fixed
 
 - The bullet character you type is now honored wherever you type it. Typing `* ` on the line below a `-` list used to continue that list and silently drop the character, even though those same two lines read from a file are two separate lists; it now starts a second list spelled `*`. The ordered delimiter follows the same rule, so `2) ` below a `1.` list keeps its `)`. Typing the character the list above already uses still continues that list, as it did before. Two related cases come with it, because the rule is about the character rather than about typing: deleting the paragraph between a `-` list and a `*` list used to merge them and drop the `*`, and pasting a `*` list directly below a `-` list did the same. Both now keep the two lists. Merging two differently spelled lists is still offered, in the block menu and as a quiet prompt at the cursor, so what changed is that it is no longer done for you unasked.
