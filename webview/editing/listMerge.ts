@@ -37,13 +37,20 @@ const ORDERED_MARKERS = new Set([".", ")"]);
  * The marker `node` will be SPELLED with, or null when it has none to defend.
  *
  * Type-scoped, and that is the whole reason this is a function rather than an
- * attr read. A conversion carries a list's attrs across the type change
- * (`convertListTreeAt`), so a bullet list can be holding an ordered `.` and an
- * ordered list a `*` — a character that type cannot print and that
- * `serializeList` (plugins/sourceStyle.ts) discards for the global default. A
- * marker only counts where it survives to the file, so this applies the same
- * validity test that serializer does; reading the raw attr instead makes two
- * lists that will print IDENTICALLY look like they disagree.
+ * attr read. The two list types print from disjoint alphabets (`-`/`*`/`+`
+ * against `.`/`)`), and nothing in the schema stops the attr holding a
+ * character its own type cannot print; `serializeList` (plugins/sourceStyle.ts)
+ * discards such a value for the global default. A marker only counts where it
+ * survives to the file, so this applies the same validity test that serializer
+ * does. Reading the raw attr instead makes two lists that will print
+ * IDENTICALLY look like they disagree, which leaves them split for the
+ * serializer to alternate apart — the exact artifact this module guards.
+ *
+ * A defence, not a repair: `convertListTreeAt` drops the marker it cannot carry
+ * across a type change, so no caller writes such a value today. This stays
+ * because the invariant is the schema's rather than any one caller's, and it is
+ * held by its own test on a hand-built node so the guard cannot quietly stop
+ * being exercised.
  */
 export function listMarkerOf(node: ProseNode | null | undefined): string | null {
     const marker = node?.attrs["marker"];

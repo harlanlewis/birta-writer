@@ -251,19 +251,43 @@ describe("a typed ordered delimiter is source too", () => {
 });
 
 describe("listMarkerOf", () => {
-    it("a marker its list type cannot print should read as none at all", async () => {
-        // A Turn-into carries the source list's attrs across the type change,
-        // so a bullet list can be holding an ordered `.`. The serializer drops
-        // it for the global default, and so must this — two lists that will
-        // print the SAME character must never look like they disagree.
+    it("a converted list should carry no marker its new type cannot print", async () => {
+        // The two types print from disjoint alphabets, so a Turn-into has no
+        // marker to carry across the type change and drops it. Asserted on the
+        // ATTR rather than through `listMarkerOf`, because the point is that
+        // the bad value is never written, not merely never read.
         const editor = await makeEditor("1. a\n\n- b\n");
         const v = view(editor);
-        expect(listMarkerOf(v.state.doc.child(0))).toBe(".");
+        expect(v.state.doc.child(0).attrs["marker"]).toBe(".");
 
         convertListTreeAt(v, 0, "bulletList");
-        const converted = v.state.doc.child(0);
-        expect(converted.attrs["marker"]).toBe(".");
-        expect(listMarkerOf(converted)).toBeNull();
+        expect(v.state.doc.child(0).attrs["marker"]).toBeNull();
+    });
+
+    it("a marker its list type cannot print should still read as none at all", async () => {
+        // The defence, exercised on a hand-built node so it stays held even
+        // though no caller writes such an attr. Nothing in the schema stops one
+        // holding a character its own type cannot spell, and the invariant is
+        // the schema's: two lists that will print the SAME character must never
+        // read as disagreeing.
+        const editor = await makeEditor("- a\n\n1. b\n");
+        const v = view(editor);
+        const bullet = v.state.doc.child(0);
+        const ordered = v.state.doc.child(1);
+
+        const bulletWithOrderedMarker = bullet.type.create(
+            { ...bullet.attrs, marker: "." },
+            bullet.content,
+        );
+        const orderedWithBulletMarker = ordered.type.create(
+            { ...ordered.attrs, marker: "*" },
+            ordered.content,
+        );
+        expect(listMarkerOf(bulletWithOrderedMarker)).toBeNull();
+        expect(listMarkerOf(orderedWithBulletMarker)).toBeNull();
+        // A marker the type CAN print still reads through.
+        expect(listMarkerOf(bullet)).toBe("-");
+        expect(listMarkerOf(ordered)).toBe(".");
     });
 
     it("a list with no recorded marker should read as none", async () => {
@@ -278,9 +302,11 @@ describe("listMarkerOf", () => {
 
 describe("auto-join stops at a marker change", () => {
     it("a Turn-into beside a same-type list should still merge the pair", async () => {
-        // The regression the type-scoped read exists to prevent: both lists
-        // print `-`, so leaving them split makes the serializer alternate the
-        // second to `*` — the exact durable artifact the auto-join is for.
+        // The end-to-end shape both halves protect: both lists print `-`, so
+        // leaving them split makes the serializer alternate the second to `*`,
+        // the exact durable artifact the auto-join is for. It fails if a
+        // conversion writes a marker its new type cannot print, and it fails
+        // again if a reader takes such a value at face value.
         const editor = await makeEditor("1. a\n\n- b\n");
         const v = view(editor);
         convertListTreeAt(v, 0, "bulletList");
