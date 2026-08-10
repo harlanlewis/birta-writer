@@ -6,7 +6,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 - Linear team `MAR`.
 - Board guide: `MAR-141`. Verify against `git log` and the tree; work its do-inline ledger when a session touches a line's area, and prune lines sessions have worked past.
-- Maintainer-only kinds: none. Never close maintainer-authored ideas to hit a quota.
+- Maintainer-only kinds: none.
 
 ## Gates
 
