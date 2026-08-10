@@ -37,11 +37,11 @@ Read before touching code: `AGENTS.md`, `docs/DESIGN_PRINCIPLES.md`.
 
 ## Repo lore
 
-- Every CHANGELOG sentence is one you checked; it describes the product to someone who can't read the diff.
 - On a perf ticket: four phase-1 tickets named a mechanism nobody profiled, and all four were wrong. Take a CDP sampling profile and fold native self-time into the nearest JS caller, or the top frames name no code you own.
 - Restore a before from `git show main:<file>`, never `git checkout <file>`: once your fix is committed the latter restores the NEW code, both columns agree, and it reads as a null result. Assert the old code is loaded before believing the number. The same trap voids an A/B and a revert-to-attribute alike.
 - A mutation run expires on your next edit: a branch added afterwards can leave a proven test unreachable, with nothing red. Re-run mutations in the final state; a late-added gate is the usual culprit.
 - A census is evidence only about what it enumerated, so "every case we found was X" is a fact about the search and cannot scope a fix to X.
-- Vitest: read the `Errors:` line of a passing run, not just `Tests:`. Unhandled errors exit non-zero with every test green.
+- Vitest: read the `Errors:` line of a passing run, not just `Tests:`. Unhandled errors exit non-zero with every test green. `pnpm typecheck` excludes `**/__tests__/**` by design, so a changed export signature stays green through typecheck and build and surfaces only as whatever the wrong value does at runtime, which on a fidelity gate reads as a corruption regression.
+- A simulation can reproduce a ticket's numbers exactly and still describe a state no gesture reaches. MAR-344's filed measurement forced a fallback on an unedited document, and a fallback only happens because an edit damaged the merge.
 - A contended machine FABRICATES failures. The tell is shape: one red each across unrelated suites, moving between runs, in files your diff cannot reach. `[vitest-worker]: Timeout calling ...` is a runner RPC timeout, not a result, so treat that run as void. Check `uptime` before believing a red; AGENTS.md carries the measured spread.
 - `cd` persists between Bash calls, so inspecting a lane's worktree silently moves later commands, `git commit` included.
