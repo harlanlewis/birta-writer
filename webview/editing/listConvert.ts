@@ -287,10 +287,15 @@ export function retypeListItemAt(
             first.content,
             first.marks,
         );
-        // An ordered tail keeps the numbers it was already SHOWING rather than
-        // restarting at 1 — the split moved the items, not their numbering.
+        // An ordered tail keeps the numbers its lines already HAD rather than
+        // restarting at 1 — the split moved the items, not their numbering. A
+        // repeated-number source is the shape that shows what that means:
+        // `incrementMarker: false` makes the serializer print the list's
+        // `order` on EVERY item, so the number each tail line already had IS
+        // the source's own start, and bumping it by the split index would
+        // rewrite lines the gesture never touched (MAR-342).
         const tailAttrs =
-            list.type === ordered
+            list.type === ordered && list.attrs["incrementMarker"] !== false
                 ? { ...list.attrs, order: Number(list.attrs["order"] ?? 1) + index + 1 }
                 : list.attrs;
         blocks.push(list.type.create(tailAttrs, Fragment.from(tail)));
