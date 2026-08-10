@@ -21,7 +21,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 ## Lanes
 
-- The default shape; ceiling 2, because the harness lock serializes every lane at every gate. A lane's gates are the bulk of its wall clock (`pnpm test` plus `pnpm test:e2e`), the lock is machine-wide rather than per worktree, and it refuses rather than queues: the loser exits 2 naming the holder, so a third lane spends its time failing gates and retrying them rather than waiting politely. The ceiling prices the machine, not the session: a live peer session's lanes (`ListAgents`) count against it. Integration branch `lewish/<slug>`.
+- The default shape; ceiling 2, because the harness lock is machine-wide, refuses rather than queues (the loser exits 2 naming the holder), and a lane's gates are the bulk of its wall clock: a third lane spends its time failing gates and retrying. The ceiling prices the machine, not the session, so a live peer session's lanes (`ListAgents`) count against it. Integration branch `lewish/<slug>`.
 - Hot files: `webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins.
 - Orchestrator-only files: `CHANGELOG.md`, `docs/BENEFITS.md`, written once over the reconciled diff, plus BENEFITS only if a capability's story changed.
 - Exclusive resources: browser perf captures (`perf:*`). The machine is idle exactly twice, at the start and at reconciliation; `perf:bundle` is browser-free and fine, node-level micro-measurement survives.
@@ -40,6 +40,8 @@ Read before touching code: `AGENTS.md`, `docs/DESIGN_PRINCIPLES.md`.
 - Every CHANGELOG sentence is one you checked; it describes the product to someone who can't read the diff.
 - On a perf ticket: four phase-1 tickets named a mechanism nobody profiled, and all four were wrong. Take a CDP sampling profile and fold native self-time into the nearest JS caller, or the top frames name no code you own.
 - Restore a before from `git show main:<file>`, never `git checkout <file>`: once your fix is committed the latter restores the NEW code, both columns agree, and it reads as a null result. Assert the old code is loaded before believing the number. The same trap voids an A/B and a revert-to-attribute alike.
+- A mutation run expires on your next edit: a branch added afterwards can leave a proven test unreachable, with nothing red. Re-run mutations in the final state; a late-added gate is the usual culprit.
+- A census is evidence only about what it enumerated, so "every case we found was X" is a fact about the search and cannot scope a fix to X.
 - Vitest: read the `Errors:` line of a passing run, not just `Tests:`. Unhandled errors exit non-zero with every test green.
 - A contended machine FABRICATES failures. The tell is shape: one red each across unrelated suites, moving between runs, in files your diff cannot reach. `[vitest-worker]: Timeout calling ...` is a runner RPC timeout, not a result, so treat that run as void. Check `uptime` before believing a red; AGENTS.md carries the measured spread.
 - `cd` persists between Bash calls, so inspecting a lane's worktree silently moves later commands, `git commit` included.

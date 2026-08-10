@@ -442,6 +442,20 @@ function matchEol(serialized: string, eol: "\n" | "\r\n"): string {
 }
 
 /**
+ * The merge's own degradation target: the serializer's text, EOL-matched to
+ * the saved file. `applyMinimalChanges` writes exactly this whenever an output
+ * self-check trips, and a caller that verifies the merged bytes downstream
+ * needs the identical fallback — canonicalization churn, never corruption.
+ *
+ * Exported so that fallback cannot drift from the engine's. Re-deriving it at
+ * a call site would spell CRLF handling a second time, and a fallback that
+ * writes LF into a CRLF file turns a fidelity save into a whole-file diff.
+ */
+export function serializerFallback(saved: string, serialized: string): string {
+    return matchEol(serialized, dominantEol(saved));
+}
+
+/**
  * Call `profile.reconcileReplacement` defensively. The merge's line accounting
  * is one-line-in / one-line-out, so a profile that throws or hands back a
  * multi-line string degrades to the serializer's line (the behaviour before
@@ -1390,7 +1404,25 @@ export function applyMinimalChanges(
     // including the ones MAR-299's baseline-spelling rule already handles
     // correctly on its own.
     function coreOf(text: string): string {
-        return text.replace(/^[^\p{L}\p{N}]+/u, "");
+        // stripEol FIRST. Every other comparison in this engine is EOL-blind by
+        // contract (see the "Line endings" note above), and this one has to be
+        // too: the saved split's final segment carries no ending while its
+        // serialized counterpart does, so on a CRLF file two cores that name
+        // the same content differ by one byte, never match across the del/ins
+        // sets, and the relocation they witness goes unreported. Measured on a
+        // four-level four-space outline, CRLF saw 33 of 54 moves as relocations
+        // where LF saw 39.
+        //
+        // NO TEST CURRENTLY FAILS ON THIS LINE, and a future reader must not
+        // read it as load-bearing evidence. The flag's only remaining consumer
+        // is `lineRoles`' depth self-check, and the save path now verifies its
+        // own output downstream (webview/utils/verifiedMerge), so reverting
+        // this changes no output the fidelity suites can see. It is defence in
+        // depth on a stated contract, kept because the contract is the reason
+        // every other comparison here is safe. If you need it pinned, the case
+        // to build is one where `rolesDiverge` alone decides the output on a
+        // CRLF file.
+        return stripEol(text).replace(/^[^\p{L}\p{N}]+/u, "");
     }
     const delCoreKeys = new Set<string>();
     const insCoreKeys = new Set<string>();
