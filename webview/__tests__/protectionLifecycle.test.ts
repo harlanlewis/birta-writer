@@ -26,7 +26,7 @@
  * a qualifying gesture, and each premise is asserted before the invariant.
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
-import { editorViewCtx, parserCtx, type Editor } from "@milkdown/core";
+import { editorViewCtx, parserCtx, serializerCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, serializerFallback } from "@birta/minimal-diff";
 import type { EditorView, Node as ProseNode } from "../pm";
@@ -171,16 +171,53 @@ describe("round-trip protection lifecycle", () => {
         }
     });
 
+    it("canonical serializer output should reparse and re-serialize to itself, for every protected fixture", async () => {
+        // The premise the drop rests on, as a test rather than a comment.
+        // Dropping protection instead of recomputing it is only equivalent
+        // because a reload of canonical bytes computes no regions, and that is
+        // true only where the serializer's output is a fixed point. A census
+        // stated in a comment cannot fail; MAR-343 shipped a gate justified by
+        // one, and a paste walked straight through it. This one goes red the
+        // day a construct stops round-tripping to itself, which is the day
+        // `mergeForSave` would start dropping protection a reload would keep.
+        const offenders: string[] = [];
+        let examined = 0;
+        for (const fx of loadCorpusFixtures()) {
+            const v = await open(fx.content);
+            const serialized = editor!.action(getMarkdown());
+            if (!computeRoundTripProtection(fx.content, serialized)?.regions.length) continue;
+            examined++;
+            const reparsed = editor!.action((ctx) => ctx.get(parserCtx)(serialized)) as
+                | ProseNode
+                | null;
+            const again = reparsed
+                ? editor!.action((ctx) => ctx.get(serializerCtx)(reparsed))
+                : null;
+            if (again !== serialized) offenders.push(fx.name);
+            void v;
+        }
+        // Liveness: an empty `offenders` proves nothing if the filter above
+        // matched nothing. The floor is deliberately loose, since the corpus
+        // grows and the exact count is not the subject.
+        expect(examined, "no protected fixture was examined").toBeGreaterThan(15);
+        expect(offenders, "canonical output is not a fixed point for these fixtures").toEqual([]);
+    });
+
     it("an ordinary save should still spell an edited line the file's own way", async () => {
         // The other side of the invariant: protection is dropped only when the
-        // fallback replaced the baseline it describes, never as a matter of
-        // course. This file indents four spaces per level and the serializer
-        // writes two, so the indent unit is knowable only from the baseline
-        // round trip protection carries (MAR-222). Editing INSIDE a nested item
-        // is what makes that load-bearing: the edited line is replaced with the
-        // serializer's bytes, and without the file's own facts it comes back
-        // canonicalized while its untouched neighbours keep four — one outline
-        // with two conventions in it.
+        // bytes written were canonical, never as a matter of course. This file
+        // indents four spaces per level and the serializer writes two, so the
+        // indent unit is knowable only from the baseline round trip that
+        // protection carries (MAR-222).
+        //
+        // THE PIN IS THE LAST LINE, and where it fires is worth stating because
+        // it is not where the story suggests. Drop protection unconditionally
+        // and the FIRST save is still entirely correct — it ran with protection
+        // in hand, so both `toContain` assertions below pass. The damage lands
+        // on the second save, which merges against a baseline it no longer has
+        // any facts about and canonicalizes the whole outline. So the two
+        // `toContain`s are premises (the edit landed where it was aimed), and
+        // only the stability assertion discriminates.
         const saved = FIXTURE.content;
         const v = await open(saved);
 
