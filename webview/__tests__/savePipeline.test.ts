@@ -60,7 +60,7 @@ beforeAll(() => {
 import { editorViewCtx, serializerCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import type { Node as ProseNode } from "../pm";
-import { createEditor, syncExternalContent } from "../editor";
+import { acknowledgeFlush, createEditor, flushPendingEdit, syncExternalContent } from "../editor";
 import { notifyUpdate } from "../messaging";
 
 /** A file full of constructs a zero-edit round trip would destroy. */
@@ -416,6 +416,82 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         await vi.advanceTimersByTimeAsync(600);
         expect(update).toHaveBeenCalledTimes(1);
         expect(update).toHaveBeenCalledWith("hello!\n");
+    });
+
+    // MAR-349: a save flush is a PROPOSAL until the extension acks it. The
+    // extension discards a reply on three paths (flush timeout, stale version,
+    // superseded seq) and then the save wrote the document as it stood — so a
+    // baseline advanced at flush time describes bytes that never reached the
+    // file, and because flushPendingEdit also cancels the pending trailing
+    // sync, syncNow()'s equality check would suppress the recovery post
+    // forever: the flushed edits strand in the webview behind a clean save.
+    it("a discarded flush should re-post its content as an update instead of stranding the edits", async () => {
+        // Arrange — one synced edit, one still in the trailing window
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText(" one", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(1);
+        expect(postedUpdates()).toHaveLength(1);
+        v.dispatch(v.state.tr.insertText(" two", posAfterText(v, "Some paragraph. one")));
+
+        // Act — Cmd+S flushes (capturing both edits), then the extension
+        // discards the reply and acks it discarded.
+        const flushed = flushPendingEdit("f1");
+        expect(flushed).toBe(
+            INITIAL.replace("Some paragraph.", "Some paragraph. one two"),
+        );
+        expect(postedUpdates()).toHaveLength(1); // the flush reply is not an update
+        acknowledgeFlush("f1", false);
+        await vi.advanceTimersByTimeAsync(600);
+
+        // Assert — the flushed content re-posts as a normal update with NO
+        // further user input, so the document re-dirties and the trailing edit
+        // (" two") is save-capturable again rather than stranded.
+        const updates = postedUpdates();
+        expect(updates[updates.length - 1]).toBe(flushed);
+    });
+
+    it("an applied flush should advance the baseline so an edit-and-revert posts no echo", async () => {
+        // Arrange — an edit captured by a flush the extension APPLIED
+        const v = view(editor);
+        const pos = posAfterText(v, "Some paragraph.");
+        v.dispatch(v.state.tr.insertText(" one", pos));
+        const flushed = flushPendingEdit("f1");
+        acknowledgeFlush("f1", true);
+        await vi.advanceTimersByTimeAsync(600);
+        expect(postedUpdates()).toEqual([]); // the save wrote it; a sync would be an echo
+
+        // Act — type and revert, landing the doc exactly on the applied bytes
+        v.dispatch(v.state.tr.insertText("X", pos));
+        v.dispatch(v.state.tr.delete(pos, pos + 1));
+        await vi.advanceTimersByTimeAsync(600);
+
+        // Assert — the committed baseline equals the flushed bytes, so the
+        // no-substantive-change check swallows the echo. (With the commit
+        // skipped, the doc would differ from the stale baseline and this posts.)
+        expect(postedUpdates()).toEqual([]);
+        expect(flushed).toBe(INITIAL.replace("Some paragraph.", "Some paragraph. one"));
+    });
+
+    it("an edit reverted during the ack round trip should re-post once the applied baseline lands", async () => {
+        // The gap corner: between flushResult and flushAck the user reverts the
+        // flushed edit. The revert's own sync compares equal to the OLD baseline
+        // and posts nothing — correct at that moment. Once the ack lands, the
+        // document holds the flushed bytes while the editor shows the reverted
+        // state, so a re-sync is owed or the two silently diverge.
+        const v = view(editor);
+        const pos = posAfterText(v, "Some paragraph.");
+        v.dispatch(v.state.tr.insertText(" one", pos));
+        const flushed = flushPendingEdit("f1");
+        expect(flushed).toBe(INITIAL.replace("Some paragraph.", "Some paragraph. one"));
+
+        v.dispatch(v.state.tr.delete(pos, pos + " one".length));
+        await vi.advanceTimersByTimeAsync(600);
+        expect(postedUpdates()).toEqual([]); // doc == old baseline: nothing to say yet
+
+        acknowledgeFlush("f1", true);
+        await vi.advanceTimersByTimeAsync(600);
+
+        expect(postedUpdates()).toEqual([INITIAL]);
     });
 
     it("an edit whose first interaction is beforeinput should still reach postMessage", async () => {

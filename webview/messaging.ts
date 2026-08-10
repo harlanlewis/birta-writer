@@ -113,6 +113,15 @@ export function notifySwitchToTextEditor(
     vscode.postMessage({ type: "switchToTextEditor", ...target });
 }
 
+/**
+ * The document's format cannot be parsed (fatal in MDX, impossible in
+ * markdown): ask the extension to surface the error and fall back to the
+ * text editor. Sent only from the init path, before any editor exists.
+ */
+export function notifyFatalParse(error: string): void {
+    vscode.postMessage({ type: "fatalParse", error });
+}
+
 /** Opens the native Settings UI; `query` optionally narrows the filter. */
 export function notifyOpenSettings(query?: string): void {
     vscode.postMessage({ type: "openSettings", ...(query ? { query } : {}) });

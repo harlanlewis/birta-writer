@@ -11,6 +11,7 @@ import {
     makeFakeTextDocument,
     resetTextDocumentMocks,
     fireWillSaveTextDocument,
+    fireDidSaveTextDocument,
     type FakeTextDocument,
 } from "../../__mocks__/vscode";
 import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
@@ -140,6 +141,94 @@ describe("MarkdownEditorProvider save flush", () => {
         await vi.advanceTimersByTimeAsync(1000);
         const [edits] = (await willSave) as vscode.TextEdit[][];
         expect(edits).toHaveLength(0);
+    });
+
+    // MAR-349: the webview parks a baseline candidate for every flushResult it
+    // sends and moves its save baseline only on a flushAck. Applied is settled
+    // at didSave against the saved text — computeEdits resolving proves the
+    // edits were handed to the waitUntil, not that VS Code applied them.
+    describe("flush acks", () => {
+        function postedAcks(panel: FakePanel): { id: string; applied: boolean }[] {
+            return panel.webview.postMessage.mock.calls
+                .map((c) => c[0] as { type: string; id?: string; applied?: boolean })
+                .filter((m) => m.type === "flushAck")
+                .map((m) => ({ id: m.id!, applied: m.applied! }));
+        }
+
+        it("an applied flush should ack true only once the save confirms the bytes", async () => {
+            const { document, panel, handler } = await setup("hello\n");
+            const willSave = fireWillSaveTextDocument(document as unknown as FakeTextDocument);
+            const id = pendingFlushId(panel)!;
+            await handler({ type: "flushResult", id, content: "hello world\n", baseSyncVersion: 0, seq: 2 });
+            await willSave;
+            // Verdict held: nothing acked while the save is still writing.
+            expect(postedAcks(panel)).toEqual([]);
+
+            // The save applies the participant edits, then completes.
+            (document as unknown as FakeTextDocument).setTextExternally("hello world\n");
+            (document as unknown as FakeTextDocument).markSaved();
+            fireDidSaveTextDocument(document as unknown as FakeTextDocument);
+
+            expect(postedAcks(panel)).toEqual([{ id, applied: true }]);
+        });
+
+        it("a save that dropped the participant edits should ack false at didSave", async () => {
+            const { document, panel, handler } = await setup("hello\n");
+            const willSave = fireWillSaveTextDocument(document as unknown as FakeTextDocument);
+            const id = pendingFlushId(panel)!;
+            await handler({ type: "flushResult", id, content: "hello world\n", baseSyncVersion: 0, seq: 2 });
+            await willSave;
+
+            // VS Code dropped the edits (budget expiry / concurrent change):
+            // the document saves as it stood, without the flushed bytes.
+            (document as unknown as FakeTextDocument).markSaved();
+            fireDidSaveTextDocument(document as unknown as FakeTextDocument);
+
+            expect(postedAcks(panel)).toEqual([{ id, applied: false }]);
+        });
+
+        it("a stale-version reply should ack false immediately, before any save completes", async () => {
+            const { document, panel, handler } = await setup("hello\n");
+            document.setTextExternally("external\n");
+            await vi.advanceTimersByTimeAsync(200);
+            panel.webview.postMessage.mockClear();
+
+            const willSave = fireWillSaveTextDocument(document as unknown as FakeTextDocument);
+            const id = pendingFlushId(panel)!;
+            await handler({ type: "flushResult", id, content: "webview-stale\n", baseSyncVersion: 0, seq: 9 });
+            await willSave;
+
+            expect(postedAcks(panel)).toEqual([{ id, applied: false }]);
+        });
+
+        it("a reply arriving after the flush timeout should ack false", async () => {
+            const { document, panel, handler } = await setup("hello\n");
+            const willSave = fireWillSaveTextDocument(document as unknown as FakeTextDocument);
+            const id = pendingFlushId(panel)!;
+            await vi.advanceTimersByTimeAsync(1000); // save gave up on this reply
+            await willSave;
+
+            await handler({ type: "flushResult", id, content: "late\n", baseSyncVersion: 0, seq: 2 });
+
+            expect(postedAcks(panel)).toEqual([{ id, applied: false }]);
+        });
+
+        it("a flush already matching the document should still ack true at didSave", async () => {
+            const { document, panel, handler } = await setup("hello\n");
+            await handler({ type: "update", content: "hello there\n", baseSyncVersion: 0, seq: 1 });
+            await vi.advanceTimersByTimeAsync(1);
+            panel.webview.postMessage.mockClear();
+
+            const willSave = fireWillSaveTextDocument(document as unknown as FakeTextDocument);
+            const id = pendingFlushId(panel)!;
+            await handler({ type: "flushResult", id, content: "hello there\n", baseSyncVersion: 0, seq: 2 });
+            await willSave;
+
+            (document as unknown as FakeTextDocument).markSaved();
+            fireDidSaveTextDocument(document as unknown as FakeTextDocument);
+
+            expect(postedAcks(panel)).toEqual([{ id, applied: true }]);
+        });
     });
 
     it("a flush serialized against replaced content (stale baseSyncVersion) should return no edits", async () => {

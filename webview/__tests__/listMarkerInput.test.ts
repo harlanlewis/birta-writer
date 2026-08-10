@@ -202,6 +202,67 @@ describe("typed list markers — scope and splitting", () => {
         expect(await roundTrips(md)).toBe(true);
     });
 
+    it("a repeated-number tail should keep the source's own number (kind change)", async () => {
+        // `1.` on every item is a real source shape: CommonMark renumbers on
+        // render, so writers repeat the number to avoid renumbering by hand.
+        // The serializer prints the tail list's `order` on EVERY item when
+        // `incrementMarker` is false, so any order but the source's own would
+        // rewrite a line the gesture never touched (MAR-342).
+        const md = await typeAtHeadOf("1. a\n1. b\n1. c\n", "b", "- ");
+        expect(md).toBe("1. a\n\n- b\n\n1. c\n");
+        expect(await roundTrips(md)).toBe(true);
+    });
+
+    it("a repeated-number tail should keep the source's own number (marker split)", async () => {
+        const md = await typeAtHeadOf("1. a\n1. b\n1. c\n", "b", "1) ");
+        expect(md).toBe("1. a\n\n1) b\n\n1. c\n");
+        expect(await roundTrips(md)).toBe(true);
+    });
+
+    it("a repeated-number split at the FIRST item should leave the tail lines verbatim", async () => {
+        const md = await typeAtHeadOf("1. a\n1. b\n1. c\n", "a", "- ");
+        expect(md).toBe("- a\n\n1. b\n1. c\n");
+        expect(await roundTrips(md)).toBe(true);
+    });
+
+    it("a repeated-number split at the LAST item should leave the head lines verbatim", async () => {
+        const md = await typeAtHeadOf("1. a\n1. b\n1. c\n", "c", "- ");
+        expect(md).toBe("1. a\n1. b\n\n- c\n");
+        expect(await roundTrips(md)).toBe(true);
+    });
+
+    it("a repeated-number list starting past 1 should keep ITS number on the tail", async () => {
+        const md = await typeAtHeadOf("3. a\n3. b\n3. c\n", "b", "- ");
+        expect(md).toBe("3. a\n\n- b\n\n3. c\n");
+        expect(await roundTrips(md)).toBe(true);
+    });
+
+    it("a numbering-styled repeated list should keep its style on both halves of a split", async () => {
+        // `numbering` is presentation (drawn, never serialized), so the check
+        // is on the document: both surviving ordered lists still carry it.
+        const editor = await makeEditor("1. a\n1. b\n1. c\n");
+        const v = view(editor);
+        let listPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (listPos < 0 && node.type.name === "ordered_list") listPos = pos;
+            return false;
+        });
+        v.dispatch(v.state.tr.setNodeMarkup(listPos, undefined, {
+            ...v.state.doc.nodeAt(listPos)!.attrs,
+            numbering: "lower-alpha",
+        }));
+        caretAtStartOf(v, "b");
+        typeText(v, "- ");
+        v.state.doc.check();
+        expect(markdown(editor)).toBe("1. a\n\n- b\n\n1. c\n");
+        const styles: unknown[] = [];
+        v.state.doc.descendants((node) => {
+            if (node.type.name === "ordered_list") styles.push(node.attrs["numbering"]);
+            return true;
+        });
+        expect(styles).toEqual(["lower-alpha", "lower-alpha"]);
+    });
+
     it("a retype that lands beside a same-type list should join it", async () => {
         const md = await typeAtHeadOf("1. a\n\n- b\n- c\n", "b", "2. ");
         expect(md).toBe("1. a\n2. b\n\n- c\n");
@@ -426,6 +487,14 @@ describe("typed list markers — reversibility", () => {
 const SOURCES: { name: string; md: string; targets: string[] }[] = [
     { name: "bullet", md: "- one\n- two\n- three\n", targets: ["one", "two", "three"] },
     { name: "ordered", md: "1. one\n2. two\n3. three\n", targets: ["one", "two", "three"] },
+    {
+        // The repeated-number source shape (MAR-342): `incrementMarker: false`
+        // makes the serializer print the list's `order` on every item, so a
+        // split that invents a new order rewrites untouched lines.
+        name: "repeated-number",
+        md: "1. one\n1. two\n1. three\n",
+        targets: ["one", "two", "three"],
+    },
     { name: "task", md: "- [ ] one\n- [x] two\n- [ ] three\n", targets: ["one", "two", "three"] },
     {
         name: "nested",

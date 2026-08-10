@@ -133,7 +133,7 @@ describe("createEditor lifecycle robustness (MAR-148)", () => {
         // ...and the save flush answers with the document the extension just
         // sent — NOT "old content\n", which a Cmd+S would write back over the
         // file as a stale save.
-        expect(flushPendingEdit()).toBe(FENCED);
+        expect(flushPendingEdit("t:1")).toBe(FENCED);
 
         // The failed create's own listener pair is the one window the abort
         // deliberately leaves open (it dies on the NEXT init) — prove it is
@@ -141,13 +141,13 @@ describe("createEditor lifecycle robustness (MAR-148)", () => {
         // the pipeline or change what a flush returns.
         container.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
         container.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
-        expect(flushPendingEdit()).toBe(FENCED);
+        expect(flushPendingEdit("t:2")).toBe(FENCED);
 
         // A later successful init recovers the pipeline completely.
         grammarGate.fail = false;
         const recovered = await createEditor(container, "recovered\n", vi.fn());
         expect(getEditorView()).not.toBeNull();
-        expect(flushPendingEdit()).toBe("recovered\n");
+        expect(flushPendingEdit("t:3")).toBe("recovered\n");
         await recovered.destroy();
     });
 });

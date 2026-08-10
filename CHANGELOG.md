@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- MDX files open in the visual editor. An `.mdx` file now opens in Birta as an alternative editor (right-click the file, Open With, or set an editor association), in a mode that parses real MDX rather than pretending it is plain Markdown. Prose is edited exactly as in a Markdown document. Everything that makes MDX a program stays inert and untouched: `import` and `export` lines, JSX components and `{expressions}` render as clearly labeled read-only blocks, are never executed, and reach the file byte-for-byte as they arrived, however you edit around them. Markdown nested inside a JSX component is shown but not yet editable. A file that is not valid MDX cannot open visually, because an MDX parse error is fatal where Markdown has none: you get the parser's message and the plain text editor instead, with nothing written. None of this costs a Markdown document anything; the MDX engine loads only when an `.mdx` file actually opens.
+
+### Fixed
+
+- Edits made in the last moments before a save can no longer be lost to a save that misses them. A save asks the editor for its freshest content and waits about a second for the answer; when the answer came too late, the save wrote what it already had, which is right, but the editor still recorded its newer content as saved. Nothing then knew to write those last edits: the file was missing them, the tab showed no unsaved changes, and closing the window discarded them. The editor now waits for the save to confirm what actually reached the document before it records anything as saved, and when a save went ahead without its answer, the missed edits immediately mark the document unsaved again, so the next save or autosave writes them. Reaching this took a document large enough, or a machine busy enough, for serializing to outrun the save's wait.
+
+- Splitting a list that numbers every item `1.` no longer renumbers the items below the split. Writing `1.` on every line is a common way to let the numbering take care of itself; typing `- ` or `1) ` at the head of such an item splits the list there, and the items after the split kept their meaning but changed their spelling, so a line you never touched showed up in the file's diff as `3.`. The split now leaves the remainder spelled the way the file spells it. Lists numbered the ordinary way were never affected, and lettered and roman numbering are untouched.
+
 ---
 
 ## [2026.810.0] - 2026, August 10

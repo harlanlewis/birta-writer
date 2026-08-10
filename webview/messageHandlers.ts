@@ -27,7 +27,7 @@ import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
-import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor";
+import { setLogTableSel, syncExternalContent, flushPendingEdit, acknowledgeFlush } from "./editor";
 import { regateCalcCues, regateNoteMarkers, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
@@ -120,7 +120,12 @@ export interface EditorActions {
     getSelectionContext: () => EditorSelectionContext | null;
     /** Record how many source lines the frontmatter occupies (MAR-23). */
     setLineOffset: (offset: number) => void;
-    initEditor: (container: HTMLElement, markdown: string) => Promise<void>;
+    /**
+     * (Re)build the editor. `format` selects the document's FormatModule and
+     * is carried only by `init`; re-init paths (externalUpdate fallback) omit
+     * it and reuse the format the document opened with.
+     */
+    initEditor: (container: HTMLElement, markdown: string, format?: import("../shared/messages").DocumentFormat) => Promise<void>;
     retryScroll: (fn: () => void) => void;
     getEditorView: () => EditorView | null;
     /** Refreshes the table-of-contents panel after an inbound diff sync. */
@@ -196,7 +201,7 @@ export function createMessageHandlers(
             if (msg.tableWrap) {
                 applyTableWrap(msg.tableWrap);
             }
-            await initEditor(container, msg.content);
+            await initEditor(container, msg.content, msg.format);
             window.focus();
             if (msg.scrollToLine) {
                 // The caret needs only the document, so it lands now; the scroll
@@ -282,7 +287,12 @@ export function createMessageHandlers(
         flushSave(msg) {
             // A save is imminent: serialize the live document NOW (bypassing the
             // throttle) and reply so the extension writes the freshest content.
-            notifyFlushResult(msg.id, flushPendingEdit());
+            notifyFlushResult(msg.id, flushPendingEdit(msg.id));
+        },
+        flushAck(msg) {
+            // The extension's verdict on our flushResult: commit the parked
+            // baseline candidate (applied) or abandon it and re-sync (discarded).
+            acknowledgeFlush(msg.id, msg.applied);
         },
         __testInsertText(msg) {
             // TEST-ONLY (see the message's declaration): insert text at the caret
