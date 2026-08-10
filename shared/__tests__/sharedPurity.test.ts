@@ -107,6 +107,39 @@ function stripComments(source: string): string {
         .replace(/(^|[^:/])\/\/.*$/gm, "$1");
 }
 
+/**
+ * A predicate over one line: is this index inside a string literal?
+ *
+ * Deliberately a per-line scan rather than a real lexer. A specifier and its
+ * keyword always share a line, so line-local quote state answers the only
+ * question asked of it, and a multi-line template literal cannot carry an
+ * import anyway. Escapes are honoured so `'it\'s'` does not leave the scanner
+ * believing the rest of the line is code.
+ */
+function stringSpans(line: string): (index: number) => boolean {
+    const spans: [number, number][] = [];
+    let quote: string | null = null;
+    let start = 0;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === "\\") {
+            i++; // skip the escaped character, whatever it is
+            continue;
+        }
+        if (quote === null && (ch === '"' || ch === "'" || ch === "`")) {
+            quote = ch;
+            start = i;
+        } else if (ch === quote) {
+            spans.push([start, i]);
+            quote = null;
+        }
+    }
+    if (quote !== null) {
+        spans.push([start, line.length]); // unterminated: treat the tail as string
+    }
+    return (index: number) => spans.some(([a, b]) => index > a && index < b);
+}
+
 /** True when a relative specifier resolved from `fromDir` lands outside `shared/`. */
 function escapesShared(specifier: string, fromDir: string): boolean {
     const rel = path.relative(SHARED_ROOT, path.resolve(fromDir, specifier));
@@ -124,7 +157,14 @@ function findPurityOffences(source: string, fromDir: string = SHARED_ROOT): stri
         .split("\n")
         .forEach((line, idx) => {
             const lineNo = idx + 1;
+            const inString = stringSpans(line);
             for (const match of line.matchAll(IMPORT_SPECIFIER)) {
+                // A keyword INSIDE a string literal is prose, not code:
+                // `const M = 'copied from "clipboard"'` otherwise reports an
+                // import of "clipboard" and fails the suite on a string. The
+                // specifier is itself quoted, so the test is on where the
+                // KEYWORD starts, never on the whole match.
+                if (inString(match.index)) continue;
                 const specifier = match[1];
                 if (specifier.startsWith(".")) {
                     if (escapesShared(specifier, fromDir)) {
@@ -242,6 +282,14 @@ describe("shared/ host purity", () => {
         expect(findPurityOffences("export const t = setTimeout(fn, 0);")).toEqual([]);
         expect(findPurityOffences("export const p = processDocument.title;")).toEqual([]);
         expect(findPurityOffences("export const q = BufferedWriter.name;")).toEqual([]);
+    });
+
+    it("the detector should not read a quoted word inside a string literal as an import", () => {
+        expect(findPurityOffences(`export const MSG = 'copied from "clipboard"';`)).toEqual([]);
+        // The keyword still has to do its job when it really is an import.
+        expect(findPurityOffences(`export { a } from "vscode";`)).toEqual([
+            '1: non-relative import "vscode"',
+        ]);
     });
 
     it("the detector should not judge commented-out code or prose, but should judge a URL-bearing line", () => {

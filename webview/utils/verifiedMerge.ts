@@ -47,20 +47,21 @@
  */
 import type { Node as ProseNode } from "../pm";
 import {
-    applyMinimalChangesDetailed,
+    applyMinimalChanges,
     serializerFallback,
     type FormatProfile,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
 import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
+import type { Fingerprint } from "../plugins/fingerprints";
 
 /** Parse markdown with the real parser; null when the parser refuses. */
 export type ParseMarkdown = (markdown: string) => ProseNode | null;
 
 const CLEAN = "lost: (none); gained: (none)";
 
-/** Does `text` reopen holding exactly `live`'s content? */
-function reopensAs(live: ProseNode, text: string, parse: ParseMarkdown): boolean {
+/** Does `text` reopen holding exactly the content `liveFp` fingerprints? */
+function reopensAs(liveFp: Fingerprint, text: string, parse: ParseMarkdown): boolean {
     let doc: ProseNode | null;
     try {
         doc = parse(text);
@@ -70,9 +71,7 @@ function reopensAs(live: ProseNode, text: string, parse: ParseMarkdown): boolean
     if (!doc) {
         return false;
     }
-    return (
-        formatFingerprintDiff(diffFingerprints(fingerprintDoc(live), fingerprintDoc(doc))) === CLEAN
-    );
+    return formatFingerprintDiff(diffFingerprints(liveFp, fingerprintDoc(doc))) === CLEAN;
 }
 
 /**
@@ -86,11 +85,22 @@ function reopensAs(live: ProseNode, text: string, parse: ParseMarkdown): boolean
  * whole engine prefers: canonicalization churn is a diff the user can see and
  * undo, and silent structural loss is not.
  *
- * COST is one extra parse of the merged bytes, and a second one only on the
- * rare occasion the first came back dirty. It is charged ONLY to saves whose
- * merge relocated content — a block move — because that is the population the
- * damage lives in; an ordinary edit returns before the first parse. It rides
- * the sync path (typing pause, max-wait, save), never the keystroke path.
+ * COST is one extra parse of the merged bytes, and a second one only when the
+ * first came back dirty. It rides the sync path (typing pause, max-wait, save),
+ * which already pays an O(document) serialize and merge, and never the
+ * keystroke path.
+ *
+ * THIS WAS GATED ON "the merge relocated content" — a block move — and that
+ * gate was wrong, which is worth recording because the reasoning behind it is
+ * the kind that sounds right. Relocation really is what puts saved bytes beside
+ * neighbours they were never spelled for, and every damaged pair in MAR-343's
+ * census really was a move. But the census enumerated only moves, so it could
+ * not have found anything else, and the gate was built on that circle. A paste
+ * lands one document's bytes beside another's just as squarely: 163 of 1194
+ * paste positions on `four-space-outline.md` are damaged, and the gate waved
+ * every one of them through. The gate also read the block-move signal off a
+ * flag that was quietly EOL-sensitive, so it stood itself down on CRLF files.
+ * Both were found by review, after the tests were green.
  */
 export function mergeVerified(
     saved: string,
@@ -100,25 +110,7 @@ export function mergeVerified(
     live: ProseNode,
     parse: ParseMarkdown,
 ): string {
-    const { text: merged, relocatedContent } = applyMinimalChangesDetailed(
-        saved,
-        serialized,
-        profile,
-        protection,
-    );
-    // The cost gate. Verifying means parsing the whole document a second time,
-    // on top of the O(document) serialize the save already pays, and without
-    // this gate every typing-pause sync of every file would pay it.
-    //
-    // Relocation is what makes the merge dangerous: saved bytes land beside
-    // neighbours they were never spelled for, and the repair respells some of
-    // them and not others. An in-place edit moves nothing, so its keeps keep
-    // their own neighbours. Every damaged pair measured for MAR-343 was a block
-    // move, and the engine gates its own depth-sensitive self-check on the same
-    // signal for the same reason.
-    if (!relocatedContent) {
-        return merged;
-    }
+    const merged = applyMinimalChanges(saved, serialized, profile, protection);
     const fallback = serializerFallback(saved, serialized);
     // The merge already chose the serializer's text (an internal self-check
     // tripped, or there was nothing saved to preserve). Both candidates are
@@ -128,12 +120,15 @@ export function mergeVerified(
     if (merged === fallback) {
         return merged;
     }
-    if (reopensAs(live, merged, parse)) {
+    // Fingerprinted once and shared: both checks compare against the same live
+    // document, and it is the larger of the two documents being walked.
+    const liveFp = fingerprintDoc(live);
+    if (reopensAs(liveFp, merged, parse)) {
         return merged;
     }
     // The merged bytes are dirty. Only the merge's OWN damage is ours to
     // overrule: if the serializer is dirty too, the document was already
     // broken and writing canonical bytes would not fix it, while discarding
     // the file's spelling on every save certainly would hurt.
-    return reopensAs(live, fallback, parse) ? fallback : merged;
+    return reopensAs(liveFp, fallback, parse) ? fallback : merged;
 }

@@ -1285,34 +1285,6 @@ export function applyMinimalChanges(
     profile: FormatProfile,
     protection?: RoundTripProtection | null,
 ): string {
-    return applyMinimalChangesDetailed(saved, serialized, profile, protection).text;
-}
-
-/** What a merge produced, plus the one property about HOW it got there that a
- *  caller needs (see `MergeOutcome.relocatedContent`). */
-export interface MergeOutcome {
-    /** The merged text — exactly what `applyMinimalChanges` returns. */
-    text: string;
-    /**
-     * Did this merge delete a line's content at one position and reinsert it,
-     * unchanged, at another? That is the signature of a block MOVE, as opposed
-     * to an ordinary in-place edit, and it is the same signal the output
-     * self-check gates its depth-sensitive role on.
-     *
-     * Exposed so a caller can price an expensive verification against the
-     * merges that can actually need it: relocation is what puts saved bytes
-     * beside neighbours they were never spelled for.
-     */
-    relocatedContent: boolean;
-}
-
-/** `applyMinimalChanges`, reporting how the merge got there. */
-export function applyMinimalChangesDetailed(
-    saved: string,
-    serialized: string,
-    profile: FormatProfile,
-    protection?: RoundTripProtection | null,
-): MergeOutcome {
     // Give the serializer's output the document's endings BEFORE anything else,
     // so repair splices saved bytes among lines that already agree with them.
     const eol = dominantEol(saved);
@@ -1432,7 +1404,25 @@ export function applyMinimalChangesDetailed(
     // including the ones MAR-299's baseline-spelling rule already handles
     // correctly on its own.
     function coreOf(text: string): string {
-        return text.replace(/^[^\p{L}\p{N}]+/u, "");
+        // stripEol FIRST. Every other comparison in this engine is EOL-blind by
+        // contract (see the "Line endings" note above), and this one has to be
+        // too: the saved split's final segment carries no ending while its
+        // serialized counterpart does, so on a CRLF file two cores that name
+        // the same content differ by one byte, never match across the del/ins
+        // sets, and the relocation they witness goes unreported. Measured on a
+        // four-level four-space outline, CRLF saw 33 of 54 moves as relocations
+        // where LF saw 39.
+        //
+        // NO TEST CURRENTLY FAILS ON THIS LINE, and a future reader must not
+        // read it as load-bearing evidence. The flag's only remaining consumer
+        // is `lineRoles`' depth self-check, and the save path now verifies its
+        // own output downstream (webview/utils/verifiedMerge), so reverting
+        // this changes no output the fidelity suites can see. It is defence in
+        // depth on a stated contract, kept because the contract is the reason
+        // every other comparison here is safe. If you need it pinned, the case
+        // to build is one where `rolesDiverge` alone decides the output on a
+        // CRLF file.
+        return stripEol(text).replace(/^[^\p{L}\p{N}]+/u, "");
     }
     const delCoreKeys = new Set<string>();
     const insCoreKeys = new Set<string>();
@@ -1691,7 +1681,7 @@ export function applyMinimalChangesDetailed(
     }
 
     const result = out.join("\n");
-    if (result === saved) return { text: saved, relocatedContent: hadRelocatedContent };
+    if (result === saved) return saved;
     // Output self-check (see `lineRoles`): a splice that flips any
     // significant line's role — a mismatched fence pair, or (MAR-323) a
     // `keep` line's saved bytes landing at a real column that changes its
@@ -1700,7 +1690,7 @@ export function applyMinimalChangesDetailed(
     // Skipped when the result IS the saved bytes: writing them changes
     // nothing, so no new structure can have been introduced.
     if (profile.lineRoles && rolesDiverge(profile, result, effective, hadRelocatedContent)) {
-        return { text: matched, relocatedContent: hadRelocatedContent };
+        return matched;
     }
     // The blind spot the check above has by construction (MAR-326): it compares
     // two texts that both descend from `effective`, so a defect `effective`
@@ -1713,9 +1703,9 @@ export function applyMinimalChangesDetailed(
         effective !== matched &&
         profile.losesOpaqueContent?.(matched.split("\n").map(stripEol), effective.split("\n").map(stripEol))
     ) {
-        return { text: matched, relocatedContent: hadRelocatedContent };
+        return matched;
     }
-    return { text: result, relocatedContent: hadRelocatedContent };
+    return result;
 }
 
 /** Do `merged` and `effective` disagree on any significant line's role?
