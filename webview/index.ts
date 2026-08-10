@@ -40,9 +40,10 @@ import {
 import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { mark, measure } from "./perf";
-import type { ToWebviewMessage } from "../shared/messages";
+import type { DocumentFormat, ToWebviewMessage } from "../shared/messages";
+import { resolveFormat } from "./format/loader";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
 import {
@@ -496,43 +497,95 @@ function scheduleTocRefresh(): void {
 }
 
 // ── Editor initialization ──────────────────────────────────
+
+// The document's wire format, set by the first init and reused by every
+// re-init (revert, externalUpdate fallback): a document's format never
+// changes while it is open, and the re-init paths do not carry it.
+let documentFormat: DocumentFormat = "markdown";
+
+/**
+ * Fatal-parse surface (MDX): the error banner shown in place of the editor
+ * while the extension swaps this tab for the text editor. Belt and braces —
+ * the tab is about to close, but a failed swap must not leave a silently
+ * blank pane. textContent only; the error string derives from document
+ * content and must never reach innerHTML.
+ */
+function renderFatalParseBanner(container: HTMLElement, error: string): void {
+    const banner = document.createElement("div");
+    banner.className = "fatal-parse-banner";
+    banner.style.padding = "1em";
+    banner.style.color = "var(--vscode-errorForeground)";
+    const title = document.createElement("p");
+    title.textContent = t("This file is not valid MDX, so it can't open in the visual editor.");
+    const detail = document.createElement("pre");
+    detail.style.whiteSpace = "pre-wrap";
+    detail.style.color = "var(--vscode-descriptionForeground)";
+    detail.textContent = error;
+    banner.append(title, detail);
+    container.appendChild(banner);
+}
+
 async function initEditor(
     container: HTMLElement,
     markdown: string,
+    format?: DocumentFormat,
 ): Promise<void> {
+    if (format) {
+        documentFormat = format;
+    }
+    // Resolved before the old editor is torn down, so a failed mdx chunk load
+    // cannot leave the pane empty-handed with the previous editor destroyed.
+    const formatModule = await resolveFormat(documentFormat);
     if (currentEditor) {
         currentEditor.destroy();
         currentEditor = null;
         container.innerHTML = "";
     }
 
-    currentEditor = await createEditor(
-        container,
-        markdown,
-        (updated) => {
-            // Keep the cached source (and its line map) in sync with every
-            // edit so source-based search stays accurate; the extension later
-            // echoes an authoritative lineMapUpdate after saving (MAR-8).
-            markdownSource = updated;
-            currentLineMap = computeLineMap(updated);
-            // The gutter's numbers come from this cached source, so this is the
-            // moment they become correct again after an edit that added or
-            // removed lines (see the staleness note in components/lineNumbers).
-            lineNumbers.refresh();
-            notifyUpdate(updated);
-        },
-        // Views of the document refresh on document changes — NOT on the
-        // save/serialize cadence the callback above rides (see _onDocChange
-        // in editor.ts for what that coupling cost). The find bar's note is
-        // O(1) when the bar is closed or empty.
-        () => {
-            scheduleTocRefresh();
-            findBar.noteDocChanged();
-            // O(1) while the gutter is off, and idle-coalesced while it is on —
-            // never work on the keystroke itself.
-            lineNumbers.refresh();
-        },
-    );
+    try {
+        currentEditor = await createEditor(
+            container,
+            markdown,
+            (updated) => {
+                // Keep the cached source (and its line map) in sync with every
+                // edit so source-based search stays accurate; the extension later
+                // echoes an authoritative lineMapUpdate after saving (MAR-8).
+                markdownSource = updated;
+                currentLineMap = computeLineMap(updated);
+                // The gutter's numbers come from this cached source, so this is the
+                // moment they become correct again after an edit that added or
+                // removed lines (see the staleness note in components/lineNumbers).
+                lineNumbers.refresh();
+                notifyUpdate(updated);
+            },
+            // Views of the document refresh on document changes — NOT on the
+            // save/serialize cadence the callback above rides (see _onDocChange
+            // in editor.ts for what that coupling cost). The find bar's note is
+            // O(1) when the bar is closed or empty.
+            () => {
+                scheduleTocRefresh();
+                findBar.noteDocChanged();
+                // O(1) while the gutter is off, and idle-coalesced while it is on —
+                // never work on the keystroke itself.
+                lineNumbers.refresh();
+            },
+            formatModule,
+        );
+    } catch (e) {
+        if (documentFormat === "mdx") {
+            // MDX parse errors are fatal (a stray `{`, an unclosed tag): this
+            // document cannot open WYSIWYG. Show the banner and hand off to
+            // the extension, which surfaces the error and reopens the text
+            // editor. Nothing was modified — no editor mounted.
+            const message = e instanceof Error ? e.message : String(e);
+            renderFatalParseBanner(container, message);
+            notifyFatalParse(message);
+            return;
+        }
+        // Markdown never fails to parse (every byte sequence is valid), so
+        // anything else is a real crash for the crash boundary to report.
+        throw e;
+    }
     toc.refresh();
     // Seed the status-bar word count for the freshly loaded document (MAR-29):
     // the selection-change handler only fires on later edits/selection moves, so

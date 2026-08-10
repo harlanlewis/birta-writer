@@ -226,6 +226,12 @@ export const BLOCK_CAPABILITIES: Record<string, BlockCapability> = {
     math_inline: INLINE,
     wiki_link: INLINE,
     footnote_reference: INLINE,
+
+    // MDX (format #2, MAR-42): opaque code islands. Never convertible — the
+    // source bytes are a single attr the editor preserves verbatim, so there
+    // is no prose to re-shape into anything.
+    mdx_block:  { shape: "leaf", content: "data", kind: null, source: false, target: false },
+    mdx_inline: INLINE,
 };
 
 // ── Kind probes ─────────────────────────────────────────────────────────────

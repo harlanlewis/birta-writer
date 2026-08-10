@@ -1,0 +1,41 @@
+import { Callout, Tabs, TabItem } from "@astrojs/starlight/components"
+import Chart from '../components/Chart.astro'
+
+export const metrics = { users: 1200, growth: 0.14 }
+
+# Getting started
+
+Docs sites mix prose with components. The prose here is plain markdown and
+stays editable; every island below is structural.
+
+<Callout type="warning" title="Heads up">
+  Upgrading past v2 requires the migration script.
+</Callout>
+
+Inline expressions like {metrics.users} render at build time, and inline
+JSX such as press <kbd>Cmd</kbd>+<kbd>S</kbd> flows with the text.
+
+## Numbers
+
+{/* keep this table in sync with the quarterly report */}
+
+| Quarter | Users |
+| ------- | ----- |
+| Q1      | 900   |
+| Q2      | {metrics.users} |
+
+<Chart data={metrics} color="#fcb32c" />
+<Chart data={metrics} color='#227788' />
+
+The two charts above are ADJACENT flow elements with no blank line between
+them, and the attributes mix quoting styles on purpose.
+
+<Tabs>
+  <TabItem label="npm">
+    ```sh
+    npm install birta
+    ```
+  </TabItem>
+</Tabs>
+
+Escaped braces \{like this} and angles \<like this> are prose, not syntax.

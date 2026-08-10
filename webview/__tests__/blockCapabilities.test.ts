@@ -32,6 +32,7 @@ import {
 } from "../blockCapabilities";
 import { canTurnInto } from "../components/blockMenu";
 import { contentGuardPlugin } from "../plugins/contentGuard";
+import { mdxBlockSchema, mdxInlineSchema } from "../format/mdx";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -48,6 +49,12 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(pureCommonmark)
         .use(gfmFidelity)
+        // The mdx format's SCHEMAS only, without its remark syntax plugins:
+        // registering the node types lets the exhaustiveness sweeps see them
+        // while the markdown parse (and so the golden matrix) is untouched —
+        // no mdx node can appear in a document this suite parses.
+        .use(mdxBlockSchema)
+        .use(mdxInlineSchema)
         // Real guard in the loop (MAR-108): these suites exercise guarded ops.
         .use(contentGuardPlugin)
         .create();

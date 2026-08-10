@@ -39,6 +39,7 @@ import {
 import { foldSelectedBlocks } from "../plugins/blockKeys";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { sinkItemKeepingChildren } from "../plugins/tabKeymap";
+import { mdxBlockSchema, mdxInlineSchema } from "../format/mdx";
 
 let editors: Editor[] = [];
 
@@ -54,6 +55,11 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(foldRevealKeymapPlugin)
         .use(pureCommonmark)
         .use(gfmFidelity)
+        // The mdx format's SCHEMAS only (no remark syntax plugins): the node
+        // types register so the fold-decision sweeps see them, while the
+        // markdown parse this suite drives is untouched.
+        .use(mdxBlockSchema)
+        .use(mdxInlineSchema)
         .use(headingFoldPlugin)
         .create();
     editors.push(editor);
@@ -732,6 +738,7 @@ const NOT_FOLDABLE_ALLOWLIST: Record<string, string> = {
     "table_row": "table interior — hidden by the table's own fold",
     "table_header": "table interior",
     "table_cell": "table interior",
+    "mdx_block": "opaque mdx island (MAR-42) — leaf atom whose source is one attr; nothing beyond its own rendering to hide",
 };
 
 describe("every block type has a fold decision (MAR-263)", () => {
@@ -803,6 +810,7 @@ describe("every block type has a fold decision (MAR-263)", () => {
             "math_inline": "inline atom",
             "wiki_link": "inline atom",
             "image_ref": "inline atom (![alt][ref] chip)",
+            "mdx_inline": "inline atom (opaque mdx island, MAR-42)",
         };
         const files: string[] = [];
         const walk = (dir: string): void => {

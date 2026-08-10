@@ -34,6 +34,7 @@ const NO_MARKER_ALLOWLIST: Record<string, string> = {
     "table_cell": "table interior",
     "table_header": "table interior",
     "footnote_reference": "inline atom despite isBlock quirks in some presets",
+    "mdx_block": "leaf atom like hr — no content position for the in-block widget; a gutter marker is the descriptor-editor follow-up's job (MAR-42)",
 };
 
 let editors: Editor[] = [];
@@ -99,6 +100,8 @@ describe("every block type has a grabber", () => {
             "wiki_link": "inline atom",
             "image_ref": "inline atom (![alt][ref] chip)",
             "link_definition": "allowlisted leaf atom (see NO_MARKER_ALLOWLIST)",
+            "mdx_block": "allowlisted leaf atom (see NO_MARKER_ALLOWLIST)",
+            "mdx_inline": "inline atom (opaque mdx island, MAR-42)",
         };
         // Walk ALL of webview/ (not just plugins/) so a node schema defined
         // anywhere fails the guard.

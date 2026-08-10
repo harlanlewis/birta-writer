@@ -1,0 +1,24 @@
+export function year() {
+  return new Date().getFullYear()
+}
+
+# Expression shapes
+
+{2 + 2}
+
+{`template ${"literal"} with braces`}
+
+A paragraph with {year()} inline, twice: {year() - 1} and counting.
+
+<>
+  A fragment wraps markdown *children* without naming a component.
+</>
+
+<figure>
+  <img src="/diagram.png" alt="lowercase host elements are JSX too" />
+  <figcaption>Lowercase elements are mdxJsxFlowElement, not HTML.</figcaption>
+</figure>
+
+{/* A flow-level MDX comment between blocks. */}
+
+Prose continues after the comment, with an inline {/* comment */} too.

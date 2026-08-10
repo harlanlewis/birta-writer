@@ -717,6 +717,14 @@ export class MarkdownEditorProvider
                         postToWebview(webviewPanel.webview, {
                             type: "init",
                             content: displayContent,
+                            // `.mdx` selects the webview's MDX FormatModule
+                            // (structural, never-executed JSX/ESM islands);
+                            // everything else is markdown. Derived from the
+                            // URI because a custom editor's document has no
+                            // reliable languageId of its own.
+                            format: document.uri.path.toLowerCase().endsWith(".mdx")
+                                ? "mdx"
+                                : "markdown",
                             ...this._lineMapFor(initContent),
                             frontmatter: this._frontmatterMap.get(uriKey) || undefined,
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
@@ -857,6 +865,44 @@ export class MarkdownEditorProvider
                                     type: "linkTargetPicked", id: message.id, path: null,
                                 });
                             });
+                        break;
+                    }
+                    case "fatalParse": {
+                        // The document cannot open in the WYSIWYG editor —
+                        // its format's parse is fatal on this content (MDX: a
+                        // stray `{`, an unclosed tag). Surface the error and
+                        // fall back to the text editor. The webview never
+                        // mounted an editor, so the document is untouched and
+                        // the tab cannot be dirty from this session.
+                        void vscode.window.showErrorMessage(
+                            `This file isn't valid MDX, so it opened in the text editor instead: ${message.error}`,
+                        );
+                        MarkdownEditorProvider.suppressAutoSwitch.add(document.uri.toString());
+                        setTimeout(() => MarkdownEditorProvider.suppressAutoSwitch.delete(document.uri.toString()), 2000);
+                        const viewCol = webviewPanel.viewColumn;
+                        let customTab: vscode.Tab | undefined;
+                        for (const group of vscode.window.tabGroups.all) {
+                            for (const tab of group.tabs) {
+                                if (
+                                    tab.input instanceof vscode.TabInputCustom &&
+                                    (tab.input as vscode.TabInputCustom).uri.toString() === document.uri.toString()
+                                ) {
+                                    customTab = tab;
+                                    break;
+                                }
+                            }
+                        }
+                        if (customTab) {
+                            const closed = await vscode.window.tabGroups.close(customTab);
+                            if (!closed) { break; }
+                        } else {
+                            webviewPanel.dispose();
+                        }
+                        const textDoc = await vscode.workspace.openTextDocument(document.uri);
+                        await vscode.window.showTextDocument(textDoc, {
+                            viewColumn: viewCol,
+                            preserveFocus: false,
+                        });
                         break;
                     }
                     case "switchToTextEditor": {

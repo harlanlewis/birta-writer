@@ -37,6 +37,14 @@ export type LinkTargetSuggestionItem = {
 /** Table line-wrapping mode */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
+/**
+ * The document's file format, derived extension-side from the URI (`.mdx` →
+ * "mdx", everything else markdown) and carried on `init` so the webview can
+ * select the matching FormatModule (webview/format/loader.ts). A document's
+ * format never changes while it is open, so only `init` carries it.
+ */
+export type DocumentFormat = "markdown" | "mdx";
+
 /** TOC dock side, matching the `birta.tocPosition` enum. */
 export type TocPosition = "left" | "right";
 // ToC show/hide preference. Type + normalizer live in ./tocVisibility (mirrors
@@ -346,7 +354,13 @@ export type ToExtensionMessage =
     // The selection palette's @ button: run the same birta.copyAgentReference
     // command the context menu offers, so the one-click path and the menu path
     // share behavior (clipboard payload, status-bar feedback) exactly.
-    | { type: "copyAgentReference" };
+    | { type: "copyAgentReference" }
+    // The document cannot open in the WYSIWYG editor because its format's
+    // parse is fatal on this content (MDX: a stray `{`, an unclosed tag —
+    // unlike markdown, where every byte sequence is valid). The extension
+    // surfaces `error` and falls back to the text editor. The webview has not
+    // modified anything: the editor never mounted.
+    | { type: "fatalParse"; error: string };
 
 /**
  * Extension → WebView messages.
@@ -383,7 +397,7 @@ export type ToWebviewMessage =
     // per-webview state does not survive the round trip. The extension keeps
     // the last bag per URI (in memory, session-scoped) and hands it back here;
     // the webview seeds its bag from it only when the bag is empty.
-    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number; viewState?: Record<string, unknown> }
+    | { type: "init"; content: string; format?: DocumentFormat; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number; viewState?: Record<string, unknown> }
     | { type: "externalUpdate"; content: string; lineMap?: number[]; lineOffset?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     // `line`/`column` is the caret; `anchorLine`/`anchorColumn`, when present,
     // carry the raw editor's selection anchor so the WYSIWYG editor restores

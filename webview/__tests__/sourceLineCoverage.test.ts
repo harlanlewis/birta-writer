@@ -115,6 +115,8 @@ describe("every block type has a source-line mapping story", () => {
             "wiki_link": "inline atom",
             "image_ref": "inline atom",
             "link_definition": "leaf atom",
+            "mdx_block": "leaf atom — source bytes live in the value attr, no nested text",
+            "mdx_inline": "inline atom",
         };
         const files: string[] = [];
         const walk = (dir: string): void => {

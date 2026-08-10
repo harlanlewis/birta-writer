@@ -55,6 +55,9 @@
                     },
                     {
                         "filenamePattern": "*.markdown"
+                    },
+                    {
+                        "filenamePattern": "*.mdx"
                     }
                 ],
                 "priority": "option"
@@ -633,7 +636,7 @@
                 "command": "birta.switchToPreview",
                 "key": "ctrl+shift+m",
                 "mac": "cmd+shift+m",
-                "when": "activeCustomEditorId != 'birta.editor' && (resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown)"
+                "when": "activeCustomEditorId != 'birta.editor' && (resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx)"
             },
             {
                 "command": "birta.gotoSymbol",
@@ -809,7 +812,7 @@
                 {
                     "command": "birta.switchToPreview",
                     "group": "navigation",
-                    "when": "activeCustomEditorId != 'birta.editor' && (resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown)"
+                    "when": "activeCustomEditorId != 'birta.editor' && (resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx)"
                 },
                 {
                     "command": "birta.debugModeEnable",
@@ -2231,6 +2234,7 @@
         "mermaid": "^11.16.0",
         "refractor": "^5.0.0",
         "remark-math": "^6.0.0",
+        "remark-mdx": "^3.1.1",
         "unist-util-visit": "^5.1.0"
     }
 }

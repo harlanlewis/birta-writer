@@ -29,11 +29,19 @@ That runs, verbosely, the three suites that together state the claims:
   `loadCorpusFixtures()` and held to invariants A and B, and is sampled by the
   generative move-fuzz suites. Dropping a new tool's fixture here is the whole
   enrollment step.
-- **`.mdx` / `.org` are deliberately NOT corpus members.** They encode the
-  table's 🔴 rows: formats where corruption *on edit* is the expected,
-  asserted outcome. Only `toolFidelity.test.ts` consumes them. If one of its
-  negative assertions ever fails, the serializer got *better* — re-verify and
-  upgrade the BENEFITS row rather than patching the test.
+- **`.org` is deliberately NOT a corpus member.** It encodes a 🔴 row: a
+  format where corruption *on edit* is the expected, asserted outcome. Only
+  `toolFidelity.test.ts` consumes it. If one of its negative assertions ever
+  fails, the serializer got *better* — re-verify and upgrade the BENEFITS row
+  rather than patching the test.
+- **`.mdx` fixtures are corpus members of the MDX pipeline** (MAR-42):
+  `roundTripCorpusMdx.test.ts` discovers every `.mdx` under
+  `__tests__/fixtures/` (this directory's `mdx.mdx` included, plus the
+  `fixtures/mdx/` family) and holds them to invariants A, B, and C with the
+  editor built on the mdx FormatModule. `toolFidelity.test.ts` still consumes
+  `mdx.mdx` for a different claim: what the MARKDOWN pipeline does to mdx
+  bytes (the table's row for opening `.mdx` *as markdown*), which its own
+  header explains.
 - **No YAML frontmatter in fixtures.** The extension lifts frontmatter off
   before the webview ever sees content (`src/utils/contentTransform.ts`), so
   a webview-side fixture with frontmatter would test a state production never

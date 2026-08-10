@@ -95,10 +95,12 @@ export { createHtmlView } from "./format/markdown";
 // ── The active format ───────────────────────────────────────────────────────
 // Everything format-specific the editor consumes — parsing presets, stringify
 // config, NodeViews, the minimal-diff profile — comes through this one
-// object (the MAR-41 seam; see format/types.ts). A top-level const is the
-// whole injection story for now: the seam is the point, runtime format
-// switching arrives with format #2 (MAR-40).
-const format: FormatModule = markdownFormat;
+// object (the MAR-41 seam; see format/types.ts). Selected per document:
+// createEditor receives the module (markdown by default; mdx resolved lazily
+// by format/loader.ts) and rebinds this before any use. A document's format
+// never changes while it is open, so between createEditor calls the binding
+// is stable.
+let format: FormatModule = markdownFormat;
 
 let _editor: Editor | null = null;
 
@@ -543,7 +545,11 @@ export async function createEditor(
     initialMarkdown: string,
     onUpdate: (markdown: string) => void,
     onDocChange?: () => void,
+    formatModule: FormatModule = markdownFormat,
 ): Promise<Editor> {
+    // Rebind the active format FIRST: everything below (mergeForSave,
+    // protection, the .use() chain) reads the module-level binding.
+    format = formatModule;
     // Plugins normalize the freshly loaded document asynchronously (RAF/
     // microtask) after create() returns, by which point _isSettled is already
     // true — and those are real doc changes, so the doc-change hook reports
