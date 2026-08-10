@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- MDX files open in the visual editor. An `.mdx` file now opens in Birta as an alternative editor (right-click the file, Open With, or set an editor association), in a mode that parses real MDX rather than pretending it is plain Markdown. Prose is edited exactly as in a Markdown document. Everything that makes MDX a program stays inert and untouched: `import` and `export` lines, JSX components and `{expressions}` render as clearly labeled read-only blocks, are never executed, and reach the file byte-for-byte as they arrived, however you edit around them. Markdown nested inside a JSX component is shown but not yet editable. A file that is not valid MDX cannot open visually, because an MDX parse error is fatal where Markdown has none: you get the parser's message and the plain text editor instead, with nothing written. None of this costs a Markdown document anything; the MDX engine loads only when an `.mdx` file actually opens.
+
 ### Changed
 
 - The extension icon is the current Birta Writer wordmark. The Extensions view and the Marketplace listing were showing an earlier drawing of it, set lighter and smaller in the tile; the mark is heavier and fills more of the square, so it stays legible at the size the tile is actually drawn.
