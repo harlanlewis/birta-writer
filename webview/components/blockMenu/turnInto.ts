@@ -205,9 +205,10 @@ export function wrapListIn(view: EditorView, pos: number, target: ConversionKind
  */
 export function unwrapContainerTo(view: EditorView, pos: number, level: number): boolean {
     let changed = false;
-    // A document can nest containers arbitrarily; the bound keeps a
-    // pathological one from spinning, since the loop's own progress check is
-    // what normally ends it.
+    // Every iteration that does not return replaces a container with its own
+    // children, so the nesting at `pos` strictly shrinks and the loop ends on
+    // its own. The bound is the fail-safe: a spin here would hang the webview,
+    // and no real document nests quotes this deep.
     for (let guard = 0; guard < 10; guard++) {
         const node = view.state.doc.nodeAt(pos);
         if (!node || node.childCount === 0) {

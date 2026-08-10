@@ -328,7 +328,26 @@ const calloutToMarkdown = {
             // heading, not a callout), so untouched-callout byte fidelity is
             // unaffected.
             const firstLine = flow.split("\n", 1)[0] ?? "";
-            const attached = node.attached && !SETEXT_UNDERLINE_RE.test(firstLine);
+            // Two defusals of a stale `attached`, both about bytes that would
+            // reparse as something the document does not say.
+            //
+            // (1) A body whose first line would reparse as a setext underline
+            // (`---` after an hr move, MAR-157) turns the marker into a
+            // heading unless the blank `>` line separates them — the same (G)
+            // defusal directives.ts applies. No on-disk callout can carry this
+            // shape (it would have parsed as a heading, not a callout), so
+            // untouched-callout byte fidelity is unaffected.
+            //
+            // (2) `attached` says the body SHARED the marker's paragraph,
+            // which only a leading paragraph can do — an invariant the parse
+            // establishes and an edit can break: quoting or itemizing a
+            // callout's first body block leaves a list or a quote leading a
+            // body still flagged attached, and joining that to the marker line
+            // writes bytes that reparse detached.
+            const attached =
+                node.attached &&
+                node.children?.[0]?.type === "paragraph" &&
+                !SETEXT_UNDERLINE_RE.test(firstLine);
             const content =
                 flow === ""
                     ? marker

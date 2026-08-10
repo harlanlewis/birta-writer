@@ -258,6 +258,22 @@ describe("quoting inside a container", () => {
         expect(await reparse(md)).toBe(md);
     });
 
+    it("a paragraph in a callout should be quoted where it stands", async () => {
+        const editor = await makeEditor("> [!NOTE]\n> body\n");
+        const v = view(editor);
+        placeCaretAt(v, "body");
+
+        runEditorCommand("toggleBlockquote", getEditor);
+
+        // A callout is `block+`, so the quote is legal right there: quoting the
+        // block the caret is in never reaches for the container around it. The
+        // blank `>` line appears because the body no longer LEADS with a
+        // paragraph, so it can no longer share the marker's line.
+        const md = markdown(editor);
+        expect(md).toBe("> [!NOTE]\n>\n> > body\n");
+        expect(await reparse(md)).toBe(md);
+    });
+
     it("a nested sublist should be quoted without touching its parent", async () => {
         const editor = await makeEditor("- one\n  - deep\n- two\n");
         const v = view(editor);
@@ -295,6 +311,23 @@ describe("insertCallout shares the wrap", () => {
 
         const md = markdown(editor);
         expect(md).toBe("> [!TIP]\n> plain text\n");
+        expect(await reparse(md)).toBe(md);
+    });
+
+    it("a callout whose body stops leading with a paragraph should detach it", async () => {
+        // `attached` is an invariant the parse establishes (a body can share
+        // the marker's line only when it starts with a paragraph) and any edit
+        // that puts a list or a quote first breaks it. Serializing an attached
+        // callout whose body no longer leads with prose writes bytes that
+        // reparse detached, so the file gains a `>` line on the NEXT save
+        // rather than this one.
+        const editor = await makeEditor("> [!NOTE]\n> body\n");
+        placeCaretAt(view(editor), "body");
+
+        runEditorCommand("toggleBulletList", getEditor);
+
+        const md = markdown(editor);
+        expect(md).toBe("> [!NOTE]\n>\n> - body\n");
         expect(await reparse(md)).toBe(md);
     });
 

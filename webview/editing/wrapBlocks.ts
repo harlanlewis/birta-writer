@@ -115,15 +115,3 @@ export function liftBlocksOutOf(typeName: string): Command {
         return false;
     };
 }
-
-/** True when the selection sits anywhere inside a `typeName` container — the
- * question "is this gesture a wrap or an unwrap?". */
-export function isInsideNode(state: Parameters<Command>[0], typeName: string): boolean {
-    const { $from } = state.selection;
-    for (let depth = $from.depth; depth >= 0; depth--) {
-        if ($from.node(depth).type.name === typeName) {
-            return true;
-        }
-    }
-    return false;
-}

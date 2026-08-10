@@ -281,6 +281,12 @@ function toggleBlockquote(getEditor: GetEditor): void {
  * makes the pick mean what it says — the line becomes a list item and stops
  * being a heading, the inverse of setHeading's "a heading leaves the list"
  * (and what the block menu's Turn-into already does by another route).
+ *
+ * The demotion cannot strand a heading as a bare paragraph: `heading` and
+ * `bullet_list` are both group `block`, so anywhere a heading is legal a list
+ * is too. The one position that admits a paragraph but not a list — a list
+ * item's first child — admits no heading either, and a caret in a list never
+ * reaches this branch.
  */
 function demoteHeadingsInSelection(view: EditorView): void {
     const paragraph = view.state.schema.nodes["paragraph"];

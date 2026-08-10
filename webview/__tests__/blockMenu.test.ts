@@ -681,6 +681,17 @@ describe("undo semantics", () => {
         undo(v.state, v.dispatch);
         expect(markdown(editor)).toBe("# Title");
     });
+
+    it("a layer-by-layer unwrap (quoted list → H2) should revert with a single undo", async () => {
+        // Same contract, now over a conversion whose transaction count depends
+        // on how deep the source was nested.
+        const editor = await makeEditor("> - one\n> - two");
+        const v = view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Heading 2");
+        expect(markdown(editor)).toBe("## one\n\n## two");
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("> - one\n> - two");
+    });
 });
 
 describe("undo restores the caret at the acted-on block (no scroll-to-top)", () => {
