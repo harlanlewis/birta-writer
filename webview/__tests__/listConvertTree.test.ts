@@ -377,6 +377,50 @@ describe("toggleList (toolbar Lists menu / slash menu commands)", () => {
 
         expect(markdown(editor)).toBe("- plain text\n");
     });
+
+    // A list item's content is `paragraph block*`, so a heading cannot be its
+    // first child and the stock wrap command silently no-opped: the line kept
+    // its `#` markers and never became an item. Demoting the heading first is
+    // what makes the pick mean what it says.
+    it.each([
+        ["toggleBulletList", "- Title\n"],
+        ["toggleOrderedList", "1. Title\n"],
+        ["toggleTaskList", "- [ ] Title\n"],
+    ] as const)("caret in a heading + %s should demote it into an item", async (id, expected) => {
+        const editor = await makeEditor("## Title\n");
+        placeCaretAt(view(editor), "Title");
+
+        runEditorCommand(id, getEditor);
+
+        expect(markdown(editor)).toBe(expected);
+    });
+
+    it("a selection covering headings should leave no heading behind", async () => {
+        const editor = await makeEditor("# One\n\nplain\n\n### Three\n");
+        const v = view(editor);
+        v.dispatch(v.state.tr.setSelection(
+            TextSelection.create(v.state.doc, 1, v.state.doc.content.size - 1),
+        ));
+
+        runEditorCommand("toggleBulletList", getEditor);
+
+        // Every covered heading is demoted, so no `#` survives inside the
+        // list. How a multi-block selection is GROUPED into items is the stock
+        // wrap command's business and is deliberately not asserted here.
+        const md = markdown(editor);
+        expect(md).not.toMatch(/#/);
+        expect(md.startsWith("- One")).toBe(true);
+        expect(v.state.doc.child(0).type.name).toBe("bullet_list");
+    });
+
+    it("a heading inside a blockquote should itemize inside the quote", async () => {
+        const editor = await makeEditor("> ## Title\n");
+        placeCaretAt(view(editor), "Title");
+
+        runEditorCommand("toggleBulletList", getEditor);
+
+        expect(markdown(editor)).toBe("> - Title\n");
+    });
 });
 
 describe("list locator helpers", () => {

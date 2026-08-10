@@ -22,7 +22,6 @@ import {
     wrapInHeadingCommand,
     wrapInBulletListCommand,
     wrapInOrderedListCommand,
-    wrapInBlockquoteCommand,
     createCodeBlockCommand,
 } from "@milkdown/preset-commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
@@ -106,11 +105,21 @@ describe("editorCommands registry — Milkdown command entries", () => {
     it.each([
         ["toggleBulletList", wrapInBulletListCommand],
         ["toggleOrderedList", wrapInOrderedListCommand],
-        ["toggleBlockquote", wrapInBlockquoteCommand],
     ] as const)("%s (not already inside) should wrap via its command key", (id, command) => {
         const { editor, call } = fakeEditor();
         editorCommands[id](() => editor);
         expect(call).toHaveBeenCalledWith(command.key);
+    });
+
+    // toggleBlockquote deliberately calls NO Milkdown command key: both halves
+    // are ProseMirror commands from editing/wrapBlocks, because
+    // wrapInBlockquoteCommand (stock `wrapIn`) silently failed on a list or a
+    // table. Its behavior is pinned against a real editor in
+    // quoteAnyBlock.test.ts.
+    it("toggleBlockquote should not route through a Milkdown command key", () => {
+        const { editor, call } = fakeEditor();
+        editorCommands.toggleBlockquote(() => editor);
+        expect(call).not.toHaveBeenCalled();
     });
 
     it("a null editor should be a safe no-op", () => {

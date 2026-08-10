@@ -31,8 +31,12 @@
 export { markRule, nodeRule } from "@milkdown/prose";
 
 // ─── prose/model: documents, nodes, marks, schema, positions ───
-export { DOMSerializer, Fragment, Schema, Slice } from "@milkdown/prose/model";
-export type { Mark, MarkType, Node, NodeType, ResolvedPos } from "@milkdown/prose/model";
+// `NodeRange` names a run of sibling nodes by the depth of their shared
+// parent — the unit both halves of a block wrap speak in (editing/wrapBlocks
+// constructs one per candidate depth rather than taking only the innermost
+// range `blockRange` returns).
+export { DOMSerializer, Fragment, NodeRange, Schema, Slice } from "@milkdown/prose/model";
+export type { Attrs, Mark, MarkType, Node, NodeType, ResolvedPos } from "@milkdown/prose/model";
 
 // ─── prose/state: editor state, selections, plugins, transactions ───
 export {
@@ -62,11 +66,25 @@ export type {
 // NEW one (and to reject moved/deleted headings via an inverse round-trip).
 // `canJoin` asks whether the nodes either side of a position can merge into
 // one — the legality probe behind every list-merge surface (editing/listMerge).
-export { canJoin, Mapping, ReplaceAroundStep, ReplaceStep } from "@milkdown/prose/transform";
+// `findWrapping` answers "may this range be wrapped in that node type here?",
+// and `liftTarget` the inverse "may this range come back out?" — the schema
+// itself deciding, which is what lets editing/wrapBlocks climb to the depth
+// where a quote is legal instead of hard-coding where lists and tables sit.
+export {
+    canJoin,
+    findWrapping,
+    liftTarget,
+    Mapping,
+    ReplaceAroundStep,
+    ReplaceStep,
+} from "@milkdown/prose/transform";
 export type { Mappable } from "@milkdown/prose/transform";
 
 // ─── prose/commands: generic editing commands ───
-export { deleteSelection, joinTextblockBackward, lift, splitBlock, toggleMark, wrapIn } from "@milkdown/prose/commands";
+// (No `wrapIn`: every wrap in the webview goes through editing/wrapBlocks,
+// which asks the schema at each ancestor depth instead of giving up at the
+// innermost one — see its header for what that fixes.)
+export { deleteSelection, joinTextblockBackward, lift, splitBlock, toggleMark } from "@milkdown/prose/commands";
 
 // ─── prose/gapcursor: a selection where no text position exists ───
 // The only valid caret at the positions between/around block leaves — before a

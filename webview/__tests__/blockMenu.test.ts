@@ -234,6 +234,39 @@ describe("Turn into — non-prose sources", () => {
         expect(markdown(editor)).toBe("- alpha\n- beta");
     });
 
+    // A one-layer unwrap stopped at whatever it exposed, so every one of these
+    // picks handed back the same bullet list: the row that lit up afterwards
+    // was not the row that was clicked.
+    it("a quoted list → paragraph should leave prose, not the list", async () => {
+        const editor = await makeEditor("> - one\n> - two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
+        expect(markdown(editor)).toBe("one\n\ntwo");
+    });
+
+    it("a quoted list → H2 should leave headings", async () => {
+        const editor = await makeEditor("> - one\n> - two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Heading 2");
+        expect(markdown(editor)).toBe("## one\n\n## two");
+    });
+
+    it("a doubly quoted paragraph → paragraph should shed both layers", async () => {
+        const editor = await makeEditor("> > buried");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
+        expect(markdown(editor)).toBe("buried");
+    });
+
+    it("a quote holding a table → paragraph should keep the table it cannot retype", async () => {
+        const editor = await makeEditor("> | a | b |\n> |---|---|\n> | c | d |");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
+        // Unwrapped once and stopped: a table has no prose form, and inventing
+        // one would lose cells.
+        expect(view(editor).state.doc.firstChild!.type.name).toBe("table");
+    });
+
     it("a whole list → code block should fence its literal markdown source", async () => {
         const editor = await makeEditor("- one\n- two");
         view(editor);

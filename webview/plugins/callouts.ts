@@ -32,7 +32,7 @@
  * marker is never rewritten by collapsing/expanding.
  */
 import { InputRule } from "../pm";
-import { wrapIn } from "../pm";
+import { wrapBlocksIn, wrapTarget } from "../editing/wrapBlocks";
 import { $command, $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 import { SETEXT_UNDERLINE_RE } from "./directives";
 
@@ -472,16 +472,27 @@ export const calloutInputRule = $inputRule((ctx) =>
  * Wraps the selection in a callout of the given kind (default "note").
  * GitHub's five types insert with their uppercase convention; extended kinds
  * insert lowercase (the Obsidian convention).
+ *
+ * Wraps through editing/wrapBlocks, so a list or a table goes inside the
+ * callout whole rather than the gesture silently failing on a container the
+ * schema won't let a callout sit in (a list item's first child, a table cell).
  */
 export const insertCalloutCommand = $command(
     "InsertCallout",
     (ctx) => (kind?: string) => (state, dispatch) => {
         const k = calloutKind(kind ?? "note");
         const type = GITHUB_KINDS.has(k) ? k.toUpperCase() : k;
-        return wrapIn(calloutSchema.type(ctx), attrsFromMarker(`[!${type}]`, true))(
-            state,
-            dispatch,
-        );
+        const calloutType = calloutSchema.type(ctx);
+        const target = wrapTarget(state, calloutType);
+        if (!target) {
+            return false;
+        }
+        // `attached` says the body shares the marker's line, which only a
+        // paragraph can do: wrapping a list or a table has to record false, or
+        // the callout serializes a `>` line the reparse then reads as a blank
+        // one it must keep.
+        const attrs = attrsFromMarker(`[!${type}]`, target.first.type.name === "paragraph");
+        return wrapBlocksIn(calloutType, attrs)(state, dispatch);
     },
 );
 
