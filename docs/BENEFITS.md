@@ -150,7 +150,7 @@ A move, duplicate, table reorder, or drag that would alter or drop document cont
 
 ### A save always captures your latest edit
 
-The moment you type, the editor marks the document unsaved, within a few milliseconds, faster than you can reach Save. A save then waits for the editor to hand back its freshest content before writing to disk.
+The moment you type, the editor marks the document unsaved, within a few milliseconds, faster than you can reach Save. A save then waits, briefly and with a bound, for the editor to hand back its freshest content before writing to disk, and confirms what actually reached the document: content that arrived too late for its save marks the document unsaved again on the spot, so the next save or autosave writes it.
 
 The old trap where a quick Cmd+S seemed to "not take" and the change quietly vanished on close is gone. Your edits are never left stranded in the editor, unwritten.
 
