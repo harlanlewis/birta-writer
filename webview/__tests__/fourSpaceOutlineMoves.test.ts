@@ -26,6 +26,7 @@ import { parserCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges } from "@birta/minimal-diff";
 import type { Node as ProseNode } from "../pm";
+import { Slice, TextSelection } from "../pm";
 import {
     contentGuardPlugin,
     diffFingerprints,
@@ -202,12 +203,26 @@ describe("four-space outline moves (MAR-343)", () => {
         let verifiedDamaged = 0;
         let applied = 0;
         let serializerClean = 0;
-        for (let pos = 1; pos < source.length && pos < v.state.doc.content.size; pos++) {
-            const tr = v.state.tr;
+        for (let pos = 1; pos < v.state.doc.content.size; pos++) {
+            // A paste lands at the CURSOR, so only positions a caret can
+            // actually occupy count. Inserting at every offset would sweep
+            // places no gesture reaches and claim user impact the product
+            // never has — the distinction this repo keeps between corpus pins
+            // M8 (unreachable, guards the gate) and M9 (a real drop slot).
+            let sel;
             try {
-                tr.replaceWith(pos, pos, pasted.content);
+                sel = TextSelection.near(v.state.doc.resolve(pos), 1);
             } catch {
-                continue; // not a position this content can be placed at
+                continue;
+            }
+            if (sel.from !== pos || !sel.empty) {
+                continue; // the caret settles elsewhere; this offset is not its own
+            }
+            const tr = v.state.tr.setSelection(sel);
+            try {
+                tr.replaceSelection(new Slice(pasted.content, 0, 0));
+            } catch {
+                continue;
             }
             if (!tr.docChanged) {
                 continue;
@@ -237,7 +252,7 @@ describe("four-space outline moves (MAR-343)", () => {
             v.updateState(baseState);
         }
 
-        expect(applied, "no paste positions were exercised").toBeGreaterThan(0);
+        expect(applied, "no caret-reachable paste positions were exercised").toBeGreaterThan(0);
         expect(serializerClean, "no paste left a serializable document").toBeGreaterThan(0);
         expect(
             rawDamaged,
