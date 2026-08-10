@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.810.0] - 2026, August 10
+
 ### Changed
 
 - The extension icon is the current Birta Writer wordmark. The Extensions view and the Marketplace listing were showing an earlier drawing of it, set lighter and smaller in the tile; the mark is heavier and fills more of the square, so it stays legible at the size the tile is actually drawn.
