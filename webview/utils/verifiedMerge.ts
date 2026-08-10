@@ -74,6 +74,23 @@ function reopensAs(liveFp: Fingerprint, text: string, parse: ParseMarkdown): boo
     return formatFingerprintDiff(diffFingerprints(liveFp, fingerprintDoc(doc))) === CLEAN;
 }
 
+/** The bytes to write, and whether they are the serializer's own text. */
+export interface VerifiedMerge {
+    text: string;
+    /**
+     * True when `text` is the serializer's canonical output rather than a merge
+     * carrying the saved file's own spelling. Three ways to get there, and the
+     * caller must not care which: this function overruled a damaged merge, the
+     * engine's own output self-check had already stood the merge down, or the
+     * saved file was canonical to begin with so the two coincide.
+     *
+     * What it tells the caller is one thing (MAR-344): round-trip protection
+     * derived from the previous baseline has nothing left to describe, because
+     * every construct it pinned is about to be written in canonical form.
+     */
+    canonical: boolean;
+}
+
 /**
  * `applyMinimalChanges`, with the merged bytes verified against the live
  * document before they are handed on.
@@ -109,26 +126,30 @@ export function mergeVerified(
     protection: RoundTripProtection | null,
     live: ProseNode,
     parse: ParseMarkdown,
-): string {
+): VerifiedMerge {
     const merged = applyMinimalChanges(saved, serialized, profile, protection);
     const fallback = serializerFallback(saved, serialized);
+    // One comparison decides `canonical` for every exit, so the flag cannot
+    // drift from the bytes it describes as branches are added.
+    const result = (text: string): VerifiedMerge => ({ text, canonical: text === fallback });
     // The merge already chose the serializer's text (an internal self-check
     // tripped, or there was nothing saved to preserve). Both candidates are
-    // the same bytes, so every branch below returns them; this only saves the
-    // parse. It is an optimization and no test pins it, deliberately — there
-    // is no behaviour here to pin.
+    // the same bytes, so every branch below would return them; this only saves
+    // the parse. It still reports `canonical`: the engine's own fallback leaves
+    // exactly the baseline this one does, and it is not the rare road — the
+    // self-check fires without consulting this function at all.
     if (merged === fallback) {
-        return merged;
+        return result(merged);
     }
     // Fingerprinted once and shared: both checks compare against the same live
     // document, and it is the larger of the two documents being walked.
     const liveFp = fingerprintDoc(live);
     if (reopensAs(liveFp, merged, parse)) {
-        return merged;
+        return result(merged);
     }
     // The merged bytes are dirty. Only the merge's OWN damage is ours to
     // overrule: if the serializer is dirty too, the document was already
     // broken and writing canonical bytes would not fix it, while discarding
     // the file's spelling on every save certainly would hurt.
-    return reopensAs(liveFp, fallback, parse) ? fallback : merged;
+    return result(reopensAs(liveFp, fallback, parse) ? fallback : merged);
 }

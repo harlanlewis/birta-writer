@@ -269,7 +269,7 @@ let _onDocChange: (() => void) | null = null;
  * rather than knowing markdown exists.
  */
 function mergeForSave(editor: Editor, markdown: string): string {
-    return mergeVerified(
+    const { text, canonical } = mergeVerified(
         _savedMarkdown,
         markdown,
         format.formatProfile,
@@ -277,6 +277,33 @@ function mergeForSave(editor: Editor, markdown: string): string {
         editor.action((ctx) => getState(ctx).doc),
         (text) => editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null,
     );
+    if (canonical) {
+        // Every construct protection was pinning has just been written in the
+        // serializer's own spelling, so the regions describe a baseline that no
+        // longer exists. Reusing them repairs the NEXT save's serialization back
+        // to a spelling the file no longer has, and the file swings out on one
+        // save and back on the next (MAR-344).
+        //
+        // Dropping rather than recomputing, because that is what a reload of
+        // these bytes would compute: across every protected corpus fixture the
+        // serializer's output reparses and re-serializes to itself, so its own
+        // protection is empty. That is a census of the fixtures, not a theorem
+        // about the serializer — but the direction is the safe one, since
+        // protection only ever restores saved bytes and canonical bytes have
+        // none to restore.
+        //
+        // Cleared here rather than beside the callers' `_savedMarkdown =`,
+        // because both save paths funnel through this function. A caller that
+        // discards the bytes as unchanged is served correctly too: identical
+        // bytes mean the baseline was already canonical.
+        //
+        // The snapshot is cleared alongside, as _applyExternalNow does when it
+        // re-baselines: getProtection consumes it before this line is reached,
+        // so the pair states the invariant rather than repairing anything.
+        _protection = null;
+        _protectionSnapshot = null;
+    }
+    return text;
 }
 
 /**

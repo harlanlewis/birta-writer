@@ -140,7 +140,8 @@ async function sweep(source: string, cap = Infinity): Promise<Sweep> {
             }
             if (
                 reopensDirty(
-                    mergeVerified(source, serialized, markdownProfile, protection, live, parse),
+                    mergeVerified(source, serialized, markdownProfile, protection, live, parse)
+                        .text,
                 )
             ) {
                 out.verifiedDamaged++;
@@ -243,7 +244,8 @@ describe("four-space outline moves (MAR-343)", () => {
                 }
                 if (
                     dirty(
-                        mergeVerified(source, serialized, markdownProfile, protection, live, parse),
+                        mergeVerified(source, serialized, markdownProfile, protection, live, parse)
+                            .text,
                     )
                 ) {
                     verifiedDamaged++;

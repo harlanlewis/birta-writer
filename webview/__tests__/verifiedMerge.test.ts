@@ -82,7 +82,7 @@ describe("mergeVerified", () => {
         v.dispatch(v.state.tr.insertText(" Edited.", at + para.nodeSize - 1));
 
         const serialized = editor.action(getMarkdown());
-        const out = mergeVerified(
+        const { text: out, canonical } = mergeVerified(
             saved,
             serialized,
             markdownProfile,
@@ -92,6 +92,11 @@ describe("mergeVerified", () => {
         );
 
         expect(out).toBe(applyMinimalChanges(saved, serialized, markdownProfile, protection));
+        // Canonical, and legitimately so: this saved file is already the
+        // serializer's own spelling, so the merge output and the fallback are
+        // the same bytes. Dropping protection on that is a no-op — a canonical
+        // file has none — which is why the flag can afford to be this broad.
+        expect(canonical).toBe(true);
         expect(out).toContain("Edited.");
         // The saved file's own spelling survived — this is the merge doing its job.
         expect(out).toContain("- a");
@@ -134,7 +139,7 @@ describe("mergeVerified", () => {
                     "the serializer's own output should be clean for this pair",
                 ).toBe(true);
 
-                const out = mergeVerified(
+                const { text: out, canonical } = mergeVerified(
                     FOUR_SPACE_DEPTH_3,
                     serialized,
                     markdownProfile,
@@ -144,6 +149,7 @@ describe("mergeVerified", () => {
                 );
                 expect(out).not.toBe(merged);
                 expect(out).toBe(serialized);
+                expect(canonical, "the caller must be told its baseline was replaced").toBe(true);
                 expect(reopensClean(editor, v.state.doc, out)).toBe(true);
                 v.updateState(baseState);
                 break;
@@ -185,7 +191,7 @@ describe("mergeVerified", () => {
         expect(reopensClean(editor, v.state.doc, serialized)).toBe(false);
         expect(reopensClean(editor, v.state.doc, merged)).toBe(false);
 
-        const out = mergeVerified(
+        const { text: out, canonical } = mergeVerified(
             saved,
             serialized,
             markdownProfile,
@@ -193,10 +199,45 @@ describe("mergeVerified", () => {
             v.state.doc,
             parseWith(editor),
         );
+        expect(canonical, "the file's own spelling was kept, so this is not canonical").toBe(
+            false,
+        );
         // The merge is kept: degrading here would discard the file's own
         // spelling on every save of a file that can never verify clean.
         expect(out).toBe(merged);
         expect(out, "the file's own blank-line spacing survives").toContain("prose.\n\n\nMore");
+    });
+
+    it("a merge the ENGINE already stood down should still be reported as a fallback", async () => {
+        // MAR-344. `applyMinimalChanges` writes the serializer's own text
+        // whenever its output self-check trips, without consulting this
+        // function at all, and a corpus sweep found that road far better
+        // travelled than this one's own fallback. Both leave the caller's
+        // round-trip protection describing a baseline that no longer exists, so
+        // both must be reported: the early return is not only an optimization.
+        //
+        // An empty saved file is the cheap way to reach it: there is nothing to
+        // preserve, so the merge IS the serializer's text and the verifier
+        // returns before it parses anything.
+        const editor = await makeEditor("");
+        const v = editorView(editor);
+        v.dispatch(v.state.tr.insertText("Typed into a new file."));
+        const serialized = editor.action(getMarkdown());
+        expect(
+            applyMinimalChanges("", serialized, markdownProfile, null),
+            "premise: the engine returns its own fallback here",
+        ).toBe(serializerFallback("", serialized));
+
+        const { text, canonical } = mergeVerified(
+            "",
+            serialized,
+            markdownProfile,
+            null,
+            v.state.doc,
+            parseWith(editor),
+        );
+        expect(text).toBe(serializerFallback("", serialized));
+        expect(canonical).toBe(true);
     });
 
     it("a parser that throws should not propagate out of the save path", async () => {
