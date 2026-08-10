@@ -221,7 +221,7 @@ function buildPanel(): HTMLDivElement {
     addRow(
         [[keys("Alt-ArrowUp"), keys("Alt-ArrowDown")]],
         t("Move block up / down"),
-        t("Move carries a heading's whole section."),
+        t("A heading moves alone — drag it in the table of contents to move its section."),
     );
     addRow(
         [[keys("Shift-Alt-ArrowUp"), keys("Shift-Alt-ArrowDown")]],

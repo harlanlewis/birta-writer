@@ -2226,10 +2226,11 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-hos
     opacity: 0;
 }
 
-/* Drag veil: dims everything the drag will move (the whole section for a
-   heading drag) — a translucent overlay in the editor's own background, so
-   the covered content reads at reduced opacity. Below the indicator/pill,
-   above the content. */
+/* Drag veil: dims everything the drag will move — a translucent overlay in
+   the editor's own background, so the covered content reads at reduced
+   opacity. Below the indicator/pill, above the content. Its extent is the
+   drag's CURRENT scope, so a heading dragged over the outline dims its whole
+   section and the same drag over the page dims only its line. */
 .block-drag-veil {
     display: none;
     position: fixed;

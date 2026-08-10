@@ -13,7 +13,7 @@ import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 import { undo } from "../pm";
-import { moveBlockTo, moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
+import { moveBlockTo, moveRangeAt, outlineRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { mockVscodeApi } from "./setup";
 import {
     blockBoundaryPositions,
@@ -315,8 +315,9 @@ describe("drop-zone providers", () => {
 
     /** A stub zone: pure coordinate math, so jsdom's zero-rect layout is
      * irrelevant — everything right of x=100 is "inside". */
-    function stubProvider(targetPos: () => number) {
+    function stubProvider(targetPos: () => number, scope: "body" | "outline" = "body") {
         return {
+            scope,
             contains: vi.fn((x: number) => x >= 100),
             sessionStart: vi.fn(),
             target: vi.fn(() => ({ pos: targetPos() })),
@@ -342,6 +343,82 @@ describe("drop-zone providers", () => {
             expect(markdown(editor)).toBe("Beta\n\nGamma\n\nAlpha");
             expect(provider.sessionEnd).toHaveBeenCalledTimes(1);
             expect(provider.clear).toHaveBeenCalled();
+        } finally {
+            unregister();
+        }
+    });
+
+    // ── Drop-zone scope: the DESTINATION decides what a heading carries ──
+    // One session, two ranges. Which one every consumer sees — the provider's
+    // sessionStart/target, the veil, and the commit — follows the zone the
+    // pointer is in, not the handle the drag started on.
+    const SECTIONS = "# A\n\ncontent A\n\n# B\n\ncontent B";
+
+    it("an outline-scoped zone should receive and commit the heading's whole section", async () => {
+        const editor = await makeEditor(SECTIONS);
+        const v = view(editor);
+        const provider = stubProvider(() => v.state.doc.content.size, "outline");
+        const unregister = registerDropZoneProvider(provider);
+        try {
+            const m = marker(); // heading A's marker
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 200, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 });
+            // Section A = heading + its paragraph, not the bare heading.
+            const { doc } = v.state;
+            const sectionA = { from: 0, to: doc.child(0).nodeSize + doc.child(1).nodeSize };
+            expect(provider.sessionStart).toHaveBeenCalledWith(v, sectionA, "block");
+            expect(provider.target).toHaveBeenCalledWith(150, 210, sectionA);
+            mouse(document, "mouseup", { button: 0, buttons: 0 });
+            expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
+        } finally {
+            unregister();
+        }
+    });
+
+    it("a body-scoped zone should receive and commit the heading LINE alone", async () => {
+        const editor = await makeEditor(SECTIONS);
+        const v = view(editor);
+        const provider = stubProvider(() => v.state.doc.content.size, "body");
+        const unregister = registerDropZoneProvider(provider);
+        try {
+            const m = marker();
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 200, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 });
+            const headingA = { from: 0, to: v.state.doc.child(0).nodeSize };
+            expect(provider.sessionStart).toHaveBeenCalledWith(v, headingA, "block");
+            expect(provider.target).toHaveBeenCalledWith(150, 210, headingA);
+            mouse(document, "mouseup", { button: 0, buttons: 0 });
+            expect(markdown(editor)).toBe("content A\n\n# B\n\ncontent B\n\n# A");
+        } finally {
+            unregister();
+        }
+    });
+
+    it("leaving an outline zone for the document should re-scope the commit to the block", async () => {
+        // The scope is re-read on every move, so a pointer that passes through
+        // the outline and back out commits what the DOCUMENT drop means.
+        const editor = await makeEditor(SECTIONS);
+        const v = view(editor);
+        // Document geometry: heading A at y 0–20, doc end below it.
+        for (const [pos, top] of [[0, 0], [5, 40], [17, 80], [22, 120]] as const) {
+            const dom = v.nodeDOM(pos) as HTMLElement | null;
+            if (dom) {
+                dom.getBoundingClientRect = () =>
+                    ({
+                        left: 0, top, right: 200, bottom: top + 20,
+                        width: 200, height: 20, x: 0, y: top, toJSON: () => ({}),
+                    }) as DOMRect;
+            }
+        }
+        const provider = stubProvider(() => v.state.doc.content.size, "outline");
+        const unregister = registerDropZoneProvider(provider);
+        try {
+            const m = marker();
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 5, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 }); // inside the zone
+            mouse(document, "mousemove", { clientX: 12, clientY: 139, buttons: 1 }); // back out, near doc end
+            mouse(document, "mouseup", { button: 0, buttons: 0 });
+            expect(markdown(editor)).toBe("content A\n\n# B\n\ncontent B\n\n# A");
         } finally {
             unregister();
         }
@@ -488,10 +565,20 @@ describe("moveBlockTo", () => {
         expect(markdown(editor)).toBe("Gamma\n\nAlpha\n\nBeta");
     });
 
-    it("a heading's range should carry its section to the drop", async () => {
+    it("a heading dragged in the DOCUMENT should move its line alone", async () => {
         const editor = await makeEditor("# A\n\ncontent A\n\n# B\n\ncontent B");
         const v = view(editor);
         const range = moveRangeAt(v, 0)!;
+        expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
+        expect(markdown(editor)).toBe("content A\n\n# B\n\ncontent B\n\n# A");
+    });
+
+    it("a heading dragged into the OUTLINE should carry its section to the drop", async () => {
+        const editor = await makeEditor("# A\n\ncontent A\n\n# B\n\ncontent B");
+        const v = view(editor);
+        // The scope a TOC drop uses — the same session, re-scoped by the zone
+        // the pointer is over (components/blockMenu/drag, DropZoneProvider).
+        const range = outlineRangeAt(v, 0)!;
         expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
     });

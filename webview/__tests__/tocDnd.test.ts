@@ -188,6 +188,36 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
         expect(markdown(editor)).toBe("# B\n\nb body\n\n# A\n\nhidden body");
     });
 
+    it("a toc-started drag dropped in the DOCUMENT should move the heading alone", async () => {
+        // The scope belongs to the destination, so leaving the panel turns an
+        // outline gesture into the literal block move the canvas means.
+        const editor = await makeEditor("# A\n\na body\n\n# B\n\nb body");
+        const v = view(editor);
+        // Document geometry (jsdom has no layout): one 20px block per y step.
+        let top = 0;
+        v.state.doc.forEach((_node, offset) => {
+            const dom = v.nodeDOM(offset) as HTMLElement | null;
+            const at = top;
+            if (dom) {
+                dom.getBoundingClientRect = () =>
+                    rect(0, at, 200, 20);
+            }
+            top += 40;
+        });
+        const dom = buildTocDom(v);
+        const dnd = initDnd(v, dom);
+        const [entryA] = headingsOf(v);
+        const itemA = dom.items.get(entryA!.pos)!;
+        dnd.wireItemDrag(itemA, entryA!);
+
+        mouse(itemA, "mousedown", { button: 0, clientX: 600, clientY: 105, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 600, clientY: 400, buttons: 1 }); // in the panel
+        mouse(document, "mousemove", { clientX: 20, clientY: 139, buttons: 1 }); // back on the canvas
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        expect(markdown(editor)).toBe("a body\n\n# B\n\nb body\n\n# A");
+    });
+
     it("an into slot commit should append the dragged block at the section end", async () => {
         const editor = await makeEditor("Intro\n\n# A\n\na body\n\n# B\n\nb body");
         const v = view(editor);

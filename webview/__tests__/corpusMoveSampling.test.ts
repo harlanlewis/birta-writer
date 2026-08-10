@@ -14,8 +14,11 @@
  *       vetoed nothing;
  *   (c) the full production save pipeline conserves content: serialize →
  *       round-trip protection → minimal-diff merge into the original file →
- *       REPARSE, and the reparsed doc fingerprints identically to the
- *       post-move doc. (Byte-exact line survival — roundTripCorpus's
+ *       merge verification (mergeVerified, MAR-343 — the same call
+ *       `webview/editor.ts` makes, so this asserts the bytes that would reach
+ *       disk and not an earlier draft of them) → REPARSE, and the reparsed doc
+ *       fingerprints identically to the post-move doc. (Byte-exact line
+ *       survival — roundTripCorpus's
  *       invariant B — is deliberately NOT asserted for moves: a move
  *       legitimately rewrites line bytes without touching content — an
  *       emptied callout dissolves its marker line, blocks entering/leaving
@@ -54,7 +57,8 @@ import {
 } from "../plugins/contentGuard";
 import { isBlankParagraph } from "../plugins/fingerprints";
 import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
-import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
+import { applyMinimalChanges, computeRoundTripProtection, markdownProfile } from "../utils/minimalDiff";
+import { mergeVerified } from "../utils/verifiedMerge";
 import {
     editorView,
     enumerateMovePairs,
@@ -235,11 +239,22 @@ function sampleMoves(
         expect(violation, `move violated conservation — ${context}`).toBeNull();
         // (c) The production save pipeline conserves content: what would be
         // written to disk, reopened, holds exactly what the editor holds.
-        const merged = applyMinimalChanges(
+        // Through mergeVerified, because that is where the save path ends: a
+        // merge that damages what the serializer carried cleanly degrades to
+        // the serializer's own bytes rather than reaching disk (MAR-343). The
+        // raw engine's residual damage in deep four-space outlines is real and
+        // owned by that fix's own sweep (fourSpaceOutlineMoves.test.ts, which
+        // asserts BOTH that the raw merge still damages and that the verified
+        // one does not); asserting the raw engine here would re-litigate it
+        // from a 12-pair sample and call a shipped defence a regression.
+        const merged = mergeVerified(
             fixture.content,
             editor.action(getMarkdown()),
+            markdownProfile,
             protection,
-        );
+            v.state.doc,
+            (text) => editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null,
+        ).text;
         const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode | null;
         expect(reparsed, `merged output failed to reparse — ${context}`).toBeTruthy();
         const pipelineDelta = diffFingerprints(

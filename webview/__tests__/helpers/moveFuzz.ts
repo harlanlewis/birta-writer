@@ -17,6 +17,7 @@ import type { FormatModule } from "../../format/types";
 import {
     blockBoundaryPositions,
     moveRangeAt,
+    outlineRangeAt,
     visibleBoundaryPositions,
 } from "../../components/blockMenu";
 import { isContainerNode, isListNode, nestedChildSpec } from "../../plugins/headingFold";
@@ -193,8 +194,10 @@ export interface MoveSource {
     pos: number;
     /** Drag-slot kind (drag.ts kind-gating): items only see item slots. */
     kind: "block" | "item";
-    /** The range the move primitive receives (moveRangeAt semantics —
-     * top-level headings carry their whole section). */
+    /** The range the move primitive receives. Both of the scopes a gesture
+     * can express are enumerated per block: the body's literal range
+     * (moveRangeAt) and the outline's (outlineRangeAt), which differ only for
+     * a top-level heading. */
     from: number;
     to: number;
 }
@@ -262,12 +265,27 @@ function markerReachablePositions(doc: ProseNode): number[] {
  * Every block a gesture could pick up: the node-start boundaries of
  * blockBoundaryPositions (end-of-list / end-of-doc slots carry no node),
  * PLUS the marker-reachable nested blocks the gutter grabbers expose
- * (markerReachablePositions above) — all with the SAME range derivation the
- * block menu / drag / keyboard movers use (moveRangeAt). Nested grabbers
- * drag as blocks (wireMarkerDrag: only a list_item resolves to kind "item").
+ * (markerReachablePositions above) — all with the SAME range derivations the
+ * block menu / drag / keyboard movers use. BOTH scopes are emitted per block,
+ * because the drag session carries both and the destination picks (the
+ * document canvas moves a heading alone, the TOC panel moves its section);
+ * enumerating one would leave half the reachable gestures untested. They
+ * coincide for everything except a top-level heading, and the duplicate is
+ * dropped. Nested grabbers drag as blocks (wireMarkerDrag: only a list_item
+ * resolves to kind "item").
  */
 export function enumerateMoveSources(view: EditorView): MoveSource[] {
     const sources: MoveSource[] = [];
+    const emitted = new Set<string>();
+    const emit = (pos: number, kind: "block" | "item"): void => {
+        for (const range of [moveRangeAt(view, pos), outlineRangeAt(view, pos)]) {
+            const key = range && `${pos}:${kind}:${range.from}:${range.to}`;
+            if (range && key !== null && !emitted.has(key)) {
+                emitted.add(key);
+                sources.push({ pos, kind, ...range });
+            }
+        }
+    };
     const seen = new Set<number>();
     for (const boundary of blockBoundaryPositions(view.state.doc)) {
         if (seen.has(boundary.pos)) {
@@ -277,20 +295,14 @@ export function enumerateMoveSources(view: EditorView): MoveSource[] {
         if (!view.state.doc.nodeAt(boundary.pos)) {
             continue; // an end slot, not a block start
         }
-        const range = moveRangeAt(view, boundary.pos);
-        if (range) {
-            sources.push({ pos: boundary.pos, kind: boundary.kind, ...range });
-        }
+        emit(boundary.pos, boundary.kind);
     }
     for (const pos of markerReachablePositions(view.state.doc)) {
         if (seen.has(pos)) {
             continue;
         }
         seen.add(pos);
-        const range = moveRangeAt(view, pos);
-        if (range) {
-            sources.push({ pos, kind: "block", ...range });
-        }
+        emit(pos, "block");
     }
     return sources;
 }

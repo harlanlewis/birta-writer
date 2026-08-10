@@ -26,11 +26,11 @@ Images save into your workspace, remote loads are blocked, and proofreading runs
 
 Every block carries a gutter handle showing its slash-menu icon. That covers paragraphs, headings, list items at any depth, quotes, callouts, directives, code blocks, tables, images, footnotes, and blocks nested inside callouts and quotes.
 
-Click the handle for the block menu: turn into, duplicate, copy as Markdown, move, delete. Headings also get copy-link and whole-section moves. Drag the handle to move the block, with an accent drop line, auto-scroll, and one-step undo.
+Click the handle for the block menu: turn into, duplicate, copy as Markdown, move, delete. Headings also get copy-link. Drag the handle to move the block, with an accent drop line, auto-scroll, and one-step undo.
 
 Select many blocks with a marquee drag in the margins, or from the keyboard: Escape selects the current block, Shift+↑/↓ extend, Cmd+A ladders block → document, Alt+↑/↓ move. Then drag any covered handle to move them all.
 
-Headings carry their sections, collapsed content always travels with its heading, and Tab/Shift-Tab indent list items one level without dragging their children along.
+A move in the text is literal: a heading travels alone and the paragraphs under it keep their place. Section moves live in the table of contents, where a row stands for a whole section. Collapsed content always travels with its heading, wherever you move it, and Tab/Shift-Tab indent list items one level without dragging their children along.
 
 ## Writing
 

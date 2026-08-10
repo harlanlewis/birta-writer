@@ -4,7 +4,8 @@
  *   - dragging a paragraph's P marker below the list reorders the document,
  *   - the accent drop indicator shows during a drag and hides after,
  *   - Escape cancels a drag without touching the document,
- *   - a heading's marker drags its whole section,
+ *   - a heading's marker drags the heading LINE alone (section semantics
+ *     belong to the outline; see e2e/tocRelevel),
  *   - a drag does not also open the block menu; a plain click still does.
  */
 
@@ -109,8 +110,11 @@ export async function run({ page, check, baseUrl }) {
         getComputedStyle(el).display === "none");
     check("indicator hides after a cancel", indicatorGone);
 
-    // ── 3. A heading drags its whole section ──
-    // Drag "# Section A"'s marker to the very end of the document.
+    // ── 3. A heading dragged in the DOCUMENT moves its line alone ──
+    // The canvas is a literal-sequence surface: the section's body stays put.
+    // (The outline is where a drag means "this heading and everything it
+    // owns" — see e2e/tocRelevel.) Drag "# Section A"'s marker to the very end
+    // of the document.
     const hMarker = await markerCenter(page, ".ProseMirror > h1", "Section A");
     const lastRect = await page.$eval(".ProseMirror > *:last-child", (el) => {
         const r = el.getBoundingClientRect();
@@ -121,36 +125,37 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(hMarker.x + 10, hMarker.y + 10);
     await page.mouse.move(lastRect.x, lastRect.bottom - 1, { steps: 8 });
     await page.waitForTimeout(100);
-    // The veil dims the whole dragged section: it must cover the heading AND
-    // its content, and stop before the next section.
+    // The veil dims exactly what will move: the heading line, stopping short
+    // of the paragraph beneath it. The veil is the promise the drop keeps.
     const veil = await page.evaluate(() => {
         const el = document.querySelector(".block-drag-veil");
         if (!el || getComputedStyle(el).display === "none") return null;
         const v = el.getBoundingClientRect();
         const heads = [...document.querySelectorAll(".ProseMirror > h1")];
         const a = heads.find((h) => h.textContent.includes("Section A"))?.getBoundingClientRect();
-        const b = heads.find((h) => h.textContent.includes("Section B"))?.getBoundingClientRect();
-        if (!a || !b) return { missing: true };
+        const body = [...document.querySelectorAll(".ProseMirror > p")]
+            .find((p) => p.textContent.includes("content of A"))?.getBoundingClientRect();
+        if (!a || !body) return { missing: true };
         return {
-            coversHeading: v.top <= a.top + 2,
-            coversContent: v.bottom >= a.bottom + 10,
-            stopsBeforeNext: v.bottom <= b.top + 2,
+            coversHeading: v.top <= a.top + 2 && v.bottom >= a.bottom - 2,
+            stopsBeforeBody: v.bottom <= body.top + 2,
         };
     });
-    check("drag veil dims exactly the dragged section",
-        veil !== null && veil.coversHeading && veil.coversContent && veil.stopsBeforeNext,
+    check("drag veil dims exactly the dragged heading line",
+        veil !== null && veil.coversHeading && veil.stopsBeforeBody,
         JSON.stringify(veil));
     await page.mouse.up();
     const veilGone = await page.$eval(".block-drag-veil", (el) =>
         getComputedStyle(el).display === "none");
     check("veil hides after the drop", veilGone);
-    const sectionMoved = await latestDoc(page, (doc) => {
+    const headingMoved = await latestDoc(page, (doc) => {
         const a = doc.indexOf("# Section A");
         const contentA = doc.indexOf("content of A");
         const b = doc.indexOf("# Section B");
-        return b !== -1 && b < a && a < contentA; // B now precedes A; A kept its body
+        // A is now last; its body stayed where it was, above B.
+        return a !== -1 && contentA < b && b < a;
     });
-    check("a heading drags its whole section", sectionMoved !== null);
+    check("a heading dragged in the document moves alone", headingMoved !== null);
 
     // ── 3b. A selection spanning blocks drags them all together ──
     // Select from inside "Omega paragraph." down into "content of B" (the doc

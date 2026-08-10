@@ -378,8 +378,10 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
                 return true;
             }
         }
-        // Bare caret elsewhere: moveBlockAt carries heading sections and
-        // hops neighboring units, exactly like the menu rows.
+        // Bare caret elsewhere: moveBlockAt hops one visible unit, exactly
+        // like the menu rows. A heading moves alone here — the body is a
+        // literal-sequence surface (editing/moveBlocks, blockMenu's
+        // moveRangeAt) — except a collapsed one, which brings what it hides.
         const block = blockAt(state, state.selection.from);
         if (!block) {
             return false;

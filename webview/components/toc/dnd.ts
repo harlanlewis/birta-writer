@@ -4,21 +4,24 @@
  * The TOC panel's two drag-and-drop roles, both riding the shared pointer
  * drag session in components/blockMenu/drag:
  *
- *   - Drop zone: a DropZoneProvider covering the open panel. A document
- *     drag entering it retargets onto the outline's slots (./dropModel) — a
- *     gap line between sections (drop as SIBLING), or "into" a section (drop
- *     as CHILD, appended at its end). The commit path stays the session's
- *     single moveBlocks call, so the panel can never invent drop semantics
- *     the primitive rejects.
- *   - Drag source: each ROOT-LEVEL item is a handle for its whole section
- *     (moveRangeAt's heading semantics — a collapsed section carries its
- *     hidden body). "Root-level" is depth, not rank: in an ordinary document
- *     that is every row, H6 included — only a heading nested inside a
- *     blockquote or list item is left as a navigation-only landmark.
+ *   - Drop zone: a DropZoneProvider covering the open panel, declaring
+ *     `scope: "outline"`. A document drag entering it retargets onto the
+ *     outline's slots (./dropModel) — a gap line between sections (drop as
+ *     SIBLING), or "into" a section (drop as CHILD, appended at its end). The
+ *     commit path stays the session's single moveBlocks call, so the panel can
+ *     never invent drop semantics the primitive rejects.
+ *   - Drag source: each ROOT-LEVEL item is a handle for its heading.
+ *     "Root-level" is depth, not rank: in an ordinary document that is every
+ *     row, H6 included — only a heading nested inside a blockquote or list
+ *     item is left as a navigation-only landmark.
  *
- * Outline drops RELEVEL (see ./dropModel): the slot dictates the dropped
- * section's rank, and the delta rides to moveBlocks in the same transaction
- * — one drag, one undo step.
+ * A drop in the panel moves the heading's WHOLE section (outlineRangeAt); a
+ * drop in the document moves the heading line alone. The destination decides
+ * either way, so a section dragged out of the panel and into the text is a
+ * literal move, and a paragraph dragged from the text into the panel is filed
+ * as one block. Outline drops also RELEVEL (see ./dropModel): the slot
+ * dictates the dropped section's rank, and the delta rides to moveBlocks in
+ * the same transaction — one drag, one undo step.
  *
  * Geometry is snapshotted once per session (one getBoundingClientRect per
  * rendered item plus the list box) and re-measured lazily after a list
@@ -30,6 +33,7 @@ import {
     edgeScrollVelocity,
     hideDropIndicator,
     moveRangeAt,
+    outlineRangeAt,
     registerDropZoneProvider,
     showDropIndicatorAt,
     startPointerDragSession,
@@ -194,6 +198,10 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
     }
 
     const provider: DropZoneProvider = {
+        // A row here IS a section, so a heading landing in the panel brings
+        // its body — wherever the drag was grabbed. The document canvas keeps
+        // the literal-block scope (see the header, and drag.ts's `scope`).
+        scope: "outline",
         contains(x, y) {
             if (!deps.isOpen()) {
                 return false;
@@ -369,10 +377,14 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
                 startX: event.clientX,
                 startY: event.clientY,
                 resolveRange: () => {
+                    // Both scopes, because a drag STARTED here can still end
+                    // in the document, where a heading moves alone.
                     const range = moveRangeAt(view, pos);
-                    return range
+                    const outlineRange = outlineRangeAt(view, pos);
+                    return range && outlineRange
                         ? {
                             range,
+                            outlineRange,
                             kind: "block" as const,
                             multi: false,
                             label: tocPillLabel(entry.text),

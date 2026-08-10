@@ -28,6 +28,7 @@ export {
     moveBlockTo,
     moveRangeAt,
     openBlockMenu,
+    outlineRangeAt,
     setBlockMenuContext,
 } from "./menu";
 

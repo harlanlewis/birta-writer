@@ -201,9 +201,11 @@ Rubber-band block selection starts only outside text content, in the margins. Po
 
 Escape escalates caret to block, and collapses back. Shift+↑/↓ grow or shrink the range from its anchor. Cmd+A ladders text, then block, then document. Alt+↑/↓ and Cmd+Shift+↑/↓ move a block through the same machinery as a drag. (`webview/plugins/blockKeys.ts`, `blockRange.ts`.)
 
-### Structure travels whole
+### Structure travels whole, where structure is what you are pointing at
 
-A heading brings its section, a list item its subtree, and collapsed content always moves with its block. No operation may orphan invisible text. One gesture is one undo step.
+A list item brings its subtree, and collapsed content always moves with its block: no operation may orphan invisible text. One gesture is one undo step.
+
+A heading is the case where the surface decides. In the outline a row IS a section, so a drop there moves the section and relevels it. In the text a heading is a line among lines, so a move there is literal and the body stays put. The scope belongs to where the gesture lands rather than to where it was picked up, which is what lets one drag mean either (`webview/components/blockMenu/drag.ts`, `DropZoneProvider.scope`).
 
 ## When these collide
 

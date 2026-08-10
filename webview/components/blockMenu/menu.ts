@@ -17,10 +17,12 @@
  *
  * Every action targets the block BY POSITION (like setHeadingLevelAt), never
  * the ambient selection, so the menu can change a block the caret isn't in.
- * Headings MOVE with their whole section (the fold range — outline semantics;
- * a collapsed heading must never leave its hidden content behind), while
- * Duplicate/Delete act on the heading line alone (least destructive — deleting
- * a collapsed heading simply reveals its content).
+ * Every action on a heading acts on the heading LINE alone: Move leaves the
+ * section's body where it is (section semantics belong to the outline —
+ * moveRangeAt against outlineRangeAt), and Duplicate/Delete are least
+ * destructive (deleting a collapsed heading simply reveals its content). The
+ * sole exception is a COLLAPSED heading's Move, which must bring the hidden
+ * content it owns rather than strand it.
  *
  * Body-mounted like the other chrome popups; one menu open at a time; the
  * keyboard model mirrors the toolbar dropdowns (roving arrows, Enter, Escape).
@@ -151,11 +153,46 @@ const NUMBERING_CHOICES: readonly {
 // ── Block actions ───────────────────────────────────────────────────────────
 
 /**
- * The range the block at `pos` occupies for MOVE purposes: headings carry
- * their whole section (heading + fold range — outline semantics), everything
- * else is just the node. Exported for unit testing.
+ * The range the block at `pos` occupies for a move in the DOCUMENT BODY: the
+ * node alone, heading included. Moving a heading in the text is a LITERAL
+ * block move — the paragraphs under it keep their place — because the text is
+ * where a user edits sequence, not hierarchy. Section semantics live in the
+ * outline (`outlineRangeAt`), which is where a gesture means "this heading and
+ * everything it owns". Exported for unit testing.
+ *
+ * The one expansion: a COLLAPSED heading is inseparable from its hidden
+ * section. Moving the line alone would strand blocks the user cannot see under
+ * a new owner, and the fold would then swallow whatever followed the landing —
+ * the same rule the keyboard's unit map and the selection cover already keep.
  */
 export function moveRangeAt(view: EditorView, pos: number): { from: number; to: number } | null {
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) {
+        return null;
+    }
+    const nodeEnd = pos + node.nodeSize;
+    // The depth guard is stated HERE, not inherited: foldedSectionEnd reaches
+    // findHeadingFoldRange, which walks TOP-LEVEL offsets, so asking it about
+    // a heading nested in a container would return an end outside that
+    // container and moveBlockTo's deleteRange would destroy everything up to
+    // the next top-level heading (the same trap outlineRangeAt names). Today
+    // nothing collapses a nested heading, so the call is unreachable rather
+    // than wrong — which is exactly the kind of protection that must be local
+    // to survive a change two modules away.
+    if (view.state.doc.resolve(pos).depth !== 0) {
+        return { from: pos, to: nodeEnd };
+    }
+    return { from: pos, to: foldedSectionEnd(view.state, pos) ?? nodeEnd };
+}
+
+/**
+ * The range the block at `pos` occupies for a move in the OUTLINE: a heading
+ * carries its whole section (heading + fold range), everything else is just
+ * the node. This is the TOC's scope — a row there stands for a section, so a
+ * drop into the panel moves the section, whichever surface the drag started
+ * on. Exported for unit testing.
+ */
+export function outlineRangeAt(view: EditorView, pos: number): { from: number; to: number } | null {
     const node = view.state.doc.nodeAt(pos);
     if (!node) {
         return null;
@@ -327,11 +364,11 @@ function deleteBlock(view: EditorView, pos: number): boolean {
 /**
  * Where a move in `dir` would land, or null at a document edge.
  *
- * A non-heading block hops exactly one visible UNIT — a collapsed heading
- * and its hidden section count as one (landing between them would drop the
- * moved block into display:none, an apparent deletion). A heading (moving
- * as a section) hops a whole neighboring section UNIT, so sections never
- * interleave:
+ * Any block hops exactly one visible UNIT — a collapsed heading and its
+ * hidden section count as one (landing between them would drop the moved
+ * block into display:none, an apparent deletion). A run that CARRIES a whole
+ * section (only a collapsed heading does, in the body — see moveRangeAt) hops
+ * a whole neighboring section UNIT instead, so two sections never interleave:
  *   - down: if the next block is a heading, hop its entire fold range;
  *   - up: hop to the start of the outermost section that ends exactly where
  *     this one starts (candidates whose fold range ends at `range.from`;
@@ -340,7 +377,7 @@ function deleteBlock(view: EditorView, pos: number): boolean {
 function moveTargetFor(
     state: EditorState,
     range: { from: number; to: number },
-    isHeading: boolean,
+    carriesSection: boolean,
     dir: -1 | 1,
 ): number | null {
     const doc = state.doc;
@@ -352,7 +389,7 @@ function moveTargetFor(
         }
         // A collapsed next heading hides its section: hop the whole unit.
         let hopEnd = sectionEnds.get(range.to) ?? range.to + nextNode.nodeSize;
-        if (isHeading && nextNode.type.name === "heading") {
+        if (carriesSection && nextNode.type.name === "heading") {
             const section = findHeadingFoldRange(doc, range.to, getHeadingLevel(nextNode));
             if (section) {
                 hopEnd = Math.max(hopEnd, section.to);
@@ -375,7 +412,7 @@ function moveTargetFor(
     if (prevStart === null) {
         return null;
     }
-    if (isHeading) {
+    if (carriesSection) {
         let unitStart: number | null = null;
         doc.forEach((node: ProseNode, offset: number) => {
             if (offset >= range.from || node.type.name !== "heading" || unitStart !== null) {
@@ -426,23 +463,34 @@ function moveNestedTarget(view: EditorView, itemPos: number, dir: -1 | 1): numbe
 export { moveBlocks as moveBlockTo } from "../../editing/moveBlocks";
 
 /**
- * Move the block (heading: its section) one unit up or down. Returns false
- * at a document edge. Exported for unit testing.
+ * Whether the move range at `pos` reaches past the block itself — i.e. it
+ * carries a whole section (a collapsed heading, the only body-scope case).
+ * That is what earns the section-unit hop in moveTargetFor; a bare heading
+ * hops one block like any other.
+ */
+function carriesSection(view: EditorView, pos: number, range: { from: number; to: number }): boolean {
+    const node = view.state.doc.nodeAt(pos);
+    return node !== null && range.to > pos + node.nodeSize;
+}
+
+/**
+ * Move the block one unit up or down. Returns false at a document edge.
+ * A heading moves ALONE here (the body is a literal-sequence surface — see
+ * moveRangeAt); only a collapsed one brings its hidden section. Exported for
+ * unit testing.
  */
 export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean {
     const range = moveRangeAt(view, pos);
     if (!range) {
         return false;
     }
-    const { doc } = view.state;
-    const node = doc.nodeAt(pos);
     // Any NESTED block (list item, or a container's child) hops among its
     // siblings via the parent-generic index walk; only top-level blocks use
-    // the doc-level walk (which also carries heading sections).
-    const nested = doc.resolve(pos).depth > 0;
+    // the doc-level walk (which also hops whole sections).
+    const nested = view.state.doc.resolve(pos).depth > 0;
     const target = nested
         ? moveNestedTarget(view, pos, dir)
-        : moveTargetFor(view.state, range, node?.type.name === "heading", dir);
+        : moveTargetFor(view.state, range, carriesSection(view, pos, range), dir);
     if (target === null) {
         return false;
     }
@@ -463,10 +511,9 @@ function canMove(view: EditorView, pos: number, dir: -1 | 1): boolean {
     if (!range) {
         return false;
     }
-    const node = view.state.doc.nodeAt(pos);
     const target = view.state.doc.resolve(pos).depth > 0
         ? moveNestedTarget(view, pos, dir)
-        : moveTargetFor(view.state, range, node?.type.name === "heading", dir);
+        : moveTargetFor(view.state, range, carriesSection(view, pos, range), dir);
     if (target === null) {
         return false;
     }
@@ -592,9 +639,12 @@ export function openBlockMenu(
     // stale ACTION impossible — same philosophy as tableCmd's cellPos bail.
     const anchorNode = view.state.doc.nodeAt(blockPos);
     const isHeading = anchorNode?.type.name === "heading";
-    // Section semantics (and the "Move Section" label) are top-level only —
-    // a nested heading moves as a single block among its siblings.
-    const movesSection = isHeading && view.state.doc.resolve(blockPos).depth === 0;
+    // The "Move Section" label follows what the move will actually carry, not
+    // what kind of block this is: in the body a heading moves alone, so only a
+    // COLLAPSED one (inseparable from its hidden content) is a section move.
+    const anchorMoveRange = moveRangeAt(view, blockPos);
+    const movesSection =
+        anchorMoveRange !== null && carriesSection(view, blockPos, anchorMoveRange);
     const isItem = anchorNode?.type.name === "list_item";
     // An ITEM's marker still offers the LIST-level conversions (turn the
     // whole list ordered/task/prose/…): actions target the item, Turn-into
