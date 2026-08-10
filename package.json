@@ -1,7 +1,7 @@
 {
     "name": "birta-writer",
     "displayName": "Birta Writer - Visual Markdown",
-    "description": "Visual Markdown editor. Calm and modern, with broad support for extended Markdown and rich embeds.",
+    "description": "Obsidian-friendly visual Markdown editor with broad support for wikilinks, callouts, tables, Mermaid, LaTeX, and rich web embeds.",
     "version": "0.0.0",
     "publisher": "BirtaLabs",
     "author": {

@@ -1,6 +1,6 @@
 # Birta Writer
 
-Birta Writer is a visual editor for richly formatted Markdown documents. It strives to be your favorite way to write and edit text.
+Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual document editor where tables, diagrams, math autocompletions, and more are beautifully rendered. Broad support for content created by other apps, including Obsidian wikilinks, frontmatter, and rich interactive embeds for Figma, Loom, and more.
 
 ## Why I use it
 
