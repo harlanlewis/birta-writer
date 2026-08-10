@@ -494,9 +494,11 @@ export type ToWebviewMessage =
     // late after the flush timeout, the edit computation failed, or the save
     // finished without the bytes). The webview may advance its save baseline
     // only on `true` — an unacknowledged flush is not a committed write
-    // (MAR-349). A reply the extension saw gets at least one ack; duplicate
-    // discarded-acks are possible on teardown races and land idempotently on
-    // an already-cleared candidate.
+    // (MAR-349). A reply the extension saw gets at least one ack once a save
+    // for the document completes; a write that fails outright leaves the
+    // reply unacked and its candidate parked until something supersedes it,
+    // which is the safe direction. Duplicate discarded-acks are possible on
+    // teardown races and land idempotently on an already-cleared candidate.
     | { type: "flushAck"; id: string; applied: boolean }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).
