@@ -33,7 +33,21 @@ import type { EditorView, Node as ProseNode } from "../pm";
 import { moveBlocks } from "../editing/moveBlocks";
 import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { markdownProfile, computeRoundTripProtection } from "../utils/minimalDiff";
-import { createEditor, flushPendingEdit } from "../editor";
+import { acknowledgeFlush, createEditor, flushPendingEdit } from "../editor";
+
+/**
+ * A save the extension applied: flush, then commit the parked candidate the
+ * way a `flushAck { applied: true }` does (MAR-349). Without the ack the
+ * baseline never advances and every "next save" here would recompute the same
+ * merge from the same inputs — equal by construction, discriminating nothing.
+ */
+let _flushSeq = 0;
+function appliedSave(): string {
+    const id = `t:${++_flushSeq}`;
+    const text = flushPendingEdit(id);
+    acknowledgeFlush(id, true);
+    return text;
+}
 import {
     enumerateMovePairs,
     hashString,
@@ -78,13 +92,54 @@ afterEach(async () => {
 });
 
 /** A fresh production editor over `markdown`, with a pristine save baseline. */
-async function open(markdown: string): Promise<EditorView> {
+async function open(
+    markdown: string,
+    onUpdate: (markdown: string) => void = () => {},
+): Promise<EditorView> {
     if (editor) await editor.destroy();
     document.body.innerHTML = "";
     const container = document.createElement("div");
     document.body.appendChild(container);
-    editor = await createEditor(container, markdown, () => {});
+    editor = await createEditor(container, markdown, onUpdate);
     return editor.action((ctx) => ctx.get(editorViewCtx));
+}
+
+/**
+ * Gestures from `saved` whose merge falls back to canonical bytes AND whose
+ * protection could churn them: selected by the fallback's own condition (the
+ * merge loses content the serializer alone carries) and by the churn premise
+ * (the load-time protection can still rewrite those bytes). Both asked with
+ * the fingerprint oracle and the engine, never of the code under test.
+ */
+function findDamagingMoves(
+    v: EditorView,
+    saved: string,
+    protection: ReturnType<typeof computeRoundTripProtection>,
+    limit: number,
+): { from: number; to: number; target: number }[] {
+    const base = v.state;
+    const rng = mulberry32(hashString(FIXTURE.name));
+    const damaging: { from: number; to: number; target: number }[] = [];
+    for (const { source, target } of shuffled([...enumerateMovePairs(v)], rng)) {
+        if (!moveBlocks(v, { from: source.from, to: source.to }, target)) {
+            v.updateState(base);
+            continue;
+        }
+        const serialized = editor!.action(getMarkdown());
+        const merged = applyMinimalChanges(saved, serialized, markdownProfile, protection);
+        const fallback = serializerFallback(saved, serialized);
+        if (
+            merged !== fallback &&
+            !reopensClean(v, merged) &&
+            reopensClean(v, fallback) &&
+            applyMinimalChanges(fallback, serialized, markdownProfile, protection) !== fallback
+        ) {
+            damaging.push({ from: source.from, to: source.to, target });
+        }
+        v.updateState(base);
+        if (damaging.length >= limit) break;
+    }
+    return damaging;
 }
 
 /** Does `text` reopen holding exactly the content the live document has? */
@@ -107,43 +162,17 @@ describe("round-trip protection lifecycle", () => {
         expect(FIXTURE, "the four-space outline fixture must exist").toBeTruthy();
         const saved = FIXTURE.content;
         const v = await open(saved);
-        const base = v.state;
         const protection = computeRoundTripProtection(saved, editor!.action(getMarkdown()));
         expect(
             protection?.regions.length,
             "the fixture must carry protection, or there is nothing to go stale",
         ).toBeGreaterThan(0);
 
-        // Phase 1 — find the gestures, saving nothing. flushPendingEdit rewrites
-        // the baseline on every call, so a flush per candidate would leave the
-        // damaging pair diffing against an earlier pair's output; an earlier cut
-        // of this test did exactly that and passed with the fix reverted.
-        //
-        // Selected by the fallback's own condition (the merge loses content the
-        // serializer alone carries) AND by the churn premise (the load-time
-        // protection can still rewrite those bytes). Both asked with the
-        // fingerprint oracle and the engine, never of the code under test.
-        const rng = mulberry32(hashString(FIXTURE.name));
-        const damaging: { from: number; to: number; target: number }[] = [];
-        for (const { source, target } of shuffled([...enumerateMovePairs(v)], rng)) {
-            if (!moveBlocks(v, { from: source.from, to: source.to }, target)) {
-                v.updateState(base);
-                continue;
-            }
-            const serialized = editor!.action(getMarkdown());
-            const merged = applyMinimalChanges(saved, serialized, markdownProfile, protection);
-            const fallback = serializerFallback(saved, serialized);
-            if (
-                merged !== fallback &&
-                !reopensClean(v, merged) &&
-                reopensClean(v, fallback) &&
-                applyMinimalChanges(fallback, serialized, markdownProfile, protection) !== fallback
-            ) {
-                damaging.push({ from: source.from, to: source.to, target });
-            }
-            v.updateState(base);
-            if (damaging.length >= 3) break;
-        }
+        // Phase 1 — find the gestures, saving nothing. An applied save rewrites
+        // the baseline, so a save per candidate would leave the damaging pair
+        // diffing against an earlier pair's output; an earlier cut of this test
+        // did exactly that and passed with the fix reverted.
+        const damaging = findDamagingMoves(v, saved, protection, 3);
         expect(
             damaging.length,
             "no move in this fixture both falls back and leaves protection able to churn",
@@ -156,7 +185,7 @@ describe("round-trip protection lifecycle", () => {
             expect(moveBlocks(v2, { from: move.from, to: move.to }, move.target)).toBe(true);
             const serialized = editor!.action(getMarkdown());
 
-            const first = flushPendingEdit();
+            const first = appliedSave();
             // Premise: this save really did write canonical bytes. Without it
             // the rest is a stability check on an ordinary merge.
             expect(first, "the save should have fallen back to the serializer").toBe(
@@ -164,11 +193,45 @@ describe("round-trip protection lifecycle", () => {
             );
 
             // The invariant: nothing was edited between the saves.
-            expect(flushPendingEdit()).toBe(first);
+            expect(appliedSave()).toBe(first);
             // And a third, since the reported symptom settled on save three:
             // the file must be still, not merely alternating more slowly.
-            expect(flushPendingEdit()).toBe(first);
+            expect(appliedSave()).toBe(first);
         }
+    });
+
+    it("a DISCARDED canonical save should re-post its bytes instead of silently moving the baseline", async () => {
+        // MAR-349, canonical case: the flush fell back to canonical bytes but
+        // the extension discarded the reply, so the file still holds its own
+        // spellings. Committing the canonical baseline (and MAR-344's
+        // protection-drop) at flush time would leave every later merge diffing
+        // against bytes the file never held — and post NOTHING, because the
+        // no-substantive-change check compares against the phantom. The honest
+        // outcome is a recovery update carrying the flushed bytes, so the
+        // document re-dirties and the canonicalization actually reaches disk.
+        const saved = FIXTURE.content;
+        let v = await open(saved);
+        const protection = computeRoundTripProtection(saved, editor!.action(getMarkdown()));
+        const move = findDamagingMoves(v, saved, protection, 1)[0];
+        expect(move, "no canonical-fallback gesture found in the fixture").toBeTruthy();
+
+        const posted: string[] = [];
+        v = await open(saved, (md) => posted.push(md));
+        expect(moveBlocks(v, { from: move.from, to: move.to }, move.target)).toBe(true);
+        const serialized = editor!.action(getMarkdown());
+
+        const flushed = flushPendingEdit("d1");
+        // Premise: this save really did fall back to canonical bytes.
+        expect(flushed, "the save should have fallen back to the serializer").toBe(
+            serializerFallback(saved, serialized),
+        );
+        expect(posted).toEqual([]);
+
+        acknowledgeFlush("d1", false);
+        // The recovery sync is the scheduler's leading edge (real timers here).
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(posted).toEqual([flushed]);
     });
 
     it("canonical serializer output should reparse and re-serialize to itself, for every protected fixture", async () => {
@@ -233,9 +296,9 @@ describe("round-trip protection lifecycle", () => {
         expect(at, "the fixture must still contain a 'level 3' item").toBeGreaterThan(0);
         v.dispatch(v.state.tr.insertText(" edited", at));
 
-        const first = flushPendingEdit();
+        const first = appliedSave();
         expect(first).toContain("        - level 3 edited");
         expect(first).toContain("            - level 4");
-        expect(flushPendingEdit()).toBe(first);
+        expect(appliedSave()).toBe(first);
     });
 });

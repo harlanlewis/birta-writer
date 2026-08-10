@@ -486,6 +486,18 @@ export type ToWebviewMessage =
     // freshest content instead of whatever the throttle last shipped. `id`
     // correlates the reply.
     | { type: "flushSave"; id: string }
+    // The extension's verdict on a `flushResult`: `applied: true` means the
+    // completed save CONFIRMED the document holds those bytes (settled at
+    // onDidSaveTextDocument against the saved text, never at edit-computation
+    // time — VS Code can drop a participant's edits after they are returned);
+    // `false` means the reply was discarded (stale version, superseded seq,
+    // late after the flush timeout, the edit computation failed, or the save
+    // finished without the bytes). The webview may advance its save baseline
+    // only on `true` — an unacknowledged flush is not a committed write
+    // (MAR-349). A reply the extension saw gets at least one ack; duplicate
+    // discarded-acks are possible on teardown races and land idempotently on
+    // an already-cleared candidate.
+    | { type: "flushAck"; id: string; applied: boolean }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).
     | { type: "editorCommand"; command: EditorCommandId; args?: unknown }

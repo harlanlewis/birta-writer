@@ -109,9 +109,23 @@ export class MarkdownEditorProvider
     // Tracks the webviewPanel for each document (used to push new content on external changes)
     private readonly _webviewPanels = new Map<string, vscode.WebviewPanel>();
 
+    // A flush whose edits were handed to a save and whose applied-ack is held
+    // until the save confirms them. computeEdits resolving proves the edits
+    // were RETURNED to the waitUntil, not that VS Code applied them — the
+    // willSave budget can expire, or a queued edit can change the document and
+    // void the participant's edits. The verdict is settled at
+    // onDidSaveTextDocument by comparing the saved text against `expected`;
+    // acking applied on unapplied bytes would re-open MAR-349 on that path.
+    // At most one per document: a newer decided flush acks the old one
+    // discarded, and a save that never completes leaves the entry to be
+    // replaced the same way.
+    private readonly _pendingFlushAcks = new Map<string, { id: string; expected: string }>();
+
     // The panel that is currently the active editor. Command-palette and
     // right-click commands (MAR-9) target it. Set on resolve and whenever a
-    // panel becomes active; cleared when the active panel is disposed.
+    // panel becomes active; cleared when that panel deactivates or is disposed
+    // — so while a raw editor or another view has focus, this is null, not the
+    // last panel that was active.
     private _activePanel: vscode.WebviewPanel | null = null;
 
     // Bridge for the just-in-time network opt-in (MAR-179): the fresh value
@@ -1150,12 +1164,17 @@ export class MarkdownEditorProvider
                         break;
                     case "flushResult":
                         // Reply to an onWillSaveTextDocument flush: hand the parked
-                        // waitUntil resolver the freshest serialized content.
-                        this._flush.resolveFlush(message.id, {
+                        // waitUntil resolver the freshest serialized content. A reply
+                        // with no parked flush (late, after the timeout resolved the
+                        // save without it) still holds a baseline candidate webview-side,
+                        // so it is acked as discarded rather than ignored (MAR-349).
+                        if (!this._flush.resolveFlush(message.id, {
                             content: message.content,
                             baseSyncVersion: message.baseSyncVersion,
                             seq: message.seq,
-                        });
+                        })) {
+                            this._ackFlush(webviewPanel, message.id, false);
+                        }
                         break;
                     case "resolveSyncConflict":
                         // The disk-drift badge was clicked: offer the user the
@@ -1246,10 +1265,22 @@ export class MarkdownEditorProvider
             if (e.document.uri.toString() !== uriKey) { return; }
             e.waitUntil(this._flushWebviewEdits(document, uriKey));
         });
+        // Settle the held applied-ack (see _pendingFlushAcks): the save is done,
+        // so the saved text is the ground truth on whether the flushed bytes
+        // actually reached the document.
+        const didSaveSubscription = vscode.workspace.onDidSaveTextDocument((saved) => {
+            if (saved.uri.toString() !== uriKey) { return; }
+            const pending = this._pendingFlushAcks.get(uriKey);
+            if (!pending) { return; }
+            this._pendingFlushAcks.delete(uriKey);
+            this._ackFlush(webviewPanel, pending.id, saved.getText() === pending.expected);
+        });
         // Dispose the subscriptions when the panel closes
         webviewPanel.onDidDispose(() => {
             changeSubscription.dispose();
             willSaveSubscription.dispose();
+            didSaveSubscription.dispose();
+            this._pendingFlushAcks.delete(uriKey);
             // Fail any parked flush so a save mid-teardown never hangs.
             this._flush.failFlushes(uriKey);
         });
@@ -1467,6 +1498,9 @@ export class MarkdownEditorProvider
         if (!panel || !this._initializedPanels.has(uriKey)) {
             return Promise.resolve([]);
         }
+        // The full text computeEdits handed to the save, for the held
+        // applied-ack's didSave comparison. Set before onDecided(true) can fire.
+        let preparedContent = "";
         return this._flush.flushPendingEdit(
             uriKey,
             // Throws when the panel disposed between the guard and the post; the
@@ -1474,6 +1508,7 @@ export class MarkdownEditorProvider
             (id) => postToWebview(panel.webview, { type: "flushSave", id }),
             async (content) => {
                 const newContent = this._prepareContentForSave(content, uriKey);
+                preparedContent = newContent;
                 const before = document.getText();
                 const replace = computeReplaceRange(before, newContent);
                 if (!replace) { return []; } // document already current — nothing to write
@@ -1494,7 +1529,34 @@ export class MarkdownEditorProvider
                     ),
                 ];
             },
+            // The verdict, toward the webview's parked baseline candidate
+            // (MAR-349). Discarded is final and posts now. Applied is only
+            // optimistic here — the edits were handed to the waitUntil, which
+            // VS Code can still drop — so it is HELD and settled against the
+            // saved text at onDidSaveTextDocument (see _pendingFlushAcks).
+            (id, applied) => {
+                if (!applied) {
+                    this._ackFlush(panel, id, false);
+                    return;
+                }
+                const prev = this._pendingFlushAcks.get(uriKey);
+                if (prev) { this._ackFlush(panel, prev.id, false); }
+                this._pendingFlushAcks.set(uriKey, { id, expected: preparedContent });
+            },
         );
+    }
+
+    /**
+     * Post a flush verdict, best-effort: a panel disposed mid-save throws
+     * synchronously from postToWebview (by design — see webviewMessaging.ts)
+     * and has no baseline candidate left to correct.
+     */
+    private _ackFlush(panel: vscode.WebviewPanel, id: string, applied: boolean): void {
+        try {
+            postToWebview(panel.webview, { type: "flushAck", id, applied });
+        } catch {
+            // panel gone — nothing to ack
+        }
     }
 
     /** Pin the tab on first edit (remove the italic preview state) */

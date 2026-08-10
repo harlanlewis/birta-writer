@@ -123,6 +123,24 @@ let _savedMarkdown = '';
 let _protection: RoundTripProtection | null = null;
 let _protectionSnapshot: { baseline: string; doc: ProseNode; editor: Editor } | null = null;
 
+// A save flush whose bytes the extension has not yet confirmed applying. The
+// baseline (`_savedMarkdown`) and any canonical protection-drop advance only on
+// `flushAck { applied: true }` — an unacknowledged flush is not a committed
+// write, because the extension is free to discard the reply (flush timeout,
+// stale version, superseded seq) and then the save has written the document as
+// it stood, not these bytes (MAR-349). Any other baseline write (a sync, an
+// external re-base, a new editor) supersedes the candidate wholesale.
+// `docChangeCount` records how many user doc changes the candidate's serialize
+// had seen, so the commit can tell whether the doc moved on while the ack was
+// in flight and a re-sync against the NEW baseline is owed.
+let _flushCandidate: {
+    id: string;
+    text: string;
+    canonical: boolean;
+    docChangeCount: number;
+} | null = null;
+let _docChangeCount = 0;
+
 /**
  * Return the current round-trip protection, computing it from the pristine
  * snapshot on first demand (and caching it). Called before every save so an
@@ -268,8 +286,8 @@ let _onDocChange: (() => void) | null = null;
  * FormatModule seam: the verifier is handed a parse function and a profile
  * rather than knowing markdown exists.
  */
-function mergeForSave(editor: Editor, markdown: string): string {
-    const { text, canonical } = mergeVerified(
+function mergeForSave(editor: Editor, markdown: string): { text: string; canonical: boolean } {
+    return mergeVerified(
         _savedMarkdown,
         markdown,
         format.formatProfile,
@@ -277,33 +295,36 @@ function mergeForSave(editor: Editor, markdown: string): string {
         editor.action((ctx) => getState(ctx).doc),
         (text) => editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null,
     );
-    if (canonical) {
-        // Every construct protection was pinning has just been written in the
-        // serializer's own spelling, so the regions describe a baseline that no
-        // longer exists. Reusing them repairs the NEXT save's serialization back
-        // to a spelling the file no longer has, and the file swings out on one
-        // save and back on the next (MAR-344).
-        //
-        // Dropping rather than recomputing, because that is what a reload of
-        // these bytes would compute: across every protected corpus fixture the
-        // serializer's output reparses and re-serializes to itself, so its own
-        // protection is empty. That is a census of the fixtures, not a theorem
-        // about the serializer — but the direction is the safe one, since
-        // protection only ever restores saved bytes and canonical bytes have
-        // none to restore.
-        //
-        // Cleared here rather than beside the callers' `_savedMarkdown =`,
-        // because both save paths funnel through this function. A caller that
-        // discards the bytes as unchanged is served correctly too: identical
-        // bytes mean the baseline was already canonical.
-        //
-        // The snapshot is cleared alongside, as _applyExternalNow does when it
-        // re-baselines: getProtection consumes it before this line is reached,
-        // so the pair states the invariant rather than repairing anything.
-        _protection = null;
-        _protectionSnapshot = null;
-    }
-    return text;
+}
+
+/**
+ * A canonical merge means every construct protection was pinning has just been
+ * written in the serializer's own spelling, so the regions describe a baseline
+ * that no longer exists. Reusing them repairs the NEXT save's serialization
+ * back to a spelling the file no longer has, and the file swings out on one
+ * save and back on the next (MAR-344).
+ *
+ * Dropping rather than recomputing, because that is what a reload of these
+ * bytes would compute: across every protected corpus fixture the serializer's
+ * output reparses and re-serializes to itself, so its own protection is empty.
+ * That is a census of the fixtures, not a theorem about the serializer — but
+ * the direction is the safe one, since protection only ever restores saved
+ * bytes and canonical bytes have none to restore.
+ *
+ * The drop must ride the same commitment as the baseline write it describes:
+ * a sync commits immediately, a save flush only on `flushAck { applied: true }`
+ * — dropping protection for bytes the extension then discarded would leave the
+ * file's real spellings unprotected for the rest of the session (MAR-349). A
+ * caller whose merge came out byte-identical to the baseline is served
+ * correctly too: identical bytes mean the baseline was already canonical.
+ *
+ * The snapshot is cleared alongside, as _applyExternalNow does when it
+ * re-baselines: getProtection consumes it before any merge returns `canonical`,
+ * so the pair states the invariant rather than repairing anything.
+ */
+function dropCanonicalProtection(): void {
+    _protection = null;
+    _protectionSnapshot = null;
 }
 
 /**
@@ -314,9 +335,13 @@ function mergeForSave(editor: Editor, markdown: string): string {
 function syncNow(): void {
     if (!_editor) { return; }
     const markdown = _editor.action(getMarkdown());
-    const toSave = mergeForSave(_editor, markdown);
+    const { text: toSave, canonical } = mergeForSave(_editor, markdown);
+    if (canonical) { dropCanonicalProtection(); }
     if (toSave === _savedMarkdown) { return; } // no substantive change — no save
     _savedMarkdown = toSave;
+    // This baseline is fresher than any flush still awaiting its ack (the
+    // serialize ran later), so the candidate is superseded, not committed.
+    _flushCandidate = null;
     _onUpdate?.(toSave);
 }
 
@@ -347,6 +372,7 @@ const _scheduler = createSyncScheduler({
  */
 function onDocChanged(): void {
     if (_isSettled && _hasUserInteracted && !_applyingExternal) {
+        _docChangeCount++;
         _scheduler.request();
     }
     _onDocChange?.();
@@ -360,13 +386,53 @@ function onDocChanged(): void {
  * (a quick edit-then-save right after a prior save must not land in the
  * trailing window and no-op). Called from the `flushSave` handler when the
  * extension's onWillSaveTextDocument participant is about to write.
+ *
+ * The merge is parked as a CANDIDATE, not committed: the extension may still
+ * discard this reply (flush timeout, stale version, superseded seq), and a
+ * baseline advanced on a discarded flush diffs every later save against bytes
+ * that never reached the file — worse, the reset above has already cancelled
+ * the pending trailing sync, so with the baseline also advanced the equality
+ * check in syncNow() would suppress the recovery post forever and the
+ * trailing-window edits would strand in the webview behind a clean save
+ * (MAR-349). `acknowledgeFlush` commits or abandons the candidate when the
+ * extension's verdict arrives.
  */
-export function flushPendingEdit(): string {
+export function flushPendingEdit(id: string): string {
     _scheduler.reset();
-    if (_editor) {
-        _savedMarkdown = mergeForSave(_editor, _editor.action(getMarkdown()));
+    if (!_editor) { return _savedMarkdown; }
+    const { text, canonical } = mergeForSave(_editor, _editor.action(getMarkdown()));
+    _flushCandidate = { id, text, canonical, docChangeCount: _docChangeCount };
+    return text;
+}
+
+/**
+ * The extension's verdict on a flush this webview answered (`flushAck`).
+ * Applied: those bytes are on the document, so the baseline advances to them
+ * and a canonical merge's protection-drop lands (see dropCanonicalProtection).
+ * Discarded: the baseline stays where the file is, and a sync is requested so
+ * the flushed content re-posts as a normal update — re-dirtying the document
+ * and un-stranding the edits the discarded flush had captured.
+ *
+ * An ack for a superseded candidate (a later sync or external re-base already
+ * moved the baseline, or a newer flush replaced it) is dropped: the candidate's
+ * serialize is older than the state it would overwrite. After an applied
+ * commit, a doc change that landed while the ack was in flight owes a re-sync
+ * against the NEW baseline — its own leading-edge sync may have no-opped
+ * against the old one (an edit reverting to the pre-save state compares equal
+ * to the old baseline and posts nothing, which would strand it now that the
+ * document holds the flushed bytes).
+ */
+export function acknowledgeFlush(id: string, applied: boolean): void {
+    const candidate = _flushCandidate;
+    if (!candidate || candidate.id !== id) { return; }
+    _flushCandidate = null;
+    if (applied) {
+        _savedMarkdown = candidate.text;
+        if (candidate.canonical) { dropCanonicalProtection(); }
+        if (_docChangeCount !== candidate.docChangeCount) { _scheduler.request(); }
+    } else {
+        _scheduler.request();
     }
-    return _savedMarkdown;
 }
 
 /**
@@ -459,6 +525,8 @@ function _applyExternalNow(newMarkdown: string): boolean {
     // is recomputed because a different file may have different round-trip
     // trouble spots (reference links, setext headings, ...).
     _savedMarkdown = newMarkdown;
+    // An authoritative re-base supersedes any flush still awaiting its ack.
+    _flushCandidate = null;
     // Recompute eagerly here (not a launch path) and drop any deferred load
     // snapshot so getProtection() returns this fresh, authoritative protection.
     _protectionSnapshot = null;
@@ -512,6 +580,7 @@ export async function createEditor(
     // leaving the predecessor's here would let a Cmd+S after a failed re-init
     // write the previous content back over the file (MAR-148).
     _savedMarkdown = initialMarkdown;
+    _flushCandidate = null;
 
     // One live listener pair per editor instance (see _compositionAbort).
     _compositionAbort?.abort();

@@ -119,11 +119,22 @@ export class SaveFlushController<TEdit> {
      * - the webview replies fresh → `computeEdits(content)` produces the edits;
      * - the reply is stale (version or seq guard) or computeEdits rejects → [];
      * - no reply within the timeout, or `post` throws (panel disposed) → [].
+     *
+     * `onDecided` reports the verdict on a reply that DID arrive in time, so the
+     * caller can acknowledge it to the webview (MAR-349): `true` exactly when
+     * `computeEdits` resolved — the bytes were handed to the save. That is
+     * optimistic, not proof of application (VS Code may still drop a
+     * participant's edits), so the caller confirms against the saved text
+     * before relaying `true`. It never fires on the timeout or post-throw
+     * paths, where there is no reply to judge; a reply that arrives after the
+     * timeout is `resolveFlush`'s caller's to acknowledge (it returns false
+     * for exactly that case).
      */
     flushPendingEdit(
         uriKey: string,
         post: (id: string) => void,
         computeEdits: (content: string) => Promise<TEdit[]>,
+        onDecided?: (id: string, applied: boolean) => void,
     ): Promise<TEdit[]> {
         const id = `flush:${uriKey}:${++this._flushSeq}`;
         return new Promise<TEdit[]>((resolve) => {
@@ -138,10 +149,20 @@ export class SaveFlushController<TEdit> {
                     !this.isCurrentVersion(uriKey, reply.baseSyncVersion) ||
                     !this.claimSeq(uriKey, reply.seq)
                 ) {
+                    onDecided?.(id, false);
                     finish([]);
                     return;
                 }
-                computeEdits(reply.content).then(finish, () => finish([]));
+                computeEdits(reply.content).then(
+                    (edits) => {
+                        onDecided?.(id, true);
+                        finish(edits);
+                    },
+                    () => {
+                        onDecided?.(id, false);
+                        finish([]);
+                    },
+                );
             });
             try {
                 post(id);
@@ -151,9 +172,17 @@ export class SaveFlushController<TEdit> {
         });
     }
 
-    /** Deliver a webview `flushResult` reply to its parked flush (no-op if unknown/late). */
-    resolveFlush(id: string, reply: FlushReply): void {
-        this._pendingFlushes.get(id)?.(reply);
+    /**
+     * Deliver a webview `flushResult` reply to its parked flush. Returns false
+     * when no flush is parked under `id` (late reply after the timeout, or a
+     * duplicate) — the caller owes the webview a discarded-ack for that reply,
+     * because the webview is holding a baseline candidate for it (MAR-349).
+     */
+    resolveFlush(id: string, reply: FlushReply): boolean {
+        const resolver = this._pendingFlushes.get(id);
+        if (!resolver) { return false; }
+        resolver(reply);
+        return true;
     }
 
     /**
