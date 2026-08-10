@@ -13,11 +13,17 @@
  * zone declaring `scope: "outline"` (the TOC panel) re-scopes the very same
  * session to whole sections, and the veil and pill follow the pointer across
  * the boundary. While dragging:
- *   - a drop indicator line (theme accent) snaps to the nearest top-level
- *     block boundary under the pointer — any boundary outside the dragged
- *     range is a legal target (unlike the menu's Move rows, which hop whole
- *     units, a drag is a free-form refile: markdown is text, and dropping a
- *     section inside another section is a legitimate outline edit);
+ *   - a drop indicator line (theme accent) snaps to the nearest block
+ *     boundary under the pointer. A drag is a free-form refile — unlike the
+ *     menu's Move rows, which hop whole units — because markdown is text and
+ *     dropping a section inside another section is a legitimate outline edit.
+ *     The bound on that freedom is the move primitive's own verdict for the
+ *     dragged run (`moveTargetFilter`), asked about the slot the pointer
+ *     chose: THE LINE IS DRAWN ONLY WHERE A RELEASE WILL LAND, so there is no
+ *     aiming at a drop that does nothing. Its two documented exclusions stay
+ *     out: a target inside the dragged range is the put-it-back no-op, and
+ *     the save-survival hazard is too expensive to ask per pointer move, so
+ *     it alone can still refuse a drawn line — visibly, with its own notice;
  *   - the window auto-scrolls when the pointer nears the viewport edges;
  *   - Escape cancels, mouseup commits (one transaction, one undo step).
  *
@@ -35,6 +41,7 @@ import {
     foldedHiddenRanges,
     hiddenRangeCoversTarget,
     moveBlocks,
+    moveTargetFilter,
 } from "../../editing/blockOps";
 import { isContainerNode, isListNode, selectionCoverRange } from "../../plugins/headingFold";
 import { isBlankParagraph } from "../../plugins/fingerprints";
@@ -157,20 +164,38 @@ export function blockBoundaryPositions(
 
 /**
  * The boundary to drop at for a pointer at `pointerY` — nearest-y wins — or
- * null when the NEAREST boundary sits inside (or at an edge of) the dragged
- * range: that's the "put it back" gesture, so the indicator hides and the
- * drop is a clean no-op. (Skipping own-range boundaries before choosing used
- * to snap the indicator away from the origin, making it impossible to drop a
- * block back where it was picked up.) Exported for unit testing.
+ * null, which means no line is drawn and a release commits nothing. Two ways
+ * to reach null, and they share that vocabulary on purpose: the user learns
+ * "no line, no drop" once.
+ *
+ *   - The nearest boundary sits inside (or at an edge of) the dragged range:
+ *     the "put it back" gesture. (Skipping own-range boundaries before
+ *     choosing used to snap the indicator away from the origin, making it
+ *     impossible to drop a block back where it was picked up.)
+ *   - `isLegalTarget` refuses it — the move primitive's own verdict for this
+ *     run (`moveTargetFilter`), so the drop line can only ever be drawn where
+ *     the release will actually land.
+ *
+ * The winner alone is judged, not the whole set, and that is a cost decision
+ * rather than a shortcut: see `planBoundaries` for the measurement that ruled
+ * out filtering the set. It costs one verdict per pointer move (13 us at 1k
+ * blocks, 162 us at 12k on the same synthetic document), against an O(slots)
+ * scan this function already performs.
+ *
+ * Refusing rather than snapping onward to the next legal slot is deliberate:
+ * a drop that silently travels to somewhere the user did not aim is worse
+ * than one that does not happen.
  *
  * `range` is omitted by callers with nothing in flight to put back — an OS
  * file drag (editing/fileDrop.ts) carries content from outside the document,
- * so every boundary is a legal landing.
+ * so every boundary is a legal landing. Such callers pass no verdict either;
+ * they insert asynchronously through a different path.
  */
 export function dropTargetFor(
     boundaries: readonly DropBoundary[],
     pointerY: number,
     range?: { from: number; to: number },
+    isLegalTarget?: (pos: number) => boolean,
 ): DropBoundary | null {
     let best: DropBoundary | null = null;
     let bestDist = Infinity;
@@ -184,7 +209,13 @@ export function dropTargetFor(
             best = boundary;
         }
     }
-    if (best && range && best.pos >= range.from && best.pos <= range.to) {
+    if (!best) {
+        return null;
+    }
+    if (range && best.pos >= range.from && best.pos <= range.to) {
+        return null;
+    }
+    if (isLegalTarget && !isLegalTarget(best.pos)) {
         return null;
     }
     return best;
@@ -325,6 +356,15 @@ interface BoundaryPlan {
  * geometry. Pure over `view.state` + the current DOM shape — the caller may
  * cache the result for as long as `view.state` is identical (a scroll changes
  * geometry but no state, which is exactly the case this exists for).
+ *
+ * Deliberately NOT where the dragged run's legality is judged, though it is
+ * the tempting place. `moveTargetFilter`'s per-target half is a `canReplace`,
+ * and ProseMirror answers that by walking its parent's content from the index
+ * to the end, so judging EVERY slot is quadratic in document size: measured
+ * over a synthetic prose document, 20 ms of extra plan work at 1k blocks but
+ * 3.4 s at 12k, on top of a plan that already costs the same order. The one
+ * slot the pointer actually chose is judged instead, once per move, in
+ * `dropTargetFor`.
  */
 export function planBoundaries(view: EditorView): BoundaryPlan[] {
     const { doc } = view.state;
@@ -732,6 +772,11 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
     // Re-measured on every auto-scroll frame, so it re-plans only when the
     // state changes (see createBoundaryMeasurer).
     const measurer = createBoundaryMeasurer();
+    // The move primitive's verdict for THIS run, resolved once (its expensive
+    // half is the source, which cannot change mid-session — a doc edit cancels
+    // the drop through the startDoc guard). Consulted for the one slot the
+    // pointer chose, so the drop line only ever marks a landing that commits.
+    let targetIsLegal: ((pos: number) => boolean) | null = null;
     // The doc the session's range/boundaries were measured against — an
     // inbound edit mid-drag (external file sync) invalidates them, and a
     // drop must then cancel rather than slice stale positions.
@@ -778,7 +823,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             // Geometry shifted under the pointer — remeasure and re-aim.
             boundaries = measurer.measure(view).filter((b) => b.kind === draggedKind);
             if (range) {
-                const boundary = dropTargetFor(boundaries, lastPointerY, range);
+                const boundary = dropTargetFor(boundaries, lastPointerY, range, targetIsLegal ?? undefined);
                 target = boundary;
                 if (boundary) {
                     showBoundaryIndicator(view, boundary);
@@ -861,6 +906,9 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             multi = resolved.multi;
             label = resolved.label;
             outlineLabel = resolved.outlineLabel ?? resolved.label;
+            // After resolveRange, which may have dispatched (selectInto), so
+            // the verdict is read off the state the boundaries describe.
+            targetIsLegal = moveTargetFilter(view.state, range);
             boundaries = measurer.measure(view).filter((b) => b.kind === draggedKind);
             startDoc = view.state.doc;
             closeBlockMenu();
@@ -904,7 +952,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             }
             return;
         }
-        const boundary = dropTargetFor(boundaries, move.clientY, range!);
+        const boundary = dropTargetFor(boundaries, move.clientY, range!, targetIsLegal ?? undefined);
         target = boundary;
         if (boundary) {
             showBoundaryIndicator(view, boundary);

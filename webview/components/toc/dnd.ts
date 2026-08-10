@@ -39,7 +39,7 @@ import {
     startPointerDragSession,
     type DropZoneProvider,
 } from "../blockMenu";
-import { isHiddenTargetPos } from "../../editing/blockOps";
+import { isHiddenTargetPos, moveTargetFilter } from "../../editing/blockOps";
 import {
     draggedSectionLevel,
     tocDropSlots,
@@ -101,6 +101,11 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
     // Per-session snapshot (sessionStart/measure), dropped at sessionEnd.
     let sessionView: EditorView | null = null;
     let sessionKind: "block" | "item" = "block";
+    /** The move primitive's verdict for the run this session carries, at THIS
+     * zone's scope (the whole section for a heading). Resolved once — its
+     * expensive half is the source, which cannot change mid-drag — and asked
+     * about the slot the pointer chose, so a drop line here always commits. */
+    let targetIsLegal: ((pos: number) => boolean) | null = null;
     let allowInto = false;
     // Rank of the section this session is carrying, or null for a non-heading
     // run — the relevel baseline, fixed for the session (the dragged content
@@ -212,6 +217,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
         sessionStart(view, range, kind) {
             sessionView = view;
             sessionKind = kind;
+            targetIsLegal = moveTargetFilter(view.state, range);
             // Every block run may target "into" now, outline-initiated or
             // not: with relevel, dropping ONTO an item has a precise meaning
             // (become its child), so withholding it from section drags — the
@@ -230,6 +236,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             const slot = tocDropTargetFor(measured, y, range, {
                 allowInto,
                 draggedLevel: sessionDraggedLevel,
+                ...(targetIsLegal ? { isLegalTarget: targetIsLegal } : {}),
             });
             if (!slot) {
                 hideOwnIndicator();
@@ -311,6 +318,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
         },
         sessionEnd() {
             sessionView = null;
+            targetIsLegal = null;
             sessionDraggedLevel = null;
             measured = [];
             intoItems = new Map();

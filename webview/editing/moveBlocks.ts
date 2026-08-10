@@ -72,9 +72,10 @@ import { TextSelection, type EditorState, type Selection, type Transaction } fro
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState";
 // Runtime-only cycle (moveBlocks → headingFold → blockMenu → moveBlocks):
-// isHiddenTargetPos is only called inside the function body, matching the
-// established contentGuard ↔ headingFold precedent.
-import { isHiddenTargetPos } from "../plugins/headingFold";
+// these are only called inside function bodies, matching the established
+// contentGuard ↔ headingFold precedent. Together they are `isHiddenTargetPos`
+// taken apart, so a caller judging many targets pays the list once.
+import { foldedHiddenRanges, hiddenRangeCoversTarget } from "../plugins/headingFold";
 import { isBlankParagraph, markerKeyOf, showGuardNotice, tagContentGuard } from "../plugins/contentGuard";
 import { reparseRefusal } from "../plugins/reparseHazard";
 import { flashRange } from "./rangeIndicator";
@@ -147,21 +148,28 @@ type MoveResolution =
 /**
  * The structural verdict on a move, decided on the document alone — clauses
  * 2/3/4 of the contract, and the SINGLE place they are decided. `moveBlocks`
- * refuses on a reason; the UI asks the same question through `moveFits` to
- * DISABLE a gesture rather than offer one that silently no-ops. Sharing the
- * verdict is the point: a menu row that predicts legality with its own copy
+ * refuses on a reason; the UI asks the same question through `moveFits` (one
+ * target) or `moveTargetFilter` (a whole slot set) to WITHHOLD a gesture
+ * rather than offer one that refuses on release. Sharing the verdict is the
+ * point: a menu row or a drop line that predicts legality with its own copy
  * of these rules drifts from the primitive the moment either side changes
  * (the same reason the drag's slot filter and clause 4 share one registry).
+ *
+ * Split in two along the only axis that matters for cost. The SOURCE half is
+ * fixed for a drag — one run, resolved once — and is the expensive half (it
+ * walks the source parent's children). The TARGET half is a `canReplace` and
+ * a fold-occupancy lookup. A drag asks the target half once per candidate
+ * slot, so fusing them would make offering N slots O(N x siblings): on a
+ * large document that is the whole document walked per slot, per re-plan.
  */
-function resolveMove(
+function resolveSource(
     state: EditorState,
     source: { from: number; to: number },
-    targetPos: number,
     relevelDelta: number,
 ): MoveResolution {
     const { doc } = state;
-    if (source.from < 0 || source.to > doc.content.size || targetPos < 0 || targetPos > doc.content.size) {
-        return { reason: `range [${source.from}, ${source.to}) or target ${targetPos} is outside the document` };
+    if (source.from < 0 || source.to > doc.content.size) {
+        return { reason: `range [${source.from}, ${source.to}) is outside the document` };
     }
 
     // ── 2. Source range integrity ──
@@ -212,34 +220,6 @@ function resolveMove(
     // same — checking the real fragment is the point, not a formality).
     const content = Fragment.from(relevelHeadings(moved, relevelDelta));
 
-    // ── 4. Target legality: never land inside fold-hidden content ──
-    // Same registry as the drag UI's slot filter (visibleBoundaryPositions):
-    // collapsed heading sections are half-open at `to`, collapsed callout
-    // bodies inclusive. A hidden target here means a caller drifted from the
-    // registry — content committed into display:none reads as deletion.
-    // (A target AT a section's end is visible and legal, but the landing may
-    // still fall inside the fold — revealed, not refused, by the caller.)
-    if (isHiddenTargetPos(state, targetPos)) {
-        return { reason: `target ${targetPos} is inside fold-hidden content` };
-    }
-
-    // ── 3. Explicit fit, before any transaction exists ──
-    const $target = doc.resolve(targetPos);
-    if ($target.textOffset !== 0) {
-        return { reason: `target ${targetPos} is inside a text node, not at a node boundary` };
-    }
-    const targetIndex = $target.index();
-    if (!$target.parent.canReplace(targetIndex, targetIndex, content)) {
-        // The code-block-split class: tr.insert's replaceStep would "fit"
-        // the fragment by splitting the target (or silently no-op). The
-        // primitive refuses instead — structurally, before the guard would.
-        return {
-            reason:
-                `target parent ${$target.parent.type.name} cannot hold the moved ` +
-                `${moved.map((n) => n.type.name).join("+")} at index ${targetIndex}`,
-        };
-    }
-
     // ── 3, source side: the vacated parent must survive the removal ──
     // Clause 3 forbids IMPLICIT fitting on BOTH sides, but only the target
     // side was ever checked. The delete has the mirror-image failure: when
@@ -269,6 +249,75 @@ function resolveMove(
 }
 
 /**
+ * The target half of the verdict — clauses 4 and 3-target — for a fragment
+ * `resolveSource` already derived. Cheap by construction: one occupancy scan
+ * over an already-built fold list and one `canReplace`, nothing that walks
+ * the document. `hidden` is passed in rather than read here so a caller
+ * judging many targets builds it once (`foldedHiddenRanges` allocates and is
+ * O(folds) per call, which per slot is a cost with no answer to show for it).
+ */
+function targetAccepts(
+    state: EditorState,
+    content: Fragment,
+    targetPos: number,
+    hidden: readonly { pos: number; from: number; to: number }[],
+): string | null {
+    const { doc } = state;
+    if (targetPos < 0 || targetPos > doc.content.size) {
+        return `target ${targetPos} is outside the document`;
+    }
+
+    // ── 4. Target legality: never land inside fold-hidden content ──
+    // Same registry as the drag UI's slot filter (visibleBoundaryPositions):
+    // collapsed heading sections are half-open at `to`, collapsed callout
+    // bodies inclusive. A hidden target here means a caller drifted from the
+    // registry — content committed into display:none reads as deletion.
+    // (A target AT a section's end is visible and legal, but the landing may
+    // still fall inside the fold — revealed, not refused, by the caller.)
+    if (hidden.some((range) => hiddenRangeCoversTarget(doc, range, targetPos))) {
+        return `target ${targetPos} is inside fold-hidden content`;
+    }
+
+    // ── 3. Explicit fit, before any transaction exists ──
+    const $target = doc.resolve(targetPos);
+    if ($target.textOffset !== 0) {
+        return `target ${targetPos} is inside a text node, not at a node boundary`;
+    }
+    const targetIndex = $target.index();
+    if (!$target.parent.canReplace(targetIndex, targetIndex, content)) {
+        // The code-block-split class: tr.insert's replaceStep would "fit"
+        // the fragment by splitting the target (or silently no-op). The
+        // primitive refuses instead — structurally, before the guard would.
+        const names: string[] = [];
+        content.forEach((node: ProseNode) => names.push(node.type.name));
+        return (
+            `target parent ${$target.parent.type.name} cannot hold the moved ` +
+            `${names.join("+")} at index ${targetIndex}`
+        );
+    }
+    return null;
+}
+
+/**
+ * Both halves, for one (source, target) pair. The source half runs first, so
+ * a doubly-invalid move reports its SOURCE reason — the more actionable one,
+ * since a bad source makes every target moot.
+ */
+function resolveMove(
+    state: EditorState,
+    source: { from: number; to: number },
+    targetPos: number,
+    relevelDelta: number,
+): MoveResolution {
+    const resolved = resolveSource(state, source, relevelDelta);
+    if (resolved.reason !== null) {
+        return resolved;
+    }
+    const reason = targetAccepts(state, resolved.content, targetPos, foldedHiddenRanges(state));
+    return reason === null ? resolved : { reason };
+}
+
+/**
  * Whether `moveBlocks` would structurally accept this move. The block menu's
  * Move rows disable on `false` instead of rendering live and no-opping on
  * click. Answers the STRUCTURAL question only: a target inside the source
@@ -288,6 +337,37 @@ export function moveFits(
     targetPos: number,
 ): boolean {
     return resolveMove(state, source, targetPos, 0).reason === null;
+}
+
+/**
+ * `moveFits` for one run against MANY targets: resolve the source once, then
+ * answer per target. This is what lets a drag ASK the primitive which slots
+ * are legal instead of predicting it — the drop line is then drawn only where
+ * the release will actually land, and there is no such thing as aiming at a
+ * slot the primitive refuses.
+ *
+ * Returns a predicate that is constantly `false` when the source itself is
+ * refused, which is the honest answer: such a run has no legal target
+ * anywhere, so no line should appear for it at all.
+ *
+ * Same STRUCTURAL scope as `moveFits`, and the same two exclusions. A target
+ * inside the source range fits here and is the caller's "put it back" no-op
+ * to exclude (drag.ts's `dropTargetFor` already does). The save-survival
+ * refusal stays unconsulted for the reason given above, and it is the one
+ * lane where a drawn line can still refuse on release — visibly, with its own
+ * notice, rather than silently.
+ */
+export function moveTargetFilter(
+    state: EditorState,
+    source: { from: number; to: number },
+): (targetPos: number) => boolean {
+    const resolved = resolveSource(state, source, 0);
+    if (resolved.reason !== null) {
+        return () => false;
+    }
+    const { content } = resolved;
+    const hidden = foldedHiddenRanges(state);
+    return (targetPos: number) => targetAccepts(state, content, targetPos, hidden) === null;
 }
 
 /** What `appendMove` reports back so a caller can flash/select the landing. */

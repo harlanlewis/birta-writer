@@ -193,6 +193,8 @@ While a selection spans blocks, every covered block's marker surfaces (`.heading
 
 What is moving (the pill, carrying the block name or count, `.block-drag-pill`), where it will land (the accent drop line, indented to the target depth), and where it landed (a brief landing flash, `.block-drop-flash`). Accents are `var(--vscode-focusBorder)`; the pill and tooltips are inverted chips built from the theme's own foreground and background. While a drag or marquee is live, every other hover surface (tooltips, popups, marker reveals) stays quiet.
 
+All three answers are the truth, which for the drop line means the line and the drop are one decision, not two. A slot the move would refuse draws nothing, and no line ever snaps past a refusal to the next place that would work: a drop that travels somewhere the user did not aim is worse than one that does not happen. So the vocabulary is small enough to learn once, no line, no drop, and it covers both reasons for silence (aiming back at where the block came from, and aiming at something that cannot hold it). The one refusal too expensive to answer while the pointer moves, whether the result would survive a save and reopen, is the exception, and it says so on release rather than failing quietly.
+
 ### The marquee acquires; it never steals
 
 Rubber-band block selection starts only outside text content, in the margins. Pointer-down inside text is always native text selection. The rectangle is accent-bordered with a faint fill (`.block-marquee`), and covered blocks tint live beneath it.

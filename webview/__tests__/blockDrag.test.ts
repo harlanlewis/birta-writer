@@ -235,6 +235,28 @@ describe("dropTargetFor", () => {
     it("all boundaries in-range should yield null", () => {
         expect(dropTargetFor(boundaries.slice(0, 2), 50, { from: 0, to: 10 })).toBeNull();
     });
+
+    // The primitive's verdict, applied to the WINNER — so a drop line is only
+    // ever drawn where the release will actually land.
+    it("a winner the primitive refuses should yield null, not the next legal slot", () => {
+        const legal = (pos: number): boolean => pos !== 20;
+        // Nearest to y=210 is pos 20, which the verdict refuses: no line, and
+        // deliberately NO snap onward to pos 10 or 30 — a drop that travels
+        // somewhere the user did not aim is worse than one that does not fire.
+        expect(dropTargetFor(boundaries, 210, { from: 0, to: 5 }, legal)).toBeNull();
+        // A pointer over a slot the verdict allows is unaffected.
+        expect(dropTargetFor(boundaries, 310, { from: 0, to: 5 }, legal)?.pos).toBe(30);
+    });
+
+    it("a verdict that refuses everything should offer no target at all", () => {
+        // What a run whose SOURCE the primitive rejects looks like: no legal
+        // landing anywhere, so the drag draws nothing rather than promising a
+        // drop that would refuse on release.
+        const never = (): boolean => false;
+        for (const y of [0, 100, 200, 300]) {
+            expect(dropTargetFor(boundaries, y, { from: 0, to: 5 }, never)).toBeNull();
+        }
+    });
 });
 
 describe("drag session robustness", () => {

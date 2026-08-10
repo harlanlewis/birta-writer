@@ -283,6 +283,24 @@ describe("tocDropTargetFor", () => {
         expect(tocDropTargetFor(slots, 100, { from: 0, to: 10 }, { allowInto: false })).toBeNull();
     });
 
+    it("a winning slot the primitive refuses should yield null", () => {
+        // Same rule and same placement as the document path's dropTargetFor:
+        // the WINNER is judged, and a refusal draws no line rather than
+        // snapping the drop to a slot the user was not aiming at.
+        const elsewhere = { from: 900, to: 910 };
+        const winner = tocDropTargetFor(slots, 120, elsewhere, { allowInto: true })!;
+        expect(winner).not.toBeNull();
+        expect(tocDropTargetFor(slots, 120, elsewhere, {
+            allowInto: true,
+            isLegalTarget: (pos) => pos !== winner.pos,
+        })).toBeNull();
+        // A verdict that allows it changes nothing.
+        expect(tocDropTargetFor(slots, 120, elsewhere, {
+            allowInto: true,
+            isLegalTarget: () => true,
+        })?.pos).toBe(winner.pos);
+    });
+
     it("a drop at the dragged range's own start should survive when it relevels", () => {
         // Dropping a section ONTO the heading directly above it commits at
         // the section's own start (the put-it-back position) — but the rank
