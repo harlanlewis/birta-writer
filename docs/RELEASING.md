@@ -35,18 +35,22 @@ The `Release` workflow (`.github/workflows/release.yml`) runs nightly at 04:00 P
 2. It runs `pnpm typecheck && pnpm test`. `vsce package` only runs a build, and the release cron fires on its own schedule whether or not CI for the newest commit has finished, or finished green. The job proves the commit for itself rather than trusting a status lookup that may be pending or absent.
 3. It runs the integration suite (`pnpm test:integration`, under xvfb) twice: once against the `engines.vscode` floor read from `package.json`, once against stable. This is the only place the floor is ever launched (the claim is otherwise unverifiable), and the suite includes opening a real-shaped document (invalid mermaid diagram included) in the real custom editor and failing if the webview stops answering after paint. The first run of this step found two floor-only bugs that had shipped in every prior release.
 4. It rolls `CHANGELOG.md` (see below), writes end-user highlights, packages the `.vsix`, tags the commit, and publishes a GitHub Release with the `.vsix` attached.
-5. A second job, `publish`, pushes that same `.vsix` to the Marketplace.
+5. Two further jobs, `publish` and `publish-openvsx`, push that same `.vsix` to the VS Code Marketplace and to Open VSX. They run in parallel and fail independently.
 6. Finally it commits the rolled `CHANGELOG.md` back to `main`.
 
 That is the whole loop, and it is fully automatic. The one thing it writes to `main` is that changelog commit. It is the last step, so it can never fail a release that has already shipped.
 
 ### Re-running after a failed publish
 
-Re-run the `publish` job alone. Re-running the whole workflow derives a new version from the clock, so it cuts a new release rather than retrying the failed one. `--skip-duplicate` makes the job idempotent, so re-running it after the Marketplace already accepted the version is a no-op rather than a hard failure.
+Re-run the failed publish job alone. Re-running the whole workflow derives a new version from the clock, so it cuts a new release rather than retrying the failed one. `--skip-duplicate` makes both jobs idempotent, so re-running one after its registry already accepted the version is a no-op rather than a hard failure.
 
-### Why publishing is a separate job
+### Why publishing is a separate job, and why there are two of them
 
 Publishing is the only part that needs the `marketplace-publish` environment, and an environment is a policy surface: a required reviewer or a deployment branch rule added to it would stall every job that declares it. Splitting keeps the tag, the GitHub Release, and the downloadable `.vsix` out of reach of a policy only publishing cares about, and means a broken credential costs one skipped job rather than the whole release.
+
+The two registries are then split from each other for the same reason at the next level down. They share nothing but the `.vsix`, and their credentials fail in unrelated ways: an Entra login that stops working must not hold Open VSX back, and a revoked Open VSX token must not hold the Marketplace back. Each is dormant until its own secret exists, so the registries can be turned on one at a time.
+
+Neither job packages anything. Both download the release job's artifact, so all three destinations carry identical bytes and the single build-provenance attestation covers every channel. `shared/__tests__/releaseWorkflow.test.ts` fails if a publish job grows a `package` step, because packaging locally would produce a different archive (see [Verifying a release](#verifying-a-release)) while looking, in a diff, like a harmless simplification.
 
 > DST note: GitHub cron is UTC-only. `0 11 * * *` is 04:00 during PDT and 03:00 during PST. Change it to `0 12 * * *` to anchor 04:00 to standard time.
 
@@ -124,9 +128,10 @@ Set these in the repo, under Settings → Secrets and variables → Actions.
 | `ANTHROPIC_API_KEY` | AI-written highlights instead of a commit list    | recommended      |
 | `AZURE_CLIENT_ID`   | Also publishes to the VS Code Marketplace         | set to publish   |
 | `AZURE_TENANT_ID`   | Required alongside `AZURE_CLIENT_ID`              | set to publish   |
+| `OVSX_PAT`          | Also publishes to Open VSX                        | set to publish   |
 | `RELEASE_TOKEN`     | Commits the rolled `CHANGELOG.md` back to `main`  | needed to stamp  |
 
-Until `AZURE_CLIENT_ID` exists, a release builds the downloadable `.vsix` and stops. That is the "build it, don't publish yet" phase.
+With neither `AZURE_CLIENT_ID` nor `OVSX_PAT`, a release builds the downloadable `.vsix` and stops. That is the "build it, don't publish yet" phase. The two registry secrets are independent, so either can be added on its own.
 
 `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` are not secrets in the usual sense. They are identifiers, not credentials, and nothing about them expires. They are stored as secrets only to keep the tenant out of public logs.
 
@@ -191,6 +196,51 @@ The mechanical defence is to grant the identity Tag Contributor on its resource 
 
 A Marketplace publisher is a Microsoft account plus an Azure DevOps organization, and no subscription appears anywhere in that path. If all of the above were deleted tomorrow, `BirtaLabs.birta-writer` would stay live and installable at its last published version.
 
+## Open VSX (the second registry)
+
+The VS Code Marketplace's terms of use restrict it to Microsoft's own products, so every fork reads a different registry: VSCodium, Cursor, Windsurf, Gitpod and Eclipse Theia all default to [Open VSX](https://open-vsx.org/), run by the Eclipse Foundation. Publishing there is the only way Birta Writer is installable in any of them, and it is a plain token upload with none of the Azure apparatus above.
+
+The license is not an obstacle. Open VSX requires that an extension declare one, and explicitly permits licenses the OSI does not recognize as open source ([Open VSX FAQ](https://www.eclipse.org/legal/open-vsx-registry-faq/)), so FSL-1.1-ALv2 publishes without a waiver. `LICENSE` ships inside the `.vsix` already.
+
+### The setup, once
+
+1. Sign the Eclipse Foundation Open VSX Publisher Agreement. Log in to [open-vsx.org](https://open-vsx.org/) with GitHub and accept it on your profile page.
+2. Generate an access token at [open-vsx.org/user-settings/tokens](https://open-vsx.org/user-settings/tokens). The value is shown once and never again.
+3. Create the namespace. It must equal `package.json`'s `publisher` field exactly, which is `BirtaLabs`:
+
+   ```bash
+   npx ovsx create-namespace BirtaLabs -p <token>
+   ```
+
+4. Store the token as the `OVSX_PAT` repository secret, under Settings → Secrets and variables → Actions. From the next release on, `publish-openvsx` runs.
+
+All four steps were completed on 2026-08-11 and the [listing](https://open-vsx.org/extension/BirtaLabs/birta-writer) is live, so this section matters again only for a token rotation (below) or a new namespace.
+
+Creating the namespace makes you a contributor of it, which is already exclusive: since 2020-12-17 only members of a namespace may publish into it, so nobody else can push a `BirtaLabs.*` extension ([Namespace Access](https://github.com/eclipse/openvsx/wiki/Namespace-Access)). Note that `ovsx`'s own README still describes the pre-2020 behavior, where a new namespace was open to everyone; the wiki is the authority.
+
+What a contributor does not have is an owner. A namespace with no owner is unverified, and every extension in it renders with a warning icon and a banner instead of the verified shield, however trustworthy the publisher. Claiming ownership fixes that and lets you manage members. Open an issue at [EclipseFdn/open-vsx.org](https://github.com/EclipseFdn/open-vsx.org/issues/new/choose) while logged in to open-vsx.org. Granting is deliberately public, so a claim can be disputed in the thread. Worth doing, and not a prerequisite for publishing.
+
+### The first minutes after a publish are meant to look wrong
+
+A version appears as `Deactivated`, and absent from search and the extension page, immediately after upload. Processing is asynchronous; the version activates when it completes, usually within seconds. Something that stays deactivated for minutes is a failed processing run rather than a slow one, and is worth chasing. Its icon is extracted during the same pass, so a placeholder tile before activation means nothing either way. This is observed behavior from this extension's first publish, not something the registry documents, so if a later publish behaves differently, trust what you see over this paragraph.
+
+### The first publish
+
+Nothing has to wait for a nightly. Publish the artifact from the newest GitHub Release, which is the same file the Marketplace holds and the one the attestation covers:
+
+```bash
+gh release download --repo harlanlewis/birta-writer --pattern '*.vsix'
+npx ovsx publish --packagePath birta-writer-*.vsix -p <token>
+```
+
+Publishing by hand and letting the nightly publish cannot collide: the version is derived from the release date, so a hand-published version is one the nightly will never re-cut, and `--skip-duplicate` covers a re-run of the same one anyway.
+
+### `OVSX_PAT` is a real credential, and it is the only signal
+
+Unlike `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`, which are identifiers that never expire, this is a bearer token that can be revoked or deleted from the account page. There is nothing else to notice that: the job authenticates and uploads in one step, so a dead token surfaces as a failed `publish-openvsx`, which is a failing scheduled workflow and does notify. The Marketplace, the tag, the GitHub Release and the downloadable `.vsix` are all unaffected. Only the Open VSX listing stops moving.
+
+Rotating is generating a new token, replacing the secret, and revoking the old one. The namespace and the published versions are unaffected either way.
+
 ## Verifying a release
 
 A source audit tells you what the *source* does. It cannot tell you that the published binary was built from that source. Every release closes that gap with a [Sigstore](https://www.sigstore.dev/)-backed build-provenance attestation, binding the VSIX's digest to this repository, the exact commit, and the workflow run that produced it:
@@ -199,7 +249,7 @@ A source audit tells you what the *source* does. It cannot tell you that the pub
 gh attestation verify birta-writer-<version>.vsix --repo harlanlewis/birta-writer
 ```
 
-The Marketplace upload and the GitHub Release asset are the same file. The release job packages once and the publish job uploads that artifact rather than rebuilding, so one attestation covers both channels. A `SHA256SUMS.txt` is attached alongside for anyone who just wants to compare two files.
+The Marketplace upload, the Open VSX upload and the GitHub Release asset are the same file. The release job packages once and both publish jobs upload that artifact rather than rebuilding, so one attestation covers all three channels. A `SHA256SUMS.txt` is attached alongside for anyone who just wants to compare two files.
 
 ### What is not yet true: byte-reproducibility
 
