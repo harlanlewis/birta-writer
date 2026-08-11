@@ -344,39 +344,33 @@ export async function run({ page, check, baseUrl }) {
         check(`the ${kind} card never gains an iframe`, !infoIframe);
     }
 
-    // ── A playing card survives an edit elsewhere ──
-    // The widget key is position-independent (kind:id:ordinal), so typing above
-    // must not re-key — and therefore not rebuild — the cards below. Before
-    // that, typing one character in the heading reset every playing iframe to
-    // its facade (found 2026-07-27).
-    // Locator click, not raw mouse coords: activating the players scrolled the
-    // page, so the heading's viewport position is stale/off-screen by now.
-    // Re-activate the two cards these checks ride on, from the top of the
-    // document, so both sit inside the gutter's scroll window when the edit
-    // lands. The activation marathon above scrolled the full fixture, and
-    // MAR-215's windowed gutter chrome rebuilds any block that crosses the
-    // window boundary — which tears down a playing embed's iframe (the widget
-    // is recreated at its facade). That is a real, pre-existing defect in tall
-    // documents, reproducible on the shipped five-provider table by spreading
-    // the old fixture with filler prose; it is reported as its own issue. The
-    // invariant THIS check pins — an edit in another block must not re-key the
-    // card below it — is exercised exactly as before.
-    for (const kind of ["youtube", "loom"]) {
-        const play = await page.$(`${cardFor(kind)} .embed-card__play`);
-        if (play) {
-            await play.click();
-            await page.waitForTimeout(200);
-        }
-    }
+    // ── A playing card survives scrolling AND an edit elsewhere ──
+    // Two invariants share this gesture. The widget key is
+    // position-independent (kind:id:ordinal), so typing above must not
+    // re-key — and therefore not rebuild — the cards below (typing one
+    // character in the heading used to reset every playing iframe to its
+    // facade, found 2026-07-27). And the card widget sorts ahead of the
+    // block gutter widget at the same position (side -2, MAR-352), so
+    // MAR-215's chrome window moving across a block must not orphan its
+    // card either. The activation marathon above scrolled the full fixture,
+    // crossing the window over every card; before MAR-352's fix that alone
+    // tore each playing iframe back to its facade, and this section needed
+    // a re-activation workaround just above the edit. Every player
+    // activated in the marathon must still be playing here, with no
+    // re-activation in between.
+    // Locator click, not raw mouse coords: activating the players scrolled
+    // the page, so the heading's viewport position is stale/off-screen by now.
     await page.locator(".ProseMirror h1").first().click({ position: { x: 60, y: 10 } });
     await page.waitForTimeout(150);
     await page.keyboard.type("x");
     await page.waitForTimeout(300);
     const headingText = await page.evaluate(() => document.querySelector(".ProseMirror h1")?.textContent ?? "");
     check("typing reached the heading (the edit really happened)", headingText.includes("x"), headingText);
-    const playingAfterEdit = await page.evaluate((sel) =>
-        !!document.querySelector(`${sel} .embed-card__iframe`), cardFor("youtube"));
-    check("a playing iframe survives typing in a paragraph above", playingAfterEdit);
+    for (const { kind } of PLAYERS) {
+        const playingAfterEdit = await page.evaluate((sel) =>
+            !!document.querySelector(`${sel} .embed-card__iframe`), cardFor(kind));
+        check(`the playing ${kind} iframe survives the scroll marathon and the edit above`, playingAfterEdit);
+    }
 
     // The identity strip stays visible WHILE playing — below the frame, not an
     // in-frame overlay the player replaces.
