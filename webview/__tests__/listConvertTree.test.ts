@@ -421,6 +421,37 @@ describe("toggleList (toolbar Lists menu / slash menu commands)", () => {
 
         expect(markdown(editor)).toBe("> - Title\n");
     });
+
+    it("one undo after itemizing a heading should restore the heading", async () => {
+        // The demotion and the wrap are two dispatches; history must group
+        // them into one event, or undo strands the line as a bare paragraph —
+        // a state the user never made. Bespoke editor: needs the history
+        // plugin.
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        const { historyPlugin } = await import("../plugins/history");
+        const editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, "## Title\n");
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .use(historyPlugin)
+            .create();
+        editors.push(editor);
+        activeEditor = editor;
+        const v = view(editor);
+        placeCaretAt(v, "Title");
+        runEditorCommand("toggleBulletList", getEditor);
+        expect(markdown(editor)).toBe("- Title\n");
+
+        const { undo } = await import("../pm");
+        undo(v.state, v.dispatch);
+
+        expect(markdown(editor)).toBe("## Title\n");
+    });
 });
 
 describe("list locator helpers", () => {
