@@ -7,13 +7,23 @@
  *
  * A mousedown on a marker arms a potential drag; crossing a small movement
  * threshold starts the session (and suppresses the click that would open the
- * block menu). The dragged unit is moveRangeAt's answer — a heading brings
- * its whole section, everything else moves alone. While dragging:
- *   - a drop indicator line (theme accent) snaps to the nearest top-level
- *     block boundary under the pointer — any boundary outside the dragged
- *     range is a legal target (unlike the menu's Move rows, which hop whole
- *     units, a drag is a free-form refile: markdown is text, and dropping a
- *     section inside another section is a legitimate outline edit);
+ * block menu). The dragged unit is moveRangeAt's answer — every block moves
+ * alone, a heading included, because a drag in the text is a literal sequence
+ * edit. What the drag carries is the DESTINATION's call, not the handle's: a
+ * zone declaring `scope: "outline"` (the TOC panel) re-scopes the very same
+ * session to whole sections, and the veil and pill follow the pointer across
+ * the boundary. While dragging:
+ *   - a drop indicator line (theme accent) snaps to the nearest block
+ *     boundary under the pointer. A drag is a free-form refile — unlike the
+ *     menu's Move rows, which hop whole units — because markdown is text and
+ *     dropping a section inside another section is a legitimate outline edit.
+ *     The bound on that freedom is the move primitive's own verdict for the
+ *     dragged run (`moveTargetFilter`), asked about the slot the pointer
+ *     chose: THE LINE IS DRAWN ONLY WHERE A RELEASE WILL LAND, so there is no
+ *     aiming at a drop that does nothing. Its two documented exclusions stay
+ *     out: a target inside the dragged range is the put-it-back no-op, and
+ *     the save-survival hazard is too expensive to ask per pointer move, so
+ *     it alone can still refuse a drawn line — visibly, with its own notice;
  *   - the window auto-scrolls when the pointer nears the viewport edges;
  *   - Escape cancels, mouseup commits (one transaction, one undo step).
  *
@@ -26,11 +36,12 @@
 import type { EditorView } from "../../pm";
 import type { EditorState } from "../../pm";
 import type { Node as ProseNode } from "../../pm";
-import { closeBlockMenu, moveRangeAt } from "./menu";
+import { closeBlockMenu, moveRangeAt, outlineRangeAt } from "./menu";
 import {
     foldedHiddenRanges,
     hiddenRangeCoversTarget,
     moveBlocks,
+    moveTargetFilter,
 } from "../../editing/blockOps";
 import { isContainerNode, isListNode, selectionCoverRange } from "../../plugins/headingFold";
 import { isBlankParagraph } from "../../plugins/fingerprints";
@@ -153,20 +164,37 @@ export function blockBoundaryPositions(
 
 /**
  * The boundary to drop at for a pointer at `pointerY` — nearest-y wins — or
- * null when the NEAREST boundary sits inside (or at an edge of) the dragged
- * range: that's the "put it back" gesture, so the indicator hides and the
- * drop is a clean no-op. (Skipping own-range boundaries before choosing used
- * to snap the indicator away from the origin, making it impossible to drop a
- * block back where it was picked up.) Exported for unit testing.
+ * null, which means no line is drawn and a release commits nothing. Two ways
+ * to reach null, and they share that vocabulary on purpose: the user learns
+ * "no line, no drop" once.
+ *
+ *   - The nearest boundary sits inside (or at an edge of) the dragged range:
+ *     the "put it back" gesture. (Skipping own-range boundaries before
+ *     choosing used to snap the indicator away from the origin, making it
+ *     impossible to drop a block back where it was picked up.)
+ *   - `isLegalTarget` refuses it — the move primitive's own verdict for this
+ *     run (`moveTargetFilter`), so the drop line can only ever be drawn where
+ *     the release will actually land.
+ *
+ * The winner alone is judged, not the whole set, and that is a cost decision
+ * rather than a shortcut: judging every slot is quadratic in document size
+ * (see `planBoundaries` for the mechanism), while one verdict per pointer
+ * move rides the O(slots) scan this function already performs.
+ *
+ * Refusing rather than snapping onward to the next legal slot is deliberate:
+ * a drop that silently travels to somewhere the user did not aim is worse
+ * than one that does not happen.
  *
  * `range` is omitted by callers with nothing in flight to put back — an OS
  * file drag (editing/fileDrop.ts) carries content from outside the document,
- * so every boundary is a legal landing.
+ * so every boundary is a legal landing. Such callers pass no verdict either;
+ * they insert asynchronously through a different path.
  */
 export function dropTargetFor(
     boundaries: readonly DropBoundary[],
     pointerY: number,
     range?: { from: number; to: number },
+    isLegalTarget?: (pos: number) => boolean,
 ): DropBoundary | null {
     let best: DropBoundary | null = null;
     let bestDist = Infinity;
@@ -180,7 +208,13 @@ export function dropTargetFor(
             best = boundary;
         }
     }
-    if (best && range && best.pos >= range.from && best.pos <= range.to) {
+    if (!best) {
+        return null;
+    }
+    if (range && best.pos >= range.from && best.pos <= range.to) {
+        return null;
+    }
+    if (isLegalTarget && !isLegalTarget(best.pos)) {
         return null;
     }
     return best;
@@ -321,6 +355,14 @@ interface BoundaryPlan {
  * geometry. Pure over `view.state` + the current DOM shape — the caller may
  * cache the result for as long as `view.state` is identical (a scroll changes
  * geometry but no state, which is exactly the case this exists for).
+ *
+ * Deliberately NOT where the dragged run's legality is judged, though it is
+ * the tempting place. `moveTargetFilter`'s per-target half is a `canReplace`,
+ * and ProseMirror answers that by walking its parent's content from the index
+ * to the end, so judging EVERY slot here would walk the whole document per
+ * slot: quadratic in document size, on top of a plan that is already
+ * O(blocks). The one slot the pointer actually chose is judged instead, once
+ * per move, in `dropTargetFor`.
  */
 export function planBoundaries(view: EditorView): BoundaryPlan[] {
     const { doc } = view.state;
@@ -591,12 +633,23 @@ export function showBoundaryIndicator(view: EditorView, target: DropBoundary): v
 // drop semantics the primitive doesn't enforce.
 
 export interface DropZoneProvider {
+    /**
+     * What a dragged HEADING carries when it lands here. "body" moves the
+     * heading line alone (the document canvas: a literal sequence edit);
+     * "outline" moves its whole section. The DESTINATION decides, not the
+     * handle the drag started on — a row in the outline stands for a section
+     * wherever the grab happened, and a drop in the text is a literal move
+     * even for a section dragged out of the panel. The session re-scopes the
+     * range, the veil, and the pill as the pointer crosses in and out.
+     */
+    scope: "body" | "outline";
     /** Whether the viewport point sits inside this zone. With multiple
      * providers registered, the FIRST one (in registration order) whose
      * `contains` hits takes the pointer — zones must not overlap, or
      * registration order silently decides the winner. */
     contains(x: number, y: number): boolean;
-    /** A drag session started: the dragged unit, for slot precomputation. */
+    /** A drag session started: the dragged unit AT THIS ZONE'S SCOPE, for
+     * slot precomputation. */
     sessionStart(view: EditorView, range: { from: number; to: number }, kind: "block" | "item"): void;
     /**
      * Renders the provider's OWN chrome and returns the commit pos, or null
@@ -665,12 +718,23 @@ function scrollLandedRangeIntoView(view: EditorView): void {
 export interface DragSessionSource {
     startX: number;
     startY: number;
-    /** Called at threshold-crossing: the dragged unit, or null to abort the session. */
+    /**
+     * Called at threshold-crossing: the dragged unit, or null to abort the
+     * session. BOTH scopes are resolved here, once, against the document the
+     * session pins (`startDoc`) — the zone under the pointer picks between
+     * them per move. A source with one answer for both (a multi-block cover,
+     * a list item) omits the outline pair and every zone sees the same range.
+     */
     resolveRange(): {
         range: { from: number; to: number };
         kind: "block" | "item";
         multi: boolean;
         label: string;
+        /** The unit an "outline"-scoped zone receives; defaults to `range`. */
+        outlineRange?: { from: number; to: number };
+        /** Pill text while an "outline"-scoped zone has the pointer; defaults
+         * to `label`. The pill must name what will actually move. */
+        outlineLabel?: string;
     } | null;
     /** Source-side chrome at threshold-crossing (dragged flag + class). */
     onStart?(): void;
@@ -692,6 +756,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
     let sessionStarted = false; // providers were told sessionStart
     let target: { pos: number; relevelDelta?: number } | null = null;
     let range: { from: number; to: number } | null = null;
+    let outlineRange: { from: number; to: number } | null = null;
     let boundaries: DropBoundary[] = [];
     let draggedKind: "block" | "item" = "block";
     let multi = false;
@@ -700,21 +765,52 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
     let lastPointerX = startX;
     let lastPointerY = startY;
     let label = "";
+    let outlineLabel = "";
     let activeProvider: DropZoneProvider | null = null;
     // Re-measured on every auto-scroll frame, so it re-plans only when the
     // state changes (see createBoundaryMeasurer).
     const measurer = createBoundaryMeasurer();
+    // The move primitive's verdict for THIS run, resolved once (its expensive
+    // half is the source, which cannot change mid-session — a doc edit cancels
+    // the drop through the startDoc guard). Consulted for the one slot the
+    // pointer chose, so the drop line only ever marks a landing that commits.
+    let targetIsLegal: ((pos: number) => boolean) | null = null;
     // The doc the session's range/boundaries were measured against — an
     // inbound edit mid-drag (external file sync) invalidates them, and a
     // drop must then cancel rather than slice stale positions.
     let startDoc: ProseNode | null = null;
+
+    /** The dragged unit at the scope of the zone currently holding the
+     * pointer: the whole section inside the outline, the block alone over the
+     * document. Every consumer of "what is being dragged" — veil, pill,
+     * provider targeting, commit — reads it through here, so the three can
+     * never disagree about what a drop will move. */
+    const scopedRange = (): { from: number; to: number } =>
+        (activeProvider?.scope === "outline" ? outlineRange : range)!;
+
+    // The scope the source-side chrome currently shows, so a mousemove that
+    // did not cross a zone boundary repaints nothing. The veil's reposition is
+    // a layout read per call and this runs on every pointer move.
+    let paintedScope: "body" | "outline" | null = null;
+
+    /** Re-render the source-side chrome for the current scope: the veil over
+     * what will move, the pill naming it. The pill's POSITION follows the
+     * cursor every move; its text and the veil only change with the scope. */
+    const paintScope = (): void => {
+        const scope = activeProvider?.scope ?? "body";
+        if (scope !== paintedScope) {
+            paintedScope = scope;
+            showRangeVeil(view, scopedRange());
+        }
+        showPill(lastPointerX, lastPointerY, scope === "outline" ? outlineLabel : label);
+    };
 
     const scrollLoop = (): void => {
         if (activeProvider) {
             // The provider owns scrolling while the pointer is inside it; a
             // scroll moves its geometry, so re-aim its target.
             if (activeProvider.autoScroll(lastPointerY) && range) {
-                target = activeProvider.target(lastPointerX, lastPointerY, range);
+                target = activeProvider.target(lastPointerX, lastPointerY, scopedRange());
             }
             scrollRaf = requestAnimationFrame(scrollLoop);
             return;
@@ -725,7 +821,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             // Geometry shifted under the pointer — remeasure and re-aim.
             boundaries = measurer.measure(view).filter((b) => b.kind === draggedKind);
             if (range) {
-                const boundary = dropTargetFor(boundaries, lastPointerY, range);
+                const boundary = dropTargetFor(boundaries, lastPointerY, range, targetIsLegal ?? undefined);
                 target = boundary;
                 if (boundary) {
                     showBoundaryIndicator(view, boundary);
@@ -803,25 +899,34 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
                 return;
             }
             range = resolved.range;
+            outlineRange = resolved.outlineRange ?? resolved.range;
             draggedKind = resolved.kind;
             multi = resolved.multi;
             label = resolved.label;
+            outlineLabel = resolved.outlineLabel ?? resolved.label;
+            // After resolveRange, which may have dispatched (selectInto), so
+            // the verdict is read off the state the boundaries describe.
+            targetIsLegal = moveTargetFilter(view.state, range);
             boundaries = measurer.measure(view).filter((b) => b.kind === draggedKind);
             startDoc = view.state.doc;
             closeBlockMenu();
             hideTooltip();
             document.body.classList.add("block-dragging");
-            showRangeVeil(view, range);
             sessionStarted = true;
             for (const provider of dropZoneProviders) {
-                provider.sessionStart(view, range, draggedKind);
+                provider.sessionStart(
+                    view,
+                    provider.scope === "outline" ? outlineRange : range,
+                    draggedKind,
+                );
             }
         }
         move.preventDefault();
-        showPill(move.clientX, move.clientY, label);
         // A drop zone containing the pointer takes over targeting: it draws
         // its own chrome, so the document indicator hides and document
-        // edge-scroll goes quiet until the pointer leaves it again.
+        // edge-scroll goes quiet until the pointer leaves it again. Resolved
+        // BEFORE the chrome is painted — the zone decides the scope, and the
+        // veil and pill must show the scope the drop will actually use.
         let provider: DropZoneProvider | null = null;
         for (const p of dropZoneProviders) {
             if (p.contains(move.clientX, move.clientY)) {
@@ -833,10 +938,11 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             activeProvider?.clear();
             activeProvider = provider;
         }
+        paintScope();
         if (provider) {
             hideDropIndicator();
             scrollDir = 0;
-            target = provider.target(move.clientX, move.clientY, range!);
+            target = provider.target(move.clientX, move.clientY, scopedRange());
             if (!scrollRaf) {
                 // Keep the frame loop alive so the provider gets its per-
                 // frame autoScroll chances while the pointer rests inside.
@@ -844,7 +950,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             }
             return;
         }
-        const boundary = dropTargetFor(boundaries, move.clientY, range!);
+        const boundary = dropTargetFor(boundaries, move.clientY, range!, targetIsLegal ?? undefined);
         target = boundary;
         if (boundary) {
             showBoundaryIndicator(view, boundary);
@@ -864,7 +970,9 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
         // Doc changed mid-drag (external sync): the measured range and
         // boundaries describe a document that no longer exists — cancel.
         const commit = dragging && range && target && view.state.doc === startDoc;
-        const commitRange = range;
+        // Scoped to the zone the pointer is in NOW — captured before stop()
+        // clears activeProvider, which is what scopedRange reads.
+        const commitRange = range ? scopedRange() : null;
         const commitTarget = target;
         const commitMulti = multi;
         // Captured before stop() nulls it: whether the target came from a
@@ -929,6 +1037,9 @@ export function wireMarkerDrag(
             resolveRange: () => {
                 const pos = blockPos();
                 let range = pos === null ? null : moveRangeAt(view, pos);
+                // The outline scope's answer for the SAME grab, resolved now
+                // so a pointer crossing into the TOC panel costs no doc walk.
+                let outlineRange = pos === null ? null : outlineRangeAt(view, pos);
                 // Multi-block drag: a selection spanning several top-level
                 // blocks, with this marker's block inside it, drags the whole
                 // covered run (the selection is KEPT — history then restores
@@ -943,9 +1054,12 @@ export function wireMarkerDrag(
                     view.state.doc.resolve(range.from).depth === 0,
                 );
                 if (multi) {
+                    // A cover is already the user's explicit statement of what
+                    // moves, so both scopes see it unchanged.
                     range = cover;
+                    outlineRange = cover;
                 }
-                if (!range) {
+                if (!range || !outlineRange) {
                     return null;
                 }
                 if (!multi) {
@@ -956,8 +1070,10 @@ export function wireMarkerDrag(
                     // identity guard and boundary geometry are unaffected.)
                     selectInto(view, range.from);
                 }
+                const name = marker.dataset["pill"] ?? marker.textContent ?? "";
                 return {
                     range,
+                    outlineRange,
                     // A dragged unit only sees slots of its own kind: items
                     // drop at item boundaries (any list), blocks at block
                     // boundaries.
@@ -965,7 +1081,8 @@ export function wireMarkerDrag(
                         ? ("item" as const)
                         : ("block" as const),
                     multi,
-                    label: pillLabel(view, marker.dataset["pill"] ?? marker.textContent ?? "", range),
+                    label: pillLabel(view, name, range),
+                    outlineLabel: pillLabel(view, name, outlineRange),
                 };
             },
             onStart: () => {

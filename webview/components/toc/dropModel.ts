@@ -157,12 +157,24 @@ export interface MeasuredTocSlot extends TocSlot {
  * start — the put-it-back position — yet changes its rank. Once drops
  * relevel, "same position" stops implying "no-op", and rejecting it would
  * silently swallow the most natural nesting gesture there is.
+ *
+ * `isLegalTarget` is the move primitive's own verdict for the dragged run
+ * (`moveTargetFilter`), applied to the WINNER — the same rule and the same
+ * placement as the document path's `dropTargetFor`, so neither surface can
+ * draw a line at a slot whose release does nothing. Every slot this model
+ * produces is a top-level boundary and every outline drag carries a
+ * top-level run, so today it refuses nothing; asking is what keeps that a
+ * fact rather than an assumption, since nothing else enforces either half.
  */
 export function tocDropTargetFor(
     slots: readonly MeasuredTocSlot[],
     pointerY: number,
     range: { from: number; to: number },
-    opts: { allowInto: boolean; draggedLevel?: number | null },
+    opts: {
+        allowInto: boolean;
+        draggedLevel?: number | null;
+        isLegalTarget?: (pos: number) => boolean;
+    },
 ): MeasuredTocSlot | null {
     let winner: MeasuredTocSlot | null = null;
     if (opts.allowInto) {
@@ -209,6 +221,9 @@ export function tocDropTargetFor(
         if (!inPlaceRelevel) {
             return null;
         }
+    }
+    if (opts.isLegalTarget && !opts.isLegalTarget(winner.pos)) {
+        return null;
     }
     return winner;
 }

@@ -193,6 +193,8 @@ While a selection spans blocks, every covered block's marker surfaces (`.heading
 
 What is moving (the pill, carrying the block name or count, `.block-drag-pill`), where it will land (the accent drop line, indented to the target depth), and where it landed (a brief landing flash, `.block-drop-flash`). Accents are `var(--vscode-focusBorder)`; the pill and tooltips are inverted chips built from the theme's own foreground and background. While a drag or marquee is live, every other hover surface (tooltips, popups, marker reveals) stays quiet.
 
+All three answers are the truth, which for the drop line means the line and the drop are one decision, not two. A slot the move would refuse draws nothing, and no line ever snaps past a refusal to the next place that would work: a drop that travels somewhere the user did not aim is worse than one that does not happen. So the vocabulary is small enough to learn once, no line, no drop, and it covers both reasons for silence (aiming back at where the block came from, and aiming at something that cannot hold it). The one refusal too expensive to answer while the pointer moves, whether the result would survive a save and reopen, is the exception, and it says so on release rather than failing quietly.
+
 ### The marquee acquires; it never steals
 
 Rubber-band block selection starts only outside text content, in the margins. Pointer-down inside text is always native text selection. The rectangle is accent-bordered with a faint fill (`.block-marquee`), and covered blocks tint live beneath it.
@@ -201,9 +203,11 @@ Rubber-band block selection starts only outside text content, in the margins. Po
 
 Escape escalates caret to block, and collapses back. Shift+↑/↓ grow or shrink the range from its anchor. Cmd+A ladders text, then block, then document. Alt+↑/↓ and Cmd+Shift+↑/↓ move a block through the same machinery as a drag. (`webview/plugins/blockKeys.ts`, `blockRange.ts`.)
 
-### Structure travels whole
+### Structure travels whole, where structure is what you are pointing at
 
-A heading brings its section, a list item its subtree, and collapsed content always moves with its block. No operation may orphan invisible text. One gesture is one undo step.
+A list item brings its subtree, and collapsed content always moves with its block: no operation may orphan invisible text. One gesture is one undo step.
+
+A heading is the case where the surface decides. In the outline a row IS a section, so a drop there moves the section and relevels it. In the text a heading is a line among lines, so a move there is literal and the body stays put. The scope belongs to where the gesture lands rather than to where it was picked up, which is what lets one drag mean either (`webview/components/blockMenu/drag.ts`, `DropZoneProvider.scope`).
 
 ## When these collide
 

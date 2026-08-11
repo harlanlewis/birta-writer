@@ -189,8 +189,10 @@ describe("heading gutter level menu", () => {
         clickMouse(marker(), "click");
 
         // Assert: the Turn-into section leads with the level radio, then the
-        // conversions, then the block actions (heading flavor: Copy Link +
-        // section moves).
+        // conversions, then the block actions (heading flavor: Copy Link).
+        // The move rows read "Move Up/Down", not "Move Section Up/Down": an
+        // EXPANDED heading moves its line alone in the body, and the label
+        // follows what the gesture will carry.
         const menu = levelMenu();
         expect(menu).not.toBeNull();
         const rows = menu!.querySelectorAll(".block-menu-item-label");
@@ -198,7 +200,7 @@ describe("heading gutter level menu", () => {
             "Paragraph", "Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6",
             "Bullet List", "Ordered List", "Task List", "Blockquote", "Callout", "Code Block",
             "Duplicate", "Copy as Markdown", "Copy Link",
-            "Move Section Up", "Move Section Down",
+            "Move Up", "Move Down",
             "Fold All", "Unfold All", "Delete",
         ]);
         // Two labeled sections frame the rows (slash-menu group idiom).

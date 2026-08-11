@@ -638,8 +638,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     };
 
-    // Drag-and-drop wiring: top-level items drag their whole sections, and
-    // the open panel is a drop zone for document drags (see ./dnd). The flyout
+    // Drag-and-drop wiring: top-level items are drag handles, and the open
+    // panel is a drop zone for document drags (see ./dnd). What a dragged
+    // heading CARRIES is the destination's call — a section when it lands in
+    // this panel, the heading line alone when it lands on the page. The flyout
     // counts as "open" here so internal reorder/refile behaves 1:1 with the
     // docked sidebar — otherwise the dnd measure/contains bail and the drag
     // falls through to the page (`flyoutOpen` is read lazily, at drag time).

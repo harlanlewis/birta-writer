@@ -108,7 +108,7 @@ describe("shortcutsHelp — content", () => {
         }
         // Fixed grammar highlights
         expect(text).toContain("Select more: block text → block → document");
-        expect(text).toContain("Move carries a heading's whole section.");
+        expect(text).toContain("A heading moves alone");
         expect(text).toContain("Duplicate copies the block alone");
         expect(text).toContain("Inside a code block or table: exits it instead.");
         expect(text).toContain("Esc first closes the open menu, popup, or find bar.");

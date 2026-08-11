@@ -24,7 +24,7 @@
 
 // The move primitive and its shared legality verdict (see moveBlocks' module
 // header for the hardened contract).
-export { moveBlocks, moveFits, type MoveBlocksOptions } from "./moveBlocks";
+export { moveBlocks, moveFits, moveTargetFilter, type MoveBlocksOptions } from "./moveBlocks";
 
 // Fold operations and the occupancy/fold-state queries that keep UI
 // affordances and primitive legality on one registry.

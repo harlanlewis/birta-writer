@@ -263,11 +263,25 @@ describe("moveSelectedBlocks (Alt+arrows)", () => {
         expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Gamma"]);
     });
 
-    it("a heading caret should carry its section when moving", async () => {
+    it("a heading caret should move the heading LINE alone", async () => {
+        // Alt+Arrow in the text is a literal sequence edit: the section's body
+        // keeps its place, exactly as it does for a caret in any other block
+        // (section semantics live in the outline — see editing/moveBlocks and
+        // blockMenu's moveRangeAt against outlineRangeAt).
         const view = await makeEditor("Intro\n\n## One\n\nBody one\n\n## Two\n\nBody two");
         placeCaretIn(view, "One");
         expect(moveSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
-        expect(blockOrder(view)).toEqual(["Intro", "Two", "Body two", "One", "Body one"]);
+        expect(blockOrder(view)).toEqual(["Intro", "Body one", "One", "Two", "Body two"]);
+    });
+
+    it("a heading caret moving up should not drag the block below it along", async () => {
+        // The reported shape: a paragraph, a heading, a paragraph. Moving the
+        // heading up past the first paragraph must leave the second one where
+        // it is.
+        const view = await makeEditor("first\n\n## head\n\nsecond");
+        placeCaretIn(view, "head");
+        expect(moveSelectedBlocks(-1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["head", "first", "second"]);
     });
 
     it("moving down then undo should restore the original order", async () => {

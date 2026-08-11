@@ -40,6 +40,7 @@ import { dissolvedMarkersFor, moveBlocks, moveFits } from "../editing/moveBlocks
 import {
     blockBoundaryPositions,
     moveRangeAt,
+    outlineRangeAt,
     visibleBoundaryPositions,
 } from "../components/blockMenu";
 import { flashRange } from "../editing/rangeIndicator";
@@ -602,7 +603,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         // Keep is the LAST section, so its range runs to doc end and the end
         // slot lands "inside" it — but `# Mover` ties Keep's rank, ending its
         // section where it lands, so it needs no reveal to stay visible.
-        expect(moveBlocks(v, moveRangeAt(v, 0)!, v.state.doc.content.size)).toBe(true);
+        // The outline scope, because the case is about a SECTION landing at a
+        // collapsed section's end — the shape a TOC drop produces.
+        expect(moveBlocks(v, outlineRangeAt(v, 0)!, v.state.doc.content.size)).toBe(true);
 
         expect(markdown(editor)).toBe("# Keep\n\nkept body\n\n# Mover\n\nmover body");
         expect(

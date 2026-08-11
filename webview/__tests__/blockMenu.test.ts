@@ -21,6 +21,7 @@ import {
     moveRangeAt,
     moveBlockAt,
     moveBlockTo,
+    outlineRangeAt,
     headingAnchorSlug,
 } from "../components/blockMenu";
 import { conversionKindAt } from "../blockCapabilities";
@@ -870,8 +871,11 @@ describe("fold state across moves and deletes", () => {
         expect(folded.size).toBe(1); // and ONLY A — B must not inherit it
     });
 
-    it("moving an expanded section past a collapsed one should not steal its fold", async () => {
-        const editor = await makeEditor(DOC);
+    it("moving an expanded heading past a collapsed section should not steal its fold", async () => {
+        // No body under A, so the hop that clears the collapsed unit is A's
+        // FIRST one: a heading moves alone in the body, and its target still
+        // skips the whole hidden unit rather than landing inside it.
+        const editor = await makeEditor("# A\n\n# B\n\ncontent B");
         const v = view(editor);
         // Collapse B, then move A (expanded) down past it.
         let posB = -1;
@@ -880,7 +884,8 @@ describe("fold state across moves and deletes", () => {
         });
         collapse(v, posB);
         expect(moveBlockAt(v, 0, 1)).toBe(true);
-        // B now leads the doc, still collapsed; A (now second) is expanded.
+        expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A");
+        // B now leads the doc, still collapsed; A (now last) is expanded.
         const folded = foldedSet(v);
         expect(folded.has(0)).toBe(true);
         expect(folded.size).toBe(1);
@@ -1080,32 +1085,53 @@ describe("menu lifecycle", () => {
     });
 });
 
-describe("heading section semantics", () => {
+describe("heading scope in the document body", () => {
     const DOC = "# A\n\ncontent A\n\n# B\n\ncontent B";
 
-    it("moveRangeAt on a heading should span its whole section", async () => {
+    it("moveRangeAt on a heading should span the heading LINE alone", async () => {
         const editor = await makeEditor(DOC);
         const v = view(editor);
         const range = moveRangeAt(v, 0)!;
+        // A body move is literal: the heading, and nothing it owns.
+        expect(range).toEqual({ from: 0, to: v.state.doc.child(0).nodeSize });
+    });
+
+    it("outlineRangeAt on the same heading should span its whole section", async () => {
+        const editor = await makeEditor(DOC);
+        const v = view(editor);
+        const range = outlineRangeAt(v, 0)!;
         // Section A = heading A + its paragraph; B starts where A's range ends.
         expect(range.from).toBe(0);
         expect(v.state.doc.resolve(range.to).nodeAfter?.type.name).toBe("heading");
     });
 
-    it("Move Section Up on the second section should swap whole sections", async () => {
+    it("Move Up on the second heading should leave the body blocks in place", async () => {
         const editor = await makeEditor(DOC);
         view(editor);
         // markers(): [# A, P content A, # B, P content B] in document order.
         const headingMarkers = markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"));
-        pickRow(openMenuOn(headingMarkers[1]!), "Move Section Up");
-        expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
+        pickRow(openMenuOn(headingMarkers[1]!), "Move Up");
+        expect(markdown(editor)).toBe("# A\n\n# B\n\ncontent A\n\ncontent B");
     });
 
-    it("moveBlockAt down on the first section should hop the whole next section", async () => {
+    it("moveBlockAt down on a heading should hop exactly one block", async () => {
         const editor = await makeEditor(DOC);
         const v = view(editor);
         expect(moveBlockAt(v, 0, 1)).toBe(true);
-        expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
+        expect(markdown(editor)).toBe("content A\n\n# A\n\n# B\n\ncontent B");
+    });
+
+    it("a heading between paragraphs should move alone in either direction", async () => {
+        // The reported shape: moving the heading up must not drag the
+        // paragraph below it along.
+        const editor = await makeEditor("first\n\n## head\n\nsecond");
+        const v = view(editor);
+        let headPos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading") headPos = offset;
+        });
+        expect(moveBlockAt(v, headPos, -1)).toBe(true);
+        expect(markdown(editor)).toBe("## head\n\nfirst\n\nsecond");
     });
 });
 
@@ -1153,6 +1179,22 @@ describe("moves around collapsed sections (fold-aware moveTargetFor)", () => {
         const editor = await makeFolded();
         const v = view(editor);
         expect(moveBlockAt(v, blockPosOf(v, "Next"), -1)).toBe(true);
+        // "Next" moves alone (a body move is literal), but its TARGET is still
+        // the top of the collapsed unit — landing between "## Section" and its
+        // hidden body would bury the heading in display:none.
+        expect(markdown(editor)).toBe(
+            "Intro\n\n## Next\n\n## Section\n\nBody one\n\nBody two\n\nAfter",
+        );
+    });
+
+    it("Move Down on a COLLAPSED heading should carry its hidden section", async () => {
+        // The one body-scope expansion: a collapsed heading is inseparable
+        // from content the user cannot see.
+        const editor = await makeFolded();
+        const v = view(editor);
+        expect(moveBlockAt(v, blockPosOf(v, "Section"), 1)).toBe(true);
+        // Carrying a section also earns the section-unit HOP: it clears
+        // "## Next" and its body rather than interleaving the two sections.
         expect(markdown(editor)).toBe(
             "Intro\n\n## Next\n\nAfter\n\n## Section\n\nBody one\n\nBody two",
         );
