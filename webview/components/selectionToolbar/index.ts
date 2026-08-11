@@ -54,7 +54,7 @@ import { resolveVisible, type FloatingToolbarItems } from "./registry";
 import { notifyCopyAgentReference } from "@/messaging";
 import { computeToolbarActiveState } from "@/components/toolbar/activeState";
 import { trackEditorReflow } from "@/ui/editorReflow";
-import { clampLeft, viewportSize } from "@/ui/anchoredPlacement";
+import { clampLeft, pinIntoView, viewportSize } from "@/ui/anchoredPlacement";
 import { safeAreaTop } from "@/utils/headingUtils";
 import './selectionToolbar.css';
 
@@ -83,7 +83,16 @@ function placeSubmenuVertical(menu: HTMLElement, btn: HTMLElement, approxH: numb
     }
 }
 
-// One-time position override: set by tableHandles with the mouse coordinates when a row/column is selected via the drag handle
+/**
+ * One-time position override: place the next show against these viewport
+ * coordinates instead of against the selection.
+ *
+ * NOTHING in the product calls this. The row/column drag handles that did were
+ * replaced by the table overlay (components/table/tableView.ts), which leaves
+ * placement to the selection. It survives because the jsdom unit suite has no
+ * layout engine and so cannot go through `coordsAtPos`; every caller is a test.
+ * Keep that in mind before treating the pointer branch as a live path.
+ */
 let pendingPos: { x: number; y: number } | null = null;
 export function setPendingToolbarPos(x: number, y: number): void {
     pendingPos = { x, y };
@@ -302,6 +311,8 @@ export function setupSelectionToolbar(
     const visible = resolveVisible(items);
     let lastView: EditorView | null = null;
     let isDragging = false;
+    /** Hidden for being off screen rather than dismissed — see hideOffScreen. */
+    let hiddenOffScreen = false;
     // Last block symbol painted into the menu button, so scroll/reflow re-runs of
     // showAndPosition don't re-parse the SVG and rebuild the DOM every frame.
     let lastBlockSymbol = "";
@@ -794,6 +805,19 @@ export function setupSelectionToolbar(
         toolbar.style.display = "none";
         fmtMenu.style.display = "none";
         alignMenu.style.display = "none";
+        hiddenOffScreen = false;
+    }
+
+    /**
+     * Hidden because its selection scrolled out of view, which is NOT the same
+     * as dismissed. The selection is still live, so scrolling back must bring
+     * the bar back — and the reflow tracker below skips a bar that is display:
+     * none, so without this flag the first scroll past the selection would
+     * retire the palette for good.
+     */
+    function hideOffScreen(): void {
+        hideToolbar();
+        hiddenOffScreen = true;
     }
 
     // Group hide helpers — each mode shows its own controls and hides the
@@ -833,41 +857,182 @@ export function setupSelectionToolbar(
         delBlockBtn.style.display = "none";
     }
 
-    // Above the selection by preference, below it when there is no room —
-    // measured against the usable band, whose top edge is the fixed chrome's
-    // bottom rather than y=0. Against y=0 a selection on the first line always
-    // "fit" above, and the palette rendered underneath the opaque topbar:
-    // present, positioned, and invisible.
+    /**
+     * The selection's box in viewport coordinates, plus the bottom of its FIRST
+     * ROW — the placement ladder needs both, because "below the selection" and
+     * "below the selection's first line" are the same place for a phrase and a
+     * screen apart for a column.
+     */
+    interface SelectionBox {
+        top: number;
+        bottom: number;
+        left: number;
+        right: number;
+        firstRowBottom: number;
+        /**
+         * The top of the selection INCLUDING its grabber, where it has one: a
+         * selected column's grip sits in the gutter just above the header cell,
+         * and it is the handle for dragging the column you just selected, so a
+         * bar seated against the cell covers the very control that made the
+         * selection. Equal to `top` when the selection has no such chrome.
+         */
+        chromeTop: number;
+    }
+
+    /**
+     * The selection's own box, in viewport coordinates.
+     *
+     * A CellSelection is measured from the cells prosemirror-tables has already
+     * marked, not from `coordsAtPos`. Its `from`/`to` are cell BOUNDARIES, and
+     * asking for the coordinates of one does not give you the cell: for a
+     * column selection the reported top landed above the table entirely, which
+     * is what sent the palette to the fallback side and left it pinned near the
+     * viewport floor, a screen away from the column it acts on. The marked
+     * cells are exactly what the user sees highlighted, so they are the honest
+     * anchor as well as the correct one.
+     *
+     * Gated on the selection's TYPE, not on whether the query finds anything:
+     * this runs on every scroll frame the bar is up, and a whole-document class
+     * query is not something a text selection should be paying for.
+     */
+    function selectionBox(
+        view: EditorView,
+        from: number,
+        to: number,
+    ): SelectionBox {
+        if (view.state.selection instanceof CellSelection) {
+            const cells = view.dom.querySelectorAll<HTMLElement>(".selectedCell");
+            if (cells.length > 0) {
+                // Two rects, not one per cell: the marked cells come back in
+                // document order, so the first is the range's top-left and the
+                // last its bottom-right, and the first cell's bottom is the
+                // first row's. That holds because a Markdown table has no
+                // merged cells to break the correspondence — the one assumption
+                // here, and it is the format's, not this file's. It matters
+                // because this runs on every scroll frame while the bar is up,
+                // and a selected column has a rect per row to offer.
+                const first = cells[0]!.getBoundingClientRect();
+                const last = cells[cells.length - 1]!.getBoundingClientRect();
+                const top = Math.min(first.top, last.top);
+                const bottom = Math.max(first.bottom, last.bottom);
+                // The lit grips of the selected row/column, which the table
+                // overlay marks active. They exist by the time any CellSelection
+                // does (a keyboard selection arms them too), and the fallback if
+                // they do not is simply the cells' own top.
+                let chromeTop = top;
+                for (const grip of view.dom.querySelectorAll<HTMLElement>(".mw-grip--active")) {
+                    chromeTop = Math.min(chromeTop, grip.getBoundingClientRect().top);
+                }
+                return {
+                    top,
+                    bottom,
+                    left: Math.min(first.left, last.left),
+                    right: Math.max(first.right, last.right),
+                    firstRowBottom: first.bottom,
+                    chromeTop,
+                };
+            }
+        }
+        const startC = view.coordsAtPos(from);
+        const endC = view.coordsAtPos(to);
+        return {
+            top: startC.top,
+            bottom: endC.bottom,
+            left: startC.left,
+            right: endC.right,
+            firstRowBottom: startC.bottom,
+            chromeTop: startC.top,
+        };
+    }
+
+    /**
+     * Place the palette against its selection, in this order:
+     *
+     *  1. above the selection's GRABBER — for a column that is the grip in
+     *     the gutter, so the bar lands clear of the very control that made
+     *     the selection and is the handle for dragging it;
+     *  2. below the selection's first row, when there is no room above;
+     *  3. riding the top of the usable band once the selection's top edge has
+     *     scrolled past it, so a selection taller than the window keeps its
+     *     controls where the pinned column grip is (`pinIntoView`);
+     *  4. hidden entirely once the selection itself is off screen — chrome for
+     *     something nobody can see, floating over unrelated content.
+     *
+     * Only the palette hides at step 4. The selection stays live and every
+     * keyboard path with it, so scrolling back brings the bar straight back.
+     *
+     * The band's top edge is the fixed chrome's bottom, not y=0. Against y=0 a
+     * selection on the first line always "fit" above and the palette rendered
+     * underneath the opaque topbar: present, positioned, and invisible.
+     */
     function positionToolbar(view: EditorView, from: number, to: number): void {
         const tbW = toolbar.offsetWidth;
         const tbH = toolbar.offsetHeight;
         const viewport = viewportSize();
-        const safeTop = viewport.top ?? 0;
-        let leftX: number, topY: number;
+        const band = { start: (viewport.top ?? 0) + 8, end: viewport.height - 8 };
+
+        // A pointer-anchored open (a grip drag handing over its coordinates)
+        // places against the pointer and wants none of the ladder: the user is
+        // looking at that spot. It is still bounded at BOTH ends of the band —
+        // a pointer near either edge otherwise puts the bar under the topbar or
+        // past the fold.
         if (pendingPos) {
-            const px = pendingPos.x;
-            const py = pendingPos.y;
+            const { x: px, y: py } = pendingPos;
             pendingPos = null;
-            leftX = px - tbW / 2;
-            topY = py - tbH - 8;
-            if (topY < 8) {
-                topY = py + 12;
-            }
-        } else {
-            const startC = view.coordsAtPos(from);
-            const endC = view.coordsAtPos(to);
-            leftX = (startC.left + endC.right) / 2 - tbW / 2;
-            topY = startC.top - tbH - 8;
-            if (topY < safeTop + 8) {
-                topY = endC.bottom + 8;
+            const above = py - tbH - 8;
+            const topY = above < band.start ? py + 12 : above;
+            toolbar.style.left = `${clampLeft(px - tbW / 2, tbW, viewport)}px`;
+            toolbar.style.top = `${Math.max(band.start, Math.min(topY, band.end - tbH))}px`;
+            toolbar.style.visibility = "visible";
+            return;
+        }
+
+        const box = selectionBox(view, from, to);
+        // Step 4, first: everything below assumes there is something to point
+        // at. The one exception is a palette the user is currently inside —
+        // pulling a surface out from under someone's keyboard focus is worse
+        // than leaving it up, and the next scroll after focus leaves retires it.
+        if (box.bottom <= band.start || box.top >= band.end) {
+            if (!toolbar.contains(document.activeElement)) {
+                hideOffScreen();
+                return;
             }
         }
-        leftX = clampLeft(leftX, tbW, viewport);
-        // The below-fallback overflows in its turn for a selection near the
-        // bottom edge, so bound both ends; the safe top wins in a pane too
-        // short to hold the bar at all.
-        topY = Math.max(safeTop + 8, Math.min(topY, viewport.height - tbH - 8));
-        toolbar.style.left = `${leftX}px`;
+
+        // Step 2 goes below the whole selection while the bar actually FITS
+        // there, so it never covers the text it acts on; past that the
+        // selection's bottom is not a place at all (below a screen-tall column
+        // is off screen, which is what pinned the bar to the viewport floor
+        // before), and the fallback is just under the selection's first row —
+        // under the header, where the user's eye already is.
+        const belowFrom = box.bottom + 8 + tbH <= band.end
+            ? box.bottom
+            : box.firstRowBottom;
+
+        // Steps 1 and 2 turn on one question: is there room above the
+        // selection's GRABBER? Above it, not above the cell — the grip is what
+        // the user clicked and what drags the column, and a bar seated against
+        // the cell covered its top half. The scrolled-past test still reads the
+        // CELL, because the grip pins itself to the same chrome the band is
+        // measured from and so would never register as gone.
+        //
+        // Step 3 is the third answer: the top edge has scrolled past the
+        // chrome, neither side of it is a place, and resolving to the (now
+        // off-band) above-position is the cue for `pinIntoView` to seat the bar
+        // at the band's top, alongside the pinned grip. The same call takes the
+        // bar off screen with a selection whose bottom passes, which is why
+        // step 4's early return is a visibility decision, not a placement one.
+        const aboveTop = box.chromeTop - tbH - 8;
+        const preferred = aboveTop >= band.start || box.top < band.start
+            ? aboveTop
+            : belowFrom + 8;
+        const topY = pinIntoView(
+            preferred,
+            tbH,
+            { start: aboveTop, end: box.bottom + tbH + 8 },
+            band,
+        );
+        toolbar.style.left = `${clampLeft((box.left + box.right) / 2 - tbW / 2, tbW, viewport)}px`;
         toolbar.style.top = `${topY}px`;
         toolbar.style.visibility = "visible";
     }
@@ -878,7 +1043,9 @@ export function setupSelectionToolbar(
         // re-running showAndPosition so the bar follows its selection.
         if (!reflowOff) {
             reflowOff = trackEditorReflow(view.dom, () => {
-                if (toolbar.style.display !== "none" && lastView) {
+                // A bar hidden for being off screen still tracks: its selection
+                // is live, and scrolling back must bring it straight back.
+                if ((toolbar.style.display !== "none" || hiddenOffScreen) && lastView) {
                     showAndPosition(lastView);
                 }
             });

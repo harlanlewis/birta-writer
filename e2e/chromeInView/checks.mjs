@@ -31,6 +31,20 @@ const BAND = `(() => {
 /** The image NodeView's wrapper — the `bc-host` that owns the control column. */
 const IMG_HOST = ".milkdown .ProseMirror .image-wrapper";
 
+/**
+ * The real safe area: the topbar PLUS whatever the sticky section title is
+ * painting, which is what `safeAreaTop()` reports and what every pinned surface
+ * clears. `BAND` above is the topbar alone and is only ever a lower bound; a
+ * check that asserts a surface sits AT the top of the usable band has to ask
+ * the fuller question, or it fails the moment a section title appears.
+ */
+const SAFE_TOP = `(() => {
+    const bar = document.querySelector(".editor-topbar");
+    const sticky = document.querySelector(".heading-sticky-title:not([hidden])");
+    return (bar ? bar.getBoundingClientRect().height : 40)
+        + (sticky ? sticky.getBoundingClientRect().height : 0);
+})()`;
+
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror table", { timeout: 10000 });
@@ -132,6 +146,117 @@ export async function run({ page, check, baseUrl }) {
     check("scrolled past the table, its grips leave with it",
         past.table.bottom < past.band.top && past.grips.every((g) => g.bottom <= past.table.bottom + 1),
         `tableBottom=${Math.round(past.table.bottom)} grips=${JSON.stringify(past.grips.map((g) => Math.round(g.bottom)))}`);
+
+    // ── The selection palette over a column taller than the window ──────────
+    // The palette is the fourth surface under the rule, and the one a user
+    // reported: it was placed from the selection's `coordsAtPos`, which for a
+    // CellSelection does not report the cells, so a column selection sent it to
+    // the fallback side and the viewport clamp parked it near the floor — a
+    // screen away from the column it acts on. It now rides the same ladder.
+    const paletteState = () => page.evaluate(`(() => {
+        const bar = document.querySelector(".sel-toolbar");
+        const shown = bar && bar.style.display !== "none" && bar.style.visibility !== "hidden";
+        const cells = [...document.querySelectorAll(".selectedCell")];
+        const grip = document.querySelector(".mw-grip--col.mw-grip--active");
+        const r = (el) => { const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right }; };
+        return {
+            shown: !!shown,
+            cellCount: cells.length,
+            bar: shown ? r(bar) : null,
+            header: cells.length ? r(cells[0]) : null,
+            grip: grip ? r(grip) : null,
+            band: ${BAND},
+            safeTop: ${SAFE_TOP},
+        };
+    })()`);
+
+    await scrollTo(0);
+    const gripPoint = await page.evaluate(`(() => {
+        const g = document.querySelector(".mw-grip--col");
+        const r = g.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    await page.mouse.click(gripPoint.x, gripPoint.y);
+    await page.waitForTimeout(300);
+
+    const paletteRest = await paletteState();
+    check("clicking a column grip selects the whole column",
+        paletteRest.cellCount > 3, `selectedCells=${paletteRest.cellCount}`);
+    // Rule 1: above the GRABBER, not merely above the header cell. The grip is
+    // the handle for dragging the column you just selected, so a bar seated
+    // against the cell covers the control that made the selection.
+    check("the palette opens above the column's grabber",
+        paletteRest.shown && paletteRest.grip !== null
+        && paletteRest.bar.bottom <= paletteRest.grip.top + 1,
+        `bar=${JSON.stringify(paletteRest.bar)} grip=${JSON.stringify(paletteRest.grip)}`);
+    check("…and is centred over the column it acts on",
+        Math.abs((paletteRest.bar.left + paletteRest.bar.right) / 2
+            - (paletteRest.header.left + paletteRest.header.right) / 2) <= 160
+        || paletteRest.bar.left <= 9,
+        `bar=${Math.round((paletteRest.bar.left + paletteRest.bar.right) / 2)} col=${Math.round((paletteRest.header.left + paletteRest.header.right) / 2)}`);
+
+    // Rule 3: the header has scrolled past the chrome, so the palette rides the
+    // band's top alongside the grip pinned there — not the viewport floor.
+    await scrollTo(tableMid);
+    const palettePinned = await paletteState();
+    check("the column's header really did scroll out of the band",
+        palettePinned.header.top < palettePinned.band.top,
+        `header=${Math.round(palettePinned.header.top)}`);
+    // AT the top of the usable band, not merely inside it — the failure this
+    // guards is the bar drifting down the screen away from its column, so a
+    // lower bound alone would pass on the very bug.
+    check("the palette rides the top of the band with the pinned grip",
+        palettePinned.shown
+        && Math.abs(palettePinned.bar.top - (palettePinned.safeTop + 8)) <= 2,
+        `bar=${Math.round(palettePinned.bar.top)} bandStart=${Math.round(palettePinned.safeTop + 8)}`);
+
+    // Rule 4, and its other half: hidden is not dismissed. The selection is
+    // still live, so scrolling back must bring the palette straight back — and
+    // the reflow tracker skips a hidden bar, which is what made the first
+    // version of this a one-way door.
+    await scrollTo(pastTable);
+    const paletteGone = await paletteState();
+    check("scrolled past the table, the palette hides rather than floating",
+        !paletteGone.shown, `shown=${paletteGone.shown}`);
+    await scrollTo(0);
+    const paletteBack = await paletteState();
+    check("…and comes back when the column is back on screen",
+        paletteBack.shown && paletteBack.bar.bottom <= paletteBack.grip.top + 1,
+        `shown=${paletteBack.shown} bar=${JSON.stringify(paletteBack.bar)}`);
+
+    // The rules were reported for a column, but the ladder is written against
+    // the selection's own box and its grabber, so a row must fall out of it
+    // rather than needing a case of its own. This is what makes that claim
+    // checkable instead of hopeful.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const rowGrip = await page.evaluate(`(() => {
+        const g = [...document.querySelectorAll(".mw-grip--row")][2];
+        const r = g.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    await page.mouse.click(rowGrip.x, rowGrip.y);
+    await page.waitForTimeout(300);
+    const rowState = await page.evaluate(`(() => {
+        const bar = document.querySelector(".sel-toolbar");
+        const shown = bar.style.display !== "none" && bar.style.visibility !== "hidden";
+        const grip = document.querySelector(".mw-grip--row.mw-grip--active");
+        const cell = document.querySelector(".selectedCell");
+        return {
+            shown, cells: document.querySelectorAll(".selectedCell").length,
+            barBottom: bar.getBoundingClientRect().bottom,
+            gripTop: grip ? grip.getBoundingClientRect().top : null,
+            cellTop: cell ? cell.getBoundingClientRect().top : null,
+        };
+    })()`);
+    check("a selected row gets the same ladder, above its own grabber",
+        rowState.shown && rowState.cells === 3 && rowState.gripTop !== null
+        && rowState.barBottom <= rowState.gripTop + 1,
+        `cells=${rowState.cells} barBottom=${Math.round(rowState.barBottom)} gripTop=${Math.round(rowState.gripTop ?? NaN)}`);
+
+    // Leave no selection behind for the checks that follow.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
 
     // ── The shared control column (image, table, code block, embed) ─────────
     // One primitive serves all four, so proving it on the tall image proves it
