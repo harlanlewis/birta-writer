@@ -247,11 +247,13 @@ export function draggedSectionLevel(doc: ProseNode, range: { from: number; to: n
  * rank. Zero for a non-heading run (nothing to relevel) and for a drop that
  * already matches the target rank.
  *
- * Markdown headings are flat siblings at the doc root, so a section's whole
- * subtree lives inside the moved range: shifting every heading in the range
- * by this one delta preserves the section's internal hierarchy exactly. Ranks
- * that would overflow clamp at H6 (applied per heading at relevel time), so a
- * deep subtree flattens at the floor rather than blocking a legitimate drop.
+ * A section's whole subtree lives inside the moved range — its top-level
+ * sibling headings AND any heading nested inside a blockquote or callout
+ * within it — so shifting every heading in the range, at any depth, by this
+ * one delta preserves the section's internal hierarchy exactly (the deep walk
+ * is relevelHeadings in editing/moveBlocks). Ranks that would overflow clamp
+ * at H6 (applied per heading at relevel time), so a deep subtree flattens at
+ * the floor rather than blocking a legitimate drop.
  */
 export function tocRelevelDelta(slot: TocSlot, draggedLevel: number | null): number {
     if (draggedLevel === null) {

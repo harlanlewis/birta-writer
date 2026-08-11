@@ -49,6 +49,7 @@ import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
 import { getTopbarBottom, scrollElementBelowTopbar } from "../../utils/headingUtils";
+import { stickyClearanceMargin } from "../../plugins/caretScrollMargin";
 import { t } from "../../i18n";
 
 /** A droppable boundary between sibling blocks or sibling list items. */
@@ -697,18 +698,21 @@ export function registerDropZoneProvider(provider: DropZoneProvider): () => void
 }
 
 /**
- * Scroll the block a successful moveBlocks landed at under the topbar — the
- * same scroll TOC navigation uses (scrollElementBelowTopbar), so a drop-zone
- * commit and a TOC click settle the viewport identically. moveBlocks leaves
- * the selection riding the moved content (caret or block range at the
- * destination), so its top-level block IS the landing.
+ * Scroll the block a successful moveBlocks landed at into view — the same
+ * margin the review sidebar's range navigation uses (stickyClearanceMargin),
+ * so a drop-zone commit and a sidebar jump settle the viewport identically.
+ * The margin matters: a drop landing inside a section sits under that
+ * section's sticky title, so clearing only the topbar can hide the landing
+ * behind the bar. moveBlocks leaves the selection riding the moved content
+ * (caret or block range at the destination), so its top-level block IS the
+ * landing.
  */
 function scrollLandedRangeIntoView(view: EditorView): void {
     const from = view.state.selection.from;
     const $from = view.state.doc.resolve(from);
     const dom = view.nodeDOM($from.depth > 0 ? $from.before(1) : from);
     if (dom instanceof HTMLElement) {
-        scrollElementBelowTopbar(dom);
+        scrollElementBelowTopbar(dom, stickyClearanceMargin());
     }
 }
 

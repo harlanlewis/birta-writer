@@ -72,6 +72,13 @@
     ...code,
     "```",
     "",
+    "between the blocks a third time",
+    "",
+    // The same tall image nested in a blockquote: the quote's padding insets
+    // the block into the content column, where the sticky heading title
+    // paints, so its pinned control column must clear the bar too.
+    `> ![tall-quoted](${TALL_SVG})`,
+    "",
     ...filler,
   ].join("\n");
   window.acquireVsCodeApi = () => ({

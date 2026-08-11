@@ -30,6 +30,12 @@
  */
 import { findWrapping, liftTarget, NodeRange } from "../pm";
 import type { Attrs, Command, EditorState, Node as ProseNode, NodeType } from "../pm";
+// Imported from foldModel DIRECTLY, not the headingFold index: this module
+// loads with the serialization presets (plugins/callouts), and the index
+// pulls the gutter/menu component graph — an import cycle that would leave
+// those modules half-initialized at preset-evaluation time. foldModel is
+// the pure layer (pm + foldState + blockRange only), so it is cycle-safe.
+import { expandCoverOverFolds } from "../plugins/headingFold/foldModel";
 
 export interface WrapTarget {
     /** The sibling run that goes inside the wrapper. */
@@ -51,7 +57,21 @@ export function wrapTarget(
     type: NodeType,
     attrs: Attrs | null = null,
 ): WrapTarget | null {
-    const { $from, $to } = state.selection;
+    const { $from } = state.selection;
+    let { $to } = state.selection;
+    // A COLLAPSED heading is inseparable from its hidden section — the rule
+    // every mover keeps (moveRangeAt, the selection cover, the keyboard unit
+    // map). Wrapping the heading line alone would leave the invisible body
+    // outside the new container and silently expand the fold, because a
+    // heading nested in a quote/callout cannot fold. Folds only exist on
+    // top-level headings, so the cover is asked at the top level; when it
+    // grows, $to moves to the end of the section's last block.
+    const coverFrom = $from.depth >= 1 ? $from.before(1) : $from.pos;
+    const coverTo = $to.depth >= 1 ? $to.after(1) : $to.pos;
+    const expanded = expandCoverOverFolds(state, { from: coverFrom, to: coverTo });
+    if (expanded.to > coverTo) {
+        $to = state.doc.resolve(expanded.to - 1);
+    }
     const innermost = $from.blockRange($to);
     if (!innermost) {
         return null;

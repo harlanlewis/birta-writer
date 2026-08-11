@@ -2252,13 +2252,16 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-hos
 
 /* Drag veil: dims everything the drag will move — a translucent overlay in
    the editor's own background, so the covered content reads at reduced
-   opacity. Below the indicator/pill, above the content. Its extent is the
-   drag's CURRENT scope, so a heading dragged over the outline dims its whole
-   section and the same drag over the page dims only its line. */
+   opacity. Below the indicator/pill AND below the sticky heading title
+   (content-dimming chrome sits under the persistent chrome — an
+   outline-scope drag of a tall section must not wash the section title
+   out), above the content. Its extent is the drag's CURRENT scope, so a
+   heading dragged over the outline dims its whole section and the same
+   drag over the page dims only its line. */
 .block-drag-veil {
     display: none;
     position: fixed;
-    z-index: 1150;
+    z-index: 1090;
     background: var(--vscode-editor-background);
     opacity: 0.6;
     pointer-events: none;
@@ -2368,10 +2371,12 @@ body.block-marqueeing .milkdown .editor {
 }
 
 /* Landing flash: a brief accent tint over a moved run at its destination —
-   "here's where it went" after a drop (especially post-auto-scroll). */
+   "here's where it went" after a drop (especially post-auto-scroll). Below
+   the sticky heading title for the drag veil's reason: the tint marks
+   content, so it stays under the persistent chrome. */
 .block-drop-flash {
     position: fixed;
-    z-index: 1140;
+    z-index: 1080;
     background: var(--vscode-focusBorder);
     opacity: 0.22;
     border-radius: var(--ui-radius-s);

@@ -61,7 +61,11 @@
  *    (swallowedVisibleContent; MAR-149).
  * 5. SIDE-STATE RIDES ALONG — the fold plugin's move meta travels inside
  *    the primitive, so a collapsed section stays collapsed at its
- *    destination and nothing else inherits its fold.
+ *    destination and nothing else inherits its fold. One bound: only a
+ *    top-level heading can hold a fold, so a section dropped INSIDE a
+ *    container (a blockquote, a callout) arrives expanded — the entry has
+ *    nowhere legal to land and is dropped, which fails safe (content is
+ *    revealed, never hidden).
  *
  * v1 scope: ONE contiguous source range. Non-contiguous multi-range moves
  * (a future marquee/Cmd-click extension) are explicitly out of scope.
@@ -99,9 +103,13 @@ const MIN_HEADING_LEVEL = 1;
 const MAX_HEADING_LEVEL = 6;
 
 /**
- * `nodes` with every heading's rank shifted by `delta`, clamped to H1–H6.
- * Non-heading nodes and a zero/no-op delta pass through by identity, so the
- * common (literal-move) path allocates nothing.
+ * `nodes` with every heading's rank shifted by `delta`, clamped to H1–H6 —
+ * at ANY depth, not only among the run's direct children: a section can hold
+ * a heading nested inside a blockquote or callout, and a top-level-only map
+ * would shift every sibling heading while leaving the quoted one behind,
+ * desyncing the outline's displayed hierarchy for that row. Unchanged
+ * subtrees and a zero/no-op delta pass through by identity, so the common
+ * (literal-move) path allocates nothing.
  *
  * Clamping is per node, so a subtree deep enough to overflow flattens at the
  * floor instead of blocking the drop. This is content-guard-invisible by
@@ -113,10 +121,11 @@ function relevelHeadings(nodes: readonly ProseNode[], delta: number): readonly P
     if (delta === 0) {
         return nodes;
     }
-    return nodes.map((node) => {
-        if (node.type.name !== "heading") {
-            return node;
-        }
+    return nodes.map((node) => relevelNode(node, delta));
+}
+
+function relevelNode(node: ProseNode, delta: number): ProseNode {
+    if (node.type.name === "heading") {
         const current = typeof node.attrs["level"] === "number" ? (node.attrs["level"] as number) : 1;
         const next = Math.min(Math.max(current + delta, MIN_HEADING_LEVEL), MAX_HEADING_LEVEL);
         if (next === current) {
@@ -125,7 +134,22 @@ function relevelHeadings(nodes: readonly ProseNode[], delta: number): readonly P
         // Preserve every other attr (the TOC-anchor id among them) — only the
         // rank changes, matching setHeadingLevelAt's heading→heading contract.
         return node.type.create({ ...node.attrs, level: next }, node.content, node.marks);
+    }
+    // A heading is a textblock and can never sit inside another textblock,
+    // so inline content is never walked.
+    if (node.isTextblock || node.childCount === 0) {
+        return node;
+    }
+    let changed = false;
+    const children: ProseNode[] = [];
+    node.forEach((child: ProseNode) => {
+        const mapped = relevelNode(child, delta);
+        if (mapped !== child) {
+            changed = true;
+        }
+        children.push(mapped);
     });
+    return changed ? node.copy(Fragment.from(children)) : node;
 }
 
 /** Loud structural refusal: every caller handed us something the contract

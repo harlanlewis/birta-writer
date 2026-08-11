@@ -62,6 +62,18 @@ export function measureStickyHeadingHeight(): number {
     return base * (1.3 + 1);
 }
 
+/**
+ * The `scrollElementBelowTopbar` margin that lands a navigation target below
+ * the sticky heading title with about two lines of lead-in. The one
+ * expression for every "jump into a section" scroll — the review sidebar's
+ * range navigation and the post-drop landing scroll share it — so they all
+ * settle the viewport identically, and none can clear only the topbar and
+ * leave its target inside the band the active section's title paints over.
+ */
+export function stickyClearanceMargin(): number {
+    return measureStickyHeadingHeight() + bodyLineHeightPx() * 2 + 8;
+}
+
 function viewportHeight(): number {
     // ProseMirror's window rect uses documentElement.clientHeight; mirror it.
     // jsdom reports 0 there, hence the innerHeight fallback.

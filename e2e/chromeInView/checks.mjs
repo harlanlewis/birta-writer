@@ -142,7 +142,10 @@ export async function run({ page, check, baseUrl }) {
             return window.scrollY + r.top + (${offset});
         })()`).then(scrollTo);
 
-    await scrollToBlockOffset(-100);
+    // Far enough down the viewport that nothing pins yet: the pin reserves the
+    // topbar AND the sticky heading title, so a top edge inside that reserved
+    // band would legitimately seat the stack below it rather than on it.
+    await scrollToBlockOffset(-200);
     const imgPoint = await page.evaluate(`(() => {
         const r = document.querySelector("${IMG_HOST}").getBoundingClientRect();
         return { x: r.left + r.width / 2, y: r.top + 200 };
@@ -252,4 +255,71 @@ export async function run({ page, check, baseUrl }) {
     })()`);
     check("the pill's strip is click-through over the code",
         !clickThrough.inRail, `hit=${clickThrough.tag}`);
+
+    // ── A block nested in a quote: its pinned controls clear the sticky bar ──
+    // The strip of a TOP-LEVEL block sits outside the content column, which the
+    // sticky heading title spans exactly — but a blockquote's padding insets a
+    // nested block INTO that column, so its pinned stack sits where the bar
+    // paints and must reserve the bar's height on top of the topbar.
+    const QUOTED_HOST = ".milkdown .ProseMirror blockquote .image-wrapper";
+    await page.waitForSelector(QUOTED_HOST, { timeout: 10000 });
+    const quotedGeom = await page.evaluate(`(() => {
+        const r = document.querySelector("${QUOTED_HOST}").getBoundingClientRect();
+        return { top: window.scrollY + r.top, height: r.height };
+    })()`);
+    check("fixture quoted image is taller than the viewport",
+        quotedGeom.height > sizes.viewport, `image=${Math.round(quotedGeom.height)} viewport=${sizes.viewport}`);
+    await scrollTo(quotedGeom.top + quotedGeom.height / 2);
+    const quotedPoint = await page.evaluate(`(() => {
+        const r = document.querySelector("${QUOTED_HOST}").getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: Math.max(r.top + 40, 200) };
+    })()`);
+    await page.mouse.move(quotedPoint.x, quotedPoint.y);
+    await page.waitForTimeout(300);
+    const quoted = await page.evaluate(`(() => {
+        const band = ${BAND};
+        const host = document.querySelector("${QUOTED_HOST}").getBoundingClientRect();
+        const stack = document.querySelector("${QUOTED_HOST} .bc-stack").getBoundingClientRect();
+        const bar = document.querySelector(".heading-sticky-title:not([hidden])");
+        return {
+            band,
+            host: { top: host.top },
+            stack: { top: stack.top, bottom: stack.bottom, height: stack.height },
+            barBottom: bar ? bar.getBoundingClientRect().bottom : null,
+        };
+    })()`);
+    check("the quoted image's top edge really did scroll out of the band",
+        quoted.host.top < quoted.band.top,
+        `hostTop=${Math.round(quoted.host.top)} bandTop=${quoted.band.top}`);
+    check("the sticky heading bar is actually showing over the quoted image",
+        quoted.barBottom !== null, `barBottom=${quoted.barBottom}`);
+    check("the quoted image's pinned controls clear the sticky bar",
+        quoted.stack.height > 0 && quoted.stack.top >= quoted.barBottom - 1,
+        `stack=${Math.round(quoted.stack.top)} barBottom=${Math.round(quoted.barBottom)}`);
+
+    // ── Stacking: content-dimming overlays sit under the persistent bar ──────
+    // The drag veil and the landing flash mark CONTENT (what a drag will move,
+    // where a drop went), so they paint under the sticky heading title — an
+    // outline-scope drag of a tall section must not wash the section title out.
+    // Probed against the real stylesheet with bare-class elements.
+    const stacking = await page.evaluate(`(() => {
+        const z = (cls) => {
+            const el = document.createElement("div");
+            el.className = cls;
+            document.body.appendChild(el);
+            const v = Number(getComputedStyle(el).zIndex);
+            el.remove();
+            return v;
+        };
+        const bar = document.querySelector(".heading-sticky-title");
+        return {
+            veil: z("block-drag-veil"),
+            flash: z("block-drop-flash"),
+            sticky: bar ? Number(getComputedStyle(bar).zIndex) : null,
+        };
+    })()`);
+    check("the drag veil paints under the sticky heading title",
+        stacking.sticky !== null && stacking.veil < stacking.sticky, JSON.stringify(stacking));
+    check("the landing flash paints under the sticky heading title",
+        stacking.sticky !== null && stacking.flash < stacking.sticky, JSON.stringify(stacking));
 }
