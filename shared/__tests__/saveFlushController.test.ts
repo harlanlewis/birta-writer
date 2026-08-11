@@ -6,7 +6,7 @@
  * reach at the fixed 1s value.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { SaveFlushController } from "../saveFlushController";
+import { SaveFlushController, type FlushBackend } from "../saveFlushController";
 
 const URI = "file:///project/note.md";
 
@@ -23,15 +23,15 @@ describe("SaveFlushController", () => {
         it("an untracked document should read as version 0 and current for base 0", () => {
             const c = new SaveFlushController<string>();
             expect(c.currentVersion(URI)).toBe(0);
-            expect(c.isCurrentVersion(URI, 0)).toBe(true);
+            expect(c.isAdmissibleBase(URI, 0)).toBe(true);
         });
 
         it("bumpVersion should make an older base stale and the new base current", () => {
             const c = new SaveFlushController<string>();
             c.bumpVersion(URI);
             expect(c.currentVersion(URI)).toBe(1);
-            expect(c.isCurrentVersion(URI, 0)).toBe(false);
-            expect(c.isCurrentVersion(URI, 1)).toBe(true);
+            expect(c.isAdmissibleBase(URI, 0)).toBe(false);
+            expect(c.isAdmissibleBase(URI, 1)).toBe(true);
         });
 
         it("resetWebviewBaseline should re-baseline the document at 0", () => {
@@ -39,7 +39,7 @@ describe("SaveFlushController", () => {
             c.bumpVersion(URI);
             c.bumpVersion(URI);
             c.resetWebviewBaseline(URI);
-            expect(c.isCurrentVersion(URI, 0)).toBe(true);
+            expect(c.isAdmissibleBase(URI, 0)).toBe(true);
         });
     });
 
@@ -241,6 +241,94 @@ describe("SaveFlushController", () => {
                 c.resolveFlush(flushId, { content: "late", baseSyncVersion: 0, seq: 1 }),
                 "a late reply must be reported undelivered so the caller can ack it discarded",
             ).toBe(false);
+        });
+    });
+
+    // MAR-346: the concurrency assumptions are supplied, not baked in. Each
+    // test here pins one inversion by driving a NON-default backend or writer
+    // through the same primitives the host calls: it goes red if the
+    // inversion is reverted to the hardwired form (equality comparison,
+    // doc-global seq mark, unconditional repush), while the default-backend
+    // suites above pin that the default is byte-for-byte today's behavior.
+    describe("supplied backend (MAR-346)", () => {
+        const ancestryBackend: FlushBackend = {
+            // An ancestry-style admissibility: the immediately preceding
+            // version is still a valid parent (a backend that can fast-forward
+            // one step), anything older is not.
+            isAdmissibleBase: (current, base) => current - base <= 1,
+            onBaseRejected: () => ({ outcome: "repush" }),
+        };
+
+        it("inversion 1: a supplied predicate should judge admissibility in place of equality", () => {
+            const c = new SaveFlushController<string>(1000, ancestryBackend);
+            c.bumpVersion(URI);
+            expect(c.isAdmissibleBase(URI, 0), "one version behind is admissible to this backend").toBe(true);
+            c.bumpVersion(URI);
+            expect(c.isAdmissibleBase(URI, 0), "two versions behind is not").toBe(false);
+            expect(c.isAdmissibleBase(URI, 2)).toBe(true);
+        });
+
+        it("inversion 1: the flush reply guard should consult the same predicate", async () => {
+            const c = new SaveFlushController<string>(1000, ancestryBackend);
+            let flushId = "";
+            const flush = c.flushPendingEdit(URI, (id) => { flushId = id; }, async (t) => [t]);
+            c.bumpVersion(URI); // lands mid-flight; equality would now reject base 0
+            c.resolveFlush(flushId, { content: "carried", baseSyncVersion: 0, seq: 1 });
+            await expect(flush).resolves.toEqual(["carried"]);
+        });
+
+        it("inversion 2: writers should keep independent seq marks on one document", () => {
+            const c = new SaveFlushController<string>();
+            expect(c.claimSeq(URI, 5, "a")).toBe(true);
+            // A doc-global mark would read seq 1 as superseded by a's 5.
+            expect(c.claimSeq(URI, 1, "b"), "writer b's counter must not be starved by writer a's").toBe(true);
+            expect(c.claimSeq(URI, 4, "a"), "a's own stale seq is still stale").toBe(false);
+            expect(c.claimSeq(URI, 2, "b")).toBe(true);
+        });
+
+        it("inversion 2: resetWebviewBaseline should reset only the restarted writer's mark", () => {
+            const c = new SaveFlushController<string>();
+            c.claimSeq(URI, 3, "a");
+            c.claimSeq(URI, 7, "b");
+            c.resetWebviewBaseline(URI, "a");
+            expect(c.claimSeq(URI, 1, "a"), "the restarted writer renumbers from 1").toBe(true);
+            expect(c.claimSeq(URI, 7, "b"), "the surviving writer's ceiling must hold").toBe(false);
+            expect(c.claimSeq(URI, 8, "b")).toBe(true);
+        });
+
+        it("inversion 2: a flush reply should claim under its own writer id", async () => {
+            const c = new SaveFlushController<string>();
+            c.claimSeq(URI, 5); // the local writer's mark
+            let flushId = "";
+            const flush = c.flushPendingEdit(URI, (id) => { flushId = id; }, async (t) => [t]);
+            c.resolveFlush(flushId, { content: "remote", baseSyncVersion: 0, seq: 1, writerId: "remote" });
+            await expect(flush).resolves.toEqual(["remote"]);
+            expect(c.claimSeq(URI, 6), "the local writer's own ceiling is untouched").toBe(true);
+        });
+
+        it("inversion 3: rejectBase should return the backend's verdict, defaulting to repush", () => {
+            const deferring: FlushBackend = {
+                isAdmissibleBase: () => false,
+                onBaseRejected: ({ content }) => (content === "hold" ? { outcome: "defer" } : { outcome: "escalate" }),
+            };
+            const c = new SaveFlushController<string>(1000, deferring);
+            expect(c.rejectBase(URI, 0, "hold")).toEqual({ outcome: "defer" });
+            expect(c.rejectBase(URI, 0, "boom")).toEqual({ outcome: "escalate" });
+            const d = new SaveFlushController<string>();
+            expect(d.rejectBase(URI, 0, "anything"), "the default maps everything to today's behavior").toEqual({
+                outcome: "repush",
+            });
+        });
+
+        it("teardown poison should stay rejected even under an admit-everything backend", async () => {
+            const admitAll: FlushBackend = {
+                isAdmissibleBase: () => true,
+                onBaseRejected: () => ({ outcome: "repush" }),
+            };
+            const c = new SaveFlushController<string>(1000, admitAll);
+            const flush = c.flushPendingEdit(URI, () => {}, async () => ["edit"]);
+            c.failFlushes(URI);
+            await expect(flush, "the poison rides the seq guard, not the version guard").resolves.toEqual([]);
         });
     });
 

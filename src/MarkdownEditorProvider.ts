@@ -21,7 +21,7 @@ import {
     updateSettingRespectingScope,
     updateUserSetting,
 } from "./config";
-import { SaveFlushController } from "../shared/saveFlushController";
+import { SaveFlushController, type BaseRejection, type FlushBackend } from "../shared/saveFlushController";
 import { watchExternalDocumentChanges } from "./externalChanges";
 import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtmlAttr } from "./webviewHtml";
 import { reportError, reportErrorWithNotification } from "./errorSink";
@@ -556,8 +556,9 @@ export class MarkdownEditorProvider
     constructor(
         private readonly context: vscode.ExtensionContext,
         flushTimeoutMs: number = 1000,
+        flushBackend?: FlushBackend,
     ) {
-        this._flush = new SaveFlushController<vscode.TextEdit>(flushTimeoutMs);
+        this._flush = new SaveFlushController<vscode.TextEdit>(flushTimeoutMs, flushBackend);
         this._watchWorkspaceIndex();
     }
 
@@ -759,13 +760,21 @@ export class MarkdownEditorProvider
                             // Stale-update rejection: the webview serialized this
                             // against content we've since replaced (an
                             // externalUpdate landed after it read the document).
-                            // Drop it and re-push the current authoritative state
-                            // so the webview re-bases.
-                            if (!this._flush.isCurrentVersion(uriKey, message.baseSyncVersion)) {
-                                this._pushExternalUpdate(document, webviewPanel, uriKey);
-                                break;
+                            // The backend decides what a rejected base means
+                            // (MAR-346): the default drops it and re-pushes the
+                            // current authoritative state so the webview re-bases.
+                            let content = message.content;
+                            if (!this._flush.isAdmissibleBase(uriKey, message.baseSyncVersion)) {
+                                const rejection = this._flush.rejectBase(uriKey, message.baseSyncVersion, content);
+                                if (rejection.outcome !== "rebase") {
+                                    this._settleBaseRejection(rejection, document, webviewPanel, uriKey);
+                                    break;
+                                }
+                                // The backend carried the edit forward; admit its
+                                // rebased content in place of the proposal.
+                                content = rejection.content;
                             }
-                            const newContent = this._prepareContentForSave(message.content, uriKey);
+                            const newContent = this._prepareContentForSave(content, uriKey);
                             const seq = message.seq;
                             void this._enqueueEdit(uriKey, async () => {
                                 // Ordering guard (checked at apply time, in queue
@@ -794,11 +803,21 @@ export class MarkdownEditorProvider
                         }
                         break;
                     case "frontmatterUpdate": {
-                        // Stale-update rejection (same rule as "update"): a
-                        // frontmatter edit serialized against replaced content is
-                        // dropped and the current state re-pushed.
-                        if (!this._flush.isCurrentVersion(uriKey, message.baseSyncVersion)) {
-                            this._pushExternalUpdate(document, webviewPanel, uriKey);
+                        // Stale-update rejection (same rule as "update"): the
+                        // backend judges a frontmatter edit serialized against
+                        // replaced content. A `rebase` outcome is settled as a
+                        // re-push here rather than admitted: this path replaces
+                        // only the frontmatter block, and a backend rebases whole
+                        // documents — re-basing the webview is the correct
+                        // degradation either way.
+                        if (!this._flush.isAdmissibleBase(uriKey, message.baseSyncVersion)) {
+                            const rejection = this._flush.rejectBase(uriKey, message.baseSyncVersion, message.frontmatter);
+                            this._settleBaseRejection(
+                                rejection.outcome === "rebase" ? { outcome: "repush" } : rejection,
+                                document,
+                                webviewPanel,
+                                uriKey,
+                            );
                             break;
                         }
                         // The WebView edited the frontmatter panel; replace just the frontmatter block.
@@ -1363,6 +1382,37 @@ export class MarkdownEditorProvider
             tableWrap,
             syncVersion: version,
         });
+    }
+
+    /**
+     * Act on the backend's verdict for a proposal whose base was rejected
+     * (MAR-346 inversion 3). `rebase` never reaches here — the caller admits
+     * the carried-forward content instead. With the default backend only
+     * `repush` ever fires; the other arms exist so a backend that answers
+     * differently changes behavior HERE, not silently inside the protocol.
+     */
+    private _settleBaseRejection(
+        rejection: Exclude<BaseRejection, { outcome: "rebase" }>,
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        uriKey: string,
+    ): void {
+        switch (rejection.outcome) {
+            case "repush":
+                // Drop the content and re-push authoritative state so the
+                // webview re-bases — the host's long-standing behavior.
+                this._pushExternalUpdate(document, panel, uriKey);
+                break;
+            case "defer":
+                // The backend expects the remote to settle; push nothing. The
+                // next observed external change re-bases the webview anyway.
+                break;
+            case "escalate":
+                // Tell the user, change nothing: the same advisory surface the
+                // disk-drift conflict uses.
+                postToWebview(panel.webview, { type: "syncConflict", state: "conflict" });
+                break;
+        }
     }
 
     /** Serializes webview-originated edits per document so they never interleave. */
