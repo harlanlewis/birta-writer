@@ -428,6 +428,28 @@ describe("moveBlocks — fold-hidden target legality", () => {
     });
 
     /**
+     * A section can hold a heading NESTED inside a blockquote or callout
+     * (quote-any-block made one reachable). A relevel that mapped only the
+     * run's direct children would shift every top-level heading's rank and
+     * leave the quoted one behind, visibly desyncing the outline's displayed
+     * hierarchy for that row.
+     */
+    it("a relevel should shift a heading quoted inside the moved section too", async () => {
+        const editor = await makeEditor(
+            "# A\n\n> ## Quoted\n\ntail\n\n# B\n\nb body",
+        );
+        const v = view(editor);
+        const aPos = nodePos(v, "A", "heading");
+
+        // The outline unit for A (heading + section, up to # B), dropped at
+        // document end with the TOC's "make it a child" rank shift.
+        const range = outlineRangeAt(v, aPos)!;
+        expect(moveBlocks(v, range, v.state.doc.content.size, { relevelDelta: 1 })).toBe(true);
+
+        expect(markdown(editor)).toBe("# B\n\nb body\n\n## A\n\n> ### Quoted\n\ntail");
+    });
+
+    /**
      * MAR-156. Entries relocated by the move meta skipped the MAR-149 guard
      * entirely, so moving a COLLAPSED section somewhere its rank-derived
      * extent grows buried the destination's blocks. (The ticket's written
