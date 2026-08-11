@@ -167,7 +167,7 @@ Birta isn't a personal-knowledge-management tool. It reads and writes plain Mark
 | "Second Brain" / PARA | Yes, directly | A folder convention, not a format, so there is nothing tool-specific to preserve |
 | Logseq | Yes, opens (round-trip tested) | Its outliner model renders as one big nested list, because every block is a bullet and tab indentation encodes the tree. Untouched lines keep their tabs and org tokens byte for byte, and an edited or moved block keeps the file's own indentation, so its nested children stay children. Pinned by `logseqRoundTrip.test.ts`, which `pnpm fidelity` runs |
 | Quarto (`.qmd`) | Caution, needs a file association | Safe to round-trip; executable cells, `:::` fenced divs, shortcodes, and citations are preserved as inert text or code, not understood |
-| MDX (`.mdx`) | No, not recommended | MDX changes base Markdown rules and adds JSX and imports; re-serializing edited regions risks invalid MDX |
+| MDX (`.mdx`) | Yes, directly (MDX mode) | Parses the real MDX grammar; prose edits work as in Markdown, while JSX, `{expressions}` and `import`/`export` stay inert, read-only, and round-trip byte-perfect. A file that is not valid MDX falls back to the text editor with the parser's error. Don't rename `.mdx` to `.md`, which bypasses the mode and makes an edit corrupting |
 | Roam Research | No, export first | Proprietary database (JSON/EDN), not files |
 | Bear | No, export first | Proprietary SQLite database, not files |
 | Emacs Org mode | No, out of scope | `.org` is a different markup language, not Markdown |
