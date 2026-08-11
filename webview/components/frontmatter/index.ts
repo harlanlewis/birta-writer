@@ -812,7 +812,7 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
             return;
         }
         // The extension re-extracts frontmatter with a first-`---` regex
-        // (src/utils/contentTransform.ts), so an inner line of `---` (or the YAML
+        // (shared/contentTransform.ts), so an inner line of `---` (or the YAML
         // document-end marker `...`) would truncate the block and corrupt the document
         // on the next edit cycle. Reject any line merely STARTING with either marker
         // (`--- draft`, `----`, ...): older extraction regexes and third-party

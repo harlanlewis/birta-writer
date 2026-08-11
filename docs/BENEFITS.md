@@ -229,7 +229,7 @@ Reorganizing a long document is the one edit that's genuinely painful in raw Mar
 
 ## Offline by default
 
-Nothing leaves your machine unless you turn it on. Every feature that could touch the network sits behind a single master switch, `birta.network.enabled`, which ships off. With it off the editor makes no outbound request at all. One embed still renders offline: the GitHub info card, which is built purely from the URL text in your document and requests nothing.
+Nothing leaves your machine unless you turn it on. Every feature that could touch the network sits behind a single master switch, `birta.network.enabled`, which ships off. With it off the editor makes no outbound request at all. The info cards still render offline: GitHub, Linear, and a Google editing link each build their card purely from the URL text in your document and request nothing.
 
 The private default is the default, not a setting you have to remember to find. Turn the switch on and exactly two features become live. Each is narrow, legible, opt-in, and self-limited, and each carries its own switch: `birta.pasteUnfurl.enabled` and `birta.embeds.enabled`.
 
@@ -239,7 +239,7 @@ Paste-unfurl contacts only the host of a bare URL you paste (with nothing select
 
 ### URL embed cards
 
-A card contacts only the named provider of a bare link on its own line: a YouTube thumbnail at render, and a title lookup at that provider's own oEmbed endpoint, so the card can name what it embeds. The player is created only when you click, whether that's YouTube in privacy mode (`youtube-nocookie.com`), a Loom or Vimeo video (Vimeo's always loads with its `dnt=1` do-not-track flag), or a live Figma frame. Each provider's exact hosts are pinned in one shared table that also generates the webview's content-security-policy. Never a wildcard, never an aggregation service.
+A card contacts only the named provider of a bare link on its own line: a YouTube thumbnail at render, and a title lookup at that provider's own oEmbed endpoint, so the card can name what it embeds. The player is created only when you click, whether that's YouTube in privacy mode (`youtube-nocookie.com`), a Loom or Vimeo video (Vimeo's always loads with its `dnt=1` do-not-track flag), a live Figma frame, a published Google document through Google's own embed endpoints, or a Miro board's login-free live view. Each provider's exact hosts are pinned in one shared table that also generates the webview's content-security-policy. Never a wildcard, never an aggregation service.
 
 ### You're asked in place, and the choice is yours alone
 

@@ -17,6 +17,20 @@ import {
     figmaEmbedUrl,
     githubId,
     githubCardParts,
+    googleDocsEmbedUrl,
+    googleDocsPubId,
+    googleDriveId,
+    googleDrivePreviewUrl,
+    googleFileCardParts,
+    googleFileId,
+    googleSheetsEmbedUrl,
+    googleSheetsPubId,
+    googleSlidesEmbedUrl,
+    googleSlidesPubId,
+    linearCardParts,
+    linearId,
+    miroEmbedUrl,
+    miroId,
     vimeoId,
     vimeoEmbedUrl,
 } from "../utils/embedProviders";
@@ -24,6 +38,9 @@ import {
 const ID = "dQw4w9WgXcQ"; // a real-shaped 11-char id
 const LOOM = "0123456789abcdef0123456789abcdef"; // a real-shaped 32-hex id
 const FKEY = "BAZsTPbh6W1r66Bdo9xkQp"; // a real-shaped alphanumeric file key
+const GFILE = "1AbCdEfGhIjKlMnOpQrStUvWxYz01234"; // a real-shaped 33-char Drive/Docs file id
+const GPUB = "2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfGhIjKlMnOp"; // a real-shaped publish-to-web token
+const MIRO = "uXjVO5X2CWo="; // a real-shaped Miro board id (trailing =)
 
 describe("youtubeId — recognized URL forms", () => {
     const cases: Array<[string, string]> = [
@@ -210,6 +227,185 @@ describe("githubCardParts", () => {
     }
 });
 
+describe("googleDriveId — recognized URL forms", () => {
+    const cases: Array<[string, string]> = [
+        [`https://drive.google.com/file/d/${GFILE}/view`, GFILE],
+        [`https://drive.google.com/file/d/${GFILE}/view?usp=sharing`, GFILE],
+        [`https://drive.google.com/file/d/${GFILE}/preview`, GFILE],
+        [`https://drive.google.com/file/d/${GFILE}/edit`, GFILE],
+        [`https://drive.google.com/file/d/${GFILE}`, GFILE],
+        [`http://drive.google.com/file/d/${GFILE}/view`, GFILE],
+        // The legacy open?id= form still circulates in old documents.
+        [`https://drive.google.com/open?id=${GFILE}`, GFILE],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(googleDriveId(url)).toBe(expected);
+        });
+    }
+});
+
+describe("googleDriveId — rejected (no false positives)", () => {
+    const rejects = [
+        `https://drive.google.com/drive/folders/${GFILE}`, // a folder, not a file
+        `https://drive.google.com/file/d/${GFILE}/share`, // unknown tail
+        "https://drive.google.com/file/d/short/view", // under the id floor
+        `https://drive.google.com.evil.com/file/d/${GFILE}/view`, // lookalike host
+        `https://docs.google.com/file/d/${GFILE}/view`, // wrong host for this shape
+        "https://drive.google.com/open?id=short",
+        `ftp://drive.google.com/file/d/${GFILE}/view`, // wrong protocol
+        "https://drive.google.com/", // nothing
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(googleDriveId(url)).toBeNull();
+        });
+    }
+});
+
+describe("google publish-to-web ids — the sharing-mode split", () => {
+    it("a published Doc /pub URL should extract the token", () => {
+        expect(googleDocsPubId(`https://docs.google.com/document/d/e/${GPUB}/pub`)).toBe(GPUB);
+        expect(googleDocsPubId(`https://docs.google.com/document/d/e/${GPUB}/pub?embedded=true`)).toBe(GPUB);
+    });
+    it("a published Slides URL should extract from both /pub and /embed", () => {
+        expect(googleSlidesPubId(`https://docs.google.com/presentation/d/e/${GPUB}/pub?start=false`)).toBe(GPUB);
+        expect(googleSlidesPubId(`https://docs.google.com/presentation/d/e/${GPUB}/embed`)).toBe(GPUB);
+    });
+    it("a published Sheets /pubhtml URL should extract the token", () => {
+        expect(googleSheetsPubId(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pubhtml`)).toBe(GPUB);
+        expect(googleSheetsPubId(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pubhtml?widget=true&headers=false`)).toBe(GPUB);
+    });
+    it("cross-product and wrong-tail shapes should return null", () => {
+        // Each product only accepts its own tails — no doomed iframes.
+        expect(googleDocsPubId(`https://docs.google.com/presentation/d/e/${GPUB}/pub`)).toBeNull();
+        expect(googleDocsPubId(`https://docs.google.com/document/d/e/${GPUB}/pubhtml`)).toBeNull();
+        expect(googleDocsPubId(`https://docs.google.com/document/d/e/${GPUB}`)).toBeNull();
+        expect(googleSheetsPubId(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pub`)).toBeNull();
+        expect(googleSlidesPubId(`https://docs.google.com/presentation/d/e/${GPUB}/pubhtml`)).toBeNull();
+        // A short token is not a publish-to-web id.
+        expect(googleDocsPubId("https://docs.google.com/document/d/e/short/pub")).toBeNull();
+        // An ordinary edit URL is NOT a published one (that is the whole split).
+        expect(googleDocsPubId(`https://docs.google.com/document/d/${GFILE}/edit`)).toBeNull();
+        expect(googleDocsPubId(`https://docs.google.com.evil.com/document/d/e/${GPUB}/pub`)).toBeNull();
+    });
+});
+
+describe("googleFileId — ordinary Docs/Slides/Sheets URLs (the Rung 0 side)", () => {
+    const cases: Array<[string, string]> = [
+        [`https://docs.google.com/document/d/${GFILE}/edit`, `document/${GFILE}`],
+        [`https://docs.google.com/document/d/${GFILE}/edit?usp=sharing&tab=t.0`, `document/${GFILE}`],
+        [`https://docs.google.com/document/d/${GFILE}`, `document/${GFILE}`],
+        [`https://docs.google.com/presentation/d/${GFILE}/edit`, `presentation/${GFILE}`],
+        [`https://docs.google.com/spreadsheets/d/${GFILE}/view`, `spreadsheets/${GFILE}`],
+        [`https://docs.google.com/document/d/${GFILE}/preview`, `document/${GFILE}`],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(googleFileId(url)).toBe(expected);
+        });
+    }
+
+    const rejects = [
+        `https://docs.google.com/document/d/e/${GPUB}/pub`, // the published shape is another kind
+        `https://docs.google.com/forms/d/${GFILE}/edit`, // unknown product
+        `https://docs.google.com/document/${GFILE}`, // missing /d/
+        `https://docs.google.com/document/d/${GFILE}/copy`, // unknown tail
+        "https://docs.google.com/document/d/short/edit", // under the id floor
+        `https://docs.google.com.evil.com/document/d/${GFILE}/edit`, // lookalike host
+        "https://docs.google.com/", // nothing
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(googleFileId(url)).toBeNull();
+        });
+    }
+});
+
+describe("googleFileCardParts", () => {
+    it("should split the composite into product and file id", () => {
+        expect(googleFileCardParts(`document/${GFILE}`)).toEqual({ product: "document", fileId: GFILE });
+        expect(googleFileCardParts(`spreadsheets/${GFILE}`)).toEqual({ product: "spreadsheets", fileId: GFILE });
+    });
+});
+
+describe("miroId — recognized URL forms", () => {
+    const cases: Array<[string, string]> = [
+        [`https://miro.com/app/board/${MIRO}/`, MIRO],
+        [`https://miro.com/app/board/${MIRO}`, MIRO],
+        [`https://www.miro.com/app/board/${MIRO}/`, MIRO],
+        [`https://miro.com/app/board/${MIRO}/?share_link_id=123`, MIRO],
+        // A pasted live-embed URL is the same board.
+        [`https://miro.com/app/live-embed/${MIRO}/`, MIRO],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(miroId(url)).toBe(expected);
+        });
+    }
+
+    const rejects = [
+        "https://miro.com/app/dashboard/", // not a board
+        `https://miro.com/board/${MIRO}/`, // missing /app/
+        "https://miro.com/app/board/", // no id
+        `https://miro.com/app/board/${MIRO}/extra`, // extra segment
+        `https://miro.com.evil.com/app/board/${MIRO}/`, // lookalike host
+        "https://miro.com/app/board/ab=/", // under the id floor
+        "https://miro.com/templates/kanban/", // marketing page
+        `ftp://miro.com/app/board/${MIRO}/`, // wrong protocol
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(miroId(url)).toBeNull();
+        });
+    }
+});
+
+describe("linearId — recognized URL forms", () => {
+    const cases: Array<[string, string]> = [
+        ["https://linear.app/birta/issue/MAR-186", "birta/issue/MAR-186"],
+        [
+            "https://linear.app/birta/issue/MAR-186/embed-provider-roadmap",
+            "birta/issue/MAR-186/embed-provider-roadmap",
+        ],
+        ["https://linear.app/birta/issue/MAR-186?comment=abc", "birta/issue/MAR-186"],
+        ["http://linear.app/some-org/issue/AB2-7/x", "some-org/issue/AB2-7/x"],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(linearId(url)).toBe(expected);
+        });
+    }
+
+    const rejects = [
+        "https://linear.app/birta/project/some-project", // not an issue
+        "https://linear.app/birta/project/ABC-12", // a key-shaped segment under the wrong section
+        "https://linear.app/issue/MAR-186", // missing org
+        "https://linear.app/birta/issue/MAR186", // malformed key
+        "https://linear.app/birta/issue/-186", // key must start with a letter
+        "https://linear.app/birta/issue/MAR-186/slug/extra", // too deep
+        "https://linear.app.evil.com/birta/issue/MAR-186", // lookalike host
+        "https://linear.app/", // nothing
+        "ftp://linear.app/birta/issue/MAR-186", // wrong protocol
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(linearId(url)).toBeNull();
+        });
+    }
+});
+
+describe("linearCardParts", () => {
+    it("should split the composite into org, key, and optional slug", () => {
+        expect(linearCardParts("birta/issue/MAR-186")).toEqual({ org: "birta", key: "MAR-186" });
+        expect(linearCardParts("birta/issue/MAR-186/embed-provider-roadmap")).toEqual({
+            org: "birta",
+            key: "MAR-186",
+            slug: "embed-provider-roadmap",
+        });
+    });
+});
+
 describe("recognizeProvider", () => {
     it("a YouTube URL should resolve to a youtube match with the id", () => {
         expect(recognizeProvider(`https://youtu.be/${ID}`)).toEqual({ kind: "youtube", id: ID });
@@ -237,6 +433,41 @@ describe("recognizeProvider", () => {
     });
     it("a Vimeo video URL should resolve to the vimeo provider", () => {
         expect(recognizeProvider("https://vimeo.com/76979871")).toEqual({ kind: "vimeo", id: "76979871" });
+    });
+    it("a Drive file URL should resolve to the googledrive provider", () => {
+        expect(recognizeProvider(`https://drive.google.com/file/d/${GFILE}/view`)).toEqual({
+            kind: "googledrive",
+            id: GFILE,
+        });
+    });
+    it("the Google sharing-mode split: published URLs card as players, edit URLs as the info card", () => {
+        // The same document, two sharing modes, two DIFFERENT kinds — the
+        // published form is framable, the ordinary form never is (MAR-186).
+        expect(recognizeProvider(`https://docs.google.com/document/d/e/${GPUB}/pub`)).toEqual({
+            kind: "googledocs",
+            id: GPUB,
+        });
+        expect(recognizeProvider(`https://docs.google.com/presentation/d/e/${GPUB}/pub`)).toEqual({
+            kind: "googleslides",
+            id: GPUB,
+        });
+        expect(recognizeProvider(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pubhtml`)).toEqual({
+            kind: "googlesheets",
+            id: GPUB,
+        });
+        expect(recognizeProvider(`https://docs.google.com/document/d/${GFILE}/edit`)).toEqual({
+            kind: "googlefile",
+            id: `document/${GFILE}`,
+        });
+    });
+    it("a Miro board URL should resolve to the miro provider", () => {
+        expect(recognizeProvider(`https://miro.com/app/board/${MIRO}/`)).toEqual({ kind: "miro", id: MIRO });
+    });
+    it("a Linear issue URL should resolve to the linear provider", () => {
+        expect(recognizeProvider("https://linear.app/birta/issue/MAR-186/embed-provider-roadmap")).toEqual({
+            kind: "linear",
+            id: "birta/issue/MAR-186/embed-provider-roadmap",
+        });
     });
 });
 
@@ -270,9 +501,15 @@ describe("vimeoId", () => {
 });
 
 describe("providerFor", () => {
-    it("only github should be usable without the network", () => {
-        expect(providerFor("github").needsNetwork).toBe(false);
-        for (const kind of ["youtube", "loom", "figma"] as const) {
+    it("exactly the info-card providers should be usable without the network", () => {
+        // Rung 0 of the render ladder: URL-derived cards that fetch nothing.
+        for (const kind of ["github", "googlefile", "linear"] as const) {
+            expect(providerFor(kind).needsNetwork, kind).toBe(false);
+        }
+        for (const kind of [
+            "youtube", "vimeo", "loom", "figma",
+            "googledrive", "googledocs", "googleslides", "googlesheets", "miro",
+        ] as const) {
             expect(providerFor(kind).needsNetwork, kind).toBe(true);
         }
     });
@@ -280,13 +517,30 @@ describe("providerFor", () => {
         // Thumbnail facade: YouTube alone fetches a static thumbnail.
         expect(providerFor("youtube").thumbnailUrl).toBeDefined();
         // Branded facades: a player but no thumbnail.
-        for (const kind of ["loom", "figma"] as const) {
+        for (const kind of [
+            "loom", "figma", "googledrive", "googledocs", "googleslides", "googlesheets", "miro",
+        ] as const) {
             expect(providerFor(kind).thumbnailUrl, kind).toBeUndefined();
             expect(providerFor(kind).playerUrl, kind).toBeDefined();
         }
-        // Info card: GitHub never builds an iframe.
-        expect(providerFor("github").playerUrl).toBeUndefined();
-        expect(providerFor("github").aspect).toBeUndefined();
+        // Info cards: no player URL at all, so no code path to an iframe.
+        for (const kind of ["github", "googlefile", "linear"] as const) {
+            expect(providerFor(kind).playerUrl, kind).toBeUndefined();
+            expect(providerFor(kind).aspect, kind).toBeUndefined();
+        }
+    });
+    it("the sign-in hint should ride exactly the auth-wallable canvas providers", () => {
+        // A blank video frame is an error; a blank Figma/Google/Miro frame is
+        // routinely an auth wall the sandbox blocks by design — those get the
+        // persistent open-externally hint.
+        for (const kind of [
+            "figma", "googledrive", "googledocs", "googleslides", "googlesheets", "miro",
+        ] as const) {
+            expect(providerFor(kind).mayNeedSignIn, kind).toBe(true);
+        }
+        for (const kind of ["youtube", "vimeo", "loom", "github", "googlefile", "linear"] as const) {
+            expect(providerFor(kind).mayNeedSignIn, kind).toBeUndefined();
+        }
     });
 });
 
@@ -305,6 +559,16 @@ describe("URL builders", () => {
             `https://embed.figma.com/design/${FKEY}?embed-host=birta-writer`,
         );
     });
+    it("google embed URLs should target the endpoints each sharing mode supports", () => {
+        // The exact Rung 2 endpoints from MAR-186's sharing-mode split.
+        expect(googleDrivePreviewUrl(GFILE)).toBe(`https://drive.google.com/file/d/${GFILE}/preview`);
+        expect(googleDocsEmbedUrl(GPUB)).toBe(`https://docs.google.com/document/d/e/${GPUB}/pub?embedded=true`);
+        expect(googleSlidesEmbedUrl(GPUB)).toBe(`https://docs.google.com/presentation/d/e/${GPUB}/embed`);
+        expect(googleSheetsEmbedUrl(GPUB)).toBe(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pubhtml?widget=true`);
+    });
+    it("miro embed URL should target the login-free live-embed endpoint", () => {
+        expect(miroEmbedUrl(MIRO)).toBe(`https://miro.com/app/live-embed/${MIRO}/`);
+    });
     it("external URLs should reconstruct a canonical page per provider", () => {
         expect(providerFor("youtube").externalUrl(ID)).toBe(
             `https://www.youtube.com/watch?v=${ID}`,
@@ -314,5 +578,16 @@ describe("URL builders", () => {
             `https://www.figma.com/design/${FKEY}`,
         );
         expect(providerFor("github").externalUrl("o/r/pull/3")).toBe("https://github.com/o/r/pull/3");
+        expect(providerFor("googledrive").externalUrl(GFILE)).toBe(
+            `https://drive.google.com/file/d/${GFILE}/view`,
+        );
+        // The googlefile canonical rebuilds the /d/ joint from the composite.
+        expect(providerFor("googlefile").externalUrl(`document/${GFILE}`)).toBe(
+            `https://docs.google.com/document/d/${GFILE}/edit`,
+        );
+        expect(providerFor("miro").externalUrl(MIRO)).toBe(`https://miro.com/app/board/${MIRO}/`);
+        expect(providerFor("linear").externalUrl("birta/issue/MAR-186")).toBe(
+            "https://linear.app/birta/issue/MAR-186",
+        );
     });
 });

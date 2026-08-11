@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     extractFrontmatter,
     restoreContentForSave,
-} from "../../src/utils/contentTransform";
+} from "../contentTransform";
 
 // ─────────────────────────────────────────────────────────────
 // extractFrontmatter

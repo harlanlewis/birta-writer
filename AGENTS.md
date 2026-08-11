@@ -81,7 +81,7 @@ For iterative debugging, F5 (Extension Development Host) is faster, with no pack
 ```
 src/extension.ts                              Extension entry; registers CustomEditorProvider
 src/MarkdownEditorProvider.ts                 Provider core (message routing, webview lifecycle)
-src/saveFlushController.ts                    Save flush/seq protocol (stale guard, injectable timeout)
+shared/saveFlushController.ts                 Save flush/seq protocol (stale guard, injectable timeout); host-agnostic, lives with the shared protocol layer
 src/config.ts + shared/config.ts              The birta.* config seam: typed snapshot reads + settings write-back
 src/externalChanges.ts                        External-change detection ADR + both mechanisms' constants
 src/errorSink.ts                              Extension-side failure sink (console vs deduped notification)
@@ -283,9 +283,9 @@ __mocks__/vscode.ts         Central vscode API mock
 |--------|-------------------|
 | `src/utils/imageService.ts` | 85% |
 | `src/utils/getNonce.ts` | 100% |
-| `src/utils/textEdit.ts` | 90% |
-| `src/utils/contentTransform.ts` | 90% |
-| `src/utils/lineMap.ts` | 90% |
+| `shared/textEdit.ts` | 90% |
+| `shared/contentTransform.ts` | 90% |
+| `shared/lineMap.ts` | 90% |
 | `webview/utils/slug.ts` | 90% |
 | Overall | 70%, enforced |
 

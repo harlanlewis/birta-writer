@@ -21,7 +21,12 @@
 import {
     canonicalEmbedUrl,
     figmaEmbedUrl,
+    googleDocsEmbedUrl,
+    googleDrivePreviewUrl,
+    googleSheetsEmbedUrl,
+    googleSlidesEmbedUrl,
     loomEmbedUrl,
+    miroEmbedUrl,
     recognizeEmbed,
     vimeoEmbedUrl,
     youtubeEmbedUrl,
@@ -36,8 +41,22 @@ export {
     figmaId,
     githubCardParts,
     githubId,
+    googleDocsEmbedUrl,
+    googleDocsPubId,
+    googleDriveId,
+    googleDrivePreviewUrl,
+    googleFileCardParts,
+    googleFileId,
+    googleSheetsEmbedUrl,
+    googleSheetsPubId,
+    googleSlidesEmbedUrl,
+    googleSlidesPubId,
+    linearCardParts,
+    linearId,
     loomEmbedUrl,
     loomId,
+    miroEmbedUrl,
+    miroId,
     vimeoEmbedUrl,
     vimeoId,
     youtubeEmbedUrl,
@@ -46,6 +65,8 @@ export {
     type EmbedKind,
     type EmbedMatch,
     type GithubCardParts,
+    type GoogleFileCardParts,
+    type LinearCardParts,
 } from "../../shared/embedProviders";
 
 /**
@@ -97,6 +118,14 @@ export interface EmbedProvider {
     activateIcon?: "play" | "preview";
     /** t() key for the player iframe's title attribute. */
     playerTitle?: string;
+    /**
+     * True when a legitimately loaded player can come up blank because the
+     * content sits behind the provider's sign-in (auth-walled Figma file, an
+     * unshared Google file or Miro board). The card then shows the persistent
+     * in-frame "opens externally" hint once the player loads — the sandbox
+     * blocks in-frame login by design, so the hint IS the way out.
+     */
+    mayNeedSignIn?: boolean;
 }
 
 /** The provider table — the single place a provider's presentation lives. */
@@ -150,6 +179,7 @@ const PROVIDERS: readonly EmbedProvider[] = [
         activateLabel: "Load Figma preview",
         activateIcon: "preview",
         playerTitle: "Figma embed",
+        mayNeedSignIn: true,
     },
     {
         kind: "github",
@@ -158,6 +188,97 @@ const PROVIDERS: readonly EmbedProvider[] = [
         hasMetadata: false,
         externalUrl: (id) => canonicalEmbedUrl("github", id),
         openLabel: "Open on GitHub",
+    },
+    {
+        kind: "googledrive",
+        name: "Google Drive",
+        needsNetwork: true,
+        hasMetadata: false,
+        aspect: "4 / 3",
+        playerUrl: googleDrivePreviewUrl,
+        externalUrl: (id) => canonicalEmbedUrl("googledrive", id),
+        openLabel: "Open in Google Drive",
+        activateLabel: "Load preview",
+        activateIcon: "preview",
+        playerTitle: "Google Drive preview",
+        mayNeedSignIn: true,
+    },
+    {
+        kind: "googledocs",
+        name: "Google Docs",
+        needsNetwork: true,
+        hasMetadata: false,
+        aspect: "4 / 3",
+        playerUrl: googleDocsEmbedUrl,
+        externalUrl: (id) => canonicalEmbedUrl("googledocs", id),
+        openLabel: "Open in Google Docs",
+        activateLabel: "Load preview",
+        activateIcon: "preview",
+        playerTitle: "Google Docs preview",
+        mayNeedSignIn: true,
+    },
+    {
+        kind: "googleslides",
+        name: "Google Slides",
+        needsNetwork: true,
+        hasMetadata: false,
+        // Slide decks are canvas content, but the canvas itself is 16:9.
+        aspect: "16 / 9",
+        playerUrl: googleSlidesEmbedUrl,
+        externalUrl: (id) => canonicalEmbedUrl("googleslides", id),
+        openLabel: "Open in Google Slides",
+        activateLabel: "Load preview",
+        activateIcon: "preview",
+        playerTitle: "Google Slides preview",
+        mayNeedSignIn: true,
+    },
+    {
+        kind: "googlesheets",
+        name: "Google Sheets",
+        needsNetwork: true,
+        hasMetadata: false,
+        aspect: "4 / 3",
+        playerUrl: googleSheetsEmbedUrl,
+        externalUrl: (id) => canonicalEmbedUrl("googlesheets", id),
+        openLabel: "Open in Google Sheets",
+        activateLabel: "Load preview",
+        activateIcon: "preview",
+        playerTitle: "Google Sheets preview",
+        mayNeedSignIn: true,
+    },
+    {
+        // Ordinary (non-published) Docs/Slides/Sheets URLs: Google refuses to
+        // frame them (X-Frame-Options: SAMEORIGIN), so this kind is an info
+        // card with NO playerUrl — the render ladder's Rung 0, never a doomed
+        // iframe. The product name shown on the card comes from the id.
+        kind: "googlefile",
+        name: "Google",
+        needsNetwork: false,
+        hasMetadata: false,
+        externalUrl: (id) => canonicalEmbedUrl("googlefile", id),
+        openLabel: "Open in browser",
+    },
+    {
+        kind: "miro",
+        name: "Miro",
+        needsNetwork: true,
+        hasMetadata: true,
+        aspect: "4 / 3",
+        playerUrl: miroEmbedUrl,
+        externalUrl: (id) => canonicalEmbedUrl("miro", id),
+        openLabel: "Open in Miro",
+        activateLabel: "Load board preview",
+        activateIcon: "preview",
+        playerTitle: "Miro board",
+        mayNeedSignIn: true,
+    },
+    {
+        kind: "linear",
+        name: "Linear",
+        needsNetwork: false,
+        hasMetadata: false,
+        externalUrl: (id) => canonicalEmbedUrl("linear", id),
+        openLabel: "Open in Linear",
     },
 ];
 

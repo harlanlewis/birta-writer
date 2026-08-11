@@ -12,8 +12,9 @@
  *     <iframe> is constructed ONLY inside the play handler.
  *   - BRANDED FACADE (Loom, Figma): same frame + play overlay, but a local
  *     monochrome provider mark instead of a thumbnail — ZERO network at render.
- *   - INFO CARD (GitHub): a compact row built from URL parts alone — no frame,
- *     no play, no iframe path at all; it works with the network switch off.
+ *   - INFO CARD (GitHub, Linear, non-published Google files): a compact row
+ *     built from URL parts alone — no frame, no play, no iframe path at all;
+ *     it works with the network switch off.
  *
  * No network beyond a thumbnail-capable provider's one thumbnail image until the
  * user clicks. All chrome is themed with --vscode-* tokens; the accent is
@@ -24,6 +25,8 @@
 import {
     providerFor,
     githubCardParts,
+    googleFileCardParts,
+    linearCardParts,
     type EmbedMatch,
     type EmbedProvider,
 } from "./embedProviders";
@@ -272,7 +275,7 @@ function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: strin
     hint.type = "button";
     hint.className = "embed-card__hint";
     hint.hidden = true;
-    if (provider.kind === "figma") {
+    if (provider.mayNeedSignIn) {
         const note = document.createElement("span");
         note.textContent = t("Preview blank? The file may need sign-in.");
         const action = document.createElement("span");
@@ -326,7 +329,7 @@ function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: strin
         loadPlayer(stage, provider, id);
         card.classList.add("embed-card--playing");
         stop.hidden = false;
-        hint.hidden = provider.kind !== "figma";
+        hint.hidden = !provider.mayNeedSignIn;
     };
 
     // The WHOLE facade is the activate target (the overlay button is the
@@ -437,20 +440,62 @@ function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: strin
     return card;
 }
 
+/** The per-product display names of the Google info card. Brand names, not
+ * t() keys — they are the same in every language. */
+const GOOGLE_PRODUCT_NAMES = {
+    document: "Google Docs",
+    presentation: "Google Slides",
+    spreadsheets: "Google Sheets",
+} as const;
+
 /**
- * The GitHub info card: a compact row derived entirely from the URL — mark,
- * `owner/repo` title, and a detail line for PRs / issues / file paths. No
- * frame, no play button, and no code path that could ever create an iframe.
+ * The title + detail rows of an info card, derived entirely from the id
+ * composite each provider's extractor built — pure string work, no network.
+ */
+function infoCardText(provider: EmbedProvider, id: string): { title: string; detail: string } {
+    if (provider.kind === "linear") {
+        const parts = linearCardParts(id);
+        // The slug is the issue title, hyphenated: humanize it. A slugless
+        // URL falls back to the workspace name, which still orients.
+        return { title: parts.key, detail: parts.slug ? parts.slug.replace(/-/g, " ") : parts.org };
+    }
+    if (provider.kind === "googlefile") {
+        // An ordinary Docs/Slides/Sheets URL: the product is all the URL
+        // discloses (the file id is opaque). The detail says WHY there is no
+        // preview: only publish-to-web links can be framed.
+        return { title: GOOGLE_PRODUCT_NAMES[googleFileCardParts(id).product], detail: t("Not published to the web") };
+    }
+    const parts = githubCardParts(id);
+    const title = `${parts.owner}/${parts.repo}`;
+    if (parts.kind === "pull") {
+        return { title, detail: `${t("Pull request")} #${parts.number}` };
+    }
+    if (parts.kind === "issue") {
+        return { title, detail: `${t("Issue")} #${parts.number}` };
+    }
+    return { title, detail: parts.kind === "blob" ? parts.path ?? "" : "" };
+}
+
+/**
+ * The info card (GitHub, Linear, non-published Google files): a compact row
+ * derived entirely from the URL — mark (where one exists), title, and a
+ * detail line. No frame, no play button, and no code path that could ever
+ * create an iframe; it renders even with the network switch off.
  */
 function renderInfoCard(provider: EmbedProvider, id: string, sourceUrl?: string): HTMLElement {
     const card = cardShell(provider);
     card.classList.add("embed-card--info");
 
-    const mark = document.createElement("span");
-    mark.className = "embed-card__mark";
-    mark.setAttribute("aria-hidden", "true");
-    mark.innerHTML = PROVIDER_MARKS[provider.kind] ?? "";
-    card.appendChild(mark);
+    // Only providers with a genuine, licensed silhouette carry a mark (see
+    // PROVIDER_MARKS); the rest lead with their title text alone.
+    const markSvg = PROVIDER_MARKS[provider.kind];
+    if (markSvg) {
+        const mark = document.createElement("span");
+        mark.className = "embed-card__mark";
+        mark.setAttribute("aria-hidden", "true");
+        mark.innerHTML = markSvg;
+        card.appendChild(mark);
+    }
 
     const text = document.createElement("span");
     text.className = "embed-card__text";
@@ -459,15 +504,9 @@ function renderInfoCard(provider: EmbedProvider, id: string, sourceUrl?: string)
     const detail = document.createElement("span");
     detail.className = "embed-card__detail";
 
-    const parts = githubCardParts(id);
-    title.textContent = `${parts.owner}/${parts.repo}`;
-    if (parts.kind === "pull") {
-        detail.textContent = `${t("Pull request")} #${parts.number}`;
-    } else if (parts.kind === "issue") {
-        detail.textContent = `${t("Issue")} #${parts.number}`;
-    } else if (parts.kind === "blob") {
-        detail.textContent = parts.path ?? "";
-    }
+    const parts = infoCardText(provider, id);
+    title.textContent = parts.title;
+    detail.textContent = parts.detail;
 
     text.appendChild(title);
     if (detail.textContent) {

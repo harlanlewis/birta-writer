@@ -5,7 +5,7 @@ import { normalizeBlockHandlesMode, BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandl
 import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { normalizePlantUmlThemeMode } from "../shared/plantuml";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
-import { scanHeadings } from "./utils/headingScan";
+import { scanHeadings } from "../shared/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { normalizeCopyFormat, normalizePasteFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";

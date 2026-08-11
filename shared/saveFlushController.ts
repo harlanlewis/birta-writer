@@ -9,20 +9,32 @@
  *    the webview to serialize NOW (`flushPendingEdit`) and applies the reply
  *    as the save's edits, bounded by a timeout so a wedged webview degrades to
  *    "save current document" rather than hanging.
- * 2. Ordering is total — every outbound content message carries a monotonic
- *    `seq`; `claimSeq` is the single high-water-mark guard that stops a stale
- *    in-flight `update` from reverting a fresher flush.
- * 3. Content serialized against a replaced document state is stale —
- *    `isCurrentVersion` compares the webview's echoed `baseSyncVersion`
- *    against the authoritative per-document version, bumped at OBSERVE time
- *    for every external change.
+ * 2. Ordering is total per writer — every outbound content message carries a
+ *    monotonic `seq`, and `claimSeq` keeps one high-water mark per
+ *    (document, writer), which stops a stale in-flight `update` from
+ *    reverting a fresher flush without letting one writer's counter starve
+ *    another's (MAR-346; a reloaded webview restarting its counter is the
+ *    single-writer form of that collision, see `resetWebviewBaseline`).
+ * 3. Whether content serialized against an older document state is still
+ *    admissible is the BACKEND's question, not this file's —
+ *    `isAdmissibleBase` delegates to the injected `FlushBackend`, whose
+ *    default is the equality check the VS Code host has always run against
+ *    the authoritative per-document version, bumped at OBSERVE time for
+ *    every external change.
  *
  * Both stale guards are implemented here ONCE, and must stay that way: the
  * provider's `update` path and the flush path call the same two primitives
  * rather than carrying their own copies.
  *
  * Format-agnostic by design: content is an opaque string and the edit type is
- * generic — no markdown (or any other format) knowledge lives here.
+ * generic — no markdown (or any other format) knowledge lives here. The
+ * concurrency assumptions are supplied the same way (MAR-346): a host with a
+ * continuously-syncing backend swaps the `FlushBackend`, not this file.
+ *
+ * Known scalar left in place, deliberately (MAR-346 scope note):
+ * `resetWebviewBaseline` sets the version to literal `0`, which is meaningful
+ * only while this side owns the counter; it becomes a backend call when a
+ * backend with its own version space first exists.
  */
 
 /** A webview `flushResult` reply, or the poisoned teardown value. */
@@ -30,7 +42,59 @@ export interface FlushReply {
     content: string;
     baseSyncVersion: number;
     seq: number;
+    /** Ordering identity of the sender. Today's single webview context omits
+     * it and gets `LOCAL_WRITER`; a second writer supplies its own so the two
+     * counters cannot collide. */
+    writerId?: string;
 }
+
+/** The one writer the VS Code host has: the document's webview context. */
+export const LOCAL_WRITER = "webview";
+
+/**
+ * What to do with a proposal whose base the backend rejected (MAR-346
+ * inversion 3). "Drop and re-push" stops being the only answer once a backend
+ * can carry an edit forward or expects the remote to settle:
+ * - `repush`: drop the content and re-push authoritative state so the writer
+ *   re-bases — the VS Code host's long-standing behavior, and the default.
+ * - `rebase`: the backend carried the edit forward; admit `content` in place
+ *   of the rejected proposal.
+ * - `defer`: push nothing; the writer retries once the remote settles.
+ * - `escalate`: the diskDrift stance — tell the user, change nothing.
+ */
+export type BaseRejection =
+    | { outcome: "repush" }
+    | { outcome: "rebase"; content: string }
+    | { outcome: "defer" }
+    | { outcome: "escalate" };
+
+/**
+ * The concurrency assumptions of the sync backend, supplied rather than baked
+ * in (MAR-346). The controller asks it two questions and nothing else.
+ */
+export interface FlushBackend {
+    /**
+     * Is the base this content was serialized against still admissible as its
+     * parent? Equality for a single-writer host (external changes are rare
+     * and drop-and-rebase is acceptable); reachability for a backend with
+     * ancestry; causal inclusion for a CRDT.
+     */
+    isAdmissibleBase(currentVersion: number, baseSyncVersion: number): boolean;
+    /** The outcome for a proposal whose base was rejected. */
+    onBaseRejected(proposal: {
+        uriKey: string;
+        baseSyncVersion: number;
+        currentVersion: number;
+        content: string;
+    }): BaseRejection;
+}
+
+/** Today's exact behavior: only the current version is admissible, and a
+ * rejected base drops the content and re-pushes authoritative state. */
+export const singleWriterBackend: FlushBackend = {
+    isAdmissibleBase: (currentVersion, baseSyncVersion) => baseSyncVersion === currentVersion,
+    onBaseRejected: () => ({ outcome: "repush" }),
+};
 
 export class SaveFlushController<TEdit> {
     // Authoritative sync version per document (key: uriKey). Bumped on every
@@ -38,11 +102,14 @@ export class SaveFlushController<TEdit> {
     // back as `baseSyncVersion`.
     private readonly _syncVersion = new Map<string, number>();
 
-    // Highest outbound-content `seq` per document whose content has been
-    // committed. Because a save-flush's TextEdits bypass the provider's
-    // per-document edit queue (VS Code applies them as part of the save), this
-    // total order is what stops a stale update from reverting a fresher flush.
-    private readonly _appliedSeq = new Map<string, number>();
+    // Highest committed outbound-content `seq` per (document, writer).
+    // Because a save-flush's TextEdits bypass the provider's per-document
+    // edit queue (VS Code applies them as part of the save), this order is
+    // what stops a stale update from reverting a fresher flush. The mark is
+    // per WRITER (MAR-346 inversion 2): a doc-global mark makes any second
+    // counter — a reloaded webview's, a second surface's — read as
+    // permanently stale, which is the shipped reload bug generalized.
+    private readonly _appliedSeq = new Map<string, Map<string, number>>();
 
     // In-flight save flushes: correlation id → resolver called with the
     // webview's `flushResult` reply (or the timeout / teardown poison).
@@ -56,7 +123,10 @@ export class SaveFlushController<TEdit> {
      * late reply still re-baselines the webview, so the gap self-heals on the
      * next real edit. Injectable so the timeout path is unit-testable.
      */
-    constructor(private readonly _flushTimeoutMs: number = 1000) {}
+    constructor(
+        private readonly _flushTimeoutMs: number = 1000,
+        private readonly _backend: FlushBackend = singleWriterBackend,
+    ) {}
 
     /**
      * Re-baseline a document for a FRESH webview context (its `ready`).
@@ -70,10 +140,13 @@ export class SaveFlushController<TEdit> {
      * edits would never dirty the document and Cmd+S would write stale bytes.
      * `dispose()` cleared it only when the PANEL went away, which a webview
      * reload (renderer crash recovery) does not do.
+     *
+     * The seq reset is scoped to the writer that restarted: another writer's
+     * counter did not restart, so its mark must survive this call.
      */
-    resetWebviewBaseline(uriKey: string): void {
+    resetWebviewBaseline(uriKey: string, writerId: string = LOCAL_WRITER): void {
         this._syncVersion.set(uriKey, 0);
-        this._appliedSeq.delete(uriKey);
+        this._appliedSeq.get(uriKey)?.delete(writerId);
     }
 
     /**
@@ -92,23 +165,45 @@ export class SaveFlushController<TEdit> {
     }
 
     /**
-     * Stale guard #1 (the ONE implementation): was this content serialized
-     * against the document state we still hold? False means the webview must
-     * re-base (the caller re-pushes the current state).
+     * Stale guard #1 (the ONE implementation): is the base this content was
+     * serialized against still admissible as its parent? The backend answers
+     * (MAR-346 inversion 1); the default backend answers with equality, which
+     * is today's exact behavior. False means the caller asks `rejectBase` what
+     * to do with the proposal.
      */
-    isCurrentVersion(uriKey: string, baseSyncVersion: number): boolean {
-        return baseSyncVersion === this.currentVersion(uriKey);
+    isAdmissibleBase(uriKey: string, baseSyncVersion: number): boolean {
+        return this._backend.isAdmissibleBase(this.currentVersion(uriKey), baseSyncVersion);
+    }
+
+    /**
+     * The backend's verdict on a proposal whose base `isAdmissibleBase`
+     * rejected (MAR-346 inversion 3). The default backend always answers
+     * `repush` — drop and re-push authoritative state, today's behavior.
+     */
+    rejectBase(uriKey: string, baseSyncVersion: number, content: string): BaseRejection {
+        return this._backend.onBaseRejected({
+            uriKey,
+            baseSyncVersion,
+            currentVersion: this.currentVersion(uriKey),
+            content,
+        });
     }
 
     /**
      * Stale guard #2 (the ONE implementation): admit `seq` only if it exceeds
-     * the applied high-water mark, and claim it when admitted — even if the
-     * subsequent apply turns out to be a no-op — so the mark stays a true
-     * monotonic ceiling (later content always carries a higher seq).
+     * the writer's applied high-water mark, and claim it when admitted — even
+     * if the subsequent apply turns out to be a no-op — so the mark stays a
+     * true monotonic ceiling (later content from that writer always carries a
+     * higher seq). Identity is (document, writer), MAR-346 inversion 2.
      */
-    claimSeq(uriKey: string, seq: number): boolean {
-        if (seq <= (this._appliedSeq.get(uriKey) ?? -1)) { return false; }
-        this._appliedSeq.set(uriKey, seq);
+    claimSeq(uriKey: string, seq: number, writerId: string = LOCAL_WRITER): boolean {
+        const marks = this._appliedSeq.get(uriKey);
+        if (seq <= (marks?.get(writerId) ?? -1)) { return false; }
+        if (marks) {
+            marks.set(writerId, seq);
+        } else {
+            this._appliedSeq.set(uriKey, new Map([[writerId, seq]]));
+        }
         return true;
     }
 
@@ -146,8 +241,8 @@ export class SaveFlushController<TEdit> {
             const timer = setTimeout(() => finish([]), this._flushTimeoutMs);
             this._pendingFlushes.set(id, (reply) => {
                 if (
-                    !this.isCurrentVersion(uriKey, reply.baseSyncVersion) ||
-                    !this.claimSeq(uriKey, reply.seq)
+                    !this.isAdmissibleBase(uriKey, reply.baseSyncVersion) ||
+                    !this.claimSeq(uriKey, reply.seq, reply.writerId)
                 ) {
                     onDecided?.(id, false);
                     finish([]);
@@ -188,6 +283,9 @@ export class SaveFlushController<TEdit> {
     /**
      * Fail every parked flush for a document (panel teardown), so a save
      * mid-teardown resolves to "no edits" instead of hanging until the timeout.
+     * The poison rides the SEQ guard, not the version guard: `seq: -1` can
+     * never exceed a high-water mark (empty reads as -1), so it is rejected
+     * whatever admissibility the injected backend grants `baseSyncVersion: -1`.
      */
     failFlushes(uriKey: string): void {
         for (const [id, resolve] of this._pendingFlushes) {
