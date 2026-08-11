@@ -252,10 +252,11 @@ jobs:
         run: |
           cd releases
           sha256sum *.vsix | tee SHA256SUMS.txt
+          vsix=$(echo *.vsix)
           {
             printf '\n---\n\n### Verifying this release\n\n'
             printf 'This release carries a signed build-provenance attestation. To confirm the `.vsix` was built by this repository from this commit:\n\n'
-            printf '```\ngh attestation verify <file>.vsix --repo %s\n```\n\n' "$GITHUB_REPOSITORY"
+            printf '```\ngh attestation verify %s --repo %s\n```\n\n' "$vsix" "$GITHUB_REPOSITORY"
             printf 'SHA-256:\n\n```\n%s```\n' "$(cat SHA256SUMS.txt)"
           } >> ../RELEASE_NOTES.md
 
