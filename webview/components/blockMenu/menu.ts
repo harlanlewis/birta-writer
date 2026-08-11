@@ -175,10 +175,11 @@ export function moveRangeAt(view: EditorView, pos: number): { from: number; to: 
     // findHeadingFoldRange, which walks TOP-LEVEL offsets, so asking it about
     // a heading nested in a container would return an end outside that
     // container and moveBlockTo's deleteRange would destroy everything up to
-    // the next top-level heading (the same trap outlineRangeAt names). Today
-    // nothing collapses a nested heading, so the call is unreachable rather
-    // than wrong — which is exactly the kind of protection that must be local
-    // to survive a change two modules away.
+    // the next top-level heading (the same trap outlineRangeAt names). The
+    // fold plugin holds no fold for a nested heading (foldHiddenRange misses
+    // for one), so a heading at depth carries no hidden section and moves as
+    // its own line — but that contract lives two modules away, and this
+    // guard is what keeps the range honest if it ever shifts.
     if (view.state.doc.resolve(pos).depth !== 0) {
         return { from: pos, to: nodeEnd };
     }

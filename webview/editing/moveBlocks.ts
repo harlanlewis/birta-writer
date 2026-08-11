@@ -61,7 +61,11 @@
  *    (swallowedVisibleContent; MAR-149).
  * 5. SIDE-STATE RIDES ALONG — the fold plugin's move meta travels inside
  *    the primitive, so a collapsed section stays collapsed at its
- *    destination and nothing else inherits its fold.
+ *    destination and nothing else inherits its fold. One bound: only a
+ *    top-level heading can hold a fold, so a section dropped INSIDE a
+ *    container (a blockquote, a callout) arrives expanded — the entry has
+ *    nowhere legal to land and is dropped, which fails safe (content is
+ *    revealed, never hidden).
  *
  * v1 scope: ONE contiguous source range. Non-contiguous multi-range moves
  * (a future marquee/Cmd-click extension) are explicitly out of scope.
