@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { trackEditorReflow } from "../ui/editorReflow";
+import { SAFE_AREA_CHANGE_EVENT } from "../utils/headingUtils";
 
 describe("trackEditorReflow", () => {
     let rafCbs: Array<FrameRequestCallback | null>;
@@ -46,6 +47,32 @@ describe("trackEditorReflow", () => {
         expect(onReflow).toHaveBeenCalledTimes(2);
 
         dispose();
+    });
+
+    it("a safe-area change should fire onReflow", () => {
+        // The sticky heading title shows and hides on its own rAF, so a
+        // single-event scroll (a TOC click, a find jump) can land the reflow
+        // frame one tick before the bar appears — the bar's height-change
+        // event is what repositions every reflow-tracked consumer then.
+        const onReflow = vi.fn();
+        const dispose = trackEditorReflow(document.createElement("div"), onReflow);
+
+        window.dispatchEvent(new Event(SAFE_AREA_CHANGE_EVENT));
+        flush();
+
+        expect(onReflow).toHaveBeenCalledTimes(1);
+        dispose();
+    });
+
+    it("a safe-area change after dispose should not fire onReflow", () => {
+        const onReflow = vi.fn();
+        const dispose = trackEditorReflow(document.createElement("div"), onReflow);
+
+        dispose();
+        window.dispatchEvent(new Event(SAFE_AREA_CHANGE_EVENT));
+        flush();
+
+        expect(onReflow).not.toHaveBeenCalled();
     });
 
     it("should stop firing after dispose", () => {
