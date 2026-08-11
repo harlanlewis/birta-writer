@@ -27,10 +27,16 @@ import {
     googleSheetsPubId,
     googleSlidesEmbedUrl,
     googleSlidesPubId,
+    codepenEmbedUrl,
+    codepenId,
+    codesandboxEmbedUrl,
+    codesandboxId,
     linearCardParts,
     linearId,
     miroEmbedUrl,
     miroId,
+    stackblitzEmbedUrl,
+    stackblitzId,
     vimeoId,
     vimeoEmbedUrl,
 } from "../utils/embedProviders";
@@ -406,6 +412,97 @@ describe("linearCardParts", () => {
     });
 });
 
+describe("codepenId — recognized URL forms", () => {
+    const cases: Array<[string, string]> = [
+        ["https://codepen.io/chriscoyier/pen/AbCdEf", "chriscoyier/AbCdEf"],
+        ["https://www.codepen.io/chriscoyier/pen/AbCdEf", "chriscoyier/AbCdEf"],
+        // The pen's view variants and its embed URL name the same pen.
+        ["https://codepen.io/chriscoyier/full/AbCdEf", "chriscoyier/AbCdEf"],
+        ["https://codepen.io/chriscoyier/details/AbCdEf", "chriscoyier/AbCdEf"],
+        ["https://codepen.io/chriscoyier/embed/AbCdEf?default-tab=result", "chriscoyier/AbCdEf"],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(codepenId(url)).toBe(expected);
+        });
+    }
+
+    const rejects = [
+        "https://codepen.io/chriscoyier", // a profile, not a pen
+        "https://codepen.io/chriscoyier/pens/public", // pen LIST, not a pen
+        "https://codepen.io/chriscoyier/pen/", // no slug
+        "https://codepen.io/chriscoyier/pen/AbCdEf/extra", // extra segment
+        "https://codepen.io.evil.com/chriscoyier/pen/AbCdEf", // lookalike host
+        "https://codepen.io/chris%20coyier/pen/AbCdEf", // charset violation
+        "ftp://codepen.io/chriscoyier/pen/AbCdEf", // wrong protocol
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(codepenId(url)).toBeNull();
+        });
+    }
+});
+
+describe("codesandboxId — recognized URL forms", () => {
+    const cases: Array<[string, string]> = [
+        // Legacy short form, current /p/sandbox form, and the embed shape.
+        ["https://codesandbox.io/s/new-react-sandbox-abc123", "new-react-sandbox-abc123"],
+        ["https://codesandbox.io/p/sandbox/new-react-sandbox-abc123", "new-react-sandbox-abc123"],
+        ["https://codesandbox.io/embed/abc123", "abc123"],
+        ["https://www.codesandbox.io/s/abc123?file=/src/index.js", "abc123"],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(codesandboxId(url)).toBe(expected);
+        });
+    }
+
+    const rejects = [
+        "https://codesandbox.io/", // no path
+        "https://codesandbox.io/s/", // no id
+        "https://codesandbox.io/s/abc123/extra", // extra segment
+        "https://codesandbox.io/p/abc123", // /p/ without /sandbox/
+        "https://codesandbox.io/dashboard", // app page
+        "https://codesandbox.io.evil.com/s/abc123", // lookalike host
+        "ftp://codesandbox.io/s/abc123", // wrong protocol
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(codesandboxId(url)).toBeNull();
+        });
+    }
+});
+
+describe("stackblitzId — recognized URL forms", () => {
+    const cases: Array<[string, string]> = [
+        ["https://stackblitz.com/edit/vitejs-vite-abc123", "vitejs-vite-abc123"],
+        ["https://www.stackblitz.com/edit/vitejs-vite-abc123", "vitejs-vite-abc123"],
+        // ?file= is the editor's own state; the project id is the same.
+        ["https://stackblitz.com/edit/vitejs-vite-abc123?file=src%2Fmain.ts", "vitejs-vite-abc123"],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(stackblitzId(url)).toBe(expected);
+        });
+    }
+
+    const rejects = [
+        "https://stackblitz.com/", // no path
+        "https://stackblitz.com/edit/", // no id
+        "https://stackblitz.com/edit/abc/extra", // extra segment
+        // A github-import URL names a repo, not a stable project — the GitHub
+        // card does not own this shape either (host differs), so it stays plain.
+        "https://stackblitz.com/github/owner/repo",
+        "https://stackblitz.com.evil.com/edit/abc123", // lookalike host
+        "ftp://stackblitz.com/edit/abc123", // wrong protocol
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(stackblitzId(url)).toBeNull();
+        });
+    }
+});
+
 describe("recognizeProvider", () => {
     it("a YouTube URL should resolve to a youtube match with the id", () => {
         expect(recognizeProvider(`https://youtu.be/${ID}`)).toEqual({ kind: "youtube", id: ID });
@@ -509,6 +606,7 @@ describe("providerFor", () => {
         for (const kind of [
             "youtube", "vimeo", "loom", "figma",
             "googledrive", "googledocs", "googleslides", "googlesheets", "miro",
+            "codepen", "codesandbox", "stackblitz",
         ] as const) {
             expect(providerFor(kind).needsNetwork, kind).toBe(true);
         }
@@ -519,6 +617,7 @@ describe("providerFor", () => {
         // Branded facades: a player but no thumbnail.
         for (const kind of [
             "loom", "figma", "googledrive", "googledocs", "googleslides", "googlesheets", "miro",
+            "codepen", "codesandbox", "stackblitz",
         ] as const) {
             expect(providerFor(kind).thumbnailUrl, kind).toBeUndefined();
             expect(providerFor(kind).playerUrl, kind).toBeDefined();
@@ -535,6 +634,9 @@ describe("providerFor", () => {
         // persistent open-externally hint.
         for (const kind of [
             "figma", "googledrive", "googledocs", "googleslides", "googlesheets", "miro",
+            // A private pen/sandbox/project loads a legitimate frame showing
+            // the provider's own locked state — same hint, same way out.
+            "codepen", "codesandbox", "stackblitz",
         ] as const) {
             expect(providerFor(kind).mayNeedSignIn, kind).toBe(true);
         }
@@ -568,6 +670,15 @@ describe("URL builders", () => {
     });
     it("miro embed URL should target the login-free live-embed endpoint", () => {
         expect(miroEmbedUrl(MIRO)).toBe(`https://miro.com/app/live-embed/${MIRO}/`);
+    });
+    it("playground embed URLs should target each provider's embed endpoint", () => {
+        expect(codepenEmbedUrl("chriscoyier/AbCdEf")).toBe(
+            "https://codepen.io/chriscoyier/embed/AbCdEf?default-tab=result",
+        );
+        expect(codesandboxEmbedUrl("abc123")).toBe("https://codesandbox.io/embed/abc123");
+        expect(stackblitzEmbedUrl("vitejs-vite-abc123")).toBe(
+            "https://stackblitz.com/edit/vitejs-vite-abc123?embed=1",
+        );
     });
     it("external URLs should reconstruct a canonical page per provider", () => {
         expect(providerFor("youtube").externalUrl(ID)).toBe(

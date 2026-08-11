@@ -37,6 +37,7 @@ const EXPECTED_COUNTS = {
     youtube: 2, vimeo: 1, loom: 1, figma: 1, github: 1,
     googledrive: 1, googledocs: 1, googleslides: 1, googlesheets: 1,
     googlefile: 1, miro: 1, linear: 1,
+    codepen: 1, codesandbox: 1, stackblitz: 1,
 };
 const TOTAL_CARDS = Object.values(EXPECTED_COUNTS).reduce((a, b) => a + b, 0);
 
@@ -51,6 +52,9 @@ const PLAYERS = [
     { kind: "googleslides", playerHost: "docs.google.com/presentation/d/e/", thumbnail: false, aspect: "16 / 9" },
     { kind: "googlesheets", playerHost: "docs.google.com/spreadsheets/d/e/", thumbnail: false, aspect: "4 / 3" },
     { kind: "miro", playerHost: "miro.com/app/live-embed/", thumbnail: false, aspect: "4 / 3" },
+    { kind: "codepen", playerHost: "codepen.io/birta/embed/", thumbnail: false, aspect: "4 / 3" },
+    { kind: "codesandbox", playerHost: "codesandbox.io/embed/", thumbnail: false, aspect: "4 / 3" },
+    { kind: "stackblitz", playerHost: "stackblitz.com/edit/", thumbnail: false, aspect: "4 / 3" },
 ];
 const INFO_KIND = "github";
 /** The Rung 0 kinds: URL-derived info cards with no iframe path at all. */
