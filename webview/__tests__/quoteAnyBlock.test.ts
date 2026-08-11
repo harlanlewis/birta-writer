@@ -23,6 +23,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { insertCalloutCommand } from "../plugins/callouts";
+import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
 import { runEditorCommand } from "../editorCommands";
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";
@@ -285,6 +286,87 @@ describe("quoting inside a container", () => {
         expect(md).toContain("> - deep");
         expect(md.startsWith("- one")).toBe(true);
         expect(await reparse(md)).toBe(md);
+    });
+});
+
+describe("quoting a collapsed heading", () => {
+    /** The quote factory plus the fold plugin, so a heading can collapse. */
+    async function makeFoldEditor(md: string): Promise<Editor> {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        const editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, md);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .use(insertCalloutCommand)
+            .use(headingFoldPlugin)
+            .create();
+        editors.push(editor);
+        activeEditor = editor;
+        return editor;
+    }
+
+    /** Collapse the top-level heading at `pos`. */
+    function collapse(v: EditorView, pos: number): void {
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos }));
+    }
+
+    // A collapsed heading is inseparable from its hidden section — the rule
+    // every mover keeps. Quoting the heading line alone would leave the
+    // invisible body outside the new quote and silently expand the fold
+    // (a nested heading cannot fold), stranding content the user never saw
+    // move.
+    it("the quote should carry the whole hidden section", async () => {
+        const editor = await makeFoldEditor("## Head\n\nbody one\n\nbody two\n");
+        const v = view(editor);
+        collapse(v, 0);
+        placeCaretAt(v, "Head");
+
+        runEditorCommand("toggleBlockquote", getEditor);
+
+        const md = markdown(editor);
+        expect(md).toBe("> ## Head\n>\n> body one\n>\n> body two\n");
+        expect(await reparse(md)).toBe(md);
+    });
+
+    it("content after the collapsed section should stay outside the quote", async () => {
+        const editor = await makeFoldEditor("## Head\n\nbody\n\n## Next\n\nafter\n");
+        const v = view(editor);
+        collapse(v, 0);
+        placeCaretAt(v, "Head");
+
+        runEditorCommand("toggleBlockquote", getEditor);
+
+        const md = markdown(editor);
+        expect(md).toBe("> ## Head\n>\n> body\n\n## Next\n\nafter\n");
+        expect(await reparse(md)).toBe(md);
+    });
+
+    it("a callout insert should carry the whole hidden section the same way", async () => {
+        const editor = await makeFoldEditor("## Head\n\nbody\n");
+        const v = view(editor);
+        collapse(v, 0);
+        placeCaretAt(v, "Head");
+
+        runEditorCommand("insertCallout", getEditor, "note");
+
+        const md = markdown(editor);
+        expect(md).toBe("> [!NOTE]\n>\n> ## Head\n>\n> body\n");
+        expect(await reparse(md)).toBe(md);
+    });
+
+    it("an expanded heading should still be quoted as its line alone", async () => {
+        const editor = await makeFoldEditor("## Head\n\nbody\n");
+        const v = view(editor);
+        placeCaretAt(v, "Head");
+
+        runEditorCommand("toggleBlockquote", getEditor);
+
+        expect(markdown(editor)).toBe("> ## Head\n\nbody\n");
     });
 });
 

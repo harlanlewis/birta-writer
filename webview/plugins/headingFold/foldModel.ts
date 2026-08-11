@@ -631,8 +631,10 @@ export function selectionCoverRange(view: EditorView): { from: number; to: numbe
  * real content: moving the heading without them would strand invisible
  * blocks under a new owner (and the fold would swallow whatever happens to
  * follow the drop). Offsets ascend, so growing `to` mid-walk is safe.
+ * Exported for the wrap gesture (editing/wrapBlocks), which applies the
+ * same inseparability rule before choosing what a quote/callout covers.
  */
-function expandCoverOverFolds(
+export function expandCoverOverFolds(
     state: EditorState,
     range: { from: number; to: number },
 ): { from: number; to: number } {
