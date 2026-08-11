@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.811.0] - 2026, August 11
+
 ### Changed
 
 - Moving a heading in the text now moves the heading line alone; the paragraphs under it stay where they are. Alt+Up on a heading with a paragraph above and below it used to bring everything down to the next heading of the same rank along with it, so reordering a heading against its neighbouring line silently rearranged the whole document below. Section moves have not gone anywhere, they have moved to where they read as intentional: drag a row in the table of contents and the whole section travels, whether you picked the drag up in the outline or on the page, and a drop back on the page is a plain block move again. The drag's dimming and its cursor label follow the pointer across that boundary, so what will move is always what is shown. This covers the gutter drag, the block menu's Move rows (labelled "Move Up" and "Move Down" on a heading now, rather than "Move Section Up" and "Move Section Down"), and Alt+Up / Alt+Down. One exception, unchanged: a collapsed heading still carries the content it is hiding, because leaving it behind would strand blocks you cannot see.
