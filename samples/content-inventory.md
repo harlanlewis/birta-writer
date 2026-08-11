@@ -254,6 +254,38 @@ https://github.com/microsoft/vscode/issues/12345
 
 https://github.com/microsoft/vscode/blob/main/README.md
 
+### Google Docs, Slides, and Sheets
+
+Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. The tokens below are synthetic, so after you click load, Google serves its own not-found page *inside* the frame - with a real published link the document renders there instead:
+
+https://docs.google.com/document/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub
+
+https://docs.google.com/presentation/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub
+
+https://docs.google.com/spreadsheets/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pubhtml
+
+An **ordinary** Docs/Slides/Sheets link (the `/edit` URL you copy from the address bar) refuses to be framed - Google answers with `X-Frame-Options: SAMEORIGIN` - so it gets a compact info card instead of a doomed iframe. Like the GitHub cards, it is built from the URL alone and renders with the network off:
+
+https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/edit
+
+### Google Drive
+
+A Drive **file** link loads Google's `/preview` endpoint on click - the supported no-auth embed for files shared "anyone with the link" (a private file shows Google's sign-in wall blank inside the sandboxed frame; the in-frame notice opens it in the browser). Synthetic id again, so expect Google's own error page inside the frame:
+
+https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/view
+
+### Miro
+
+A Miro board link loads the **live-embed** view on click - pan and zoom without login for boards shared publicly. This id is synthetic, so Miro shows its own "board not found" inside the frame; a real public board pans:
+
+https://miro.com/app/board/uXjVO5X2CWo=/
+
+### Linear
+
+A Linear issue link gets an info card built **from the URL alone** - the issue key plus the humanized title slug, zero network, renders offline:
+
+https://linear.app/birta/issue/MAR-186/embed-provider-roadmap
+
 Only known providers embed (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
 https://www.twitch.tv/videos/1234567890
@@ -286,7 +318,7 @@ https://www.figma.com/board/BAZsTPbh6W1r66Bdo9xkQp/FigJam-Board
 
 https://www.figma.com/proto/BAZsTPbh6W1r66Bdo9xkQp/Prototype
 
-Two switches govern all of this. `birta.embeds.enabled` is the feature itself - turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the GitHub cards still render (they fetch nothing) while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
+Two switches govern all of this. `birta.embeds.enabled` is the feature itself - turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the info cards (GitHub, Linear, ordinary Google file links) still render - they fetch nothing - while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
 
 ---
 
@@ -898,7 +930,7 @@ Add your own tokens with `birta.notes.customMarkers` - a plain word like `DRAFT`
 
 ### Raw `<video>` / `<iframe>` tags
 
-Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub) on its own line does render as a card, though - see **URL embeds** above.
+Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub, Google Docs/Slides/Sheets/Drive, Miro, Linear) on its own line does render as a card, though - see **URL embeds** above.
 
 ### Wikilink embeds
 

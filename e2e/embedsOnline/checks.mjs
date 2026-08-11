@@ -33,7 +33,11 @@ const CARD = ".embed-card";
 const HOST = ".embed-host";
 
 /** Cards per kind the fixture should produce (YouTube: live + dead-thumb). */
-const EXPECTED_COUNTS = { youtube: 2, vimeo: 1, loom: 1, figma: 1, github: 1 };
+const EXPECTED_COUNTS = {
+    youtube: 2, vimeo: 1, loom: 1, figma: 1, github: 1,
+    googledrive: 1, googledocs: 1, googleslides: 1, googlesheets: 1,
+    googlefile: 1, miro: 1, linear: 1,
+};
 const TOTAL_CARDS = Object.values(EXPECTED_COUNTS).reduce((a, b) => a + b, 0);
 
 /** Every kind the fixture carries a bare link for, and what each promises. */
@@ -42,9 +46,16 @@ const PLAYERS = [
     { kind: "vimeo", playerHost: "player.vimeo.com/video/", thumbnail: false, aspect: "16 / 9" },
     { kind: "loom", playerHost: "loom.com/embed/", thumbnail: false, aspect: "16 / 9" },
     { kind: "figma", playerHost: "embed.figma.com/design/", thumbnail: false, aspect: "4 / 3" },
+    { kind: "googledrive", playerHost: "drive.google.com/file/d/", thumbnail: false, aspect: "4 / 3" },
+    { kind: "googledocs", playerHost: "docs.google.com/document/d/e/", thumbnail: false, aspect: "4 / 3" },
+    { kind: "googleslides", playerHost: "docs.google.com/presentation/d/e/", thumbnail: false, aspect: "16 / 9" },
+    { kind: "googlesheets", playerHost: "docs.google.com/spreadsheets/d/e/", thumbnail: false, aspect: "4 / 3" },
+    { kind: "miro", playerHost: "miro.com/app/live-embed/", thumbnail: false, aspect: "4 / 3" },
 ];
 const INFO_KIND = "github";
-const ALL_KINDS = [...PLAYERS.map((p) => p.kind), INFO_KIND];
+/** The Rung 0 kinds: URL-derived info cards with no iframe path at all. */
+const INFO_KINDS = [INFO_KIND, "googlefile", "linear"];
+const ALL_KINDS = [...PLAYERS.map((p) => p.kind), ...INFO_KINDS];
 
 /** `.embed-card[data-embed-kind="…"]`, the per-provider handle. */
 const cardFor = (kind) => `${CARD}[data-embed-kind="${kind}"]`;
@@ -236,29 +247,54 @@ export async function run({ page, check, baseUrl }) {
         (document.querySelector(`${sel} .embed-card__meta-url`)?.textContent ?? "").includes("loom.com/share/"),
         cardFor("loom"));
     check("the URL row survives the title arriving", urlStillThere);
-    const githubMeta = await page.evaluate((sel) =>
-        !!document.querySelector(`${sel} .embed-card__meta`), cardFor(INFO_KIND));
-    check("the github card asks for no metadata and shows no strip", !githubMeta);
+    for (const kind of INFO_KINDS) {
+        const hasStrip = await page.evaluate((sel) =>
+            !!document.querySelector(`${sel} .embed-card__meta`), cardFor(kind));
+        check(`the ${kind} card asks for no metadata and shows no strip`, !hasStrip);
+    }
 
-    // ── The GitHub info card: request-free, and no path to an iframe ──
-    const info = await page.evaluate((sel) => {
-        const card = document.querySelector(sel);
-        return {
-            isInfo: !!card?.classList.contains("embed-card--info"),
-            hasPlay: !!card?.querySelector(".embed-card__play"),
-            hasFrame: !!card?.querySelector(".embed-card__frame"),
-            title: card?.querySelector(".embed-card__title")?.textContent ?? null,
-            detail: card?.querySelector(".embed-card__detail")?.textContent ?? null,
-        };
-    }, cardFor(INFO_KIND));
-    check("the github card is the info variant", info.isInfo);
-    check("the github card has no activate button", !info.hasPlay);
-    check("the github card has no player frame", !info.hasFrame);
-    check("the github card names owner/repo from the URL", info.title === "microsoft/vscode", String(info.title));
+    // ── The info cards: request-free, and no path to an iframe ──
+    for (const kind of INFO_KINDS) {
+        const info = await page.evaluate((sel) => {
+            const card = document.querySelector(sel);
+            return {
+                isInfo: !!card?.classList.contains("embed-card--info"),
+                hasPlay: !!card?.querySelector(".embed-card__play"),
+                hasFrame: !!card?.querySelector(".embed-card__frame"),
+            };
+        }, cardFor(kind));
+        check(`the ${kind} card is the info variant`, info.isInfo);
+        check(`the ${kind} card has no activate button`, !info.hasPlay);
+        check(`the ${kind} card has no player frame`, !info.hasFrame);
+    }
+    const infoTitles = await page.evaluate((sels) => {
+        const read = (sel) => ({
+            title: document.querySelector(`${sel} .embed-card__title`)?.textContent ?? null,
+            detail: document.querySelector(`${sel} .embed-card__detail`)?.textContent ?? null,
+        });
+        return { github: read(sels.github), googlefile: read(sels.googlefile), linear: read(sels.linear) };
+    }, { github: cardFor("github"), googlefile: cardFor("googlefile"), linear: cardFor("linear") });
+    check(
+        "the github card names owner/repo from the URL",
+        infoTitles.github.title === "microsoft/vscode",
+        String(infoTitles.github.title),
+    );
     check(
         "the github card details the pull request from the URL",
-        (info.detail ?? "").includes("12345"),
-        String(info.detail),
+        (infoTitles.github.detail ?? "").includes("12345"),
+        String(infoTitles.github.detail),
+    );
+    check(
+        "the ordinary Google /edit URL gets the Rung 0 card naming its product",
+        infoTitles.googlefile.title === "Google Docs" &&
+            infoTitles.googlefile.detail === "Not published to the web",
+        JSON.stringify(infoTitles.googlefile),
+    );
+    check(
+        "the linear card shows the issue key and the humanized slug",
+        infoTitles.linear.title === "MAR-186" &&
+            infoTitles.linear.detail === "embed provider roadmap",
+        JSON.stringify(infoTitles.linear),
     );
 
     // ── At rest the stop control is really hidden (the [hidden] attribute
@@ -301,10 +337,12 @@ export async function run({ page, check, baseUrl }) {
             String(iframeSrc),
         );
     }
-    // The request-free card stays request-free even after its neighbours load.
-    const infoIframe = await page.evaluate((sel) =>
-        !!document.querySelector(`${sel} iframe`), cardFor(INFO_KIND));
-    check("the github card never gains an iframe", !infoIframe);
+    // The request-free cards stay request-free even after their neighbours load.
+    for (const kind of INFO_KINDS) {
+        const infoIframe = await page.evaluate((sel) =>
+            !!document.querySelector(`${sel} iframe`), cardFor(kind));
+        check(`the ${kind} card never gains an iframe`, !infoIframe);
+    }
 
     // ── A playing card survives an edit elsewhere ──
     // The widget key is position-independent (kind:id:ordinal), so typing above
@@ -313,6 +351,23 @@ export async function run({ page, check, baseUrl }) {
     // its facade (found 2026-07-27).
     // Locator click, not raw mouse coords: activating the players scrolled the
     // page, so the heading's viewport position is stale/off-screen by now.
+    // Re-activate the two cards these checks ride on, from the top of the
+    // document, so both sit inside the gutter's scroll window when the edit
+    // lands. The activation marathon above scrolled the full fixture, and
+    // MAR-215's windowed gutter chrome rebuilds any block that crosses the
+    // window boundary — which tears down a playing embed's iframe (the widget
+    // is recreated at its facade). That is a real, pre-existing defect in tall
+    // documents, reproducible on the shipped five-provider table by spreading
+    // the old fixture with filler prose; it is reported as its own issue. The
+    // invariant THIS check pins — an edit in another block must not re-key the
+    // card below it — is exercised exactly as before.
+    for (const kind of ["youtube", "loom"]) {
+        const play = await page.$(`${cardFor(kind)} .embed-card__play`);
+        if (play) {
+            await play.click();
+            await page.waitForTimeout(200);
+        }
+    }
     await page.locator(".ProseMirror h1").first().click({ position: { x: 60, y: 10 } });
     await page.waitForTimeout(150);
     await page.keyboard.type("x");

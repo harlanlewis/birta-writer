@@ -443,6 +443,97 @@ describe("renderEmbedCard — the GitHub info card", () => {
     });
 });
 
+describe("renderEmbedCard — Google and Miro players (MAR-186 P2)", () => {
+    const GFILE = "1AbCdEfGhIjKlMnOpQrStUvWxYz01234";
+    const GPUB = "2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+    const MIRO = "uXjVO5X2CWo=";
+
+    it("a published Doc card should build the embedded /pub iframe on click, nothing before", () => {
+        const card = renderEmbedCard({ kind: "googledocs", id: GPUB });
+        expect(card.querySelector("img")).toBeNull();
+        expect(card.querySelector("iframe")).toBeNull();
+        expect(card.querySelector(".embed-card__brand-name")!.textContent).toBe("Google Docs");
+
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+
+        const iframe = card.querySelector<HTMLIFrameElement>("iframe")!;
+        expect(iframe.src).toBe(`https://docs.google.com/document/d/e/${GPUB}/pub?embedded=true`);
+    });
+
+    it("a Drive card should build the /preview iframe — never the /view UI", () => {
+        const card = renderEmbedCard({ kind: "googledrive", id: GFILE });
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        const iframe = card.querySelector<HTMLIFrameElement>("iframe")!;
+        expect(iframe.src).toBe(`https://drive.google.com/file/d/${GFILE}/preview`);
+    });
+
+    it("a Miro card should build the live-embed iframe on click", () => {
+        const card = renderEmbedCard({ kind: "miro", id: MIRO });
+        expect(card.querySelector("iframe")).toBeNull();
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        const iframe = card.querySelector<HTMLIFrameElement>("iframe")!;
+        expect(iframe.src).toBe(`https://miro.com/app/live-embed/${MIRO}/`);
+    });
+
+    it("the sign-in hint should generalize to the auth-wallable providers", () => {
+        // The Figma hint contract, now provider-flag-driven (mayNeedSignIn):
+        // a loaded Google/Miro frame can legitimately be blank behind auth.
+        const drive = renderEmbedCard({ kind: "googledrive", id: GFILE });
+        const hint = drive.querySelector<HTMLElement>(".embed-card__hint")!;
+        expect(hint.hidden).toBe(true);
+        drive.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        expect(hint.hidden).toBe(false);
+        expect(hint.textContent).toContain("Open in Google Drive");
+    });
+});
+
+describe("renderEmbedCard — Linear and Google info cards (Rung 0)", () => {
+    const GFILE = "1AbCdEfGhIjKlMnOpQrStUvWxYz01234";
+
+    it("a Linear issue card should show the key with the humanized slug, and no iframe path", () => {
+        const card = renderEmbedCard({
+            kind: "linear",
+            id: "birta/issue/MAR-186/embed-provider-roadmap",
+        });
+        expect(card.classList.contains("embed-card--info")).toBe(true);
+        expect(card.querySelector(".embed-card__frame")).toBeNull();
+        expect(card.querySelector(".embed-card__play")).toBeNull();
+        expect(card.querySelector("iframe")).toBeNull();
+        expect(card.querySelector(".embed-card__title")!.textContent).toBe("MAR-186");
+        expect(card.querySelector(".embed-card__detail")!.textContent).toBe("embed provider roadmap");
+    });
+
+    it("a slugless Linear card should fall back to the workspace for its detail", () => {
+        const card = renderEmbedCard({ kind: "linear", id: "birta/issue/MAR-186" });
+        expect(card.querySelector(".embed-card__title")!.textContent).toBe("MAR-186");
+        expect(card.querySelector(".embed-card__detail")!.textContent).toBe("birta");
+    });
+
+    it("an ordinary Google file URL should get the info card naming its product", () => {
+        // The Rung 0 half of the sharing-mode split: an /edit URL answers with
+        // X-Frame-Options, so it must never get an iframe — only this card.
+        const doc = renderEmbedCard({ kind: "googlefile", id: `document/${GFILE}` });
+        expect(doc.classList.contains("embed-card--info")).toBe(true);
+        expect(doc.querySelector("iframe")).toBeNull();
+        expect(doc.querySelector(".embed-card__play")).toBeNull();
+        expect(doc.querySelector(".embed-card__title")!.textContent).toBe("Google Docs");
+        expect(doc.querySelector(".embed-card__detail")!.textContent).toBe("Not published to the web");
+
+        const sheet = renderEmbedCard({ kind: "googlefile", id: `spreadsheets/${GFILE}` });
+        expect(sheet.querySelector(".embed-card__title")!.textContent).toBe("Google Sheets");
+    });
+
+    it("info cards without a licensed mark should carry no mark element at all", () => {
+        // GitHub's octocat is a genuine licensed silhouette; Linear and Google
+        // get none rather than an invented glyph (user direction 2026-07-27) —
+        // and no empty span reserving space either.
+        const linear = renderEmbedCard({ kind: "linear", id: "birta/issue/MAR-186" });
+        expect(linear.querySelector(".embed-card__mark")).toBeNull();
+        const github = renderEmbedCard({ kind: "github", id: "owner/repo" });
+        expect(github.querySelector(".embed-card__mark svg")).not.toBeNull();
+    });
+});
+
 describe("computeEmbedDecorations — trigger conditions", () => {
     it("a bare YouTube link on its own line should get a host node deco + a card widget", async () => {
         const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
@@ -594,12 +685,26 @@ describe("computeEmbedDecorations — trigger conditions", () => {
                 "",
                 "https://github.com/owner/repo/pull/42",
                 "",
+                "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/view",
+                "",
+                "https://docs.google.com/document/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub",
+                "",
+                "https://docs.google.com/presentation/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub",
+                "",
+                "https://docs.google.com/spreadsheets/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pubhtml",
+                "",
+                "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/edit",
+                "",
+                "https://miro.com/app/board/uXjVO5X2CWo=/",
+                "",
+                "https://linear.app/birta/issue/MAR-186/embed-provider-roadmap",
+                "",
             ].join("\n"),
         );
         const view = editorView(editor);
         caretTo(view, 1);
         const counts = decoCounts(computeEmbedDecorations(view.state));
-        expect(counts).toEqual({ nodes: 4, widgets: 4 });
+        expect(counts).toEqual({ nodes: 11, widgets: 11 });
         await editor.destroy();
     });
 });

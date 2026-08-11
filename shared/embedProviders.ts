@@ -20,15 +20,29 @@
  */
 
 /** The providers this pass understands. Widen the union to add one. */
-export type EmbedKind = "youtube" | "vimeo" | "loom" | "figma" | "github";
+export type EmbedKind =
+    | "youtube"
+    | "vimeo"
+    | "loom"
+    | "figma"
+    | "github"
+    | "googledrive"
+    | "googledocs"
+    | "googleslides"
+    | "googlesheets"
+    | "googlefile"
+    | "miro"
+    | "linear";
 
 /** A recognized embed: the provider kind and its stable id. */
 export interface EmbedMatch {
     kind: EmbedKind;
     /**
      * Provider-specific id. A YouTube/Loom video id; a Figma `type/fileKey`
-     * composite; a GitHub `owner/repo[/pull|issues/N | /blob/ref/path…]` path.
-     * Opaque outside this module (except githubCardParts, which re-parses it).
+     * composite; a GitHub `owner/repo[/pull|issues/N | /blob/ref/path…]` path;
+     * a Google `product/fileId` composite; a Linear `org/issue/KEY[/slug]`
+     * path. Opaque outside this module, except the exported *CardParts
+     * re-parsers (githubCardParts, googleFileCardParts, linearCardParts).
      */
     id: string;
 }
@@ -225,6 +239,257 @@ export function figmaEmbedUrl(id: string): string {
     return `https://embed.figma.com/${id}?embed-host=birta-writer`;
 }
 
+/**
+ * A Google Drive/Docs file id: the charset Google uses, bounded. Real ids run
+ * ~28–44 characters; the floor keeps short path words ("e", "edit") out.
+ */
+const GOOGLE_FILE_ID = /^[A-Za-z0-9_-]{20,100}$/;
+
+/**
+ * A publish-to-web token (the `/d/e/` path form). Same charset, much longer
+ * than a file id (currently `2PACX-…`, ~86 chars); the prefix itself is not
+ * pinned so a format rev doesn't silently kill every published card.
+ */
+const GOOGLE_PUB_ID = /^[A-Za-z0-9_-]{30,300}$/;
+
+/**
+ * Extract the file id from a Google Drive file URL, or null. Accepts
+ * `drive.google.com/file/d/<id>` with an optional `view`/`preview`/`edit`
+ * tail, and the legacy `drive.google.com/open?id=<id>`. Folders, shared
+ * drives, and every other Drive surface stay plain links. The PREVIEW iframe
+ * built from this id is Google's supported no-auth embed for public files;
+ * an `/edit` UI URL is never framed (X-Frame-Options), only re-derived to
+ * `/preview` at click time. Exported for unit testing.
+ */
+export function googleDriveId(raw: string): string | null {
+    const url = parseUrl(raw);
+    if (!url) {
+        return null;
+    }
+    const host = canonicalHost(url);
+    if (host !== "drive.google.com") {
+        return null;
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    const [first, second, third, fourth] = segments;
+    if (first === "file" && second === "d" && third && GOOGLE_FILE_ID.test(third)) {
+        if (segments.length === 3) {
+            return third;
+        }
+        if (segments.length === 4 && (fourth === "view" || fourth === "preview" || fourth === "edit")) {
+            return third;
+        }
+        return null;
+    }
+    if (segments.length === 1 && first === "open") {
+        const id = url.searchParams.get("id");
+        return id && GOOGLE_FILE_ID.test(id) ? id : null;
+    }
+    return null;
+}
+
+/** Build the click-time preview iframe URL for a Drive file id. */
+export function googleDrivePreviewUrl(id: string): string {
+    return `https://drive.google.com/file/d/${id}/preview`;
+}
+
+/** The docs.google.com products whose non-published URLs get the info card. */
+const GOOGLE_PRODUCTS = new Set(["document", "presentation", "spreadsheets"]);
+
+/**
+ * The shared shape of every publish-to-web URL:
+ * `docs.google.com/<product>/d/e/<token>/<tail>`. Only the published `/d/e/`
+ * form is framable without auth; the tails differ per product.
+ */
+function googlePublishedId(raw: string, product: string, tails: readonly string[]): string | null {
+    const url = parseUrl(raw);
+    if (!url) {
+        return null;
+    }
+    if (canonicalHost(url) !== "docs.google.com") {
+        return null;
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length !== 5) {
+        return null;
+    }
+    const [first, second, third, id, tail] = segments;
+    if (first !== product || second !== "d" || third !== "e" || !tails.includes(tail)) {
+        return null;
+    }
+    return GOOGLE_PUB_ID.test(id) ? id : null;
+}
+
+/** Extract the publish-to-web token from a published Google Doc URL, or null. */
+export function googleDocsPubId(raw: string): string | null {
+    return googlePublishedId(raw, "document", ["pub"]);
+}
+
+/** Build the published-Doc embed URL (Google's own `?embedded=true` form). */
+export function googleDocsEmbedUrl(id: string): string {
+    return `https://docs.google.com/document/d/e/${id}/pub?embedded=true`;
+}
+
+/**
+ * Extract the publish-to-web token from a published Slides URL, or null.
+ * Accepts the `/pub` link Google hands out and the `/embed` form its own
+ * snippet uses — both carry the same token.
+ */
+export function googleSlidesPubId(raw: string): string | null {
+    return googlePublishedId(raw, "presentation", ["pub", "embed"]);
+}
+
+/** Build the published-Slides embed URL (Google's own `/embed` endpoint). */
+export function googleSlidesEmbedUrl(id: string): string {
+    return `https://docs.google.com/presentation/d/e/${id}/embed`;
+}
+
+/** Extract the publish-to-web token from a published Sheets URL, or null. */
+export function googleSheetsPubId(raw: string): string | null {
+    return googlePublishedId(raw, "spreadsheets", ["pubhtml"]);
+}
+
+/** Build the published-Sheets embed URL (Google's own widget form). */
+export function googleSheetsEmbedUrl(id: string): string {
+    return `https://docs.google.com/spreadsheets/d/e/${id}/pubhtml?widget=true`;
+}
+
+/**
+ * Extract a `product/fileId` composite from an ORDINARY (non-published)
+ * docs.google.com URL, or null: `/{document|presentation|spreadsheets}/d/<id>`
+ * with an optional `edit`/`view`/`preview` tail. These URLs answer with
+ * X-Frame-Options: SAMEORIGIN, so the kind built on this id is the info card —
+ * there is deliberately no code path from here to an iframe. Exported for
+ * unit testing.
+ */
+export function googleFileId(raw: string): string | null {
+    const url = parseUrl(raw);
+    if (!url) {
+        return null;
+    }
+    if (canonicalHost(url) !== "docs.google.com") {
+        return null;
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    const [product, second, id, tail] = segments;
+    if (!product || !GOOGLE_PRODUCTS.has(product) || second !== "d") {
+        return null;
+    }
+    // The published form (`/d/e/<token>/…`) is a different kind; the file-id
+    // floor already rejects the bare "e" segment, but be explicit.
+    if (!id || id === "e" || !GOOGLE_FILE_ID.test(id)) {
+        return null;
+    }
+    if (segments.length === 3) {
+        return `${product}/${id}`;
+    }
+    if (segments.length === 4 && (tail === "edit" || tail === "view" || tail === "preview")) {
+        return `${product}/${id}`;
+    }
+    return null;
+}
+
+/** The display pieces of a Google info card, from a googleFileId composite. */
+export interface GoogleFileCardParts {
+    product: "document" | "presentation" | "spreadsheets";
+    fileId: string;
+}
+
+/** Re-parse a googleFileId composite into its display pieces. Pure; unit-tested. */
+export function googleFileCardParts(id: string): GoogleFileCardParts {
+    const [product, fileId] = id.split("/");
+    return { product: product as GoogleFileCardParts["product"], fileId };
+}
+
+/**
+ * A Miro board id as it appears in the URL path: URL-safe base64-ish,
+ * typically with a trailing `=` (a percent-encoded `%3D` stays a plain link —
+ * narrow matching over normalization).
+ */
+const MIRO_BOARD_ID = /^[A-Za-z0-9_=-]{8,64}$/;
+
+/**
+ * Extract the board id from a Miro URL, or null. Accepts
+ * `miro.com/app/board/<id>` and the live-embed form
+ * `miro.com/app/live-embed/<id>` (any query params ignored). Exported for
+ * unit testing.
+ */
+export function miroId(raw: string): string | null {
+    const url = parseUrl(raw);
+    if (!url) {
+        return null;
+    }
+    if (canonicalHost(url) !== "miro.com") {
+        return null;
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length !== 3) {
+        return null;
+    }
+    const [first, second, third] = segments;
+    if (first !== "app" || (second !== "board" && second !== "live-embed")) {
+        return null;
+    }
+    return MIRO_BOARD_ID.test(third) ? third : null;
+}
+
+/**
+ * Build the live-embed URL for a Miro board id — Miro's login-free pan/zoom
+ * view for boards shared publicly (host: miro.com).
+ */
+export function miroEmbedUrl(id: string): string {
+    return `https://miro.com/app/live-embed/${id}/`;
+}
+
+/** A Linear issue key: team key + number (`MAR-186`). */
+const LINEAR_ISSUE_KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
+
+/** Linear path segments: the conservative charset of org and title slugs. */
+const LINEAR_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * Extract a joined-path id from a Linear issue URL, or null. Accepted shape:
+ * `linear.app/<org>/issue/<KEY-123>[/<title-slug>]` — nothing else (projects,
+ * documents, views stay plain links). The slug rides along in the id so the
+ * info card can show a human title without any network. Exported for testing.
+ */
+export function linearId(raw: string): string | null {
+    const url = parseUrl(raw);
+    if (!url) {
+        return null;
+    }
+    if (canonicalHost(url) !== "linear.app") {
+        return null;
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length < 3 || segments.length > 4) {
+        return null;
+    }
+    const [org, section, key, slug] = segments;
+    if (section !== "issue" || !LINEAR_SEGMENT.test(org) || !LINEAR_ISSUE_KEY.test(key)) {
+        return null;
+    }
+    if (segments.length === 4 && !LINEAR_SEGMENT.test(slug)) {
+        return null;
+    }
+    return segments.join("/");
+}
+
+/** The display pieces of a Linear info card, from a linearId composite. */
+export interface LinearCardParts {
+    org: string;
+    /** The issue key, e.g. "MAR-186". */
+    key: string;
+    /** The hyphenated title slug, when the URL carried one. */
+    slug?: string;
+}
+
+/** Re-parse a linearId composite into its display pieces. Pure; unit-tested. */
+export function linearCardParts(id: string): LinearCardParts {
+    const [org, , key, slug] = id.split("/");
+    return slug ? { org, key, slug } : { org, key };
+}
+
 /** GitHub path segments: the conservative charset of owners/repos/refs. */
 const GITHUB_SEGMENT = /^[A-Za-z0-9_.-]+$/;
 
@@ -320,6 +585,15 @@ const EXTRACTORS: readonly { kind: EmbedKind; extract: (url: string) => string |
     { kind: "loom", extract: loomId },
     { kind: "figma", extract: figmaId },
     { kind: "github", extract: githubId },
+    { kind: "googledrive", extract: googleDriveId },
+    // Published (`/d/e/`) shapes before the ordinary-file shape: the shapes are
+    // disjoint, but the framable kind must never lose a URL to the info card.
+    { kind: "googledocs", extract: googleDocsPubId },
+    { kind: "googleslides", extract: googleSlidesPubId },
+    { kind: "googlesheets", extract: googleSheetsPubId },
+    { kind: "googlefile", extract: googleFileId },
+    { kind: "miro", extract: miroId },
+    { kind: "linear", extract: linearId },
 ];
 
 /**
@@ -349,6 +623,17 @@ export function canonicalEmbedUrl(kind: EmbedKind, id: string): string {
         case "loom": return `https://www.loom.com/share/${id}`;
         case "figma": return `https://www.figma.com/${id}`;
         case "github": return `https://github.com/${id}`;
+        case "googledrive": return `https://drive.google.com/file/d/${id}/view`;
+        case "googledocs": return `https://docs.google.com/document/d/e/${id}/pub`;
+        case "googleslides": return `https://docs.google.com/presentation/d/e/${id}/pub`;
+        case "googlesheets": return `https://docs.google.com/spreadsheets/d/e/${id}/pubhtml`;
+        case "googlefile": {
+            // The composite is `product/fileId`; the `/d/` joint is rebuilt.
+            const { product, fileId } = googleFileCardParts(id);
+            return `https://docs.google.com/${product}/d/${fileId}/edit`;
+        }
+        case "miro": return `https://miro.com/app/board/${id}/`;
+        case "linear": return `https://linear.app/${id}`;
     }
 }
 
@@ -362,6 +647,7 @@ export const OEMBED_HOSTS: Partial<Record<EmbedKind, string>> = {
     vimeo: "vimeo.com",
     loom: "www.loom.com",
     figma: "www.figma.com",
+    miro: "miro.com",
 };
 
 /**
@@ -376,7 +662,17 @@ export function oembedEndpoint(kind: EmbedKind, canonicalUrl: string): string | 
         case "vimeo": return `https://vimeo.com/api/oembed.json?url=${encoded}`;
         case "loom": return `https://www.loom.com/v1/oembed?url=${encoded}`;
         case "figma": return `https://www.figma.com/api/oembed?url=${encoded}`;
-        case "github": return null;
+        case "miro": return `https://miro.com/api/v1/oembed?url=${encoded}`;
+        // Google exposes no oEmbed for Docs/Slides/Sheets/Drive; the Linear
+        // and googlefile cards are URL-derived and fetch nothing by design.
+        case "github":
+        case "googledrive":
+        case "googledocs":
+        case "googleslides":
+        case "googlesheets":
+        case "googlefile":
+        case "linear":
+            return null;
     }
 }
 
@@ -398,4 +694,10 @@ export const EMBED_CSP_FRAME_HOSTS: readonly string[] = [
     // (diagnosed 2026-07-27 — the frame chain ends at www.figma.com/design/…
     // with the live canvas).
     "https://www.figma.com",
+    // Google preview/published endpoints serve from these two hosts directly;
+    // inner content frames (googleusercontent.com) are the CHILD document's
+    // own frames, which our frame-src does not govern.
+    "https://drive.google.com",
+    "https://docs.google.com",
+    "https://miro.com",
 ];

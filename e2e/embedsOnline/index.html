@@ -58,6 +58,22 @@
     "",
     "https://www.twitch.tv/videos/1234567890",
     "",
+    // MAR-186 P2: the Google sharing-mode split (published → player,
+    // ordinary /edit → info card), Drive preview, Miro live-embed, Linear.
+    "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/view",
+    "",
+    "https://docs.google.com/document/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub",
+    "",
+    "https://docs.google.com/presentation/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub",
+    "",
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pubhtml",
+    "",
+    "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/edit",
+    "",
+    "https://miro.com/app/board/uXjVO5X2CWo=/",
+    "",
+    "https://linear.app/birta/issue/MAR-186/embed-provider-roadmap",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

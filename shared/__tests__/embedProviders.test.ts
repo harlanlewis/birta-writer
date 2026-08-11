@@ -16,7 +16,27 @@ import {
     type EmbedKind,
 } from "../embedProviders";
 
-const KINDS: EmbedKind[] = ["youtube", "vimeo", "loom", "figma", "github"];
+const KINDS: EmbedKind[] = [
+    "youtube", "vimeo", "loom", "figma", "github",
+    "googledrive", "googledocs", "googleslides", "googlesheets", "googlefile",
+    "miro", "linear",
+];
+
+/** Real-shaped ids, one per kind — used by every round-trip loop below. */
+const IDS: Record<EmbedKind, string> = {
+    youtube: "dQw4w9WgXcQ",
+    vimeo: "1084537",
+    loom: "0123456789abcdef0123456789abcdef",
+    figma: "design/AbCdEf123456",
+    github: "owner/repo",
+    googledrive: "1AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+    googledocs: "2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+    googleslides: "2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+    googlesheets: "2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+    googlefile: "document/1AbCdEfGhIjKlMnOpQrStUvWxYz01234",
+    miro: "uXjVO5X2CWo=",
+    linear: "birta/issue/MAR-186/embed-provider-roadmap",
+};
 
 describe("canonicalEmbedUrl", () => {
     it("should build the provider's public page from kind + id", () => {
@@ -24,21 +44,30 @@ describe("canonicalEmbedUrl", () => {
         expect(canonicalEmbedUrl("loom", "a".repeat(32))).toBe(`https://www.loom.com/share/${"a".repeat(32)}`);
         expect(canonicalEmbedUrl("figma", "design/AbCdEf123456")).toBe("https://www.figma.com/design/AbCdEf123456");
         expect(canonicalEmbedUrl("github", "owner/repo/pull/42")).toBe("https://github.com/owner/repo/pull/42");
+        expect(canonicalEmbedUrl("googledrive", IDS.googledrive)).toBe(
+            `https://drive.google.com/file/d/${IDS.googledrive}/view`,
+        );
+        expect(canonicalEmbedUrl("googledocs", IDS.googledocs)).toBe(
+            `https://docs.google.com/document/d/e/${IDS.googledocs}/pub`,
+        );
+        // The PAGE, not the widget: no ?widget/?embedded params on a canonical
+        // URL — external-open must land on the provider's readable page.
+        expect(canonicalEmbedUrl("googlesheets", IDS.googlesheets)).toBe(
+            `https://docs.google.com/spreadsheets/d/e/${IDS.googlesheets}/pubhtml`,
+        );
+        expect(canonicalEmbedUrl("googlefile", "document/1AbCdEfGhIjKlMnOpQrStUvWxYz01234")).toBe(
+            "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/edit",
+        );
+        expect(canonicalEmbedUrl("miro", IDS.miro)).toBe(`https://miro.com/app/board/${IDS.miro}/`);
+        expect(canonicalEmbedUrl("linear", IDS.linear)).toBe(`https://linear.app/${IDS.linear}`);
     });
 
     it("every canonical URL should re-recognize as its own kind and id", () => {
         // The extension rebuilds request URLs from recognize → canonical; the
         // pair must round-trip or a valid card could fail its metadata lookup.
-        const ids: Record<EmbedKind, string> = {
-            youtube: "dQw4w9WgXcQ",
-            vimeo: "1084537",
-            loom: "0123456789abcdef0123456789abcdef",
-            figma: "design/AbCdEf123456",
-            github: "owner/repo",
-        };
         for (const kind of KINDS) {
-            const match = recognizeEmbed(canonicalEmbedUrl(kind, ids[kind]));
-            expect(match).toEqual({ kind, id: ids[kind] });
+            const match = recognizeEmbed(canonicalEmbedUrl(kind, IDS[kind]));
+            expect(match).toEqual({ kind, id: IDS[kind] });
         }
     });
 });
@@ -59,15 +88,28 @@ describe("oembedEndpoint", () => {
         );
     });
 
-    it("a kind with no metadata source should return null", () => {
-        expect(oembedEndpoint("github", canonicalEmbedUrl("github", "owner/repo"))).toBeNull();
+    it("miro should target its provider-own oEmbed endpoint", () => {
+        const url = canonicalEmbedUrl("miro", IDS.miro);
+        expect(oembedEndpoint("miro", url)).toBe(
+            `https://miro.com/api/v1/oembed?url=${encodeURIComponent(url)}`,
+        );
+    });
+
+    it("kinds with no metadata source should return null", () => {
+        // GitHub/Linear/googlefile cards are URL-derived and fetch nothing;
+        // Google exposes no oEmbed for Docs/Slides/Sheets/Drive.
+        for (const kind of [
+            "github", "googledrive", "googledocs", "googleslides", "googlesheets", "googlefile", "linear",
+        ] as const) {
+            expect(oembedEndpoint(kind, canonicalEmbedUrl(kind, IDS[kind])), kind).toBeNull();
+        }
     });
 
     it("every endpoint's host should equal its OEMBED_HOSTS pin", () => {
         // The extension's allowlist check compares against OEMBED_HOSTS; an
         // endpoint drifting to another host must fail loudly here, not there.
         for (const kind of KINDS) {
-            const endpoint = oembedEndpoint(kind, canonicalEmbedUrl(kind, "x"));
+            const endpoint = oembedEndpoint(kind, canonicalEmbedUrl(kind, IDS[kind]));
             const pinned = OEMBED_HOSTS[kind];
             if (endpoint === null) {
                 expect(pinned).toBeUndefined();
