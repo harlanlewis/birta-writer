@@ -420,6 +420,9 @@ describe("codepenId — recognized URL forms", () => {
         ["https://codepen.io/chriscoyier/full/AbCdEf", "chriscoyier/AbCdEf"],
         ["https://codepen.io/chriscoyier/details/AbCdEf", "chriscoyier/AbCdEf"],
         ["https://codepen.io/chriscoyier/embed/AbCdEf?default-tab=result", "chriscoyier/AbCdEf"],
+        // Team pens keep their team/ prefix in the id (CodePen's own URLs do).
+        ["https://codepen.io/team/codepen/pen/PNaGbb", "team/codepen/PNaGbb"],
+        ["https://codepen.io/team/codepen/embed/PNaGbb", "team/codepen/PNaGbb"],
     ];
     for (const [url, expected] of cases) {
         it(`${url} should extract ${expected}`, () => {
@@ -432,6 +435,8 @@ describe("codepenId — recognized URL forms", () => {
         "https://codepen.io/chriscoyier/pens/public", // pen LIST, not a pen
         "https://codepen.io/chriscoyier/pen/", // no slug
         "https://codepen.io/chriscoyier/pen/AbCdEf/extra", // extra segment
+        "https://codepen.io/team/codepen/pen/AbCdEf/extra", // extra team segment
+        "https://codepen.io/team/codepen/pens/public", // team pen LIST
         "https://codepen.io.evil.com/chriscoyier/pen/AbCdEf", // lookalike host
         "https://codepen.io/chris%20coyier/pen/AbCdEf", // charset violation
         "ftp://codepen.io/chriscoyier/pen/AbCdEf", // wrong protocol
@@ -674,6 +679,9 @@ describe("URL builders", () => {
     it("playground embed URLs should target each provider's embed endpoint", () => {
         expect(codepenEmbedUrl("chriscoyier/AbCdEf")).toBe(
             "https://codepen.io/chriscoyier/embed/AbCdEf?default-tab=result",
+        );
+        expect(codepenEmbedUrl("team/codepen/PNaGbb")).toBe(
+            "https://codepen.io/team/codepen/embed/PNaGbb?default-tab=result",
         );
         expect(codesandboxEmbedUrl("abc123")).toBe("https://codesandbox.io/embed/abc123");
         expect(stackblitzEmbedUrl("vitejs-vite-abc123")).toBe(
