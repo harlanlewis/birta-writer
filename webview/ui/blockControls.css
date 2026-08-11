@@ -38,24 +38,16 @@
     z-index: 5;
 }
 
-/* The buttons themselves, stacked at the strip's top — and sticky, which is
- * the whole reason they are not laid out by the strip directly. A block taller
- * than the viewport (a full-page image, a long code block, a tall table) can
- * scroll its top edge away while the block is still all the reader is looking
- * at, and controls anchored to that edge leave with it. Sticky re-seats them
- * just under the topbar instead, and the strip's own box — which spans exactly
- * the host — stops them at the block's last line, so the controls never outlive
- * the block they act on.
- *
- * The topbar is the only thing to clear: this strip sits OUTSIDE the content
- * column, and the sticky heading title spans exactly that column, so it never
- * reaches here. Chrome pinned inside the column has to reserve the bar too, and
- * a code block's language pill is the one that does (codeBlock.css).
- * `--bc-pin-top` is the seam for a host that needs a deeper inset. */
+/* The buttons themselves, stacked at the strip's top — in their own box, which
+ * is what lets them go sticky, and that is the whole reason they are not laid
+ * out by the strip directly. A block taller than the viewport (a full-page
+ * image, a long code block, a tall table) can scroll its top edge away while
+ * the block is still all the reader is looking at, and controls anchored to
+ * that edge leave with it. Sticky re-seats them just under the topbar instead,
+ * and the strip's own box — which spans exactly the host — stops them at the
+ * block's last line, so the controls never outlive the block they act on. */
 .bc-stack,
 .embed-card__controls {
-    position: sticky;
-    top: var(--bc-pin-top, calc(var(--editor-topbar-height, 40px) + 8px));
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -63,6 +55,32 @@
     /* Content-height, so there is room inside the containing block to slide.
      * A stretched box has none: it already fills the block. */
     align-self: start;
+}
+
+/* Sticky ONLY while the controls are shown — the same conditions, condition
+ * for condition, as the reveal rule below. At rest the column is opacity: 0
+ * and its buttons are inert, so nobody can see or reach where the stack sits,
+ * and a resting sticky would be pure cost: every position: sticky box pays
+ * for its scroll constraints in every layout pass, one column per rich block,
+ * so a document full of tables and code blocks carries hundreds of them into
+ * the first layout — squarely inside the launch `paint` span (the harness
+ * gates it; `pnpm perf large` shows it). The moment any reveal condition
+ * arms the column, sticky engages and the stack seats itself pinned — there
+ * is no visible transition, because until that moment it was invisible.
+ *
+ * The topbar is the only thing to clear: this strip sits OUTSIDE the content
+ * column, and the sticky heading title spans exactly that column, so it never
+ * reaches here. Chrome pinned inside the column has to reserve the bar too, and
+ * a code block's language pill is the one that does (codeBlock.css).
+ * `--bc-pin-top` is the seam for a host that needs a deeper inset. */
+.bc-host:hover :is(.bc-stack, .embed-card__controls),
+.bc-col:focus-within .bc-stack,
+.embed-card__controls:focus-within,
+.bc-active :is(.bc-stack, .embed-card__controls),
+.embed-host--selected .embed-card__controls,
+.bc-col--shown .bc-stack {
+    position: sticky;
+    top: var(--bc-pin-top, calc(var(--editor-topbar-height, 40px) + 8px));
 }
 
 .bc-col,

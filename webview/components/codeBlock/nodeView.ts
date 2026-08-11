@@ -527,10 +527,36 @@ export function createCodeBlockView(
     wrapper.appendChild(controlsCol);
     scheduleLineNumberRefresh();
 
+    // The pill's sticky pin is armed per block, never at rest for every block:
+    // a position: sticky box pays for its scroll constraints in every layout
+    // pass, so a document full of ordinary code blocks must carry zero of
+    // them into first layout (the launch gate's `paint` span is where that
+    // cost lands; `pnpm perf large` shows it). The pin only ever has a
+    // visible effect on a block tall enough for its top band to leave the
+    // viewport while the block still fills it, so arm it by measured height
+    // and disarm below the threshold. Arming EARLY is free — an armed pin on
+    // a block that never scrolls its top band away simply never travels — so
+    // the threshold is generous (half the viewport) rather than exact, and a
+    // viewport shrink is caught by the next observer fire (the wrapper's
+    // width tracks the editor column, so window resizes reach it).
+    const PILL_PIN_MIN_VIEWPORT_RATIO = 0.5;
+    const syncPillPin = (): void => {
+        const tall = wrapper.offsetHeight > window.innerHeight * PILL_PIN_MIN_VIEWPORT_RATIO;
+        wrapper.classList.toggle("code-float-pin", tall);
+    };
     const lineNumberResizeObserver = typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => scheduleLineNumberRefresh())
+        ? new ResizeObserver((entries) => {
+              // The wrapper entry drives the pin; the code entry drives the
+              // gutter. Either may fire alone (a resize drag moves only the
+              // wrapper; retyping a line moves only the code).
+              if (entries.some((e) => e.target === wrapper)) {
+                  syncPillPin();
+              }
+              scheduleLineNumberRefresh();
+          })
         : null;
     lineNumberResizeObserver?.observe(codeEl);
+    lineNumberResizeObserver?.observe(wrapper);
 
     // Enter preview mode (internal reuse)
     function enterPreviewMode(): void {

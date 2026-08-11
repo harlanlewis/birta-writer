@@ -238,8 +238,17 @@ export const headingStickyPlugin = $prose(() =>
              * this frame, and a single-event scroll (a TOC click, a find
              * jump) would otherwise leave its placement stale under the bar.
              * CSS consumers of the variable restyle on their own.
+             *
+             * Starts at 0, never a sentinel: every consumer's fallback for the
+             * unset variable is 0px, so "nothing published yet" and "published
+             * 0" are the same state, and publishing 0 over it must stay a
+             * no-op. The first update runs on the mount rAF, before first
+             * paint, and the bar starts hidden — a sentinel would turn that
+             * hide into a root-level custom-property write, and a custom
+             * property on <html> inherits everywhere, so the write restyles
+             * the whole document on the frame the first paint is waiting on.
              */
-            let publishedHeight = -1;
+            let publishedHeight = 0;
             const publishHeight = (px: number): void => {
                 const height = Math.max(0, px);
                 if (height === publishedHeight) {
@@ -342,10 +351,14 @@ export const headingStickyPlugin = $prose(() =>
 
                 const nextHeading = headings[activeIndex + 1] ?? null;
                 const stickyHeight = sticky.getBoundingClientRect().height;
-                publishHeight(stickyHeight);
                 const nextTop = nextHeading?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
                 const offset = Math.min(0, nextTop - top - stickyHeight);
                 sticky.style.transform = `translateY(${offset}px)`;
+                // Publish ONCE, after the slide offset is known: the published
+                // value is the painted extent, and each publish that changes
+                // it is a root-level write that restyles the whole document,
+                // so an intermediate pre-offset publish would double that cost
+                // on every frame of the slide-under transition.
                 publishHeight(stickyHeight + offset);
             };
 
