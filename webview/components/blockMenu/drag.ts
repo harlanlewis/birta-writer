@@ -177,10 +177,9 @@ export function blockBoundaryPositions(
  *     the release will actually land.
  *
  * The winner alone is judged, not the whole set, and that is a cost decision
- * rather than a shortcut: see `planBoundaries` for the measurement that ruled
- * out filtering the set. It costs one verdict per pointer move (13 us at 1k
- * blocks, 162 us at 12k on the same synthetic document), against an O(slots)
- * scan this function already performs.
+ * rather than a shortcut: judging every slot is quadratic in document size
+ * (see `planBoundaries` for the mechanism), while one verdict per pointer
+ * move rides the O(slots) scan this function already performs.
  *
  * Refusing rather than snapping onward to the next legal slot is deliberate:
  * a drop that silently travels to somewhere the user did not aim is worse
@@ -360,11 +359,10 @@ interface BoundaryPlan {
  * Deliberately NOT where the dragged run's legality is judged, though it is
  * the tempting place. `moveTargetFilter`'s per-target half is a `canReplace`,
  * and ProseMirror answers that by walking its parent's content from the index
- * to the end, so judging EVERY slot is quadratic in document size: measured
- * over a synthetic prose document, 20 ms of extra plan work at 1k blocks but
- * 3.4 s at 12k, on top of a plan that already costs the same order. The one
- * slot the pointer actually chose is judged instead, once per move, in
- * `dropTargetFor`.
+ * to the end, so judging EVERY slot here would walk the whole document per
+ * slot: quadratic in document size, on top of a plan that is already
+ * O(blocks). The one slot the pointer actually chose is judged instead, once
+ * per move, in `dropTargetFor`.
  */
 export function planBoundaries(view: EditorView): BoundaryPlan[] {
     const { doc } = view.state;
