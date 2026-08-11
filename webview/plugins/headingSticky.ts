@@ -1,10 +1,10 @@
-import type { EditorView } from "../pm";
+import type { EditorState, EditorView } from "../pm";
 import { Plugin, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
 import {
-    findHeadingFoldRange,
+    foldHiddenRange,
     headingFoldPluginKey,
     wireMarkerButtonProtocol,
     type HeadingFoldMeta,
@@ -21,6 +21,22 @@ import {
 } from "../utils/headingUtils";
 
 const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
+
+/**
+ * Whether the sticky bar offers a fold chevron for the heading at
+ * `headingPos` — asked of `foldHiddenRange`, the same source of truth every
+ * other fold consumer uses (the caret guard, the drop gates, the toggle
+ * itself), so the bar shows the control only where the fold plugin would
+ * honor a toggle. `findHeadingFoldRange` is NOT the right question here: it
+ * scans top-level offsets, so for a heading nested inside a blockquote or
+ * callout it reports a range up to the next top-level heading — a section
+ * the fold plugin refuses to fold, which put a chevron on the bar that read
+ * "Collapse content" and never did anything. Exported for unit testing.
+ */
+export function stickyHeadingFoldable(state: EditorState, headingPos: number): boolean {
+    const foldState = headingFoldPluginKey.getState(state);
+    return (foldState?.enabled ?? false) && foldHiddenRange(state.doc, headingPos) !== null;
+}
 
 function scrollHeadingIntoStickyPosition(view: EditorView, headingPos: number): void {
     requestAnimationFrame(() => {
@@ -123,7 +139,7 @@ export function setStickyContent(
                 .setMeta("addToHistory", false);
 
             if (!collapsed) {
-                const range = findHeadingFoldRange(view.state.doc, livePos);
+                const range = foldHiddenRange(view.state.doc, livePos);
                 if (
                     range &&
                     view.state.selection.from < range.to &&
@@ -327,8 +343,7 @@ export const headingStickyPlugin = $prose(() =>
                 // materialized near the viewport — the class would simply be
                 // missing and the sticky badge would lose its chevron.
                 const foldState = headingFoldPluginKey.getState(view.state);
-                const foldable = (foldState?.enabled ?? false) &&
-                    findHeadingFoldRange(view.state.doc, headingPos) !== null;
+                const foldable = stickyHeadingFoldable(view.state, headingPos);
                 const collapsed = foldState?.folded.has(headingPos) ?? false;
                 const rect = heading.getBoundingClientRect();
                 sticky.hidden = false;

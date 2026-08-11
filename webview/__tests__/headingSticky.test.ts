@@ -11,7 +11,7 @@ import type { EditorView } from "../pm";
 import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
-import { setStickyContent, headingStickyPlugin } from "../plugins/headingSticky";
+import { setStickyContent, headingStickyPlugin, stickyHeadingFoldable } from "../plugins/headingSticky";
 import { setBlockMenuContext, closeBlockMenu } from "../components/blockMenu";
 
 let editors: Editor[] = [];
@@ -135,6 +135,31 @@ describe("sticky heading gutter", () => {
         marker?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
 
         expect(document.querySelector(".block-menu")).not.toBeNull();
+    });
+});
+
+/**
+ * The sticky chevron's foldability question. The bar must offer the fold
+ * toggle only where the fold plugin would honor it: a heading nested inside
+ * a blockquote or callout cannot fold (heading folds are keyed by top-level
+ * offset), so a chevron there would dispatch a toggle the plugin refuses —
+ * a control that always reads "Collapse content" and never does anything.
+ */
+describe("sticky heading foldability", () => {
+    it("a top-level heading with a body should offer the fold chevron", async () => {
+        const editor = await makeEditor("## Section\n\nBody text.");
+        const v = view(editor);
+
+        expect(stickyHeadingFoldable(v.state, FIRST_HEADING_POS)).toBe(true);
+    });
+
+    it("a heading nested inside a blockquote should offer no chevron", async () => {
+        const editor = await makeEditor("> ## Quoted\n\nBody after the quote.");
+        const v = view(editor);
+        const headingPos = FIRST_HEADING_POS + 1; // inside the blockquote
+        expect(v.state.doc.nodeAt(headingPos)?.type.name).toBe("heading");
+
+        expect(stickyHeadingFoldable(v.state, headingPos)).toBe(false);
     });
 });
 
