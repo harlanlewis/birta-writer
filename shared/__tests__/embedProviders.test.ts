@@ -19,7 +19,7 @@ import {
 const KINDS: EmbedKind[] = [
     "youtube", "vimeo", "loom", "figma", "github",
     "googledrive", "googledocs", "googleslides", "googlesheets", "googlefile",
-    "miro", "linear",
+    "miro", "linear", "codepen", "codesandbox", "stackblitz",
 ];
 
 /** Real-shaped ids, one per kind — used by every round-trip loop below. */
@@ -36,6 +36,9 @@ const IDS: Record<EmbedKind, string> = {
     googlefile: "document/1AbCdEfGhIjKlMnOpQrStUvWxYz01234",
     miro: "uXjVO5X2CWo=",
     linear: "birta/issue/MAR-186/embed-provider-roadmap",
+    codepen: "chriscoyier/AbCdEf",
+    codesandbox: "new-react-sandbox-abc123",
+    stackblitz: "vitejs-vite-abc123",
 };
 
 describe("canonicalEmbedUrl", () => {
@@ -97,12 +100,21 @@ describe("oembedEndpoint", () => {
 
     it("kinds with no metadata source should return null", () => {
         // GitHub/Linear/googlefile cards are URL-derived and fetch nothing;
-        // Google exposes no oEmbed for Docs/Slides/Sheets/Drive.
+        // Google exposes no oEmbed for Docs/Slides/Sheets/Drive; CodeSandbox
+        // and StackBlitz publish no stable provider-own oEmbed to pin.
         for (const kind of [
             "github", "googledrive", "googledocs", "googleslides", "googlesheets", "googlefile", "linear",
+            "codesandbox", "stackblitz",
         ] as const) {
             expect(oembedEndpoint(kind, canonicalEmbedUrl(kind, IDS[kind])), kind).toBeNull();
         }
+    });
+
+    it("codepen should target its provider-own oEmbed endpoint", () => {
+        const url = canonicalEmbedUrl("codepen", IDS.codepen);
+        expect(oembedEndpoint("codepen", url)).toBe(
+            `https://codepen.io/api/oembed?format=json&url=${encodeURIComponent(url)}`,
+        );
     });
 
     it("every endpoint's host should equal its OEMBED_HOSTS pin", () => {

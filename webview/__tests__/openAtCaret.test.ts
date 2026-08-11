@@ -16,9 +16,14 @@ import { NodeSelection, TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { BlockRangeSelection } from "../plugins/blockRange";
-import { closeBlockMenu, openBlockMenuAtCaret } from "../components/blockMenu";
+import { closeBlockMenu, openBlockMenuAtCaret, setBlockMenuContext } from "../components/blockMenu";
 
 let editors: Editor[] = [];
+let activeEditor: Editor | null = null;
+
+// The Table section's rows dispatch through runEditorCommand, which needs
+// the Editor ctx (the same wiring webview/index.ts performs).
+setBlockMenuContext({ getEditor: () => activeEditor });
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -34,6 +39,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(headingFoldPlugin)
         .create();
     editors.push(editor);
+    activeEditor = editor;
     return editor;
 }
 
@@ -47,6 +53,7 @@ afterEach(async () => {
         await editor.destroy();
     }
     editors = [];
+    activeEditor = null;
     document.body.className = "";
     document.body.innerHTML = "";
 });
@@ -165,15 +172,75 @@ describe("openBlockMenuAtCaret", () => {
         expect(openMarker()!.dataset["pill"]).toBe("Blockquote");
     });
 
-    it("a caret inside a table cell should return false without opening anything", async () => {
-        // Arrange: tables own their interior chrome (grips/insert bars)
+    it("a caret inside a table cell should open the table's menu with a leading Table section", async () => {
+        // Arrange (MAR-118): ⌘. inside a table used to bail; it now opens
+        // the table's own menu, carrying the caret's cell so the Table rows
+        // target the same row/column unit a right-click on the cell would.
         const editor = await makeEditor("| a | b |\n| - | - |\n| c | d |");
         const v = view(editor);
         setCaret(v, posOf(v, "table_cell") + 1);
 
-        // Act + Assert
-        expect(openBlockMenuAtCaret(v)).toBe(false);
-        expect(menu()).toBeNull();
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert: keyboard mode, anchored to the table's own marker, Table
+        // section FIRST (the caret's unit outranks table-block actions),
+        // with the cell/row/column rows and the generic actions both present.
+        expect(opened).toBe(true);
+        expect(menu()).not.toBeNull();
+        expect(document.activeElement).toBe(menu()!.querySelector(".block-menu-search"));
+        expect(openMarker()!.dataset["pill"]).toBe("Table");
+        const headers = Array.from(menu()!.querySelectorAll(".block-menu-header"))
+            .map((el) => el.textContent);
+        expect(headers[0]).toBe("Table");
+        const labels = Array.from(menu()!.querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        for (const label of [
+            "Insert Row Above", "Insert Row Below",
+            "Insert Column Left", "Insert Column Right",
+            "Align Column Left", "Align Column Center", "Align Column Right",
+            "Delete Row", "Delete Column",
+        ]) {
+            expect(labels).toContain(label);
+        }
+        expect(labels).toContain("Delete"); // the table-block actions follow
+    });
+
+    it("activating Insert Row Below through the search combobox should add a row below the caret's row", async () => {
+        // Arrange: caret in the first BODY cell ("c") — header + 1 body row.
+        const editor = await makeEditor("| a | b |\n| - | - |\n| c | d |");
+        const v = view(editor);
+        setCaret(v, posOf(v, "table_cell") + 1);
+        expect(openBlockMenuAtCaret(v)).toBe(true);
+        const search = menu()!.querySelector<HTMLInputElement>(".block-menu-search")!;
+
+        // Act: the real keyboard path — filter, then Enter on the top match.
+        search.value = "insert row below";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+        // Assert: one new (empty) row, landing after the caret's row.
+        const table = v.state.doc.nodeAt(posOf(v, "table"))!;
+        expect(table.childCount).toBe(3);
+        expect(table.child(1).textContent).toBe("cd");
+        expect(table.child(2).textContent).toBe("");
+    });
+
+    it("a table reached from the OUTSIDE (node selection) should keep the actions-only menu without a Table section", async () => {
+        // Arrange: the depth-0 branch — no caret cell to carry.
+        const editor = await makeEditor("| a | b |\n| - | - |\n| c | d |");
+        const v = view(editor);
+        v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, posOf(v, "table"))));
+
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert
+        expect(opened).toBe(true);
+        expect(openMarker()!.dataset["pill"]).toBe("Table");
+        const headers = Array.from(menu()!.querySelectorAll(".block-menu-header"))
+            .map((el) => el.textContent);
+        expect(headers).not.toContain("Table");
     });
 
     it("a selected marker-less block (HR) should return false without opening anything", async () => {

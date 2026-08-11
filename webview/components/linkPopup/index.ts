@@ -1,8 +1,8 @@
 import "./linkPopup.css";
 import { bindActivate } from "@/ui/dom";
 import { copyTextToClipboard } from "@/ui/clipboard";
-import type { EditorView, Slice } from "@/pm";
-import { NodeSelection } from "@/pm";
+import type { EditorView, Node as PMNode, Slice } from "@/pm";
+import { NodeSelection, TextSelection } from "@/pm";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
 import { collectDocHeadings, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {
@@ -302,6 +302,91 @@ function resolveAnchorHeading(
         };
     }
     return null;
+}
+
+// ── Keyboard path: the link at the caret (MAR-118) ────────────────────
+
+/** The href a wikilink NODE routes with — the doc-model twin of wikiHrefOf,
+ * which reads the rendered anchor's dataset. Same-page `[[#heading]]` mints
+ * the `#slug` form so it opens through the anchor branch like any `#` link. */
+function wikiHrefOfNode(node: PMNode | null | undefined): string | null {
+    if (!node || node.type.name !== "wiki_link") return null;
+    const target = String(node.attrs["target"] ?? "");
+    const heading = String(node.attrs["heading"] ?? "");
+    if (!target) return heading ? `#${slugify(heading)}` : null;
+    return heading ? `${target}#${heading}` : target;
+}
+
+/** The openable link carried by one inline node (a wikilink atom, or a text
+ * node marked `link` / `link_ref`), or null. */
+function linkOfInlineNode(view: EditorView, node: PMNode): { href: string; wiki: boolean } | null {
+    const wiki = wikiHrefOfNode(node);
+    if (wiki) return { href: wiki, wiki: true };
+    const linkMark = node.marks.find((m) => m.type.name === "link");
+    if (linkMark) {
+        const href = linkMark.attrs["href"];
+        return typeof href === "string" && href !== "" ? { href, wiki: false } : null;
+    }
+    const refMark = node.marks.find((m) => m.type.name === "link_ref");
+    if (refMark) {
+        const url = resolveReferenceUrl(view, String(refMark.attrs["identifier"] ?? ""));
+        return url ? { href: url, wiki: false } : null;
+    }
+    return null;
+}
+
+/**
+ * The link under the CARET, read from the doc model — the keyboard analog of
+ * findLinkAt's DOM-anchor resolution, sharing its address rules: the href
+ * comes from the mark's attrs (never a rendered anchor, whose sanitized href
+ * can be empty), a reference link resolves through its definition, and a
+ * wikilink routes by its target/heading attrs. A caret at either edge of a
+ * link (or right beside a wikilink atom) counts as on it, matching how the
+ * hover popup treats the whole rendered run as one target. Returns null for
+ * a caret on no link, and for selection shapes that carry no caret intent
+ * (block ranges, cell selections).
+ */
+export function linkAtCaret(view: EditorView): { href: string; wiki: boolean } | null {
+    const { selection } = view.state;
+    if (selection instanceof NodeSelection) {
+        const wiki = wikiHrefOfNode(selection.node);
+        return wiki ? { href: wiki, wiki: true } : null;
+    }
+    if (!(selection instanceof TextSelection)) return null;
+    const { $head } = selection;
+    for (const side of [$head.nodeAfter, $head.nodeBefore]) {
+        if (!side || !side.isInline) continue;
+        const link = linkOfInlineNode(view, side);
+        if (link) return link;
+    }
+    return null;
+}
+
+/**
+ * Open the link at the caret through the SAME routing the popup's Open
+ * button uses: `#` anchors scroll to their heading in-document, wikilinks go
+ * through the host's wiki resolution, external URLs open in the browser, and
+ * everything else opens as a workspace file. Returns false (nothing sent,
+ * no error) when the caret is on no link — callers surface the row/command
+ * only when linkAtCaret answers, so a false here is a stale-state no-op.
+ */
+export function openLinkAtCaret(view: EditorView): boolean {
+    const link = linkAtCaret(view);
+    if (!link) return false;
+    const { href, wiki } = link;
+    if (href.startsWith("#")) {
+        const target = resolveAnchorHeading(view, href.slice(1))?.element;
+        if (target) scrollElementBelowTopbar(target);
+        return true;
+    }
+    if (wiki) {
+        notifyOpenFile(href, { wiki: true });
+    } else if (getLinkKind(href.split("#")[0]) === "external") {
+        notifyOpenUrl(href);
+    } else {
+        notifyOpenFile(href);
+    }
+    return true;
 }
 
 // ── Main function ─────────────────────────────────────────────────────

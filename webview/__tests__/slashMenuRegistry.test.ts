@@ -146,6 +146,21 @@ describe("filterSlashItems", () => {
         expect(ids).toContain("sectionLink");
     });
 
+    it("a multi-word query should match with each word landing on label OR keywords", () => {
+        // "delete table" found nothing when "delete" and "table" lived in
+        // different keyword slots of one row — the single-string buckets only
+        // see a phrase the label contains (MAR-118).
+        const items = [
+            { label: "Delete", keywords: ["delete", "remove", "trash", "table"] },
+            { label: "Insert Row Above", keywords: ["table", "insert", "row", "above"] },
+        ];
+        expect(filterSlashItems(items, "delete table").map((i) => i.label)).toEqual(["Delete"]);
+        // Words match across label and keywords together.
+        expect(filterSlashItems(items, "row table").map((i) => i.label)).toEqual(["Insert Row Above"]);
+        // A word landing nowhere still yields nothing.
+        expect(filterSlashItems(items, "delete zebra")).toEqual([]);
+    });
+
     it("a query matching nothing should return an empty list", () => {
         expect(filterSlashItems(SLASH_MENU_ITEMS, "zzzz")).toEqual([]);
     });

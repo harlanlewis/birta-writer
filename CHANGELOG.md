@@ -8,7 +8,21 @@
 
 - Birta Writer is now published to Open VSX as well as the VS Code Marketplace, so it appears in the built-in extension search of VSCodium, Cursor, Windsurf, Gitpod and the other editors that read that registry, instead of needing a `.vsix` downloaded and installed by hand. It is the same file in both registries and on the GitHub release, covered by the same build-provenance signature, so an install from any of them can be checked against this repository and the exact commit that built it.
 
+- CodePen, CodeSandbox and StackBlitz links now render as embed cards. A pen, sandbox or project link on its own line becomes a quiet card naming its provider, and clicking it loads that provider's own embedded playground, with CodePen opening on the rendered result. A CodePen card also fills in the pen's title, asked of CodePen's own oEmbed endpoint and nothing else. As with every provider, the resting card fetches nothing, a frame exists only after you click, each provider's exact hosts are pinned in the shared table that also generates the content-security policy, and a private pen, sandbox or project says it needs you signed in instead of sitting blank.
+
+- Table editing from the keyboard: Cmd+. (Ctrl+. on Windows and Linux) with the caret inside a table now opens the block menu with a Table section acting on the caret's cell. Insert rows above or below, insert columns left or right, set the column's alignment, or delete the row or column. These are the same actions the right-click menu offers, run through the same commands against the same cell, so the two menus cannot drift apart. The menu used to refuse to open inside a table at all.
+
+- Open a link from the keyboard: with the caret on a link, the block menu offers Open Link, which routes exactly like Cmd+Click. In-document anchors scroll to their heading, wiki links resolve through the workspace, web URLs open in your browser, and relative paths open as files.
+
+- View an image full screen from the keyboard: an image block's menu offers View Fullscreen, the same lightbox the image's own zoom button opens, and Escape closes it.
+
 - Google Docs, Sheets, Slides and Drive files, Miro boards, and Linear issues now render as embed cards on a bare link. A published Google document plays in place: a publish-to-web link loads Google's own embed view when you click it, and a Drive file link plays its preview the same way. An ordinary Google editing link becomes a card that names its product with a button to open it in your browser, never a frame, because Google refuses to be framed on those pages. A Miro board opens its login-free live view, which pans and zooms for public boards. A Linear issue renders as a card with the issue key and a title read from the link itself, no network involved, so it joins the GitHub card in working with the network switch off. As with every provider, the resting state is a quiet card, a player exists only after you click, each provider's exact hosts are pinned in the shared table that also generates the content-security policy, and a frame that needs you signed in says so instead of sitting blank.
+
+### Fixed
+
+- A playing embed no longer stops and resets to its thumbnail because you scrolled. In a document taller than the screen, scrolling past a playing video, or editing anywhere above it, could rebuild the card at its resting state and end the playback mid-watch. The card now keeps its place through those redraws for every provider, players and playgrounds alike.
+
+- Searching the block menu with more than one word now matches the words separately, so a phrase like delete table finds the Delete row in a table's menu, where it used to answer that nothing matches unless a row's label carried the exact phrase.
 
 ---
 

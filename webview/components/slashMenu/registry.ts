@@ -278,7 +278,17 @@ export function filterSlashItems<
     const labelPrefix: T[] = [];
     const keywordPrefix: T[] = [];
     const substring: T[] = [];
+    const crossWord: T[] = [];
     const abbreviation: T[] = [];
+    // A multi-word query matches when EVERY word lands somewhere — label or
+    // any keyword. The single-string buckets above can only see a phrase the
+    // label happens to contain ("insert row below"), so "delete table"
+    // matched nothing even though "delete" and "table" are both keywords of
+    // the Delete row (MAR-118). Additive: single-word queries never take
+    // this branch, and phrase matches keep their higher buckets.
+    const qWords = q.split(/\s+/);
+    const wordHits = (item: T, label: string): boolean =>
+        qWords.every((w) => label.includes(w) || item.keywords.some((k) => k.includes(w)));
     for (const item of items) {
         const label = item.label.toLowerCase();
         if (label.startsWith(q)) {
@@ -287,9 +297,11 @@ export function filterSlashItems<
             keywordPrefix.push(item);
         } else if (label.includes(q) || item.keywords.some((k) => k.includes(q))) {
             substring.push(item);
+        } else if (qWords.length > 1 && wordHits(item, label)) {
+            crossWord.push(item);
         } else if (matchesWordPrefixes(q, label)) {
             abbreviation.push(item);
         }
     }
-    return [...labelPrefix, ...keywordPrefix, ...substring, ...abbreviation];
+    return [...labelPrefix, ...keywordPrefix, ...substring, ...crossWord, ...abbreviation];
 }

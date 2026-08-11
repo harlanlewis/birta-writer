@@ -12,8 +12,10 @@
  * Per embedded paragraph, two decorations:
  *   - Decoration.node(..., { class: "embed-host" }) hides the raw link text via
  *     CSS so only the card shows.
- *   - Decoration.widget(pos + 1, cardHost, { side: -1, key }) mounts the card
- *     DOM. A stable key keeps the widget across redraws.
+ *   - Decoration.widget(pos + 1, cardHost, { side: -2, key }) mounts the card
+ *     DOM. A stable key keeps the widget across redraws, and the side sorts
+ *     the card ahead of the block-gutter widget at the same position (the
+ *     index-stability constraint at the spec below, MAR-352).
  *
  * Trigger (unambiguous, round-trip-safe): a top-level paragraph whose ENTIRE
  * content is one text node carrying exactly one `link` mark whose href equals the
@@ -155,8 +157,8 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, g
         host.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
-            // The widget rides at from + 1 (side -1); the paragraph is one
-            // position up. getPos() is undefined during teardown races.
+            // The widget rides at from + 1; the paragraph is one position
+            // up. getPos() is undefined during teardown races.
             const pos = getPos();
             if (pos === undefined || view.isDestroyed) {
                 return;
@@ -353,7 +355,16 @@ function decorationsFor(
         );
         decorations.push(
             Decoration.widget(embed.from + 1, embedWidget(embed.match, embed.href), {
-                side: -1,
+                // -2, not -1: the block-gutter widget (headingFold) sits at
+                // this same position at side -1, and widgets tie-broken only
+                // by plugin order put the gutter FIRST. prosemirror-view
+                // reuses a widget only at its current child index, so the
+                // gutter vanishing ahead of the card — the MAR-215 chrome
+                // window moving off this block — orphaned the card's desc and
+                // rebuilt it, destroying a playing iframe (MAR-352). Sorting
+                // the card before the gutter keeps its index stable whatever
+                // the window does; embedGutterStability.test.ts pins it.
+                side: -2,
                 // The ordinal (not the position) disambiguates two bare links
                 // to the SAME video: same-key widgets would make ProseMirror
                 // treat them as one during redraw reconciliation, while a

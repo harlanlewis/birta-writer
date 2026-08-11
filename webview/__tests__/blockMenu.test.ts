@@ -297,7 +297,8 @@ describe("Turn into — non-prose sources", () => {
         expect(labels).not.toContain("Paragraph");
         expect(labels).not.toContain("Code Block");
         expect(labels).toEqual([
-            "Duplicate", "Copy as Markdown", "Move Up", "Move Down",
+            "Duplicate", "Copy as Markdown", "View Fullscreen",
+            "Move Up", "Move Down",
             "Fold All", "Unfold All", "Delete",
         ]);
     });
@@ -1521,6 +1522,23 @@ describe("Tighten / Loosen List", () => {
     });
 });
 
+describe("Delete row carries the block kind as a search keyword", () => {
+    it("searching 'delete table' in a table's menu should find the Delete row", async () => {
+        // The generic Delete IS delete-table for a table block; without the
+        // kind keyword the filter answered "No matching actions" (MAR-118
+        // lane's discovery).
+        const editor = await makeEditor("| Name | Age |\n| ---- | --- |\n| Ada  | 36  |");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
+        search.value = "delete table";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).toContain("Delete");
+    });
+});
+
 describe("Full Width row (per-block width, blockWidth.ts)", () => {
     const TABLE = "| Name | Age |\n| ---- | --- |\n| Ada  | 36  |";
 
@@ -1583,5 +1601,87 @@ describe("Full Width row (per-block width, blockWidth.ts)", () => {
         } finally {
             document.body.classList.remove("editor-width-auto");
         }
+    });
+});
+
+describe("Open Link row (MAR-118)", () => {
+    function labelsOf(menu: HTMLElement): (string | null)[] {
+        return Array.from(menu.querySelectorAll(".block-menu-item-label")).map(
+            (el) => el.textContent,
+        );
+    }
+
+    it("a caret on a link in the menu's block should offer Open Link, routing like Cmd+Click", async () => {
+        const editor = await makeEditor("see [site](https://example.com/x) here");
+        const v = view(editor);
+        let linkPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (linkPos === -1 && node.marks.some((m) => m.type.name === "link")) {
+                linkPos = pos;
+            }
+            return linkPos === -1;
+        });
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, linkPos + 1)));
+
+        const menu = openMenuOn(markers()[0]!);
+        expect(labelsOf(menu)).toContain("Open Link");
+        pickRow(menu, "Open Link");
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "openUrl",
+            url: "https://example.com/x",
+        });
+    });
+
+    it("a caret on plain text should not offer the row", async () => {
+        const editor = await makeEditor("see [site](https://example.com/x) here");
+        const v = view(editor);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 2)));
+
+        expect(labelsOf(openMenuOn(markers()[0]!))).not.toContain("Open Link");
+    });
+
+    it("a menu opened on ANOTHER block should not offer the caret's link (by-position contract)", async () => {
+        // The caret sits on the link in block 1; the menu targets block 2 —
+        // a row acting on the caret's block from another block's menu would
+        // break the menu's by-position promise.
+        const editor = await makeEditor("[site](https://example.com/x)\n\nsecond paragraph");
+        const v = view(editor);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 2)));
+
+        expect(labelsOf(openMenuOn(markers()[1]!))).not.toContain("Open Link");
+    });
+});
+
+describe("View Fullscreen row (image lightbox, MAR-118)", () => {
+    afterEach(() => {
+        // jsdom never fires animationend, so a closed surface's element
+        // lingers; drop it here rather than leaking across tests.
+        document.querySelectorAll(".fs-surface").forEach((el) => el.remove());
+    });
+
+    it("an image paragraph's menu should open the lightbox, and Escape should close it", async () => {
+        const editor = await makeEditor("![a chart](https://example.com/pic.png)");
+        view(editor);
+
+        const menu = openMenuOn(markers()[0]!);
+        pickRow(menu, "View Fullscreen");
+
+        const img = document.querySelector<HTMLImageElement>(".img-editor-lightbox-img");
+        expect(img).not.toBeNull();
+        expect(img!.src).toBe("https://example.com/pic.png");
+
+        // Escape closes through the shared lightbox dismiss path (the close
+        // animation class is the synchronous witness jsdom can see).
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        expect(document.querySelector(".fs-surface")!.classList.contains("lb-closing")).toBe(true);
+    });
+
+    it("a text paragraph's menu should not offer the row", async () => {
+        const editor = await makeEditor("plain paragraph");
+        view(editor);
+        const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).not.toContain("View Fullscreen");
     });
 });

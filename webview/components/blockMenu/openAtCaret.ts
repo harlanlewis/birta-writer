@@ -17,6 +17,7 @@
  * the gutter back in mid-typing.
  */
 import type { EditorView } from "../../pm";
+import { CellSelection } from "../../pm";
 import { isListNode } from "../../plugins/headingFold";
 import { openBlockMenu } from "./menu";
 
@@ -43,13 +44,26 @@ export function openBlockMenuAtCaret(view: EditorView): boolean {
     const { selection } = view.state;
     const $head = selection.$head;
 
-    // Tables own their interior chrome (grips, insert bars, per-cell
-    // semantics) — ⌘. inside a cell must not yank scope out to the whole
-    // table (the escalateSelectAll precedent). A table selected from the
-    // OUTSIDE as a block still reaches its marker via the depth-0 branch.
+    // A caret INSIDE a table opens the table's menu CARRYING the caret's
+    // cell (MAR-118): the menu's Table section then targets the same
+    // row/column unit a right-click on that cell would, so ⌘. never yanks
+    // scope out to the whole table silently (the escalateSelectAll
+    // precedent — the cell rows lead, the table-block actions follow). A
+    // table selected from the OUTSIDE still reaches its marker via the
+    // depth-0 branch, with no cell to carry. Innermost table wins for the
+    // (pathological) nested case; a CellSelection's $head resolves BEFORE
+    // its head cell, so step inside it — tableCmd's cellAround needs a
+    // position the cell is an ancestor of.
+    let tableCell: { tablePos: number; cellPos: number } | null = null;
     for (let depth = $head.depth; depth > 0; depth--) {
         if ($head.node(depth).type.name === "table") {
-            return false;
+            tableCell = {
+                tablePos: $head.before(depth),
+                cellPos: selection instanceof CellSelection
+                    ? selection.$headCell.pos + 1
+                    : $head.pos,
+            };
+            break;
         }
     }
 
@@ -89,7 +103,19 @@ export function openBlockMenuAtCaret(view: EditorView): boolean {
         // subtree"): a container's DOM also holds its children's markers.
         for (const marker of dom.querySelectorAll<HTMLElement>(".heading-fold-marker")) {
             if (markerBlockPos(view, marker) === pos) {
-                openBlockMenu(view, pos, marker, /* viaKeyboard */ true);
+                openBlockMenu(
+                    view,
+                    pos,
+                    marker,
+                    /* viaKeyboard */ true,
+                    // The caret's cell rides along only when THIS block is
+                    // the table that holds it — a table nested in a marker-
+                    // owning container must not leak its cell onto the
+                    // container's menu.
+                    tableCell && tableCell.tablePos === pos
+                        ? { cellPos: tableCell.cellPos }
+                        : undefined,
+                );
                 return true;
             }
         }
