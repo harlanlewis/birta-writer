@@ -32,7 +32,10 @@ export type EmbedKind =
     | "googlesheets"
     | "googlefile"
     | "miro"
-    | "linear";
+    | "linear"
+    | "codepen"
+    | "codesandbox"
+    | "stackblitz";
 
 /** A recognized embed: the provider kind and its stable id. */
 export interface EmbedMatch {
@@ -435,6 +438,96 @@ export function miroEmbedUrl(id: string): string {
     return `https://miro.com/app/live-embed/${id}/`;
 }
 
+/** CodePen path segments: usernames and pen slugs are URL-safe word chars. */
+const CODEPEN_SEGMENT = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Extract a `user/slug` composite id from a CodePen pen URL, or null. Accepts
+ * `codepen.io/{user}/{pen|full|details|embed}/{slug}` — the pen's view
+ * variants and its embed URL all name the same pen. Exported for unit testing.
+ */
+export function codepenId(raw: string): string | null {
+    const url = hostUrl(raw, "codepen.io");
+    if (!url) {
+        return null;
+    }
+    const segments = pathSegments(url);
+    if (segments.length !== 3) {
+        return null;
+    }
+    const [user, view, slug] = segments;
+    if (view !== "pen" && view !== "full" && view !== "details" && view !== "embed") {
+        return null;
+    }
+    return CODEPEN_SEGMENT.test(user) && CODEPEN_SEGMENT.test(slug) ? `${user}/${slug}` : null;
+}
+
+/**
+ * Build the embed URL for a CodePen `user/slug` id (host: codepen.io).
+ * `default-tab=result` opens on the rendered output — the reading-flow
+ * default; the embed's own tab bar still reaches the code panes.
+ */
+export function codepenEmbedUrl(id: string): string {
+    const [user, slug] = id.split("/");
+    return `https://codepen.io/${user}/embed/${slug}?default-tab=result`;
+}
+
+/** CodeSandbox sandbox ids: URL-safe word chars (legacy short ids and slugs). */
+const CODESANDBOX_ID = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Extract a sandbox id from a CodeSandbox URL, or null. Accepts the legacy
+ * `codesandbox.io/s/{id}`, the current `codesandbox.io/p/sandbox/{id}`, and
+ * the embed shape `codesandbox.io/embed/{id}`. Exported for unit testing.
+ */
+export function codesandboxId(raw: string): string | null {
+    const url = hostUrl(raw, "codesandbox.io");
+    if (!url) {
+        return null;
+    }
+    const segments = pathSegments(url);
+    const [first, second, third] = segments;
+    if ((first === "s" || first === "embed") && segments.length === 2) {
+        return CODESANDBOX_ID.test(second) ? second : null;
+    }
+    if (first === "p" && second === "sandbox" && segments.length === 3) {
+        return CODESANDBOX_ID.test(third) ? third : null;
+    }
+    return null;
+}
+
+/** Build the embed URL for a CodeSandbox id (host: codesandbox.io). */
+export function codesandboxEmbedUrl(id: string): string {
+    return `https://codesandbox.io/embed/${id}`;
+}
+
+/** StackBlitz project ids: URL-safe word chars. */
+const STACKBLITZ_ID = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Extract a project id from a StackBlitz editor URL, or null. Accepts
+ * `stackblitz.com/edit/{id}` (query params like `?file=` are the editor's
+ * own state and ignored). GitHub-import URLs (`/github/{owner}/{repo}`) are
+ * deliberately not recognized: they name a repo, not a stable project, and
+ * the GitHub card already owns that link shape. Exported for unit testing.
+ */
+export function stackblitzId(raw: string): string | null {
+    const url = hostUrl(raw, "stackblitz.com");
+    if (!url) {
+        return null;
+    }
+    const segments = pathSegments(url);
+    if (segments.length !== 2 || segments[0] !== "edit") {
+        return null;
+    }
+    return STACKBLITZ_ID.test(segments[1]) ? segments[1] : null;
+}
+
+/** Build the embedded-layout URL for a StackBlitz project (host: stackblitz.com). */
+export function stackblitzEmbedUrl(id: string): string {
+    return `https://stackblitz.com/edit/${id}?embed=1`;
+}
+
 /** A Linear issue key: team key + number (`MAR-186`). */
 const LINEAR_ISSUE_KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
 
@@ -587,6 +680,9 @@ const EXTRACTORS: readonly { kind: EmbedKind; extract: (url: string) => string |
     { kind: "googlefile", extract: googleFileId },
     { kind: "miro", extract: miroId },
     { kind: "linear", extract: linearId },
+    { kind: "codepen", extract: codepenId },
+    { kind: "codesandbox", extract: codesandboxId },
+    { kind: "stackblitz", extract: stackblitzId },
 ];
 
 /**
@@ -627,6 +723,12 @@ export function canonicalEmbedUrl(kind: EmbedKind, id: string): string {
         }
         case "miro": return `https://miro.com/app/board/${id}/`;
         case "linear": return `https://linear.app/${id}`;
+        case "codepen": {
+            const [user, slug] = id.split("/");
+            return `https://codepen.io/${user}/pen/${slug}`;
+        }
+        case "codesandbox": return `https://codesandbox.io/s/${id}`;
+        case "stackblitz": return `https://stackblitz.com/edit/${id}`;
     }
 }
 
@@ -641,6 +743,7 @@ export const OEMBED_HOSTS: Partial<Record<EmbedKind, string>> = {
     loom: "www.loom.com",
     figma: "www.figma.com",
     miro: "miro.com",
+    codepen: "codepen.io",
 };
 
 /**
@@ -656,8 +759,11 @@ export function oembedEndpoint(kind: EmbedKind, canonicalUrl: string): string | 
         case "loom": return `https://www.loom.com/v1/oembed?url=${encoded}`;
         case "figma": return `https://www.figma.com/api/oembed?url=${encoded}`;
         case "miro": return `https://miro.com/api/v1/oembed?url=${encoded}`;
+        case "codepen": return `https://codepen.io/api/oembed?format=json&url=${encoded}`;
         // Google exposes no oEmbed for Docs/Slides/Sheets/Drive; the Linear
         // and googlefile cards are URL-derived and fetch nothing by design.
+        // CodeSandbox and StackBlitz publish no stable provider-own oEmbed
+        // worth pinning; their cards stay title-less rather than guessing.
         case "github":
         case "googledrive":
         case "googledocs":
@@ -665,6 +771,8 @@ export function oembedEndpoint(kind: EmbedKind, canonicalUrl: string): string | 
         case "googlesheets":
         case "googlefile":
         case "linear":
+        case "codesandbox":
+        case "stackblitz":
             return null;
     }
 }
@@ -693,4 +801,11 @@ export const EMBED_CSP_FRAME_HOSTS: readonly string[] = [
     "https://drive.google.com",
     "https://docs.google.com",
     "https://miro.com",
+    // The playground embeds serve their embed documents from their apex
+    // hosts; the preview/runtime inside each is the CHILD document's own
+    // frame (cdpn.io, csb.app, webcontainer hosts), which our frame-src
+    // does not govern.
+    "https://codepen.io",
+    "https://codesandbox.io",
+    "https://stackblitz.com",
 ];

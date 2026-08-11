@@ -286,6 +286,16 @@ A Linear issue link gets an info card built **from the URL alone** - the issue k
 
 https://linear.app/birta/issue/MAR-186/embed-provider-roadmap
 
+### Code playgrounds
+
+A CodePen, CodeSandbox, or StackBlitz link loads that provider's own embedded editor on click - the resting card fetches nothing. These ids are synthetic, so each provider shows its own not-found state inside the frame; a real public pen, sandbox, or project runs:
+
+https://codepen.io/birta/pen/AbCdEf
+
+https://codesandbox.io/s/new-react-sandbox-abc123
+
+https://stackblitz.com/edit/vitejs-vite-abc123
+
 Only known providers embed (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
 https://www.twitch.tv/videos/1234567890
