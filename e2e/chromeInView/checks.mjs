@@ -9,14 +9,17 @@
  * edge away while the block is still the whole of what the reader is looking at,
  * and the controls leave with it. You cannot select a column you cannot see.
  *
- * Two mechanisms implement the one rule, and both are invisible to jsdom, where
- * every rect is 0x0:
+ * Three mechanisms implement the one rule, and all are invisible to jsdom,
+ * where every rect is 0x0:
  *   - the table overlay measures and clamps (`pinIntoView` in reposition())
  *   - the control column is a sticky stack inside its strip (blockControls.css)
+ *   - a code block's language pill is a sticky row inside a rail (codeBlock.css)
  *
- * The negative case is the half that is easy to get wrong, so it is checked for
- * both: chrome for a block that has itself scrolled off must go off screen WITH
- * it, never sit at the viewport edge pointing at nothing.
+ * Two halves are easy to get wrong and are checked for each. Chrome for a block
+ * that has itself scrolled off must go off screen WITH it, never sit at the
+ * viewport edge pointing at nothing. And "on screen" means reachable: the pill
+ * sits inside the content column, where the sticky heading title paints, so
+ * clearing only the topbar would leave it visible and unclickable.
  */
 
 /** The band a block's chrome may occupy: below the fixed topbar, above the fold. */
@@ -172,9 +175,11 @@ export async function run({ page, check, baseUrl }) {
         return { band, host: { top: host.top, bottom: host.bottom, height: host.height }, row: { top: row.top, bottom: row.bottom } };
     })()`);
 
+    // Far enough down the viewport that nothing is stuck yet: the pin reserves
+    // the topbar AND the sticky heading, and a 100px offset is inside that.
     const codeTop = await page.evaluate(`(() => {
         const r = document.querySelector(".code-block-wrapper").getBoundingClientRect();
-        return window.scrollY + r.top - 100;
+        return window.scrollY + r.top - 400;
     })()`);
     await scrollTo(codeTop);
     const codeRest = await codeState();
@@ -192,6 +197,32 @@ export async function run({ page, check, baseUrl }) {
         && codeStuck.row.top >= codeStuck.band.top - 1
         && codeStuck.row.bottom <= codeStuck.band.bottom,
         `host=${Math.round(codeStuck.host.top)} row=${Math.round(codeStuck.row.top)} band=${codeStuck.band.top}`);
+
+    // Clearing the topbar is not enough for this one. The pill sits INSIDE the
+    // content column, and the sticky heading title paints across exactly that
+    // width, so a pin that reserved only the topbar would move the pill from
+    // off screen to behind the heading bar. The hit test is the assertion that
+    // matters: a pill you can see the top edge of but cannot click is no better
+    // than one that scrolled away.
+    const occlusion = await page.evaluate(`(() => {
+        const sticky = document.querySelector(".heading-sticky-title:not([hidden])");
+        const row = document.querySelector(".code-block-wrapper .code-float-row").getBoundingClientRect();
+        const hit = document.elementFromPoint(row.left + row.width / 2, row.top + row.height / 2);
+        return {
+            stickyShown: !!sticky,
+            stickyBottom: sticky ? sticky.getBoundingClientRect().bottom : null,
+            rowTop: row.top,
+            reachable: !!hit && !!hit.closest(".code-float-row"),
+            hit: hit ? (hit.className || hit.tagName) : null,
+        };
+    })()`);
+    // Guard the guard: with no bar painted, the check below would pass on a
+    // pill that is occluded the moment one appears.
+    check("the sticky heading bar is actually showing over the code block",
+        occlusion.stickyShown, `stickyShown=${occlusion.stickyShown}`);
+    check("the pinned pill clears the sticky heading and stays clickable",
+        occlusion.reachable && occlusion.rowTop >= occlusion.stickyBottom - 1,
+        `rowTop=${Math.round(occlusion.rowTop)} stickyBottom=${Math.round(occlusion.stickyBottom)} hit=${occlusion.hit}`);
 
     // The row is click-through everywhere except over the pill itself: it now
     // sits inside a strip spanning the whole block, and a strip that swallowed

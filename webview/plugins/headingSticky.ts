@@ -218,6 +218,26 @@ export const headingStickyPlugin = $prose(() =>
             let activeHeading: HTMLElement | null = null;
             let activeHeadingPos: number | null = null;
 
+            /**
+             * Publish how much the bar actually covers, so CSS can reserve it.
+             *
+             * The bar is fixed and opaque and paints OVER the content column,
+             * so any chrome that pins itself inside that column has to clear it
+             * as well as the topbar — a code block's language pill is the case
+             * (blockControls.css / codeBlock.css). Chrome outside the content
+             * column, such as a block's control strip, clears only the topbar
+             * and must not reserve this. What is published is the PAINTED
+             * extent below the topbar, not the box height: the bar slides up
+             * under the next heading, and a reservation that ignored that would
+             * push chrome down to clear a band nothing is drawn in.
+             */
+            const publishHeight = (px: number): void => {
+                document.documentElement.style.setProperty(
+                    "--editor-sticky-heading-height",
+                    `${Math.max(0, px)}px`,
+                );
+            };
+
             const hideSticky = () => {
                 activeHeading = null;
                 if (activeHeadingPos !== null) {
@@ -225,6 +245,7 @@ export const headingStickyPlugin = $prose(() =>
                     dispatchStickyActiveChange(null);
                 }
                 sticky.hidden = true;
+                publishHeight(0);
                 delete sticky.dataset["headingPos"];
             };
 
@@ -309,6 +330,7 @@ export const headingStickyPlugin = $prose(() =>
                 const nextTop = nextHeading?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
                 const offset = Math.min(0, nextTop - top - stickyHeight);
                 sticky.style.transform = `translateY(${offset}px)`;
+                publishHeight(stickyHeight + offset);
             };
 
             const scheduleUpdate = () => {
@@ -406,6 +428,9 @@ export const headingStickyPlugin = $prose(() =>
                     bodyClassObserver.disconnect();
                     resizeObserver.disconnect();
                     sticky.remove();
+                    // The bar is gone, so nothing may still be reserving room
+                    // for it (the variable outlives this view on <html>).
+                    publishHeight(0);
                 },
             };
         },

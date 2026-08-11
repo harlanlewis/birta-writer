@@ -550,10 +550,12 @@ class TableController {
         // scrolls its top edge away while its columns are still on screen, and
         // grips left on that edge are unreachable — you cannot select a column
         // you cannot see. Slide the strip down the table instead, never above
-        // the fixed chrome and never past the table's own bottom. Measured only
-        // when there are grips to place: `viewportSpan` reads the topbar and any
-        // sticky heading, and this pass is the whole cost of a table on screen.
-        // (Still inside the read phase — see the contract above.)
+        // the fixed chrome and never past the table's own bottom.
+        //
+        // `viewportSpan` reads the topbar and any sticky heading, so it belongs
+        // in the read phase and nowhere else; measuring it under the first write
+        // would force the layout this pass exists to avoid. Skipped when there
+        // are no grips, which is simply that there is nothing to place.
         const colStripRest = tableRect.top - GRIP - 2;
         const colStripTop = this.colGrips.length
             ? pinIntoView(

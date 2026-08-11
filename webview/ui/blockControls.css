@@ -45,8 +45,13 @@
  * at, and controls anchored to that edge leave with it. Sticky re-seats them
  * just under the topbar instead, and the strip's own box — which spans exactly
  * the host — stops them at the block's last line, so the controls never outlive
- * the block they act on. `--bc-pin-top` is the seam for a host that needs a
- * deeper inset. */
+ * the block they act on.
+ *
+ * The topbar is the only thing to clear: this strip sits OUTSIDE the content
+ * column, and the sticky heading title spans exactly that column, so it never
+ * reaches here. Chrome pinned inside the column has to reserve the bar too, and
+ * a code block's language pill is the one that does (codeBlock.css).
+ * `--bc-pin-top` is the seam for a host that needs a deeper inset. */
 .bc-stack,
 .embed-card__controls {
     position: sticky;

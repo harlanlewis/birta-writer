@@ -68,12 +68,15 @@ export async function run({ page, check, baseUrl }) {
     // deep the nesting goes and needs no per-construct case.
     const bullets = await page.evaluate(`(() => {
         ${HELPERS}
-        const list = q(".milkdown .ProseMirror > ul");
+        // The FIRST top-level bullet list: the document holds a task list too,
+        // and a document-wide descendant query would score the jump between
+        // the two lists as if it were a step inside one.
+        const list = all(".milkdown .ProseMirror > ul")[0];
         // Every text block in the list, in reading order. A pair is scored only
         // when both sides are bare paragraphs: a quote brings its own inner
         // padding along (checked separately below), so including it would
         // measure the box rather than the rhythm.
-        const blocks = all(".milkdown .ProseMirror > ul li > :is(p, blockquote)");
+        const blocks = [...list.querySelectorAll("li > :is(p, blockquote)")];
         const scored = blocks.slice(1).map((el, i) =>
             el.tagName === "P" && blocks[i].tagName === "P" ? step(blocks[i], el) : null);
         return {
@@ -99,9 +102,6 @@ export async function run({ page, check, baseUrl }) {
         allEqual([...bullets.steps, ...ordered.steps]),
         `bullet=${bullets.steps[0]} ordered=${ordered.steps[0]}`);
 
-    // A list step is TIGHTER than a top-level flow step — the whole point of a
-    // separate token. Without this an "all equal" suite would pass just as well
-    // if the two collapsed into one value.
     // A quote keeps its OWN inner padding wherever it sits, so its steps are
     // wider than a bare one — but they must stay equal on both sides, and equal
     // to each other inside a list item just as at top level. That is the line
@@ -121,20 +121,53 @@ export async function run({ page, check, baseUrl }) {
         quoteInItem.into > bullets.steps[0],
         `quote=${quoteInItem.into} bare=${bullets.steps[0]}`);
 
+    // The other half of that line, and the one an inherited custom property
+    // silently breaks: the prose INSIDE the quote is prose, so its paragraphs
+    // step the way paragraphs do wherever the quote happens to sit. Tightening
+    // a list must not reach in and re-space the box's contents.
+    const quoteProse = await page.evaluate(`(() => {
+        ${HELPERS}
+        const inner = (bq) => [...bq.querySelectorAll(":scope > p")];
+        const top = inner(q(".milkdown .ProseMirror > blockquote"));
+        const item = inner(q(".milkdown .ProseMirror > ul li > blockquote"));
+        return {
+            top: top.length >= 2 ? step(top[0], top[1]) : null,
+            item: item.length >= 2 ? step(item[0], item[1]) : null,
+        };
+    })()`);
+    check("a quote's own paragraphs step alike at top level and inside an item",
+        quoteProse.top !== null && allEqual([quoteProse.top, quoteProse.item]),
+        JSON.stringify(quoteProse));
+
+    // Task items are ordinary items wearing a checkbox, so they take the list
+    // step too — including into a nested task.
+    const tasks = await page.evaluate(`(() => {
+        ${HELPERS}
+        const list = all(".milkdown .ProseMirror > ul")
+            .find((l) => l.querySelector('li[data-item-type="task"]'));
+        if (!list) return { steps: [], count: 0 };
+        const ps = [...list.querySelectorAll("li > p")];
+        return { steps: steps(ps), count: ps.length };
+    })()`);
+    check("every step inside a task list is the same step, nested or not",
+        tasks.count >= 4 && allEqual([...tasks.steps, ...bullets.steps]),
+        `count=${tasks.count} steps=${JSON.stringify(tasks.steps)}`);
+
     // A list step is TIGHTER than a top-level flow step — the whole point of a
     // separate token. Without this an "all equal" suite would pass just as well
     // if the two collapsed into one value.
     const flow = await page.evaluate(`(() => {
         ${HELPERS}
         const ps = all(".milkdown .ProseMirror > p");
+        const list = all(".milkdown .ProseMirror > ul")[0];
         const bq = q(".milkdown .ProseMirror > blockquote");
         return {
             paraToPara: step(ps[0], ps[1]),
             // Entering and leaving a list must cost the same as any other flow
             // step: the list owns its bottom gap, the paragraph before it owns
             // the one above.
-            paraToList: step(ps[1], q(".milkdown .ProseMirror > ul li > p")),
-            listToPara: step(all(".milkdown .ProseMirror > ul li > p").pop(), ps[2]),
+            paraToList: step(ps[1], list.querySelector("li > p")),
+            listToPara: step([...list.querySelectorAll("li > p")].pop(), ps[2]),
             paraToQuote: step(bq.previousElementSibling, bq),
             quoteToPara: step(bq, bq.nextElementSibling),
         };

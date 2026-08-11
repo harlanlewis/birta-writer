@@ -22,7 +22,15 @@
    a block dragged taller than the viewport (the resize handle has no ceiling)
    keeps its pill reachable instead of scrolling it under the topbar. The rail
    is click-through and the row is exactly content-width, so together they never
-   take a click meant for the code beneath. */
+   take a click meant for the code beneath.
+
+   This pill pins deeper than a block's control strip does, and the difference
+   is which column it sits in. The strip lives outside the content column, so
+   the topbar is the only thing above it; the pill is inside the canvas, and the
+   sticky heading title paints across exactly that width. Clearing only the
+   topbar would move the pill from off screen to behind the heading bar, which
+   is no more reachable. plugins/headingSticky.ts publishes the bar's painted
+   extent, 0px whenever it is not showing. */
 .code-float-rail {
     position: absolute;
     inset: 0;
@@ -32,7 +40,11 @@
 
 .code-float-row {
     position: sticky;
-    top: var(--bc-pin-top, calc(var(--editor-topbar-height, 40px) + 8px));
+    top: calc(
+        var(--editor-topbar-height, 40px)
+        + var(--editor-sticky-heading-height, 0px)
+        + 8px
+    );
     margin: 6px 0 0 6px;
     width: fit-content;
     display: flex;

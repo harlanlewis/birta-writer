@@ -1265,22 +1265,38 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             margin-top: var(--content-list-gap);
         }
 
-        /* INSIDE an item the flow gap IS the list gap. Every block already
-           spaces by the token, so this one redefinition is what makes a nested
-           list, a stacked paragraph, a quote, a callout and a code block inside
-           an item all step by the same amount two sibling items do — with no
-           per-construct rule to keep in sync. */
-        li {
-            --content-flow-gap: var(--content-list-gap);
-        }
+        /* An item's OWN blocks step by the list gap, whatever they are: a
+           nested list, a stacked paragraph, a quote, a callout, a code block or
+           a table. One rule rather than one per construct, and it outranks
+           every block's own `margin: 0 0 var(--content-flow-gap)` on
+           specificity, so it does not depend on source order.
 
-        /* The gap is owned by the block ABOVE it, so an item's LAST child owns
+           DIRECT children only. Redefining --content-flow-gap on `li` would be
+           DRYer and reads like the same idea, but a custom property inherits
+           all the way down: the paragraphs INSIDE a quote inside an item would
+           then space like list lines rather than like the prose they are. The
+           item's rhythm governs the item's blocks; a box's insides are the
+           box's business, which is the same line the quote's own padding draws
+           below.
+
+           The gap is owned by the block ABOVE it, so an item's LAST child owns
            none: a trailing gap there stacks onto `li + li` instead of replacing
            it. That doubling is what made the step down into a nested list twice
            the step between two siblings, since the nested list sat under a
-           paragraph that was still paying its own gap. Only a paragraph's
-           padding is zeroed, never a box's own — a quote's inner air is its. */
+           paragraph that was still paying its own gap. */
+        li > :not(:last-child) {
+            margin-bottom: var(--content-list-gap);
+        }
+
         li > :last-child {
+            margin-bottom: 0;
+        }
+
+        /* Paragraphs space with padding, not margin, so the click area includes
+           the gap (see the `p` rule above) — so theirs is the padding form of
+           the pair above, and their margin stays out of it. */
+        li > p:not(:last-child) {
+            padding-bottom: var(--content-list-gap);
             margin-bottom: 0;
         }
 
