@@ -1379,7 +1379,11 @@ export function openBlockMenu(
         disabled: !unfoldAllCommand(view.state),
         action: () => unfoldAllCommand(view.state, view.dispatch),
     });
-    action(t("Delete"), ["delete", "remove", "trash"], {
+    // The block's own kind rides the keywords so "delete table" (or "delete
+    // code") finds this row — the generic Delete IS delete-<kind> for the
+    // anchor block, and without the kind word the filter answered "No
+    // matching actions" (found by the MAR-118 lane).
+    action(t("Delete"), ["delete", "remove", "trash", ...(anchorNode?.type.name.split("_") ?? [])], {
         icon: IconTrash2,
         danger: true,
         action: () => deleteBlock(view, blockPos),

@@ -1522,6 +1522,23 @@ describe("Tighten / Loosen List", () => {
     });
 });
 
+describe("Delete row carries the block kind as a search keyword", () => {
+    it("searching 'delete table' in a table's menu should find the Delete row", async () => {
+        // The generic Delete IS delete-table for a table block; without the
+        // kind keyword the filter answered "No matching actions" (MAR-118
+        // lane's discovery).
+        const editor = await makeEditor("| Name | Age |\n| ---- | --- |\n| Ada  | 36  |");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
+        search.value = "delete table";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).toContain("Delete");
+    });
+});
+
 describe("Full Width row (per-block width, blockWidth.ts)", () => {
     const TABLE = "| Name | Age |\n| ---- | --- |\n| Ada  | 36  |";
 
