@@ -19,6 +19,12 @@
  *   the menu is CSS-anchored to the wrap (`left:0`/`right:0`,
  *   `calc(100% + gap)`), so the engine only picks which corner to anchor to.
  *
+ * A third, smaller engine answers a different question for chrome that is not
+ * a popup at all: a block's OWN controls, which have a resting place on the
+ * block (a table's column grips on its top edge, a control column at its
+ * top-right) rather than a side to open on. Those cannot flip; they slide.
+ * `pinIntoView` is that rule, and `viewportSpan` its live measurement.
+ *
  * All functions are pure over plain numbers so they unit-test without layout;
  * the thin DOM appliers (`placeMenu`) live beside them.
  *
@@ -235,4 +241,46 @@ export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
  */
 export function viewportSize(): Viewport {
     return { width: window.innerWidth, height: window.innerHeight, top: safeAreaTop() };
+}
+
+/** A one-dimensional extent, in viewport coordinates. */
+export interface Span { start: number; end: number; }
+
+/**
+ * Keep a block's own chrome on screen while the block scrolls past.
+ *
+ * A popup can flip to the other side of its anchor; a block's controls cannot,
+ * because their anchor IS the block — a table's column grips belong on its top
+ * edge, a control column at its top-right. When the block is taller than the
+ * viewport, that edge scrolls away while the block is still the whole of what
+ * the reader is looking at, and chrome pinned to it leaves with it. There is no
+ * side to flip to; the strip slides along the block instead.
+ *
+ * Two clamps, and the ORDER between them is the whole rule. First fit the
+ * viewport, then re-fit the block, so the block wins: chrome for a block that
+ * has itself scrolled off must go off screen with it rather than sit at the
+ * viewport edge pointing at nothing.
+ *
+ * @param preferred the resting coordinate — where the chrome sits when the
+ *                  whole block is in view
+ * @param size      the chrome's extent along the same axis
+ * @param block     the range the chrome may occupy; it never leaves its block
+ * @param view      the usable viewport band (see `viewportSpan`)
+ */
+export function pinIntoView(
+    preferred: number,
+    size: number,
+    block: Span,
+    view: Span,
+): number {
+    const inView = Math.min(Math.max(preferred, view.start), view.end - size);
+    return Math.min(Math.max(inView, block.start), Math.max(block.start, block.end - size));
+}
+
+/**
+ * The vertical band a block's chrome may occupy: below the fixed chrome, above
+ * the bottom edge margin. The `pinIntoView` counterpart of `viewportSize`.
+ */
+export function viewportSpan(margin: number = EDGE_MARGIN): Span {
+    return { start: safeAreaTop(), end: window.innerHeight - margin };
 }

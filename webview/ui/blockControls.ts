@@ -127,6 +127,13 @@ export function createBlockControlsColumn(host: HTMLElement): BlockControlsColum
     const col = document.createElement("div");
     col.className = "bc-col";
     col.setAttribute("contenteditable", "false");
+    // The buttons live in their own stack inside the strip rather than in the
+    // strip itself, and that indirection is what lets them stay on screen: the
+    // strip is absolutely positioned (it has to overhang the block), and an
+    // absolutely positioned box cannot also be sticky. See blockControls.css.
+    const stack = document.createElement("div");
+    stack.className = "bc-stack";
+    col.appendChild(stack);
 
     let pending: DocumentFragment | null = document.createDocumentFragment();
     const ac = new AbortController();
@@ -137,7 +144,7 @@ export function createBlockControlsColumn(host: HTMLElement): BlockControlsColum
         const frag = pending;
         pending = null;
         ac.abort();
-        col.appendChild(frag);
+        stack.appendChild(frag);
     };
     const { signal } = ac;
     host.addEventListener("pointerenter", reveal, { signal });
@@ -148,7 +155,7 @@ export function createBlockControlsColumn(host: HTMLElement): BlockControlsColum
         el: col,
         add(...children: HTMLElement[]): void {
             for (const child of children) {
-                (pending ?? col).appendChild(child);
+                (pending ?? stack).appendChild(child);
             }
         },
         reveal,

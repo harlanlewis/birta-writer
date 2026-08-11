@@ -106,9 +106,17 @@ export function createCodeBlockView(
     // top band via the code/gutter/preview padding, so line 1 never slides
     // under the pill, and the action buttons live in the shared control
     // column OUTSIDE the top-right (createBlockControlsColumn below).
+    // The rail is the row's positioning strip, and it exists only so the row
+    // can be STICKY: a code block dragged taller than the viewport scrolls its
+    // top band away, and the pill would leave with it. An absolutely positioned
+    // box cannot also be sticky, so the absolute one spans the block and the
+    // sticky one rides inside it (the same shape as ui/blockControls.css).
+    const floatRail = document.createElement("div");
+    floatRail.className = "code-float-rail";
+    floatRail.contentEditable = "false";
     const floatRow = document.createElement("div");
     floatRow.className = "code-float-row";
-    floatRow.contentEditable = "false";
+    floatRail.appendChild(floatRow);
 
     const currentLang = (node.attrs["language"] as string) || "";
     const picker = createLangPicker(currentLang, (newLang) => {
@@ -509,7 +517,7 @@ export function createCodeBlockView(
         document.addEventListener("mouseup", onUp);
     });
 
-    wrapper.appendChild(floatRow);
+    wrapper.appendChild(floatRail);
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
     wrapper.appendChild(pumlPreview);

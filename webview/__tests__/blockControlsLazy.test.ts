@@ -5,6 +5,10 @@
  * queued controls in their declared order the moment a reveal arrives, and
  * exactly once however many triggers fire.
  *
+ * The strip is not the buttons' parent: they live in a `.bc-stack` inside it,
+ * which is what lets them be sticky (blockControls.css). "Mounts empty" is a
+ * claim about that stack, and about nothing joining the live tree.
+ *
  * jsdom runs no CSS transitions, so the `transitionrun` trigger — the one
  * that catches the pointer-free reveals (`bc-active` when the caret lands in
  * the block, `bc-col--shown` when an image pins its column) — can only be
@@ -21,6 +25,10 @@ function makeHost(): { host: HTMLElement; col: ReturnType<typeof createBlockCont
     host.appendChild(col.el);
     return { host, col };
 }
+
+/** The sticky stack inside the strip — the buttons' actual parent. */
+const stack = (col: ReturnType<typeof createBlockControlsColumn>): HTMLElement =>
+    col.el.querySelector(".bc-stack")!;
 
 const button = (name: string): HTMLButtonElement =>
     makeBlockControlButton({
@@ -39,14 +47,14 @@ describe("block control column lazy population", () => {
         const { host, col } = makeHost();
         col.add(button("a"), button("b"));
         expect(host.querySelectorAll(".bc-btn")).toHaveLength(0);
-        expect(col.el.childElementCount).toBe(0);
+        expect(stack(col).childElementCount).toBe(0);
     });
 
     it("pointerenter on the host should attach the queued controls in order", () => {
         const { host, col } = makeHost();
         col.add(button("a"), button("b"));
         host.dispatchEvent(new Event("pointerenter"));
-        expect([...col.el.children].map((el) => el.className))
+        expect([...stack(col).children].map((el) => el.className))
             .toEqual(["bc-btn a", "bc-btn b"]);
     });
 
@@ -78,7 +86,7 @@ describe("block control column lazy population", () => {
         col.add(button("a"));
         col.reveal();
         col.add(button("b"));
-        expect([...col.el.children].map((el) => el.className))
+        expect([...stack(col).children].map((el) => el.className))
             .toEqual(["bc-btn a", "bc-btn b"]);
     });
 

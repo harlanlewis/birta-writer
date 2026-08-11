@@ -204,9 +204,13 @@ export async function run({ page, check, baseUrl }) {
     // separator's number a third of the way down the paragraph it follows (and,
     // on a video embed, floating in the middle of the video). Every one of these
     // is a source line whose rendered height is many times a line's.
+    //
+    // A heading is deliberately NOT in this list. Every level now spaces the
+    // same way — a heading bonds to the section it opens, so the space below it
+    // is narrower than the gutter's own line, and its separator takes the PACKED
+    // branch rather than this one. The general check below is what covers it.
     for (const [name, text, blankLine] of [
         ["longPara", "A very long paragraph on one single", at.longPara + 1],
-        ["title", "Line number zoo", at.title + 1],
         // A block with no text position of its own to measure from — the path
         // an image or a video embed takes. Its closing fence is line
         // codeOpen + 4, so the blank separator is the line after that.

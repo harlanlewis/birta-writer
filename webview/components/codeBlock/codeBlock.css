@@ -16,15 +16,29 @@
    top-left — the header bar's replacement (2026-07-28). It must NOT live
    inside the scrolling <pre> (it would scroll away with long lines); the
    code/gutter/preview top padding reserves its band so line 1 never slides
-   under it. */
-.code-float-row {
+   under it.
+
+   The rail is the absolutely positioned strip; the row inside it is sticky, so
+   a block dragged taller than the viewport (the resize handle has no ceiling)
+   keeps its pill reachable instead of scrolling it under the topbar. The rail
+   is click-through and the row is exactly content-width, so together they never
+   take a click meant for the code beneath. */
+.code-float-rail {
     position: absolute;
-    top: 6px;
-    left: 6px;
+    inset: 0;
     z-index: 10;
+    pointer-events: none;
+}
+
+.code-float-row {
+    position: sticky;
+    top: var(--bc-pin-top, calc(var(--editor-topbar-height, 40px) + 8px));
+    margin: 6px 0 0 6px;
+    width: fit-content;
     display: flex;
     align-items: center;
     gap: 4px;
+    pointer-events: auto;
 }
 
 /* ─── lang-picker custom searchable dropdown ─── */

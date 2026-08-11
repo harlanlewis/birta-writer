@@ -56,6 +56,7 @@ import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockCon
 import { t } from "@/i18n";
 import { tagContentGuard } from "@/editing/blockOps";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { pinIntoView, viewportSpan } from "@/ui/anchoredPlacement";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import {
     anchorAt,
@@ -545,6 +546,24 @@ class TableController {
         this.rowBounds = rowRects.map((b) => ({ top: b.top, bottom: b.bottom }));
         this.colBounds = cellRects.map((b) => ({ left: b.left, right: b.right }));
 
+        // Where the column chrome may sit. A table taller than the viewport
+        // scrolls its top edge away while its columns are still on screen, and
+        // grips left on that edge are unreachable — you cannot select a column
+        // you cannot see. Slide the strip down the table instead, never above
+        // the fixed chrome and never past the table's own bottom. Measured only
+        // when there are grips to place: `viewportSpan` reads the topbar and any
+        // sticky heading, and this pass is the whole cost of a table on screen.
+        // (Still inside the read phase — see the contract above.)
+        const colStripRest = tableRect.top - GRIP - 2;
+        const colStripTop = this.colGrips.length
+            ? pinIntoView(
+                  colStripRest,
+                  GRIP,
+                  { start: colStripRest, end: tableRect.bottom },
+                  viewportSpan(),
+              )
+            : colStripRest;
+
         // ── Write phase: no layout reads past this point ────────────────────
         this.rowGrips.forEach((g, r) => {
             const rr = rowRects[r];
@@ -564,7 +583,7 @@ class TableController {
             }
             g.style.left = `${cc.left - wrap.left}px`;
             g.style.width = `${cc.width}px`;
-            g.style.top = `${relTop - GRIP - 2}px`;
+            g.style.top = `${colStripTop - wrap.top}px`;
             g.style.height = `${GRIP}px`;
         });
 
@@ -588,6 +607,13 @@ class TableController {
             bar.style.top = `${relTop}px`;
             bar.style.height = `${tableRect.height}px`;
             bar.style.width = `${INSERT_ZONE}px`;
+            // The bar spans the whole gridline, so it is never off screen —
+            // but its "+" rests at the bar's top, alongside the column grips,
+            // and has to travel with them (table.css reads the offset).
+            bar.style.setProperty(
+                "--mw-insert-btn-offset",
+                `${colStripTop + GRIP + 2 - tableRect.top}px`,
+            );
         });
 
         // Folded `…` chip: every other kind seats the chip on the collapsed

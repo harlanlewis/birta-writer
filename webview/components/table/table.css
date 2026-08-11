@@ -149,8 +149,11 @@
     top: 50%;
     transform: translate(-50%, -50%);
 }
+/* The column "+" rides the table's top edge with the column grips, and slides
+ * down the bar with them when that edge scrolls under the fixed chrome
+ * (tableView.reposition writes the offset; 0 while the whole table is in view). */
 .mw-insert--col .mw-insert-btn {
-    top: 0;
+    top: var(--mw-insert-btn-offset, 0px);
     left: 50%;
     transform: translate(-50%, -50%);
 }

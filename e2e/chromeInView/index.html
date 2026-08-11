@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- e2e harness for the keep-it-visible rule: a block's own chrome must stay
+     on screen while the block scrolls past, and must leave with the block once
+     the block itself is gone.
+
+     Both blocks here are deliberately TALLER than the 900px runner viewport, so
+     the top edge — where table column grips and the shared control column both
+     rest — can be scrolled out of view while the block is still all the reader
+     is looking at. That is the only state the rule is about, and it is
+     unreachable in jsdom, where every rect is 0x0.
+
+     A table, a large image and a code block cover all three mechanisms: the
+     table overlay's measured clamp, the shared control column's sticky stack,
+     and the code block's own floating language pill. A code block normally caps
+     at --code-block-max-height and scrolls its text, so it never outgrows the
+     viewport — but its resize handle has no ceiling, and raising the variable
+     here is the same state a drag produces. -->
+
+
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a; --vscode-textBlockQuote-background: #2a2a2a;
+    --vscode-textBlockQuote-border: #555555; --vscode-inputOption-activeBackground: #0e639c;
+    --vscode-inputOption-activeForeground: #ffffff;
+    --vscode-input-background: #3c3c3c; --vscode-input-foreground: #cccccc;
+    /* What dragging the resize handle past the viewport produces. */
+    --code-block-max-height: 1400px;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const rows = [];
+  for (let i = 1; i <= 30; i++) rows.push(`| r${i}a | r${i}b | r${i}c |`);
+  // A 400x1400 rectangle as a data URI: no network, no fixture file, and tall
+  // enough that its top edge leaves the viewport well before its bottom does.
+  const TALL_SVG = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iMTQwMCI+PHJlY3Qgd2lkdGg9IjQwMCIgaGVpZ2h0PSIxNDAwIiBmaWxsPSIjNDU2Ii8+PC9zdmc+";
+  const code = [];
+  for (let i = 1; i <= 90; i++) code.push(`const line${i} = ${i};`);
+  // Filler so every block can actually be scrolled PAST — the negative half of
+  // the rule needs the document to continue well beyond the last block.
+  const filler = [];
+  for (let i = 1; i <= 40; i++) filler.push(`filler paragraph ${i}`, "");
+  const DOC = [
+    "# Tall blocks",
+    "",
+    "intro paragraph",
+    "",
+    "| col a | col b | col c |",
+    "| --- | --- | --- |",
+    ...rows,
+    "",
+    "between the blocks",
+    "",
+    `![tall](${TALL_SVG})`,
+    "",
+    "between the blocks again",
+    "",
+    "```js",
+    ...code,
+    "```",
+    "",
+    ...filler,
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
