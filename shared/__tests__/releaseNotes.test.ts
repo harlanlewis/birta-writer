@@ -257,6 +257,25 @@ describe("the generator, run as the release job runs it", () => {
         expect(out).not.toContain("internal cleanup");
     });
 
+    it("both registry links should lead the notes, whichever body path produced them", () => {
+        // The links are prepended once, outside the AI/changelog/commit-list
+        // branch, so this holds on the path a failed API call falls back to as
+        // well as the one it fell from. Asserted on the no-key path because
+        // that is the one a test can run.
+        const withChangelog = generate(`# Changelog\n\n---\n\n## [Unreleased]\n\n---\n\n## [2026.805.0] - 2026, August 5\n\n${FULL}\n`);
+        const withoutChangelog = generate("# Changelog\n\n---\n\n## [Unreleased]\n");
+
+        for (const out of [withChangelog, withoutChangelog]) {
+            expect(out).toContain(
+                "https://marketplace.visualstudio.com/items?itemName=BirtaLabs.birta-writer",
+            );
+            expect(out).toContain("https://open-vsx.org/extension/BirtaLabs/birta-writer");
+            // Ahead of the notes: a reader deciding how to install should not
+            // have to scroll the changelog to find out where it is published.
+            expect(out.indexOf("Install from")).toBeLessThan(out.indexOf("###"));
+        }
+    });
+
     it("a tree with no changelog to read should still produce notes", () => {
         // The commit list is the floor, and it has to stay reachable: without it
         // a release with no CHANGELOG.md emits an empty body.

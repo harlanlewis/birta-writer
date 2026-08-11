@@ -95,6 +95,8 @@ Two questions decide where a change lands. They apply to both the `CHANGELOG.md`
 
 Magnitude and urgency are not extra categories. They are placement. Breaking changes lead and Security follows, because both are read to decide whether to act. The one to four headline new features are lifted into Highlights. Everything else is ordered by significance within its section.
 
+Above all of it, every release body opens with one line linking the [Marketplace](https://marketplace.visualstudio.com/items?itemName=BirtaLabs.birta-writer) and [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer) listings. A GitHub release page leads with the `.vsix` asset, which is the worst of the three ways to install and the only one visible: it does not update itself, so a reader who takes it has silently opted out of every later release. Naming the registries first puts the maintained paths in front of the download. The line is prepended outside the three body paths, so a failed API call cannot lose it, and `shared/__tests__/releaseNotes.test.ts` checks both links land ahead of the first section.
+
 The two surfaces express the same taxonomy in their own vocabulary:
 
 | Surface | Sections |

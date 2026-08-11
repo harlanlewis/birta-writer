@@ -176,6 +176,23 @@ export function commitNotes(list) {
     .trim();
 }
 
+/**
+ * Where to install this version, first thing in every release body.
+ *
+ * A GitHub release page leads with a `.vsix` asset, which is the worst of the
+ * three ways to install and the only one visible: it does not update itself,
+ * and a reader who takes it has opted out of every later release without being
+ * told. The registries are named ahead of the notes so that reader sees the
+ * maintained paths before the download.
+ *
+ * Both are stated unconditionally because the release publishes to both from
+ * one artifact. If a registry is ever dropped, this line is part of dropping
+ * it — a link here that no longer resolves is worse than no link.
+ */
+export const INSTALL_LINKS =
+  "Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=BirtaLabs.birta-writer)" +
+  " or [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer).";
+
 export const PROMPT = (changelog, list) => `You are writing end-user release notes for Birta Writer, a WYSIWYG Markdown editor extension for VS Code. Produce Markdown in the style of https://cursor.com/changelog: lead with the most significant new capabilities described for the benefit they deliver, then the rest, grouped by kind.
 
 Rules:
@@ -246,7 +263,9 @@ if (isEntry) {
   const list = commits();
   const changelog = releaseChangelog();
   const body = (await aiNotes(changelog, list)) ?? changelogNotes(changelog) ?? commitNotes(list);
-  const out = `## Birta Writer ${VERSION}\n\n${body}\n`;
+  // Prepended here rather than inside any one of the three body paths, so the
+  // links survive the AI path failing over to either fallback.
+  const out = `## Birta Writer ${VERSION}\n\n${INSTALL_LINKS}\n\n${body}\n`;
 
   if (process.env.OUT) {
     writeFileSync(process.env.OUT, out);
