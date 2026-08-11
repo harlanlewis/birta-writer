@@ -32,7 +32,7 @@
  * marker is never rewritten by collapsing/expanding.
  */
 import { InputRule } from "../pm";
-import { wrapIn } from "../pm";
+import { wrapBlocksIn, wrapTarget } from "../editing/wrapBlocks";
 import { $command, $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 import { SETEXT_UNDERLINE_RE } from "./directives";
 
@@ -328,7 +328,26 @@ const calloutToMarkdown = {
             // heading, not a callout), so untouched-callout byte fidelity is
             // unaffected.
             const firstLine = flow.split("\n", 1)[0] ?? "";
-            const attached = node.attached && !SETEXT_UNDERLINE_RE.test(firstLine);
+            // Two defusals of a stale `attached`, both about bytes that would
+            // reparse as something the document does not say.
+            //
+            // (1) A body whose first line would reparse as a setext underline
+            // (`---` after an hr move, MAR-157) turns the marker into a
+            // heading unless the blank `>` line separates them — the same (G)
+            // defusal directives.ts applies. No on-disk callout can carry this
+            // shape (it would have parsed as a heading, not a callout), so
+            // untouched-callout byte fidelity is unaffected.
+            //
+            // (2) `attached` says the body SHARED the marker's paragraph,
+            // which only a leading paragraph can do — an invariant the parse
+            // establishes and an edit can break: quoting or itemizing a
+            // callout's first body block leaves a list or a quote leading a
+            // body still flagged attached, and joining that to the marker line
+            // writes bytes that reparse detached.
+            const attached =
+                node.attached &&
+                node.children?.[0]?.type === "paragraph" &&
+                !SETEXT_UNDERLINE_RE.test(firstLine);
             const content =
                 flow === ""
                     ? marker
@@ -472,16 +491,27 @@ export const calloutInputRule = $inputRule((ctx) =>
  * Wraps the selection in a callout of the given kind (default "note").
  * GitHub's five types insert with their uppercase convention; extended kinds
  * insert lowercase (the Obsidian convention).
+ *
+ * Wraps through editing/wrapBlocks, so a list or a table goes inside the
+ * callout whole rather than the gesture silently failing on a container the
+ * schema won't let a callout sit in (a list item's first child, a table cell).
  */
 export const insertCalloutCommand = $command(
     "InsertCallout",
     (ctx) => (kind?: string) => (state, dispatch) => {
         const k = calloutKind(kind ?? "note");
         const type = GITHUB_KINDS.has(k) ? k.toUpperCase() : k;
-        return wrapIn(calloutSchema.type(ctx), attrsFromMarker(`[!${type}]`, true))(
-            state,
-            dispatch,
-        );
+        const calloutType = calloutSchema.type(ctx);
+        const target = wrapTarget(state, calloutType);
+        if (!target) {
+            return false;
+        }
+        // `attached` says the body shares the marker's line, which only a
+        // paragraph can do: wrapping a list or a table has to record false, or
+        // the callout serializes a `>` line the reparse then reads as a blank
+        // one it must keep.
+        const attrs = attrsFromMarker(`[!${type}]`, target.first.type.name === "paragraph");
+        return wrapBlocksIn(calloutType, attrs)(state, dispatch);
     },
 );
 

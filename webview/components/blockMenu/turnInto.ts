@@ -19,8 +19,9 @@
  *   - list → quote/callout: wrap the whole list — wrapListIn.
  *   - quote ↔ callout: retype in place (same content shape; callout attrs
  *     all default) — retypeContainer.
- *   - quote/callout → P/H: unwrap the wrapper; with a heading target the
- *     first unwrapped paragraph becomes the heading — unwrapContainerTo.
+ *   - quote/callout → P/H: unwrap the wrapper, then make the first unwrapped
+ *     block the picked kind, however many layers deep it was —
+ *     unwrapContainerTo.
  *   - quote/callout → list: each direct paragraph child becomes an item
  *     (bails, no-op, when the content isn't all paragraphs) — containerToList.
  *   - anything → code block: the block's literal markdown source goes inside
@@ -36,6 +37,7 @@ import type { Node as ProseNode } from "../../pm";
 import { TextSelection } from "../../pm";
 import { setHeadingLevelAt } from "../../editing/blockOps";
 import { convertListTreeAt } from "../../editing/listConvert";
+import { wrapBlocksIn } from "../../editing/wrapBlocks";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import { conversionKindAt, type ConversionKind } from "../../blockCapabilities";
 
@@ -101,9 +103,14 @@ export function turnIntoCodeBlock(view: EditorView, pos: number, getEditor: GetE
 }
 
 /**
- * P/H → list/quote/callout: retype a heading down to prose, then run the
- * toolbar's own selection-based wrap command so the menu can never drift
- * from toolbar behavior.
+ * P/H → list/quote/callout: retype a heading down to prose, then wrap.
+ *
+ * The list and callout targets run the toolbar's own selection-based command
+ * so the menu can never drift from toolbar behavior. Blockquote does NOT:
+ * `toggleBlockquote` is a toggle, and a heading already inside a quote would
+ * make it lift the block OUT of the quote — the opposite of the picked row.
+ * A conversion always wraps, so it calls the wrap half directly (the same
+ * mechanism the toggle's wrap half calls).
  */
 export function wrapProseIn(
     view: EditorView,
@@ -116,11 +123,14 @@ export function wrapProseIn(
         setHeadingLevelAt(view, pos, 0);
     }
     selectInto(view, pos);
+    if (target === "blockquote") {
+        const quote = view.state.schema.nodes["blockquote"];
+        return quote !== undefined && wrapBlocksIn(quote)(view.state, view.dispatch, view);
+    }
     const wrapCommands: Partial<Record<ConversionKind, string>> = {
         bulletList: "toggleBulletList",
         orderedList: "toggleOrderedList",
         taskList: "toggleTaskList",
-        blockquote: "toggleBlockquote",
         callout: "insertCallout",
     };
     const commandId = wrapCommands[target];
@@ -182,19 +192,43 @@ export function wrapListIn(view: EditorView, pos: number, target: ConversionKind
     return true;
 }
 
-/** quote/callout → prose: unwrap; a heading target retypes the first
- * unwrapped paragraph. */
+/**
+ * quote/callout → prose: unwrap, then make the FIRST unwrapped block the
+ * picked kind — retyping it when it is prose, applying the list rule when it
+ * is a list, unwrapping again when it is another container.
+ *
+ * The one-layer version stopped at whatever the unwrap happened to expose:
+ * "Paragraph" on a quoted list handed back a bullet list, and every heading
+ * row handed back the same list, so the row that lit up afterwards was not
+ * the row that was clicked. Each iteration strictly reduces nesting, and
+ * anything with no prose form (a table, a fence) ends the loop where it is.
+ */
 export function unwrapContainerTo(view: EditorView, pos: number, level: number): boolean {
-    const node = view.state.doc.nodeAt(pos);
-    if (!node || node.childCount === 0) {
-        return false;
+    let changed = false;
+    // Every iteration that does not return replaces a container with its own
+    // children, so the nesting at `pos` strictly shrinks and the loop ends on
+    // its own. The bound is the fail-safe: a spin here would hang the webview,
+    // and no real document nests quotes this deep.
+    for (let guard = 0; guard < 10; guard++) {
+        const node = view.state.doc.nodeAt(pos);
+        if (!node || node.childCount === 0) {
+            break;
+        }
+        const name = node.type.name;
+        if (name === "paragraph" || name === "heading") {
+            return setHeadingLevelAt(view, pos, level) || changed;
+        }
+        if (name === "bullet_list" || name === "ordered_list") {
+            return unwrapListTo(view, pos, level) || changed;
+        }
+        if (name !== "blockquote" && name !== "callout") {
+            break; // a table, a fence: nothing prose-shaped to retype
+        }
+        const content = withCalloutTitle(view, node, node.content);
+        view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, content));
+        changed = true;
     }
-    const content = withCalloutTitle(view, node, node.content);
-    view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, content));
-    if (level > 0 && view.state.doc.nodeAt(pos)?.type.name === "paragraph") {
-        setHeadingLevelAt(view, pos, level);
-    }
-    return true;
+    return changed;
 }
 
 /**

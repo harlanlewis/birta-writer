@@ -21,7 +21,6 @@ import {
     toggleInlineCodeCommand,
     toggleStrongCommand,
     turnIntoTextCommand,
-    wrapInBlockquoteCommand,
     wrapInBulletListCommand,
     wrapInHeadingCommand,
     wrapInOrderedListCommand,
@@ -58,6 +57,7 @@ import {
     listKindOf,
     type ListKind,
 } from "@/editing/listConvert";
+import { liftBlocksOutOf, wrapBlocksIn } from "@/editing/wrapBlocks";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { getView, lift } from "@/pm";
 import { liftListItem } from "@/pm";
@@ -254,23 +254,55 @@ function setHeading(getEditor: GetEditor, level: number): void {
     });
 }
 
-/** Toggles a wrapping block: lifts out when already inside it, wraps otherwise. */
-function toggleWrap(
-    getEditor: GetEditor,
-    nodeName: string,
-    command: { key: unknown },
-): void {
-    const editor = getEditor();
-    if (!editor) { return; }
-    editor.action((ctx) => {
-        const view = getView(ctx);
-        if (isInNode(view, nodeName)) {
-            lift(view.state, view.dispatch);
-        } else {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ctx.get(commandsCtx).call(command.key as any);
+/**
+ * Blockquote toggle: quote the blocks the selection covers, or lift them back
+ * out when they are already quoted. Both halves come from editing/wrapBlocks,
+ * so ANY content can be quoted — a list, a table, several blocks at once —
+ * and the second press is the exact inverse of the first.
+ */
+function toggleBlockquote(getEditor: GetEditor): void {
+    runProse(getEditor, (view) => {
+        const type = view.state.schema.nodes["blockquote"];
+        if (!type) { return; }
+        const command = isInNode(view, "blockquote")
+            ? liftBlocksOutOf("blockquote")
+            : wrapBlocksIn(type);
+        // No view.focus(): a slash-menu pick must not yank focus back from a
+        // host panel that just took it (slashMenuPlugin.test.ts pins this).
+        command(view.state, view.dispatch, view);
+    });
+}
+
+/**
+ * Retypes every heading the selection covers to a paragraph, in one
+ * transaction. A `list_item`'s content is `paragraph block*`, so a heading
+ * cannot be its first child: wrapping a heading line in a list is a schema
+ * no-op, and "Bullet List" on a heading did nothing at all. Demoting first
+ * makes the pick mean what it says — the line becomes a list item and stops
+ * being a heading, the inverse of setHeading's "a heading leaves the list"
+ * (and what the block menu's Turn-into already does by another route).
+ *
+ * The demotion cannot strand a heading as a bare paragraph: `heading` and
+ * `bullet_list` are both group `block`, so anywhere a heading is legal a list
+ * is too. The one position that admits a paragraph but not a list — a list
+ * item's first child — admits no heading either, and a caret in a list never
+ * reaches this branch.
+ */
+function demoteHeadingsInSelection(view: EditorView): void {
+    const paragraph = view.state.schema.nodes["paragraph"];
+    if (!paragraph) { return; }
+    const { from, to } = view.state.selection;
+    let tr = view.state.tr;
+    let changed = false;
+    // Retyping preserves node size, so positions from the pre-edit doc stay
+    // valid for every markup in the same transaction.
+    view.state.doc.nodesBetween(from, to, (node, pos) => {
+        if (node.type.name === "heading") {
+            tr = tr.setNodeMarkup(pos, paragraph, null);
+            changed = true;
         }
     });
+    if (changed) { view.dispatch(tr); }
 }
 
 /**
@@ -282,7 +314,8 @@ function toggleWrap(
  *     runs), never a nested re-wrap;
  *   - caret in a list of the SAME flavor → toggle off (lift out — the
  *     historical behavior);
- *   - caret not in a list → wrap the selection (the stock commands).
+ *   - caret not in a list → demote any heading the selection covers, then
+ *     wrap it (the stock commands).
  */
 function toggleList(getEditor: GetEditor, kind: ListKind): void {
     const editor = getEditor();
@@ -311,6 +344,7 @@ function toggleList(getEditor: GetEditor, kind: ListKind): void {
             }
             return;
         }
+        demoteHeadingsInSelection(view);
         const mgr = ctx.get(commandsCtx);
         mgr.call(
             (kind === "orderedList"
@@ -375,7 +409,11 @@ function toggleCallout(getEditor: GetEditor, args?: unknown): void {
                 continue;
             }
             if (calloutKind((node.attrs["kind"] as string) ?? "note") === kind) {
-                lift(view.state, view.dispatch);
+                // Out of the CALLOUT, not out of whatever the caret's own
+                // block happens to sit in: plain `lift` in a callout holding a
+                // list lifts the paragraph out of its list item, editing the
+                // list instead of unchecking the row the user clicked.
+                liftBlocksOutOf("callout")(view.state, view.dispatch, view);
             } else {
                 const marker = markerWithKind((node.attrs["marker"] as string) ?? "[!NOTE]", kind);
                 view.dispatch(view.state.tr.setNodeMarkup(
@@ -645,7 +683,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleBulletList: (getEditor) => toggleList(getEditor, "bulletList"),
     toggleOrderedList: (getEditor) => toggleList(getEditor, "orderedList"),
     toggleTaskList: (getEditor) => toggleList(getEditor, "taskList"),
-    toggleBlockquote: (getEditor) => toggleWrap(getEditor, "blockquote", wrapInBlockquoteCommand),
+    toggleBlockquote: (getEditor) => toggleBlockquote(getEditor),
     // Optional string arg = fence language ("mermaid" from the slash menu)
     insertCodeBlock: (getEditor, args) =>
         callCmd(getEditor, createCodeBlockCommand, typeof args === "string" ? args : undefined),

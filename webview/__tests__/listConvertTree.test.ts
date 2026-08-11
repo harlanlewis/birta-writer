@@ -377,6 +377,81 @@ describe("toggleList (toolbar Lists menu / slash menu commands)", () => {
 
         expect(markdown(editor)).toBe("- plain text\n");
     });
+
+    // A list item's content is `paragraph block*`, so a heading cannot be its
+    // first child and the stock wrap command silently no-opped: the line kept
+    // its `#` markers and never became an item. Demoting the heading first is
+    // what makes the pick mean what it says.
+    it.each([
+        ["toggleBulletList", "- Title\n"],
+        ["toggleOrderedList", "1. Title\n"],
+        ["toggleTaskList", "- [ ] Title\n"],
+    ] as const)("caret in a heading + %s should demote it into an item", async (id, expected) => {
+        const editor = await makeEditor("## Title\n");
+        placeCaretAt(view(editor), "Title");
+
+        runEditorCommand(id, getEditor);
+
+        expect(markdown(editor)).toBe(expected);
+    });
+
+    it("a selection covering headings should leave no heading behind", async () => {
+        const editor = await makeEditor("# One\n\nplain\n\n### Three\n");
+        const v = view(editor);
+        v.dispatch(v.state.tr.setSelection(
+            TextSelection.create(v.state.doc, 1, v.state.doc.content.size - 1),
+        ));
+
+        runEditorCommand("toggleBulletList", getEditor);
+
+        // Every covered heading is demoted, so no `#` survives inside the
+        // list. How a multi-block selection is GROUPED into items is the stock
+        // wrap command's business and is deliberately not asserted here.
+        const md = markdown(editor);
+        expect(md).not.toMatch(/#/);
+        expect(md.startsWith("- One")).toBe(true);
+        expect(v.state.doc.child(0).type.name).toBe("bullet_list");
+    });
+
+    it("a heading inside a blockquote should itemize inside the quote", async () => {
+        const editor = await makeEditor("> ## Title\n");
+        placeCaretAt(view(editor), "Title");
+
+        runEditorCommand("toggleBulletList", getEditor);
+
+        expect(markdown(editor)).toBe("> - Title\n");
+    });
+
+    it("one undo after itemizing a heading should restore the heading", async () => {
+        // The demotion and the wrap are two dispatches; history must group
+        // them into one event, or undo strands the line as a bare paragraph —
+        // a state the user never made. Bespoke editor: needs the history
+        // plugin.
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        const { historyPlugin } = await import("../plugins/history");
+        const editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, "## Title\n");
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .use(historyPlugin)
+            .create();
+        editors.push(editor);
+        activeEditor = editor;
+        const v = view(editor);
+        placeCaretAt(v, "Title");
+        runEditorCommand("toggleBulletList", getEditor);
+        expect(markdown(editor)).toBe("- Title\n");
+
+        const { undo } = await import("../pm");
+        undo(v.state, v.dispatch);
+
+        expect(markdown(editor)).toBe("## Title\n");
+    });
 });
 
 describe("list locator helpers", () => {

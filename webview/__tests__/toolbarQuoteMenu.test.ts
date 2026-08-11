@@ -6,10 +6,11 @@
  * against the REAL Milkdown editor. acquireVsCodeApi is injected by setup.ts.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
+import { TextSelection } from "../pm";
 
 let editors: Editor[] = [];
 
@@ -77,5 +78,20 @@ describe("toolbar Quote dropdown", () => {
 
         // Assert
         expect(editor.action(getMarkdown()).trim()).toBe("> hello");
+    });
+
+    it("clicking it with the caret in a list should quote the whole list", async () => {
+        // Arrange: the caret in the first item, where the row used to no-op
+        // because a blockquote cannot be a list item's first child.
+        const editor = await makeEditor("- one\n- two");
+        const view = editor.action((ctx) => ctx.get(editorViewCtx));
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+        const topbar = buildToolbar(() => editor);
+
+        // Act
+        quoteRows(topbar)[0]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        // Assert
+        expect(editor.action(getMarkdown()).trim()).toBe("> - one\n> - two");
     });
 });

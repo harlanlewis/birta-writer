@@ -167,8 +167,8 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
             case "blockquote":
                 hidden.add("blockquote");
                 break;
-            // Callout rows stay AVAILABLE inside callouts: insertCallout is
-            // wrapIn — it NESTS (callouts are block+ at any depth, and the
+            // Callout rows stay AVAILABLE inside callouts: insertCallout is a
+            // wrap — it NESTS (callouts are block+ at any depth, and the
             // typed `[!tip] ` input rule already nests), unlike the
             // list/quote toggles above, which would lift. Nesting
             // flexibility is the policy; table cells below stay the one
