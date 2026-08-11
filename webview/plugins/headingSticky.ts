@@ -239,11 +239,11 @@ export const headingStickyPlugin = $prose(() =>
              * Publish how much the bar actually covers, so CSS can reserve it.
              *
              * The bar is fixed and opaque and paints OVER the content column,
-             * so any chrome that pins itself inside that column has to clear it
-             * as well as the topbar — a code block's language pill is the case
-             * (blockControls.css / codeBlock.css). Chrome outside the content
-             * column, such as a block's control strip, clears only the topbar
-             * and must not reserve this. What is published is the PAINTED
+             * so any chrome that can pin itself inside that column has to
+             * clear it as well as the topbar — a code block's language pill
+             * (codeBlock.css) and the block control strip's pinned stack
+             * (blockControls.css: nesting in a quote/callout insets the strip
+             * into the column) both reserve it. What is published is the PAINTED
              * extent below the topbar, not the box height: the bar slides up
              * under the next heading, and a reservation that ignored that would
              * push chrome down to clear a band nothing is drawn in.

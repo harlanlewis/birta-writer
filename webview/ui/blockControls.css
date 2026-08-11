@@ -68,10 +68,15 @@
  * arms the column, sticky engages and the stack seats itself pinned — there
  * is no visible transition, because until that moment it was invisible.
  *
- * The topbar is the only thing to clear: this strip sits OUTSIDE the content
- * column, and the sticky heading title spans exactly that column, so it never
- * reaches here. Chrome pinned inside the column has to reserve the bar too, and
- * a code block's language pill is the one that does (codeBlock.css).
+ * The pin reserves the topbar AND the sticky heading title's painted extent
+ * (--editor-sticky-heading-height, 0px while the bar is hidden). For a
+ * top-level block the strip sits outside the content column, which the bar
+ * spans exactly — but a block nested in a blockquote or callout is inset by
+ * the container's padding, which puts the strip inside the column, and the
+ * bar (z-index above the strip's) would paint over the pinned buttons.
+ * Reserving the bar unconditionally costs a top-level block a bar-height of
+ * slack it did not need and keeps the nested case reachable; it also matches
+ * the JS-pinned table grips, which clamp to safeAreaTop().
  * `--bc-pin-top` is the seam for a host that needs a deeper inset. */
 .bc-host:hover :is(.bc-stack, .embed-card__controls),
 .bc-col:focus-within .bc-stack,
@@ -80,7 +85,7 @@
 .embed-host--selected .embed-card__controls,
 .bc-col--shown .bc-stack {
     position: sticky;
-    top: var(--bc-pin-top, calc(var(--editor-topbar-height, 40px) + 8px));
+    top: var(--bc-pin-top, calc(var(--editor-topbar-height, 40px) + var(--editor-sticky-heading-height, 0px) + 8px));
 }
 
 .bc-col,
