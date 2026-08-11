@@ -32,7 +32,6 @@ export {
     allFoldablePositions,
     cachedFoldRanges,
     computeFoldRanges,
-    expandCoverOverFolds,
     findHeadingFoldRange,
     findSectionHeadingPosAt,
     foldHiddenRange,

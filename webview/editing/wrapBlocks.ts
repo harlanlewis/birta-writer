@@ -30,9 +30,12 @@
  */
 import { findWrapping, liftTarget, NodeRange } from "../pm";
 import type { Attrs, Command, EditorState, Node as ProseNode, NodeType } from "../pm";
-// Runtime-only cycle (wrapBlocks → headingFold → blockMenu → turnInto →
-// wrapBlocks), the moveBlocks precedent: called only inside function bodies.
-import { expandCoverOverFolds } from "../plugins/headingFold";
+// Imported from foldModel DIRECTLY, not the headingFold index: this module
+// loads with the serialization presets (plugins/callouts), and the index
+// pulls the gutter/menu component graph — an import cycle that would leave
+// those modules half-initialized at preset-evaluation time. foldModel is
+// the pure layer (pm + foldState + blockRange only), so it is cycle-safe.
+import { expandCoverOverFolds } from "../plugins/headingFold/foldModel";
 
 export interface WrapTarget {
     /** The sibling run that goes inside the wrapper. */

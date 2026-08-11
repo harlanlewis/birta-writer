@@ -632,7 +632,9 @@ export function selectionCoverRange(view: EditorView): { from: number; to: numbe
  * blocks under a new owner (and the fold would swallow whatever happens to
  * follow the drop). Offsets ascend, so growing `to` mid-walk is safe.
  * Exported for the wrap gesture (editing/wrapBlocks), which applies the
- * same inseparability rule before choosing what a quote/callout covers.
+ * same inseparability rule before choosing what a quote/callout covers —
+ * it imports from THIS module, not the index, because it loads with the
+ * serialization presets and must not pull the gutter/menu graph.
  */
 export function expandCoverOverFolds(
     state: EditorState,
