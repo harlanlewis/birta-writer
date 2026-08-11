@@ -8,7 +8,7 @@ import {
     collectFrontmatterListValues,
     extractListValuesByKey,
     rankListValues,
-} from "../utils/frontmatterSuggestions";
+} from "../frontmatterSuggestions";
 
 /** Wraps markdown text in a synchronous getText source. */
 const file = (text: string) => ({ getText: () => text });

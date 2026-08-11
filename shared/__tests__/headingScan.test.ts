@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scanHeadings } from "../utils/headingScan";
+import { scanHeadings } from "../headingScan";
 
 describe("scanHeadings", () => {
     describe("ATX headings", () => {

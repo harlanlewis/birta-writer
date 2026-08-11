@@ -5,8 +5,8 @@
  * fallback, so fences, blank-line handling and CRLF must all be exact.
  */
 import { describe, it, expect } from "vitest";
-import { computeLineMap, sourceLineCount } from "../utils/lineMap";
-import { extractFrontmatter } from "../utils/contentTransform";
+import { computeLineMap, sourceLineCount } from "../lineMap";
+import { extractFrontmatter } from "../contentTransform";
 
 describe("computeLineMap basic blocks", () => {
     it("empty content should produce an empty map", () => {

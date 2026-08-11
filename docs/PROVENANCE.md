@@ -79,7 +79,7 @@ The 15.9% is concentrated almost entirely in the DOM and chrome layer, the code 
 
 | Spine, effectively none | Share |
 |---|---|
-| `src/saveFlushController.ts` | 0% (new file) |
+| `shared/saveFlushController.ts` | 0% (new file) |
 | `webview/syncScheduler.ts` | 0% (new file) |
 | `webview/pm.ts` | 1% |
 | `webview/serialization.ts` | 4% |

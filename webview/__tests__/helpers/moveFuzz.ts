@@ -57,7 +57,7 @@ function collectFixtures(dir: string, extension: string, rel = ""): CorpusFixtur
  * (samples/content-inventory.md, the exhaustive corpus, and
  * samples/showcase.md, the human tour). The extension strips YAML
  * frontmatter before the webview ever sees content
- * (src/utils/contentTransform.ts), so each sample contributes its body
+ * (shared/contentTransform.ts), so each sample contributes its body
  * exactly as production delivers it.
  *
  * `fixtureExtension` exists for the multiformat track (MAR-40/41): a second

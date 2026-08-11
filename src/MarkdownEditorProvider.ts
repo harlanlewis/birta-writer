@@ -1,13 +1,13 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import { computeReplaceRange } from "./utils/textEdit";
+import { computeReplaceRange } from "../shared/textEdit";
 import { saveImageLocally } from "./utils/imageService";
-import { computeLineMap, sourceLineCount } from "./utils/lineMap";
-import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
-import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
+import { computeLineMap, sourceLineCount } from "../shared/lineMap";
+import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
+import { extractListValuesByKey, rankListValues } from "../shared/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { DiskDriftController } from "./diskDrift";
-import { judgeReplacement } from "./destructiveGuard";
+import { judgeReplacement } from "../shared/destructiveGuard";
 import { postToWebview } from "./webviewMessaging";
 import {
     getBirtaConfiguration,
@@ -21,12 +21,12 @@ import {
     updateSettingRespectingScope,
     updateUserSetting,
 } from "./config";
-import { SaveFlushController } from "./saveFlushController";
+import { SaveFlushController } from "../shared/saveFlushController";
 import { watchExternalDocumentChanges } from "./externalChanges";
 import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtmlAttr } from "./webviewHtml";
 import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
-import { scanHeadings } from "./utils/headingScan";
+import { scanHeadings } from "../shared/headingScan";
 import { extractOgTitle } from "./utils/openGraph";
 import { isPubliclyRoutableUrl } from "./utils/urlGuard";
 import { readCappedText } from "./utils/cappedRead";
@@ -145,7 +145,7 @@ export class MarkdownEditorProvider
 
     // The flush/seq protocol bookkeeping (sync versions, applied-seq high-water
     // marks, in-flight save flushes) lives in the SaveFlushController — see
-    // src/saveFlushController.ts for the invariants. Constructed in the
+    // shared/saveFlushController.ts for the invariants. Constructed in the
     // constructor so the flush timeout stays injectable for tests.
     private readonly _flush: SaveFlushController<vscode.TextEdit>;
 

@@ -4,7 +4,7 @@
  * returned replacement to oldText must reproduce newText exactly.
  */
 import { describe, it, expect } from "vitest";
-import { computeReplaceRange, type ReplaceRange } from "../utils/textEdit";
+import { computeReplaceRange, type ReplaceRange } from "../textEdit";
 
 /** Applies the computed replacement to oldText (the WorkspaceEdit semantics). */
 function apply(oldText: string, edit: ReplaceRange): string {

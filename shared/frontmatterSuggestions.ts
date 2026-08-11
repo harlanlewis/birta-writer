@@ -10,7 +10,7 @@
  */
 
 import { extractFrontmatter } from "./contentTransform";
-import { parseTabularFrontmatter } from "../../shared/frontmatterTable";
+import { parseTabularFrontmatter } from "./frontmatterTable";
 
 /** Anything that can hand over a markdown document's full text. */
 export type FmTextSource = { getText(): Promise<string> | string };

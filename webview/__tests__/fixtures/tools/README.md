@@ -43,7 +43,7 @@ That runs, verbosely, the three suites that together state the claims:
   bytes (the table's row for opening `.mdx` *as markdown*), which its own
   header explains.
 - **No YAML frontmatter in fixtures.** The extension lifts frontmatter off
-  before the webview ever sees content (`src/utils/contentTransform.ts`), so
+  before the webview ever sees content (`shared/contentTransform.ts`), so
   a webview-side fixture with frontmatter would test a state production never
   produces. Frontmatter fidelity is covered by the extension-side tests.
 - **Roam and Bear have no fixtures** on purpose: they don't store plain

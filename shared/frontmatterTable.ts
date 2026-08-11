@@ -3,7 +3,7 @@
  *
  * Pure frontmatter parsing helpers shared by the WebView panel
  * (webview/components/frontmatter) and the Extension side
- * (src/utils/frontmatterSuggestions). No DOM or messaging imports —
+ * (shared/frontmatterSuggestions.ts). No DOM or messaging imports —
  * everything here is plain string processing so both bundles can use it.
  */
 
