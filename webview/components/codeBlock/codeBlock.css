@@ -16,15 +16,53 @@
    top-left — the header bar's replacement (2026-07-28). It must NOT live
    inside the scrolling <pre> (it would scroll away with long lines); the
    code/gutter/preview top padding reserves its band so line 1 never slides
-   under it. */
-.code-float-row {
+   under it.
+
+   The rail is the absolutely positioned strip; the row inside it goes sticky
+   on a tall block, so a block dragged taller than the viewport (the resize
+   handle has no ceiling) keeps its pill reachable instead of scrolling it
+   under the topbar. The rail is click-through and the row is exactly
+   content-width, so together they never take a click meant for the code
+   beneath.
+
+   Sticky ONLY under `.code-float-pin`, which the NodeView arms by measured
+   height (nodeView.ts): a position: sticky box pays for its scroll
+   constraints in every layout pass whether or not it ever travels, and this
+   row exists once per code block, so resting sticky on all of them carries
+   the whole cost into a document's first layout — squarely inside the launch
+   `paint` span. Only a tall block can need the pin, so only a tall block
+   pays for one.
+
+   This pill pins deeper than a block's control strip does, and the difference
+   is which column it sits in. The strip lives outside the content column, so
+   the topbar is the only thing above it; the pill is inside the canvas, and the
+   sticky heading title paints across exactly that width. Clearing only the
+   topbar would move the pill from off screen to behind the heading bar, which
+   is no more reachable. plugins/headingSticky.ts publishes the bar's painted
+   extent, 0px whenever it is not showing. */
+.code-float-rail {
     position: absolute;
-    top: 6px;
-    left: 6px;
+    inset: 0;
     z-index: 10;
+    pointer-events: none;
+}
+
+.code-float-row {
+    margin: 6px 0 0 6px;
+    width: fit-content;
     display: flex;
     align-items: center;
     gap: 4px;
+    pointer-events: auto;
+}
+
+.code-float-pin .code-float-row {
+    position: sticky;
+    top: calc(
+        var(--editor-topbar-height, 40px)
+        + var(--editor-sticky-heading-height, 0px)
+        + 8px
+    );
 }
 
 /* ─── lang-picker custom searchable dropdown ─── */

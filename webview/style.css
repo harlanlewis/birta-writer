@@ -962,18 +962,17 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             scroll-margin-top: calc(var(--editor-topbar-height, 40px) + 8px);
         }
 
+        /* No rule under the title: a heading's own size and weight already mark
+           the level, and the border was the one heading that spaced differently
+           from the rest (it needed a full flow gap below to separate the line
+           from the section it opened). Size is the whole difference now, so h1
+           keeps the shared heading rhythm above. */
         h1 {
             font-size: 2em;
-            border-bottom: 1px solid var(--vscode-panel-border);
-            /* The underline sits close to the text (heading-after), then a full
-               flow gap separates the rule from the section below it. */
-            padding-bottom: var(--content-heading-after);
-            margin-bottom: var(--content-flow-gap);
         }
 
         h2 {
             font-size: 1.4em;
-            /* border-bottom: 1px solid var(--vscode-panel-border); */
         }
 
         h3 {
@@ -1266,18 +1265,43 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             margin-top: var(--content-list-gap);
         }
 
-        li > p {
-            padding-bottom: 0;
+        /* An item's OWN blocks step by the list gap, whatever they are: a
+           nested list, a stacked paragraph, a quote, a callout, a code block or
+           a table. One rule rather than one per construct, and it outranks
+           every block's own `margin: 0 0 var(--content-flow-gap)` on
+           specificity, so it does not depend on source order.
+
+           DIRECT children only. Redefining --content-flow-gap on `li` would be
+           DRYer and reads like the same idea, but a custom property inherits
+           all the way down: the paragraphs INSIDE a quote inside an item would
+           then space like list lines rather than like the prose they are. The
+           item's rhythm governs the item's blocks; a box's insides are the
+           box's business, which is the same line the quote's own padding draws
+           below.
+
+           The gap is owned by the block ABOVE it, so an item's LAST child owns
+           none: a trailing gap there stacks onto `li + li` instead of replacing
+           it. That doubling is what made the step down into a nested list twice
+           the step between two siblings, since the nested list sat under a
+           paragraph that was still paying its own gap. */
+        li > :not(:last-child) {
+            margin-bottom: var(--content-list-gap);
         }
 
+        li > :last-child {
+            margin-bottom: 0;
+        }
+
+        /* Paragraphs space with padding, not margin, so the click area includes
+           the gap (see the `p` rule above) — so theirs is the padding form of
+           the pair above, and their margin stays out of it. */
         li > p:not(:last-child) {
             padding-bottom: var(--content-list-gap);
+            margin-bottom: 0;
         }
 
-        /* Nested list: tight, and no trailing flow gap inside its parent item. */
-        li > ul,
-        li > ol {
-            margin-block: var(--content-list-gap) 0;
+        li > p:last-child {
+            padding-bottom: 0;
         }
 
         /* Ordered-list numbering styles across nesting levels */
@@ -2785,14 +2809,13 @@ body.block-marqueeing .milkdown .editor {
    external-open escape hatch — the guaranteed path when in-webview playback is
    refused (YouTube error 153: no acceptable referrer from a webview origin).
    OUTSIDE the frame (see .embed-card--player) so it never covers a player's
-   own controls. The buttons themselves compose the shared `.bc-btn` recipe
-   (ui/blockControls.css) — the card is a `bc-host`, so resting/hover
-   visibility comes from the primitive; only the column's grid placement is
-   embed-local (the card reserves a lane rather than overhanging its box). */
+   own controls. The buttons compose the shared `.bc-btn` recipe and the column
+   itself is styled by ui/blockControls.css alongside `.bc-stack` — the card is
+   a `bc-host`, so stack layout, resting visibility and the keep-on-screen
+   sticky all come from the primitive. Only the lane is embed-local: the card
+   reserves a grid column rather than overhanging its box. */
 .embed-card__controls {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    grid-column: 2;
 }
 
 /* Play overlay: a real button, so it takes the shared focus ring. Neutral,

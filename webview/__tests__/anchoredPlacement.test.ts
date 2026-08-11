@@ -4,6 +4,7 @@ import {
     placeMenu,
     computeAnchoredPosition,
     clampLeft,
+    pinIntoView,
 } from "../ui/anchoredPlacement";
 
 const VIEWPORT = { width: 1000, height: 800 };
@@ -294,5 +295,57 @@ describe("computeAnchoredPosition — horizontal", () => {
             { minLeft: 0 },
         );
         expect(p.left).toBe(2);
+    });
+});
+
+/**
+ * `pinIntoView` is the rule for chrome that cannot flip: a block's own
+ * controls, whose anchor is the block itself. The two clamps and the order
+ * between them are the whole of it, so the cases below are the four states a
+ * tall block passes through as it scrolls by, plus the degenerate one.
+ */
+describe("pinIntoView", () => {
+    // A band below a 40px topbar, 800px viewport, 8px bottom margin.
+    const VIEW = { start: 40, end: 792 };
+    const SIZE = 12;
+
+    it("a block fully in view should leave its chrome at rest", () => {
+        const block = { start: 200, end: 600 };
+        expect(pinIntoView(200, SIZE, block, VIEW)).toBe(200);
+    });
+
+    it("a resting place under the fixed chrome should slide down to the band", () => {
+        // Tall block scrolled so its top is off screen; the chrome follows the
+        // band's top edge instead of leaving with the edge it rests on.
+        const block = { start: -500, end: 900 };
+        expect(pinIntoView(-500, SIZE, block, VIEW)).toBe(40);
+    });
+
+    it("a resting place below the fold should slide up into the band", () => {
+        const block = { start: 1200, end: 2000 };
+        // Not yet scrolled to: the block wins, so the chrome stays off screen
+        // rather than sitting at the bottom edge pointing at nothing.
+        expect(pinIntoView(1200, SIZE, block, VIEW)).toBe(1200);
+    });
+
+    it("a block scrolled off the top should take its chrome with it", () => {
+        // The block clamp runs SECOND and therefore wins: chrome for a block
+        // nobody can see must be gone too, not parked under the topbar.
+        const block = { start: -900, end: -300 };
+        expect(pinIntoView(-900, SIZE, block, VIEW)).toBe(-312); // block.end - size
+    });
+
+    it("a block ending inside the band should stop its chrome at the block's end", () => {
+        // Scrolling on: the strip rides the band's top edge until the block's
+        // own bottom catches up with it, then travels up with the block.
+        expect(pinIntoView(-500, SIZE, { start: -500, end: 400 }, VIEW)).toBe(40);
+        expect(pinIntoView(-500, SIZE, { start: -500, end: 45 }, VIEW)).toBe(33);
+    });
+
+    it("a block shorter than its own chrome should still pin to the block's start", () => {
+        // Degenerate but reachable (a one-row table mid-collapse): `end - size`
+        // is above `start`, and the start must win rather than invert the range.
+        const block = { start: 300, end: 305 };
+        expect(pinIntoView(300, SIZE, block, VIEW)).toBe(300);
     });
 });

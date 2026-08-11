@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- e2e harness for the content column's vertical rhythm.
+
+     The spacing scale (style.css, "Vertical rhythm") is only half in margins:
+     paragraphs space with padding so their click area includes the gap, and the
+     rest arrives through margin collapsing and inherited custom properties. What
+     a reader actually sees is the distance between two LINES OF TEXT, and only a
+     real layout engine can report that — jsdom has none, and a computed-style
+     assertion would re-derive the very arithmetic under test.
+
+     The document carries one of every common construct, at both list nesting
+     levels, so the checks can assert equality across the whole set rather than
+     spot-checking a pair. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editor-font-size: 14px; --vscode-focusBorder: #007fd4; --vscode-panel-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a; --vscode-textBlockQuote-background: #2a2a2a;
+    --vscode-textBlockQuote-border: #555555; --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31);
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-checkbox-border: #6b6b6b; --vscode-checkbox-background: #313131;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff;
+    --vscode-editorLineNumber-foreground: #858585;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const DOC = [
+    "# Title",
+    "",
+    "alpha paragraph",
+    "",
+    "beta paragraph",
+    "",
+    "- bullet one",
+    "- bullet two",
+    "    - nested one",
+    "    - nested two",
+    "        - deep one",
+    "        - deep two",
+    "- bullet three",
+    "",
+    "    stacked paragraph inside bullet three",
+    "",
+    "    > quoted inside bullet three",
+    "    >",
+    "    > second line of that quote",
+    "",
+    "- bullet four",
+    "",
+    "gamma paragraph",
+    "",
+    "1. ordered one",
+    "2. ordered two",
+    "    1. onested one",
+    "    2. onested two",
+    "3. ordered three",
+    "",
+    "delta paragraph",
+    "",
+    "> a quoted line",
+    ">",
+    "> a second quoted paragraph",
+    "",
+    "epsilon paragraph",
+    "",
+    "- [ ] task one",
+    "- [ ] task two",
+    "    - [ ] nested task",
+    "- [x] task three",
+    "",
+    "## Section",
+    "",
+    "zeta paragraph",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

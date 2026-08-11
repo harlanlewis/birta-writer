@@ -56,6 +56,8 @@ import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockCon
 import { t } from "@/i18n";
 import { tagContentGuard } from "@/editing/blockOps";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { pinIntoView, viewportSpan } from "@/ui/anchoredPlacement";
+import { SAFE_AREA_CHANGE_EVENT } from "@/utils/headingUtils";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import {
     anchorAt,
@@ -268,6 +270,13 @@ class TableController {
         // Capture-phase catches scrolls from ANY ancestor, including the
         // table's own horizontal scroll container (display:block; overflow-x).
         window.addEventListener("scroll", this.onScroll, { capture: true });
+        // The sticky heading title shows and hides on its own rAF, and
+        // reposition() measures `viewportSpan()` against it. A single scroll
+        // event (a TOC click, a find jump) can run reposition one frame before
+        // the title appears, pinning the column grips under it with nothing
+        // left to re-run the pass — so the title's own height change is a
+        // reposition trigger too.
+        window.addEventListener(SAFE_AREA_CHANGE_EVENT, this.onScroll);
 
         // Contextual reveal: track the pointer over the wrapper (cheap, cached
         // hit-test — no layout reads) and grant a grace period on leave so the
@@ -545,6 +554,26 @@ class TableController {
         this.rowBounds = rowRects.map((b) => ({ top: b.top, bottom: b.bottom }));
         this.colBounds = cellRects.map((b) => ({ left: b.left, right: b.right }));
 
+        // Where the column chrome may sit. A table taller than the viewport
+        // scrolls its top edge away while its columns are still on screen, and
+        // grips left on that edge are unreachable — you cannot select a column
+        // you cannot see. Slide the strip down the table instead, never above
+        // the fixed chrome and never past the table's own bottom.
+        //
+        // `viewportSpan` reads the topbar and any sticky heading, so it belongs
+        // in the read phase and nowhere else; measuring it under the first write
+        // would force the layout this pass exists to avoid. Skipped when there
+        // are no grips, which is simply that there is nothing to place.
+        const colStripRest = tableRect.top - GRIP - 2;
+        const colStripTop = this.colGrips.length
+            ? pinIntoView(
+                  colStripRest,
+                  GRIP,
+                  { start: colStripRest, end: tableRect.bottom },
+                  viewportSpan(),
+              )
+            : colStripRest;
+
         // ── Write phase: no layout reads past this point ────────────────────
         this.rowGrips.forEach((g, r) => {
             const rr = rowRects[r];
@@ -564,7 +593,7 @@ class TableController {
             }
             g.style.left = `${cc.left - wrap.left}px`;
             g.style.width = `${cc.width}px`;
-            g.style.top = `${relTop - GRIP - 2}px`;
+            g.style.top = `${colStripTop - wrap.top}px`;
             g.style.height = `${GRIP}px`;
         });
 
@@ -588,6 +617,13 @@ class TableController {
             bar.style.top = `${relTop}px`;
             bar.style.height = `${tableRect.height}px`;
             bar.style.width = `${INSERT_ZONE}px`;
+            // The bar spans the whole gridline, so it is never off screen —
+            // but its "+" rests at the bar's top, alongside the column grips,
+            // and has to travel with them (table.css reads the offset).
+            bar.style.setProperty(
+                "--mw-insert-btn-offset",
+                `${colStripTop + GRIP + 2 - tableRect.top}px`,
+            );
         });
 
         // Folded `…` chip: every other kind seats the chip on the collapsed
@@ -1222,6 +1258,7 @@ class TableController {
     destroy(): void {
         this.resizeObs?.disconnect();
         window.removeEventListener("scroll", this.onScroll, { capture: true });
+        window.removeEventListener(SAFE_AREA_CHANGE_EVENT, this.onScroll);
         this.wrapper.removeEventListener("pointermove", this.onPointerMove);
         this.wrapper.removeEventListener("pointerleave", this.onPointerLeave);
         document.removeEventListener("mousemove", this.onDocMove);

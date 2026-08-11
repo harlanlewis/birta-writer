@@ -17,6 +17,7 @@ import {
     getVisibleHeadings,
     getHeadingText,
     findHeadingPos,
+    SAFE_AREA_CHANGE_EVENT,
 } from "../utils/headingUtils";
 
 const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
@@ -218,6 +219,49 @@ export const headingStickyPlugin = $prose(() =>
             let activeHeading: HTMLElement | null = null;
             let activeHeadingPos: number | null = null;
 
+            /**
+             * Publish how much the bar actually covers, so CSS can reserve it.
+             *
+             * The bar is fixed and opaque and paints OVER the content column,
+             * so any chrome that pins itself inside that column has to clear it
+             * as well as the topbar — a code block's language pill is the case
+             * (blockControls.css / codeBlock.css). Chrome outside the content
+             * column, such as a block's control strip, clears only the topbar
+             * and must not reserve this. What is published is the PAINTED
+             * extent below the topbar, not the box height: the bar slides up
+             * under the next heading, and a reservation that ignored that would
+             * push chrome down to clear a band nothing is drawn in.
+             *
+             * Guarded so scroll frames that change nothing write nothing, and
+             * a change is announced on `window`: chrome that MEASURES the safe
+             * area in its own rAF (the table overlay) may have already run
+             * this frame, and a single-event scroll (a TOC click, a find
+             * jump) would otherwise leave its placement stale under the bar.
+             * CSS consumers of the variable restyle on their own.
+             *
+             * Starts at 0, never a sentinel: every consumer's fallback for the
+             * unset variable is 0px, so "nothing published yet" and "published
+             * 0" are the same state, and publishing 0 over it must stay a
+             * no-op. The first update runs on the mount rAF, before first
+             * paint, and the bar starts hidden — a sentinel would turn that
+             * hide into a root-level custom-property write, and a custom
+             * property on <html> inherits everywhere, so the write restyles
+             * the whole document on the frame the first paint is waiting on.
+             */
+            let publishedHeight = 0;
+            const publishHeight = (px: number): void => {
+                const height = Math.max(0, px);
+                if (height === publishedHeight) {
+                    return;
+                }
+                publishedHeight = height;
+                document.documentElement.style.setProperty(
+                    "--editor-sticky-heading-height",
+                    `${height}px`,
+                );
+                window.dispatchEvent(new Event(SAFE_AREA_CHANGE_EVENT));
+            };
+
             const hideSticky = () => {
                 activeHeading = null;
                 if (activeHeadingPos !== null) {
@@ -225,6 +269,7 @@ export const headingStickyPlugin = $prose(() =>
                     dispatchStickyActiveChange(null);
                 }
                 sticky.hidden = true;
+                publishHeight(0);
                 delete sticky.dataset["headingPos"];
             };
 
@@ -309,6 +354,12 @@ export const headingStickyPlugin = $prose(() =>
                 const nextTop = nextHeading?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
                 const offset = Math.min(0, nextTop - top - stickyHeight);
                 sticky.style.transform = `translateY(${offset}px)`;
+                // Publish ONCE, after the slide offset is known: the published
+                // value is the painted extent, and each publish that changes
+                // it is a root-level write that restyles the whole document,
+                // so an intermediate pre-offset publish would double that cost
+                // on every frame of the slide-under transition.
+                publishHeight(stickyHeight + offset);
             };
 
             const scheduleUpdate = () => {
@@ -406,6 +457,9 @@ export const headingStickyPlugin = $prose(() =>
                     bodyClassObserver.disconnect();
                     resizeObserver.disconnect();
                     sticky.remove();
+                    // The bar is gone, so nothing may still be reserving room
+                    // for it (the variable outlives this view on <html>).
+                    publishHeight(0);
                 },
             };
         },

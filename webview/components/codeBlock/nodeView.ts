@@ -106,9 +106,17 @@ export function createCodeBlockView(
     // top band via the code/gutter/preview padding, so line 1 never slides
     // under the pill, and the action buttons live in the shared control
     // column OUTSIDE the top-right (createBlockControlsColumn below).
+    // The rail is the row's positioning strip, and it exists only so the row
+    // can be STICKY: a code block dragged taller than the viewport scrolls its
+    // top band away, and the pill would leave with it. An absolutely positioned
+    // box cannot also be sticky, so the absolute one spans the block and the
+    // sticky one rides inside it (the same shape as ui/blockControls.css).
+    const floatRail = document.createElement("div");
+    floatRail.className = "code-float-rail";
+    floatRail.contentEditable = "false";
     const floatRow = document.createElement("div");
     floatRow.className = "code-float-row";
-    floatRow.contentEditable = "false";
+    floatRail.appendChild(floatRow);
 
     const currentLang = (node.attrs["language"] as string) || "";
     const picker = createLangPicker(currentLang, (newLang) => {
@@ -509,7 +517,7 @@ export function createCodeBlockView(
         document.addEventListener("mouseup", onUp);
     });
 
-    wrapper.appendChild(floatRow);
+    wrapper.appendChild(floatRail);
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
     wrapper.appendChild(pumlPreview);
@@ -519,10 +527,36 @@ export function createCodeBlockView(
     wrapper.appendChild(controlsCol);
     scheduleLineNumberRefresh();
 
+    // The pill's sticky pin is armed per block, never at rest for every block:
+    // a position: sticky box pays for its scroll constraints in every layout
+    // pass, so a document full of ordinary code blocks must carry zero of
+    // them into first layout (the launch gate's `paint` span is where that
+    // cost lands; `pnpm perf large` shows it). The pin only ever has a
+    // visible effect on a block tall enough for its top band to leave the
+    // viewport while the block still fills it, so arm it by measured height
+    // and disarm below the threshold. Arming EARLY is free — an armed pin on
+    // a block that never scrolls its top band away simply never travels — so
+    // the threshold is generous (half the viewport) rather than exact, and a
+    // viewport shrink is caught by the next observer fire (the wrapper's
+    // width tracks the editor column, so window resizes reach it).
+    const PILL_PIN_MIN_VIEWPORT_RATIO = 0.5;
+    const syncPillPin = (): void => {
+        const tall = wrapper.offsetHeight > window.innerHeight * PILL_PIN_MIN_VIEWPORT_RATIO;
+        wrapper.classList.toggle("code-float-pin", tall);
+    };
     const lineNumberResizeObserver = typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => scheduleLineNumberRefresh())
+        ? new ResizeObserver((entries) => {
+              // The wrapper entry drives the pin; the code entry drives the
+              // gutter. Either may fire alone (a resize drag moves only the
+              // wrapper; retyping a line moves only the code).
+              if (entries.some((e) => e.target === wrapper)) {
+                  syncPillPin();
+              }
+              scheduleLineNumberRefresh();
+          })
         : null;
     lineNumberResizeObserver?.observe(codeEl);
+    lineNumberResizeObserver?.observe(wrapper);
 
     // Enter preview mode (internal reuse)
     function enterPreviewMode(): void {

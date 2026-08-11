@@ -45,9 +45,15 @@
     postMessage: (msg) => {
       window.__posted.push(msg);
       if (msg.type === "ready") {
+        // A spacer paragraph between the heading and the sentence the checks
+        // select in. The palette floats ABOVE the selection and so lands on
+        // whatever block precedes it — with the sentence directly under the
+        // heading, it covered the heading's own gutter marker, and check 6
+        // (marker click opens the block menu) would be clicking the palette
+        // instead. The spacer keeps that check about the marker.
         window.postMessage({
           type: "init",
-          content: "# Heading one\n\nThis **bold** and plain words here.\n",
+          content: "# Heading one\n\nA spacer line.\n\nThis **bold** and plain words here.\n",
           syncVersion: 1,
         }, "*");
       }
