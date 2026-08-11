@@ -235,8 +235,8 @@ The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which records 
 
 | Layer | Framework | Scope |
 |-------|-----------|-------|
-| Extension unit tests | Vitest 3.x (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
-| WebView unit tests | Vitest 3.x + jsdom 24.x | `webview/utils/`, `webview/messaging.ts` |
+| Extension unit tests | Vitest 4.x (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
+| WebView unit tests | Vitest 4.x + jsdom 24.x | `webview/utils/`, `webview/messaging.ts` |
 | Integration tests | @vscode/test-electron + Mocha | `src/test/`, in a real Extension Host: activation, `onWillSaveTextDocument` and `waitUntil` reaching disk, the custom-editor save cycle with a live webview |
 
 The `vscode` module is mocked centrally via `__mocks__/vscode.ts`, injected by `resolve.alias` in `vitest.config.ts`. Do not `vi.mock("vscode")` in individual test files.
@@ -330,7 +330,7 @@ Prohibited:
 - Don't test `private` methods. Verify behavior through the public interface.
 - For time-dependent logic use `vi.useFakeTimers()` and `vi.useRealTimers()`. Never wait on a real `setTimeout`.
   - `vi.useFakeTimers()` fakes `performance` too, and a faked `performance.now()` starts at 0. Code that sleeps via `setTimeout` but reads time via `performance.now()`, such as `webview/syncScheduler.ts` where every window is a `now() - mark` comparison, therefore boots into a state no real webview is ever in, and an elapsed-window check reads `0 - 0 >= 300` as false. If a test depends on a scheduler window, wind the clock past it first rather than trusting the default; `useFakeClockPastIdle` in `savePipeline.test.ts` is the worked example.
-  - Vitest 3 enforces `testTimeout`, which Vitest 2 did not always do. If a test starts failing on time after a runner upgrade, measure it on the old runner before assuming the new one made it slower: it may simply have started exceeding a limit it always exceeded. Prefer a per-`describe` timeout, with the measured cost in a comment, over raising the project-wide default.
+  - Vitest 3 enforces `testTimeout`, which Vitest 2 did not always do. If a test starts failing on time after a runner upgrade, measure it on the old runner before assuming the new one made it slower: it may simply have started exceeding a limit it always exceeded. Prefer a per-`describe` timeout, with the measured cost in a comment, over raising the project-wide default. That rule earned its keep on the move to Vitest 4: the heavy corpus suites timed out under `pnpm test:coverage` on the new runner, and the same command on the old one, same machine, timed out harder. The cause was machine contention, and blaming the upgrade would have reverted the fix for the flake it was landed to remove.
 
 ## Autosave
 

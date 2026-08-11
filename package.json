@@ -2204,7 +2204,7 @@
         "@types/mocha": "^10.0.10",
         "@types/node": "^18.19.130",
         "@types/vscode": "1.95.0",
-        "@vitest/coverage-v8": "^3.2.7",
+        "@vitest/coverage-v8": "^4.1.10",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^3.9.2",
         "esbuild": "^0.28.1",
@@ -2213,7 +2213,7 @@
         "ovsx": "1.1.1",
         "playwright": "^1.62.1",
         "typescript": "^5.9.3",
-        "vitest": "^3.2.7",
+        "vitest": "^4.1.10",
         "vscode-uri": "^3.1.0"
     },
     "dependencies": {
