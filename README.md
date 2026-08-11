@@ -61,7 +61,7 @@ Install the extension and open any `.md` or `.markdown` file. The first time, yo
 
 Everything is rebindable in VS Code's Keyboard Shortcuts. See [Features and settings](docs/FEATURES.md) for complete feature reference, settings list, and keyboard shortcuts.
 
-Requires VS Code 1.95 or later.
+Requires VS Code 1.95 or later. Also published to [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer), so it installs from the built-in extension search in VSCodium, Cursor, Windsurf, Gitpod and other editors that read that registry.
 
 ---
 
@@ -79,7 +79,7 @@ Birta Writer is by [Harlan Lewis](https://www.harlanlewis.com) at [Birta Labs](h
 
 Birta Writer is source-available under the Functional Source License (FSL-1.1-ALv2). See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-Every release is signed. The same `.vsix` goes to the Marketplace and to the [GitHub release](https://github.com/harlanlewis/birta-writer/releases), so you can confirm it was built by this repository, from this source:
+Every release is signed. The same `.vsix` goes to the Marketplace, to [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer), and to the [GitHub release](https://github.com/harlanlewis/birta-writer/releases), so you can confirm it was built by this repository, from this source:
 
 ```bash
 gh release download --repo harlanlewis/birta-writer --pattern '*.vsix'

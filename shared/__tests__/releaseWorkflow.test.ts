@@ -72,6 +72,32 @@ describe("release.yml", () => {
         expect(block).toMatch(/continue-on-error: true/);
     });
 
+    it("every publish job should upload the release job's artifact, never package its own", () => {
+        // One build, one attestation, three destinations. `vsce package` stamps
+        // each zip entry with the wall clock, so a job that packages for itself
+        // ships an archive whose digest no attestation describes — and it looks
+        // right in a diff, because the CONTENTS would be identical.
+        const jobs = workflow.split(/^  (?=\w[\w-]*:$)/m).filter((j) => /^publish/.test(j));
+        expect(jobs.length, "no publish jobs found in release.yml").toBeGreaterThan(1);
+
+        for (const job of jobs) {
+            const name = job.slice(0, job.indexOf(":"));
+            expect(job, `${name} does not download the release job's VSIX`).toContain(
+                "actions/download-artifact",
+            );
+            expect(job, `${name} builds its own VSIX`).not.toMatch(/pnpm run package|vsce package/);
+        }
+    });
+
+    it("each registry should publish behind its own dormancy guard", () => {
+        // The two credentials fail independently, and a missing one must SKIP
+        // rather than fail — that is what lets the repo add one registry at a
+        // time. Keyed on the secret existing, so a broken credential still
+        // fails loudly instead of quietly skipping.
+        expect(workflow).toMatch(/HAS_AZURE: \$\{\{ secrets\.AZURE_CLIENT_ID != '' \}\}/);
+        expect(workflow).toMatch(/HAS_OVSX: \$\{\{ secrets\.OVSX_PAT != '' \}\}/);
+    });
+
     it("the release guard's exclusion should match the stamp commit's subject", () => {
         const pattern = /--invert-grep --grep='([^']+)'/.exec(workflow)?.[1];
         const subject = /git commit -m "([^"]+)"/.exec(workflow)?.[1];

@@ -4,9 +4,12 @@ name: Release
 # packages the VSIX, tags the commit, and publishes a GitHub Release.
 #
 # Runs nightly and no-ops when nothing new has landed since the last tag.
-# Marketplace publishing stays dormant until an AZURE_CLIENT_ID secret exists, so
-# until then this only builds the downloadable VSIX + notes — exactly the "build,
-# don't publish yet" phase.
+#
+# It publishes to two registries, in two independent jobs: the VS Code
+# Marketplace, and Open VSX for the forks that cannot reach it. Each stays
+# dormant until its own secret exists (AZURE_CLIENT_ID, OVSX_PAT), so a repo with
+# neither still builds the downloadable VSIX + notes — the "build, don't publish
+# yet" phase — and adding one does not wait on the other.
 #
 # Publishing authenticates with Microsoft Entra ID workload identity federation
 # (OIDC), not a stored token. Azure DevOps is retiring the "all accessible
@@ -398,3 +401,75 @@ jobs:
       - name: Publish
         if: env.HAS_AZURE == 'true'
         run: pnpm vsce publish --no-dependencies --packagePath releases/*.vsix --azure-credential --skip-duplicate
+
+  # The second registry. Open VSX is what the VS Code forks read: VSCodium,
+  # Cursor, Windsurf, Gitpod and Eclipse Theia cannot reach the Microsoft
+  # Marketplace at all, because its terms restrict it to Microsoft's own
+  # products. Publishing here is the only way Birta Writer is installable in
+  # any of them.
+  #
+  # A SIBLING of `publish`, not a step inside it. The two registries share
+  # nothing but the VSIX, and their credentials fail independently: an Entra
+  # login that stops working must not hold Open VSX back, and a revoked Open
+  # VSX token must not hold the Marketplace back. Run in parallel, fail apart.
+  #
+  # It downloads the release job's artifact rather than packaging its own, so
+  # all three destinations — Marketplace, Open VSX, and the GitHub Release —
+  # carry the same bytes, and the one build-provenance attestation covers every
+  # channel. Packaging here would produce a different archive (vsce stamps zip
+  # entries with the wall clock) that no attestation describes.
+  #
+  # No environment and no OIDC. The Marketplace job declares an environment
+  # because the federated credential's subject names one; Open VSX authenticates
+  # with a plain token, so there is nothing for an environment to match, and an
+  # environment is a policy surface worth adding only when something needs it.
+  publish-openvsx:
+    name: Publish to Open VSX
+    needs: release
+    if: needs.release.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Dormant until the secret exists, exactly like HAS_AZURE above. The
+      # namespace must also be created once by hand before the first publish
+      # can land; see docs/RELEASING.md.
+      HAS_OVSX: ${{ secrets.OVSX_PAT != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_OVSX == 'true'
+
+      - uses: pnpm/action-setup@v4
+        if: env.HAS_OVSX == 'true'
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_OVSX == 'true'
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: env.HAS_OVSX == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the VSIX
+        if: env.HAS_OVSX == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
+          path: releases
+
+      # --packagePath on a path ending in .vsix publishes that file as-is; ovsx
+      # only invokes vsce to package when handed a directory. --skip-duplicate
+      # makes a re-run idempotent, with the same caveat as the Marketplace job:
+      # it is not a retry path for the whole workflow, which would derive a new
+      # version from the clock. Re-run this job alone.
+      #
+      # The token goes through the environment, which ovsx reads natively, so it
+      # never appears in an argument list.
+      - name: Publish
+        if: env.HAS_OVSX == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: pnpm ovsx publish --packagePath releases/*.vsix --skip-duplicate
