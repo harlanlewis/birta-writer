@@ -7,6 +7,17 @@
  *
  * Everything runs in an isolated, disposable temp dir (workspace + user profile
  * + extensions), so a run never touches the user's real VS Code state.
+ *
+ * THE TEST WINDOW MUST BE VISIBLE. Two tests gate on `editor-painted`, a mark
+ * stamped from requestAnimationFrame (corpusOpen, launchPerf), and an occluded
+ * or off-display window gets no frames: they go red on ANY VS Code version
+ * while every other test stays green, which reads exactly like a real
+ * regression. An unattended run on a locked or otherwise-occupied display can
+ * also fabricate focus-sensitive failures. Before attributing a local red to a
+ * tree or a VS Code build, re-run with the window raised once during the first
+ * minute; CI is unaffected (its display server always paints). MAR-353 is the
+ * worked example: a version-change diagnosis that dissolved under
+ * window-controlled reruns.
  */
 import * as path from "path";
 import * as os from "os";
