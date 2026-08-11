@@ -214,13 +214,15 @@ The license is not an obstacle. Open VSX requires that an extension declare one,
 
 4. Store the token as the `OVSX_PAT` repository secret, under Settings → Secrets and variables → Actions. From the next release on, `publish-openvsx` runs.
 
+All four steps were completed on 2026-08-11 and the [listing](https://open-vsx.org/extension/BirtaLabs/birta-writer) is live, so this section matters again only for a token rotation (below) or a new namespace.
+
 Creating the namespace makes you a contributor of it, which is already exclusive: since 2020-12-17 only members of a namespace may publish into it, so nobody else can push a `BirtaLabs.*` extension ([Namespace Access](https://github.com/eclipse/openvsx/wiki/Namespace-Access)). Note that `ovsx`'s own README still describes the pre-2020 behavior, where a new namespace was open to everyone; the wiki is the authority.
 
 What a contributor does not have is an owner. A namespace with no owner is unverified, and every extension in it renders with a warning icon and a banner instead of the verified shield, however trustworthy the publisher. Claiming ownership fixes that and lets you manage members. Open an issue at [EclipseFdn/open-vsx.org](https://github.com/EclipseFdn/open-vsx.org/issues/new/choose) while logged in to open-vsx.org. Granting is deliberately public, so a claim can be disputed in the thread. Worth doing, and not a prerequisite for publishing.
 
 ### The first minutes after a publish are meant to look wrong
 
-A version appears as `Deactivated`, and absent from search and the extension page, immediately after upload. Processing is asynchronous; the version activates when it completes, usually within seconds. Something that stays deactivated for minutes is a failed processing run rather than a slow one, and is worth chasing. Its icon is extracted during the same pass, so a placeholder tile before activation means nothing either way.
+A version appears as `Deactivated`, and absent from search and the extension page, immediately after upload. Processing is asynchronous; the version activates when it completes, usually within seconds. Something that stays deactivated for minutes is a failed processing run rather than a slow one, and is worth chasing. Its icon is extracted during the same pass, so a placeholder tile before activation means nothing either way. This is observed behavior from this extension's first publish, not something the registry documents, so if a later publish behaves differently, trust what you see over this paragraph.
 
 ### The first publish
 

@@ -32,6 +32,26 @@ function stepLine(name: string): number {
     return at;
 }
 
+/**
+ * The publish jobs, comments stripped BEFORE chunking. Stripping is what keeps
+ * these assertions about the workflow rather than its prose: the comment block
+ * introducing a job would otherwise land in the PREVIOUS job's chunk, and a
+ * phrase like "vsce package" inside a comment would trip a matcher meant for a
+ * run: line.
+ */
+function publishJobs(): Array<{ name: string; body: string }> {
+    const stripped = workflow
+        .split("\n")
+        .filter((l) => !/^\s*#/.test(l))
+        .join("\n");
+    const jobs = stripped
+        .split(/^  (?=\w[\w-]*:$)/m)
+        .filter((j) => /^publish/.test(j))
+        .map((j) => ({ name: j.slice(0, j.indexOf(":")), body: j }));
+    expect(jobs.length, "no publish jobs found in release.yml").toBeGreaterThan(1);
+    return jobs;
+}
+
 describe("release.yml", () => {
     it("the changelog stamper should be invoked before the extension is packaged", () => {
         // Stamping after packaging would ship the unstamped file — the exact
@@ -77,15 +97,11 @@ describe("release.yml", () => {
         // each zip entry with the wall clock, so a job that packages for itself
         // ships an archive whose digest no attestation describes — and it looks
         // right in a diff, because the CONTENTS would be identical.
-        const jobs = workflow.split(/^  (?=\w[\w-]*:$)/m).filter((j) => /^publish/.test(j));
-        expect(jobs.length, "no publish jobs found in release.yml").toBeGreaterThan(1);
-
-        for (const job of jobs) {
-            const name = job.slice(0, job.indexOf(":"));
-            expect(job, `${name} does not download the release job's VSIX`).toContain(
+        for (const { name, body } of publishJobs()) {
+            expect(body, `${name} does not download the release job's VSIX`).toContain(
                 "actions/download-artifact",
             );
-            expect(job, `${name} builds its own VSIX`).not.toMatch(/pnpm run package|vsce package/);
+            expect(body, `${name} builds its own VSIX`).not.toMatch(/pnpm run package|vsce package/);
         }
     });
 
@@ -96,6 +112,23 @@ describe("release.yml", () => {
         // fails loudly instead of quietly skipping.
         expect(workflow).toMatch(/HAS_AZURE: \$\{\{ secrets\.AZURE_CLIENT_ID != '' \}\}/);
         expect(workflow).toMatch(/HAS_OVSX: \$\{\{ secrets\.OVSX_PAT != '' \}\}/);
+    });
+
+    it("every step of a publish job should be gated on that job's own dormancy guard", () => {
+        // The guard's DEFINITION is asserted above; this is its WIRING. A step
+        // that drops its `if:` still leaves that test green, and then the
+        // nightly hard-fails on the missing secret instead of skipping — the
+        // guard-attached-to-nothing failure mode this file's header describes.
+        for (const { name, body } of publishJobs()) {
+            const guard = /HAS_\w+/.exec(body)?.[0];
+            expect(guard, `${name} declares no HAS_* dormancy guard`).toBeTruthy();
+
+            const lines = body.split("\n");
+            const steps = lines.filter((l) => /^      - (name|uses):/.test(l)).length;
+            const gated = lines.filter((l) => l.trim() === `if: env.${guard} == 'true'`).length;
+            expect(steps, `${name} has no steps`).toBeGreaterThan(0);
+            expect(gated, `${name}: ${steps} steps, ${gated} gated on ${guard}`).toBe(steps);
+        }
     });
 
     it("the release guard's exclusion should match the stamp commit's subject", () => {
