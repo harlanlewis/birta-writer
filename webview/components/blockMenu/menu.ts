@@ -2,7 +2,10 @@
  * components/blockMenu/menu.ts
  *
  * The gutter block menu (MAR-78) — opened by clicking a block's gutter marker
- * (`#`..`######`, `P`, …). Two labeled sections:
+ * (`#`..`######`, `P`, …). The labeled sections:
+ *   - **Table** (⌘. inside a table only, MAR-118): the caret cell's
+ *     row/column ops, dispatched through the SAME contributed commands the
+ *     native right-click menu invokes — see openBlockMenu's `opts.cellPos`.
  *   - **Turn into**: real markdown conversions — P / H1–H6, the three list
  *     types, blockquote, callout, code block — the current type shown as an
  *     accent-filled row (the toolbar Format-menu idiom). Row art (icons,
@@ -44,7 +47,13 @@ import {
 import { getHeadingLevel } from "../../plugins/headingFold";
 import { attrsFromMarker, markerWithFold } from "../../plugins/callouts";
 import { BlockRangeSelection } from "../../plugins/blockRange";
-import { type GetEditor } from "../../editorCommands";
+// Value import from editorCommands is the turnInto.ts precedent: the cycle
+// (editorCommands → blockMenu → editorCommands) only ever resolves at call
+// time, never during module evaluation.
+import { runEditorCommand, type GetEditor } from "../../editorCommands";
+import type { EditorCommandId } from "../../../shared/editorCommands";
+import { linkAtCaret, openLinkAtCaret } from "../linkPopup";
+import { openImageLightbox } from "../imageView";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
 import { getTopbarBottom } from "../../utils/headingUtils";
@@ -55,6 +64,9 @@ import { onOutsideClick } from "../../ui/outsideClick";
 import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
+    IconAlignCenter,
+    IconAlignLeft,
+    IconAlignRight,
     IconArrowDownToLine,
     IconCheckSquare,
     IconChevronDown,
@@ -62,9 +74,12 @@ import {
     IconChevronUp,
     IconCopy,
     IconExpandHorizontal,
+    IconExternalLink,
     IconFileText,
     IconLink,
     IconList,
+    IconMaximize2,
+    IconPlus,
     IconTrash2,
 } from "../../ui/icons";
 import {
@@ -619,12 +634,18 @@ export function closeBlockMenu(): void {
  * the "Search actions…" input (the Notion pattern); `viaKeyboard` only
  * decides where focus RETURNS on Escape (the marker) vs any other close
  * (the editor).
+ *
+ * `opts.cellPos` (MAR-118, the ⌘.-inside-a-table path) is a position INSIDE
+ * a cell of the anchor table; it surfaces the Table section, whose rows run
+ * the SAME contributed table commands the right-click menu does, against
+ * that exact cell.
  */
 export function openBlockMenu(
     view: EditorView,
     blockPos: number,
     anchor: HTMLElement,
     viaKeyboard: boolean,
+    opts?: { cellPos?: number },
 ): void {
     // Toggle: a second click on the SAME marker closes its menu instead of
     // reopening it (read the open-state before closing — close() clears it).
@@ -981,10 +1002,54 @@ export function openBlockMenu(
     interface RowSpec {
         label: string;
         keywords: readonly string[];
-        section: "turnInto" | "numbering" | "actions";
+        section: "table" | "turnInto" | "numbering" | "actions";
         build: () => HTMLElement;
     }
     const specs: RowSpec[] = [];
+    // ── Table section (MAR-118): the caret's cell/row/column unit ──
+    // Rendered FIRST for a ⌘. inside a table — the unit the caret is in
+    // outranks the table-block actions below it. Every row dispatches the
+    // SAME contributed command id the native right-click menu invokes
+    // (shared/editorCommands.ts), carrying the cell target the way the
+    // context menu's data-vscode-context round-trip does, so the two
+    // surfaces cannot drift. Labels match the contributed titles exactly.
+    // No "Delete Table" row: the Actions section's Delete IS delete-table
+    // for a table block, and one destructive verb per menu is enough.
+    const cellPos = opts?.cellPos;
+    if (
+        anchorNode?.type.name === "table" &&
+        typeof cellPos === "number" &&
+        cellPos > blockPos &&
+        cellPos < blockPos + anchorNode.nodeSize
+    ) {
+        const tableRow = (
+            label: string,
+            keywords: readonly string[],
+            icon: string,
+            commandId: EditorCommandId,
+            danger?: boolean,
+        ): void => {
+            specs.push({
+                label,
+                keywords,
+                section: "table",
+                build: () => addRow(label, {
+                    icon,
+                    ...(danger ? { danger: true } : {}),
+                    action: () => runEditorCommand(commandId, getEditor, { cellPos }),
+                }),
+            });
+        };
+        tableRow(t("Insert Row Above"), ["table", "insert", "row", "above"], IconPlus, "tableInsertRowAbove");
+        tableRow(t("Insert Row Below"), ["table", "insert", "row", "below"], IconPlus, "tableInsertRowBelow");
+        tableRow(t("Insert Column Left"), ["table", "insert", "column", "left"], IconPlus, "tableInsertColumnLeft");
+        tableRow(t("Insert Column Right"), ["table", "insert", "column", "right"], IconPlus, "tableInsertColumnRight");
+        tableRow(t("Align Column Left"), ["table", "align", "column", "left"], IconAlignLeft, "tableAlignColumnLeft");
+        tableRow(t("Align Column Center"), ["table", "align", "column", "center"], IconAlignCenter, "tableAlignColumnCenter");
+        tableRow(t("Align Column Right"), ["table", "align", "column", "right"], IconAlignRight, "tableAlignColumnRight");
+        tableRow(t("Delete Row"), ["table", "delete", "remove", "row"], IconTrash2, "tableDeleteRow", true);
+        tableRow(t("Delete Column"), ["table", "delete", "remove", "column"], IconTrash2, "tableDeleteColumn", true);
+    }
     if (currentKind !== null) {
         const offered = TURN_INTO_CHOICES.filter(({ kind }) => canConvert(view, conversionPos, kind));
         for (const choice of offered) {
@@ -1038,6 +1103,55 @@ export function openBlockMenu(
             mutates: false,
             action: () => copyHeadingLink(view, blockPos),
         });
+    }
+    // ── Open the link under the caret (MAR-118) ── the keyboard path to
+    // what Cmd+Click does, through the popup's own routing (linkPopup).
+    // Offered only when the CARET actually sits in this menu's block: the
+    // menu's contract is by-position, and a mouse open on another block's
+    // marker must not surface a row that would act on the caret's block
+    // instead. The row re-resolves at activation (openLinkAtCaret), so a
+    // stale link is a no-op, not a mis-open.
+    {
+        const { $head } = view.state.selection;
+        const caretInBlock =
+            anchorNode !== null &&
+            $head.pos >= blockPos &&
+            $head.pos <= blockPos + anchorNode.nodeSize;
+        if (caretInBlock && linkAtCaret(view) !== null) {
+            action(t("Open Link"), ["open", "follow", "link", "url", "go"], {
+                icon: IconExternalLink,
+                mutates: false,
+                action: () => {
+                    openLinkAtCaret(view);
+                },
+            });
+        }
+    }
+    // ── View an image full screen (MAR-118) ── the keyboard path to the
+    // NodeView's zoom button: same lightbox surface, same Escape layer. An
+    // image lives in a paragraph (the gutter's "Image" marker unit); the
+    // FIRST image is the paragraph's identity — a multi-image paragraph is
+    // rare enough that per-image targeting stays with the mouse/NodeView.
+    {
+        let image: ProseNode | null = null;
+        if (anchorNode?.type.name === "paragraph") {
+            anchorNode.forEach((child: ProseNode) => {
+                if (image === null && child.type.name === "image") {
+                    image = child;
+                }
+            });
+        }
+        if (image !== null) {
+            const src = String((image as ProseNode).attrs["src"] ?? "");
+            const alt = String((image as ProseNode).attrs["alt"] ?? "");
+            if (src !== "") {
+                action(t("View Fullscreen"), ["image", "fullscreen", "zoom", "view", "lightbox", "preview"], {
+                    icon: IconMaximize2,
+                    mutates: false,
+                    action: () => openImageLightbox(src, alt),
+                });
+            }
+        }
     }
     if (
         anchorNode?.type.name === "table" &&
@@ -1279,6 +1393,16 @@ export function openBlockMenu(
         body.textContent = "";
         const q = query.trim();
         if (q === "") {
+            // Table (cell/row/column) rows lead: with a caret inside a
+            // table, ⌘. is asking about the unit under the caret first.
+            const table = specs.filter((spec) => spec.section === "table");
+            if (table.length > 0) {
+                addHeader(t("Table"));
+                for (const spec of table) {
+                    spec.build();
+                }
+                addDivider();
+            }
             const turnInto = specs.filter((spec) => spec.section === "turnInto");
             if (turnInto.length > 0) {
                 addHeader(isItem ? t("Turn list into") : t("Turn into"));

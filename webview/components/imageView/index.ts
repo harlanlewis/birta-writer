@@ -99,6 +99,17 @@ function showGlobalLightbox(src: string, alt: string): void {
 }
 
 /**
+ * Keyboard path into the lightbox (MAR-118): the block menu's "View
+ * Fullscreen" row opens the SAME surface the NodeView's zoom button does —
+ * Escape closes it through the shared escape layer. `src` is the image
+ * node's `src` attr, which already holds the renderable (webview) URI; the
+ * NodeView feeds its own `img.src` through the identical value.
+ */
+export function openImageLightbox(src: string, alt: string): void {
+    showGlobalLightbox(src, alt);
+}
+
+/**
  * Close the open lightbox if it is showing THIS image. Called from a NodeView's
  * destroy(), because a view can die with its lightbox open. It goes through the
  * surface's own close rather than removing the element, which is what leaves an
