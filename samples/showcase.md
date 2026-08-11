@@ -88,7 +88,7 @@ Inline $E = mc^2$, and block:
 
 ## Embeds
 
-A bare provider link on its own line becomes a card - YouTube, Vimeo, Loom, and Figma players, plus GitHub info cards. The GitHub card is built offline from the URL alone; the players need the network switch, which ships **off** (Cmd+Shift+P → "Toggle Network Features" - until then they stay plain links):
+A bare provider link on its own line becomes a card - YouTube, Vimeo, Loom, Figma, Google Docs/Sheets/Slides/Drive, and Miro players, plus GitHub and Linear info cards. The info cards are built offline from the URL alone; the players need the network switch, which ships **off** (Cmd+Shift+P → "Toggle Network Features" - until then they stay plain links):
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 

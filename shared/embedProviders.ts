@@ -77,6 +77,21 @@ function canonicalHost(url: URL): string | null {
     return url.hostname.toLowerCase().replace(/^www\./, "");
 }
 
+/**
+ * Parse `raw` and pin it to one canonical host — the shared prologue of every
+ * single-host extractor. Null for malformed, non-http(s), or any other host.
+ * Multi-host providers (YouTube, Vimeo) keep their own host dispatch.
+ */
+function hostUrl(raw: string, host: string): URL | null {
+    const url = parseUrl(raw);
+    return url && canonicalHost(url) === host ? url : null;
+}
+
+/** The URL's non-empty path segments, in order. */
+function pathSegments(url: URL): string[] {
+    return url.pathname.split("/").filter(Boolean);
+}
+
 /** Classify a host as a YouTube watch host, the youtu.be short host, or neither. */
 function youtubeHostKind(hostname: string): "long" | "short" | null {
     const host = hostname.toLowerCase().replace(/^www\./, "");
@@ -188,15 +203,11 @@ export function vimeoEmbedUrl(id: string): string {
  * e.g. the `?sid=` share links carry, are ignored). Exported for unit testing.
  */
 export function loomId(raw: string): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "loom.com");
     if (!url) {
         return null;
     }
-    const host = canonicalHost(url);
-    if (host !== "loom.com") {
-        return null;
-    }
-    const [first, second] = url.pathname.split("/").filter(Boolean);
+    const [first, second] = pathSegments(url);
     if (first !== "share" && first !== "embed") {
         return null;
     }
@@ -218,15 +229,11 @@ const FIGMA_TYPES = new Set(["design", "board", "slides", "deck", "proto", "file
  * targets a valid Embed Kit 2.0 path. Exported for unit testing.
  */
 export function figmaId(raw: string): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "figma.com");
     if (!url) {
         return null;
     }
-    const host = canonicalHost(url);
-    if (host !== "figma.com") {
-        return null;
-    }
-    const [first, second] = url.pathname.split("/").filter(Boolean);
+    const [first, second] = pathSegments(url);
     if (!first || !FIGMA_TYPES.has(first) || !second || !FIGMA_KEY.test(second)) {
         return null;
     }
@@ -262,15 +269,11 @@ const GOOGLE_PUB_ID = /^[A-Za-z0-9_-]{30,300}$/;
  * `/preview` at click time. Exported for unit testing.
  */
 export function googleDriveId(raw: string): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "drive.google.com");
     if (!url) {
         return null;
     }
-    const host = canonicalHost(url);
-    if (host !== "drive.google.com") {
-        return null;
-    }
-    const segments = url.pathname.split("/").filter(Boolean);
+    const segments = pathSegments(url);
     const [first, second, third, fourth] = segments;
     if (first === "file" && second === "d" && third && GOOGLE_FILE_ID.test(third)) {
         if (segments.length === 3) {
@@ -302,14 +305,11 @@ const GOOGLE_PRODUCTS = new Set(["document", "presentation", "spreadsheets"]);
  * form is framable without auth; the tails differ per product.
  */
 function googlePublishedId(raw: string, product: string, tails: readonly string[]): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "docs.google.com");
     if (!url) {
         return null;
     }
-    if (canonicalHost(url) !== "docs.google.com") {
-        return null;
-    }
-    const segments = url.pathname.split("/").filter(Boolean);
+    const segments = pathSegments(url);
     if (segments.length !== 5) {
         return null;
     }
@@ -363,14 +363,11 @@ export function googleSheetsEmbedUrl(id: string): string {
  * unit testing.
  */
 export function googleFileId(raw: string): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "docs.google.com");
     if (!url) {
         return null;
     }
-    if (canonicalHost(url) !== "docs.google.com") {
-        return null;
-    }
-    const segments = url.pathname.split("/").filter(Boolean);
+    const segments = pathSegments(url);
     const [product, second, id, tail] = segments;
     if (!product || !GOOGLE_PRODUCTS.has(product) || second !== "d") {
         return null;
@@ -415,14 +412,11 @@ const MIRO_BOARD_ID = /^[A-Za-z0-9_=-]{8,64}$/;
  * unit testing.
  */
 export function miroId(raw: string): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "miro.com");
     if (!url) {
         return null;
     }
-    if (canonicalHost(url) !== "miro.com") {
-        return null;
-    }
-    const segments = url.pathname.split("/").filter(Boolean);
+    const segments = pathSegments(url);
     if (segments.length !== 3) {
         return null;
     }
@@ -454,15 +448,18 @@ const LINEAR_SEGMENT = /^[A-Za-z0-9._-]+$/;
  * info card can show a human title without any network. Exported for testing.
  */
 export function linearId(raw: string): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "linear.app");
     if (!url) {
         return null;
     }
-    if (canonicalHost(url) !== "linear.app") {
+    const segments = pathSegments(url);
+    if (segments.length < 3 || segments.length > 4) {
         return null;
     }
-    const segments = url.pathname.split("/").filter(Boolean);
-    if (segments.length < 3 || segments.length > 4) {
+    // The `.`/`..` rejection matches githubId's: `new URL()` normalizes dot
+    // segments away before the split, but the extractor must be safe on its
+    // own terms rather than rely on that upstream side effect.
+    if (segments.some((s) => /^\.\.?$/.test(s))) {
         return null;
     }
     const [org, section, key, slug] = segments;
@@ -513,15 +510,11 @@ const GITHUB_RESERVED = new Set([
  * `gist.github.com`, `/tree/…`, releases — returns null. Exported for testing.
  */
 export function githubId(raw: string): string | null {
-    const url = parseUrl(raw);
+    const url = hostUrl(raw, "github.com");
     if (!url) {
         return null;
     }
-    const host = canonicalHost(url);
-    if (host !== "github.com") {
-        return null;
-    }
-    const segments = url.pathname.split("/").filter(Boolean);
+    const segments = pathSegments(url);
     // The `.`/`..` rejection is belt-and-braces: `new URL()` normalizes dot
     // segments out of pathname before we split, so none should ever arrive —
     // but the extractor must be safe on its own terms, not by relying on that
