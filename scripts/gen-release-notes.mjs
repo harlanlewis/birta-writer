@@ -177,13 +177,13 @@ export function commitNotes(list) {
 }
 
 /**
- * Where to install this version, first thing in every release body.
+ * Where to install this version, closing every release body.
  *
- * A GitHub release page leads with a `.vsix` asset, which is the worst of the
- * three ways to install and the only one visible: it does not update itself,
- * and a reader who takes it has opted out of every later release without being
- * told. The registries are named ahead of the notes so that reader sees the
- * maintained paths before the download.
+ * A GitHub release page offers a `.vsix` asset and nothing else: it is the
+ * worst of the three ways to install and the only one the page shows, because
+ * it does not update itself, so a reader who takes it has opted out of every
+ * later release without being told. Naming the registries in the body is what
+ * puts the maintained paths in front of that reader at all.
  *
  * Both are stated unconditionally because the release publishes to both from
  * one artifact. If a registry is ever dropped, this line is part of dropping
@@ -263,9 +263,11 @@ if (isEntry) {
   const list = commits();
   const changelog = releaseChangelog();
   const body = (await aiNotes(changelog, list)) ?? changelogNotes(changelog) ?? commitNotes(list);
-  // Prepended here rather than inside any one of the three body paths, so the
-  // links survive the AI path failing over to either fallback.
-  const out = `## Birta Writer ${VERSION}\n\n${INSTALL_LINKS}\n\n${body}\n`;
+  // Appended here rather than inside any one of the three body paths, so the
+  // links survive the AI path failing over to either fallback. The release job
+  // then appends the verification footer after this, which is the one thing
+  // that belongs below it.
+  const out = `## Birta Writer ${VERSION}\n\n${body}\n\n${INSTALL_LINKS}\n`;
 
   if (process.env.OUT) {
     writeFileSync(process.env.OUT, out);

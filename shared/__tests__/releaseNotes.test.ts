@@ -257,8 +257,8 @@ describe("the generator, run as the release job runs it", () => {
         expect(out).not.toContain("internal cleanup");
     });
 
-    it("both registry links should lead the notes, whichever body path produced them", () => {
-        // The links are prepended once, outside the AI/changelog/commit-list
+    it("both registry links should close the notes, whichever body path produced them", () => {
+        // The links are appended once, outside the AI/changelog/commit-list
         // branch, so this holds on the path a failed API call falls back to as
         // well as the one it fell from. Asserted on the no-key path because
         // that is the one a test can run.
@@ -270,9 +270,9 @@ describe("the generator, run as the release job runs it", () => {
                 "https://marketplace.visualstudio.com/items?itemName=BirtaLabs.birta-writer",
             );
             expect(out).toContain("https://open-vsx.org/extension/BirtaLabs/birta-writer");
-            // Ahead of the notes: a reader deciding how to install should not
-            // have to scroll the changelog to find out where it is published.
-            expect(out.indexOf("Install from")).toBeLessThan(out.indexOf("###"));
+            // Below every section, not merely present: the notes are what the
+            // reader came for, and the install line closes them.
+            expect(out.indexOf("Install from")).toBeGreaterThan(out.lastIndexOf("###"));
         }
     });
 
