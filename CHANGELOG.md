@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Google Docs, Sheets, Slides and Drive files, Miro boards, and Linear issues now render as embed cards on a bare link. A published Google document plays in place: a publish-to-web link loads Google's own embed view when you click it, and a Drive file link plays its preview the same way. An ordinary Google editing link becomes a card that names its product with a button to open it in your browser, never a frame, because Google refuses to be framed on those pages. A Miro board opens its login-free live view, which pans and zooms for public boards. A Linear issue renders as a card with the issue key and a title read from the link itself, no network involved, so it joins the GitHub card in working with the network switch off. As with every provider, the resting state is a quiet card, a player exists only after you click, each provider's exact hosts are pinned in the shared table that also generates the content-security policy, and a frame that needs you signed in says so instead of sitting blank.
+
 ---
 
 ## [2026.811.0] - 2026, August 11
