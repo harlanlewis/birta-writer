@@ -57,6 +57,7 @@ import { t } from "@/i18n";
 import { tagContentGuard } from "@/editing/blockOps";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { pinIntoView, viewportSpan } from "@/ui/anchoredPlacement";
+import { SAFE_AREA_CHANGE_EVENT } from "@/utils/headingUtils";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import {
     anchorAt,
@@ -269,6 +270,13 @@ class TableController {
         // Capture-phase catches scrolls from ANY ancestor, including the
         // table's own horizontal scroll container (display:block; overflow-x).
         window.addEventListener("scroll", this.onScroll, { capture: true });
+        // The sticky heading title shows and hides on its own rAF, and
+        // reposition() measures `viewportSpan()` against it. A single scroll
+        // event (a TOC click, a find jump) can run reposition one frame before
+        // the title appears, pinning the column grips under it with nothing
+        // left to re-run the pass — so the title's own height change is a
+        // reposition trigger too.
+        window.addEventListener(SAFE_AREA_CHANGE_EVENT, this.onScroll);
 
         // Contextual reveal: track the pointer over the wrapper (cheap, cached
         // hit-test — no layout reads) and grant a grace period on leave so the
@@ -1250,6 +1258,7 @@ class TableController {
     destroy(): void {
         this.resizeObs?.disconnect();
         window.removeEventListener("scroll", this.onScroll, { capture: true });
+        window.removeEventListener(SAFE_AREA_CHANGE_EVENT, this.onScroll);
         this.wrapper.removeEventListener("pointermove", this.onPointerMove);
         this.wrapper.removeEventListener("pointerleave", this.onPointerLeave);
         document.removeEventListener("mousemove", this.onDocMove);

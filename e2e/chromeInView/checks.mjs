@@ -64,7 +64,13 @@ export async function run({ page, check, baseUrl }) {
         const table = document.querySelector(".mw-table table").getBoundingClientRect();
         const grips = [...document.querySelectorAll(".mw-grip--col")].map((g) => g.getBoundingClientRect());
         const plus = [...document.querySelectorAll(".mw-insert--col .mw-insert-btn")].map((b) => b.getBoundingClientRect());
-        return { band, table: { top: table.top, bottom: table.bottom }, grips, plus, count: grips.length };
+        const bar = document.querySelector(".heading-sticky-title:not([hidden])");
+        return {
+            band,
+            barBottom: bar ? bar.getBoundingClientRect().bottom : null,
+            table: { top: table.top, bottom: table.bottom },
+            grips, plus, count: grips.length,
+        };
     })()`);
 
     const resting = await colGripState();
@@ -93,6 +99,17 @@ export async function run({ page, check, baseUrl }) {
     check("column grips slide down to stay clear of the topbar",
         scrolled.grips.every((g) => g.top >= scrolled.band.top - 1),
         JSON.stringify(scrolled.grips.map((g) => Math.round(g.top))));
+    // The grips sit ON the table, inside the content column, where the sticky
+    // heading bar paints — clearing the topbar alone can still leave them
+    // behind it. This state also pins the safe-area change event as a
+    // reposition trigger: a single scroll event lands the overlay's rAF one
+    // frame before the bar appears, and without the re-run the grips measure
+    // a band the bar is not yet part of and stay under it.
+    check("the sticky heading bar is actually showing over the table",
+        scrolled.barBottom !== null, `barBottom=${scrolled.barBottom}`);
+    check("…and the grips and their '+' buttons clear it too",
+        [...scrolled.grips, ...scrolled.plus].every((g) => g.top >= scrolled.barBottom - 1),
+        JSON.stringify([...scrolled.grips, ...scrolled.plus].map((g) => Math.round(g.top))));
     check("…and stay inside the viewport",
         scrolled.grips.every((g) => g.bottom <= scrolled.band.bottom),
         JSON.stringify(scrolled.grips.map((g) => Math.round(g.bottom))));

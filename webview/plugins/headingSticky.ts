@@ -17,6 +17,7 @@ import {
     getVisibleHeadings,
     getHeadingText,
     findHeadingPos,
+    SAFE_AREA_CHANGE_EVENT,
 } from "../utils/headingUtils";
 
 const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
@@ -230,12 +231,26 @@ export const headingStickyPlugin = $prose(() =>
              * extent below the topbar, not the box height: the bar slides up
              * under the next heading, and a reservation that ignored that would
              * push chrome down to clear a band nothing is drawn in.
+             *
+             * Guarded so scroll frames that change nothing write nothing, and
+             * a change is announced on `window`: chrome that MEASURES the safe
+             * area in its own rAF (the table overlay) may have already run
+             * this frame, and a single-event scroll (a TOC click, a find
+             * jump) would otherwise leave its placement stale under the bar.
+             * CSS consumers of the variable restyle on their own.
              */
+            let publishedHeight = -1;
             const publishHeight = (px: number): void => {
+                const height = Math.max(0, px);
+                if (height === publishedHeight) {
+                    return;
+                }
+                publishedHeight = height;
                 document.documentElement.style.setProperty(
                     "--editor-sticky-heading-height",
-                    `${Math.max(0, px)}px`,
+                    `${height}px`,
                 );
+                window.dispatchEvent(new Event(SAFE_AREA_CHANGE_EVENT));
             };
 
             const hideSticky = () => {
@@ -327,6 +342,7 @@ export const headingStickyPlugin = $prose(() =>
 
                 const nextHeading = headings[activeIndex + 1] ?? null;
                 const stickyHeight = sticky.getBoundingClientRect().height;
+                publishHeight(stickyHeight);
                 const nextTop = nextHeading?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
                 const offset = Math.min(0, nextTop - top - stickyHeight);
                 sticky.style.transform = `translateY(${offset}px)`;

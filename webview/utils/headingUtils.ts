@@ -103,6 +103,19 @@ export function safeAreaTop(): number {
 }
 
 /**
+ * Fired on `window` when the sticky heading title's painted height changes
+ * (plugins/headingSticky.ts, alongside its `--editor-sticky-heading-height`
+ * write).
+ * Chrome that MEASURES `safeAreaTop()` and caches the result in a layout pass
+ * must re-run that pass on this event: the title shows and hides on its own
+ * rAF, so a single scroll event (a TOC click, a find jump) can land the
+ * caching pass one frame before the title appears, leaving the cached
+ * placement under it with no further trigger. CSS consumers of the variable
+ * restyle automatically and need no listener.
+ */
+export const SAFE_AREA_CHANGE_EVENT = "birta-safe-area-change";
+
+/**
  * Scroll the window so `el` sits `margin` px below the topbar (or below the
  * viewport top when the toolbar is hidden). The single place for this offset
  * math — TOC clicks, anchor links, footnote jumps, find matches, and sticky
