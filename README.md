@@ -45,7 +45,7 @@ Birta Writer in VS Code is a drop-in replacement for any PKM vault (Personal Kno
 
 ## Getting started
 
-Install the extension and open any `.md` or `.markdown` file. The first time, you may need to switch from VS Code's editor to Birta Writer manually. After that, Markdown files open automatically. (You can change this behavior in VS Code Settings).
+Install the extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=BirtaLabs.birta-writer) or from [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer), and open any `.md` or `.markdown` file. The first time, you may need to switch from VS Code's editor to Birta Writer manually. After that, Markdown files open automatically. (You can change this behavior in VS Code Settings).
 
 ### Basic controls
 
