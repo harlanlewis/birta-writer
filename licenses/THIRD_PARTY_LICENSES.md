@@ -4391,7 +4391,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### mermaid@11.16.0
+### mermaid@11.16.1
 
 - License: MIT
 - Source: https://github.com/mermaid-js/mermaid
