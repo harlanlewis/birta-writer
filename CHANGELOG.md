@@ -24,6 +24,10 @@
 
 - Searching the block menu with more than one word now matches the words separately, so a phrase like delete table finds the Delete row in a table's menu, where it used to answer that nothing matches unless a row's label carried the exact phrase.
 
+### Security
+
+- The Mermaid diagram renderer is updated to 11.16.1, closing several flaws reachable from diagram text in a Markdown file you open. A crafted XY or radar chart could freeze the editor pane in an infinite loop, and crafted diagram text could tamper with the renderer's configuration objects or apply stray styling to content next to the diagram. None of these could run script, read files, or reach outside the editor pane; a defence already in place blocked the script paths, so the worst outcome was a frozen or misrendered pane, recovered by closing the tab.
+
 ---
 
 ## [2026.811.0] - 2026, August 11
