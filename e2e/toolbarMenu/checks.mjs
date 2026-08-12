@@ -126,9 +126,10 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(500, 800, { steps: 5 });
     await page.waitForTimeout(30);
 
-    // ── 6. Settings gear menu: five rows, two group separators, no header ──
+    // ── 6. Settings gear menu: six rows, two group separators, no header ──
     // The menu mirrors TOOLBAR_MENU_COMMANDS (layout | shortcuts | settings
-    // groups); the old .tb-fmt-header title row is gone.
+    // groups); the old .tb-fmt-header title row is gone. What's New shares the
+    // settings group with the Settings row, so it adds a row and no rule.
     const gearBtn = '[data-item-id="settings"] .tb-fmt-btn';
     const gearMenu = '[data-item-id="settings"] .tb-settings-menu';
     await page.hover(gearBtn);
@@ -145,21 +146,62 @@ export async function run({ page, check, baseUrl }) {
             .map((el) => el.getAttribute("role")),
     }));
     check("gear menu has no .tb-fmt-header title row", !gearShape.header);
-    check("gear menu rows: Customize / Hide / Show Shortcuts / Edit Shortcuts / Settings",
+    check("gear menu rows: Customize / Hide / Show Shortcuts / Edit Shortcuts / Settings / What's New",
         JSON.stringify(gearShape.labels) === JSON.stringify([
             "Customize Toolbar",
             "Hide Toolbar",
             "Show Keyboard Shortcuts",
             "Edit Keyboard Shortcuts",
             "Birta Writer Settings",
+            "What's New",
         ]), JSON.stringify(gearShape.labels));
-    check("gear menu groups split by two separators (item,item,sep,item,item,sep,item)",
+    check("gear menu groups split by two separators (item,item,sep,item,item,sep,item,item)",
         JSON.stringify(gearShape.kinds) ===
-            JSON.stringify(["item", "item", "sep", "item", "item", "sep", "item"]),
+            JSON.stringify(["item", "item", "sep", "item", "item", "sep", "item", "item"]),
         JSON.stringify(gearShape.kinds));
     check("gear menu separators carry role=separator",
         JSON.stringify(gearShape.sepRoles) === JSON.stringify(["separator", "separator"]),
         JSON.stringify(gearShape.sepRoles));
+
+    // ── 6b. What's New is REACHABLE: a real click on the real row, at its real
+    // position, hands the releases URL to the host. jsdom can dispatch the
+    // event but cannot tell whether anything is on top of the row; a browser
+    // click at its hit-tested centre can, so an occluded or zero-size row fails
+    // here and nowhere else. Nothing is fetched — rung 0b of NETWORK_POSTURE.
+    const RELEASES_URL = "https://github.com/harlanlewis/birta-writer/releases";
+    const whatsNewBox = await page.evaluate(() => {
+        const row = [...document.querySelectorAll('[data-item-id="settings"] .tb-settings-menu .tb-fmt-item')]
+            .find((el) => el.textContent === "What's New");
+        if (!row) { return null; }
+        const r = row.getBoundingClientRect();
+        return { cx: r.x + r.width / 2, cy: r.y + r.height / 2, w: r.width, h: r.height };
+    });
+    check("the What's New row has real hit area", !!whatsNewBox && whatsNewBox.w > 40 && whatsNewBox.h > 8,
+        JSON.stringify(whatsNewBox));
+    if (whatsNewBox) {
+        // Hit-test what is actually painted at the row's centre: a row covered
+        // by another menu would still measure a box and still receive a
+        // dispatched event, and would be unclickable for a user.
+        const onTop = await page.evaluate(({ cx, cy }) => {
+            const el = document.elementFromPoint(cx, cy);
+            return !!el?.closest(".tb-fmt-item");
+        }, whatsNewBox);
+        check("the What's New row is the topmost element at its own centre", onTop);
+        await page.mouse.click(whatsNewBox.cx, whatsNewBox.cy);
+        await page.waitForTimeout(30);
+        const opened = await page.evaluate(() =>
+            (window.__posted ?? []).filter((m) => m.type === "openUrl").map((m) => m.url));
+        check("clicking What's New posts openUrl for the releases page",
+            JSON.stringify(opened) === JSON.stringify([RELEASES_URL]), JSON.stringify(opened));
+        check("…and the menu closed behind the pick", (await disp(gearMenu)) === "none");
+    } else {
+        // Report the rest as failures rather than throwing, so a missing row
+        // does not take the section-7 checks below down with it.
+        check("the What's New row is the topmost element at its own centre", false, "row not rendered");
+        check("clicking What's New posts openUrl for the releases page", false, "row not rendered");
+        check("…and the menu closed behind the pick", false, "row not rendered");
+    }
+
     await page.mouse.move(500, 800, { steps: 5 });
     await page.waitForTimeout(30);
 

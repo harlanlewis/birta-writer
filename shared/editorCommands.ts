@@ -156,6 +156,15 @@ export const EDITOR_COMMANDS = [
     // (drift-guarded); the gear menu interpolates the product name via
     // settingsMenuTitle() instead of using this literal.
     { id: "openExtensionSettings", title: "Birta Writer Settings", palette: false, sections: ["toolbar"], menuGroup: "settings" },
+    // Opens the published release history in the browser (RELEASES_URL, handed
+    // to the host — the webview fetches nothing). It shares the `settings`
+    // group with the row above rather than opening a fourth one: both name the
+    // extension itself rather than this document or this toolbar, so a
+    // separator between them would draw a distinction that isn't there.
+    // Palette-visible, unlike its neighbours in the group: VS Code has its own
+    // Settings and Keyboard Shortcuts commands, and no command of its own
+    // reaches OUR release notes.
+    { id: "openWhatsNew", title: "What's New", palette: true, sections: ["toolbar"], menuGroup: "settings" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a

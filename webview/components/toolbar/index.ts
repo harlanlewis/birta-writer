@@ -36,7 +36,7 @@ import { STYLE_CATEGORIES, STYLE_SECTIONS } from "@/utils/styleCategories";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
 import { withScrollAnchor } from "@/utils/scrollAnchor";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { isChecklistSinkEnabled, setChecklistSinkEnabled } from "@/editing/checklistSink";
@@ -73,6 +73,7 @@ import {
 } from "../../../shared/contentWidth";
 import { type BlockHandlesMode } from "../../../shared/blockHandles";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
+import { RELEASES_URL } from "../../../shared/product";
 import { openShortcutsHelp } from "../shortcutsHelp";
 import './toolbar.css';
 
@@ -1922,6 +1923,10 @@ export function initToolbar(
             openShortcutsHelp: () => openShortcutsHelp(),
             openKeyboardShortcuts: () => notifyOpenKeybindings(),
             openExtensionSettings: () => notifyOpenSettings(),
+            // Hands the release-history URL to the host, which opens it in the
+            // browser. Same one-liner as the registry entry in
+            // webview/editorCommands.ts, because both are the whole action.
+            openWhatsNew: () => notifyOpenUrl(RELEASES_URL),
         };
         let prevGroup: string | undefined;
         for (const meta of TOOLBAR_MENU_COMMANDS) {

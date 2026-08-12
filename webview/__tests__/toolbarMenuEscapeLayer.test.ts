@@ -140,8 +140,8 @@ describe("toolbar dropdown item picks and the Escape-layer stack", () => {
     it("a Settings (gear) entry pick should leave no layer entry", async () => {
         const editor = await makeEditor("hello");
         const topbar = buildToolbar(() => editor);
-        // Last entry (Open Extension Settings) — the earlier ones mutate
-        // toolbar mode/visibility, which is irrelevant to layer bookkeeping.
+        // Last entry (What's New) — the layout ones mutate toolbar
+        // mode/visibility, which is irrelevant to layer bookkeeping.
         const rows = topbar.querySelectorAll<HTMLElement>(
             '[data-item-id="settings"] .tb-settings-menu .tb-fmt-item',
         );
