@@ -16,6 +16,10 @@
 
 - Edit an image's alt text and path from the keyboard: an image block's menu offers Edit Alt Text and Edit Image Path, which focus the image toolbar's own inputs, plus a row that cycles the image's display width.
 
+### Changed
+
+- A Miro board card opens the board itself when you click it. Loading the card used to land on Miro's own preloader, which held the canvas behind a second "See the board" click even though clicking the card was already the decision to load it.
+
 ### Fixed
 
 - Making Birta your default Markdown editor by setting `workbench.editorAssociations` now sticks. Opening the editor used to silently delete a user-authored `*.md` association on activation, assuming the entry was its own leftover, so the standard VS Code way of choosing a default editor quietly undid itself. The editor now removes only entries it wrote itself, and it no longer rewrites your settings file on activation when nothing changed.

@@ -472,7 +472,7 @@ describe("renderEmbedCard — Google and Miro players (MAR-186 P2)", () => {
         expect(card.querySelector("iframe")).toBeNull();
         card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
         const iframe = card.querySelector<HTMLIFrameElement>("iframe")!;
-        expect(iframe.src).toBe(`https://miro.com/app/live-embed/${MIRO}/`);
+        expect(iframe.src).toBe(`https://miro.com/app/live-embed/${MIRO}/?autoplay=true`);
     });
 
     it("the sign-in hint should generalize to the auth-wallable providers", () => {
