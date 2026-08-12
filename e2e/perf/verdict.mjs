@@ -60,6 +60,16 @@ export const POST_PAINT_SPANS = new Set(["rtp", "proofread"]);
 export const POST_PAINT_MIN_PCT = 20;
 export const POST_PAINT_MIN_MS = 15;
 
+// The sample floor, and the reason it is not optional. These marks are stamped
+// from idle callbacks, so a sample read before one fired carries no value for
+// that span and drops out of the median — which makes the sample count a
+// function of machine load, exactly the property that let the retired caret
+// burst-total gate fire REGRESSED on a branch that had got FASTER (MAR-259).
+// The double-confirm cannot catch it, because both passes draw on the same
+// load-dependent pool. Below this floor the span ABSTAINS rather than comparing
+// order statistics over a handful of survivors.
+export const POST_PAINT_MIN_SAMPLES = 4;
+
 // The sub-spans that compose launch (everything but launch itself, and not the
 // post-paint ones, which are reported separately).
 export const SUB_SPANS = SPANS
@@ -98,13 +108,24 @@ export function spans(marks) {
     return out;
 }
 
-/** Median (and optional min) of each span across a fixture's samples. */
+/**
+ * Median (and optional min) of each span across a fixture's samples, plus the
+ * number of samples each median was actually built from.
+ *
+ * `runs` counts samples taken; `counts[label]` counts samples that carried that
+ * span. They diverge for the post-paint spans, whose marks can miss a sample
+ * whose idle callback had not fired by the time the page was read — and a
+ * median over the survivors is an order statistic on however many that was.
+ * The post-paint gate reads `counts` for exactly the reason the caret gate
+ * reads `caretSamples`.
+ */
 export function aggregate(samples, withMin = true) {
-    const agg = { median: {}, runs: samples.length };
+    const agg = { median: {}, counts: {}, runs: samples.length };
     if (withMin) agg.min = {};
     for (const [label] of SPANS) {
         const vals = samples.map((s) => s[label]).filter((v) => v != null);
         agg.median[label] = vals.length ? round(median(vals)) : null;
+        agg.counts[label] = vals.length;
         if (withMin) agg.min[label] = vals.length ? round(Math.min(...vals)) : null;
     }
     return agg;
@@ -171,6 +192,20 @@ export function postPaintVerdict(pass) {
                 rows.push({ name, span, gated, abstained: true, reason });
                 continue;
             }
+            // An absent count reads as insufficient, never as plenty: a report
+            // shaped before `counts` existed cannot be characterized, and
+            // gating on a pool we cannot size is the failure this floor exists
+            // to prevent. Both sides stay visible — their disagreement is the
+            // load signal a reader needs.
+            const bn = r.base?.counts?.[span] ?? 0, an = r.head?.counts?.[span] ?? 0;
+            const samples = Math.min(bn, an);
+            if (samples < POST_PAINT_MIN_SAMPLES) {
+                rows.push({
+                    name, span, gated, abstained: true, samples, bSamples: bn, aSamples: an,
+                    reason: `only ${samples} sample(s) carried the span (floor ${POST_PAINT_MIN_SAMPLES})`,
+                });
+                continue;
+            }
             const dMs = a - b;
             const dPct = b > 0 ? (dMs / b) * 100 : (a > 0 ? 100 : 0);
             const real = Math.abs(dPct) >= POST_PAINT_MIN_PCT && Math.abs(dMs) >= POST_PAINT_MIN_MS;
@@ -179,7 +214,7 @@ export function postPaintVerdict(pass) {
                 mark = gated ? "✗ REGRESSED" : "✗ slower (ungated)";
                 if (gated) regressed.add(`${name}:${span}`);
             } else if (real && dMs < 0) { mark = "✓ faster"; }
-            rows.push({ name, span, gated, b, a, dMs, dPct, real, mark, abstained: false });
+            rows.push({ name, span, gated, b, a, dMs, dPct, real, mark, abstained: false, samples, bSamples: bn, aSamples: an });
         }
     }
     return { rows, regressed };

@@ -287,7 +287,10 @@ function printPostPaint(pass) {
             continue;
         }
         const sign = r.dMs >= 0 ? "+" : "";
-        console.log(`  ${tag}${where} ${round(r.b)}ms → ${round(r.a)}ms  (${sign}${round(r.dMs)}ms, ${sign}${round(r.dPct)}%)  ${r.mark}`);
+        // Both pools are printed, never just the smaller: their disagreement is
+        // the load signal that says whether the medians are comparable at all.
+        const n = r.bSamples === r.aSamples ? `n=${r.bSamples}` : `n=${r.bSamples}/${r.aSamples}`;
+        console.log(`  ${tag}${where} ${round(r.b)}ms → ${round(r.a)}ms  (${sign}${round(r.dMs)}ms, ${sign}${round(r.dPct)}%)  ${n}  ${r.mark}`);
     }
 }
 
