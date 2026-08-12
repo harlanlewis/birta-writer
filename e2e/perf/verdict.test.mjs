@@ -10,6 +10,7 @@ import {
     abVerdict, confirmRegressions, spans, aggregate, GATED_FIXTURES,
     SPANS, SUB_SPANS, POST_PAINT_SPANS, MIN_PCT, MIN_MS,
     postPaintVerdict, POST_PAINT_MIN_PCT, POST_PAINT_MIN_MS, POST_PAINT_MIN_SAMPLES,
+    narrowSettleMarks,
     typingAbVerdict, TYPING_GATED_FIXTURES,
 } from "./verdict.mjs";
 
@@ -353,6 +354,66 @@ describe("postPaintVerdict — gating the spans launch cannot see", () => {
         const atFloor = POST_PAINT_MIN_MS;
         expect([...postPaintVerdict(ppPass("large", "rtp", atFloor, atFloor * 2)).regressed])
             .toEqual(["large:rtp"]);
+    });
+});
+
+// ── The settle-mark probe ───────────────────────────────────────────────────
+// This is the mechanism that let the post-paint gate be built at all: without
+// it, a merge-base predating a mark pays the settle timeout on every sample
+// rather than once per fixture. Its caller drives Playwright and cannot be
+// tested, which is exactly why the logic was moved here.
+
+const SETTLE = ["rtp-end", "proofread-end"];
+
+describe("narrowSettleMarks — the warmup probe of what a bundle stamps", () => {
+    it("a sample that stamped everything should keep the whole wait list", () => {
+        expect(narrowSettleMarks(SETTLE, { launch: 100 })).toEqual(SETTLE);
+    });
+
+    it("a mark the sample never stamped should be dropped from the wait", () => {
+        // The merge-base case: waiting again would cost the full timeout on
+        // every remaining sample for a span that will abstain regardless.
+        const out = narrowSettleMarks(SETTLE, { __missingSettle: ["rtp-end"] });
+        expect(out).toEqual(["proofread-end"]);
+    });
+
+    it("a bundle stamping neither mark should end up waiting for nothing", () => {
+        expect(narrowSettleMarks(SETTLE, { __missingSettle: [...SETTLE] })).toEqual([]);
+    });
+
+    it("narrowing should keep the marks the sample DID stamp, not invert them", () => {
+        // An inverted filter reads as working — it still returns a shorter list
+        // — while dropping exactly the marks the bundle can report.
+        const out = narrowSettleMarks(SETTLE, { __missingSettle: ["proofread-end"] });
+        expect(out).toContain("rtp-end");
+        expect(out).not.toContain("proofread-end");
+    });
+
+    it("narrowing should be monotonic: a later sample cannot re-arm a dropped mark", () => {
+        // The runner narrows once at warmup, but the property is what makes the
+        // one-timeout-per-fixture cost claim true rather than hopeful.
+        const once = narrowSettleMarks(SETTLE, { __missingSettle: ["rtp-end"] });
+        const twice = narrowSettleMarks(once, { launch: 100 });
+        expect(twice).toEqual(["proofread-end"]);
+        expect(narrowSettleMarks(twice, { __missingSettle: ["proofread-end"] })).toEqual([]);
+    });
+
+    it("an already-empty wait list should stay empty", () => {
+        expect(narrowSettleMarks([], { __missingSettle: ["rtp-end"] })).toEqual([]);
+    });
+
+    it("a missing mark the side never waited for should change nothing", () => {
+        expect(narrowSettleMarks(["rtp-end"], { __missingSettle: ["something-else"] }))
+            .toEqual(["rtp-end"]);
+    });
+
+    it("should not mutate the caller's list, which is shared by both sides", () => {
+        // Both sides start from the same SETTLE_MARKS constant in the runner.
+        // Mutating it would narrow base and head together, so one bundle's
+        // missing mark would silently stop the OTHER from being measured.
+        const original = [...SETTLE];
+        narrowSettleMarks(SETTLE, { __missingSettle: ["rtp-end"] });
+        expect(SETTLE).toEqual(original);
     });
 });
 

@@ -66,15 +66,43 @@ export const POST_PAINT_SPANS = new Set(["rtp", "proofread"]);
 export const POST_PAINT_MIN_PCT = 10;
 export const POST_PAINT_MIN_MS = 5;
 
-// The sample floor, and the reason it is not optional. These marks are stamped
-// from idle callbacks, so a sample read before one fired carries no value for
-// that span and drops out of the median — which makes the sample count a
-// function of machine load, exactly the property that let the retired caret
-// burst-total gate fire REGRESSED on a branch that had got FASTER (MAR-259).
-// The double-confirm cannot catch it, because both passes draw on the same
-// load-dependent pool. Below this floor the span ABSTAINS rather than comparing
-// order statistics over a handful of survivors.
+// The sample floor: below it a span ABSTAINS rather than comparing order
+// statistics over a handful of survivors.
+//
+// Scope, stated honestly, because the neighbouring caret floor guards a much
+// likelier failure and the two should not be read as equals. A post-paint
+// sample drops out of its median only when the mark misses SETTLE_TIMEOUT_MS,
+// which is far longer than these spans take, so in practice every sample
+// carries them and this floor does not engage. It covers the narrow middle
+// case the mark probe cannot: a side whose warmup DID stamp the mark, so the
+// wait stays armed, but which then times out on most later samples. The caret
+// pool, by contrast, varies on every ordinary run because arrow presses
+// coalesce, which is why its floor is load-critical and this one is a backstop.
+//
+// Keep it well under the measured-sample count (`--runs` minus the warmup
+// pair), or it converts a rare degradation into a routine abstention.
 export const POST_PAINT_MIN_SAMPLES = 4;
+
+/**
+ * Narrow the settle-mark list a side keeps waiting for, given one sample.
+ *
+ * The A/B waits for the post-paint end marks so those spans can be gated, but a
+ * bundle that never stamps one (a merge-base predating it) would pay the settle
+ * timeout on every sample. The runner probes each side with the warmup pair it
+ * already discards and calls this to drop whatever that side did not stamp, so
+ * an unmarked bundle costs one timeout per fixture rather than one per sample.
+ * That is the whole reason this gate could be built without waiting for the
+ * marks to reach every plausible merge-base, so it is worth a test: the runner
+ * that calls it drives Playwright and cannot have one.
+ *
+ * Dropping a mark is not a loss of coverage. The span then aggregates to null
+ * and ABSTAINS, which is the honest reading of a bundle that cannot report it.
+ */
+export function narrowSettleMarks(settle, sample) {
+    const missing = sample?.__missingSettle ?? [];
+    if (!missing.length) return settle;
+    return settle.filter((m) => !missing.includes(m));
+}
 
 // The sub-spans that compose launch (everything but launch itself, and not the
 // post-paint ones, which are reported separately).
