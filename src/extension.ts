@@ -91,22 +91,34 @@ export async function promptBlockHandlesMode(): Promise<void> {
 /**
  * Sync workbench.editorAssociations based on defaultMode:
  * - "markdown" → inject "*.md"/"*.markdown": "default" so the text editor opens directly without triggering the custom editor
- * - "preview"  → remove the above entries, restoring the priority:default in package.json
+ * - "preview"  → remove ONLY the "default" entries this function wrote; the tab watcher in activate() supplies the WYSIWYG default under package.json's priority:option
+ *
+ * This function may remove only what it wrote — the "default" spelling above.
+ * Any other value ("birta.editor", another preview editor) is the user's own
+ * association and must survive activation untouched. The Global write is also
+ * skipped when nothing changed, so activation never churns settings.json.
+ * Exported for unit testing.
  */
-function syncEditorAssociation(mode: string): void {
+export function syncEditorAssociation(mode: string): void {
     const wbConfig = vscode.workspace.getConfiguration("workbench");
     const current: Record<string, string> = {
         ...(wbConfig.get<Record<string, string>>("editorAssociations") ?? {}),
     };
-    if (mode === "markdown") {
-        current["*.md"] = "default";
-        current["*.markdown"] = "default";
-    } else {
-        // preview mode: remove the association, relying on package.json's priority:default to take effect automatically
-        delete current["*.md"];
-        delete current["*.markdown"];
+    let changed = false;
+    for (const glob of ["*.md", "*.markdown"]) {
+        if (mode === "markdown") {
+            if (current[glob] !== "default") {
+                current[glob] = "default";
+                changed = true;
+            }
+        } else if (current[glob] === "default") {
+            delete current[glob];
+            changed = true;
+        }
     }
-    wbConfig.update("editorAssociations", current, vscode.ConfigurationTarget.Global);
+    if (changed) {
+        wbConfig.update("editorAssociations", current, vscode.ConfigurationTarget.Global);
+    }
 }
 
 export function activate(context: vscode.ExtensionContext) {
