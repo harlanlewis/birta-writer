@@ -11,3 +11,18 @@
  * marketing suffix can.
  */
 export const PRODUCT_NAME = "Birta Writer";
+
+/**
+ * The published release history, opened by the gear menu's What's New row.
+ *
+ * Rung 0b of the network posture (`docs/NETWORK_POSTURE.md`): nothing is
+ * fetched. The webview hands this string to the host, which scheme-checks it
+ * and calls `env.openExternal`, so the request belongs to the user's browser
+ * and `birta.network.enabled` has no say in it.
+ *
+ * It must keep naming the same repository as package.json's `repository.url`,
+ * which is what `shared/__tests__/releasesUrl.test.ts` checks: a repository
+ * move that updates the manifest and not this constant would leave the row
+ * pointing at a repository we no longer publish from.
+ */
+export const RELEASES_URL = "https://github.com/harlanlewis/birta-writer/releases";

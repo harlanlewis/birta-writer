@@ -454,6 +454,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.openWhatsNew",
+                "title": "%command.editor.openWhatsNew.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.openKeyboardShortcuts",
                 "title": "%command.editor.openKeyboardShortcuts.title%",
                 "category": "Birta Writer"
@@ -1090,6 +1095,10 @@
                     "when": "false"
                 },
                 {
+                    "command": "birta.editor.openWhatsNew",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
                     "command": "birta.editor.openKeyboardShortcuts",
                     "when": "false"
                 },
@@ -1384,6 +1393,11 @@
                     "command": "birta.editor.openExtensionSettings",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
                     "group": "3_settings@1"
+                },
+                {
+                    "command": "birta.editor.openWhatsNew",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
+                    "group": "3_settings@2"
                 },
                 {
                     "command": "birta.editor.showToolbar",
