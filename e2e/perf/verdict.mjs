@@ -46,25 +46,40 @@ export const SPANS = [
  */
 export const POST_PAINT_SPANS = new Set(["rtp", "proofread"]);
 
-// Post-paint floors. The percent floor is coarser than launch's 3% and the ms
-// floor is TIGHTER than its 10 ms, and both directions are deliberate: these
-// spans are an order of magnitude smaller than launch, so 10 ms would be a
-// large fraction of one rather than a noise floor under it, while their
-// relative run-to-run spread is wider because they are `requestIdleCallback`
-// bodies rather than mount-path work.
+// Post-paint floors, both coarser than launch's 3% / 10 ms.
 //
-// Set from a measured null A/B — the same bundle on both sides, which is the
-// only instrument that reports what this gate will actually see. Reproduce it
-// before changing either number, and note it was read on an idle laptop; a CI
-// runner is the noisier environment and is where a flaky floor would show:
+// CALIBRATE THESE FROM CI, NEVER FROM A DEVELOPER MACHINE. That is the whole
+// reason they are what they are. A null A/B on an idle laptop (same bundle both
+// sides) reports these spans as extremely steady, and floors set from it were
+// tight enough that a null CI run — byte-identical bundles, nothing to find —
+// cleared both of them on a gated fixture and printed a verdict. It read as
+// "faster" only because the noise happened to land negative; the same
+// excursion positive is a REGRESSED on a required check, from nothing.
+//
+// The repo already knew this shape and it was applied to the wrong gate:
+// AGENTS.md says to size `typing-perf` from a completed CI job because the
+// runner is roughly twice as slow. The same holds here, and more so, because
+// these spans are `requestIdleCallback` bodies whose scheduling competes with
+// whatever else the runner is doing.
+//
+// To re-derive: open the `launch-perf` job of any PR that changes no bundled
+// code (a docs-only or `e2e/`-only PR is a true null), read its post-paint
+// block, and re-run the job a few times on the same commit. The spread across
+// those runs is what these floors have to clear. The laptop command below is
+// still useful for checking that a change did not move a span, but it is not
+// the instrument that sets a CI floor:
 //
 //   node esbuild.mjs --production && cp -R dist /tmp/dist-null
 //   node e2e/perf.mjs --ab /tmp/dist-null dist --runs 9
 //
-// The double-confirm is the second line of defence: a floor set slightly too
-// tight costs a repeated pass, not a failed PR.
-export const POST_PAINT_MIN_PCT = 10;
-export const POST_PAINT_MIN_MS = 5;
+// What the width costs, stated plainly: a subtle regression under a quarter of
+// a span now passes. What it keeps is the failure this gate exists for — work
+// added to a post-paint span, which is how MAR-311's unattributed block arose —
+// because any span that DOUBLES moves +100%, far clear of the percent floor,
+// and every gated span is larger than the ms floor. `verdict.test.mjs` pins
+// that property so a future widening cannot quietly cross it.
+export const POST_PAINT_MIN_PCT = 25;
+export const POST_PAINT_MIN_MS = 15;
 
 // The sample floor: below it a span ABSTAINS rather than comparing order
 // statistics over a handful of survivors.

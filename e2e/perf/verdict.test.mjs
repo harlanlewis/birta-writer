@@ -169,13 +169,13 @@ describe("postPaintVerdict — gating the spans launch cannot see", () => {
     });
 
     it("a move over the % floor but under the ms floor should NOT regress", () => {
-        // 20 → 24 ms = +20%, clear of the percent floor, but only +4 ms.
-        expect(postPaintVerdict(ppPass("large", "rtp", 20, 24)).regressed.size).toBe(0);
+        // 30 → 40 ms = +33%, clear of the percent floor, but only +10 ms.
+        expect(postPaintVerdict(ppPass("large", "rtp", 30, 40)).regressed.size).toBe(0);
     });
 
     it("a move over the ms floor but under the % floor should NOT regress", () => {
-        // 200 → 208 ms = +8 ms, clear of the ms floor, but only +4%.
-        expect(postPaintVerdict(ppPass("large", "rtp", 200, 208)).regressed.size).toBe(0);
+        // 200 → 220 ms = +20 ms, clear of the ms floor, but only +10%.
+        expect(postPaintVerdict(ppPass("large", "rtp", 200, 220)).regressed.size).toBe(0);
     });
 
     it("an UNGATED fixture regressing should be reported and never gate", () => {
@@ -334,23 +334,21 @@ describe("postPaintVerdict — gating the spans launch cannot see", () => {
         }
     });
 
-    it("should hold a percent floor above launch's and an ms floor below it", () => {
-        // Both directions are the point. These spans jitter more in RELATIVE
-        // terms than the mount path, so the percent floor has to sit above
-        // launch's; they are an order of magnitude smaller in ABSOLUTE terms, so
-        // launch's 10 ms would be a large fraction of one rather than a floor
-        // under it. Getting either backwards produces a gate that cannot fire.
+    it("should hold both floors above launch's, since CI moves these spans more", () => {
+        // A null CI run cleared floors set from an idle laptop, so both are
+        // wider than launch's rather than only the percent one. Narrowing
+        // either back toward launch's reinstates a gate that fires on nothing.
         expect(POST_PAINT_MIN_PCT).toBeGreaterThan(MIN_PCT);
-        expect(POST_PAINT_MIN_MS).toBeLessThan(MIN_MS);
+        expect(POST_PAINT_MIN_MS).toBeGreaterThan(MIN_MS);
     });
 
-    it("should let a doubling clear the percent floor, leaving ms as the knob", () => {
-        // A span that doubles moves +100%, so the percent floor can never be
-        // what hides a doubling — the ms floor is the whole sensitivity story,
-        // and it is why the ms floor is the one calibrated against a null A/B.
+    it("should still catch a span that DOUBLES, which is what it exists for", () => {
+        // This is the property the width must not cost. Work added to a
+        // post-paint span is the failure mode (MAR-311's unattributed block),
+        // and a doubling moves +100%, far clear of the percent floor. Pinned as
+        // behaviour so a future widening cannot quietly cross it: the smallest
+        // span this can hold for is one the size of the ms floor itself.
         expect(POST_PAINT_MIN_PCT).toBeLessThan(100);
-        // Stated as behaviour, not just arithmetic: any span at least as large
-        // as the ms floor is caught when it doubles.
         const atFloor = POST_PAINT_MIN_MS;
         expect([...postPaintVerdict(ppPass("large", "rtp", atFloor, atFloor * 2)).regressed])
             .toEqual(["large:rtp"]);
