@@ -134,9 +134,10 @@ export function createLangPicker(
         }
 
         const nextIdx = Math.max(0, Math.min(idx, items.length - 1));
-        items.forEach((el, i) =>
-            el.classList.toggle("lang-picker-item--focused", i === nextIdx),
-        );
+        items.forEach((el, i) => {
+            el.classList.toggle("lang-picker-item--focused", i === nextIdx);
+            el.classList.toggle("ui-menu-row--selected", i === nextIdx);
+        });
         scrollListItemIntoView(items[nextIdx]);
         activeIndex = nextIdx;
     }

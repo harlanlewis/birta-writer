@@ -968,7 +968,7 @@ export function openBlockMenu(
     let rowIdSeq = 0;
     const clearHl = (): void => {
         hlIdx = -1;
-        rowEls().forEach((row) => row.classList.remove("block-menu-item--hl"));
+        rowEls().forEach((row) => row.classList.remove("block-menu-item--hl", "ui-menu-row--selected"));
         search.removeAttribute("aria-activedescendant");
     };
     /** Wraps into [0, rows) — pass hlIdx±1 to step (from -1, ArrowDown
@@ -980,7 +980,10 @@ export function openBlockMenu(
             return;
         }
         hlIdx = ((idx % list.length) + list.length) % list.length;
-        list.forEach((row, i) => row.classList.toggle("block-menu-item--hl", i === hlIdx));
+        list.forEach((row, i) => {
+            row.classList.toggle("block-menu-item--hl", i === hlIdx);
+            row.classList.toggle("ui-menu-row--selected", i === hlIdx);
+        });
         const current = list[hlIdx]!;
         if (!current.id) {
             current.id = `block-menu-row-${++rowIdSeq}`;

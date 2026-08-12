@@ -167,6 +167,7 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
         Array.from(list.children).forEach((li, i) => {
             const isActive = i === activeIndex;
             li.classList.toggle("fm-suggest-item--focused", isActive);
+            li.classList.toggle("ui-menu-row--selected", isActive);
             // Optional call: jsdom (unit tests) does not implement scrollIntoView.
             if (isActive) { (li as HTMLElement).scrollIntoView?.({ block: "nearest" }); }
         });

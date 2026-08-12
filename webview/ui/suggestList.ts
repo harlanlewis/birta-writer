@@ -198,6 +198,7 @@ export function createSuggestMenuFromRows(
         list.querySelectorAll("li").forEach((li, i) => {
             const isActive = i === activeIndex;
             li.classList.toggle("fm-suggest-item--focused", isActive);
+            li.classList.toggle("ui-menu-row--selected", isActive);
             // aria-selected tracks the visual highlight so screen readers
             // announce the focused option as the row moves.
             li.setAttribute("aria-selected", isActive ? "true" : "false");

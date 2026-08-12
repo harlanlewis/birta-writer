@@ -148,17 +148,11 @@
 }
 
 /* Keyboard highlight while focus sits in the search input (the virtual
-   aria-activedescendant row) — the primitive's selected state, which carries
-   the focus ring that keeps it legible ON TOP of the current-type accent row
-   in the filtered flat list ("what Enter hits" must always be the row that
-   looks selected). */
-.block-menu-item--hl {
-    background: var(--ui-menu-selected-bg);
-    color: var(--ui-menu-selected-ink);
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: -1px;
-}
-
+   aria-activedescendant row). Ground, ink and the focus ring come from
+   .ui-menu-row--selected, composed alongside this class; the ring is what
+   keeps this row legible ON TOP of the current-type accent row in the
+   filtered flat list ("what Enter hits" must always be the row that looks
+   selected). Local: full ink on the row's own parts. */
 .block-menu-item--hl :is(.block-menu-item-icon, .block-menu-item-badge, .block-menu-item-hint) {
     color: inherit;
 }
@@ -1902,16 +1896,10 @@ body.toolbar-hidden::before {
     overflow: hidden;
     text-overflow: ellipsis;
 
-    /* Composes the primitive's selected state; see .ui-menu-row--selected. */
-    &.fm-suggest-item--focused {
-        background: var(--ui-menu-selected-bg);
-        color: var(--ui-menu-selected-ink);
-        outline: 1px solid var(--vscode-focusBorder);
-        outline-offset: -1px;
-
-        & .fm-suggest-item__hint {
-            color: inherit;
-        }
+    /* Ground, ink and outline come from .ui-menu-row--selected, composed
+       alongside this class. Local: full ink on this row's own hint. */
+    &.fm-suggest-item--focused .fm-suggest-item__hint {
+        color: inherit;
     }
 
     &.fm-suggest-create {
@@ -1971,8 +1959,11 @@ body.toolbar-hidden::before {
     max-width: 320px;
     /* Rows are .ui-menu-row primitives. The highlight is JS-driven (a roving
        --focused class moved by keyboard AND mouseover), so the primitive's
-       CSS hover wash is silenced — two washes would show double rows. */
+       CSS hover state is silenced — two highlights would show double rows.
+       Both halves have to go: a theme that defines list.hoverForeground would
+       otherwise recolor a hovered row here with no wash under it. */
     --ui-menu-hover-bg: transparent;
+    --ui-menu-hover-ink: inherit;
     background: var(--ui-card-bg);
     border: 1px solid var(--ui-card-border);
     border-radius: var(--ui-radius-l);
@@ -1997,16 +1988,11 @@ body.toolbar-hidden::before {
 .slash-menu-item {
     padding: 4px 10px;
 
-    /* Composes the primitive's selected state; see .ui-menu-row--selected. */
-    &.slash-menu-item--focused {
-        background: var(--ui-menu-selected-bg);
-        color: var(--ui-menu-selected-ink);
-        outline: 1px solid var(--vscode-focusBorder);
-        outline-offset: -1px;
-
-        & :is(.slash-menu-item-icon, .slash-menu-item-badge, .slash-menu-item-hint) {
-            color: inherit;
-        }
+    /* Ground, ink and outline come from .ui-menu-row--selected, composed
+       alongside this class. Local: restoring full ink on the row's own parts,
+       which only this surface knows the names of. */
+    &.slash-menu-item--focused :is(.slash-menu-item-icon, .slash-menu-item-badge, .slash-menu-item-hint) {
+        color: inherit;
     }
 }
 

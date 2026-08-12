@@ -325,12 +325,16 @@
     outline: none;
 }
 
-/* The keyboard row — "what Enter hits". The wash comes from the theme; the
-   outline does NOT, and that is deliberate. A theme is free to make its
-   selection a whisper (VS Code Light Modern's is 1.15 against the menu it sits
-   on, and several themes wash the row at 8% of an accent), so the wash alone
-   cannot be trusted to answer the only question this state exists to answer.
-   The outline is ours and reads at any wash strength. */
+/* The keyboard row — "what Enter hits". Composed alongside the surface's own
+   focused class (`slash-menu-item--focused ui-menu-row--selected`), which is
+   what each menu's JS toggles; the surface then adds only the parts this
+   cannot know, such as which children go back to full ink.
+
+   The wash comes from the theme; the outline does NOT, and that is deliberate.
+   A theme is free to make its selection a whisper (VS Code Light Modern's is
+   1.15 against the menu it sits on, and several themes wash the row at 8% of
+   an accent), so the wash alone cannot be trusted to answer the only question
+   this state exists to answer. The outline is ours and reads at any strength. */
 .ui-menu-row--selected {
     background: var(--ui-menu-selected-bg);
     color: var(--ui-menu-selected-ink);
