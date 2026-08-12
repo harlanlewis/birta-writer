@@ -54,7 +54,7 @@ import { BlockRangeSelection } from "../../plugins/blockRange";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { linkAtCaret, openLinkAtCaret } from "../linkPopup";
-import { openImageLightbox } from "../imageView";
+import { focusImageInputAt, imageWidthControlAt, openImageLightbox } from "../imageView";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
 import { getTopbarBottom } from "../../utils/headingUtils";
@@ -81,6 +81,7 @@ import {
     IconLink,
     IconList,
     IconMaximize2,
+    IconPencil,
     IconPlus,
     IconTrash2,
 } from "../../ui/icons";
@@ -1373,28 +1374,60 @@ export function openBlockMenu(
             });
         }
     }
-    // ── View an image full screen (MAR-118) ── the keyboard path to the
-    // NodeView's zoom button: same lightbox surface, same Escape layer. An
-    // image lives in a paragraph (the gutter's "Image" marker unit); the
-    // FIRST image is the paragraph's identity — a multi-image paragraph is
-    // rare enough that per-image targeting stays with the mouse/NodeView.
+    // ── Image rows (MAR-118) ── the keyboard paths to the NodeView's own
+    // chrome: the zoom button's lightbox (same surface, same Escape layer)
+    // and the toolbar's editors (alt caption, title, path) plus the width
+    // cycle. An image lives in a paragraph (the gutter's "Image" marker
+    // unit); the FIRST image is the paragraph's identity — a multi-image
+    // paragraph is rare enough that per-image targeting stays with the
+    // mouse/NodeView.
     {
         let image: ProseNode | null = null;
+        let imageOffset = 0;
         if (anchorNode?.type.name === "paragraph") {
-            anchorNode.forEach((child: ProseNode) => {
+            anchorNode.forEach((child: ProseNode, offset: number) => {
                 if (image === null && child.type.name === "image") {
                     image = child;
+                    imageOffset = offset;
                 }
             });
         }
         if (image !== null) {
             const src = String((image as ProseNode).attrs["src"] ?? "");
             const alt = String((image as ProseNode).attrs["alt"] ?? "");
+            const imagePos = blockPos + 1 + imageOffset;
             if (src !== "") {
                 action(t("View Fullscreen"), ["image", "fullscreen", "zoom", "view", "lightbox", "preview"], {
                     icon: IconMaximize2,
                     mutates: false,
                     action: () => openImageLightbox(src, alt),
+                });
+            }
+            // The edit rows hand focus to the NodeView's inputs (selecting
+            // the image pins its toolbar open); inside, the inputs' own
+            // contracts take over — Enter commits, Escape reverts, both
+            // return focus to the editor.
+            action(t("Edit Alt Text"), ["image", "alt", "caption", "description", "text", "edit"], {
+                icon: IconPencil,
+                action: () => { focusImageInputAt(view, imagePos, "alt"); },
+            });
+            action(t("Edit Image Title"), ["image", "title", "tooltip", "hover", "edit"], {
+                icon: IconPencil,
+                action: () => { focusImageInputAt(view, imagePos, "title"); },
+            });
+            action(t("Edit Image Path"), ["image", "path", "src", "url", "file", "rename", "edit"], {
+                icon: IconPencil,
+                action: () => { focusImageInputAt(view, imagePos, "path"); },
+            });
+            // Width cycle: the row IS the control-column button (same verb
+            // computation, same store write) — presentation only, so it
+            // neither dirties the file nor moves the caret.
+            const width = imageWidthControlAt(view, imagePos);
+            if (width) {
+                action(width.verb, ["image", "width", "full", "fit", "natural", "size"], {
+                    icon: IconExpandHorizontal,
+                    mutates: false,
+                    action: width.cycle,
                 });
             }
         }

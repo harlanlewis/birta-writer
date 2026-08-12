@@ -401,4 +401,60 @@ export async function run({ page, check, baseUrl }) {
         focusedCaption.focused && focusedCaption.caret !== "rgba(0, 0, 0, 0)",
         JSON.stringify(focusedCaption));
     await page.keyboard.press("Escape");
+
+    // ── 12. Keyboard path into the toolbar inputs (MAR-118) ──
+    // The block menu's Edit rows hand focus to the NodeView's editors, so
+    // alt/title/path are reachable without the pointer once ⌘. opens the
+    // menu (openAtCaret drives this same row path).
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const pickMenuRow = async (label) => {
+        // Marker order tracks the blocks: [# Sample, image 1, image 2, tail],
+        // so nth(1) is the FIRST image paragraph's own marker.
+        await page.locator(".heading-fold-marker").nth(1).click({ force: true });
+        await page.waitForSelector(".block-menu", { state: "visible", timeout: 3000 });
+        await page.evaluate((rowLabel) => {
+            const row = [...document.querySelectorAll(".block-menu .block-menu-item")]
+                .find((el) => el.querySelector(".block-menu-item-label")?.textContent === rowLabel);
+            if (!row) { throw new Error(`no menu row: ${rowLabel}`); }
+            row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        }, label);
+        await page.waitForTimeout(200);
+    };
+
+    await pickMenuRow("Edit Alt Text");
+    const altEntry = await page.evaluate(() => {
+        const wrapper = document.querySelector(".image-wrapper");
+        return {
+            focused: document.activeElement === wrapper.querySelector(".image-caption"),
+            selected: wrapper.classList.contains("image-wrapper--selected"),
+        };
+    });
+    check("Edit Alt Text focuses the caption with the image selected",
+        altEntry.focused && altEntry.selected, JSON.stringify(altEntry));
+    await page.keyboard.type("keyboard alt");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(600);
+    posted = await updates();
+    check("keyboard-entered alt committed into the markdown",
+        posted.some((u) => u.includes("![keyboard alt](")),
+        JSON.stringify(posted[posted.length - 1] ?? "").slice(0, 120));
+
+    await pickMenuRow("Edit Image Path");
+    check("Edit Image Path opens the path editor focused", await page.evaluate(() =>
+        document.activeElement === document.querySelector(".image-wrapper .img-path-input")));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
+    await pickMenuRow("Fit Column Width");
+    const widthAfterRow = await first.evaluate((el) => el.classList.contains("bw-fixed"));
+    check("the width menu row applies the fixed width class", widthAfterRow);
+    posted = await updates();
+    check("the width row never dirties the file",
+        !posted.some((u) => u.includes("width")));
+    // The row renames to the cycle's next state; back to natural for cleanup.
+    await pickMenuRow("Full Width");
+    await pickMenuRow("Natural Size");
+    check("width cycled back to natural",
+        await first.evaluate((el) => !el.classList.contains("bw-fixed") && !el.classList.contains("bw-full")));
 }

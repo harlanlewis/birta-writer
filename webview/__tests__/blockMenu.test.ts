@@ -31,7 +31,8 @@ import {
     headingAnchorSlug,
 } from "../components/blockMenu";
 import { conversionKindAt } from "../blockCapabilities";
-import { TextSelection } from "../pm";
+import { createImageView } from "../components/imageView";
+import { NodeSelection, TextSelection } from "../pm";
 import { mockVscodeApi } from "./setup";
 
 let editors: Editor[] = [];
@@ -304,6 +305,9 @@ describe("Turn into — non-prose sources", () => {
         expect(labels).not.toContain("Code Block");
         expect(labels).toEqual([
             "Duplicate", "Copy as Markdown", "View Fullscreen",
+            // The toolbar-input rows (MAR-118). The width row needs the real
+            // NodeView mounted, absent in this bare editor, so it hides.
+            "Edit Alt Text", "Edit Image Title", "Edit Image Path",
             "Move Up", "Move Down",
             "Fold All", "Unfold All", "Delete",
         ]);
@@ -1816,6 +1820,16 @@ describe("refile: indent/outdent (MAR-118)", () => {
         expect(markdown(editor)).toBe("> Alpha\n\nBeta");
     });
 
+    it("mutating refile helpers should never fire on a stale position", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        // A position past every block resolves to no node — both helpers
+        // refuse rather than throw or act on a neighbor.
+        const end = v.state.doc.content.size;
+        expect(indentBlockAt(v, end)).toBe(false);
+        expect(outdentBlockAt(v, end)).toBe(false);
+    });
+
     it("refile inside a table should refuse via the caret commands", async () => {
         const editor = await makeEditor("> Quote\n\n| a | b |\n| - | - |\n| c | d |");
         const v = view(editor);
@@ -1834,5 +1848,94 @@ describe("refile: indent/outdent (MAR-118)", () => {
         expect(indentSelection(v)).toBe(false);
         expect(outdentSelection(v)).toBe(false);
         expect(markdown(editor)).toBe(before);
+    });
+});
+
+describe("image toolbar keyboard entry (MAR-118)", () => {
+    /** An editor whose image nodes render the REAL NodeView (the production
+     *  FormatModule wires this the same way; the bare test editor does not). */
+    async function makeImageEditor(md: string) {
+        const editor = await makeEditor(md);
+        const v = view(editor);
+        v.setProps({
+            nodeViews: {
+                image: (n, nodeViewHost, getPos) =>
+                    createImageView(n, nodeViewHost as EditorView, getPos as () => number | undefined),
+            },
+        });
+        return { editor, v };
+    }
+
+    it("the Edit Alt Text row should select the image and focus its caption", async () => {
+        const { v } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Alt Text");
+        const caption = document.querySelector<HTMLInputElement>(".image-wrapper .image-caption");
+        expect(caption).not.toBeNull();
+        expect(document.activeElement).toBe(caption);
+        expect(v.state.selection).toBeInstanceOf(NodeSelection);
+        // The selection pins the toolbar open — the state the inputs need.
+        expect(document.querySelector(".image-wrapper--selected")).not.toBeNull();
+    });
+
+    it("Enter in the focused caption should commit the alt into the markdown", async () => {
+        const { editor } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Alt Text");
+        const caption = document.querySelector<HTMLInputElement>(".image-wrapper .image-caption")!;
+        caption.value = "keyboard alt";
+        caption.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toContain("![keyboard alt](");
+    });
+
+    it("Escape in the focused caption should revert without touching the doc", async () => {
+        const { editor } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Alt Text");
+        const caption = document.querySelector<HTMLInputElement>(".image-wrapper .image-caption")!;
+        caption.value = "abandoned";
+        caption.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+        expect(caption.value).toBe("cat");
+        expect(markdown(editor)).toContain("![cat](");
+    });
+
+    it("the Edit Image Title row should focus the title input", async () => {
+        await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Image Title");
+        const title = document.querySelector<HTMLInputElement>(".image-wrapper .img-tb-title");
+        expect(title).not.toBeNull();
+        expect(document.activeElement).toBe(title);
+        expect(title!.value).toBe("T");
+    });
+
+    it("the Edit Image Path row should open the path editor focused", async () => {
+        await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Image Path");
+        const path = document.querySelector<HTMLInputElement>(".image-wrapper .img-path-input");
+        expect(path).not.toBeNull();
+        expect(document.activeElement).toBe(path);
+        expect(path!.value).toBe("https://example.com/cat.png");
+    });
+
+    it("the width row should name the NEXT state and cycle it, presentation-only", async () => {
+        const { editor } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        const before = markdown(editor);
+        pickRow(openMenuOn(markers()[0]!), "Fit Column Width");
+        const wrapper = document.querySelector<HTMLElement>(".image-wrapper")!;
+        expect(wrapper.classList.contains("bw-fixed")).toBe(true);
+        // A display choice never dirties the file.
+        expect(markdown(editor)).toBe(before);
+        // The row renames to the cycle's next state on reopen.
+        const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).toContain("Full Width");
+        expect(labels).not.toContain("Fit Column Width");
+    });
+
+    it("a plain paragraph's menu should offer none of the image rows", async () => {
+        const editor = await makeEditor("plain paragraph");
+        view(editor);
+        const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        for (const label of ["Edit Alt Text", "Edit Image Title", "Edit Image Path", "Fit Column Width"]) {
+            expect(labels).not.toContain(label);
+        }
     });
 });
