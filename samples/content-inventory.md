@@ -214,11 +214,17 @@ In a table cell the alias pipe is escaped (`\|`), and it still reads as one cell
 
 A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte. Cards are first-class blocks: **arrow keys stop at each card** (a selection ring appears - sequential cards are each their own stop), and selecting opens a small **palette** with the editable URL plus open / copy / show-as-link / delete. Press **Enter** on a selected card to edit its URL in place; **Backspace selects before it deletes**, so a second press removes the card's paragraph cleanly. Every player card carries a resident **identity strip** just below the frame - the **page title** (fetched from the provider when the network is on) over the **URL** - visible at all times, playing included; the edit palette takes its place while open. Branded facades name their service in the frame's upper-left corner. Click semantics split by surface: **the media area - anywhere on the facade - loads the player**, and **the identity strip selects the card** and raises the palette.
 
+Every asset linked below is real and publicly viewable: signed in to nothing, an ordinary browser gets the actual video, file, board, or playground from every one of them. Keeping them known-good is what makes the editor's own frame legible, because a card that disappoints here cannot be blamed on a dead link. Of the providers that load a frame, every one renders the same inside the editor's containment as it does in a browser tab, with a single exception: YouTube, whose player refuses with **Error 153** for the reason described in its section below. Two deliberately broken examples are labeled where they appear, kept so that a broken card is something you have seen before you meet one. The rest of the failure surface lives in `webview/__tests__/fixtures/url-embeds.md`.
+
+What "publicly viewable" means is the provider's own rule, and it is worth knowing before you paste. YouTube, Vimeo, and Loom embed any public video. Figma, Miro, and Google embed only what its owner has explicitly opened up - a link-shared Figma file, a public Miro board, a Google file that is either published to the web or shared with anyone who has the link. For anything narrower than that the frame comes up on the provider's sign-in wall, and it stays there: the sandbox blocks in-frame login by design, so the card's ↗ button, which opens the asset in your real browser where you are already signed in, is the way through rather than a consolation prize.
+
 A YouTube link gets a player card - a static thumbnail that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it; press the player's own play button to start it (the editor never forces autoplay). The corner controls survive playback: **⨯ stops the player and restores the facade**, and ↗ always opens the provider page. The short host and the mobile/music hosts are the same card:
 
 ### YouTube
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+Expect that player to refuse, with YouTube's **"Error 153, video player configuration error"** in place of the video. YouTube decides whether to play on the referrer it is given, and the editor's frame has no web address to offer it, so there is nothing to send and the player declines. The video is public and plays anywhere else, which is the point of using a famous one here: the failure is YouTube's rule about where a player may run, not this video, this network, or this editor. The card's containment is not the cause either, and relaxing it would not help. ↗ opens the video in your browser, and that button exists for exactly this.
 
 ### Vimeo
 
@@ -256,49 +262,47 @@ https://github.com/microsoft/vscode/blob/main/README.md
 
 ### Google Docs, Slides, and Sheets
 
-Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. The tokens below are synthetic, so after you click load, Google serves its own not-found page *inside* the frame - with a real published link the document renders there instead:
+Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. All three below are really published, so the document, the deck, and the sheet each render inside the frame:
 
-https://docs.google.com/document/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub
+https://docs.google.com/document/d/e/2PACX-1vSn1zSNNO5is_6Wc-0V7XTCxOBuhPAu63pJ-NCUrTlqDu8KCtL5k3D3xm3JLa1kmE6-b4X9eCJahTgb/pub
 
-https://docs.google.com/presentation/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pub
+https://docs.google.com/presentation/d/e/2PACX-1vShiXR-dpEfn5BVMK88BM0RAIKGIFlW2c-t5uYmV8ne27Y8LYvhWnb1zbb3AvbYdWl28W_ixUc9Hys2/pub
 
-https://docs.google.com/spreadsheets/d/e/2PACX-1vAbCdEfGhIjKlMnOpQrStUvWxYz0123456789/pubhtml
+https://docs.google.com/spreadsheets/d/e/2PACX-1vQvfslN3Xa7nMYeC2fhPTEPIyjsbTzi_8F9pX-4zpqwjXLab5qXhiFhA_JvZT-Si6fF67mE-WlWesbL/pubhtml
 
-An **ordinary** Docs/Slides/Sheets link (the `/edit` URL you copy from the address bar) refuses to be framed - Google answers with `X-Frame-Options: SAMEORIGIN` - so it gets a compact info card instead of a doomed iframe. Like the GitHub cards, it is built from the URL alone and renders with the network off:
+An **ordinary** Docs/Slides/Sheets link (the `/edit` URL you copy from the address bar) refuses to be framed - Google answers with `X-Frame-Options: SAMEORIGIN` - so it gets a compact info card instead of a doomed iframe. Like the GitHub cards, it is built from the URL alone and renders with the network off. This one is a real public spreadsheet, so ↗ opens the sheet rather than a sign-in wall:
 
-https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/edit
+https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
 
 ### Google Drive
 
-A Drive **file** link loads Google's `/preview` endpoint on click - the supported no-auth embed for files shared "anyone with the link" (a private file shows Google's sign-in wall blank inside the sandboxed frame; the in-frame notice opens it in the browser). Synthetic id again, so expect Google's own error page inside the frame:
+A Drive **file** link loads Google's `/preview` endpoint on click - the supported no-auth embed for files shared "anyone with the link". This is the **first of two deliberate failure states** in this file: the id is synthetic, because a Drive file shared by link is unlisted by design and there is no public one to borrow, so clicking load brings up Google's own "the file you have requested does not exist" page inside the frame. That is the point of keeping it - a provider-side error stays inside the frame, and the card's own controls stay reachable around it:
 
 https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/view
 
 ### Miro
 
-A Miro board link loads the **live-embed** view on click - pan and zoom without login for boards shared publicly. This id is synthetic, so Miro shows its own "board not found" inside the frame; a real public board pans:
+A Miro board link loads the **live-embed** view on click - pan and zoom without login for boards shared publicly, opening on the board itself rather than on Miro's preloader. This is Miro's own example board, so it genuinely pans:
 
-https://miro.com/app/board/uXjVO5X2CWo=/
+https://miro.com/app/board/o9J_kkQxX78=/
 
 ### Linear
 
-A Linear issue link gets an info card built **from the URL alone** - the issue key plus the humanized title slug, zero network, renders offline:
+A Linear issue link gets an info card built **from the URL alone** - the issue key plus the humanized title slug, zero network, renders offline. The workspace slug is part of the URL and the card never checks it, so ↗ only lands somewhere real if the link is real; this one is:
 
-https://linear.app/birta/issue/MAR-186/embed-provider-roadmap
+https://linear.app/harlan/issue/MAR-186/embed-provider-roadmap
 
 ### Code playgrounds
 
-A CodePen, CodeSandbox, or StackBlitz link loads that provider's own embedded editor on click - the resting card fetches nothing. These ids are synthetic, so each provider shows its own not-found state inside the frame; a real public pen, sandbox, or project runs:
-
-https://codepen.io/birta/pen/AbCdEf
-
-A CodePen **team** pen carries its `team/` path and cards the same way:
+A CodePen, CodeSandbox, or StackBlitz link loads that provider's own embedded editor on click - the resting card fetches nothing. Each of these is a real public project, so the editor and its result pane come up live. The CodePen one is a **team** pen, which carries its `team/` path in the URL and cards the same way:
 
 https://codepen.io/team/codepen/pen/PNaGbb
 
-https://codesandbox.io/s/new-react-sandbox-abc123
+https://codesandbox.io/s/vanilla
 
-https://stackblitz.com/edit/vitejs-vite-abc123
+https://stackblitz.com/edit/angular
+
+One asymmetry to expect on the CodePen card: its identity strip shows the URL with no page title above it. CodePen's bot protection answers the editor's title request with a challenge page instead of the JSON it asks for, so there is no title to show. The card and the playground are unaffected, and the other providers that offer titles do return them.
 
 Only known providers embed (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
@@ -312,25 +316,13 @@ https://github.com/microsoft/vscode/tree/main/src
 
 https://gist.github.com/harlanlewis/0123456789abcdef0123456789abcdef
 
-**Expected failures and edge states** - this section is a fixture for the error handling, so these are *supposed* to look broken in a controlled way, never as a silent blank:
+**The second deliberate failure state** is the one worth recognizing on sight, because it is the one you will actually hit: an asset that is real, and walled. The link below is a genuine publish-to-web Sheets URL whose owner has since taken the publication down, so the frame loads Google's "you must sign in to access this content" panel. Signing in *there* is not possible - the sandbox blocks in-frame login - which is why the card keeps a persistent notice offering to open the file in your browser, where your session already exists:
 
-A valid-shaped YouTube id that points at no real video: the card renders and YouTube serves its own gray placeholder artwork (the id is well-formed, so the thumbnail request succeeds). If the thumbnail request *fails outright* - offline CDN, deleted asset - the facade degrades to the branded fallback instead of a blank frame; either way, never silence:
+https://docs.google.com/spreadsheets/d/e/2PACX-1vSTWLlj1luPBQBGNpzs_npdN7oM-0OFwmfdduufbXSOjxQDD3bkPdeo23xE0r6rHFwX1SWmYM0j9xJW/pubhtml
 
-https://www.youtube.com/watch?v=aaaaaaaaaaa
+Those two are the whole of the broken-card demonstration here. The rest of the failure surface - a well-formed YouTube id with no video behind it, a Vimeo video whose oEmbed refuses a title, provider 404s from Loom, a Figma key that is not publicly accessible, synthetic playground ids - lives in `webview/__tests__/fixtures/url-embeds.md`, alongside the shapes that must round-trip byte-identically.
 
-A Vimeo video whose owner disabled embedding: the card renders (the URL shape is valid), no title arrives (Vimeo's oEmbed refuses), and pressing play shows Vimeo's own restriction notice inside the frame - the ↗ button remains the way through:
-
-https://vimeo.com/76979871
-
-A Loom link with a synthetic id: the card and click-to-load player render normally, and Loom itself serves its 404 page *inside* the frame - a provider-side failure our chrome survives (stop and open-external stay available in the corner):
-
-https://www.loom.com/share/0123456789abcdef0123456789abcdef
-
-Figma links with a synthetic key (a FigJam board and a prototype here): after you press **Load Figma preview**, an auth-walled or missing file comes up blank - a clickable notice inside the frame says so and opens the file in Figma directly (the sandbox blocks in-frame sign-in by design):
-
-https://www.figma.com/board/BAZsTPbh6W1r66Bdo9xkQp/FigJam-Board
-
-https://www.figma.com/proto/BAZsTPbh6W1r66Bdo9xkQp/Prototype
+A note on what that buys, since a fixture is easy to over-trust: the corpus suite renders every one of those documents and round-trips its bytes, so a failure shape that crashed the editor or rewrote the file would be caught. Neither it nor any other suite asserts what the *card* does with a 404 or a sign-in wall, because a real assertion needs the provider's real answer. `e2e/embedsOnline` covers card chrome against stubbed responses; the live behavior is checked by opening this file.
 
 Two switches govern all of this. `birta.embeds.enabled` is the feature itself - turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the info cards (GitHub, Linear, ordinary Google file links) still render - they fetch nothing - while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
 
@@ -944,7 +936,9 @@ Add your own tokens with `birta.notes.customMarkers` - a plain word like `DRAFT`
 
 ### Raw `<video>` / `<iframe>` tags
 
-Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub, Google Docs/Slides/Sheets/Drive, Miro, Linear) on its own line does render as a card, though - see **URL embeds** above.
+Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub, Google Docs/Slides/Sheets/Drive, Miro, Linear, CodePen, CodeSandbox, StackBlitz) on its own line does render as a card, though - see **URL embeds** above.
+
+
 
 ### Wikilink embeds
 
