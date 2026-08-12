@@ -46,19 +46,25 @@ export const SPANS = [
  */
 export const POST_PAINT_SPANS = new Set(["rtp", "proofread"]);
 
-// Post-paint floors, deliberately coarser than launch's 3% / 10 ms.
+// Post-paint floors. The percent floor is coarser than launch's 3% and the ms
+// floor is TIGHTER than its 10 ms, and both directions are deliberate: these
+// spans are an order of magnitude smaller than launch, so 10 ms would be a
+// large fraction of one rather than a noise floor under it, while their
+// relative run-to-run spread is wider because they are `requestIdleCallback`
+// bodies rather than mount-path work.
 //
-// Two reasons they cannot share launch's floors. These spans are an order of
-// magnitude smaller, so 10 ms is a large fraction of one rather than a noise
-// floor under it. And both are `requestIdleCallback` bodies rather than mount
-// path work, so they carry the scheduler's jitter on top of their own: what
-// lands in a given idle slice varies run to run in a way `create` and `paint`
-// do not. A floor tight enough to catch a 20% move would fire on that jitter.
+// Set from a measured null A/B — the same bundle on both sides, which is the
+// only instrument that reports what this gate will actually see. Reproduce it
+// before changing either number, and note it was read on an idle laptop; a CI
+// runner is the noisier environment and is where a flaky floor would show:
 //
-// Calibrate with `pnpm perf` on an idle machine — the spread across runs is
-// what these have to clear, and it is a reading, not a stored number.
-export const POST_PAINT_MIN_PCT = 20;
-export const POST_PAINT_MIN_MS = 15;
+//   node esbuild.mjs --production && cp -R dist /tmp/dist-null
+//   node e2e/perf.mjs --ab /tmp/dist-null dist --runs 9
+//
+// The double-confirm is the second line of defence: a floor set slightly too
+// tight costs a repeated pass, not a failed PR.
+export const POST_PAINT_MIN_PCT = 10;
+export const POST_PAINT_MIN_MS = 5;
 
 // The sample floor, and the reason it is not optional. These marks are stamped
 // from idle callbacks, so a sample read before one fired carries no value for

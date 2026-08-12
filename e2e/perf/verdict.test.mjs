@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
     abVerdict, confirmRegressions, spans, aggregate, GATED_FIXTURES,
-    SPANS, SUB_SPANS, POST_PAINT_SPANS,
+    SPANS, SUB_SPANS, POST_PAINT_SPANS, MIN_PCT, MIN_MS,
     postPaintVerdict, POST_PAINT_MIN_PCT, POST_PAINT_MIN_MS, POST_PAINT_MIN_SAMPLES,
     typingAbVerdict, TYPING_GATED_FIXTURES,
 } from "./verdict.mjs";
@@ -168,13 +168,13 @@ describe("postPaintVerdict — gating the spans launch cannot see", () => {
     });
 
     it("a move over the % floor but under the ms floor should NOT regress", () => {
-        // 20 → 30 ms = +50% but only +10 ms, under the 15 ms floor.
-        expect(postPaintVerdict(ppPass("large", "rtp", 20, 30)).regressed.size).toBe(0);
+        // 20 → 24 ms = +20%, clear of the percent floor, but only +4 ms.
+        expect(postPaintVerdict(ppPass("large", "rtp", 20, 24)).regressed.size).toBe(0);
     });
 
     it("a move over the ms floor but under the % floor should NOT regress", () => {
-        // 200 → 220 ms = +20 ms but only +10%, under the 20% floor.
-        expect(postPaintVerdict(ppPass("large", "rtp", 200, 220)).regressed.size).toBe(0);
+        // 200 → 208 ms = +8 ms, clear of the ms floor, but only +4%.
+        expect(postPaintVerdict(ppPass("large", "rtp", 200, 208)).regressed.size).toBe(0);
     });
 
     it("an UNGATED fixture regressing should be reported and never gate", () => {
@@ -333,12 +333,26 @@ describe("postPaintVerdict — gating the spans launch cannot see", () => {
         }
     });
 
-    it("should carry floors coarser than launch's, since these spans are smaller", () => {
-        // Launch's 3% / 10 ms would make 10 ms a large fraction of a span that
-        // measures tens of ms, and both spans are idle-callback bodies carrying
-        // the scheduler's jitter on top of their own.
-        expect(POST_PAINT_MIN_PCT).toBeGreaterThan(3);
-        expect(POST_PAINT_MIN_MS).toBeGreaterThan(10);
+    it("should hold a percent floor above launch's and an ms floor below it", () => {
+        // Both directions are the point. These spans jitter more in RELATIVE
+        // terms than the mount path, so the percent floor has to sit above
+        // launch's; they are an order of magnitude smaller in ABSOLUTE terms, so
+        // launch's 10 ms would be a large fraction of one rather than a floor
+        // under it. Getting either backwards produces a gate that cannot fire.
+        expect(POST_PAINT_MIN_PCT).toBeGreaterThan(MIN_PCT);
+        expect(POST_PAINT_MIN_MS).toBeLessThan(MIN_MS);
+    });
+
+    it("should let a doubling clear the percent floor, leaving ms as the knob", () => {
+        // A span that doubles moves +100%, so the percent floor can never be
+        // what hides a doubling — the ms floor is the whole sensitivity story,
+        // and it is why the ms floor is the one calibrated against a null A/B.
+        expect(POST_PAINT_MIN_PCT).toBeLessThan(100);
+        // Stated as behaviour, not just arithmetic: any span at least as large
+        // as the ms floor is caught when it doubles.
+        const atFloor = POST_PAINT_MIN_MS;
+        expect([...postPaintVerdict(ppPass("large", "rtp", atFloor, atFloor * 2)).regressed])
+            .toEqual(["large:rtp"]);
     });
 });
 
