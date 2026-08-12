@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.812.0] - 2026, August 12
+
 ### Added
 
 - Birta Writer is now published to Open VSX as well as the VS Code Marketplace, so it appears in the built-in extension search of VSCodium, Cursor, Windsurf, Gitpod and the other editors that read that registry, instead of needing a `.vsix` downloaded and installed by hand. It is the same file in both registries and on the GitHub release, covered by the same build-provenance signature, so an install from any of them can be checked against this repository and the exact commit that built it.
