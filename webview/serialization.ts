@@ -11,6 +11,7 @@ import { createSerializerPostPassPlugin } from "./plugins/serializerPostPass";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { imageStringAttrPlugins, imageStringAttrReplacedPlugins } from "./plugins/image";
+import { paragraphInvisiblePlugins } from "./plugins/invisibleParagraph";
 import { strikethroughHtmlPlugins, strikethroughHtmlReplacedPlugins } from "./plugins/pasteHtml";
 import { linkBoundaryPlugins } from "./plugins/linkBoundary";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
@@ -216,6 +217,13 @@ export const pureCommonmark = [
     // parseMarkdown runners so `spread` parses as a real boolean, not a string
     // (MAR-124). See plugins/list.ts.
     ...listSpreadBooleanPlugins,
+    // AFTER the preset: override the paragraph toMarkdown runner so an
+    // invisible top-level paragraph serializes to nothing (MAR-360). The
+    // stock schema stays registered — paragraph must keep its early schema
+    // position, or `doc`'s `block+` default fill stops resolving to it
+    // (schemaNodeOrder.test.ts); the override wins by registering later,
+    // the list_item-after-gfm pattern.
+    ...paragraphInvisiblePlugins,
     // AFTER the preset: override the image parseMarkdown runner so a
     // title-less image parses with "" (valid) instead of mdast's null, which
     // fails the node's own attr validation. See plugins/image.ts.

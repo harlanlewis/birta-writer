@@ -26,6 +26,8 @@
 
 ### Fixed
 
+- Adding a paragraph and deleting it again leaves the file exactly as it was. Deleting a paragraph's text used to leave two blank lines where it had been, and those blank lines stayed: they reached the file on a save that landed while the emptied line still existed, and no later save could take them out again, because the editor deliberately preserves your own blank-line spacing and could not tell yours from these. No content was ever lost, but a document you only visited came back with spacing you did not write, and a diff carried noise you did not author.
+
 - Making Birta your default Markdown editor by setting `workbench.editorAssociations` now sticks. Opening the editor used to silently delete a user-authored `*.md` association on activation, assuming the entry was its own leftover, so the standard VS Code way of choosing a default editor quietly undid itself. The editor now removes only entries it wrote itself, and it no longer rewrites your settings file on activation when nothing changed.
 
 ---
