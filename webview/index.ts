@@ -402,6 +402,19 @@ function getSwitchTarget():
     | undefined {
     const view = getEditorView();
     if (!view) { return undefined; }
+    // An open HTML source panel banks its edit before the read: its blur
+    // listener commits synchronously, so the switch leaves on committed
+    // bytes even when invoked from inside the webview (the chord path,
+    // where no natural blur precedes this call). Story in
+    // selectionSurfaceCoverage's ISLAND_REGISTRY; pinned in e2e/htmlEdit.
+    const active = document.activeElement;
+    if (
+        active instanceof HTMLTextAreaElement &&
+        active.classList.contains("html-src") &&
+        view.dom.contains(active)
+    ) {
+        active.blur();
+    }
     const { doc, selection } = view.state;
     const { head, empty } = selection;
     const sourceLines = getMarkdownSource().split("\n");

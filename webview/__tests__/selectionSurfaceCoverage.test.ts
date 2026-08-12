@@ -42,6 +42,14 @@ const ISLAND_REGISTRY: Record<string, string> = {
         "textarea (createRawEditor → panel.appendChild) — the panel is " +
         "inserted BEFORE #editor (renderFmContent's insertBefore(panel, editorEl)), so it lives " +
         "OUTSIDE view.dom and domChromeTarget bails at its view.dom.contains check; not a switch surface",
+    "components/htmlView/index.ts":
+        "the HTML source textarea (MAR-14) — a textarea's internal caret is invisible to " +
+        "document.getSelection() by construction, and the panel only ever opens off a " +
+        "NodeSelection ON the html atom itself (the opening click parks one; the Mod-Enter " +
+        "opener requires one), so the parked ProseMirror selection IS the island's node and " +
+        "a switch maps to the atom's own line; getSwitchTarget blurs an open panel before " +
+        "reading (webview/index.ts), so the switch leaves on committed bytes even on the " +
+        "in-webview chord path, where no natural blur precedes it. Pinned in e2e/htmlEdit.",
     "ui/clipboard.ts":
         "the execCommand copy fallback's hidden textarea — created on document.body, focused, " +
         "copied and removed synchronously inside one call, so no selection outlives it; " +

@@ -1,0 +1,36 @@
+/* HTML source panel (MAR-14): the editing face createHtmlView swaps in over
+   its rendered output. The resting faces (.html-inline, .html-comment) keep
+   their rules in style.css — this file owns only the panel. */
+
+.editor .html-inline--editing {
+    /* The resting face is display: contents; the panel needs a box. */
+    display: inline-block;
+    max-width: 100%;
+    vertical-align: top;
+
+    /* Hide the rendered face while the source panel is open. */
+    > :not(.html-src) {
+        display: none;
+    }
+
+    .html-src {
+        display: block;
+        box-sizing: border-box;
+        width: min(100%, 60ch);
+        min-width: 12ch;
+        resize: none;
+        padding: 0.2em 0.35em;
+        border: 1px solid var(--vscode-focusBorder);
+        border-radius: var(--ui-radius-s);
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: 0.9em;
+        line-height: 1.4;
+        white-space: pre-wrap;
+
+        &:focus {
+            outline: none;
+        }
+    }
+}

@@ -17,48 +17,18 @@ import {
     createFootnoteDefinitionView,
     createFootnoteReferenceView,
 } from "../../components/footnote";
+import { createHtmlView } from "../../components/htmlView";
 import { createImageView } from "../../components/imageView";
 import { createMathInlineView } from "../../components/math";
 import { createTableView } from "../../components/table/tableView";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
 import { markdownProfile } from "../../utils/minimalDiff";
-import { sanitizeInto } from "../../utils/sanitizeLoader";
 import type { FormatModule } from "../types";
 
-// ── HTML inline NodeView ───────────────────────────────────────────────────
-// Milkdown's html node (atom, inline) displays the raw tag as textContent by
-// default. This NodeView renders real HTML after DOMPurify sanitization for a
-// read-only preview. HTML comments would be sanitized away entirely — making
-// them invisible and impossible to reason about in the editor — so they are
-// rendered as a dimmed chip showing the raw comment text instead.
-//
-// The sanitizer is loaded lazily (see utils/sanitizeLoader.ts), so the tag's
-// rendered form lands just after mount rather than during it. The comment
-// branch needs no sanitizer and stays fully synchronous. `ready` resolves once
-// the fill has happened — a handle for tests, ignored by ProseMirror.
-export function createHtmlView(node: { attrs: Record<string, string> }) {
-    const dom = document.createElement("span");
-    dom.dataset["type"] = "html";
-    const raw = node.attrs["value"] ?? "";
-    let ready = Promise.resolve();
-    if (/^<!--[\s\S]*?-->$/.test(raw.trim())) {
-        dom.className = "html-inline html-comment";
-        dom.textContent = raw.trim();
-        dom.title = "HTML comment — preserved in the file, hidden in rendered output";
-    } else {
-        dom.className = "html-inline";
-        ready = sanitizeInto(dom, raw, {
-            USE_PROFILES: { html: true },
-            ADD_ATTR: ["align", "width", "height"],
-        });
-    }
-    return {
-        dom,
-        ready,
-        ignoreMutation: () => true,
-        stopEvent: () => false,
-    };
-}
+// The HTML NodeView (rendered preview, comment chips, source-panel editing)
+// lives in components/htmlView (MAR-14); re-exported here because editor.ts
+// republishes it as part of the format surface.
+export { createHtmlView };
 
 /** The markdown format: presets, serializer config, NodeViews, and
  * minimal-diff profile. */
@@ -77,7 +47,7 @@ export const markdownFormat: FormatModule = {
         ["footnote_definition", createFootnoteDefinitionView],
         ["math_inline", createMathInlineView],
         ["table", createTableView],
-        ["html", (node: { attrs: Record<string, string> }) => createHtmlView(node)],
+        ["html", (node, view, getPos) => createHtmlView(node, view, getPos)],
         [
             "image",
             (node, view, getPos) => createImageView(node, view, getPos),

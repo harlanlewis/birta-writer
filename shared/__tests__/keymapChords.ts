@@ -100,6 +100,13 @@ export const KEYMAP_CHORDS: Readonly<Record<string, Readonly<Record<string, Chor
         "Mod-Enter": { claimed: "always" },
         "Mod-Shift-Enter": { claimed: "always" },
     },
+    "webview/plugins/htmlLivePairs.ts": {
+        // Opens the HTML source panel when the selection is a NodeSelection
+        // on an html atom; declines everywhere else, falling through to
+        // insertParagraph's binding above — which owns the chord's claim
+        // decision, so the recorded claim matches its entry.
+        "Mod-Enter": { claimed: "always" },
+    },
     "webview/plugins/list.ts": {
         "Mod-Backspace": {
             claimed: false,
