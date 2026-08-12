@@ -33,12 +33,20 @@ async function main(): Promise<void> {
     await fs.mkdir(workspace, { recursive: true });
 
     try {
+        // BIRTA_ITEST_EXECUTABLE points the suite at an already-installed
+        // VS Code-family binary (e.g. VSCodium's
+        // /Applications/VSCodium.app/Contents/MacOS/Electron) instead of a
+        // downloaded VS Code — the fork smoke-test path (MAR-228). It wins
+        // over BIRTA_ITEST_VSCODE when both are set.
+        const executable = process.env.BIRTA_ITEST_EXECUTABLE;
         await runTests({
-            // BIRTA_ITEST_VSCODE selects the build under test; the release
-            // job runs the engines floor and stable (nothing else ever
-            // launches the floor). The old 1.130.0 pin (MAR-257) retired
-            // with the @vscode/test-electron 3.1 upgrade.
-            version: process.env.BIRTA_ITEST_VSCODE || "stable",
+            ...(executable
+                ? { vscodeExecutablePath: executable }
+                // BIRTA_ITEST_VSCODE selects the build under test; the release
+                // job runs the engines floor and stable (nothing else ever
+                // launches the floor). The old 1.130.0 pin (MAR-257) retired
+                // with the @vscode/test-electron 3.1 upgrade.
+                : { version: process.env.BIRTA_ITEST_VSCODE || "stable" }),
             extensionDevelopmentPath,
             extensionTestsPath,
             launchArgs: [
