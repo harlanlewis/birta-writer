@@ -182,6 +182,8 @@
   "command.editor.duplicateBlockDown.title": "Duplicate Block Down",
   "command.editor.moveBlockUp.title": "Move Block Up",
   "command.editor.moveBlockDown.title": "Move Block Down",
+  "command.editor.indentBlock.title": "Indent Block",
+  "command.editor.outdentBlock.title": "Outdent Block",
   "command.editor.deleteBlock.title": "Delete Block",
   "command.editor.joinLines.title": "Join Lines",
   "command.editor.transformToUppercase.title": "Transform to Uppercase",

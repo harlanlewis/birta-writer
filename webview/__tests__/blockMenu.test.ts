@@ -18,9 +18,15 @@ import { insertCalloutCommand } from "../plugins/callouts";
 import { undo } from "../pm";
 import {
     setBlockMenuContext,
+    canIndentAt,
+    canOutdentAt,
+    indentBlockAt,
+    indentSelection,
     moveRangeAt,
     moveBlockAt,
     moveBlockTo,
+    outdentBlockAt,
+    outdentSelection,
     outlineRangeAt,
     headingAnchorSlug,
 } from "../components/blockMenu";
@@ -1683,5 +1689,150 @@ describe("View Fullscreen row (image lightbox, MAR-118)", () => {
         const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
             .map((el) => el.textContent);
         expect(labels).not.toContain("View Fullscreen");
+    });
+});
+
+describe("refile: indent/outdent (MAR-118)", () => {
+    /** Position of the Nth top-level block. */
+    function topBlockPos(v: EditorView, index: number): number {
+        let pos = 0;
+        for (let i = 0; i < index; i++) {
+            pos += v.state.doc.child(i).nodeSize;
+        }
+        return pos;
+    }
+
+    /** Place a text caret inside the given document position. */
+    function caretAt(v: EditorView, pos: number): void {
+        v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(pos), 1)));
+    }
+
+    it("indent on a paragraph after a blockquote should move it inside the quote", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n>\n> Beta");
+    });
+
+    it("indent on a paragraph after a list should land inside the last item", async () => {
+        const editor = await makeEditor("- one\n- two\n\nPara");
+        const v = view(editor);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(true);
+        // The paragraph becomes continuation content of the last item — the
+        // same landing the drag's drop slots offer inside `paragraph block*`.
+        const list = v.state.doc.child(0);
+        expect(list.lastChild!.childCount).toBe(2);
+        expect(list.lastChild!.lastChild!.textContent).toBe("Para");
+        // The serialized shape a CommonMark parser re-reads into the same
+        // tree: the indented paragraph is item two's continuation content.
+        expect(markdown(editor)).toBe("- one\n- two\n\n  Para");
+    });
+
+    it("indent with no absorbing previous sibling should refuse and hide its row", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        expect(canIndentAt(v, topBlockPos(v, 1))).toBe(false);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(false);
+        expect(markdown(editor)).toBe("Alpha\n\nBeta");
+        const labels = Array.from(openMenuOn(markers()[1]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).not.toContain("Indent");
+    });
+
+    it("the menu row on an eligible block should indent it", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        view(editor);
+        // markers(): [blockquote, Beta] — a quoted paragraph has no marker of
+        // its own (the container is its handle).
+        pickRow(openMenuOn(markers()[1]!), "Indent");
+        expect(markdown(editor)).toBe("> Alpha\n>\n> Beta");
+    });
+
+    it("outdent on a top-level block should refuse and hide its row", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        expect(canOutdentAt(v, 0)).toBe(false);
+        expect(outdentBlockAt(v, 0)).toBe(false);
+        const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).not.toContain("Outdent");
+    });
+
+    it("indent then outdent via the caret commands should round-trip the document", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        caretAt(v, topBlockPos(v, 1) + 1);
+        expect(indentSelection(v)).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n>\n> Beta");
+        // The caret followed the move (moveBlocks places it at the landing);
+        // outdent lifts the same paragraph back out.
+        expect(outdentSelection(v)).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n\nBeta");
+    });
+
+    it("outdent with the caret in a MIDDLE quoted paragraph should split the quote", async () => {
+        const editor = await makeEditor("> Alpha\n>\n> Beta\n>\n> Gamma");
+        const v = view(editor);
+        // Caret inside "Beta" (second child of the quote).
+        const quote = v.state.doc.child(0);
+        const betaPos = 1 + quote.child(0).nodeSize;
+        caretAt(v, betaPos + 1);
+        expect(outdentSelection(v)).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n\nBeta\n\n> Gamma");
+    });
+
+    it("indent on a list item should sink it exactly like Tab", async () => {
+        const editor = await makeEditor("- one\n- two");
+        const v = view(editor);
+        // markers(): [item one, item two] — items own their gutter markers.
+        pickRow(openMenuOn(markers()[1]!), "Indent");
+        expect(markdown(editor)).toBe("- one\n  - two");
+        // One undo step restores the flat list.
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("- one\n- two");
+    });
+
+    it("indent on the FIRST list item should refuse (nothing to sink under)", async () => {
+        const editor = await makeEditor("- one\n- two");
+        const v = view(editor);
+        expect(canIndentAt(v, 1)).toBe(false);
+        expect(indentBlockAt(v, 1)).toBe(false);
+        expect(markdown(editor)).toBe("- one\n- two");
+    });
+
+    it("outdent on a nested list item should lift it exactly like Shift+Tab", async () => {
+        const editor = await makeEditor("- one\n  - two");
+        const v = view(editor);
+        // markers(): [item one, nested item two].
+        pickRow(openMenuOn(markers()[1]!), "Outdent");
+        expect(markdown(editor)).toBe("- one\n- two");
+    });
+
+    it("a whole indent should be one undo step", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(true);
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("> Alpha\n\nBeta");
+    });
+
+    it("refile inside a table should refuse via the caret commands", async () => {
+        const editor = await makeEditor("> Quote\n\n| a | b |\n| - | - |\n| c | d |");
+        const v = view(editor);
+        // Caret inside the first body cell of the table (which FOLLOWS a
+        // quote, so a top-level indent would otherwise be offered).
+        let cellText: number | null = null;
+        v.state.doc.descendants((node, pos) => {
+            if (cellText === null && node.isText && node.text === "c") {
+                cellText = pos;
+            }
+            return cellText === null;
+        });
+        expect(cellText).not.toBeNull();
+        caretAt(v, cellText!);
+        const before = markdown(editor);
+        expect(indentSelection(v)).toBe(false);
+        expect(outdentSelection(v)).toBe(false);
+        expect(markdown(editor)).toBe(before);
     });
 });

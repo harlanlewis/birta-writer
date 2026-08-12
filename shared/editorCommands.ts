@@ -202,6 +202,15 @@ export const EDITOR_COMMANDS = [
     // additional user bindings; the default chord lives in blockKeys.ts.
     { id: "moveBlockUp", title: "Move Block Up", palette: true, sections: [] },
     { id: "moveBlockDown", title: "Move Block Down", palette: true, sections: [] },
+    // Refile (MAR-118): move a block INTO the previous sibling container /
+    // lift it OUT of its enclosing one — the keyboard path to drag-refile.
+    // Contributed (not hardcoded) because Cmd+]/[ carries no native
+    // contenteditable default needing synchronous suppression; the chords
+    // mirror VS Code's own indent/outdentLines defaults, inert here because
+    // they are editorTextFocus-scoped. On list items the commands delegate to
+    // the Tab machinery, so ⌘] and Tab can never diverge.
+    { id: "indentBlock", title: "Indent Block", palette: true, sections: [] },
+    { id: "outdentBlock", title: "Outdent Block", palette: true, sections: [] },
     { id: "deleteBlock", title: "Delete Block", palette: true, sections: [] },
     // Contributed Ctrl+J on macOS only — VS Code parity (unbound elsewhere).
     { id: "joinLines", title: "Join Lines", palette: true, sections: [] },

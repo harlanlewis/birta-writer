@@ -49,7 +49,7 @@ import {
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { armBlockStartHeadingComplete } from "@/plugins/headingLinkComplete";
-import { openBlockMenuAtCaret } from "@/components/blockMenu";
+import { indentSelection, openBlockMenuAtCaret, outdentSelection } from "@/components/blockMenu";
 import { uncheckAllTasks } from "@/editing/checklistSink";
 import {
     convertListTreeAt,
@@ -776,6 +776,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     duplicateBlockDown: (getEditor) => runCommand(getEditor, duplicateSelectedBlocks(1)),
     moveBlockUp: (getEditor) => runCommand(getEditor, moveSelectedBlocks(-1)),
     moveBlockDown: (getEditor) => runCommand(getEditor, moveSelectedBlocks(1)),
+    // Refile (MAR-118): the same by-position machinery the block menu's
+    // Indent/Outdent rows drive, resolved from the selection.
+    indentBlock: (getEditor) => runCommand(getEditor, (_state, dispatch, view) =>
+        !!view && !!dispatch && indentSelection(view)),
+    outdentBlock: (getEditor) => runCommand(getEditor, (_state, dispatch, view) =>
+        !!view && !!dispatch && outdentSelection(view)),
     deleteBlock: (getEditor) => runCommand(getEditor, deleteSelectedBlocks),
     joinLines: (getEditor) => runCommand(getEditor, joinLinesCommand),
     transformToUppercase: (getEditor) => runCommand(getEditor, transformToUppercase),
