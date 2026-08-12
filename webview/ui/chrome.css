@@ -57,9 +57,47 @@
 
     /* Floating-card recipe (menus, popups, panels): ground + line come from
        the hover-widget theme tokens — the same ground the --palette-* chip
-       family sits on — plus the elevation shadow below. */
+       family sits on — plus the elevation shadow below.
+       ONE ground, and the "one" is the point. Every floating surface in the
+       editor paints --ui-card-bg: the block menu, the toolbar dropdowns, the
+       slash menu, the suggest and language pickers, the selection/link/image
+       palettes, the find bar, the dialogs. They used to paint four different
+       theme tokens between them (hover-widget, suggest-widget, dropdown,
+       editor-widget), which is why one theme could hand three of them three
+       different colors — VS Code Dark+ gave the slash menu #252526, the
+       language picker #3c3c3c and the page #1e1e1e, all on screen at once. */
     --ui-card-bg: var(--vscode-editorHoverWidget-background);
     --ui-card-border: var(--vscode-editorHoverWidget-border);
+
+    /* Menu-row inks and washes. Defaults for every .ui-menu-row anywhere; a
+       container may still override one (the slash menu silences the CSS hover
+       because its highlight is JS-driven).
+
+       Two of these are MIXED rather than read straight from a theme token, and
+       both mixes are load-bearing.
+
+       --ui-menu-hover-bg is the ink laid over the menu's own ground, not
+       `list.hoverBackground`. A theme picks its list hover to read against the
+       sidebar, which is not where our menus are: Terracotta Light's hover
+       landed at 1.04 against the menu ground it had to show up on, an invisible
+       row. Mixing from --ui-card-bg means the wash reads on whatever ground
+       the surface actually has, in a theme we have never seen.
+
+       --ui-menu-ink-dim is `currentColor`, so it resolves against the ROW, not
+       against the menu: the same declaration dims the resting ink on the
+       resting ground and the hover ink on the hover wash. The fixed
+       `descriptionForeground` it replaces could only be right on one of them,
+       and on Terracotta Dark's hovered row it was 3.24:1.
+
+       Dim is for resting and hover only. A row wearing a selection or an
+       accent fill keeps FULL ink on its icon and hint — it is the row being
+       read, and the theme chose that fill and its knockout as a pair. */
+    --ui-menu-ink: var(--vscode-editor-foreground);
+    --ui-menu-ink-dim: color-mix(in srgb, currentColor 80%, transparent);
+    --ui-menu-hover-bg: color-mix(in srgb, var(--ui-menu-ink) 8%, var(--ui-card-bg));
+    --ui-menu-hover-ink: var(--vscode-list-hoverForeground, var(--ui-menu-ink));
+    --ui-menu-selected-bg: var(--vscode-list-activeSelectionBackground);
+    --ui-menu-selected-ink: var(--vscode-list-activeSelectionForeground, var(--ui-menu-ink));
 
     /* Elevation. TWO heights, because chrome only floats two ways: anchored to
        something on the page (menus, popups, panels, docked bars, pills), or
@@ -248,17 +286,21 @@
  * single highlight model). Compose with a surface class
  * (`class="ui-menu-row tb-fmt-item"`) that carries only what differs.
  *
- * Context vars — set once on the MENU container:
- *   --ui-menu-ink        row text color (default: inherit from the menu)
- *   --ui-menu-hover-bg   the highlight wash. Suggest-style menus point it
- *                        at their selection token; a menu whose highlight
- *                        is JS-driven (the slash menu's roving --focused)
- *                        sets it to transparent so CSS hover stays silent.
+ * Context vars — set once on the MENU container, defaulted at :root below:
+ *   --ui-menu-ink        row text color
+ *   --ui-menu-ink-dim    secondary ink INSIDE a row (leading icon, syntax hint)
+ *   --ui-menu-hover-bg / --ui-menu-hover-ink        the hover wash and its ink
+ *   --ui-menu-selected-bg / --ui-menu-selected-ink  the keyboard/selected row
  *
- * SELECTED-state idioms stay surface-owned by design: the accent fill,
- * the leading .menu-check glyph, and the suggest-widget selection are three
- * different semantics — which one a menu uses is a product decision, not
- * drift; the class carrying it is the surface's own.
+ * Every state that sets a ground sets its ink in the same rule. That pairing
+ * is the whole rule, and it is not decorative: a row that took a solid
+ * selection fill while keeping the resting ink is how the slash menu's focused
+ * row landed at 1.75:1 on VS Code Light+, black text on the selection's dark
+ * blue. A ground without its ink is a bug, not a shorthand.
+ *
+ * SELECTED-state idioms stay surface-owned by design: the accent fill and the
+ * leading .menu-check glyph are two different semantics — which one a menu
+ * uses is a product decision, not drift; the class carrying it is its own.
  */
 .ui-menu-row {
     display: flex;
@@ -268,7 +310,7 @@
     padding: 5px 12px;
     border: none;
     background: none;
-    color: var(--ui-menu-ink, inherit);
+    color: var(--ui-menu-ink);
     font-family: inherit;
     font-size: var(--ui-fs-m);
     text-align: left;
@@ -278,9 +320,32 @@
 
 .ui-menu-row:hover,
 .ui-menu-row:focus-visible {
-    background: var(--ui-menu-hover-bg, var(--vscode-list-hoverBackground));
+    background: var(--ui-menu-hover-bg);
+    color: var(--ui-menu-hover-ink);
     outline: none;
 }
+
+/* The keyboard row — "what Enter hits". Composed alongside the surface's own
+   focused class (`slash-menu-item--focused ui-menu-row--selected`), which is
+   what each menu's JS toggles; the surface then adds only the parts this
+   cannot know, such as which children go back to full ink.
+
+   The wash comes from the theme; the outline does NOT, and that is deliberate.
+   A theme is free to make its selection a whisper (VS Code Light Modern's is
+   1.15 against the menu it sits on, and several themes wash the row at 8% of
+   an accent), so the wash alone cannot be trusted to answer the only question
+   this state exists to answer. The outline is ours and reads at any strength. */
+.ui-menu-row--selected {
+    background: var(--ui-menu-selected-bg);
+    color: var(--ui-menu-selected-ink);
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+/* Restoring full ink on a filled row's icon/badge/hint is left to the SURFACE
+   (`.block-menu-item--active .block-menu-item-icon { color: inherit }` and its
+   siblings), because only the surface knows its own row anatomy. A wildcard
+   here would have to guess at class names it does not own. */
 
 .ui-menu-row[aria-disabled="true"] {
     opacity: 0.4;
@@ -338,10 +403,10 @@
     z-index: 1200;
     max-width: 44ch;
     padding: 4px 6px 4px 10px;
-    border: 1px solid var(--vscode-editorWidget-border);
+    border: 1px solid var(--ui-card-border);
     border-radius: var(--ui-radius-l);
-    background: var(--vscode-editorWidget-background);
-    color: var(--vscode-editorWidget-foreground);
+    background: var(--ui-card-bg);
+    color: var(--ui-menu-ink);
     box-shadow: var(--ui-card-shadow);
     font-size: var(--ui-fs-m);
     line-height: 1.4;

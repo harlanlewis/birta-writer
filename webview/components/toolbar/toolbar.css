@@ -78,7 +78,7 @@
 }
 
 .tb-select option {
-    background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+    background: var(--vscode-dropdown-background, var(--vscode-editor-background)); /* menu-ground-ok: a native <select> popup is drawn by the OS, which never sees our tokens */
     color: var(--vscode-editor-foreground);
 }
 
@@ -178,10 +178,10 @@
 .tb-seg-btn {
     flex: 1;
     padding: 4px 8px;
-    color: var(--vscode-editorHoverWidget-foreground);
+    color: var(--ui-menu-ink);
 
     &:hover {
-        background: var(--vscode-list-hoverBackground);
+        background: var(--ui-menu-hover-bg);
     }
 }
 
@@ -215,11 +215,10 @@
     box-shadow: var(--ui-card-shadow);
     overflow: hidden;
     min-width: 52px;
-    /* Rows are .ui-menu-row primitives and the stepper/segment buttons are
-       .ui-btn primitives; these vars retheme both onto the menu ground. */
-    --ui-menu-ink: var(--vscode-editorHoverWidget-foreground);
-    --ui-btn-ink: var(--vscode-editorHoverWidget-foreground);
-    --ui-btn-hover-bg: var(--vscode-list-hoverBackground);
+    /* The stepper/segment buttons are .ui-btn primitives; these vars retheme
+       them onto the menu ground (the rows already track --ui-menu-* at root). */
+    --ui-btn-ink: var(--ui-menu-ink);
+    --ui-btn-hover-bg: var(--ui-menu-hover-bg);
     z-index: 200;
 }
 
@@ -384,7 +383,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     border-radius: 50%;
     /* The menu background, so the knob reads as a punched-out disc that contrasts
        with both the dim off-track and the accent on-track, in light and dark. */
-    background: var(--vscode-editorHoverWidget-background);
+    background: var(--ui-card-bg);
     transition: transform 120ms ease;
 }
 
@@ -463,7 +462,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     max-width: calc(100vw - 32px);
     max-height: 80vh;
     padding: 14px 16px;
-    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    background: var(--ui-card-bg);
     border: 1px solid var(--vscode-focusBorder);
     border-radius: var(--ui-radius-xl);
     box-shadow: var(--ui-card-shadow-overlay);
@@ -489,7 +488,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
 }
 .img-insert-close-btn:hover {
     opacity: 1;
-    background: var(--vscode-list-hoverBackground);
+    background: var(--ui-menu-hover-bg);
 }
 
 .img-insert-tabs {
@@ -510,7 +509,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
 }
 
 .img-insert-tab:hover {
-    background: var(--vscode-list-hoverBackground);
+    background: var(--ui-menu-hover-bg);
     border-color: var(--vscode-input-border, var(--vscode-panel-border));
 }
 
@@ -600,7 +599,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     border-color: var(--vscode-input-border, var(--vscode-panel-border));
 }
 .img-insert-cancel-btn:hover {
-    background: var(--vscode-list-hoverBackground);
+    background: var(--ui-menu-hover-bg);
     /* Keep the outline through hover — the primitive's hover border
        (toolbar-hoverOutline, usually transparent) must not erase it. */
     border-color: var(--vscode-input-border, var(--vscode-panel-border));
@@ -749,7 +748,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
        outline so it costs zero layout (no reflow, no nudge). The transparent
        spread reproduces the old outline-offset gap; the second shadow is the ring. */
     box-shadow:
-        0 0 0 2px var(--vscode-editorWidget-background, var(--vscode-editor-background)),
+        0 0 0 2px var(--vscode-editor-background),
         0 0 0 3px var(--vscode-focusBorder);
     border-radius: var(--ui-radius-m);
 }
@@ -814,7 +813,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    background: var(--ui-card-bg);
     border-bottom: 1px solid var(--vscode-focusBorder);
     box-shadow: var(--ui-card-shadow);
 }
@@ -836,7 +835,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     flex-wrap: wrap;
     min-height: 26px;
     box-shadow:
-        0 0 0 2px var(--vscode-editorWidget-background, var(--vscode-editor-background)),
+        0 0 0 2px var(--ui-card-bg),
         0 0 0 3px var(--vscode-focusBorder);
     border-radius: var(--ui-radius-m);
     background-image: repeating-linear-gradient(
@@ -850,7 +849,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
    stripes (background-color keeps the stripe image). */
 .tb-hidden-tray-items.tb-tray-drop-active {
     box-shadow:
-        0 0 0 2px var(--vscode-editorWidget-background, var(--vscode-editor-background)),
+        0 0 0 2px var(--ui-card-bg),
         0 0 0 4px var(--vscode-focusBorder);
     background-color: var(--vscode-list-dropBackground);
 }

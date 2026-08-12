@@ -131,7 +131,7 @@
     padding: 0;
     border: none;
     border-radius: var(--ui-radius-m);
-    background: var(--vscode-editorWidget-background);
+    background: var(--ui-card-bg);
     color: var(--vscode-foreground);
     opacity: 0.7;
     cursor: pointer;

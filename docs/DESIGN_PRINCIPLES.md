@@ -128,6 +128,16 @@ Every marker is the block's slash-menu icon: headings an `H1`-`H6` badge, list i
 
 All color comes from `--vscode-*` variables so light and dark themes both work, and accents use `var(--vscode-focusBorder)` with no literal fallback. No custom hex. (See `AGENTS.md`, Architecture constraints.)
 
+### Everything that floats shares one ground, and every state carries its ink
+
+A theme token is a promise about one surface, not a general-purpose color, and floating chrome reads four tokens that all mean roughly "a widget's ground". Nothing obliges a theme to make them agree, so a surface that picks its own is picking a color the surface beside it did not. Every menu, popup, picker and palette therefore paints `--ui-card-bg` (`ui/chrome.css`), which is where the choice of token lives and the only place it is made. Docked furniture is a different question and keeps its own grounds; the rule is about what floats.
+
+Two of the row tokens are mixed from that ground rather than read from the theme, and the reason is the same in both cases: a theme tunes its value for where IT puts that surface, which is not where we put ours. `--ui-menu-hover-bg` is the row ink laid over the menu's own ground, because a theme picks `list.hoverBackground` to read against its sidebar. `--ui-menu-ink-dim` is `currentColor` at reduced alpha, so one declaration dims the resting ink on the resting ground and the hovered ink on the hover wash; a fixed muted token can only be right on one of them.
+
+A state that sets a background sets its foreground in the same rule. A theme may wash its selection at 8% of an accent or paint it a solid saturated fill, and a row that took the fill and kept the resting ink is unreadable in the second case while looking fine in the first. For the same reason the keyboard row's outline is ours rather than the theme's: the wash answers "is this row special", and only the outline reliably answers "is this the row Enter hits". A row wearing a fill shows its icons and hints at full ink, never dimmed, since the theme chose that fill and its knockout as a pair.
+
+Both rules are guarded (`webview/__tests__/menuGrounds.test.ts` for what the CSS says, `e2e/menuGround` for what a browser computes), because neither is visible to a type checker and jsdom has no cascade worth trusting.
+
 ### A floating surface fits the visible area, not the window
 
 The window's top is not where the usable area begins. The toolbar and, under it, the sticky heading title are fixed and opaque, and nearly every floating surface paints beneath them. A popup placed in that band is not merely awkward. It is invisible and unclickable, and the code that placed it has no idea. `safeAreaTop()` (`webview/utils/headingUtils.ts`) is that edge, and `viewportSize()` carries it into the placement engine, so anything routed through `ui/anchoredPlacement.ts` inherits it.

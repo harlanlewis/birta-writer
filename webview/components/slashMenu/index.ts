@@ -139,6 +139,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         rows.forEach((row, i) => {
             const isActive = i === activeIndex;
             row.classList.toggle("slash-menu-item--focused", isActive);
+            row.classList.toggle("ui-menu-row--selected", isActive);
             row.setAttribute("aria-selected", String(isActive));
             // Optional call: jsdom (unit tests) has no scrollIntoView.
             if (isActive) {
