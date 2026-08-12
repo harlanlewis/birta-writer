@@ -62,6 +62,13 @@ export const EDITOR_COMMANDS = [
     // Palette-only (no right-click section) — the discoverable surfaces are the
     // slash menu and the floating selection toolbar's own button.
     { id: "insertSectionLink", title: "Link to Section", palette: true, sections: [] },
+    // Follow the link at the caret (MAR-118): the SAME resolution the hover
+    // popup's Open button and the block menu's Open Link row use — anchors
+    // scroll in-document, wikilinks route through the host, external URLs
+    // open in the browser, everything else opens as a workspace file. A caret
+    // on no link is a quiet no-op. Palette + rebindable; no default chord
+    // (Cmd+Click and the block menu already carry the common paths).
+    { id: "openLink", title: "Open Link", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [] },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
