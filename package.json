@@ -289,6 +289,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.openLink",
+                "title": "%command.editor.openLink.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.insertImage",
                 "title": "%command.editor.insertImage.title%",
                 "category": "Birta Writer"
@@ -539,6 +544,16 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.indentBlock",
+                "title": "%command.editor.indentBlock.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.outdentBlock",
+                "title": "%command.editor.outdentBlock.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.deleteBlock",
                 "title": "%command.editor.deleteBlock.title%",
                 "category": "Birta Writer"
@@ -710,6 +725,18 @@
                 "command": "birta.editor.deleteBlock",
                 "key": "ctrl+shift+k",
                 "mac": "cmd+shift+k",
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
+            },
+            {
+                "command": "birta.editor.indentBlock",
+                "key": "ctrl+]",
+                "mac": "cmd+]",
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
+            },
+            {
+                "command": "birta.editor.outdentBlock",
+                "key": "ctrl+[",
+                "mac": "cmd+[",
                 "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
@@ -931,6 +958,10 @@
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
+                    "command": "birta.editor.openLink",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
                     "command": "birta.editor.insertImage",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
@@ -1128,6 +1159,14 @@
                 },
                 {
                     "command": "birta.editor.moveBlockDown",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.indentBlock",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.outdentBlock",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

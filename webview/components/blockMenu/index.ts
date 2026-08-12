@@ -20,14 +20,21 @@
  * completeness".
  */
 export {
+    canIndentAt,
+    canOutdentAt,
     closeBlockMenu,
     deleteBlockRange,
     duplicateBlockRange,
     headingAnchorSlug,
+    indentBlockAt,
+    indentSelection,
+    indentTargetFor,
     moveBlockAt,
     moveBlockTo,
     moveRangeAt,
     openBlockMenu,
+    outdentBlockAt,
+    outdentSelection,
     outlineRangeAt,
     setBlockMenuContext,
 } from "./menu";

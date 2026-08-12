@@ -62,6 +62,8 @@ import {
     pasteContainerFitPlugin,
     imageUploadProgressPlugin,
     imagePastePlugin,
+    htmlEditKeymapPlugin,
+    htmlLivePairsPlugin,
     mathInlineEditPlugin,
     wikiLinkCompletePlugin,
     headingLinkCompletePlugin,
@@ -655,6 +657,11 @@ export async function createEditor(
         // mathInlineEdit is even earlier: its boundary keys (arrow into / backspace
         // against a formula) are narrowly guarded and must beat every other handler.
         .use(mathInlineEditPlugin)
+        // Live inline HTML pairs + the Mod-Enter source-panel opener. Early
+        // for the same reason as mathInlineEdit: Mod-Enter on an html
+        // NodeSelection must beat insertParagraph's Mod-Enter.
+        .use(htmlLivePairsPlugin)
+        .use(htmlEditKeymapPlugin)
         // Backtick-over-a-selection wraps in inline code. Ahead of the presets
         // for the same reason: it shares handleTextInput with the input-rule
         // runner, and the first prop to return true wins.

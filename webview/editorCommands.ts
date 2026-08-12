@@ -49,7 +49,8 @@ import {
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { armBlockStartHeadingComplete } from "@/plugins/headingLinkComplete";
-import { openBlockMenuAtCaret } from "@/components/blockMenu";
+import { indentSelection, openBlockMenuAtCaret, outdentSelection } from "@/components/blockMenu";
+import { openLinkAtCaret } from "@/components/linkPopup";
 import { uncheckAllTasks } from "@/editing/checklistSink";
 import {
     convertListTreeAt,
@@ -722,6 +723,13 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
                 .then((m) => m.openSectionLinkPicker(view))
                 .catch((e) => console.error("[birta] section-link picker failed to load", e));
         }),
+    // Follow the link at the caret (MAR-118) — the popup/block-menu routing,
+    // palette-invocable. A caret on no link no-ops; focus returns to the
+    // editor either way (palette invocations drop it on Quick Open).
+    openLink: (getEditor) => runProse(getEditor, (view) => {
+        openLinkAtCaret(view);
+        view.focus();
+    }),
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
     insertFootnote: (getEditor) => insertFootnote(getEditor),
@@ -776,6 +784,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     duplicateBlockDown: (getEditor) => runCommand(getEditor, duplicateSelectedBlocks(1)),
     moveBlockUp: (getEditor) => runCommand(getEditor, moveSelectedBlocks(-1)),
     moveBlockDown: (getEditor) => runCommand(getEditor, moveSelectedBlocks(1)),
+    // Refile (MAR-118): the same by-position machinery the block menu's
+    // Indent/Outdent rows drive, resolved from the selection.
+    indentBlock: (getEditor) => runCommand(getEditor, (_state, dispatch, view) =>
+        !!view && !!dispatch && indentSelection(view)),
+    outdentBlock: (getEditor) => runCommand(getEditor, (_state, dispatch, view) =>
+        !!view && !!dispatch && outdentSelection(view)),
     deleteBlock: (getEditor) => runCommand(getEditor, deleteSelectedBlocks),
     joinLines: (getEditor) => runCommand(getEditor, joinLinesCommand),
     transformToUppercase: (getEditor) => runCommand(getEditor, transformToUppercase),

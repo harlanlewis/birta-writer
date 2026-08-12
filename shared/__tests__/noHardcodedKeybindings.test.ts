@@ -65,6 +65,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "local undo/redo inside overlay inputs — VS Code intercepts Cmd+Z before native inputs see it",
         "webview/components/findBar/index.ts":
             "bar-local input keys (Mod+Enter = replace all inside the replace input)",
+        "webview/components/htmlView/index.ts":
+            "panel-local input keys (Mod+Enter = commit inside the HTML source textarea) — findBar's idiom",
         "webview/plugins/headingEmptyDelete.ts":
             "bails out when modifiers are held — typing-level Backspace handling, not a chord",
         "webview/plugins/blockKeys.ts":

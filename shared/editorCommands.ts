@@ -62,6 +62,13 @@ export const EDITOR_COMMANDS = [
     // Palette-only (no right-click section) — the discoverable surfaces are the
     // slash menu and the floating selection toolbar's own button.
     { id: "insertSectionLink", title: "Link to Section", palette: true, sections: [] },
+    // Follow the link at the caret (MAR-118): the SAME resolution the hover
+    // popup's Open button and the block menu's Open Link row use — anchors
+    // scroll in-document, wikilinks route through the host, external URLs
+    // open in the browser, everything else opens as a workspace file. A caret
+    // on no link is a quiet no-op. Palette + rebindable; no default chord
+    // (Cmd+Click and the block menu already carry the common paths).
+    { id: "openLink", title: "Open Link", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [] },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
@@ -202,6 +209,15 @@ export const EDITOR_COMMANDS = [
     // additional user bindings; the default chord lives in blockKeys.ts.
     { id: "moveBlockUp", title: "Move Block Up", palette: true, sections: [] },
     { id: "moveBlockDown", title: "Move Block Down", palette: true, sections: [] },
+    // Refile (MAR-118): move a block INTO the previous sibling container /
+    // lift it OUT of its enclosing one — the keyboard path to drag-refile.
+    // Contributed (not hardcoded) because Cmd+]/[ carries no native
+    // contenteditable default needing synchronous suppression; the chords
+    // mirror VS Code's own indent/outdentLines defaults, inert here because
+    // they are editorTextFocus-scoped. On list items the commands delegate to
+    // the Tab machinery, so ⌘] and Tab can never diverge.
+    { id: "indentBlock", title: "Indent Block", palette: true, sections: [] },
+    { id: "outdentBlock", title: "Outdent Block", palette: true, sections: [] },
     { id: "deleteBlock", title: "Delete Block", palette: true, sections: [] },
     // Contributed Ctrl+J on macOS only — VS Code parity (unbound elsewhere).
     { id: "joinLines", title: "Join Lines", palette: true, sections: [] },

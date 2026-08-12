@@ -44,7 +44,8 @@ import {
     unfoldAllCommand,
     type HeadingFoldMeta,
 } from "../../editing/blockOps";
-import { getHeadingLevel } from "../../plugins/headingFold";
+import { getHeadingLevel, selectionCoverRange } from "../../plugins/headingFold";
+import { sinkItemKeepingChildren } from "../../plugins/tabKeymap";
 import { attrsFromMarker, markerWithFold } from "../../plugins/callouts";
 import { BlockRangeSelection } from "../../plugins/blockRange";
 // Value import from editorCommands is the turnInto.ts precedent: the cycle
@@ -53,7 +54,7 @@ import { BlockRangeSelection } from "../../plugins/blockRange";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { linkAtCaret, openLinkAtCaret } from "../linkPopup";
-import { openImageLightbox } from "../imageView";
+import { focusImageInputAt, imageWidthControlAt, openImageLightbox } from "../imageView";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
 import { getTopbarBottom } from "../../utils/headingUtils";
@@ -70,6 +71,7 @@ import {
     IconArrowDownToLine,
     IconCheckSquare,
     IconChevronDown,
+    IconChevronLeft,
     IconChevronRight,
     IconChevronUp,
     IconCopy,
@@ -79,6 +81,7 @@ import {
     IconLink,
     IconList,
     IconMaximize2,
+    IconPencil,
     IconPlus,
     IconTrash2,
 } from "../../ui/icons";
@@ -110,6 +113,7 @@ import {
 } from "../../blockCapabilities";
 import { flashRange } from "../../editing/rangeIndicator";
 import { TextSelection, type EditorState } from "../../pm";
+import { liftListItem, liftTarget, NodeRange, sinkListItem } from "../../pm";
 
 // ── Editor access ───────────────────────────────────────────────────────────
 // The menu lives behind a ProseMirror widget, which only hands us the view;
@@ -511,6 +515,249 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
         return false;
     }
     return moveBlocks(view, range, target);
+}
+
+// ── Refile: indent into / outdent out of a container (MAR-118) ─────────────
+// The keyboard path to what drag-refile does: move a block INTO the previous
+// sibling container (indent) or lift it OUT of its enclosing one (outdent).
+// List items delegate to the Tab machinery (sinkItemKeepingChildren /
+// sinkListItem / liftListItem), so ⌘] on an item and Tab in it can never
+// diverge; everything else routes through moveBlocks (indent — the same
+// hardened primitive every mover uses) or a plain ProseMirror lift (outdent —
+// the wrapBlocks convention: lifting part of a container splits it, as it
+// does everywhere else in ProseMirror).
+
+/**
+ * The boundary inside the PREVIOUS sibling where the run [range.from,
+ * range.to) could land: the shallowest position along that sibling's
+ * last-child spine that moveBlocks would accept. Walking the spine is what
+ * makes one rule serve every container — a blockquote/callout absorbs at its
+ * own end, a list refuses blocks as direct children so the walk descends into
+ * its last item's `paragraph block*` content, and a textblock/atom sibling
+ * offers no boundary at all. moveFits carries the full target contract
+ * (schema fit on both sides, fold-hidden targets rejected), so a collapsed
+ * container can never swallow an indented block invisibly. Exported for unit
+ * testing.
+ */
+export function indentTargetFor(
+    state: EditorState,
+    range: { from: number; to: number },
+): number | null {
+    const $from = state.doc.resolve(range.from);
+    const parent = $from.depth === 0 ? state.doc : $from.parent;
+    const index = $from.index($from.depth);
+    if (index === 0) {
+        return null;
+    }
+    let pos = $from.posAtIndex(index - 1);
+    let node: ProseNode | null = parent.child(index - 1);
+    while (node && !node.isTextblock && !node.isAtom && node.childCount > 0) {
+        const inside = pos + node.nodeSize - 1;
+        if (moveFits(state, range, inside)) {
+            return inside;
+        }
+        const last: ProseNode = node.lastChild!;
+        pos = inside - last.nodeSize;
+        node = last;
+    }
+    return null;
+}
+
+/**
+ * Run `fn` with a text selection guaranteed inside the node at `pos`: the
+ * preset list commands (sink/lift) are selection-driven, while this menu's
+ * contract is by-position. A selection already inside the node is kept (so a
+ * caret keeps its offset); otherwise a caret is placed at the node's start
+ * first — a selection-only transaction, invisible to history.
+ */
+function withCaretIn(view: EditorView, pos: number, node: ProseNode, fn: () => boolean): boolean {
+    const { from, to } = view.state.selection;
+    if (from <= pos || to >= pos + node.nodeSize) {
+        view.dispatch(view.state.tr.setSelection(
+            TextSelection.near(view.state.doc.resolve(pos + 1), 1),
+        ));
+    }
+    return fn();
+}
+
+/** The selection-probe state for a dry-run of a selection-driven command
+ * against the block at `pos` (a caret placed just inside it). */
+function probeStateAt(view: EditorView, pos: number): EditorState {
+    return view.state.apply(view.state.tr.setSelection(
+        TextSelection.near(view.state.doc.resolve(pos + 1), 1),
+    ));
+}
+
+/**
+ * Move the block at `pos` INTO the previous sibling container (one level
+ * deeper). A list item sinks exactly like Tab (sinkItemKeepingChildren's
+ * item-alone rule, then stock sinkListItem); everything else moves through
+ * moveBlocks to the indentTargetFor boundary — a collapsed heading brings its
+ * hidden section (moveRangeAt). False when nothing can absorb it.
+ */
+export function indentBlockAt(view: EditorView, pos: number): boolean {
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) {
+        return false;
+    }
+    if (node.type.name === "list_item") {
+        if (view.state.doc.resolve(pos).index() === 0) {
+            return false; // nothing to sink under
+        }
+        return withCaretIn(view, pos, node, () =>
+            sinkItemKeepingChildren(node.type)(view.state, view.dispatch) ||
+            sinkListItem(node.type)(view.state, view.dispatch));
+    }
+    const range = moveRangeAt(view, pos);
+    if (!range) {
+        return false;
+    }
+    const target = indentTargetFor(view.state, range);
+    if (target === null) {
+        return false;
+    }
+    return moveBlocks(view, range, target);
+}
+
+/**
+ * Lift the block at `pos` OUT of its enclosing container (one level up). A
+ * list item lifts exactly like Shift+Tab (preset liftListItem: following
+ * siblings become its children); everything else lifts its own NodeRange out
+ * of its direct parent. False at the top level, and when the schema refuses
+ * the lift.
+ */
+export function outdentBlockAt(view: EditorView, pos: number): boolean {
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) {
+        return false;
+    }
+    if (node.type.name === "list_item") {
+        return withCaretIn(view, pos, node, () =>
+            liftListItem(node.type)(view.state, view.dispatch));
+    }
+    const $pos = view.state.doc.resolve(pos);
+    if ($pos.depth === 0) {
+        return false;
+    }
+    const range = new NodeRange(
+        view.state.doc.resolve(pos),
+        view.state.doc.resolve(pos + node.nodeSize),
+        $pos.depth,
+    );
+    const target = liftTarget(range);
+    if (target === null) {
+        return false;
+    }
+    view.dispatch(view.state.tr.lift(range, target).scrollIntoView());
+    return true;
+}
+
+/** Whether indentBlockAt would act — drives the menu row's presence. */
+export function canIndentAt(view: EditorView, pos: number): boolean {
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) {
+        return false;
+    }
+    if (node.type.name === "list_item") {
+        if (view.state.doc.resolve(pos).index() === 0) {
+            return false;
+        }
+        const probe = probeStateAt(view, pos);
+        return sinkItemKeepingChildren(node.type)(probe) || sinkListItem(node.type)(probe);
+    }
+    const range = moveRangeAt(view, pos);
+    return range !== null && indentTargetFor(view.state, range) !== null;
+}
+
+/** Whether outdentBlockAt would act — drives the menu row's presence. */
+export function canOutdentAt(view: EditorView, pos: number): boolean {
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) {
+        return false;
+    }
+    if (node.type.name === "list_item") {
+        return liftListItem(node.type)(probeStateAt(view, pos));
+    }
+    const $pos = view.state.doc.resolve(pos);
+    if ($pos.depth === 0) {
+        return false;
+    }
+    const range = new NodeRange(
+        view.state.doc.resolve(pos),
+        view.state.doc.resolve(pos + node.nodeSize),
+        $pos.depth,
+    );
+    return liftTarget(range) !== null;
+}
+
+/**
+ * The block the SELECTION-driven refile verbs act on (the contributed
+ * ⌘]/⌘[ commands): the innermost list item, else the caret's own block at
+ * whatever depth it sits — a quoted paragraph outdents alone, splitting its
+ * quote, the ProseMirror convention — else the block a depth-0 selection
+ * (gap cursor, block range head) touches. Null inside a table: a refile
+ * there would tear a block out of its cell (the deleteSelectedBlocks rule).
+ */
+function refileCaretPos(view: EditorView): number | null {
+    const { $from } = view.state.selection;
+    for (let depth = $from.depth; depth > 0; depth--) {
+        const name = $from.node(depth).type.name;
+        if (name === "list_item") {
+            return $from.before(depth);
+        }
+        if (name === "table") {
+            return null;
+        }
+    }
+    if ($from.depth === 0) {
+        return $from.nodeAfter ? $from.pos : null;
+    }
+    return $from.before($from.depth);
+}
+
+/**
+ * Indent for the current selection: an explicit block-spanning selection
+ * moves its whole (fold-expanded) cover into the previous container and
+ * stays selected — the moveSelectedBlocks convention — a caret indents its
+ * refileCaretPos block. Exported for the contributed command.
+ */
+export function indentSelection(view: EditorView): boolean {
+    const cover = selectionCoverRange(view);
+    if (cover) {
+        const target = indentTargetFor(view.state, cover);
+        if (target === null) {
+            return false;
+        }
+        return moveBlocks(view, cover, target, {
+            selectRun: view.state.selection instanceof BlockRangeSelection,
+        });
+    }
+    const pos = refileCaretPos(view);
+    return pos !== null && indentBlockAt(view, pos);
+}
+
+/**
+ * Outdent for the current selection: an explicit cover lifts as one
+ * NodeRange (top-level covers have nowhere to lift and refuse); a caret
+ * outdents its refileCaretPos block. Exported for the contributed command.
+ */
+export function outdentSelection(view: EditorView): boolean {
+    const cover = selectionCoverRange(view);
+    if (cover) {
+        const $from = view.state.doc.resolve(cover.from);
+        if ($from.depth === 0) {
+            return false;
+        }
+        const range = new NodeRange($from, view.state.doc.resolve(cover.to), $from.depth);
+        const target = liftTarget(range);
+        if (target === null) {
+            return false;
+        }
+        view.dispatch(view.state.tr.lift(range, target).scrollIntoView());
+        return true;
+    }
+    const pos = refileCaretPos(view);
+    return pos !== null && outdentBlockAt(view, pos);
 }
 
 /**
@@ -1127,28 +1374,60 @@ export function openBlockMenu(
             });
         }
     }
-    // ── View an image full screen (MAR-118) ── the keyboard path to the
-    // NodeView's zoom button: same lightbox surface, same Escape layer. An
-    // image lives in a paragraph (the gutter's "Image" marker unit); the
-    // FIRST image is the paragraph's identity — a multi-image paragraph is
-    // rare enough that per-image targeting stays with the mouse/NodeView.
+    // ── Image rows (MAR-118) ── the keyboard paths to the NodeView's own
+    // chrome: the zoom button's lightbox (same surface, same Escape layer)
+    // and the toolbar's editors (alt caption, title, path) plus the width
+    // cycle. An image lives in a paragraph (the gutter's "Image" marker
+    // unit); the FIRST image is the paragraph's identity — a multi-image
+    // paragraph is rare enough that per-image targeting stays with the
+    // mouse/NodeView.
     {
         let image: ProseNode | null = null;
+        let imageOffset = 0;
         if (anchorNode?.type.name === "paragraph") {
-            anchorNode.forEach((child: ProseNode) => {
+            anchorNode.forEach((child: ProseNode, offset: number) => {
                 if (image === null && child.type.name === "image") {
                     image = child;
+                    imageOffset = offset;
                 }
             });
         }
         if (image !== null) {
             const src = String((image as ProseNode).attrs["src"] ?? "");
             const alt = String((image as ProseNode).attrs["alt"] ?? "");
+            const imagePos = blockPos + 1 + imageOffset;
             if (src !== "") {
                 action(t("View Fullscreen"), ["image", "fullscreen", "zoom", "view", "lightbox", "preview"], {
                     icon: IconMaximize2,
                     mutates: false,
                     action: () => openImageLightbox(src, alt),
+                });
+            }
+            // The edit rows hand focus to the NodeView's inputs (selecting
+            // the image pins its toolbar open); inside, the inputs' own
+            // contracts take over — Enter commits, Escape reverts, both
+            // return focus to the editor.
+            action(t("Edit Alt Text"), ["image", "alt", "caption", "description", "text", "edit"], {
+                icon: IconPencil,
+                action: () => { focusImageInputAt(view, imagePos, "alt"); },
+            });
+            action(t("Edit Image Title"), ["image", "title", "tooltip", "hover", "edit"], {
+                icon: IconPencil,
+                action: () => { focusImageInputAt(view, imagePos, "title"); },
+            });
+            action(t("Edit Image Path"), ["image", "path", "src", "url", "file", "rename", "edit"], {
+                icon: IconPencil,
+                action: () => { focusImageInputAt(view, imagePos, "path"); },
+            });
+            // Width cycle: the row IS the control-column button (same verb
+            // computation, same store write) — presentation only, so it
+            // neither dirties the file nor moves the caret.
+            const width = imageWidthControlAt(view, imagePos);
+            if (width) {
+                action(width.verb, ["image", "width", "full", "fit", "natural", "size"], {
+                    icon: IconExpandHorizontal,
+                    mutates: false,
+                    action: width.cycle,
                 });
             }
         }
@@ -1364,6 +1643,22 @@ export function openBlockMenu(
         disabled: !canMove(view, blockPos, 1),
         action: () => moveBlockAt(view, blockPos, 1),
     });
+    // ── Refile (MAR-118) — the keyboard path to drag-refile. Hidden rather
+    // than disabled when impossible (the merge-rows convention: possibility
+    // hangs on this block's neighbors/ancestry, and a block with no container
+    // in reach makes the action never-possible from here).
+    if (canIndentAt(view, blockPos)) {
+        action(t("Indent"), ["indent", "nest", "sink", "move", "into", "refile"], {
+            icon: IconChevronRight,
+            action: () => indentBlockAt(view, blockPos),
+        });
+    }
+    if (canOutdentAt(view, blockPos)) {
+        action(t("Outdent"), ["outdent", "unnest", "lift", "move", "out", "refile"], {
+            icon: IconChevronLeft,
+            action: () => outdentBlockAt(view, blockPos),
+        });
+    }
     // Document-wide fold verbs (MAR-110) — palette + block menu only (the
     // Cmd+K fold chords are consumed by insertLink in this editor). Not
     // block-scoped, so they never pre-place the caret (mutates: false).

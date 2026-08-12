@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- HTML is editable in place. Click any inline HTML tag or comment chip, or press Cmd+Enter (Ctrl+Enter on Windows and Linux) with one selected, and its raw source opens in a small panel right where it stands. Clicking away or pressing the chord again commits, Escape cancels, and clearing the text deletes the tag. The committed bytes reach the file exactly as typed, and saving or switching to the raw editor mid-edit commits first instead of discarding what you typed. Inside a table cell, a value that would break the row apart (a newline, or a pipe the cell cannot carry) is refused with a cue instead of written.
+
+- Plain paired inline tags render live. Text between `<u>` and `</u>` shows underlined, and the same for `<sub>`, `<sup>`, `<kbd>` and `<mark>`, with the tags themselves dimmed to small chips that stay clickable for editing. A tag carrying attributes, or one never closed, keeps its previous appearance, and the rendering is display only: the file's bytes are untouched.
+
+- Move a block into or out of a container from the keyboard: Cmd+] (Ctrl+] on Windows and Linux) moves the current block into the container ending just above it, and Cmd+[ lifts it out of its enclosing quote, callout or list. The block menu offers the same as Indent and Outdent rows. On list items these run the exact machinery Tab and Shift+Tab already use, so the two paths cannot diverge, and a move that would land content inside a folded region is refused rather than applied invisibly.
+
+- Open Link is a Command Palette command now, so following the link at the caret can be given a keybinding of your own. It routes exactly like Cmd+Click.
+
+- Edit an image's alt text and path from the keyboard: an image block's menu offers Edit Alt Text and Edit Image Path, which focus the image toolbar's own inputs, plus a row that cycles the image's display width.
+
+### Fixed
+
+- Making Birta your default Markdown editor by setting `workbench.editorAssociations` now sticks. Opening the editor used to silently delete a user-authored `*.md` association on activation, assuming the entry was its own leftover, so the standard VS Code way of choosing a default editor quietly undid itself. The editor now removes only entries it wrote itself, and it no longer rewrites your settings file on activation when nothing changed.
+
 ---
 
 ## [2026.812.0] - 2026, August 12

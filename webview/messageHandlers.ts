@@ -23,6 +23,7 @@ import { applyBlockHandles } from "./utils/blockHandles";
 import { setMermaidThemeMode, setPlantUmlThemeMode } from "./components/codeBlock";
 import { applyFoldingControls } from "./utils/foldingControls";
 import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
+import { bankOpenHtmlPanel } from "./components/htmlView";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
@@ -287,6 +288,13 @@ export function createMessageHandlers(
         flushSave(msg) {
             // A save is imminent: serialize the live document NOW (bypassing the
             // throttle) and reply so the extension writes the freshest content.
+            // An open HTML source panel banks its edit first (blur commits
+            // synchronously), so the flush cannot persist bytes older than
+            // what the panel shows — the same seam the mode switch has.
+            const view = getEditorView();
+            if (view) {
+                bankOpenHtmlPanel(view);
+            }
             notifyFlushResult(msg.id, flushPendingEdit(msg.id));
         },
         flushAck(msg) {

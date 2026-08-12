@@ -41,6 +41,7 @@ import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
+import { bankOpenHtmlPanel } from "./components/htmlView";
 import { mark, measure } from "./perf";
 import type { DocumentFormat, ToWebviewMessage } from "../shared/messages";
 import { resolveFormat } from "./format/loader";
@@ -402,6 +403,12 @@ function getSwitchTarget():
     | undefined {
     const view = getEditorView();
     if (!view) { return undefined; }
+    // An open HTML source panel banks its edit before the read: its blur
+    // listener commits synchronously, so the switch leaves on committed
+    // bytes even when invoked from inside the webview (the chord path,
+    // where no natural blur precedes this call). Story in
+    // selectionSurfaceCoverage's ISLAND_REGISTRY; pinned in e2e/htmlEdit.
+    bankOpenHtmlPanel(view);
     const { doc, selection } = view.state;
     const { head, empty } = selection;
     const sourceLines = getMarkdownSource().split("\n");

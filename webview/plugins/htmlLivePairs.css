@@ -1,0 +1,46 @@
+/* Live inline HTML pairs (MAR-14): the styled span between a matched pair,
+   and the dimmed tag atoms around it. Decoration classes only. */
+
+.editor {
+    /* A paired tag atom: quiet monospace chip instead of an invisible
+       empty element, so the source stays discoverable and clickable. */
+    .html-tag--paired {
+        display: inline;
+        color: var(--vscode-descriptionForeground);
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: 0.75em;
+        opacity: 0.55;
+    }
+
+    .html-live-u {
+        text-decoration: underline;
+    }
+
+    .html-live-sub {
+        vertical-align: sub;
+        font-size: 0.8em;
+    }
+
+    .html-live-sup {
+        vertical-align: super;
+        font-size: 0.8em;
+    }
+
+    .html-live-kbd {
+        padding: 0 0.25em;
+        border: 1px solid var(--vscode-editorWidget-border);
+        border-bottom-width: 2px;
+        border-radius: var(--ui-radius-s);
+        background: var(--vscode-textBlockQuote-background);
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: 0.85em;
+    }
+
+    /* Same wash as ==mark== (mark.md-highlight in style.css), so the two
+       highlight spellings read as one affordance. */
+    .html-live-mark {
+        background: color-mix(in srgb, var(--vscode-charts-yellow) 32%, transparent);
+        padding: 0 0.08em;
+        border-radius: 2px;
+    }
+}

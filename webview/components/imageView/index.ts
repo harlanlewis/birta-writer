@@ -1,5 +1,5 @@
 import type { Node as PMNode } from "@/pm";
-import { TextSelection } from "@/pm";
+import { NodeSelection, TextSelection } from "@/pm";
 import type {
     Decoration,
     DecorationSource,
@@ -107,6 +107,73 @@ function showGlobalLightbox(src: string, alt: string): void {
  */
 export function openImageLightbox(src: string, alt: string): void {
     showGlobalLightbox(src, alt);
+}
+
+// ─── Keyboard path into the toolbar inputs (MAR-118) ───────
+// The NodeView's editors (alt caption, title, path) were mouse-only: nothing
+// moved focus into them from the document. Each view registers a focus
+// handle keyed by its wrapper element; focusImageInputAt selects the image
+// (which pins its toolbar open) and hands focus to the named input. Inside,
+// the inputs' own contracts take over: Enter commits, Escape reverts, both
+// return focus to the editor (setupApplyOnBlur / attachImgPathComplete).
+
+export type ImageInputField = "alt" | "title" | "path";
+
+interface ImageViewHandle {
+    focusInput(field: ImageInputField): void;
+    /** The width cycle's NEXT state name — the control button's own tooltip
+     *  contract (icon and label always name what a press will do). */
+    widthVerb(): string;
+    /** Same action as the control-column width button, class sync included. */
+    cycleWidth(): void;
+}
+
+const imageInputHandles = new WeakMap<HTMLElement, ImageViewHandle>();
+
+/** The mounted NodeView handle for the image node at `pos`, or null. */
+function imageHandleAt(view: EditorView, pos: number): ImageViewHandle | null {
+    const node = view.state.doc.nodeAt(pos);
+    if (!node || node.type.name !== "image") {
+        return null;
+    }
+    const dom = view.nodeDOM(pos);
+    return (dom instanceof HTMLElement ? imageInputHandles.get(dom) : undefined) ?? null;
+}
+
+/**
+ * Select the image node at `pos` and focus one of its NodeView's inputs.
+ * False (no dispatch beyond the selection, no error) when `pos` is not an
+ * image or its view is not mounted — callers offer the action only for image
+ * paragraphs, so a false is a stale-state no-op.
+ */
+export function focusImageInputAt(view: EditorView, pos: number, field: ImageInputField): boolean {
+    const handle = imageHandleAt(view, pos);
+    if (!handle) {
+        return false;
+    }
+    const { selection } = view.state;
+    if (!(selection instanceof NodeSelection) || selection.from !== pos) {
+        // selectNode runs synchronously in this dispatch, pinning the toolbar
+        // open before the focus below.
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
+    }
+    handle.focusInput(field);
+    return true;
+}
+
+/**
+ * The image's width cycle as a named action (the block menu's keyboard path
+ * to the control-column button): `verb` is the NEXT state's name, `cycle`
+ * performs exactly what the button does. Null when `pos` is not a mounted
+ * image. Presentation-only, like the button — the store write never touches
+ * the document.
+ */
+export function imageWidthControlAt(
+    view: EditorView,
+    pos: number,
+): { verb: string; cycle: () => void } | null {
+    const handle = imageHandleAt(view, pos);
+    return handle ? { verb: handle.widthVerb(), cycle: () => handle.cycleWidth() } : null;
 }
 
 /**
@@ -300,20 +367,29 @@ export function createImageView(
     // fixed column) is identical to fit-column, so it drops out: the toggle
     // never offers a state the user can't see.
     const pageIsFullWidth = (): boolean => document.body.classList.contains("editor-width-auto");
+    /** The cycle's NEXT state name — what a press will do, never the current
+     *  state (the word-wrap toggle's contract). */
+    const widthVerb = (): string => {
+        const mode = widthMode();
+        return mode === "natural" ? t("Fit Column Width")
+            : mode === "fixed" && !pageIsFullWidth() ? t("Full Width")
+            : t("Natural Size");
+    };
+    const cycleWidth = (): void => {
+        const mode = widthMode();
+        setBlockWidth(
+            widthAnchor, // freshly resolved by widthMode() above
+            mode === "natural" ? "fixed"
+            : mode === "fixed" && !pageIsFullWidth() ? "full"
+            : null,
+        );
+        syncWidthBtn();
+    };
     const widthControl = makeBlockControlButton({
         className: "img-tb-width",
         icon: IconExpandHorizontal,
         label: t("Fit Column Width"),
-        onClick: () => {
-            const mode = widthMode();
-            setBlockWidth(
-                widthAnchor, // freshly resolved by widthMode() above
-                mode === "natural" ? "fixed"
-                : mode === "fixed" && !pageIsFullWidth() ? "full"
-                : null,
-            );
-            syncWidthBtn();
-        },
+        onClick: cycleWidth,
     });
     function syncWidthBtn(): void {
         const mode = widthMode();
@@ -322,9 +398,7 @@ export function createImageView(
             mode === "full" || (mode === "fixed" && pageIsFullWidth())
                 ? IconShrinkHorizontal
                 : IconExpandHorizontal,
-            mode === "natural" ? t("Fit Column Width")
-            : mode === "fixed" && !pageIsFullWidth() ? t("Full Width")
-            : t("Natural Size"),
+            widthVerb(),
         );
         widthControl.setOn(mode !== "natural");
     }
@@ -376,6 +450,23 @@ export function createImageView(
     wrapper.appendChild(caption);
     wrapper.appendChild(toolbar);
     wrapper.appendChild(controlsCol);
+
+    // Keyboard entry (MAR-118): focusImageInputAt / imageWidthControlAt
+    // resolve this view by its wrapper. `startSrcEdit` is a hoisted
+    // declaration below, so referencing it here is safe.
+    imageInputHandles.set(wrapper, {
+        focusInput(field) {
+            if (field === "path") {
+                startSrcEdit();
+                return;
+            }
+            const input = field === "alt" ? caption : titleInput;
+            input.focus();
+            input.select();
+        },
+        widthVerb,
+        cycleWidth,
+    });
 
     // ── Initialize the info area, caption, title row, and width ──────
     let rawSrc = (node.attrs["src"] as string) ?? "";

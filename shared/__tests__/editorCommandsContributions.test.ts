@@ -228,6 +228,11 @@ describe("editor command keybinding contributions", () => {
         // + block menu.
         fold: [{ key: "ctrl+shift+[", mac: "cmd+alt+[" }],
         unfold: [{ key: "ctrl+shift+]", mac: "cmd+alt+]" }],
+        // Refile (MAR-118): VS Code's own indent/outdentLines chords, free to
+        // claim here because those defaults are editorTextFocus-scoped and
+        // inert while the custom editor's webview has focus.
+        indentBlock: [{ key: "ctrl+]", mac: "cmd+]" }],
+        outdentBlock: [{ key: "ctrl+[", mac: "cmd+[" }],
     };
 
     it("every editor keybinding should reference a table entry", () => {
@@ -247,6 +252,8 @@ describe("editor command keybinding contributions", () => {
         [
             "insertLink",
             "deleteBlock",
+            "indentBlock",
+            "outdentBlock",
             "joinLines",
             "pasteAsPlainText",
             "toggleOrderedList",

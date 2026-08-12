@@ -573,6 +573,56 @@ function opensHtmlBlock(line: string): boolean {
     return COMPLETE_TAG_ALONE.test(line);
 }
 
+/** The end condition closing an open condition-1-to-5 block, by kind. */
+const HTML_BLOCK_CLOSERS: Readonly<Record<string, (line: string) => boolean>> = {
+    raw: (line) => RAW_TEXT_END.test(line),
+    comment: (line) => line.includes("-->"),
+    instruction: (line) => line.includes("?>"),
+    declaration: (line) => line.includes(">"),
+    cdata: (line) => line.includes("]]>"),
+};
+
+/** Which HTML block this line opens that is still open at its end, or null. */
+function openHtmlBlockKind(line: string): string | null {
+    if (RAW_TEXT_START.test(line)) return RAW_TEXT_END.test(line) ? null : "raw";
+    if (COMMENT_START.test(line)) return line.includes("-->") ? null : "comment";
+    if (INSTRUCTION_START.test(line)) return line.includes("?>") ? null : "instruction";
+    if (DECLARATION_START.test(line)) return line.includes(">") ? null : "declaration";
+    if (CDATA_START.test(line)) return line.includes("]]>") ? null : "cdata";
+    const tag = BLOCK_TAG_START.exec(line);
+    if (tag && HTML_BLOCK_TAGS.has(tag[1].toLowerCase())) return "block";
+    return COMPLETE_TAG_ALONE.test(line) ? "block" : null;
+}
+
+/**
+ * Is an HTML block still open after the LAST of these lines — so the next
+ * line, whatever it is, is absorbed as HTML content?
+ *
+ * A running scan, not a first-line check: a paragraph's serialized bytes can
+ * be multi-line, and an editable html value (MAR-14) can put a block opener
+ * on ANY of its lines — `<span>x</span>\n<div>` opens nothing on line one and
+ * a condition-6 block on line two, which the first line alone cannot see. The
+ * lines here contain no blanks (they are one paragraph's bytes), so a
+ * condition-6/7 block, once open, stays open to the end; conditions 1–5 close
+ * at their own end condition and the scan resumes fresh on the next line.
+ */
+function htmlBlockOpenAtEnd(bytes: string): boolean {
+    let open: string | null = null;
+    for (const line of bytes.split("\n")) {
+        if (open === "block") {
+            return true;
+        }
+        if (open !== null) {
+            if (HTML_BLOCK_CLOSERS[open]!(line)) {
+                open = null;
+            }
+            continue;
+        }
+        open = openHtmlBlockKind(line);
+    }
+    return open !== null;
+}
+
 type SerializerState = {
     handle?: (node: unknown, parent: unknown, state: unknown, info: unknown) => string;
 };
@@ -599,9 +649,9 @@ const paragraphOpensBlock = new WeakMap<object, boolean>();
  * The handler is given the SAME `(parent, state)` the real serialization gives
  * it — `containerFlow` calls it with the list item as parent — so no handler can
  * see a context here it would not see there. `info` carries the tracker's
- * start-of-line position rather than the paragraph's real one, which is why only
- * the FIRST line of the result is read: the item's own indent is applied later,
- * by the list-item handler, and does not change what the line opens.
+ * start-of-line position rather than the paragraph's real one, which is safe
+ * because the item's own indent is applied later, by the list-item handler,
+ * and does not change what any line opens.
  */
 function opensRawHtmlBlock(node: FlowNode, item: unknown, state: unknown): boolean {
     if (node.type !== "paragraph") return false;
@@ -621,7 +671,11 @@ function opensRawHtmlBlock(node: FlowNode, item: unknown, state: unknown): boole
     const bytes = handle(node, item, state, {
         before: "\n", after: "\n", now: { line: 1, column: 1 }, lineShift: 0,
     });
-    const answer = opensHtmlBlock(String(bytes ?? "").split("\n", 1)[0] ?? "");
+    // Every line, not just the first: an edited html value can open a block
+    // on a later line (see htmlBlockOpenAtEnd). The item indent applied
+    // afterwards is stripped again by list-item parsing, so line starts keep
+    // their meaning on every line for the same reason they do on the first.
+    const answer = htmlBlockOpenAtEnd(String(bytes ?? ""));
     paragraphOpensBlock.set(node as object, answer);
     return answer;
 }
