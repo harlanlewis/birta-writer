@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- e2e harness page for MAR-360: adding a paragraph and deleting it again is
+     a no-op edit and must leave the file's bytes exactly as they were.
+     Mirrors the provider template (src/MarkdownEditorProvider.ts) with
+     acquireVsCodeApi stubbed; every outbound `update` carries the file-ready
+     bytes, which is the observable the fidelity claim is written on. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-focusBorder: #007fd4;
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-input-placeholderForeground: #888888;
+    --vscode-icon-foreground: #cccccc;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 99 };
+  window.__posted = [];
+  // The reported shape: a heading with prose under it, the paragraph added
+  // and removed directly beneath the heading.
+  const CONTENT = "# Title\n\n## Footnotes\n\nA sentence that must not move.\n";
+  window.__content = CONTENT;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push({ ...msg, __t: performance.now() });
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
