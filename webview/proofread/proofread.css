@@ -60,9 +60,9 @@
     padding: 4px;
     display: flex;
     flex-direction: column;
-    background: var(--vscode-editorWidget-background);
-    color: var(--vscode-editorWidget-foreground);
-    border: 1px solid var(--vscode-editorWidget-border);
+    background: var(--ui-card-bg);
+    color: var(--ui-menu-ink);
+    border: 1px solid var(--ui-card-border);
     border-radius: var(--ui-radius-l);
     box-shadow: var(--ui-card-shadow);
     font-size: var(--ui-fs-l);
@@ -89,7 +89,8 @@
     font: inherit;
 
     &:hover {
-        background: var(--vscode-list-hoverBackground);
+        background: var(--ui-menu-hover-bg);
+        color: var(--ui-menu-hover-ink);
     }
 }
 

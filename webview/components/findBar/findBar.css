@@ -14,7 +14,7 @@
     align-items: stretch;
     gap: 0;
     padding: 3px 2px 3px 2px;
-    background: var(--vscode-editorWidget-background);
+    background: var(--ui-card-bg);
     border: 1px solid var(--vscode-editorWidget-border);
     /* A docked panel — the l radius per the chrome.css role table. */
     border-radius: var(--ui-radius-l);

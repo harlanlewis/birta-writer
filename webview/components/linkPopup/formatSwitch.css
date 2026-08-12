@@ -24,7 +24,7 @@
 
 .lfs-select {
     appearance: auto;
-    background: var(--vscode-dropdown-background);
+    background: var(--ui-card-bg);
     color: var(--vscode-dropdown-foreground);
     border: 1px solid var(--vscode-dropdown-border);
     border-radius: var(--ui-radius-m);

@@ -155,8 +155,8 @@
         overflow-y: auto;
         padding: 4px;
         border-radius: var(--ui-radius-l);
-        background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-        border: 1px solid var(--vscode-editorWidget-border);
+        background: var(--ui-card-bg);
+        border: 1px solid var(--ui-card-border);
         box-shadow: var(--ui-card-shadow);
     }
 

@@ -82,34 +82,54 @@ export async function run({ page, check, baseUrl }) {
         !(await fmtWrap.isVisible()),
     );
 
-    // The palette is an ALTERNATE surface in every theme — the hover-widget
-    // ground nudged 6% toward the ink, never a reversal (many themes paint
-    // editorHoverWidget-background identical to the page, which made the chip
-    // invisible — 2026-07-28). Assert the mix: strictly between the raw
-    // hover-widget ground (#252526 in the harness) and the ink, and CLOSE to
-    // the ground — offset from it, not reversed onto the foreground.
-    const bgOf = () =>
-        page.evaluate(() => {
+    // The palette is one of the floating surfaces, so it paints the SAME ground
+    // as every menu — the shared --ui-card-bg. It used to carry a 6% nudge
+    // toward the ink of its own, added because a chip the color of the page is
+    // invisible (2026-07-28) and dropped once every menu beside it settled on
+    // one ground: the nudge separated the palette from the menus far more than
+    // it separated it from the page, and on Slate it overshot the page rather
+    // than clearing it. What holds the chip off the page now is the card border
+    // and the elevation shadow, the same two things every menu uses.
+    //
+    // Asserted as sameness against a menu's ground rather than against a hex,
+    // so the check keeps meaning if the card token is ever repointed.
+    const groundOf = (sel) =>
+        page.evaluate((s) => {
             // color-mix computes to `color(srgb r g b)` with 0-1 channels;
             // normalize either format to 0-255.
-            const raw = getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor;
+            const raw = getComputedStyle(document.querySelector(s)).backgroundColor;
             const nums = raw.match(/[\d.]+/g).map(Number);
             return nums.slice(0, 3).map((c) => (c <= 1 ? c * 255 : c));
-        });
-    const GROUND = 37; // #252526, the harness hover-widget ground
-    // Each channel a few % past the ground toward the ink (#d4d4d4 = 212) —
-    // never AT the ground (invisible) and nowhere near the ink (reversed).
-    const mixedNotReversed = (rgb) => rgb.every((c) => c > GROUND + 4 && c < GROUND + 40);
+        }, sel);
+    const cardGround = await page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.style.background = "var(--ui-card-bg)";
+        document.body.append(probe);
+        const raw = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        const nums = raw.match(/[\d.]+/g).map(Number);
+        return nums.slice(0, 3).map((c) => (c <= 1 ? c * 255 : c));
+    });
+    const samePaint = (a, b) => a.every((c, i) => Math.abs(c - b[i]) <= 1);
     check(
-        "the palette ground is offset from the hover-widget ground, not reversed (light theme)",
-        mixedNotReversed(await bgOf()),
-        JSON.stringify(await bgOf()),
+        "the palette paints the shared card ground, not a surface of its own (light theme)",
+        samePaint(await groundOf(".sel-toolbar"), cardGround),
+        `${JSON.stringify(await groundOf(".sel-toolbar"))} vs card ${JSON.stringify(cardGround)}`,
+    );
+    // The chip is not the page: the ground is the card's, and the border is
+    // what holds it off the document behind it.
+    check(
+        "the palette carries the card hairline that separates it from the page",
+        await page.evaluate(() => {
+            const s = getComputedStyle(document.querySelector(".sel-toolbar"));
+            return s.borderTopStyle !== "none" && parseFloat(s.borderTopWidth) > 0;
+        }),
     );
     await page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
     check(
-        "the palette ground keeps the same alternate mix in a dark theme",
-        mixedNotReversed(await bgOf()),
-        JSON.stringify(await bgOf()),
+        "the palette keeps the shared ground in a dark theme",
+        samePaint(await groundOf(".sel-toolbar"), cardGround),
+        JSON.stringify(await groundOf(".sel-toolbar")),
     );
     await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
 

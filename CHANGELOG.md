@@ -18,6 +18,10 @@
 
 ### Changed
 
+- Every menu and floating palette now sits on one background. The slash menu, the toolbar dropdowns, the gutter block menu, the code block's language picker, the path and frontmatter suggestion lists, and the selection, link and image palettes each used to read a different color from your theme, so on a theme that sets them apart you could see three shades of menu on screen at once. They now share a single surface, along with the find bar, the shortcuts sheet and the image dialog.
+
+- A highlighted menu row keeps its text readable. Rows that light up under the keyboard or the mouse now carry their theme's matching text color rather than the resting one, and the keyboard row adds a focus outline so "what Enter hits" is unmistakable even on a theme whose highlight is very faint. On themes that paint a strong, solid highlight the focused row's label was previously near-unreadable against it. A row's icons and shortcut hints now dim relative to that row's own text instead of a fixed muted color, so they stay legible on the resting background and the hover wash alike.
+
 - A Miro board card opens the board itself when you click it. Loading the card used to land on Miro's own preloader, which held the canvas behind a second "See the board" click even though clicking the card was already the decision to load it.
 
 ### Fixed

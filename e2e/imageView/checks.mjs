@@ -252,14 +252,23 @@ export async function run({ page, check, baseUrl }) {
             .evaluate((el) => getComputedStyle(el).borderRadius)) === "3px",
     );
 
-    /** How many rows currently paint the suggest-widget selection wash. */
+    /**
+     * How many rows are painted as highlighted — counted as "background differs
+     * from the menu's own ground" rather than against a hard-coded selection
+     * hex. The behavior under test is that EXACTLY ONE row reads as selected;
+     * which token supplies that fill is a design decision that has already
+     * changed once (the suggest-widget wash became --ui-menu-selected-bg when
+     * every menu moved onto one ground), and a literal here turns that into a
+     * false failure while a two-highlight regression is what should fail.
+     */
     const washedRows = () =>
-        suggestRows.evaluateAll(
-            (els) =>
-                els.filter(
-                    (el) => getComputedStyle(el).backgroundColor === "rgb(4, 57, 94)",
-                ).length,
-        );
+        suggestRows.evaluateAll((els) => {
+            const ground = getComputedStyle(els[0].parentElement).backgroundColor;
+            return els.filter((el) => {
+                const bg = getComputedStyle(el).backgroundColor;
+                return bg !== ground && bg !== "rgba(0, 0, 0, 0)";
+            }).length;
+        });
 
     check("the first row is highlighted when the list opens", (await washedRows()) === 1);
 

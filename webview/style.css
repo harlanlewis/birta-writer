@@ -57,8 +57,6 @@
     display: flex;
     flex-direction: column;
     min-width: 200px;
-    /* Rows are .ui-menu-row primitives; this sets their ink. */
-    --ui-menu-ink: var(--vscode-editorHoverWidget-foreground);
     /* max-height is set per-open by position(): the space actually available
        on the chosen side of the anchor, minus the topbar. The ROWS scroll
        (.block-menu-body); the search input stays pinned. */
@@ -102,7 +100,7 @@
 .block-menu-empty {
     padding: 6px 10px;
     font-size: var(--ui-fs-m);
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
     user-select: none;
 }
 
@@ -118,7 +116,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
 
     & svg {
         width: 14px;
@@ -131,7 +129,7 @@
     font-size: var(--ui-fs-xs);
     font-weight: 700;
     text-align: center;
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
 }
 
 .block-menu-item-label {
@@ -146,18 +144,23 @@
     margin-left: 16px;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--ui-fs-xs);
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
 }
 
 /* Keyboard highlight while focus sits in the search input (the virtual
-   aria-activedescendant row) — the hover wash plus a focus ring so it
-   stays legible ON TOP of the current-type accent row in the filtered
-   flat list ("what Enter hits" must always be the row that looks
-   selected). */
+   aria-activedescendant row) — the primitive's selected state, which carries
+   the focus ring that keeps it legible ON TOP of the current-type accent row
+   in the filtered flat list ("what Enter hits" must always be the row that
+   looks selected). */
 .block-menu-item--hl {
-    background: var(--vscode-list-hoverBackground);
+    background: var(--ui-menu-selected-bg);
+    color: var(--ui-menu-selected-ink);
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: -1px;
+}
+
+.block-menu-item--hl :is(.block-menu-item-icon, .block-menu-item-badge, .block-menu-item-hint) {
+    color: inherit;
 }
 
 /* Current type: accent-filled row — the toolbar Format-menu idiom (this IS
@@ -1747,23 +1750,23 @@ body.toolbar-hidden::before {
 /* ─── Custom tooltip ─── */
 /* ── Floating palette chip (shared) ─────────────────────────────────────────
    The selection formatter, the link popup, and the image toolbar read as one
-   chip family via these tokens. The ground is the hover-widget surface nudged
-   6% toward the ink — an ALTERNATE tone, never a reversal: many themes paint
-   editorHoverWidget-background identical to the page, and a floating chip the
-   color of the page is invisible (maintainer, 2026-07-28). `ink` is
-   glyphs/text on the ground; hover/active/line are the editor's standard
-   chrome tokens. */
+   chip family via these tokens — and, since they float exactly like a menu
+   does, on the same ground a menu uses. The ground used to be the hover-widget
+   surface nudged 6% toward the ink, so that a chip stayed visible on themes
+   that paint editorHoverWidget-background identical to the page (maintainer,
+   2026-07-28). That nudge is gone: it made the chips a different color from
+   every menu beside them, and on Slate it overshot the page rather than
+   clearing it (1.13 below, 1.10 above — separation traded for a hue change).
+   What actually separates a floating surface from the page is
+   --ui-card-border and the elevation shadow, both of which every chip already
+   carries. */
 :root {
-    --palette-ground: color-mix(
-        in srgb,
-        var(--vscode-editor-foreground) 6%,
-        var(--vscode-editorHoverWidget-background)
-    );
-    --palette-ink: var(--vscode-editorHoverWidget-foreground);
-    --palette-border: var(--vscode-editorHoverWidget-border);
-    --palette-hover: var(--vscode-toolbar-hoverBackground);
+    --palette-ground: var(--ui-card-bg);
+    --palette-ink: var(--ui-menu-ink);
+    --palette-border: var(--ui-card-border);
+    --palette-hover: var(--ui-menu-hover-bg);
     --palette-active: var(--vscode-inputOption-activeBackground);
-    --palette-line: var(--vscode-editorHoverWidget-border);
+    --palette-line: var(--ui-card-border);
 }
 
 .custom-tooltip {
@@ -1854,18 +1857,14 @@ body.toolbar-hidden::before {
 /* Suggestion dropdown for the "+" chip button: workspace-wide values used
    under the same frontmatter key (filter input on top, create row at the end) */
 .fm-suggest-menu {
-    /* Rows are .ui-menu-row primitives; suggest menus wash with the
-       suggest-selection token. */
-    --ui-menu-hover-bg: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
     position: fixed;
     /* Above every anchoring surface, the link editor included: the URL
        autocomplete drops over the popup that hosts its input, never under. */
     z-index: 10003;
     min-width: 180px;
     max-width: 320px;
-    background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background, var(--vscode-editor-background)));
-    border: 1px solid
-        var(--vscode-editorSuggestWidget-border, var(--vscode-focusBorder));
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
     border-radius: var(--ui-radius-l);
     box-shadow: var(--ui-card-shadow);
 }
@@ -1875,8 +1874,7 @@ body.toolbar-hidden::before {
     box-sizing: border-box;
     padding: 6px 8px;
     border: none;
-    border-bottom: 1px solid
-        var(--vscode-widget-border, var(--vscode-panel-border));
+    border-bottom: 1px solid var(--ui-card-border);
     background: transparent;
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     font-size: var(--ui-fs-m);
@@ -1901,17 +1899,24 @@ body.toolbar-hidden::before {
    --focused wash sharing the hover token. */
 .fm-suggest-item {
     padding: 5px 10px;
-    color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-dropdown-foreground, var(--vscode-editor-foreground)));
     overflow: hidden;
     text-overflow: ellipsis;
 
+    /* Composes the primitive's selected state; see .ui-menu-row--selected. */
     &.fm-suggest-item--focused {
-        background: var(--ui-menu-hover-bg, var(--vscode-list-hoverBackground));
+        background: var(--ui-menu-selected-bg);
+        color: var(--ui-menu-selected-ink);
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: -1px;
+
+        & .fm-suggest-item__hint {
+            color: inherit;
+        }
     }
 
     &.fm-suggest-create {
         font-style: italic;
-        color: var(--vscode-descriptionForeground);
+        color: var(--ui-menu-ink-dim);
     }
 
     /* Label + right-aligned confirm-key hint (e.g. the calc row's "Tab") */
@@ -1922,9 +1927,9 @@ body.toolbar-hidden::before {
         gap: 16px;
     }
     .fm-suggest-item__hint {
-        color: var(--vscode-descriptionForeground);
+        color: var(--ui-menu-ink-dim);
         font-size: var(--ui-fs-xs);
-        border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+        border: 1px solid var(--ui-card-border);
         border-radius: var(--ui-radius-s);
         padding: 0 4px;
         flex: none;
@@ -1932,8 +1937,8 @@ body.toolbar-hidden::before {
 
     /* Secondary action row (settings toggle): separated and dimmer */
     &.fm-suggest-item--action {
-        border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
-        color: var(--vscode-descriptionForeground);
+        border-top: 1px solid var(--ui-card-border);
+        color: var(--ui-menu-ink-dim);
     }
 }
 
@@ -1947,8 +1952,8 @@ body.toolbar-hidden::before {
    footer pattern) — e.g. the `=` calc menu pointing at `=>`. */
 .fm-suggest-footer {
     padding: 4px 10px 5px;
-    border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
-    color: var(--vscode-descriptionForeground);
+    border-top: 1px solid var(--ui-card-border);
+    color: var(--ui-menu-ink-dim);
     font-size: var(--ui-fs-xs);
     white-space: nowrap;
     overflow: hidden;
@@ -1968,10 +1973,8 @@ body.toolbar-hidden::before {
        --focused class moved by keyboard AND mouseover), so the primitive's
        CSS hover wash is silenced — two washes would show double rows. */
     --ui-menu-hover-bg: transparent;
-    --ui-menu-ink: var(--vscode-editorSuggestWidget-foreground, var(--vscode-dropdown-foreground, var(--vscode-editor-foreground)));
-    background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background, var(--vscode-editor-background)));
-    border: 1px solid
-        var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
     border-radius: var(--ui-radius-l);
     box-shadow: var(--ui-card-shadow);
     font-family: var(--vscode-font-family);
@@ -1994,8 +1997,16 @@ body.toolbar-hidden::before {
 .slash-menu-item {
     padding: 4px 10px;
 
+    /* Composes the primitive's selected state; see .ui-menu-row--selected. */
     &.slash-menu-item--focused {
-        background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
+        background: var(--ui-menu-selected-bg);
+        color: var(--ui-menu-selected-ink);
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: -1px;
+
+        & :is(.slash-menu-item-icon, .slash-menu-item-badge, .slash-menu-item-hint) {
+            color: inherit;
+        }
     }
 }
 
@@ -2005,7 +2016,7 @@ body.toolbar-hidden::before {
     justify-content: center;
     width: 16px;
     flex: none;
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
 }
 
 .slash-menu-item-badge {
@@ -2014,7 +2025,7 @@ body.toolbar-hidden::before {
     font-size: var(--ui-fs-xs);
     font-weight: 700;
     text-align: center;
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
 }
 
 .slash-menu-item-label {
@@ -2029,7 +2040,7 @@ body.toolbar-hidden::before {
     margin-left: 16px;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--ui-fs-xs);
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
 }
 
 .slash-menu-footer {
@@ -2038,10 +2049,9 @@ body.toolbar-hidden::before {
     align-items: center;
     gap: 16px;
     padding: 5px 10px;
-    border-top: 1px solid
-        var(--vscode-widget-border, var(--vscode-panel-border));
+    border-top: 1px solid var(--ui-card-border);
     font-size: var(--ui-fs-xs);
-    color: var(--vscode-descriptionForeground);
+    color: var(--ui-menu-ink-dim);
 }
 
 .slash-menu-footer-key {
@@ -2660,7 +2670,7 @@ body.block-marqueeing .milkdown .editor {
     overflow: hidden;
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-l);
-    background: var(--vscode-editorWidget-background);
+    background: var(--vscode-editorWidget-background); /* menu-ground-ok: an embed card is document CONTENT, in the text flow, not a floating surface */
 }
 
 /* The replaceable layer: facade at rest, iframe while playing. The corner
@@ -2734,7 +2744,7 @@ body.block-marqueeing .milkdown .editor {
     font-family: var(--vscode-font-family);
     font-size: var(--ui-fs-s);
     color: var(--vscode-foreground);
-    background: color-mix(in srgb, var(--vscode-editorWidget-background) 92%, transparent);
+    background: color-mix(in srgb, var(--vscode-editorWidget-background) 92%, transparent); /* menu-ground-ok: a scrim over the embed card own ground, matching it by construction */
 }
 
 .embed-card__hint-action {
@@ -2760,7 +2770,7 @@ body.block-marqueeing .milkdown .editor {
        a frame that reaches within a band of the top clips under it — which
        only shows up on a short window, where nobody looks for it. */
     max-height: min(82vh, calc(100vh - 2 * var(--fs-band)));
-    background: var(--vscode-editorWidget-background);
+    background: var(--vscode-editorWidget-background); /* menu-ground-ok: the letterbox behind a player own frame, matching the card it zoomed from */
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-l);
     overflow: hidden;
@@ -2877,7 +2887,7 @@ body.block-marqueeing .milkdown .editor {
     padding: 10px 44px 10px 12px;
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-l);
-    background: var(--vscode-editorWidget-background);
+    background: var(--vscode-editorWidget-background); /* menu-ground-ok: an embed card is document CONTENT, in the text flow, not a floating surface */
 
     /* No frame here: the external button anchors to the row itself. */
     & .embed-card__external {

@@ -98,7 +98,7 @@
     position: fixed;
     /* top / left / bottom set by JS */
     z-index: 1000;
-    background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+    background: var(--ui-card-bg);
     border: 1px solid var(--vscode-focusBorder);
     border-radius: var(--ui-radius-l);
     min-width: 160px;
@@ -110,8 +110,7 @@
     box-sizing: border-box;
     padding: 6px 8px;
     border: none;
-    border-bottom: 1px solid
-        var(--vscode-widget-border, var(--vscode-panel-border));
+    border-bottom: 1px solid var(--ui-card-border);
     background: transparent;
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     font-size: var(--ui-fs-m);
@@ -135,16 +134,19 @@
     margin: 0;
 }
 
-/* Composes .ui-menu-row; local: rhythm, dropdown ink, and the keyboard
-   --focused wash sharing the primitive's hover token. */
+/* Composes .ui-menu-row; local: rhythm only — ink, hover wash and the
+   keyboard --focused state all come from the primitive. */
 .lang-picker-item {
     gap: 6px;
     padding: 5px 10px;
-    color: var(--vscode-dropdown-foreground, var(--vscode-editor-foreground));
 }
 
+/* Composes the primitive's selected state; see .ui-menu-row--selected. */
 .lang-picker-item--focused {
-    background: var(--ui-menu-hover-bg, var(--vscode-list-hoverBackground));
+    background: var(--ui-menu-selected-bg);
+    color: var(--ui-menu-selected-ink);
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
 }
 
 /* Current language: marked with the shared leading check glyph (like the toolbar
@@ -485,7 +487,7 @@ body.mermaid-canvas-dark {
     align-items: center;
     gap: 1px;
     pointer-events: none;
-    background: var(--vscode-editorHoverWidget-background);
+    background: var(--ui-card-bg);
     border: 1px solid var(--vscode-panel-border);
     border-radius: var(--ui-radius-m);
     padding: 1px 2px;
