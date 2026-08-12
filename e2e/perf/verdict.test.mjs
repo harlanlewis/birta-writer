@@ -10,6 +10,7 @@ import {
     abVerdict, confirmRegressions, spans, aggregate, GATED_FIXTURES,
     SPANS, SUB_SPANS, POST_PAINT_SPANS, MIN_PCT, MIN_MS,
     postPaintVerdict, POST_PAINT_MIN_PCT, POST_PAINT_MIN_MS, POST_PAINT_MIN_SAMPLES,
+    narrowSettleMarks,
     typingAbVerdict, TYPING_GATED_FIXTURES,
 } from "./verdict.mjs";
 
@@ -168,13 +169,13 @@ describe("postPaintVerdict — gating the spans launch cannot see", () => {
     });
 
     it("a move over the % floor but under the ms floor should NOT regress", () => {
-        // 20 → 24 ms = +20%, clear of the percent floor, but only +4 ms.
-        expect(postPaintVerdict(ppPass("large", "rtp", 20, 24)).regressed.size).toBe(0);
+        // 30 → 40 ms = +33%, clear of the percent floor, but only +10 ms.
+        expect(postPaintVerdict(ppPass("large", "rtp", 30, 40)).regressed.size).toBe(0);
     });
 
     it("a move over the ms floor but under the % floor should NOT regress", () => {
-        // 200 → 208 ms = +8 ms, clear of the ms floor, but only +4%.
-        expect(postPaintVerdict(ppPass("large", "rtp", 200, 208)).regressed.size).toBe(0);
+        // 200 → 220 ms = +20 ms, clear of the ms floor, but only +10%.
+        expect(postPaintVerdict(ppPass("large", "rtp", 200, 220)).regressed.size).toBe(0);
     });
 
     it("an UNGATED fixture regressing should be reported and never gate", () => {
@@ -333,26 +334,84 @@ describe("postPaintVerdict — gating the spans launch cannot see", () => {
         }
     });
 
-    it("should hold a percent floor above launch's and an ms floor below it", () => {
-        // Both directions are the point. These spans jitter more in RELATIVE
-        // terms than the mount path, so the percent floor has to sit above
-        // launch's; they are an order of magnitude smaller in ABSOLUTE terms, so
-        // launch's 10 ms would be a large fraction of one rather than a floor
-        // under it. Getting either backwards produces a gate that cannot fire.
+    it("should hold both floors above launch's, since CI moves these spans more", () => {
+        // A null CI run cleared floors set from an idle laptop, so both are
+        // wider than launch's rather than only the percent one. Narrowing
+        // either back toward launch's reinstates a gate that fires on nothing.
         expect(POST_PAINT_MIN_PCT).toBeGreaterThan(MIN_PCT);
-        expect(POST_PAINT_MIN_MS).toBeLessThan(MIN_MS);
+        expect(POST_PAINT_MIN_MS).toBeGreaterThan(MIN_MS);
     });
 
-    it("should let a doubling clear the percent floor, leaving ms as the knob", () => {
-        // A span that doubles moves +100%, so the percent floor can never be
-        // what hides a doubling — the ms floor is the whole sensitivity story,
-        // and it is why the ms floor is the one calibrated against a null A/B.
+    it("should still catch a span that DOUBLES, which is what it exists for", () => {
+        // This is the property the width must not cost. Work added to a
+        // post-paint span is the failure mode (MAR-311's unattributed block),
+        // and a doubling moves +100%, far clear of the percent floor. Pinned as
+        // behaviour so a future widening cannot quietly cross it: the smallest
+        // span this can hold for is one the size of the ms floor itself.
         expect(POST_PAINT_MIN_PCT).toBeLessThan(100);
-        // Stated as behaviour, not just arithmetic: any span at least as large
-        // as the ms floor is caught when it doubles.
         const atFloor = POST_PAINT_MIN_MS;
         expect([...postPaintVerdict(ppPass("large", "rtp", atFloor, atFloor * 2)).regressed])
             .toEqual(["large:rtp"]);
+    });
+});
+
+// ── The settle-mark probe ───────────────────────────────────────────────────
+// This is the mechanism that let the post-paint gate be built at all: without
+// it, a merge-base predating a mark pays the settle timeout on every sample
+// rather than once per fixture. Its caller drives Playwright and cannot be
+// tested, which is exactly why the logic was moved here.
+
+const SETTLE = ["rtp-end", "proofread-end"];
+
+describe("narrowSettleMarks — the warmup probe of what a bundle stamps", () => {
+    it("a sample that stamped everything should keep the whole wait list", () => {
+        expect(narrowSettleMarks(SETTLE, { launch: 100 })).toEqual(SETTLE);
+    });
+
+    it("a mark the sample never stamped should be dropped from the wait", () => {
+        // The merge-base case: waiting again would cost the full timeout on
+        // every remaining sample for a span that will abstain regardless.
+        const out = narrowSettleMarks(SETTLE, { __missingSettle: ["rtp-end"] });
+        expect(out).toEqual(["proofread-end"]);
+    });
+
+    it("a bundle stamping neither mark should end up waiting for nothing", () => {
+        expect(narrowSettleMarks(SETTLE, { __missingSettle: [...SETTLE] })).toEqual([]);
+    });
+
+    it("narrowing should keep the marks the sample DID stamp, not invert them", () => {
+        // An inverted filter reads as working — it still returns a shorter list
+        // — while dropping exactly the marks the bundle can report.
+        const out = narrowSettleMarks(SETTLE, { __missingSettle: ["proofread-end"] });
+        expect(out).toContain("rtp-end");
+        expect(out).not.toContain("proofread-end");
+    });
+
+    it("narrowing should be monotonic: a later sample cannot re-arm a dropped mark", () => {
+        // The runner narrows once at warmup, but the property is what makes the
+        // one-timeout-per-fixture cost claim true rather than hopeful.
+        const once = narrowSettleMarks(SETTLE, { __missingSettle: ["rtp-end"] });
+        const twice = narrowSettleMarks(once, { launch: 100 });
+        expect(twice).toEqual(["proofread-end"]);
+        expect(narrowSettleMarks(twice, { __missingSettle: ["proofread-end"] })).toEqual([]);
+    });
+
+    it("an already-empty wait list should stay empty", () => {
+        expect(narrowSettleMarks([], { __missingSettle: ["rtp-end"] })).toEqual([]);
+    });
+
+    it("a missing mark the side never waited for should change nothing", () => {
+        expect(narrowSettleMarks(["rtp-end"], { __missingSettle: ["something-else"] }))
+            .toEqual(["rtp-end"]);
+    });
+
+    it("should not mutate the caller's list, which is shared by both sides", () => {
+        // Both sides start from the same SETTLE_MARKS constant in the runner.
+        // Mutating it would narrow base and head together, so one bundle's
+        // missing mark would silently stop the OTHER from being measured.
+        const original = [...SETTLE];
+        narrowSettleMarks(SETTLE, { __missingSettle: ["rtp-end"] });
+        expect(SETTLE).toEqual(original);
     });
 });
 

@@ -24,6 +24,7 @@ import {
     SPANS, SUB_SPANS, POST_PAINT_SPANS, GATED_FIXTURES,
     POST_PAINT_MIN_PCT, POST_PAINT_MIN_MS,
     median, round, spans, aggregate, abVerdict, postPaintVerdict, confirmRegressions,
+    narrowSettleMarks,
 } from "./perf/verdict.mjs";
 import { acquireHarnessLock } from "./harnessLock.mjs";
 
@@ -245,10 +246,10 @@ async function measureFixtureAB(chromium, serverBase, content, runs, fixture) {
             }
             if (i === 0) {
                 // Warmup pair: discarded as a sample, kept as the probe of which
-                // marks each side actually stamps.
-                const drop = (settle, s) => settle.filter((m) => !(s.__missingSettle ?? []).includes(m));
-                headSettle = drop(headSettle, h);
-                baseSettle = drop(baseSettle, b);
+                // marks each side actually stamps. The narrowing lives in
+                // verdict.mjs so it can be tested; this function cannot be.
+                headSettle = narrowSettleMarks(headSettle, h);
+                baseSettle = narrowSettleMarks(baseSettle, b);
                 continue;
             }
             head.push(h); base.push(b);

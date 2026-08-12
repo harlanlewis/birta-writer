@@ -35,14 +35,14 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 
 ### The post-paint spans (`POST_PAINT_SPANS`)
 
-`rtp` and `proofread` fall after `editor-painted`, so they are not part of `launch` and a move in one can never explain a launch delta. They are measured anyway, because deferring work past the last mark does not make it free: on `large` the two together block the main thread for ~130 ms starting ~60 ms after first paint, squarely the window a user's first keystroke or scroll lands in.
+`rtp` and `proofread` fall after `editor-painted`, so they are not part of `launch` and a move in one can never explain a launch delta. They are measured anyway, because deferring work past the last mark does not make it free: on the big fixtures both block the main thread shortly after first paint, squarely the window a user's first keystroke or scroll lands in. `pnpm perf large` prints what they currently cost, which is the only honest way to state it here.
 
 `rtp` was worse than unmeasured. It sat in this table and in `SPANS` the whole time, reading `–` on every run, because its marks were deleted along with the eager call site when round-trip protection moved off the mount path. A dash reads exactly like "cheap". That is what the unattributed post-paint longtask turned out to be (MAR-311): not new work, but work whose attribution had been removed.
 
-Two consequences for anyone touching this:
+Consequences for anyone touching this:
 
 - Both modes wait for these marks, and the A/B gates on them (MAR-314). The wait used to be measure-mode only, because a merge-base bundle can predate a mark entirely and would then pay the settle timeout on every sample. The A/B now learns each side's marks from the warmup pair it already discards and drops whatever that side never stamps, so an unmarked bundle costs one timeout per fixture rather than one per sample. A span the base does not carry ABSTAINS rather than gating: absent is not zero, and the alternative was waiting for the calendar until every plausible merge-base carried the marks. `pnpm perf` prints a `⚠` naming any post-paint mark that never arrived, and the A/B prints every abstention, so an unstamped span is loud rather than a dash.
-- The post-paint floors are deliberately coarser than launch's 3% / 10 ms, because these spans are an order of magnitude smaller and are `requestIdleCallback` bodies carrying the scheduler's jitter on top of their own. They live beside launch's in `verdict.mjs`. Recalibrate with `pnpm perf` on an idle machine if a fixture changes shape.
+- The post-paint floors are both wider than launch's 3% / 10 ms, and they are calibrated from CI rather than from a developer machine. That distinction is the whole story: on an idle laptop these spans are steady enough to justify floors near launch's, and floors set that way were cleared by a null CI run on byte-identical bundles. Re-derive them from the `launch-perf` job of a PR that changes no bundled code, re-run a few times on the same commit, and read the spread. `verdict.test.mjs` asserts both directions and asserts that a span which doubles still fires, so this bullet and the constants cannot drift apart, and a future widening cannot quietly stop catching the thing the gate is for.
 - `checks.mjs` is the real guard. `pnpm test:e2e` drives this page and fails if either span stops being stamped, or lands before first paint, or if the fixtures stop tripping the style check. Nothing in CI catches those.
 
 ## The A/B gate (how the optimization loop decides)
