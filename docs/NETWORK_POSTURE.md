@@ -15,7 +15,7 @@ Every network capability sits on one rung. The rungs are ordered by what leaves 
 | Rung | What leaves | Status | Examples |
 |---|---|---|---|
 | 0. Nothing | No outbound request at all | Shipped, and the default. `birta.network.enabled` ships `false`; with it off the editor makes no outbound request | Everything, out of the box |
-| 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document |
+| 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document; What's New (`birta.editor.openWhatsNew`) |
 | 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards |
 | 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Directed, not built (MAR-198) | Jira, Asana, Figma, private-GitHub cards |
 | 3. Your document content | The document itself | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232), any cloud or sync surface |

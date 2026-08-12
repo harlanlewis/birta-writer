@@ -41,7 +41,8 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 
 Two consequences for anyone touching this:
 
-- Measure mode waits for these marks; the A/B does not. The A/B's verdict is `launch`, fixed at the paint mark, and its base bundle is an arbitrary merge-base that may predate a mark entirely, so waiting there would add the timeout to every one of its ~108 samples per pass for context it cannot compare. `pnpm perf` prints a `⚠` naming any post-paint mark that never arrived, so an unstamped span is loud rather than a dash.
+- Both modes wait for these marks, and the A/B gates on them (MAR-314). The wait used to be measure-mode only, because a merge-base bundle can predate a mark entirely and would then pay the settle timeout on every sample. The A/B now learns each side's marks from the warmup pair it already discards and drops whatever that side never stamps, so an unmarked bundle costs one timeout per fixture rather than one per sample. A span the base does not carry ABSTAINS rather than gating: absent is not zero, and the alternative was waiting for the calendar until every plausible merge-base carried the marks. `pnpm perf` prints a `⚠` naming any post-paint mark that never arrived, and the A/B prints every abstention, so an unstamped span is loud rather than a dash.
+- The post-paint floors are deliberately coarser than launch's 3% / 10 ms, because these spans are an order of magnitude smaller and are `requestIdleCallback` bodies carrying the scheduler's jitter on top of their own. They live beside launch's in `verdict.mjs`. Recalibrate with `pnpm perf` on an idle machine if a fixture changes shape.
 - `checks.mjs` is the real guard. `pnpm test:e2e` drives this page and fails if either span stops being stamped, or lands before first paint, or if the fixtures stop tripping the style check. Nothing in CI catches those.
 
 ## The A/B gate (how the optimization loop decides)

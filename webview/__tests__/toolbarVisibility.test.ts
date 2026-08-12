@@ -10,6 +10,7 @@ import { initToolbar } from "../components/toolbar";
 import { initToc } from "../components/toc";
 import { EventManager } from "../eventManager";
 import { runEditorCommand } from "../editorCommands";
+import { RELEASES_URL } from "../../shared/product";
 import type { ToolbarConfig } from "../../shared/messages";
 
 type Toolbar = ReturnType<typeof initToolbar>;
@@ -39,6 +40,12 @@ function visibleMessages(): Array<{ type: string; visible?: boolean }> {
     return mockVscodeApi.postMessage.mock.calls
         .map(([msg]) => msg as { type: string; visible?: boolean })
         .filter((msg) => msg.type === "setToolbarVisible");
+}
+
+function openUrlMessages(): Array<{ type: string; url?: string }> {
+    return mockVscodeApi.postMessage.mock.calls
+        .map(([msg]) => msg as { type: string; url?: string })
+        .filter((msg) => msg.type === "openUrl");
 }
 
 describe("toolbar visibility", () => {
@@ -92,13 +99,15 @@ describe("toolbar visibility", () => {
             "Show Keyboard Shortcuts",
             "Edit Keyboard Shortcuts",
             "Birta Writer Settings",
+            "What's New",
         ]);
-        // A separator on every menuGroup change: layout | shortcuts | settings
+        // A separator on every menuGroup change: layout | shortcuts | settings.
+        // What's New shares the settings group, so it adds a row and no rule.
         const menu = topbar.querySelector(".tb-settings-menu")!;
         const kinds = Array.from(menu.children).map((el) =>
             el.classList.contains("tb-menu-sep") ? "sep" : "item",
         );
-        expect(kinds).toEqual(["item", "item", "sep", "item", "item", "sep", "item"]);
+        expect(kinds).toEqual(["item", "item", "sep", "item", "item", "sep", "item", "item"]);
         for (const sep of menu.querySelectorAll(".tb-menu-sep")) {
             expect(sep.getAttribute("role")).toBe("separator");
         }
@@ -117,6 +126,31 @@ describe("toolbar visibility", () => {
         expect(topbar.classList.contains("editor-topbar--hidden")).toBe(true);
         expect(document.body.classList.contains("toolbar-hidden")).toBe(true);
         expect(visibleMessages()).toEqual([{ type: "setToolbarVisible", visible: false }]);
+    });
+
+    it("the gear menu What's New entry should hand the releases URL to the host", () => {
+        // Arrange
+        const { topbar } = buildToolbar();
+        const entry = gearMenuEntry(topbar, "What's New");
+        expect(entry).not.toBeNull();
+
+        // Act
+        entry!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        // Assert — rung 0b: the webview posts a URL and fetches nothing itself
+        expect(openUrlMessages()).toEqual([{ type: "openUrl", url: RELEASES_URL }]);
+    });
+
+    it("the openWhatsNew command should post the same URL as the menu row", () => {
+        // Arrange — the palette and right-click paths dispatch through the
+        // registry rather than the menu, and must not drift from it.
+        buildToolbar();
+
+        // Act
+        runEditorCommand("openWhatsNew", () => null);
+
+        // Assert
+        expect(openUrlMessages()).toEqual([{ type: "openUrl", url: RELEASES_URL }]);
     });
 
     it("clicking the expand tab while hidden should restore the bar and persist the setting", () => {

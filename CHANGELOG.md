@@ -16,6 +16,8 @@
 
 - Edit an image's alt text and path from the keyboard: an image block's menu offers Edit Alt Text and Edit Image Path, which focus the image toolbar's own inputs, plus a row that cycles the image's display width.
 
+- A What's New row in the toolbar's gear menu opens the release history in your browser, so what shipped in an update is reachable from the editor rather than only from the Marketplace page. It sits with Birta Writer Settings, appears on the toolbar's right-click menu too, and is available as a Command Palette command. Birta requests nothing itself: it hands the address to VS Code, which opens your browser, so the row works with the master network switch off.
+
 ### Changed
 
 - Every menu and floating palette now sits on one background. The slash menu, the toolbar dropdowns, the gutter block menu, the code block's language picker, the path and frontmatter suggestion lists, and the selection, link and image palettes each used to read a different color from your theme, so on a theme that sets them apart you could see three shades of menu on screen at once. They now share a single surface, along with the find bar, the shortcuts sheet and the image dialog.

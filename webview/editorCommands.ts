@@ -80,7 +80,8 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@/pm";
 import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
-import { notifyClipboardWrite } from "@/messaging";
+import { notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
+import { RELEASES_URL } from "../shared/product";
 
 export type GetEditor = () => Editor | null;
 
@@ -763,6 +764,10 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     showToolbar: () => host.showToolbar?.(),
     customizeToolbar: () => host.customizeToolbar?.(),
     openExtensionSettings: () => host.openExtensionSettings?.(),
+    // No host hook: opening the release history needs no editor UI, only the
+    // same host handoff the link popup uses. The extension scheme-checks the
+    // URL and calls env.openExternal.
+    openWhatsNew: () => notifyOpenUrl(RELEASES_URL),
     openKeyboardShortcuts: () => host.openKeyboardShortcuts?.(),
     fontEditor: () => host.chooseFontPreset?.("editor"),
     fontSans: () => host.chooseFontPreset?.("sans"),
