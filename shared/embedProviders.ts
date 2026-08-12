@@ -444,14 +444,21 @@ const CODEPEN_SEGMENT = /^[A-Za-z0-9_-]+$/;
 /**
  * Extract a `user/slug` composite id from a CodePen pen URL, or null. Accepts
  * `codepen.io/{user}/{pen|full|details|embed}/{slug}` — the pen's view
- * variants and its embed URL all name the same pen. Exported for unit testing.
+ * variants and its embed URL all name the same pen — and the team form
+ * `codepen.io/team/{team}/{view}/{slug}`, whose id keeps the `team/` prefix
+ * because CodePen's own embed and pen URLs keep it. Exported for unit testing.
  */
 export function codepenId(raw: string): string | null {
     const url = hostUrl(raw, "codepen.io");
     if (!url) {
         return null;
     }
-    const segments = pathSegments(url);
+    let segments = pathSegments(url);
+    let owner = segments[0] ?? "";
+    if (segments.length === 4 && owner === "team") {
+        owner = `team/${segments[1]}`;
+        segments = segments.slice(1);
+    }
     if (segments.length !== 3) {
         return null;
     }
@@ -459,17 +466,24 @@ export function codepenId(raw: string): string | null {
     if (view !== "pen" && view !== "full" && view !== "details" && view !== "embed") {
         return null;
     }
-    return CODEPEN_SEGMENT.test(user) && CODEPEN_SEGMENT.test(slug) ? `${user}/${slug}` : null;
+    return CODEPEN_SEGMENT.test(user) && CODEPEN_SEGMENT.test(slug) ? `${owner}/${slug}` : null;
+}
+
+/** A CodePen composite id split at its LAST slash: the owner path (a user,
+ * or `team/{team}`) and the pen slug. */
+function codepenIdParts(id: string): { owner: string; slug: string } {
+    const cut = id.lastIndexOf("/");
+    return { owner: id.slice(0, cut), slug: id.slice(cut + 1) };
 }
 
 /**
- * Build the embed URL for a CodePen `user/slug` id (host: codepen.io).
+ * Build the embed URL for a CodePen id (host: codepen.io).
  * `default-tab=result` opens on the rendered output — the reading-flow
  * default; the embed's own tab bar still reaches the code panes.
  */
 export function codepenEmbedUrl(id: string): string {
-    const [user, slug] = id.split("/");
-    return `https://codepen.io/${user}/embed/${slug}?default-tab=result`;
+    const { owner, slug } = codepenIdParts(id);
+    return `https://codepen.io/${owner}/embed/${slug}?default-tab=result`;
 }
 
 /** CodeSandbox sandbox ids: URL-safe word chars (legacy short ids and slugs). */
@@ -724,8 +738,8 @@ export function canonicalEmbedUrl(kind: EmbedKind, id: string): string {
         case "miro": return `https://miro.com/app/board/${id}/`;
         case "linear": return `https://linear.app/${id}`;
         case "codepen": {
-            const [user, slug] = id.split("/");
-            return `https://codepen.io/${user}/pen/${slug}`;
+            const { owner, slug } = codepenIdParts(id);
+            return `https://codepen.io/${owner}/pen/${slug}`;
         }
         case "codesandbox": return `https://codesandbox.io/s/${id}`;
         case "stackblitz": return `https://stackblitz.com/edit/${id}`;
