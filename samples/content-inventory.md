@@ -292,6 +292,10 @@ A CodePen, CodeSandbox, or StackBlitz link loads that provider's own embedded ed
 
 https://codepen.io/birta/pen/AbCdEf
 
+A CodePen **team** pen carries its `team/` path and cards the same way:
+
+https://codepen.io/team/codepen/pen/PNaGbb
+
 https://codesandbox.io/s/new-react-sandbox-abc123
 
 https://stackblitz.com/edit/vitejs-vite-abc123
