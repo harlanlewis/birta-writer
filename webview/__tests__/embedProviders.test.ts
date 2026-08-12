@@ -674,7 +674,12 @@ describe("URL builders", () => {
         expect(googleSheetsEmbedUrl(GPUB)).toBe(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pubhtml?widget=true`);
     });
     it("miro embed URL should target the login-free live-embed endpoint", () => {
-        expect(miroEmbedUrl(MIRO)).toBe(`https://miro.com/app/live-embed/${MIRO}/`);
+        expect(miroEmbedUrl(MIRO)).toBe(`https://miro.com/app/live-embed/${MIRO}/?autoplay=true`);
+    });
+    it("miro embed URL should skip the provider's own preloader", () => {
+        // The facade click is the consent to load; Miro's "See the board"
+        // preloader would gate the canvas behind a second one.
+        expect(new URL(miroEmbedUrl(MIRO)).searchParams.get("autoplay")).toBe("true");
     });
     it("playground embed URLs should target each provider's embed endpoint", () => {
         expect(codepenEmbedUrl("chriscoyier/AbCdEf")).toBe(

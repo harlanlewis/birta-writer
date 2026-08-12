@@ -433,9 +433,16 @@ export function miroId(raw: string): string | null {
 /**
  * Build the live-embed URL for a Miro board id — Miro's login-free pan/zoom
  * view for boards shared publicly (host: miro.com).
+ *
+ * `autoplay=true` skips Miro's own preloader, which otherwise puts a second
+ * "See the board" click between the user and the canvas. The click on our
+ * facade IS the consent to load, so the preloader gates something already
+ * agreed to. The name is Miro's and it is misleading here: the parameter
+ * chooses whether the board opens directly, and nothing on the board is
+ * played that would not be played once it is open.
  */
 export function miroEmbedUrl(id: string): string {
-    return `https://miro.com/app/live-embed/${id}/`;
+    return `https://miro.com/app/live-embed/${id}/?autoplay=true`;
 }
 
 /** CodePen path segments: usernames and pen slugs are URL-safe word chars. */

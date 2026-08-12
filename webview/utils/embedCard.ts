@@ -125,6 +125,10 @@ function buildPlayerIframe(provider: EmbedProvider, id: string): HTMLIFrameEleme
     // makes the browser send what it can, and the card's explicit external-open
     // button is the guaranteed path (links INSIDE a provider's own error screen
     // are sandboxed and go nowhere).
+    // The sandbox above is NOT a contributing cause and loosening it does not
+    // help: crossing sandbox-on/off with referrer-sent/suppressed, Error 153
+    // tracks the referrer alone, and the full sandbox plays fine whenever a
+    // referrer is sent. Every other framing provider is indifferent to both.
     iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     iframe.setAttribute("title", t(provider.playerTitle ?? "Embedded content"));
     return iframe;
