@@ -13,6 +13,7 @@ import { NodeSelection, TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { wikiLinksPlugin } from "../plugins/wikiLinks";
 import { linkAtCaret, openLinkAtCaret } from "../components/linkPopup";
+import { runEditorCommand } from "../editorCommands";
 import { mockVscodeApi } from "./setup";
 
 let editors: Editor[] = [];
@@ -165,6 +166,28 @@ describe("openLinkAtCaret", () => {
         caretAt(view, 2);
 
         expect(openLinkAtCaret(view)).toBe(false);
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+    });
+});
+
+describe("contributed openLink command (MAR-118)", () => {
+    it("runEditorCommand('openLink') should route the caret's link exactly like the popup", async () => {
+        const view = await makeEditor("go [site](https://example.com/x) now");
+        const linkPos = posWhere(view, (n) => n.marks.some((m) => m.type.name === "link"));
+        caretAt(view, linkPos + 2);
+
+        runEditorCommand("openLink", () => editors[editors.length - 1]!);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "openUrl",
+            url: "https://example.com/x",
+        });
+    });
+
+    it("with no link at the caret the command should be a quiet no-op", async () => {
+        const view = await makeEditor("plain text");
+        caretAt(view, 2);
+
+        runEditorCommand("openLink", () => editors[editors.length - 1]!);
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
     });
 });

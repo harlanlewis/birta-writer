@@ -18,14 +18,21 @@ import { insertCalloutCommand } from "../plugins/callouts";
 import { undo } from "../pm";
 import {
     setBlockMenuContext,
+    canIndentAt,
+    canOutdentAt,
+    indentBlockAt,
+    indentSelection,
     moveRangeAt,
     moveBlockAt,
     moveBlockTo,
+    outdentBlockAt,
+    outdentSelection,
     outlineRangeAt,
     headingAnchorSlug,
 } from "../components/blockMenu";
 import { conversionKindAt } from "../blockCapabilities";
-import { TextSelection } from "../pm";
+import { createImageView } from "../components/imageView";
+import { NodeSelection, TextSelection } from "../pm";
 import { mockVscodeApi } from "./setup";
 
 let editors: Editor[] = [];
@@ -298,6 +305,9 @@ describe("Turn into — non-prose sources", () => {
         expect(labels).not.toContain("Code Block");
         expect(labels).toEqual([
             "Duplicate", "Copy as Markdown", "View Fullscreen",
+            // The toolbar-input rows (MAR-118). The width row needs the real
+            // NodeView mounted, absent in this bare editor, so it hides.
+            "Edit Alt Text", "Edit Image Title", "Edit Image Path",
             "Move Up", "Move Down",
             "Fold All", "Unfold All", "Delete",
         ]);
@@ -1683,5 +1693,249 @@ describe("View Fullscreen row (image lightbox, MAR-118)", () => {
         const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
             .map((el) => el.textContent);
         expect(labels).not.toContain("View Fullscreen");
+    });
+});
+
+describe("refile: indent/outdent (MAR-118)", () => {
+    /** Position of the Nth top-level block. */
+    function topBlockPos(v: EditorView, index: number): number {
+        let pos = 0;
+        for (let i = 0; i < index; i++) {
+            pos += v.state.doc.child(i).nodeSize;
+        }
+        return pos;
+    }
+
+    /** Place a text caret inside the given document position. */
+    function caretAt(v: EditorView, pos: number): void {
+        v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(pos), 1)));
+    }
+
+    it("indent on a paragraph after a blockquote should move it inside the quote", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n>\n> Beta");
+    });
+
+    it("indent on a paragraph after a list should land inside the last item", async () => {
+        const editor = await makeEditor("- one\n- two\n\nPara");
+        const v = view(editor);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(true);
+        // The paragraph becomes continuation content of the last item — the
+        // same landing the drag's drop slots offer inside `paragraph block*`.
+        const list = v.state.doc.child(0);
+        expect(list.lastChild!.childCount).toBe(2);
+        expect(list.lastChild!.lastChild!.textContent).toBe("Para");
+        // The serialized shape a CommonMark parser re-reads into the same
+        // tree: the indented paragraph is item two's continuation content.
+        expect(markdown(editor)).toBe("- one\n- two\n\n  Para");
+    });
+
+    it("indent with no absorbing previous sibling should refuse and hide its row", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        expect(canIndentAt(v, topBlockPos(v, 1))).toBe(false);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(false);
+        expect(markdown(editor)).toBe("Alpha\n\nBeta");
+        const labels = Array.from(openMenuOn(markers()[1]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).not.toContain("Indent");
+    });
+
+    it("the menu row on an eligible block should indent it", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        view(editor);
+        // markers(): [blockquote, Beta] — a quoted paragraph has no marker of
+        // its own (the container is its handle).
+        pickRow(openMenuOn(markers()[1]!), "Indent");
+        expect(markdown(editor)).toBe("> Alpha\n>\n> Beta");
+    });
+
+    it("outdent on a top-level block should refuse and hide its row", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        expect(canOutdentAt(v, 0)).toBe(false);
+        expect(outdentBlockAt(v, 0)).toBe(false);
+        const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).not.toContain("Outdent");
+    });
+
+    it("indent then outdent via the caret commands should round-trip the document", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        caretAt(v, topBlockPos(v, 1) + 1);
+        expect(indentSelection(v)).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n>\n> Beta");
+        // The caret followed the move (moveBlocks places it at the landing);
+        // outdent lifts the same paragraph back out.
+        expect(outdentSelection(v)).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n\nBeta");
+    });
+
+    it("outdent with the caret in a MIDDLE quoted paragraph should split the quote", async () => {
+        const editor = await makeEditor("> Alpha\n>\n> Beta\n>\n> Gamma");
+        const v = view(editor);
+        // Caret inside "Beta" (second child of the quote).
+        const quote = v.state.doc.child(0);
+        const betaPos = 1 + quote.child(0).nodeSize;
+        caretAt(v, betaPos + 1);
+        expect(outdentSelection(v)).toBe(true);
+        expect(markdown(editor)).toBe("> Alpha\n\nBeta\n\n> Gamma");
+    });
+
+    it("indent on a list item should sink it exactly like Tab", async () => {
+        const editor = await makeEditor("- one\n- two");
+        const v = view(editor);
+        // markers(): [item one, item two] — items own their gutter markers.
+        pickRow(openMenuOn(markers()[1]!), "Indent");
+        expect(markdown(editor)).toBe("- one\n  - two");
+        // One undo step restores the flat list.
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("- one\n- two");
+    });
+
+    it("indent on the FIRST list item should refuse (nothing to sink under)", async () => {
+        const editor = await makeEditor("- one\n- two");
+        const v = view(editor);
+        expect(canIndentAt(v, 1)).toBe(false);
+        expect(indentBlockAt(v, 1)).toBe(false);
+        expect(markdown(editor)).toBe("- one\n- two");
+    });
+
+    it("outdent on a nested list item should lift it exactly like Shift+Tab", async () => {
+        const editor = await makeEditor("- one\n  - two");
+        const v = view(editor);
+        // markers(): [item one, nested item two].
+        pickRow(openMenuOn(markers()[1]!), "Outdent");
+        expect(markdown(editor)).toBe("- one\n- two");
+    });
+
+    it("a whole indent should be one undo step", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        expect(indentBlockAt(v, topBlockPos(v, 1))).toBe(true);
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("> Alpha\n\nBeta");
+    });
+
+    it("mutating refile helpers should never fire on a stale position", async () => {
+        const editor = await makeEditor("> Alpha\n\nBeta");
+        const v = view(editor);
+        // A position past every block resolves to no node — both helpers
+        // refuse rather than throw or act on a neighbor.
+        const end = v.state.doc.content.size;
+        expect(indentBlockAt(v, end)).toBe(false);
+        expect(outdentBlockAt(v, end)).toBe(false);
+    });
+
+    it("refile inside a table should refuse via the caret commands", async () => {
+        const editor = await makeEditor("> Quote\n\n| a | b |\n| - | - |\n| c | d |");
+        const v = view(editor);
+        // Caret inside the first body cell of the table (which FOLLOWS a
+        // quote, so a top-level indent would otherwise be offered).
+        let cellText: number | null = null;
+        v.state.doc.descendants((node, pos) => {
+            if (cellText === null && node.isText && node.text === "c") {
+                cellText = pos;
+            }
+            return cellText === null;
+        });
+        expect(cellText).not.toBeNull();
+        caretAt(v, cellText!);
+        const before = markdown(editor);
+        expect(indentSelection(v)).toBe(false);
+        expect(outdentSelection(v)).toBe(false);
+        expect(markdown(editor)).toBe(before);
+    });
+});
+
+describe("image toolbar keyboard entry (MAR-118)", () => {
+    /** An editor whose image nodes render the REAL NodeView (the production
+     *  FormatModule wires this the same way; the bare test editor does not). */
+    async function makeImageEditor(md: string) {
+        const editor = await makeEditor(md);
+        const v = view(editor);
+        v.setProps({
+            nodeViews: {
+                image: (n, nodeViewHost, getPos) =>
+                    createImageView(n, nodeViewHost as EditorView, getPos as () => number | undefined),
+            },
+        });
+        return { editor, v };
+    }
+
+    it("the Edit Alt Text row should select the image and focus its caption", async () => {
+        const { v } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Alt Text");
+        const caption = document.querySelector<HTMLInputElement>(".image-wrapper .image-caption");
+        expect(caption).not.toBeNull();
+        expect(document.activeElement).toBe(caption);
+        expect(v.state.selection).toBeInstanceOf(NodeSelection);
+        // The selection pins the toolbar open — the state the inputs need.
+        expect(document.querySelector(".image-wrapper--selected")).not.toBeNull();
+    });
+
+    it("Enter in the focused caption should commit the alt into the markdown", async () => {
+        const { editor } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Alt Text");
+        const caption = document.querySelector<HTMLInputElement>(".image-wrapper .image-caption")!;
+        caption.value = "keyboard alt";
+        caption.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toContain("![keyboard alt](");
+    });
+
+    it("Escape in the focused caption should revert without touching the doc", async () => {
+        const { editor } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Alt Text");
+        const caption = document.querySelector<HTMLInputElement>(".image-wrapper .image-caption")!;
+        caption.value = "abandoned";
+        caption.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+        expect(caption.value).toBe("cat");
+        expect(markdown(editor)).toContain("![cat](");
+    });
+
+    it("the Edit Image Title row should focus the title input", async () => {
+        await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Image Title");
+        const title = document.querySelector<HTMLInputElement>(".image-wrapper .img-tb-title");
+        expect(title).not.toBeNull();
+        expect(document.activeElement).toBe(title);
+        expect(title!.value).toBe("T");
+    });
+
+    it("the Edit Image Path row should open the path editor focused", async () => {
+        await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        pickRow(openMenuOn(markers()[0]!), "Edit Image Path");
+        const path = document.querySelector<HTMLInputElement>(".image-wrapper .img-path-input");
+        expect(path).not.toBeNull();
+        expect(document.activeElement).toBe(path);
+        expect(path!.value).toBe("https://example.com/cat.png");
+    });
+
+    it("the width row should name the NEXT state and cycle it, presentation-only", async () => {
+        const { editor } = await makeImageEditor('![cat](https://example.com/cat.png "T")\n\nafter');
+        const before = markdown(editor);
+        pickRow(openMenuOn(markers()[0]!), "Fit Column Width");
+        const wrapper = document.querySelector<HTMLElement>(".image-wrapper")!;
+        expect(wrapper.classList.contains("bw-fixed")).toBe(true);
+        // A display choice never dirties the file.
+        expect(markdown(editor)).toBe(before);
+        // The row renames to the cycle's next state on reopen.
+        const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).toContain("Full Width");
+        expect(labels).not.toContain("Fit Column Width");
+    });
+
+    it("a plain paragraph's menu should offer none of the image rows", async () => {
+        const editor = await makeEditor("plain paragraph");
+        view(editor);
+        const labels = Array.from(openMenuOn(markers()[0]!).querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        for (const label of ["Edit Alt Text", "Edit Image Title", "Edit Image Path", "Fit Column Width"]) {
+            expect(labels).not.toContain(label);
+        }
     });
 });
