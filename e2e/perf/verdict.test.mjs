@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
     abVerdict, confirmRegressions, spans, aggregate, GATED_FIXTURES,
     SPANS, SUB_SPANS, POST_PAINT_SPANS,
+    postPaintVerdict, POST_PAINT_MIN_PCT, POST_PAINT_MIN_MS,
     typingAbVerdict, TYPING_GATED_FIXTURES,
 } from "./verdict.mjs";
 
@@ -135,6 +136,136 @@ describe("typingAbVerdict — the gate's per-fixture per-keystroke decision", ()
         const v = typingAbVerdict(tPass("xlarge", 22, 22.1, null, 8000));
         expect(v.rows[0].block).toBeNull();
         expect(v.rows[0].blockNote).toBe("");
+    });
+});
+
+// ── Post-paint spans (rtp, proofread) ───────────────────────────────────────
+// These land AFTER `editor-painted`, so the launch verdict is blind to them by
+// construction: a change that doubled either passed every check in the repo
+// until this gate existed (MAR-314).
+
+/** One-fixture pass carrying post-paint medians. `undefined` omits the span. */
+const ppPass = (name, span, baseMs, headMs) => ({
+    [name]: {
+        base: { median: baseMs === undefined ? {} : { [span]: baseMs } },
+        head: { median: headMs === undefined ? {} : { [span]: headMs } },
+    },
+});
+
+const rowFor = (v, name, span) => v.rows.find((r) => r.name === name && r.span === span);
+
+describe("postPaintVerdict — gating the spans launch cannot see", () => {
+    it("a gated fixture past BOTH floors should regress, keyed fixture:span", () => {
+        // large rtp: 60 → 120 ms = +100% / +60 ms, clear of 20% and 15 ms.
+        expect([...postPaintVerdict(ppPass("large", "rtp", 60, 120)).regressed]).toEqual(["large:rtp"]);
+    });
+
+    it("a move over the % floor but under the ms floor should NOT regress", () => {
+        // 20 → 30 ms = +50% but only +10 ms, under the 15 ms floor.
+        expect(postPaintVerdict(ppPass("large", "rtp", 20, 30)).regressed.size).toBe(0);
+    });
+
+    it("a move over the ms floor but under the % floor should NOT regress", () => {
+        // 200 → 220 ms = +20 ms but only +10%, under the 20% floor.
+        expect(postPaintVerdict(ppPass("large", "rtp", 200, 220)).regressed.size).toBe(0);
+    });
+
+    it("an UNGATED fixture regressing should be reported and never gate", () => {
+        const v = postPaintVerdict(ppPass("tiny", "proofread", 40, 200));
+        expect(v.regressed.size).toBe(0);
+        expect(rowFor(v, "tiny", "proofread").mark).toContain("ungated");
+        expect(GATED_FIXTURES.has("tiny")).toBe(false);
+    });
+
+    it("a real improvement should never count as a regression", () => {
+        const v = postPaintVerdict(ppPass("large", "proofread", 120, 60));
+        expect(v.regressed.size).toBe(0);
+        expect(rowFor(v, "large", "proofread").mark).toContain("faster");
+    });
+
+    // ── Abstention ─────────────────────────────────────────────────────────
+    // The reason this gate was thought to need a calendar wait: a merge-base
+    // can predate a mark entirely. Abstaining costs the gate nothing, and it is
+    // what the caret gate already does with an absent sample count.
+
+    it("a base that predates the mark should ABSTAIN, not gate", () => {
+        const v = postPaintVerdict(ppPass("large", "rtp", undefined, 120));
+        expect(v.regressed.size).toBe(0);
+        expect(rowFor(v, "large", "rtp").abstained).toBe(true);
+        expect(rowFor(v, "large", "rtp").reason).toContain("base");
+    });
+
+    it("absent on the base should not be read as a zero baseline", () => {
+        // Reading absent as 0 makes any head value an infinite regression —
+        // the trap that would fire on every PR whose merge-base predates a mark.
+        const v = postPaintVerdict(ppPass("large", "rtp", undefined, 120));
+        expect(rowFor(v, "large", "rtp").dPct).toBeUndefined();
+        expect(rowFor(v, "large", "rtp").mark).toBeUndefined();
+    });
+
+    it("a head that stopped stamping the mark should abstain and say so", () => {
+        // `checks.mjs` fails on this in measure mode; here it must not read as
+        // "cheap", which is what a silent null would look like.
+        const v = postPaintVerdict(ppPass("large", "rtp", 60, undefined));
+        expect(v.regressed.size).toBe(0);
+        expect(rowFor(v, "large", "rtp").reason).toContain("head");
+    });
+
+    it("neither side stamping it should abstain with its own reason", () => {
+        const v = postPaintVerdict(ppPass("large", "rtp", undefined, undefined));
+        expect(rowFor(v, "large", "rtp").abstained).toBe(true);
+        expect(rowFor(v, "large", "rtp").reason).toContain("neither");
+    });
+
+    // ── Independence ───────────────────────────────────────────────────────
+
+    it("each span should be judged on its own numbers, not its neighbour's", () => {
+        const both = {
+            large: {
+                base: { median: { rtp: 60, proofread: 60 } },
+                head: { median: { rtp: 120, proofread: 62 } },
+            },
+        };
+        // rtp doubles; proofread is flat. Only rtp may appear.
+        expect([...postPaintVerdict(both).regressed]).toEqual(["large:rtp"]);
+    });
+
+    it("a fixture:span key should not confirm against a different span", () => {
+        // The double-confirm intersects these sets, so the key space is what
+        // stops an rtp regression in pass 1 being confirmed by a proofread one
+        // in pass 2. Same fixture, different span, must not intersect.
+        const p1 = postPaintVerdict(ppPass("large", "rtp", 60, 120)).regressed;
+        const p2 = postPaintVerdict(ppPass("large", "proofread", 60, 120)).regressed;
+        expect(confirmRegressions(p1, p2).size).toBe(0);
+        expect(confirmRegressions(p1, p1)).toEqual(new Set(["large:rtp"]));
+    });
+
+    // ── The enumeration asserts its own size ───────────────────────────────
+    // A sweep that reached nothing passes (AGENTS.md, "Choosing what to
+    // assert"). This gate's whole value is that it covers every post-paint
+    // span, so the coverage is the assertion.
+
+    it("should judge every POST_PAINT_SPAN for every fixture it is given", () => {
+        const full = {
+            large: { base: { median: { rtp: 60, proofread: 40 } }, head: { median: { rtp: 61, proofread: 41 } } },
+            tiny: { base: { median: { rtp: 5, proofread: 3 } }, head: { median: { rtp: 5, proofread: 3 } } },
+        };
+        const v = postPaintVerdict(full);
+        expect(POST_PAINT_SPANS.size).toBeGreaterThanOrEqual(2);
+        expect(v.rows.length).toBe(2 * POST_PAINT_SPANS.size);
+        for (const name of ["large", "tiny"]) {
+            for (const span of POST_PAINT_SPANS) {
+                expect(rowFor(v, name, span), `${name}:${span} must be judged`).toBeDefined();
+            }
+        }
+    });
+
+    it("should carry floors coarser than launch's, since these spans are smaller", () => {
+        // Launch's 3% / 10 ms would make 10 ms a large fraction of a span that
+        // measures tens of ms, and both spans are idle-callback bodies carrying
+        // the scheduler's jitter on top of their own.
+        expect(POST_PAINT_MIN_PCT).toBeGreaterThan(3);
+        expect(POST_PAINT_MIN_MS).toBeGreaterThan(10);
     });
 });
 

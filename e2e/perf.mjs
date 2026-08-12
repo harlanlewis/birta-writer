@@ -22,7 +22,8 @@ import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // runs Playwright/process.exit on import and can't be).
 import {
     SPANS, SUB_SPANS, POST_PAINT_SPANS, GATED_FIXTURES,
-    median, round, spans, aggregate, abVerdict, confirmRegressions,
+    POST_PAINT_MIN_PCT, POST_PAINT_MIN_MS,
+    median, round, spans, aggregate, abVerdict, postPaintVerdict, confirmRegressions,
 } from "./perf/verdict.mjs";
 import { acquireHarnessLock } from "./harnessLock.mjs";
 
@@ -37,7 +38,9 @@ const SETTLE_MARKS = ["rtp-end", "proofread-end"];
 // Bound. Both are `requestIdleCallback`s with their own timeouts (2000 ms for
 // round-trip protection, 1000 ms for the proofread first pass), so a bundle
 // that stamps them always resolves well inside this; a bundle that does not
-// (an older merge-base) pays it in full, which is why only measure mode waits.
+// (an older merge-base) pays it in full. The A/B therefore probes each side
+// once, on the warmup pair, and stops waiting for what that side never stamps
+// — see measureFixtureAB.
 const SETTLE_TIMEOUT_MS = 3000;
 
 // ── --compare mode: pure stats, no browser ──────────────────
@@ -87,11 +90,11 @@ async function loadPlaywright() {
 // silently average over (this is what caught the katex.css 404). `side` labels
 // which bundle aborted so an A/B failure is diagnosable without a second script.
 //
-// `settleMarks` (measure mode only) additionally waits for the post-paint end
-// marks before reading. The A/B deliberately does NOT: its verdict is `launch`,
-// which is fixed at the paint mark, and its base bundle is an arbitrary
-// merge-base that may predate a mark entirely — waiting there would add the
-// full timeout to all ~108 samples of every pass for context it cannot compare.
+// `settleMarks` additionally waits for the post-paint end marks before reading,
+// and reports on `__missingSettle` whichever of them never arrived. Both modes
+// pass it; the A/B narrows the list per side after its warmup pair so a bundle
+// predating a mark pays the timeout once per fixture rather than once per
+// sample. A caller passing `[]` reads whatever has been stamped by paint time.
 async function sampleOnce(browser, url, content, fixture = "?", side = "", settleMarks = []) {
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
     const errors = [];
@@ -217,20 +220,37 @@ async function measureMode(only, runs, jsonOut) {
 // ── A/B mode: interleaved base-vs-head launch comparison ─────
 // One interleaved fixture: measure head then base back-to-back per iteration so
 // slow machine drift cancels within the pair. First pair discarded as warmup.
+//
+// The A/B waits for the post-paint end marks so those spans can be gated
+// (MAR-314), and it learns each side's marks from the WARMUP pair rather than
+// paying for them per sample. A bundle that stamps a mark satisfies the wait in
+// a few ms; one that does not — a merge-base predating the mark — would pay
+// SETTLE_TIMEOUT_MS on every sample, which is the cost that kept this gate
+// unbuilt. Dropping the mark from that side after the warmup makes it one
+// timeout per fixture instead of one per sample, and the span then aggregates
+// to null and ABSTAINS in the verdict, which is the honest reading anyway.
 async function measureFixtureAB(chromium, serverBase, content, runs, fixture) {
     const base = [], head = [];
+    let headSettle = SETTLE_MARKS, baseSettle = SETTLE_MARKS;
     const browser = await chromium.launch();
     try {
         for (let i = 0; i < runs; i++) {
             let h, b;
             try {
-                h = await sampleOnce(browser, `${serverBase}/head/`, content, fixture, "head");
-                b = await sampleOnce(browser, `${serverBase}/base/`, content, fixture, "base");
+                h = await sampleOnce(browser, `${serverBase}/head/`, content, fixture, "head", headSettle);
+                b = await sampleOnce(browser, `${serverBase}/base/`, content, fixture, "base", baseSettle);
             } catch (e) {
                 console.error(`\n  ${e.message}`);
                 process.exit(3);
             }
-            if (i === 0) continue; // warmup pair
+            if (i === 0) {
+                // Warmup pair: discarded as a sample, kept as the probe of which
+                // marks each side actually stamps.
+                const drop = (settle, s) => settle.filter((m) => !(s.__missingSettle ?? []).includes(m));
+                headSettle = drop(headSettle, h);
+                baseSettle = drop(baseSettle, b);
+                continue;
+            }
             head.push(h); base.push(b);
         }
     } finally {
@@ -249,6 +269,27 @@ function printAbTable(label, pass) {
     }
 }
 
+
+// The post-paint spans, printed as their own block rather than inline under the
+// launch delta — they cannot compose launch, and putting `rtp +60ms` beside
+// `create` and `paint` invites exactly the wrong conclusion (MAR-311).
+function printPostPaint(pass) {
+    const { rows } = postPaintVerdict(pass);
+    if (!rows.length) return;
+    console.log(`\n  post-paint spans — base → head (median ms), gated at ≥${POST_PAINT_MIN_PCT}% AND ≥${POST_PAINT_MIN_MS}ms\n`);
+    for (const r of rows) {
+        const tag = r.gated ? "  " : "· ";
+        const where = `${r.name}:${r.span}`.padEnd(20);
+        if (r.abstained) {
+            // Never silent. An abstention is a gate declining to judge, and the
+            // reader has to be able to tell that from a clean pass.
+            console.log(`  ${tag}${where} ABSTAINED — ${r.reason}`);
+            continue;
+        }
+        const sign = r.dMs >= 0 ? "+" : "";
+        console.log(`  ${tag}${where} ${round(r.b)}ms → ${round(r.a)}ms  (${sign}${round(r.dMs)}ms, ${sign}${round(r.dPct)}%)  ${r.mark}`);
+    }
+}
 
 function printAbSpans(pass) {
     for (const name of Object.keys(pass)) {
@@ -291,45 +332,68 @@ async function abMode(baseDirArg, headDirArg, runs, jsonOut, accept) {
     const pass1 = await runPass();
     printAbTable("pass 1", pass1);
     printAbSpans(pass1);
+    printPostPaint(pass1);
     const v1 = abVerdict(pass1);
+    const p1 = postPaintVerdict(pass1);
 
     // Double-confirm: a gated regression must reproduce in a second full pass
     // before we fail — this is what makes a blocking browser-timing gate safe.
-    let confirmed = new Set();
+    // Launch and post-paint confirm INDEPENDENTLY (different key spaces, so a
+    // `large` launch move can never confirm a `large:rtp` one), but either one
+    // alone is enough to buy the second pass.
+    let confirmed = new Set(), confirmedPostPaint = new Set();
     let pass2 = null;
-    if (v1.regressed.size) {
-        console.log(`\n  pass-1 regression (${[...v1.regressed].join(", ")}) — confirming with a second pass…`);
+    if (v1.regressed.size || p1.regressed.size) {
+        const why = [...v1.regressed, ...p1.regressed].join(", ");
+        console.log(`\n  pass-1 regression (${why}) — confirming with a second pass…`);
         pass2 = await runPass();
         printAbTable("pass 2", pass2);
-        const v2 = abVerdict(pass2);
-        confirmed = confirmRegressions(v1.regressed, v2.regressed);
+        printPostPaint(pass2);
+        confirmed = confirmRegressions(v1.regressed, abVerdict(pass2).regressed);
+        confirmedPostPaint = confirmRegressions(p1.regressed, postPaintVerdict(pass2).regressed);
     }
     server.close();
 
+    const anyConfirmed = confirmed.size + confirmedPostPaint.size;
     if (jsonOut) {
         const report = {
             base: baseDir, head: headDir, runsPerFixture: runs - 1,
-            gated: [...GATED_FIXTURES], confirmedRegressions: [...confirmed],
-            accepted: Boolean(accept) && confirmed.size > 0, pass1, pass2,
+            gated: [...GATED_FIXTURES],
+            confirmedRegressions: [...confirmed],
+            confirmedPostPaintRegressions: [...confirmedPostPaint],
+            // Abstentions are part of the record: a reader has to be able to
+            // tell a span that passed from one that was never judged.
+            postPaintAbstentions: p1.rows.filter((r) => r.abstained).map((r) => `${r.name}:${r.span} (${r.reason})`),
+            accepted: Boolean(accept) && anyConfirmed > 0, pass1, pass2,
         };
         await writeFile(jsonOut, JSON.stringify(report, null, 2));
         console.log(`\nwrote ${jsonOut}`);
     }
 
-    if (confirmed.size === 0) {
+    if (anyConfirmed === 0) {
         console.log(
-            v1.regressed.size
+            v1.regressed.size || p1.regressed.size
                 ? `\nverdict: NEUTRAL — pass-1 regression not reproduced (transient noise)\n`
-                : `\nverdict: NEUTRAL — no confirmed launch regression\n`,
+                : `\nverdict: NEUTRAL — no confirmed launch or post-paint regression\n`,
         );
         process.exit(0);
     }
+    const what = [
+        confirmed.size ? `LAUNCH on ${[...confirmed].join(", ")}` : null,
+        confirmedPostPaint.size ? `POST-PAINT on ${[...confirmedPostPaint].join(", ")}` : null,
+    ].filter(Boolean).join(" + ");
     if (accept) {
-        console.log(`\nverdict: REGRESSED on ${[...confirmed].join(", ")} — ACCEPTED (${accept}); recorded, not blocking.\n`);
+        console.log(`\nverdict: REGRESSED — ${what} — ACCEPTED (${accept}); recorded, not blocking.\n`);
         process.exit(0);
     }
     console.error(
-        `\nLAUNCH REGRESSED on ${[...confirmed].join(", ")} — confirmed across two passes (≥3% AND ≥10 ms).\n` +
+        `\nREGRESSED — ${what} — confirmed across two passes.\n` +
+        (confirmed.size ? `  launch floors: ≥3% AND ≥10 ms.\n` : "") +
+        (confirmedPostPaint.size
+            ? `  post-paint floors: ≥${POST_PAINT_MIN_PCT}% AND ≥${POST_PAINT_MIN_MS} ms. These spans land after first paint,\n` +
+              "  so they cost nothing in `launch` and everything in the window the user's\n" +
+              "  first keystroke or scroll lands in (MAR-314).\n"
+            : "") +
         "Boot time is first-class (AGENTS.md 'Launch performance'). Either:\n" +
         "  • fix it — defer the added work off the mount path / lazy-import it, or\n" +
         "  • accept it — add the `perf-accept` PR label or a `Perf-Regression-Accepted: <reason>` commit trailer.\n",

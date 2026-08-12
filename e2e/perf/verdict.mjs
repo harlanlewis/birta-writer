@@ -46,6 +46,20 @@ export const SPANS = [
  */
 export const POST_PAINT_SPANS = new Set(["rtp", "proofread"]);
 
+// Post-paint floors, deliberately coarser than launch's 3% / 10 ms.
+//
+// Two reasons they cannot share launch's floors. These spans are an order of
+// magnitude smaller, so 10 ms is a large fraction of one rather than a noise
+// floor under it. And both are `requestIdleCallback` bodies rather than mount
+// path work, so they carry the scheduler's jitter on top of their own: what
+// lands in a given idle slice varies run to run in a way `create` and `paint`
+// do not. A floor tight enough to catch a 20% move would fire on that jitter.
+//
+// Calibrate with `pnpm perf` on an idle machine — the spread across runs is
+// what these have to clear, and it is a reading, not a stored number.
+export const POST_PAINT_MIN_PCT = 20;
+export const POST_PAINT_MIN_MS = 15;
+
 // The sub-spans that compose launch (everything but launch itself, and not the
 // post-paint ones, which are reported separately).
 export const SUB_SPANS = SPANS
@@ -114,6 +128,59 @@ export function abVerdict(pass) {
         if (real && dMs > 0) { mark = gated ? "✗ REGRESSED" : "✗ slower (ungated)"; if (gated) regressed.add(name); }
         else if (real && dMs < 0) mark = "✓ faster";
         rows.push({ name, bl, al, dMs, dPct, gated, mark });
+    }
+    return { rows, regressed };
+}
+
+/**
+ * Per-fixture, per-span verdict for the POST-PAINT spans (`rtp`, `proofread`).
+ *
+ * These sit after `editor-painted`, so they can never move `launch` and the
+ * launch verdict is blind to them by construction: work deferred past the last
+ * mark still blocks the main thread in the window a user's first keystroke or
+ * scroll lands in. Before this, a change that doubled either span passed every
+ * check in the repo (MAR-314).
+ *
+ * ABSTAIN rather than gate when either side lacks the span. A merge-base can
+ * predate a mark entirely, and reading absent as zero would make every such
+ * comparison an infinite regression — the same trap the caret gate's absent
+ * sample count documents below, and the reason this was thought to need a
+ * calendar wait until every plausible merge-base carried the marks. It does
+ * not: an abstention says "this bundle cannot be characterized" and costs the
+ * gate nothing. An abstention is always printed, because a gate that quietly
+ * stops gating is worse than one that fails.
+ *
+ * Regression keys are `fixture:span`, so a `large:rtp` move confirms against
+ * `large:rtp` in the second pass and never against `large:proofread`.
+ */
+export function postPaintVerdict(pass) {
+    const rows = [];
+    const regressed = new Set();
+    for (const [name, r] of Object.entries(pass)) {
+        const gated = GATED_FIXTURES.has(name);
+        for (const span of POST_PAINT_SPANS) {
+            const b = r.base?.median?.[span], a = r.head?.median?.[span];
+            if (b == null || a == null) {
+                // Which side is missing is the whole diagnosis: an absent BASE
+                // is an old merge-base and expected; an absent HEAD means this
+                // branch stopped stamping the mark, which `checks.mjs` fails on
+                // in measure mode but which must not read as "cheap" here.
+                const reason = b == null && a == null ? "neither bundle stamps it"
+                    : b == null ? "base predates the mark"
+                        : "head no longer stamps it";
+                rows.push({ name, span, gated, abstained: true, reason });
+                continue;
+            }
+            const dMs = a - b;
+            const dPct = b > 0 ? (dMs / b) * 100 : (a > 0 ? 100 : 0);
+            const real = Math.abs(dPct) >= POST_PAINT_MIN_PCT && Math.abs(dMs) >= POST_PAINT_MIN_MS;
+            let mark = "  neutral";
+            if (real && dMs > 0) {
+                mark = gated ? "✗ REGRESSED" : "✗ slower (ungated)";
+                if (gated) regressed.add(`${name}:${span}`);
+            } else if (real && dMs < 0) { mark = "✓ faster"; }
+            rows.push({ name, span, gated, b, a, dMs, dPct, real, mark, abstained: false });
+        }
     }
     return { rows, regressed };
 }
