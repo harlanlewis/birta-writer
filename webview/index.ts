@@ -41,6 +41,7 @@ import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
+import { bankOpenHtmlPanel } from "./components/htmlView";
 import { mark, measure } from "./perf";
 import type { DocumentFormat, ToWebviewMessage } from "../shared/messages";
 import { resolveFormat } from "./format/loader";
@@ -407,14 +408,7 @@ function getSwitchTarget():
     // bytes even when invoked from inside the webview (the chord path,
     // where no natural blur precedes this call). Story in
     // selectionSurfaceCoverage's ISLAND_REGISTRY; pinned in e2e/htmlEdit.
-    const active = document.activeElement;
-    if (
-        active instanceof HTMLTextAreaElement &&
-        active.classList.contains("html-src") &&
-        view.dom.contains(active)
-    ) {
-        active.blur();
-    }
+    bankOpenHtmlPanel(view);
     const { doc, selection } = view.state;
     const { head, empty } = selection;
     const sourceLines = getMarkdownSource().split("\n");

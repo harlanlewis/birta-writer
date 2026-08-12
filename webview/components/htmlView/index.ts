@@ -28,7 +28,7 @@
  * slash menu (open implies topmost, and blur is itself a close path).
  */
 import "./htmlView.css";
-import type { EditorView, Node as PMNode } from "@/pm";
+import type { EditorView } from "@/pm";
 import { NodeSelection } from "@/pm";
 import { sanitizeInto } from "@/utils/sanitizeLoader";
 import { t } from "@/i18n";
@@ -41,7 +41,6 @@ const COMMENT_RE = /^<!--[\s\S]*?-->$/;
 interface HtmlView {
     dom: HTMLElement;
     ready: Promise<void>;
-    update?: (node: PMNode) => boolean;
     stopEvent?: (event: Event) => boolean;
     ignoreMutation: () => boolean;
     destroy?: () => void;
@@ -79,8 +78,12 @@ export function createHtmlView(
 ): HtmlView {
     const dom = document.createElement("span");
     dom.dataset["type"] = "html";
-    let currentValue = initialNode.attrs["value"] ?? "";
-    let ready = paint(dom, currentValue);
+    // Fixed at creation: a changed value recreates the whole view (there is
+    // deliberately no `update` — a NodeView-side repaint would wipe the
+    // decoration classes PM applied to the dom, and PM skips reapplying
+    // outer decorations it considers unchanged).
+    const currentValue = initialNode.attrs["value"] ?? "";
+    const ready = paint(dom, currentValue);
 
     let editing: HTMLTextAreaElement | null = null;
 
@@ -101,14 +104,40 @@ export function createHtmlView(
         view?.focus();
     };
 
+    /** Is the atom at `pos` inside a table? A GFM row is one source line and
+     * a `|` delimits cells, so a value carrying either would tear the row or
+     * shift cells off the end on the next save (the serializer emits html
+     * bytes verbatim, bypassing the escaping text nodes get). */
+    const inTable = (pos: number): boolean => {
+        const $pos = view!.state.doc.resolve(pos);
+        for (let depth = $pos.depth; depth > 0; depth--) {
+            if ($pos.node(depth).type.name === "table") {
+                return true;
+            }
+        }
+        return false;
+    };
+
     const commit = (): void => {
         if (!editing || !view) {
             return;
         }
         const value = editing.value;
         const pos = livePos();
+        if (pos === null) {
+            close();
+            return;
+        }
+        // Refuse, panel open, when the bytes would corrupt a table row —
+        // the repo's convention for content-losing gestures is refusal with
+        // a cue, never a silent normalization of what the user typed.
+        if (/[\n|]/.test(value) && value !== currentValue && inTable(pos)) {
+            editing.setAttribute("aria-invalid", "true");
+            editing.title = t("A table cell cannot hold a newline or an unescaped | — it would break the row");
+            return;
+        }
         close();
-        if (pos === null || value === currentValue) {
+        if (value === currentValue) {
             return;
         }
         const node = view.state.doc.nodeAt(pos);
@@ -138,7 +167,11 @@ export function createHtmlView(
         area.spellcheck = false;
         area.setAttribute("aria-label", t("HTML source"));
         autosize(area);
-        area.addEventListener("input", () => autosize(area));
+        area.addEventListener("input", () => {
+            autosize(area);
+            area.removeAttribute("aria-invalid");
+            area.title = "";
+        });
         area.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
                 event.preventDefault();
@@ -171,22 +204,7 @@ export function createHtmlView(
 
     return {
         dom,
-        get ready() {
-            return ready;
-        },
-        update(node: PMNode): boolean {
-            if (node.type.name !== "html") {
-                return false;
-            }
-            const next = (node.attrs["value"] as string | undefined) ?? "";
-            if (next !== currentValue) {
-                currentValue = next;
-                if (!editing) {
-                    ready = paint(dom, next);
-                }
-            }
-            return true;
-        },
+        ready,
         // While the panel is open, its events are the textarea's, not
         // ProseMirror's — otherwise PM's keymaps eat every keystroke.
         stopEvent: (event: Event): boolean =>
@@ -197,6 +215,23 @@ export function createHtmlView(
             dom.removeEventListener(HTML_EDIT_EVENT, open);
         },
     };
+}
+
+/**
+ * Commit (via blur) an open HTML source panel inside this view, if any.
+ * Called at the seams that read or persist the document while the panel may
+ * hold an uncommitted edit — the mode switch and the save flush — so neither
+ * can act on bytes older than what the user sees in the panel.
+ */
+export function bankOpenHtmlPanel(view: EditorView): void {
+    const active = document.activeElement;
+    if (
+        active instanceof HTMLTextAreaElement &&
+        active.classList.contains("html-src") &&
+        view.dom.contains(active)
+    ) {
+        active.blur();
+    }
 }
 
 /** Open the source panel of the html atom under a NodeSelection, if any. */
