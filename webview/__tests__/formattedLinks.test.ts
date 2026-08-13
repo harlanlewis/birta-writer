@@ -146,3 +146,86 @@ describe("fidelity serializer — formatted links stay whole (MAR-33)", () => {
         await editor.destroy();
     });
 });
+
+/**
+ * CommonMark's link-destination and link-title grammars, which the fixture
+ * `fixtures/formatted-links.md` also carries.
+ *
+ * The fixture alone cannot assert these. Every suite that reads it compares
+ * bytes AFTER the round-trip-protection layer, and protection exists precisely
+ * to repair a destination the serializer respells, so a parser that truncated
+ * a URL at its first `)` would still come out byte-identical there. What has
+ * to survive is the TARGET, not the spelling, and only the parsed document can
+ * answer that.
+ */
+describe("parenthesised link destinations and titles", () => {
+    /** Every distinct link target in the parsed document, in order. */
+    async function targets(markdown: string): Promise<Array<[string, string | null]>> {
+        const editor = await makeEditor(markdown);
+        const seen: Array<[string, string | null]> = [];
+        editor.action((ctx) => {
+            (ctx.get(editorViewCtx) as EditorView).state.doc.descendants((node) => {
+                for (const mark of node.marks) {
+                    if (mark.type.name !== "link") { continue; }
+                    const found: [string, string | null] = [
+                        mark.attrs["href"] as string,
+                        (mark.attrs["title"] as string) || null,
+                    ];
+                    const last = seen[seen.length - 1];
+                    if (!last || last[0] !== found[0] || last[1] !== found[1]) { seen.push(found); }
+                }
+                return true;
+            });
+        });
+        await editor.destroy();
+        return seen;
+    }
+
+    /** The target must be the same after a save, however the bytes respell it. */
+    async function survivesRoundTrip(markdown: string): Promise<void> {
+        const before = await targets(markdown);
+        const after = await targets(await roundTrip(markdown));
+        expect(after).toEqual(before);
+    }
+
+    it("a balanced-paren destination should keep the parens inside the URL", async () => {
+        const src = "[French Revolution](https://en.wikipedia.org/wiki/French_Revolution_(1789))\n";
+
+        expect(await targets(src)).toEqual([
+            ["https://en.wikipedia.org/wiki/French_Revolution_(1789)", null],
+        ]);
+        await survivesRoundTrip(src);
+    });
+
+    it("an escaped-paren destination should keep the parens and drop the escapes", async () => {
+        const src = "[escaped example](https://example.com/foo\\(bar\\))\n";
+
+        expect(await targets(src)).toEqual([["https://example.com/foo(bar)", null]]);
+        await survivesRoundTrip(src);
+    });
+
+    it("a quoted title containing parens should keep them in the title", async () => {
+        const src = '[quoted title](https://example.com/j "Title (with parens)")\n';
+
+        expect(await targets(src)).toEqual([
+            ["https://example.com/j", "Title (with parens)"],
+        ]);
+        await survivesRoundTrip(src);
+    });
+
+    it("a parenthesised title should be read as a title, not as part of the URL", async () => {
+        // The third title delimiter CommonMark defines. Getting it wrong
+        // silently appends " (A title)" to the destination.
+        const src = "[paren title](https://example.com/k (A title))\n";
+
+        expect(await targets(src)).toEqual([["https://example.com/k", "A title"]]);
+        await survivesRoundTrip(src);
+    });
+
+    it("a parenthesised title with escaped nested parens should keep them", async () => {
+        const src = "[nested paren title](https://example.com/l (A title \\(nested\\)))\n";
+
+        expect(await targets(src)).toEqual([["https://example.com/l", "A title (nested)"]]);
+        await survivesRoundTrip(src);
+    });
+});

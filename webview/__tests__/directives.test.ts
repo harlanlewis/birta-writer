@@ -105,6 +105,8 @@ describe("fixture parse census", () => {
             "danger", "note",   // nested pair (outer 4-colon, inner 3)
             "note",             // multi-block body
             "caution",
+            "note",             // footnote reference inside, definition outside
+            "note",             // footnote reference AND definition both inside, blank line before close
         ]);
         // The unclosed fence and the spaced name stay ordinary text.
         expect(names).not.toContain("unclosed");
@@ -302,5 +304,52 @@ describe("nested directive fences (MAR-120 case A)", () => {
         });
         expect(names).toEqual(["note", "tip"]);
         await editor.destroy();
+    });
+});
+
+describe("footnotes inside a directive", () => {
+    it("a footnote reference inside a directive, definition outside, round-trips and stays a directive", async () => {
+        const doc = ":::note\nA note with a footnote reference[^dnote] inside it.\n:::\n\n[^dnote]: Definition for the footnote referenced inside a directive.\n";
+        expect(await roundTrip(doc)).toBe(doc);
+        const { editor, view } = await makeEditor(doc);
+        expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+        await editor.destroy();
+    });
+
+    it("a footnote reference AND its definition both inside a directive, separated from the close fence by a blank line, round-trips and stays a directive", async () => {
+        const doc = ":::note\nA note with a footnote reference[^dnote2] inside it.\n\n[^dnote2]: Definition also inside the directive.\n\n:::\n";
+        expect(await roundTrip(doc)).toBe(doc);
+        const { editor, view } = await makeEditor(doc);
+        expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+        await editor.destroy();
+    });
+
+    // MAR-362: with NO blank line before the close fence, the footnote
+    // definition's lazy-continuation-line rule swallows the `:::` as its own
+    // continuation text, so the span never becomes a container_directive and
+    // degrades to plain paragraphs instead.
+    //
+    // `it.fails` greens on ANY rejection, so a broken `makeEditor` would keep
+    // these passing while proving nothing. The two cases above share that
+    // helper and assert positively, which is what holds it honest.
+    const UNSPACED =
+        ":::note\nA note with a footnote reference[^dnote3] inside it.\n\n[^dnote3]: Definition also inside the directive.\n:::\n";
+
+    it.fails("a footnote definition immediately followed by the close fence should still be a directive [MAR-362]", async () => {
+        const { editor, view } = await makeEditor(UNSPACED);
+        try {
+            expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+        } finally {
+            // The expect throws, so without this the jsdom container and a
+            // live EditorView outlive the test.
+            await editor.destroy();
+        }
+    });
+
+    // The half a user actually notices, and the more serious one: the close
+    // fence comes back indented, so opening the file and saving it without
+    // typing rewrites a line. Phase-0 fidelity, not a parsing nicety.
+    it.fails("a footnote definition before the close fence should not indent the fence on save [MAR-362]", async () => {
+        expect(await roundTrip(UNSPACED)).toBe(UNSPACED);
     });
 });
