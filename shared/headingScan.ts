@@ -29,8 +29,10 @@ const ATX_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/;
 const SETEXT_RE = /^ {0,3}(=+|-+)[ \t]*$/;
 /** Matches a trailing ATX closing sequence (` ##` preceded by whitespace). */
 const ATX_CLOSER_RE = /[ \t]+#+[ \t]*$/;
-/** Matches a YAML frontmatter delimiter line. */
-const FRONTMATTER_DELIM_RE = /^(---|\.\.\.)[ \t]*$/;
+/** Matches a YAML frontmatter delimiter line (a `---` fence, or the document-end `...`). */
+const YAML_DELIM_RE = /^(---|\.\.\.)[ \t]*$/;
+/** Matches a TOML frontmatter delimiter line. */
+const TOML_DELIM_RE = /^\+\+\+[ \t]*$/;
 
 export function scanHeadings(text: string): ScannedHeading[] {
     // Normalize CRLF/CR: split on \n, then drop a trailing \r per line.
@@ -40,13 +42,20 @@ export function scanHeadings(text: string): ScannedHeading[] {
 
     let i = 0;
 
-    // Skip a leading YAML frontmatter block: a `---` fence on line 1, closed by
-    // a later `---` or `...`. An unclosed opener is not frontmatter, so we only
-    // advance when a closing delimiter is found.
-    if (n > 0 && /^---[ \t]*$/.test(lines[0])) {
-        let j = 1;
-        while (j < n && !FRONTMATTER_DELIM_RE.test(lines[j])) j++;
-        if (j < n) i = j + 1;
+    // Skip a leading frontmatter block: a `---` (YAML) or `+++` (TOML) fence on
+    // line 1, closed by its own delimiter; a YAML block also closes on the
+    // document-end marker `...`. An unclosed opener is not frontmatter, so we
+    // only advance when a closing delimiter is found. Both dialects spell a
+    // comment `#`, so an unskipped block reports its comments as ATX headings.
+    if (n > 0) {
+        const closer = /^---[ \t]*$/.test(lines[0]) ? YAML_DELIM_RE
+            : TOML_DELIM_RE.test(lines[0]) ? TOML_DELIM_RE
+                : null;
+        if (closer) {
+            let j = 1;
+            while (j < n && !closer.test(lines[j])) j++;
+            if (j < n) i = j + 1;
+        }
     }
 
     for (; i < n; i++) {

@@ -210,6 +210,52 @@ describe("scanHeadings", () => {
             // Assert
             expect(result).toEqual([{ level: 1, text: "Still a heading", line: 2 }]);
         });
+
+        // A TOML block with no heading-shaped line is deliberately not tested:
+        // skipping it and not skipping it give the same answer, so the check
+        // would pass against a scanner that never learned the dialect.
+        it("a comment inside a TOML frontmatter block should not be read as a heading", () => {
+            // Arrange — TOML spells a comment `#`, which is also an ATX heading.
+            const text = [
+                "+++",
+                "# just a comment",
+                'title = "My Doc"',
+                "+++",
+                "## Body",
+            ].join("\n");
+
+            // Act
+            const result = scanHeadings(text);
+
+            // Assert
+            expect(result).toEqual([{ level: 2, text: "Body", line: 5 }]);
+        });
+
+        it("a TOML block closed by --- should not be treated as frontmatter", () => {
+            // Arrange — the closer must repeat the opener, so nothing is skipped
+            // and the heading between the fences is a real heading.
+            const text = ["+++", "# heading", "---", "## Body"].join("\n");
+
+            // Act
+            const result = scanHeadings(text);
+
+            // Assert
+            expect(result).toEqual([
+                { level: 1, text: "heading", line: 2 },
+                { level: 2, text: "Body", line: 4 },
+            ]);
+        });
+
+        it("an unclosed TOML opener should not swallow the rest of the file", () => {
+            // Arrange
+            const text = ["+++", "# Still a heading"].join("\n");
+
+            // Act
+            const result = scanHeadings(text);
+
+            // Assert
+            expect(result).toEqual([{ level: 1, text: "Still a heading", line: 2 }]);
+        });
     });
 
     describe("line endings", () => {

@@ -20,6 +20,7 @@ const FM_LIST = "---\ntags:\n- one\n- two\n---\n";
 const FM_COMMENT = "---\n# site metadata\ntitle: Hello\n---\n";
 const FM_BLOCK_SCALAR = "---\ndescription: |\n  line one\n  line two\n---\n";
 const FM_NO_COLON = "---\nno colon here\nkey: value\n---\n";
+const FM_TOML = '+++\ntitle = "Hello"\ndraft = true\n+++\n';
 
 function setupDom(): void {
     document.body.innerHTML = '<div id="container"><div id="editor"></div></div>';
@@ -239,6 +240,101 @@ describe("renderFrontmatterPanel raw mode", () => {
         renderFrontmatterPanel(FM_NESTED);
         const toggle = document.querySelector(".fm-toggle-btn");
         expect(toggle?.textContent).toContain("Hide metadata");
+    });
+});
+
+describe("renderFrontmatterPanel TOML mode", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    function getRawEditor(): HTMLTextAreaElement {
+        const ta = document.querySelector<HTMLTextAreaElement>(".fm-raw-editor");
+        expect(ta).toBeTruthy();
+        return ta!;
+    }
+
+    it("a TOML block should render the panel rather than falling through to the document body", () => {
+        renderFrontmatterPanel(FM_TOML);
+        expect(document.getElementById("frontmatter-panel")).toBeTruthy();
+        expect(getRawEditor().value).toBe('title = "Hello"\ndraft = true');
+    });
+
+    it("a TOML block should route to the raw editor, never the YAML table", () => {
+        // Every table rule is a YAML rule, so a table here would re-emit TOML as YAML.
+        renderFrontmatterPanel(FM_TOML);
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.querySelector(".frontmatter-table")).toBeNull();
+        expect(panel.querySelector(".fm-add-btn")).toBeNull();
+    });
+
+    it("a TOML block whose lines look like YAML mappings should still route to raw", () => {
+        // `key: value` is not TOML, but a file can contain it; the dialect is
+        // decided by the fence, not by whether the lines happen to parse.
+        renderFrontmatterPanel("+++\ntitle: Hello\ndraft: true\n+++\n");
+        expect(document.querySelector(".frontmatter-table")).toBeNull();
+        expect(getRawEditor().value).toBe("title: Hello\ndraft: true");
+    });
+
+    it("the TOML raw editor should be labelled as TOML", () => {
+        renderFrontmatterPanel(FM_TOML);
+        expect(getRawEditor().getAttribute("aria-label")).toBe("Edit metadata as TOML");
+    });
+
+    it("the YAML raw editor should still be labelled as YAML", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        expect(getRawEditor().getAttribute("aria-label")).toBe("Edit metadata as YAML");
+    });
+
+    it("blurring an untouched TOML block should not post any frontmatter update", () => {
+        renderFrontmatterPanel(FM_TOML);
+        getRawEditor().dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([]);
+    });
+
+    it("committing a TOML edit should write it back between the original +++ fences", () => {
+        renderFrontmatterPanel(FM_TOML);
+        const ta = getRawEditor();
+        ta.value = 'title = "Hello"\ndraft = true\nweight = 3';
+        ta.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([
+            '+++\ntitle = "Hello"\ndraft = true\nweight = 3\n+++\n',
+        ]);
+    });
+
+    it("a TOML edit introducing a +++ line should be refused, not committed", () => {
+        // It would close the block early and truncate the document on the next cycle.
+        renderFrontmatterPanel(FM_TOML);
+        const ta = getRawEditor();
+        ta.value = 'title = "Hello"\n+++\ndraft = true';
+        ta.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([]);
+        expect(ta.getAttribute("aria-invalid")).toBe("true");
+    });
+
+    it("a TOML edit introducing a --- line should be allowed (it cannot close a +++ block)", () => {
+        renderFrontmatterPanel(FM_TOML);
+        const ta = getRawEditor();
+        ta.value = 'title = "Hello"\n---\ndraft = true';
+        ta.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([
+            '+++\ntitle = "Hello"\n---\ndraft = true\n+++\n',
+        ]);
+    });
+
+    it("isFlatFrontmatter should refuse a TOML block even when its lines are flat", () => {
+        expect(isFlatFrontmatter("+++\ntitle: Hello\n+++\n")).toBe(false);
+    });
+
+    it("parseTabularFrontmatter should refuse a TOML block even when its lines are tabular", () => {
+        expect(parseTabularFrontmatter("+++\ntitle: Hello\n+++\n")).toBeNull();
+    });
+
+    it("a block opened +++ and closed --- is not frontmatter, so nothing is parsed from it", () => {
+        expect(parseTabularFrontmatter("+++\ntitle: Hello\n---\n")).toBeNull();
+        expect(isFlatFrontmatter("+++\ntitle: Hello\n---\n")).toBe(false);
     });
 });
 
