@@ -35,6 +35,7 @@ Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual
         - ...or quick conversions:
             - 24901 mile in km => 40074.274944
             - t = 24\*60\*60\*1000ms in days => 1
+            - t in weeks => 0.142857
             - t\*365 days in weeks => 52.142857
 
     - The answers are portable, because the equation stays plain text and any calculator can be handed it. Where notations disagree, Birta follows the overwhelming majority: `%` is modulo carrying the divisor's sign, `round` sends halves away from zero, trig is in radians, `-2 ^ 2` is `-4`. Where there is no majority, it declines to answer rather than guess. A bare `log(...)` is base 10 in spreadsheets and natural in Python, so it computes as neither. The menu offers both readings with their values, and picking one rewrites the equation to `log10` or `ln` so the meaning travels with the file.
@@ -229,7 +230,7 @@ Reorganizing a long document is the one edit that's genuinely painful in raw Mar
 
 ## Offline by default
 
-Nothing leaves your machine unless you turn it on. Every feature that could touch the network sits behind a single master switch, `birta.network.enabled`, which ships off. With it off the editor makes no outbound request at all. The info cards still render offline: GitHub, Linear, and a Google editing link each build their card purely from the URL text in your document and request nothing.
+Nothing leaves your machine unless you turn it on. Every feature that could touch the network sits behind a single master switch, `birta.network.enabled`, which ships off. With it off the editor makes no outbound request at all. The info cards still render offline: GitHub, Linear, and a Google editing link each build their card purely from the URL text in your document and request nothing. That stays true of a GitHub link whose account you have not connected, which is every GitHub link until you say otherwise.
 
 The private default is the default, not a setting you have to remember to find. Turn the switch on and exactly two features become live. Each is narrow, legible, opt-in, and self-limited, and each carries its own switch: `birta.pasteUnfurl.enabled` and `birta.embeds.enabled`.
 
@@ -240,6 +241,8 @@ Paste-unfurl contacts only the host of a bare URL you paste (with nothing select
 ### URL embed cards
 
 A card contacts only the named provider of a bare link on its own line: a YouTube thumbnail at render, and a title lookup at that provider's own oEmbed endpoint, so the card can name what it embeds. The player is created only when you click, whether that's YouTube in privacy mode (`youtube-nocookie.com`), a Loom or Vimeo video (Vimeo's always loads with its `dnt=1` do-not-track flag), a live Figma frame, a published Google document through Google's own embed endpoints, a Miro board's login-free live view, or a CodePen, CodeSandbox or StackBlitz playground in that provider's own embedded editor. Each provider's exact hosts are pinned in one shared table that also generates the webview's content-security-policy. Never a wildcard, never an aggregation service.
+
+A service you connect is the one case where a card carries a credential, and it is a separate decision from the switch above it. Connecting GitHub, through the Connect Service command or the quiet offer on a GitHub card, lets a repository, issue or pull request link show its real title and state. The credential is held by VS Code's own GitHub sign-in, never by a settings file and never by the webview, which is the least trusted surface here because it renders your document's own content. The request is rebuilt from the id in your link rather than from the link text, goes only to GitHub's own API host, and is not followed across a redirect. Nothing fetched is written into your file, and disconnecting deletes the credential. A connection is something Birta records for itself, never a sign-in it inherits from another extension.
 
 ### You're asked in place, and the choice is yours alone
 
