@@ -105,6 +105,8 @@ describe("fixture parse census", () => {
             "danger", "note",   // nested pair (outer 4-colon, inner 3)
             "note",             // multi-block body
             "caution",
+            "note",             // footnote reference inside, definition outside
+            "note",             // footnote reference AND definition both inside, blank line before close
         ]);
         // The unclosed fence and the spaced name stay ordinary text.
         expect(names).not.toContain("unclosed");
@@ -301,6 +303,35 @@ describe("nested directive fences (MAR-120 case A)", () => {
             return true;
         });
         expect(names).toEqual(["note", "tip"]);
+        await editor.destroy();
+    });
+});
+
+describe("footnotes inside a directive", () => {
+    it("a footnote reference inside a directive, definition outside, round-trips and stays a directive", async () => {
+        const doc = ":::note\nA note with a footnote reference[^dnote] inside it.\n:::\n\n[^dnote]: Definition for the footnote referenced inside a directive.\n";
+        expect(await roundTrip(doc)).toBe(doc);
+        const { editor, view } = await makeEditor(doc);
+        expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+        await editor.destroy();
+    });
+
+    it("a footnote reference AND its definition both inside a directive, separated from the close fence by a blank line, round-trips and stays a directive", async () => {
+        const doc = ":::note\nA note with a footnote reference[^dnote2] inside it.\n\n[^dnote2]: Definition also inside the directive.\n\n:::\n";
+        expect(await roundTrip(doc)).toBe(doc);
+        const { editor, view } = await makeEditor(doc);
+        expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+        await editor.destroy();
+    });
+
+    // MAR-362: with NO blank line before the close fence, the footnote
+    // definition's lazy-continuation-line rule swallows the `:::` as its own
+    // continuation text, so the whole span never becomes a container_directive
+    // — it silently degrades to plain paragraphs instead.
+    it.fails("a footnote definition immediately followed by the close fence should still be a directive [MAR-362]", async () => {
+        const doc = ":::note\nA note with a footnote reference[^dnote3] inside it.\n\n[^dnote3]: Definition also inside the directive.\n:::\n";
+        const { editor, view } = await makeEditor(doc);
+        expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
         await editor.destroy();
     });
 });

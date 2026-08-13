@@ -41,6 +41,19 @@ Second paragraph with **bold** text.
 Unclosed at the end of a section stays a directive only when closed — this one is closed.
 :::
 
+:::note
+A footnote reference lives inside a directive[^dnote] while its definition sits outside.
+:::
+
+[^dnote]: The definition for the footnote referenced above.
+
+:::note
+A footnote reference[^dnote2] and its own definition both live inside the same directive, separated from the closing fence by a blank line (MAR-362).
+
+[^dnote2]: The definition, also inside the directive.
+
+:::
+
 :::unclosed
 This fence never closes, so everything stays ordinary paragraphs.
 
