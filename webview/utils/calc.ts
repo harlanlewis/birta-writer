@@ -983,13 +983,15 @@ function parseUnitForm(input: string): UnitForm | null {
 }
 
 /**
- * Whether `input` has the unit-conversion SHAPE (`3 km in mi`), independent of
- * whether the units are known. Expressions with this shape — like ones with
- * variables — carry a premise outside their own literal text (the unit
- * catalog), which is what the stale-cue classifier keys on.
+ * Whether `input` has either unit-conversion SHAPE — numeric (`3 km in mi`) or
+ * a tagged variable's (`t in weeks`) — independent of whether the units are
+ * known. Expressions with this shape carry a premise outside their own literal
+ * text (the unit catalog), which is what the stale-cue classifier keys on: it
+ * must defer such a line rather than judge it while the lazy engine is cold,
+ * where every conversion answers null.
  */
 export function isUnitForm(input: string): boolean {
-    return parseUnitForm(input) !== null;
+    return parseUnitForm(input) !== null || parseTaggedConversion(input) !== null;
 }
 
 /**
@@ -1010,30 +1012,105 @@ export function isImpossibleUnitConversion(input: string): boolean {
         && !unitsCompatible(form.fromUnit, form.toUnit);
 }
 
-/** Evaluates a parsed unit form against `resolve`; null on any failure. */
-function evaluateUnitForm(
-    input: string,
-    resolve: (name: string) => number | undefined,
-): number | null {
-    const form = parseUnitForm(input);
-    if (!form) { return null; }
-    const value = evaluateExpression(form.numExpr, resolve);
-    if (value === null) { return null; }
-    return convertUnit(value, form.fromUnit, form.toUnit);
+/** The parsed pieces of a `<variable> (in|to) <unit>` form. */
+interface TaggedForm {
+    name: string;
+    toUnit: string;
 }
 
 /**
- * Evaluate a "living calculation" expression: either a unit conversion
- * (`3 km in mi`) or ordinary arithmetic with variables (`rent / budget * 100`).
- * `scope` supplies variable values; an unknown name (or a bad unit / shape)
- * yields null, so the caller shows nothing. This is the `=>` counterpart to the
- * `=` path's bare `evaluateExpression`.
+ * The bare-variable conversion shape `<variable> (in|to) <unit>` — `t in weeks`.
+ * A whole-input match, deliberately: anything before the variable makes this a
+ * numeric conversion instead (`2 t in kg` is two tonnes, and parseUnitForm owns
+ * it), and anything after it is not this shape at all. Whether the variable
+ * carries a unit tag is the caller's question, not a shape question.
  */
-export function evaluateCalc(input: string, scope?: Map<string, number>): number | null {
+const TAGGED_CONVERSION = /^\s*([A-Za-zπτ_][\wπτ]*)\s+(?:in|to)\s+([A-Za-z°]+)\s*$/u;
+
+function parseTaggedConversion(input: string): TaggedForm | null {
+    const m = TAGGED_CONVERSION.exec(input);
+    return m ? { name: m[1], toUnit: m[2] } : null;
+}
+
+/**
+ * A variable scope: every name a `=>` or a block line can resolve, mapped to a
+ * PLAIN NUMBER, plus the optional `units` side table of UNIT TAGS.
+ *
+ * A tag records the unit a value is IN, and exists for one shape: a definition
+ * whose right-hand side is a conversion (`t = 24*60*60*1000 ms in days`) stores
+ * the dimensionless `1`, and without the tag the "days" is gone — so `t in
+ * weeks` has nothing to convert FROM and the writer has to restate the unit
+ * (MAR-201). A tag is written only by applyDefinition, and only from the
+ * conversion that produced the value; any other right-hand side CLEARS it, so a
+ * redefinition (`t = 5`) can never leave an old unit attached to a new number.
+ *
+ * The tag deliberately does not survive arithmetic: `u = t * 2` is a plain
+ * number, and `u in weeks` refuses rather than guessing that doubling a
+ * duration keeps its unit. Full unit algebra would mean routing arithmetic
+ * through mathjs, which the header's safety posture forbids; restating the unit
+ * (`t * 2 days in weeks`) computes today and says what was meant.
+ *
+ * `units` is a property rather than a richer value type so that `scope.get(x)`
+ * stays a number for every consumer, and a plain `Map<string, number>` is still
+ * a scope. The one thing it cannot survive is a COPY: `new Map(scope)` drops
+ * the tags. Nothing copies a scope today; build one through buildScopeFromLines
+ * or applyDefinition instead.
+ */
+export interface CalcScope extends Map<string, number> {
+    units?: Map<string, string>;
+}
+
+/** A calc value with the unit it is IN, when a conversion produced it. */
+interface TaggedValue {
+    value: number;
+    unit?: string;
+}
+
+/** Converts a tagged variable to `form.toUnit`; null when it carries no tag
+ * (an ordinary number has no unit to convert FROM) or the dimensions differ. */
+function convertTagged(form: TaggedForm, scope?: CalcScope): number | null {
+    const from = scope?.units?.get(form.name);
+    const value = scope?.get(form.name);
+    if (from === undefined || value === undefined) { return null; }
+    return convertUnit(value, from, form.toUnit);
+}
+
+/**
+ * Evaluate a "living calculation" expression AND report the unit its value is
+ * in, which is what a definition records as its tag. Three readings, in this
+ * order, first one that computes wins:
+ *  - a numeric unit conversion (`3 km in mi`, `2 t in kg`) — first, so a number
+ *    in front always means the word after it is a UNIT, never a variable;
+ *  - a tagged variable's conversion (`t in weeks`), which chains: `u = t in
+ *    weeks` tags `u` as weeks in turn;
+ *  - ordinary arithmetic with variables (`rent / budget * 100`), untagged.
+ */
+function evaluateCalcTagged(input: string, scope?: CalcScope): TaggedValue | null {
     const resolve = (name: string): number | undefined => scope?.get(name);
-    const unit = evaluateUnitForm(input, resolve);
-    if (unit !== null) { return unit; }
-    return evaluateExpression(input, resolve);
+    const form = parseUnitForm(input);
+    if (form) {
+        const value = evaluateExpression(form.numExpr, resolve);
+        const converted = value === null ? null : convertUnit(value, form.fromUnit, form.toUnit);
+        if (converted !== null) { return { value: converted, unit: form.toUnit }; }
+    }
+    const tagged = parseTaggedConversion(input);
+    if (tagged) {
+        const converted = convertTagged(tagged, scope);
+        if (converted !== null) { return { value: converted, unit: tagged.toUnit }; }
+    }
+    const value = evaluateExpression(input, resolve);
+    return value === null ? null : { value };
+}
+
+/**
+ * Evaluate a "living calculation" expression: a unit conversion (`3 km in mi`,
+ * or a tagged variable's `t in weeks`) or ordinary arithmetic with variables
+ * (`rent / budget * 100`). `scope` supplies variable values; an unknown name
+ * (or a bad unit / shape) yields null, so the caller shows nothing. This is the
+ * `=>` counterpart to the `=` path's bare `evaluateExpression`.
+ */
+export function evaluateCalc(input: string, scope?: CalcScope): number | null {
+    return evaluateCalcTagged(input, scope)?.value ?? null;
 }
 
 /**
@@ -1057,6 +1134,14 @@ export function isCalcStructurallyValid(input: string): boolean {
         // under-promising is safe, guessing at the catalog is not.
         if (!calcUnitsReady() || unitsCompatible(form.fromUnit, form.toUnit)) { return true; }
     }
+    const tagged = parseTaggedConversion(input);
+    // Whether the variable is TAGGED needs a scope, which structure-land does
+    // not have — so the target unit is the whole test, and an untagged variable
+    // simply yields no result at fetch time. The engine-cold case must accept
+    // too, and here that is load-bearing rather than merely symmetric with the
+    // form above: shouldSuggest gates the fetch that loads the engine, so a
+    // refusal while it is cold would refuse forever.
+    if (tagged && (!calcUnitsReady() || isKnownUnit(tagged.toUnit))) { return true; }
     return isValidExpressionStructure(input);
 }
 
@@ -1225,7 +1310,13 @@ export function expressionUsesVariables(expr: string): boolean {
  * expression stopped computing — an unresolved name whose definition is
  * visibly mid-edit is transient, not vanished.
  */
-export function unresolvedVariables(expr: string, scope: Map<string, number>): string[] {
+export function unresolvedVariables(expr: string, scope: CalcScope): string[] {
+    // A tagged conversion has exactly ONE variable; its keyword and target unit
+    // tokenize as names too, and the broken cue shows the FIRST unresolved one.
+    // For an untagged or dimension-mismatched conversion that would be `in`,
+    // which is not a name any definition could restore.
+    const tagged = parseTaggedConversion(expr);
+    if (tagged) { return scope.has(tagged.name) ? [] : [tagged.name]; }
     const tokens = tokenize(expr, "open");
     if (!tokens) { return []; }
     const names: string[] = [];
@@ -1302,14 +1393,24 @@ export function parseDefinitions(line: string): Array<{ name: string; rhs: strin
  * a value, enter it into `scope`. Returns the value, or null when the RHS does
  * not resolve (the scope is left untouched — a broken definition never
  * clobbers an earlier good one).
+ *
+ * This is also the ONLY writer of unit tags (see CalcScope): a conversion RHS
+ * tags the name with the unit its value is in, and every other RHS clears the
+ * tag, so a redefinition can never leave `t` reading as days once it is 5.
  */
 export function applyDefinition(
     def: { name: string; rhs: string },
-    scope: Map<string, number>,
+    scope: CalcScope,
 ): number | null {
-    const value = evaluateCalc(def.rhs, scope);
-    if (value !== null) { scope.set(def.name, value); }
-    return value;
+    const out = evaluateCalcTagged(def.rhs, scope);
+    if (out === null) { return null; }
+    scope.set(def.name, out.value);
+    if (out.unit === undefined) {
+        scope.units?.delete(def.name);
+    } else {
+        (scope.units ??= new Map()).set(def.name, out.unit);
+    }
+    return out.value;
 }
 
 /**
@@ -1319,8 +1420,8 @@ export function applyDefinition(
  * definition may reference earlier ones and a later redefinition wins — the
  * predictable, spreadsheet-like reading a reader gets scanning down the page.
  */
-export function buildScopeFromLines(lines: readonly string[]): Map<string, number> {
-    const scope = new Map<string, number>();
+export function buildScopeFromLines(lines: readonly string[]): CalcScope {
+    const scope: CalcScope = new Map<string, number>();
     for (const line of lines) {
         for (const def of parseDefinitions(line)) { applyDefinition(def, scope); }
     }
@@ -1382,9 +1483,17 @@ const CALC_TRAILING_EQ = /\s*=>?[ \t]*$/;
  *   `state-of-the-art` are ident chains with operators), but it reads as
  *   prose — cueing it would put error dashes on ordinary notes.
  */
-function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
+function looksLikeFormula(expr: string, scope: CalcScope): boolean {
     const form = parseUnitForm(expr);
     if (form && isKnownUnit(form.fromUnit) && isKnownUnit(form.toUnit)) {
+        return true;
+    }
+    // A tagged variable converted to a known unit: the evidence is the TAG, not
+    // the words — `t in kg` is a formula when `t` is a duration (and refuses,
+    // dimensions being what they are), while the same line with an untagged `t`
+    // is prose and stays uncued.
+    const tagged = parseTaggedConversion(expr);
+    if (tagged && scope.units?.has(tagged.name) && isKnownUnit(tagged.toUnit)) {
         return true;
     }
     const hasCall = HAS_FUNCTION_CALL.test(expr);
@@ -1432,7 +1541,7 @@ const HAS_FUNCTION_CALL = /[A-Za-zπτ_][\wπτ]*\s*\(/u;
  * paths, only evaluated line-by-line over a shared scope.
  */
 export function evaluateCalcBlock(source: string): CalcBlockLine[] {
-    const scope = new Map<string, number>();
+    const scope: CalcScope = new Map<string, number>();
     /** An `error` row, naming the ambiguity when that is why it has no value. */
     const errorLine = (raw: string, inspect: string): CalcBlockLine => {
         const ambiguous = ambiguousCallsIn(inspect);
