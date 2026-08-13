@@ -82,6 +82,24 @@ describe("table-cell commits are refused when they would tear the row", () => {
         await editor.destroy();
     });
 
+    it("the refusal should state its reason in the panel, and withdraw it once the bytes change", async () => {
+        const editor = await makeEditor(TABLE);
+        const view = getView(editor);
+        const { dom } = htmlAtom(view, "<u>");
+
+        const area = commitThrough(dom, '<span title="a|b">');
+        const note = dom.querySelector(".html-src-note") as HTMLElement;
+        expect(note.classList.contains("html-src-note--error")).toBe(true);
+        expect(note.textContent).toContain("break the row");
+
+        area.value = "<span>";
+        area.dispatchEvent(new Event("input"));
+
+        expect(note.classList.contains("html-src-note--error")).toBe(false);
+        expect(area.getAttribute("aria-invalid")).toBeNull();
+        await editor.destroy();
+    });
+
     it("a value carrying a newline should be refused the same way", async () => {
         const editor = await makeEditor(TABLE);
         const before = editor.action(getMarkdown());

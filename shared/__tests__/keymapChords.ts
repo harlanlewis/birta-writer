@@ -148,6 +148,10 @@ export const LABEL_CHORDS: Readonly<Record<string, readonly string[]>> = {
     // already open; the hint never prints it, because the user may have
     // rebound the command and the webview cannot read their binding.
     "webview/components/blockSource/index.ts": ["Mod-Enter"],
+    // The HTML source panel's hint row, on the same terms as blockSource's:
+    // panel-local keys only. Mod-/ commits and hands off to the block source
+    // panel and is likewise never printed.
+    "webview/components/htmlView/index.ts": ["Mod-Enter"],
     // The cheatsheet overlay prints ONLY the fixed typing-level grammar
     // above; rebindable commands are listed by name with no keys.
     "webview/components/shortcutsHelp/index.ts": [
