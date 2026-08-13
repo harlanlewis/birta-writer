@@ -5,7 +5,7 @@
  * — native HTML5 DnD is deliberately avoided (it leaked drag payloads into
  * the document and fought ProseMirror's own drop handler; see MAR-36).
  *
- * A mousedown on a marker arms a potential drag; crossing a small movement
+ * A pointerdown on a marker arms a potential drag; crossing a small movement
  * threshold starts the session (and suppresses the click that would open the
  * block menu). The dragged unit is moveRangeAt's answer — every block moves
  * alone, a heading included, because a drag in the text is a literal sequence
@@ -25,13 +25,24 @@
  *     the save-survival hazard is too expensive to ask per pointer move, so
  *     it alone can still refuse a drawn line — visibly, with its own notice;
  *   - the window auto-scrolls when the pointer nears the viewport edges;
- *   - Escape cancels, mouseup commits (one transaction, one undo step).
+ *   - Escape cancels, pointerup commits (one transaction, one undo step),
+ *     pointercancel abandons it.
  *
  * The session machinery is source-agnostic (startPointerDragSession) — the
  * gutter marker is one DragSessionSource; other handles (e.g. TOC items)
  * supply their own. Registered DropZoneProviders (the TOC panel) take over
  * targeting while the pointer is inside them; the commit path stays the one
  * moveBlocks call regardless of zone.
+ *
+ * Pointer events, not mouse events, are what make the gesture modality-neutral
+ * (MAR-340). Driven by mouse events this same session is inert under touch and
+ * driven by pointer events it works for mouse, pen, and finger alike; nothing
+ * about the affordance changes, and no device class is detected. Two
+ * conditions come with that and are not optional: the marker must carry
+ * `touch-action: none`, or the browser claims the gesture as a pan before a
+ * session can start; and a non-primary pointer (a second finger) must be
+ * ignored, or its coordinates steer a session it did not begin. Both are
+ * pinned by e2e/touchBlocks, which reverts to red for either.
  */
 import type { EditorView } from "../../pm";
 import type { EditorState } from "../../pm";
@@ -226,7 +237,7 @@ export function dropTargetFor(
 // selection cover, the keyboard layer, and this session must all read the
 // same one. Re-imported above from the plugins/headingFold facade.
 
-/** Pixels of pointer travel before a mousedown becomes a drag. */
+/** Pixels of pointer travel before a pointerdown becomes a drag. */
 const DRAG_THRESHOLD = 4;
 /** Viewport margin (px) inside which the window auto-scrolls. The marquee
  * shares the whole ramp via scrollVelocityFor below, not this constant. */
@@ -657,7 +668,7 @@ export interface DropZoneProvider {
      * when the pointer sits inside the zone but over no legal slot — and a
      * null return must also UN-render the chrome (the session never cleans
      * up after a provider mid-hover; `clear` only fires on zone exit/end).
-     * Called on every mousemove inside the zone AND once per auto-scroll
+     * Called on every pointermove inside the zone AND once per auto-scroll
      * frame, so it must be cheap and idempotent — no layout writes when the
      * answer hasn't changed.
      *
@@ -747,7 +758,7 @@ export interface DragSessionSource {
 }
 
 /**
- * Run one pointer drag session, from an armed mousedown to commit or cancel.
+ * Run one pointer drag session, from an armed pointerdown to commit or cancel.
  * The session owns everything source-agnostic: the movement threshold, the
  * capture-phase listeners, document boundary targeting (indicator line +
  * edge auto-scroll), drop-zone provider handoff, the cursor pill, the range
@@ -792,7 +803,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
     const scopedRange = (): { from: number; to: number } =>
         (activeProvider?.scope === "outline" ? outlineRange : range)!;
 
-    // The scope the source-side chrome currently shows, so a mousemove that
+    // The scope the source-side chrome currently shows, so a pointermove that
     // did not cross a zone boundary repaints nothing. The veil's reposition is
     // a layout read per call and this runs on every pointer move.
     let paintedScope: "body" | "outline" | null = null;
@@ -867,17 +878,33 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             hideRangeVeil();
         }
         document.body.classList.remove("block-dragging");
-        document.removeEventListener("mousemove", onMove, true);
-        document.removeEventListener("mouseup", onUp, true);
+        document.removeEventListener("pointermove", onMove, true);
+        document.removeEventListener("pointerup", onUp, true);
+        document.removeEventListener("pointercancel", onCancel, true);
         document.removeEventListener("keydown", onKey, true);
         window.removeEventListener("blur", onBlur);
         source.onStop?.();
     };
 
-    const onMove = (move: MouseEvent): void => {
+    /**
+     * True for a NON-PRIMARY pointer: a second finger on a touchscreen. Every
+     * session here is armed by the primary pointer (a mouse always is, and
+     * wireMarkerDrag refuses a non-primary pointerdown), so this is exactly
+     * "some pointer other than mine" and its events must be dropped whole —
+     * a foreign move steers the drop, and a foreign release commits it.
+     * Written as an explicit `=== false` rather than `!isPrimary`: jsdom has
+     * no PointerEvent, so the unit suites dispatch MouseEvents under the
+     * pointer event names and the property is absent there.
+     */
+    const foreign = (event: PointerEvent): boolean => event.isPrimary === false;
+
+    const onMove = (move: PointerEvent): void => {
+        if (foreign(move)) {
+            return;
+        }
         lastPointerX = move.clientX;
         lastPointerY = move.clientY;
-        // The button was released outside the window (no mouseup reaches
+        // The button was released outside the window (no pointerup reaches
         // us): end the session — armed or dragging — instead of leaking
         // listeners / dragging with no button down.
         if ((move.buttons & 1) === 0) {
@@ -970,7 +997,10 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
         }
     };
 
-    const onUp = (): void => {
+    const onUp = (up: PointerEvent): void => {
+        if (foreign(up)) {
+            return;
+        }
         // Doc changed mid-drag (external sync): the measured range and
         // boundaries describe a document that no longer exists — cancel.
         const commit = dragging && range && target && view.state.doc === startDoc;
@@ -1001,6 +1031,19 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
         }
     };
 
+    /**
+     * The browser took the gesture away (a system edge-swipe, a pan the
+     * marker's `touch-action` did not cover): abandon WITHOUT committing.
+     * The distinction from onUp is the whole point — a cancelled drag never
+     * chose a destination, so treating it as a release would move the block
+     * to wherever the finger happened to be when the browser intervened.
+     */
+    const onCancel = (cancel: PointerEvent): void => {
+        if (!foreign(cancel)) {
+            stop();
+        }
+    };
+
     const onKey = (key: KeyboardEvent): void => {
         if (key.key === "Escape" && dragging) {
             key.preventDefault();
@@ -1013,8 +1056,9 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
         stop();
     };
 
-    document.addEventListener("mousemove", onMove, true);
-    document.addEventListener("mouseup", onUp, true);
+    document.addEventListener("pointermove", onMove, true);
+    document.addEventListener("pointerup", onUp, true);
+    document.addEventListener("pointercancel", onCancel, true);
     document.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", onBlur);
 }
@@ -1031,8 +1075,12 @@ export function wireMarkerDrag(
     marker: HTMLElement,
     blockPos: () => number | null,
 ): void {
-    marker.addEventListener("mousedown", (event: MouseEvent) => {
-        if (event.button !== 0) {
+    marker.addEventListener("pointerdown", (event: PointerEvent) => {
+        // button 0 is the primary contact for every pointer type — the left
+        // mouse button, the pen tip, a finger. Nothing here may
+        // preventDefault: that suppresses the compatibility mouse events, and
+        // the tap that opens the block menu is one of them.
+        if (event.button !== 0 || event.isPrimary === false) {
             return;
         }
         startPointerDragSession(view, {
@@ -1096,20 +1144,32 @@ export function wireMarkerDrag(
             onStop: () => {
                 marker.classList.remove("heading-fold-marker--dragging");
                 // The click-suppression flag must not outlive the interaction —
-                // but it must survive until the mouse BUTTON is actually released
+                // but it must survive until the pointer is actually released
                 // (an Escape-cancel leaves it held; the eventual release still
                 // produces a click on the marker, which must stay suppressed).
-                // A one-shot bubble-phase mouseup fires for the release — on the
-                // commit path that's the very mouseup ending the drag — and its
-                // zero-delay hop runs after the click that release produces.
+                // A one-shot bubble-phase listener fires for the release — on
+                // the commit path that's the very event ending the drag — and
+                // its zero-delay hop runs after the click that release
+                // produces. It rides the POINTER names rather than mouseup so
+                // the flag's release is the vocabulary the session itself ends
+                // on, for every pointer type, instead of a compatibility event
+                // the browser synthesizes at its own discretion. Both endings
+                // have to be listened for, because a gesture the browser takes
+                // away ends in pointercancel and no pointerup: with only the
+                // pointerup listener the flag outlives the interaction and is
+                // released by whatever unrelated pointer release comes next
+                // (e2e/touchBlocks asserts the flag itself, not a following
+                // tap, because the tap happens to survive the leak).
                 if (marker.dataset["dragged"]) {
-                    document.addEventListener(
-                        "mouseup",
-                        () => setTimeout(() => {
+                    const release = (): void => {
+                        document.removeEventListener("pointerup", release);
+                        document.removeEventListener("pointercancel", release);
+                        setTimeout(() => {
                             delete marker.dataset["dragged"];
-                        }, 0),
-                        { once: true },
-                    );
+                        }, 0);
+                    };
+                    document.addEventListener("pointerup", release);
+                    document.addEventListener("pointercancel", release);
                 }
             },
         });
