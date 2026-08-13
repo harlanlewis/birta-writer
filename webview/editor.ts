@@ -76,6 +76,7 @@ import {
     listMergeSuggestPlugin,
     listSpreadNormalizePlugin,
     noteMarkersPlugin,
+    emptyLineHintPlugin,
     pendingRangePlugin,
     proofreadPlugin,
     selectionPlugin,
@@ -723,6 +724,7 @@ export async function createEditor(
         .use(headingAbsoluteInputRule)
         .use(selectionPlugin)
         .use(pendingRangePlugin)
+        .use(emptyLineHintPlugin)
         .use(headingFoldPlugin)
         .use(headingStickyPlugin)
         .use(caretScrollMarginPlugin)

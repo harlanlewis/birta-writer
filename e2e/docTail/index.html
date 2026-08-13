@@ -1,0 +1,58 @@
+<!doctype html>
+<!-- e2e harness page for the document tail: the overscroll band under the last
+     block and the empty-line hint. Mirrors the provider template
+     (src/MarkdownEditorProvider.ts) with acquireVsCodeApi stubbed. `?doc=short`
+     serves a document far shorter than the viewport, which is the case the
+     overscroll must NOT give a scrollbar to. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-border: #454545;
+    --vscode-widget-border: rgba(128, 128, 128, 0.25);
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-activeSelectionBackground: #094771;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-textLink-foreground: #3794ff;
+    --vscode-editor-font-family: monospace;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-textPreformat-foreground: #d7ba7d;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const short = new URLSearchParams(location.search).get("doc") === "short";
+  const body = short
+    ? "line one.\n"
+    : Array.from({ length: 60 }, (_, i) => `paragraph ${i + 1}.`).join("\n\n") + "\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: `# Tail\n\n${body}`, syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

@@ -191,6 +191,44 @@
     border-radius: var(--ui-radius-s);
 }
 
+/* The empty-line hint (plugins/emptyLineHint.ts): a node decoration on the
+   caret's empty top-level paragraph, which is the positioning context, plus a
+   widget carrying the sentence. Out of flow so it adds no height and the caret
+   sits where it would with no hint at all; inert to the pointer so a click
+   anywhere across it still lands in the paragraph. Hidden unless the editor
+   itself has focus, because a document nobody is typing in has nothing to
+   discover, and `display` rather than opacity so the hidden state costs no
+   paint. */
+.ProseMirror .md-empty-hint {
+    position: relative;
+}
+
+.ProseMirror .md-empty-hint-text {
+    display: none;
+}
+
+.ProseMirror:focus .md-empty-hint-text {
+    /* Blockified by `position: absolute` anyway; stated so the rule and what
+       the browser computes agree. */
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-style: italic;
+    color: var(--vscode-editor-foreground);
+    opacity: 0.38;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+
+    /* The key wears the document's own inline code chip (the `code` rule under
+       .milkdown .editor), minus the italic it would inherit from the sentence
+       around it. */
+    code {
+        font-style: normal;
+    }
+}
+
 /* The block a menu is open FOR: a quiet tint so Duplicate/Delete's target is
    visible at a glance (Editor.js/Notion cue; theme token, no custom color).
    Keyed off the marker's own --menu-open class via :has() — mutating the
@@ -542,7 +580,20 @@ html {
     margin: 0 auto;
     /* Toolbar-aware top clearance — see .frontmatter-panel. (When a panel is
        rendered above, the component overrides this inline to 16px.) */
-    padding: calc(var(--editor-topbar-height, 40px) + 16px) 48px 80px;
+    /* The bottom value is OVERSCROLL, not spacing: half a viewport of
+       scrollable room past the last block, so the final line can be brought up
+       the screen to read comfortably without padding the file with empty
+       paragraphs to get it there. `min-height` is measured on the border box
+       (global `box-sizing: border-box`), so a document shorter than the
+       viewport still ends exactly at 100vh and gains no scrollbar. The band is
+       also the click target that puts the caret at the document end (see the
+       editor-container mousedown in webview/index.ts).
+
+       `vh` and not `dvh`: the two are identical inside a webview, which has no
+       retracting browser chrome, and where they differ `dvh` is the wrong one.
+       It would change value as that chrome moved, reflowing the document
+       mid-scroll — the one moment a stable page height matters most. */
+    padding: calc(var(--editor-topbar-height, 40px) + 16px) 48px 50vh;
     padding-left: 76px;
     min-height: 100vh;
     outline: none;
@@ -1895,7 +1946,7 @@ body.toolbar-hidden::before {
     overflow: hidden;
     text-overflow: ellipsis;
 
-    /* Ground, ink and outline come from .ui-menu-row--selected, composed
+    /* Ground and ink come from .ui-menu-row--selected, composed
        alongside this class. Local: full ink on this row's own hint. */
     &.fm-suggest-item--focused .fm-suggest-item__hint {
         color: inherit;
@@ -1987,7 +2038,7 @@ body.toolbar-hidden::before {
 .slash-menu-item {
     padding: 4px 10px;
 
-    /* Ground, ink and outline come from .ui-menu-row--selected, composed
+    /* Ground and ink come from .ui-menu-row--selected, composed
        alongside this class. Local: restoring full ink on the row's own parts,
        which only this surface knows the names of. */
     &.slash-menu-item--focused :is(.slash-menu-item-icon, .slash-menu-item-badge, .slash-menu-item-hint) {
