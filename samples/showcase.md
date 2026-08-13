@@ -11,6 +11,8 @@ Scroll through this file in the editor to see every content type it renders - on
 
 **Bold**, _italic_, ~~strikethrough~~, ==highlight==, and `inline code`. Combine as needed: ***italic bold ==highlight== and `code`.***
 
+Five paired HTML tags render live too, with the tags dimmed to chips you can click to edit: <u>underline</u>, H<sub>2</sub>O, x<sup>2</sup>, <kbd>Cmd</kbd>, and <mark>marked text</mark>. Display only, so the file keeps the tags you wrote.
+
 ## Links
 
 - An inline link: [Birta Writer](https://example.com)
@@ -51,10 +53,6 @@ left = income - rent
 3 km in mi
 ```
 
-$$
-\int_0^1 x^2 \, dx = \frac{1}{3}
-$$
-
 ## Images
 
 ![Two cats on a cat tree](images/cats.jpeg)
@@ -86,9 +84,13 @@ Bob --> Alice : hi
 
 Inline $E = mc^2$, and block:
 
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+
 ## Embeds
 
-A bare provider link on its own line becomes a card - YouTube, Vimeo, Loom, Figma, Google Docs/Sheets/Slides/Drive, and Miro players, the CodePen, CodeSandbox, and StackBlitz playgrounds, plus GitHub and Linear info cards. The info cards are built offline from the URL alone; the players need the network switch, which ships **off** (Cmd+Shift+P → "Toggle Network Features" - until then they stay plain links):
+A bare provider link on its own line becomes a card - YouTube, Vimeo, Loom, Figma, Google Docs/Sheets/Slides/Drive, and Miro players, the CodePen, CodeSandbox, and StackBlitz playgrounds, plus GitHub and Linear info cards. The info cards are built offline from the URL alone; the players need the network switch, which ships **off** (Cmd+Shift+P → "Toggle Network Features" - until then they stay plain links). Each provider also has its own switch, on by default, so any one of them can be turned off without the others. With the network on, a GitHub link fills its card in with the repository, issue or pull request's real title and state:
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
@@ -102,7 +104,9 @@ Some claims deserve a footnote.[^1]
 
 ## Raw HTML
 
-<div align="center"><strong>Raw HTML renders as a safe, read-only preview.</strong></div>
+<div align="center"><strong>Raw HTML renders as a sanitized preview, editable in place.</strong></div>
+
+Click it, or press Cmd+Enter with a tag selected, and the raw source opens in a small panel right where it stands. Every other kind of block opens the same way with Cmd+/, which hands you that block's own Markdown.
 
 ## Frontmatter
 
