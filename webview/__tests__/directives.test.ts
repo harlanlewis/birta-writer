@@ -409,14 +409,21 @@ describe("a close fence swallowed by a lazy continuation [MAR-362]", () => {
         await expectOneNote(CALLOUT);
     });
 
-    // Parses, then drifts a blank line in after the open fence, and the swallow
-    // is not why: `callouts.ts` builds its callout node without a `position`,
-    // so `linesAdjacent` cannot see that the callout starts on the next line
-    // and `openAttached` comes back false. The same drift is already there with
-    // a blank line before the close fence (`:::note\n> [!NOTE]\n> Body.\n\n:::\n`),
-    // where nothing is swallowed at all.
-    it.fails("a callout before the close fence should round-trip byte-identically", async () => {
+    // The swallow was never why this drifted: `callouts.ts` built its callout
+    // node without a `position`, so `linesAdjacent` could not see that the
+    // callout starts on the line after the open fence and `openAttached` came
+    // back false. It now carries the blockquote's span, which is why this
+    // passes. The no-swallow control below shares that cause and holds it.
+    it("a callout before the close fence should round-trip byte-identically", async () => {
         expect(await roundTrip(CALLOUT)).toBe(CALLOUT);
+    });
+
+    // The same drift with nothing swallowed at all: a blank line before the
+    // close fence. It pins the `position` fix rather than the fence repair, so
+    // a regression in either is attributable to one of them.
+    it("a callout in a directive round-trips when nothing is swallowed", async () => {
+        const doc = ":::note\n> [!NOTE]\n> Body.\n\n:::\n";
+        expect(await roundTrip(doc)).toBe(doc);
     });
 
     // The reason the repair reads raw source. mdast strips a container's

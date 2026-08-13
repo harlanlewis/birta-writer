@@ -295,6 +295,13 @@ function blockquoteToCallout(
         marker,
         attached,
         children: body.length > 0 ? body : [{ type: "paragraph", children: [] }],
+        // The blockquote's own span, carried through. A node built without one
+        // is invisible to any consumer that reasons about where a block starts:
+        // `directives.ts` asks `linesAdjacent` whether a body block begins on
+        // the line after the open fence, and a callout with no position always
+        // answered no, so a directive wrapping one gained a blank line it never
+        // had (MAR-362 found it; the callout is the same node either way).
+        position: bq.position,
     };
 }
 
