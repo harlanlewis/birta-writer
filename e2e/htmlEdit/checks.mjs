@@ -76,6 +76,12 @@ export async function run({ page, check, baseUrl }) {
             mirror: { top: m.top, left: m.left, width: m.width, height: m.height },
             scrollHeight: area.scrollHeight,
             clientHeight: area.clientHeight,
+            // CONTENT heights, which is where the layers can actually diverge.
+            // Their boxes cannot: the textarea is `inset: 0` inside a wrapper
+            // the mirror sizes, so comparing those two is comparing a value
+            // with itself.
+            areaContent: area.scrollHeight,
+            mirrorContent: mirror.scrollHeight,
             block: panel.classList.contains("html-src-panel--block"),
             noteShown: note ? getComputedStyle(note).display !== "none" : false,
             editorWidth: document.querySelector(".ProseMirror p").getBoundingClientRect().width,
@@ -94,6 +100,9 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(blockBox));
     check("no source is scrolled out of the box",
         blockBox !== null && blockBox.scrollHeight <= blockBox.clientHeight + 1,
+        JSON.stringify(blockBox));
+    check("the highlight layer wraps to the same height as the textarea",
+        blockBox !== null && Math.abs(blockBox.areaContent - blockBox.mirrorContent) <= 1,
         JSON.stringify(blockBox));
     check("the highlight layer sits exactly under the textarea",
         blockBox !== null
@@ -125,6 +134,22 @@ export async function run({ page, check, baseUrl }) {
             && Math.abs(wrapped.area.height - wrapped.mirror.height) < 1,
         JSON.stringify(wrapped));
 
+    // Emptied: the one value with no line boxes to size the mirror, so
+    // `min-height` alone decides. It has to leave room for the caret line
+    // AND the shared padding, since both layers are border-box.
+    await page.evaluate(() => {
+        const area = document.querySelector(".ProseMirror textarea.html-src");
+        area.value = "";
+        area.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.waitForTimeout(150);
+    const emptied = await boxes();
+    check("an emptied value still shows its whole caret line",
+        emptied !== null
+            && emptied.scrollHeight <= emptied.clientHeight + 1
+            && Math.abs(emptied.area.height - emptied.mirror.height) < 1,
+        JSON.stringify(emptied));
+
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
 
@@ -145,6 +170,50 @@ export async function run({ page, check, baseUrl }) {
             && Math.abs(inlineBox.area.height - inlineBox.mirror.height) < 1
             && inlineBox.scrollHeight <= inlineBox.clientHeight + 1,
         JSON.stringify(inlineBox));
+
+    // The comment chip's resting styles are the atom's, not the panel's. Left
+    // on, they dim the whole editing surface and compound its font size, which
+    // reads as a broken control rather than a quiet chip.
+    const chipLeak = await page.evaluate(() => {
+        // Read the HOST atom, not the panel: opacity and background are the
+        // chip's own, and opacity does not inherit, so the panel's computed
+        // value is 1 however dimmed it actually renders.
+        const host = document.querySelector(".ProseMirror .html-inline--editing");
+        const s = getComputedStyle(host);
+        const mirror = getComputedStyle(document.querySelector(".ProseMirror .html-src-mirror"));
+        const body = getComputedStyle(document.querySelector(".ProseMirror p"));
+        return {
+            opacity: s.opacity,
+            background: s.backgroundColor,
+            mirrorPx: parseFloat(mirror.fontSize),
+            bodyPx: parseFloat(body.fontSize),
+        };
+    });
+    check("the editing surface is not dimmed by the chip it replaced",
+        chipLeak.opacity === "1", JSON.stringify(chipLeak));
+    check("the source is not shrunk twice over",
+        // 0.9em of content. Compounding the chip's 0.85em too lands near 0.77.
+        Math.abs(chipLeak.mirrorPx / chipLeak.bodyPx - 0.9) < 0.02, JSON.stringify(chipLeak));
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
+    // An atom alone in a table cell is not a "whole block": a full-width block
+    // face with its own margins deforms the row it sits in.
+    await page.click(".ProseMirror table .html-inline[data-type=html]");
+    await page.waitForSelector(".ProseMirror textarea.html-src", { timeout: 5000 });
+    await page.waitForTimeout(150);
+    const cellBox = await page.evaluate(() => {
+        const panel = document.querySelector(".ProseMirror .html-src-panel");
+        const cell = panel.closest("td, th");
+        return {
+            block: panel.classList.contains("html-src-panel--block"),
+            panelWidth: panel.getBoundingClientRect().width,
+            cellWidth: cell ? cell.getBoundingClientRect().width : null,
+        };
+    });
+    check("an atom alone in a table cell opens the inline face",
+        cellBox.block === false, JSON.stringify(cellBox));
 
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);

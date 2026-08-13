@@ -55,7 +55,8 @@
           // Body lines 1-3 are load-bearing: the mode-switch check asserts the
           // comment paragraph's line number. Append below them, never above.
           content: "Press <kbd>Ctrl</kbd> to run.\n\nNote <!-- editorial --> here.\n\n"
-            + "<div align=\"center\"><strong>Raw HTML renders as a safe, read-only preview.</strong></div>\n",
+            + "<div align=\"center\"><strong>Raw HTML renders as a safe, read-only preview.</strong></div>\n\n"
+            + "| Cell | Other |\n| --- | --- |\n| <!-- in-cell --> | plain |\n",
           syncVersion: 1,
         }, "*");
       }

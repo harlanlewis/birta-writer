@@ -48,6 +48,7 @@ import { NodeSelection } from "@/pm";
 import { sanitizeInto } from "@/utils/sanitizeLoader";
 import { ensureGrammars, highlight } from "@/highlighter";
 import { openBlockSource } from "@/plugins/blockSource";
+import { reportNodeViewFailure } from "@/crashReporter";
 import { kbd, t } from "@/i18n";
 
 /** The custom event the Mod+Enter keymap dispatches to open the panel. */
@@ -68,8 +69,8 @@ function paint(dom: HTMLElement, raw: string): Promise<void> {
     if (COMMENT_RE.test(raw.trim())) {
         dom.className = "html-inline html-comment";
         // A child span, not bare textContent: the editing face hides the
-        // rendered children with `> :not(.html-src)`, which cannot match a
-        // text node.
+        // rendered children with `> :not(.html-src-panel)`, which cannot match
+        // a text node.
         const chip = document.createElement("span");
         chip.textContent = raw.trim();
         dom.replaceChildren(chip);
@@ -231,8 +232,15 @@ export function createHtmlView(
      * HTML in its own right and opens as a full-width code block; a tag inside
      * prose opens inline, where a block panel would displace the line around
      * it. Whitespace beside the atom does not count as prose.
+     *
+     * A table cell is never a block, whatever it holds. The block face is
+     * full-width with margins of its own, which inside a cell widens the
+     * column and pushes the row apart around a control the user is typing in.
      */
     const isWholeBlock = (pos: number): boolean => {
+        if (inTable(pos)) {
+            return false;
+        }
         const $pos = view!.state.doc.resolve(pos);
         const parent = $pos.parent;
         if (!parent.isTextblock) {
@@ -313,8 +321,12 @@ export function createHtmlView(
                 event.preventDefault();
                 event.stopPropagation();
                 commit();
-                if (!panel && view) {
-                    openBlockSource(view);
+                if (!panel && view && !openBlockSource(view)) {
+                    // No opener registered for this schema. The commit has
+                    // already landed and this panel is gone, so the chord read
+                    // as "apply" and the promised escalation did not happen;
+                    // saying so beats a silent half-action.
+                    reportNodeViewFailure("html", "openBlockSource", new Error("no block-source opener"));
                 }
             }
         });

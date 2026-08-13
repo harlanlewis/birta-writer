@@ -15,6 +15,16 @@
     max-width: 100%;
     vertical-align: top;
 
+    /* The chip's resting skin is the ATOM's, and the panel is its child, so
+       every one of these reaches the editing surface unless it is undone here.
+       A comment chip (style.css, .html-comment) carries all four: the opacity
+       and background dim a control the user is typing into, and its 0.85em
+       compounds with the mirror's 0.9em to shrink the source twice over. */
+    opacity: 1;
+    padding: 0;
+    background: none;
+    font-size: 1em;
+
     /* Hide the rendered face while the source panel is open. */
     > :not(.html-src-panel) {
         display: none;
@@ -65,7 +75,10 @@
 
 /* Highlight layer: the panel's size, and the only ink the reader sees. */
 .milkdown .editor .html-src-mirror {
-    min-height: 1.5em; /* one line, matching line-height, when the value is empty */
+    /* A floor only. The emptied value is already one line tall, because the
+       mirror always carries the trailing newline the textarea needs (see
+       refresh), and that newline is what renders the caret's line box. */
+    min-height: 1.5em;
     color: var(--vscode-editor-foreground);
     pointer-events: none;
     user-select: none;
@@ -96,8 +109,9 @@
     }
 }
 
-/* Hint row, and the seat of a refused commit's reason. Never a click target:
-   a click here would blur the textarea, which commits. */
+/* Hint row, and the seat of a refused commit's reason. Non-interactive chrome:
+   hit-testing passes through it, so a click here lands on the panel and
+   commits like any other click outside the textarea. */
 .milkdown .editor .html-src-note {
     display: none;
     margin-top: var(--ui-space-2);
