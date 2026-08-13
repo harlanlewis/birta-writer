@@ -107,6 +107,10 @@ describe("fixture parse census", () => {
             "caution",
             "note",             // footnote reference inside, definition outside
             "note",             // footnote reference AND definition both inside, blank line before close
+            // Close fences a lazy continuation swallowed (MAR-362).
+            "note",             // ... under a footnote definition
+            "note",             // ... under a list item
+            "note",             // ... under a blockquote
         ]);
         // The unclosed fence and the spaced name stay ordinary text.
         expect(names).not.toContain("unclosed");
@@ -324,18 +328,10 @@ describe("footnotes inside a directive", () => {
         await editor.destroy();
     });
 
-    // MAR-362: with NO blank line before the close fence, the footnote
-    // definition's lazy-continuation-line rule swallows the `:::` as its own
-    // continuation text, so the span never becomes a container_directive and
-    // degrades to plain paragraphs instead.
-    //
-    // `it.fails` greens on ANY rejection, so a broken `makeEditor` would keep
-    // these passing while proving nothing. The two cases above share that
-    // helper and assert positively, which is what holds it honest.
     const UNSPACED =
         ":::note\nA note with a footnote reference[^dnote3] inside it.\n\n[^dnote3]: Definition also inside the directive.\n:::\n";
 
-    it.fails("a footnote definition immediately followed by the close fence should still be a directive [MAR-362]", async () => {
+    it("a footnote definition immediately followed by the close fence should still be a directive [MAR-362]", async () => {
         const { editor, view } = await makeEditor(UNSPACED);
         try {
             expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
@@ -346,10 +342,153 @@ describe("footnotes inside a directive", () => {
         }
     });
 
-    // The half a user actually notices, and the more serious one: the close
-    // fence comes back indented, so opening the file and saving it without
-    // typing rewrites a line. Phase-0 fidelity, not a parsing nicety.
-    it.fails("a footnote definition before the close fence should not indent the fence on save [MAR-362]", async () => {
+    // A serializer-level assertion, not a disk-level one: the save path's
+    // round-trip protection pins a zero-edit drift back to the saved bytes,
+    // so a drift here does not on its own reach the file. Byte-identity is
+    // the design contract anyway, and it is the layer protection sits on.
+    it("a footnote definition before the close fence serializes the fence unindented [MAR-362]", async () => {
         expect(await roundTrip(UNSPACED)).toBe(UNSPACED);
+    });
+});
+
+// MAR-362: a close fence written flush left with no blank line above it never
+// reaches this transform as a fence paragraph. CommonMark lazy continuation
+// folds the line into whatever paragraph is still open inside the block above,
+// so the `:::` arrives as that paragraph's last soft line and the directive
+// never closes. It is one class of bug, not one construct: footnote
+// definitions, list items and blockquotes all swallow it identically.
+describe("a close fence swallowed by a lazy continuation [MAR-362]", () => {
+    async function expectOneNote(doc: string): Promise<void> {
+        const { editor, view } = await makeEditor(doc);
+        try {
+            expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+        } finally {
+            await editor.destroy();
+        }
+    }
+
+    const SWALLOWED: Array<[string, string]> = [
+        [
+            "a footnote definition",
+            ":::note\nRef[^dl1] here.\n\n[^dl1]: Definition inside the directive.\n:::\n",
+        ],
+        ["a list item", ":::note\n- a\n- b\n:::\n"],
+        ["a nested list item", ":::note\n- a\n  - b\n:::\n"],
+        ["a paragraph inside a list item", ":::note\n- a\n\n  second para\n:::\n"],
+        ["a blockquote", ":::note\n> quoted\n:::\n"],
+        ["a nested blockquote", ":::note\n> > deep\n:::\n"],
+        [
+            "a list item, in a directive nested inside a blockquote",
+            "> :::note\n> - a\n> :::\n",
+        ],
+    ];
+
+    for (const [what, doc] of SWALLOWED) {
+        it(`${what} before the close fence should still close the directive`, async () => {
+            await expectOneNote(doc);
+        });
+
+        it(`${what} before the close fence should round-trip byte-identically`, async () => {
+            expect(await roundTrip(doc)).toBe(doc);
+        });
+    }
+
+    // The repair takes the LAST paragraph of the block, so the fence has to be
+    // split off the second definition rather than the first. Parse only: this
+    // document also drifts a blank line BETWEEN the two definitions, which the
+    // footnote serializer does with no directive anywhere in sight
+    // (`Refs[^a][^b].\n\n[^a]: First.\n[^b]: Second.\n` round-trips the same
+    // way), so asserting bytes here would pin somebody else's bug.
+    it("the last of two footnote definitions is where the close fence is found", async () => {
+        await expectOneNote(":::note\nRefs[^dl2][^dl3].\n\n[^dl2]: First.\n[^dl3]: Second.\n:::\n");
+    });
+
+    const CALLOUT = ":::note\n> [!NOTE]\n> Callout body.\n:::\n";
+
+    it("a callout before the close fence should still close the directive", async () => {
+        await expectOneNote(CALLOUT);
+    });
+
+    // Parses, then drifts a blank line in after the open fence, and the swallow
+    // is not why: `callouts.ts` builds its callout node without a `position`,
+    // so `linesAdjacent` cannot see that the callout starts on the next line
+    // and `openAttached` comes back false. The same drift is already there with
+    // a blank line before the close fence (`:::note\n> [!NOTE]\n> Body.\n\n:::\n`),
+    // where nothing is swallowed at all.
+    it.fails("a callout before the close fence should round-trip byte-identically", async () => {
+        expect(await roundTrip(CALLOUT)).toBe(CALLOUT);
+    });
+
+    // The reason the repair reads raw source. mdast strips a container's
+    // indentation, so `    :::` inside a footnote definition and a swallowed
+    // `:::` decode to the same paragraph text — and the first is content the
+    // author wrote, not a fence. Delete the raw-line check in
+    // `splitSwallowedClose` and every case here starts inventing a directive.
+    const CONTENT: Array<[string, string]> = [
+        [
+            "an indented fence inside a footnote definition",
+            ":::note\nRef[^dl4] here.\n\n[^dl4]: Definition.\n    :::\n",
+        ],
+        ["an indented fence inside a list item", ":::note\n- a\n  :::\n"],
+        ["a quoted fence inside a blockquote", ":::note\n> q\n> :::\n"],
+    ];
+
+    for (const [what, doc] of CONTENT) {
+        it(`${what} is content, so nothing becomes a directive`, async () => {
+            const { editor, view } = await makeEditor(doc);
+            try {
+                expect(findDirectives(view)).toHaveLength(0);
+                expect(view.state.doc.textContent).toContain(":::");
+            } finally {
+                await editor.destroy();
+            }
+        });
+    }
+
+    // Two flush-left fences absorbed by one block. The FIRST closes the
+    // directive, but by parse time it is buried mid-paragraph and lifting it
+    // back out to a block of its own would take a reparse. So the repair
+    // declines: closing at the second instead would render an admonition with
+    // the real fences as literal text inside it, which is worse than leaving
+    // the run as the plain paragraphs it is today.
+    it("two absorbed fences in one block decline the repair", async () => {
+        const doc = ":::note\n- a\n:::\n:::tip\n- b\n:::\n";
+        const { editor, view } = await makeEditor(doc);
+        try {
+            expect(findDirectives(view)).toHaveLength(0);
+        } finally {
+            await editor.destroy();
+        }
+    });
+
+    // `notionCallouts.ts` builds an aside's lead blocks by sub-parsing a
+    // SUBSTRING, so their positions are offsets into that substring and point
+    // at unrelated bytes of the file. The byte offsets below are tuned so the
+    // aside's `  :::` lands on the outer directive's close fence line: without
+    // the transform declining to read source inside an aside, the repair reads
+    // that line, believes the indented one is a fence, and deletes its indent.
+    it("an aside's sub-parsed offsets never reach the source-reading repair", async () => {
+        const doc = ":::xy\n- p\n\n:::\n\n<aside>\n💡 :::n\n- a\n  :::\n\n</aside>\n";
+        const { editor, view } = await makeEditor(doc);
+        try {
+            expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["xy"]);
+            expect(editor.action(getMarkdown())).toContain("\n  :::\n");
+        } finally {
+            await editor.destroy();
+        }
+    });
+
+    // Known gap, same class, different repair: GFM absorbs the line as a table
+    // ROW rather than into a paragraph, so the paragraph-splitting repair
+    // cannot reach it. An HTML block is the same shape. Flipping to green
+    // means the case was fixed.
+    it.fails("a table before the close fence is still swallowed", async () => {
+        const doc = ":::note\n\n| a |\n| - |\n| b |\n:::\n";
+        const { editor, view } = await makeEditor(doc);
+        try {
+            expect(findDirectives(view)).toHaveLength(1);
+        } finally {
+            await editor.destroy();
+        }
     });
 });

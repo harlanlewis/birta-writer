@@ -48,10 +48,25 @@ A footnote reference lives inside a directive[^dnote] while its definition sits 
 [^dnote]: The definition for the footnote referenced above.
 
 :::note
-A footnote reference[^dnote2] and its own definition both live inside the same directive, separated from the closing fence by a blank line. That blank line is what MAR-362's shape omits, and the broken shape is deliberately not in this file: it drifts bytes on a zero-edit save, which every corpus sweep reading this fixture would report as a round-trip failure rather than as the parse bug it is.
+A footnote reference[^dnote2] and its own definition both live inside the same directive, separated from the closing fence by a blank line.
 
 [^dnote2]: The definition, also inside the directive.
 
+:::
+
+:::note
+The same shape with no blank line before the closing fence[^dnote3]. Lazy continuation absorbs that fence into the definition above it, so parsing has to split it back off (MAR-362).
+
+[^dnote3]: The definition the closing fence sits directly under.
+:::
+
+:::note
+- A list item the closing fence sits directly under.
+- Lazy continuation absorbs the fence into this item.
+:::
+
+:::note
+> A blockquote the closing fence sits directly under.
 :::
 
 :::unclosed
