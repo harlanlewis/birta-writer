@@ -2269,9 +2269,17 @@ body.handles-rest-hover:where(:not(.handles-quiet)) .milkdown .editor :where(.he
 }
 
 /* Markers advertise dragability; the whole page shows a grabbing cursor
-   during a session so the affordance never flickers mid-drag. */
+   during a session so the affordance never flickers mid-drag.
+
+   `touch-action: none` is what lets a finger drag a block at all (MAR-340).
+   Without it the browser claims a finger that moves off the handle as a page
+   pan and no drag session ever starts (e2e/touchBlocks goes red on its
+   removal). The handle stays tappable either way, because a tap needs no
+   touch-action, and the page still scrolls from anywhere that is not the
+   handle itself. */
 .milkdown .editor .heading-fold-marker {
     cursor: grab;
+    touch-action: none;
 }
 
 body.block-dragging,

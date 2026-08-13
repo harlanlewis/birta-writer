@@ -19,6 +19,7 @@ import { initTocDnd, type TocDnd } from "../components/toc/dnd";
 import { initToc } from "../components/toc";
 import type { TocHeadingEntry } from "../components/toc/dropModel";
 import type { EventManager } from "../eventManager";
+import { dispatchMouseGesture } from "./helpers/pointerGesture";
 
 let editors: Editor[] = [];
 let activeEditor: Editor | null = null;
@@ -54,11 +55,7 @@ function markdown(editor: Editor): string {
     return editor.action(getMarkdown()).trim();
 }
 
-const mouse = (
-    target: EventTarget,
-    type: string,
-    opts: MouseEventInit,
-) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
+const mouse = dispatchMouseGesture;
 
 /** The outline as index.ts's getHeadings would report it. */
 function headingsOf(v: EditorView): TocHeadingEntry[] {
