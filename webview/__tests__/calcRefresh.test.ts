@@ -199,6 +199,36 @@ describe("answer refresh — =, =>, cascade, withdrawal", () => {
         await editor.destroy();
     });
 
+    it("a tagged definition cascades — its conversion follows without restating the unit", async () => {
+        setCalcFlags({ autoInsert: false });
+        const editor = await makeRefreshEditor("t = 2 day in days\n\nt in weeks => 0.285714");
+        const v = view(editor);
+        editChar(v, 4, "7"); // t = 2 day in days → t = 7 day in days
+        expect(blockTexts(v)).toEqual(["t = 7 day in days", "t in weeks => 1"]);
+        await editor.destroy();
+    });
+
+    it("a vanished tagged definition withdraws its conversion's answer", async () => {
+        setCalcFlags({ autoInsert: false });
+        const editor = await makeRefreshEditor("t = 2 day in days\n\nt in weeks => 0.285714");
+        const v = view(editor);
+        v.dispatch(v.state.tr.delete(0, v.state.doc.firstChild!.nodeSize));
+        expect(blockTexts(v)).toEqual(["t in weeks =>"]);
+        await editor.destroy();
+    });
+
+    it("a tagged definition MID-EDIT must not withdraw its conversion's answer", async () => {
+        // The same guard the plain-variable case gets: `t =` above means the
+        // definition is being retyped, not gone, so the answer survives the
+        // keystrokes in between rather than being destroyed on the first one.
+        setCalcFlags({ autoInsert: false });
+        const editor = await makeRefreshEditor("t = 2 day in days\n\nt in weeks => 0.285714");
+        const v = view(editor);
+        v.dispatch(v.state.tr.delete(4, 18)); // leave `t =`, the RHS retyped next
+        expect(blockTexts(v)).toEqual(["t =", "t in weeks => 0.285714"]);
+        await editor.destroy();
+    });
+
     it("editing the `=>` RESULT is the user's override and is left alone", async () => {
         setCalcFlags({ autoInsert: false });
         const editor = await makeRefreshEditor("2+3 => 5");
