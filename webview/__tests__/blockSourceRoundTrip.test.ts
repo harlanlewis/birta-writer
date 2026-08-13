@@ -137,6 +137,30 @@ describe("blocksFromSource", () => {
         await editor.destroy();
     });
 
+    it("a construct running to the end of the input should still commit", async () => {
+        // An unclosed fence, <pre>, comment or $$ block swallows the boundary
+        // marker. These are valid Markdown, and BENEFITS.md names a
+        // deliberately unclosed fence as something the editor preserves, so
+        // the one surface built for precise syntax control must not refuse it.
+        const editor = await makeCorpusEditor("Prose.\n");
+        editor.action((ctx) => {
+            const pipeline: BlockSourcePipeline = {
+                serialize: (doc) => ctx.get(serializerCtx)(doc),
+                parse: (markdown) => {
+                    const out = ctx.get(parserCtx)(markdown);
+                    return typeof out === "string" || !out ? null : (out as ProseNode);
+                },
+            };
+            const { doc } = ctx.get(editorViewCtx).state;
+            for (const unterminated of ["```js\nconst a = 1;", "<pre>", "<!-- note", "$$\nx = 1"]) {
+                const back = blocksFromSource(pipeline, doc, unterminated);
+                expect(back, `refused: ${JSON.stringify(unterminated)}`).not.toBeNull();
+                expect((back as ProseNode[]).length).toBeGreaterThan(0);
+            }
+        });
+        await editor.destroy();
+    });
+
     it("edited source should parse into the blocks the new syntax names", async () => {
         const editor = await makeCorpusEditor("Plain paragraph.\n");
         editor.action((ctx) => {

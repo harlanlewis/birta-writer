@@ -52,8 +52,13 @@ export async function run({ page, check, baseUrl }) {
         const w = { repaints: 0, escaped: null, t0: performance.now() };
         window.__dragWatch = w;
         w.obs = new MutationObserver((recs) => { w.repaints += recs.length; });
-        w.obs.observe(document.querySelector(".calc-render"),
-            { childList: true, subtree: true, characterData: true });
+        // "The ledger repainted out from under the gesture" is one of the
+        // three causes this watcher exists to tell apart, so the ledger being
+        // gone here is a result to report, not a TypeError that errors the
+        // whole suite before any check runs.
+        const host = document.querySelector(".calc-render");
+        if (!host) { w.missing = true; return; }
+        w.obs.observe(host, { childList: true, subtree: true, characterData: true });
         w.onSel = () => {
             const node = window.getSelection()?.anchorNode;
             const el = node?.nodeType === 1 ? node : node?.parentElement;
@@ -82,9 +87,16 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.up();
     const dragWatch = await page.evaluate(() => {
         const w = window.__dragWatch;
-        w.obs.disconnect();
+        w.obs?.disconnect();
         document.removeEventListener("selectionchange", w.onSel);
-        return { repaints: w.repaints, escaped: w.escaped, collapsed: window.getSelection()?.isCollapsed };
+        return {
+            // MutationRecords, not repaints: the failure line should not name
+            // a quantity larger than what was counted.
+            mutations: w.repaints,
+            missing: !!w.missing,
+            escaped: w.escaped,
+            collapsed: window.getSelection()?.isCollapsed,
+        };
     });
 
     // Poll for the selection instead of reading once after a fixed wait: a
@@ -111,7 +123,9 @@ export async function run({ page, check, baseUrl }) {
         dragOk ? JSON.stringify(dragText) : [
             JSON.stringify(dragText),
             `pressLanded=${pressLanded}`,
-            `ledgerRepaints=${dragWatch.repaints}`,
+            dragWatch.missing
+                ? "the ledger was already gone before the drag: nothing was watched"
+                : `ledgerMutations=${dragWatch.mutations}`,
             `endedCollapsed=${dragWatch.collapsed}`,
             dragWatch.escaped
                 // The known cause, and the one this drag cannot defend against:

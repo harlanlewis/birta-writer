@@ -17,6 +17,7 @@ import { Decoration, DecorationSet, Plugin, PluginKey, TextSelection } from "../
 import type { EditorState, EditorView, Node as ProseNode, Schema, Transaction } from "../pm";
 import { blocksFromSource, sourceOfBlocks, type BlockSourcePipeline } from "../editing/blockSource";
 import { createBlockSourcePanel, type BlockSourcePanel } from "../components/blockSource";
+import { BlockRangeSelection } from "./blockRange";
 import { t } from "../i18n";
 
 export const blockSourceKey = new PluginKey<BlockSourceState>("block-source");
@@ -44,14 +45,16 @@ interface OpenMeta {
  * editing one would return a node of a different type than the one opened.
  */
 function blockRangeAt(state: EditorState): { from: number; to: number } | null {
-    const { $from, $to } = state.selection;
-    if ($from.depth === 0 && $to.depth === 0) {
-        // A selection sitting between blocks (gap cursor) owns no block.
-        return null;
-    }
-    const from = $from.before(1);
-    const to = $to.after(1);
-    return from < to ? { from, to } : null;
+    // BlockRangeSelection.tryCreate IS "snap two positions outward to whole
+    // top-level blocks, null when the snapped range holds none", so this
+    // reads the same selection grammar the marquee, the block menu and the
+    // Escape ladder all speak. Deriving the range from $from.depth instead
+    // silently excluded every one of them, because a BlockRangeSelection and
+    // a top-level NodeSelection both sit at depth-0 boundaries and have no
+    // caret inside a block to walk up from.
+    const { from, to } = state.selection;
+    const range = BlockRangeSelection.tryCreate(state.doc, from, to);
+    return range ? { from: range.from, to: range.to } : null;
 }
 
 /** The blocks in `[from, to)`, which are always direct children of the doc. */
@@ -64,14 +67,11 @@ function blocksIn(doc: ProseNode, from: number, to: number): ProseNode[] {
 }
 
 /**
- * Serializer/parser access per editor, keyed by its (per-instance) Schema, so
- * the contributed command can reach it with only an EditorView in hand. Same
- * shape as plugins/reparseHazard's registry, and lazy for the same reason:
- * the ctx entries are populated after editor creation.
+ * The opener each editor registered, keyed by its (per-instance) Schema, so
+ * the contributed command can reach it with only an EditorView in hand. Lazy
+ * for the same reason plugins/reparseHazard's registry is: the ctx entries
+ * are populated after editor creation.
  */
-const pipelines = new WeakMap<Schema, BlockSourcePipeline>();
-
-/** The opener each editor registered, reached by the contributed command. */
 const openers = new WeakMap<Schema, (view: EditorView) => boolean>();
 
 /**
@@ -93,20 +93,20 @@ export const blockSourcePlugin = $prose((ctx) => {
         },
     };
 
-    const close = (view: EditorView) => {
+    const close = (view: EditorView, takeFocus = true) => {
         if (!blockSourceKey.getState(view.state)) return;
         view.dispatch(view.state.tr.setMeta(blockSourceKey, { open: null }));
-        view.focus();
+        if (takeFocus) view.focus();
     };
 
-    const commit = (view: EditorView, text: string) => {
+    const commit = (view: EditorView, text: string, takeFocus = true) => {
         const open = blockSourceKey.getState(view.state);
         if (!open) return;
 
         // Untouched source closes without a transaction: looking at a block
         // must not dirty the document.
         if (text === open.opened) {
-            close(view);
+            close(view, takeFocus);
             return;
         }
 
@@ -126,7 +126,9 @@ export const blockSourcePlugin = $prose((ctx) => {
         const landing = Math.min(tr.mapping.map(open.from) + 1, tr.doc.content.size);
         tr.setSelection(TextSelection.near(tr.doc.resolve(landing)));
         view.dispatch(tr);
-        view.focus();
+        // A save flush banks the panel without the user leaving it, so taking
+        // focus there would drop their next keystrokes into the document.
+        if (takeFocus) view.focus();
     };
 
     const open = (view: EditorView): boolean => {
@@ -138,7 +140,7 @@ export const blockSourcePlugin = $prose((ctx) => {
 
         const source = sourceOfBlocks(pipeline, view.state.schema, nodes);
         const panel = createBlockSourcePanel(source, {
-            commit: (text) => commit(view, text),
+            commit: (text, takeFocus = true) => commit(view, text, takeFocus),
             cancel: () => close(view),
         });
         const meta: OpenMeta = {
@@ -161,7 +163,6 @@ export const blockSourcePlugin = $prose((ctx) => {
         key: blockSourceKey,
         state: {
             init(_config, state: EditorState) {
-                pipelines.set(state.schema, pipeline);
                 openers.set(state.schema, open);
                 return null;
             },
@@ -172,8 +173,13 @@ export const blockSourcePlugin = $prose((ctx) => {
                 // A concurrent change (an external edit, a peer's sync) moves
                 // the block out from under the panel; follow it rather than
                 // committing to a stale range.
-                const from = tr.mapping.map(value.from, -1);
-                const to = tr.mapping.map(value.to, 1);
+                // Non-greedy on both ends: an insertion landing exactly on a
+                // boundary belongs OUTSIDE the panel's range. The greedy
+                // associativities swallow it, the hide decoration then makes
+                // it invisible, and the commit's replaceWith deletes a block
+                // the user never saw arrive.
+                const from = tr.mapping.map(value.from, 1);
+                const to = tr.mapping.map(value.to, -1);
                 return from < to ? { ...value, from, to } : null;
             },
         },

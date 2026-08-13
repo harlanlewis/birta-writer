@@ -82,19 +82,36 @@ export function blocksFromSource(
 ): ProseNode[] | null {
     const defs = definitionsOf(pipeline, doc);
     const parsed = pipeline.parse(`${text}\n\n${BOUNDARY}\n\n${defs}`);
-    if (!parsed) return null;
+    if (parsed) {
+        const kids: ProseNode[] = [];
+        let sawBoundary = false;
+        parsed.forEach((node) => {
+            if (sawBoundary) return;
+            if (node.textContent.trim() === BOUNDARY) {
+                sawBoundary = true;
+                return;
+            }
+            kids.push(node);
+        });
+        if (sawBoundary) return kids;
+    }
 
-    const kids: ProseNode[] = [];
-    let sawBoundary = false;
-    parsed.forEach((node) => {
-        if (sawBoundary) return;
-        if (node.textContent.trim() === BOUNDARY) {
-            sawBoundary = true;
-            return;
-        }
-        kids.push(node);
-    });
-    // Without the marker we cannot tell the user's blocks from the appended
-    // definitions, and guessing would splice definitions into their document.
-    return sawBoundary ? kids : null;
+    // The marker is gone, which means a construct in `text` ran to the end of
+    // the input and swallowed it: an unclosed fence, `<pre>`, `<!--`, or `$$`.
+    // Those are all VALID Markdown, and refusing them would make the one
+    // surface built for precise syntax control reject the deliberately
+    // unclosed fence BENEFITS.md says the editor preserves.
+    //
+    // Parse without the definitions instead. Nothing after an unterminated
+    // construct can reference a definition anyway, so the scope this drops is
+    // scope the input could not have used.
+    const bare = pipeline.parse(text);
+    return bare ? collectChildren(bare) : null;
+}
+
+/** The top-level children of `doc`, as an array. */
+function collectChildren(doc: ProseNode): ProseNode[] {
+    const out: ProseNode[] = [];
+    doc.forEach((node) => out.push(node));
+    return out;
 }

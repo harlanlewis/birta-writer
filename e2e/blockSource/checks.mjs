@@ -155,6 +155,27 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
 
+    // ── The editor's own block-selection grammar reaches it ─────────────────
+    // Escape escalates a caret to a BlockRangeSelection, which sits at
+    // depth-0 boundaries and has no caret inside a block to walk up from.
+    // Deriving the range from the caret's depth silently excluded every
+    // gesture that produces one: Escape, the marquee, the Cmd+A ladder.
+    await caretInParagraph("A claim citing a note");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    await openPanel();
+    const fromBlockRange = await page.evaluate(() => ({
+        hidden: document.querySelectorAll(".ProseMirror .block-source-hidden").length,
+        value: document.querySelector(".ProseMirror .block-source-area").value,
+    }));
+    check(
+        "a block selected with Escape opens in the panel",
+        fromBlockRange.hidden === 1 && fromBlockRange.value.includes("A claim citing a note"),
+        JSON.stringify(fromBlockRange),
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
     // ── Committing an untouched block is a no-op ─────────────────────────────
     await caretInParagraph("A claim citing a note");
     await openPanel();

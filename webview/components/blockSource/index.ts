@@ -19,7 +19,7 @@ import type { EditorView } from "@/pm";
 import { kbd, t } from "@/i18n";
 
 export interface BlockSourcePanelHandlers {
-    commit(text: string): void;
+    commit(text: string, takeFocus?: boolean): void;
     cancel(): void;
 }
 
@@ -96,11 +96,14 @@ export function createBlockSourcePanel(
         run();
     };
 
-    commits.set(area, () => once(() => handlers.commit(area.value)));
+    // Banking leaves focus where it is: the user has not left the panel, a
+    // save simply needed the bytes.
+    commits.set(area, () => once(() => handlers.commit(area.value, false)));
 
     area.addEventListener("input", () => {
         autosize(area);
         error.hidden = true;
+        area.removeAttribute("aria-invalid");
     });
 
     area.addEventListener("keydown", (event) => {
@@ -153,11 +156,14 @@ export function createBlockSourcePanel(
         },
         showError(message: string) {
             // Reopen the panel for another attempt rather than closing over
-            // text the parser rejected.
+            // text the parser rejected. Deliberately does NOT call focus():
+            // this can be reached from inside the blur handler, and pulling
+            // focus back there makes a click anywhere else bounce. The HTML
+            // source panel's refusal takes the same care.
             done = false;
             error.textContent = message;
             error.hidden = false;
-            area.focus();
+            area.setAttribute("aria-invalid", "true");
         },
     };
 }
