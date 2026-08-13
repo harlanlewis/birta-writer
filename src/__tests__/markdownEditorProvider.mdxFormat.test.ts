@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
 import { makeFakeTextDocument, resetTextDocumentMocks } from "../../__mocks__/vscode";
-import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
+import { MarkdownEditorProvider, fatalParseNotice } from "../MarkdownEditorProvider";
 
 const makeContext = () =>
     ({
@@ -103,5 +103,48 @@ describe("fatalParse falls back to the text editor", () => {
         // ...and the same document reopens in the text editor.
         expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
         expect(vscode.window.showTextDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it("should report the position in document lines, not body lines", async () => {
+        // Four frontmatter lines, then a body whose first line is document
+        // line 5. The webview parses the body and reports 1:12.
+        const content = "---\ntitle: x\ntags: []\n---\na {unclosed\n";
+        const { handler } = await setup("/project/broken.mdx", content);
+        await handler({ type: "ready" });
+
+        await handler({ type: "fatalParse", error: "unclosed brace", line: 1, column: 12 });
+
+        const said = (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mock
+            .calls[0]![0] as string;
+        expect(said).toContain("Line 5, column 12");
+        expect(said).toContain("unclosed brace");
+    });
+});
+
+describe("fatalParseNotice", () => {
+    it("a document with no frontmatter should report the parser's own line", () => {
+        expect(fatalParseNotice("boom", { line: 3, column: 7 }, 0)).toContain("Line 3, column 7");
+    });
+
+    it("a document with frontmatter should shift the line by its length", () => {
+        expect(fatalParseNotice("boom", { line: 3, column: 7 }, 4)).toContain("Line 7, column 7");
+    });
+
+    it("an unpositioned failure should read as a plain reason", () => {
+        const said = fatalParseNotice("boom", undefined, 4);
+        expect(said).toContain("boom");
+        expect(said).not.toContain("Line");
+    });
+
+    it("a position left inside the reason text should be shifted too", () => {
+        // The unclosed-tag family embeds its own range; the webview lifts the
+        // trailing one out, so this covers a shape it could not.
+        expect(fatalParseNotice("bad (2:1-2:6) here", undefined, 4))
+            .toContain("(6:1-6:6)");
+    });
+
+    it("a reason containing a colon pair should be untouched without frontmatter", () => {
+        expect(fatalParseNotice("bad (2:1-2:6) here", undefined, 0))
+            .toContain("(2:1-2:6)");
     });
 });

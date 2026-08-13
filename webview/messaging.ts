@@ -117,9 +117,15 @@ export function notifySwitchToTextEditor(
  * The document's format cannot be parsed (fatal in MDX, impossible in
  * markdown): ask the extension to surface the error and fall back to the
  * text editor. Sent only from the init path, before any editor exists.
+ *
+ * `at` is the parser's position in BODY coordinates; the extension shifts it
+ * by the frontmatter this side never saw before showing it to the user.
  */
-export function notifyFatalParse(error: string): void {
-    vscode.postMessage({ type: "fatalParse", error });
+export function notifyFatalParse(
+    error: string,
+    at?: { line: number; column: number },
+): void {
+    vscode.postMessage({ type: "fatalParse", error, ...at });
 }
 
 /** Opens the native Settings UI; `query` optionally narrows the filter. */
