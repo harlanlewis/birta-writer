@@ -185,9 +185,18 @@ describe("the connector registry", () => {
             if (spec.auth === "builtin") {
                 expect(spec.builtinProviderId).toBeTruthy();
             }
-            // Minimal scopes: an empty request is suspicious, and a grant that
-            // cannot be narrowed must say so before the user proceeds.
-            expect(spec.scopes.length).toBeGreaterThan(0);
+            // Minimal scopes. An EMPTY default request is the goal, not a
+            // smell: GitHub's scopeless token reads public repository data,
+            // which is what almost every card needs. What must never be empty
+            // is the disclosure on a broader opt-in grant, because that is the
+            // one the user is being asked to weigh.
+            if (spec.privateScopes !== undefined) {
+                expect(spec.privateScopes.length).toBeGreaterThan(0);
+                expect(spec.scopeNote).toBeTruthy();
+                // The opt-in must actually be broader than the default, or it
+                // is a second name for the same grant.
+                expect(spec.privateScopes.length).toBeGreaterThan(spec.scopes.length);
+            }
         }
     });
 });

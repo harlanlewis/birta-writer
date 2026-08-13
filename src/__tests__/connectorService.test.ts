@@ -111,26 +111,56 @@ describe("ConnectorService", () => {
             expect(fetchSpy).not.toHaveBeenCalled();
         });
 
-        it("a service the user never connected should answer locked with ZERO fetches", async () => {
-            // The innermost consent layer. It is also what stops a VS Code
-            // GitHub session signed in for some other extension's sake from
-            // silently becoming Birta's consent to make credentialed requests.
-            const fetchSpy = vi.fn();
+        it("a service the user never connected should read a public card ANONYMOUSLY", async () => {
+            // Connecting is an upgrade, not an entry fee: a public repository's
+            // title is world-readable, so demanding a grant to show it would
+            // ask for more than the card uses. The layers that governed whether
+            // to contact GitHub at all are network + embeds + this provider,
+            // and the user already set those.
+            const fetchSpy = vi.fn(async () => jsonResponse({ full_name: "birtalabs/birta-writer" }));
             vi.stubGlobal("fetch", fetchSpy);
             const service = new ConnectorService(fakeSecrets().api);
-            expect(await service.resolveCard(REPO)).toEqual({ state: "locked", connector: "github" });
-            expect(fetchSpy).not.toHaveBeenCalled();
+            expect(await service.resolveCard(REPO)).toMatchObject({ state: "ready" });
+            const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            expect((init.headers as Record<string, string>).authorization).toBeUndefined();
         });
 
-        it("a VS Code session with no connection record should still answer locked", async () => {
-            // The same claim from the other side: the session exists, and it
-            // is not consent.
+        it("a VS Code session with no connection record must not put its token on the wire", async () => {
+            // The invariant that survives anonymous reads, and the one that
+            // matters: a GitHub session signed in for some other extension's
+            // sake is NOT Birta's consent to spend it. The request may happen;
+            // the credential may not be attached to it.
             mockSession(TOKEN);
-            const fetchSpy = vi.fn();
+            const fetchSpy = vi.fn(async () => jsonResponse({ full_name: "birtalabs/birta-writer" }));
             vi.stubGlobal("fetch", fetchSpy);
             const service = new ConnectorService(fakeSecrets().api);
+            await service.resolveCard(REPO);
+            const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            expect(JSON.stringify(init.headers)).not.toContain(TOKEN);
+        });
+
+        it("a private repository read anonymously should offer the connection", async () => {
+            // GitHub answers 404 rather than 403 for a private repository, so
+            // an anonymous caller cannot probe for existence. That is exactly
+            // the case a connection would fix, so it is the offer, not an error.
+            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+            const service = new ConnectorService(fakeSecrets().api);
             expect(await service.resolveCard(REPO)).toEqual({ state: "locked", connector: "github" });
-            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it("a public-only connection hitting a private repo should offer the broader grant", async () => {
+            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+            const service = new ConnectorService(fakeSecrets({ "birta.connector.github": CONNECTED }).api);
+            expect(await service.resolveCard(REPO)).toEqual({ state: "locked", connector: "github" });
+        });
+
+        it("a private-access connection still not seeing it should be an error, not another offer", async () => {
+            // The user already holds the broadest grant this connector has, so
+            // offering to connect again would be a loop with nothing behind it.
+            const record = JSON.stringify({ auth: "builtin", privateAccess: true });
+            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+            const service = new ConnectorService(fakeSecrets({ "birta.connector.github": record }).api);
+            expect(await service.resolveCard(REPO)).toEqual({ state: "error", connector: "github" });
         });
     });
 
@@ -237,8 +267,8 @@ describe("ConnectorService", () => {
             expect(await service.resolveCard(REPO)).toEqual({ state: "expired", connector: "github" });
         });
 
-        it("a rate-limited or failing request should answer error, never a blank card", async () => {
-            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 403 })));
+        it("a failing request should answer error, never a blank card", async () => {
+            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
             const service = new ConnectorService(fakeSecrets({ "birta.connector.github": CONNECTED }).api);
             expect(await service.resolveCard(REPO)).toEqual({ state: "error", connector: "github" });
         });
@@ -313,14 +343,22 @@ describe("ConnectorService", () => {
             expect(fetchSpy).toHaveBeenCalledTimes(1);
         });
 
-        it("disconnecting should drop the cache so a stale card cannot survive it", async () => {
+        it("disconnecting should drop the cache and stop attaching the credential", async () => {
             const fetchSpy = vi.fn(async () => jsonResponse({ full_name: "birtalabs/birta-writer" }));
             vi.stubGlobal("fetch", fetchSpy);
             const secrets = fakeSecrets({ "birta.connector.github": CONNECTED });
             const service = new ConnectorService(secrets.api);
             expect(await service.resolveCard(REPO)).toMatchObject({ state: "ready" });
             await service.disconnect("github");
-            expect(await service.resolveCard(REPO)).toEqual({ state: "locked", connector: "github" });
+            // The card still resolves, because it is public — what must stop
+            // is the credential. Asserting the state alone would no longer
+            // discriminate, since both sides of the disconnect answer `ready`.
+            expect(await service.resolveCard(REPO)).toMatchObject({ state: "ready" });
+            expect(fetchSpy).toHaveBeenCalledTimes(2);
+            const [, before] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            const [, after] = fetchSpy.mock.calls[1] as unknown as [string, RequestInit];
+            expect((before.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
+            expect((after.headers as Record<string, string>).authorization).toBeUndefined();
         });
     });
 
@@ -334,6 +372,37 @@ describe("ConnectorService", () => {
             expect(new URL((fetchSpy.mock.calls[0] as unknown as [string])[0]).href)
                 .toBe("https://api.github.com/user");
             expect(secrets.store.get("birta.connector.github")).toBe(CONNECTED);
+        });
+
+        it("an ordinary connect should ask for NO scopes at all", async () => {
+            // The whole point of the default tier. GitHub documents a scopeless
+            // token as read-only access to public information, which is every
+            // card this connector builds unless the user asks for private ones,
+            // and it lifts the rate limit off the anonymous 60/hour-per-IP.
+            vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ login: "someone" })));
+            const service = new ConnectorService(fakeSecrets().api);
+            await service.connect("github");
+            const [, scopes] = (vscode.authentication.getSession as unknown as ReturnType<typeof vi.fn>)
+                .mock.calls[0] as unknown as [string, string[]];
+            expect(scopes).toEqual([]);
+        });
+
+        it("an opt-in private connect should ask for repo, and record that it did", async () => {
+            // `repo` is the only OAuth scope that reads a private repository
+            // and GitHub offers no read-only form of it, so it must never be
+            // the default — and the record has to remember which grant was
+            // taken, or the silent session lookup asks for the wrong one.
+            vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ login: "someone" })));
+            const secrets = fakeSecrets();
+            const service = new ConnectorService(secrets.api);
+            await service.connect("github", { includePrivate: true });
+            const [, scopes] = (vscode.authentication.getSession as unknown as ReturnType<typeof vi.fn>)
+                .mock.calls[0] as unknown as [string, string[]];
+            expect(scopes).toEqual(["repo"]);
+            expect(JSON.parse(secrets.store.get("birta.connector.github")!)).toEqual({
+                auth: "builtin",
+                privateAccess: true,
+            });
         });
 
         it("a credential the provider rejects should NOT be recorded as a connection", async () => {

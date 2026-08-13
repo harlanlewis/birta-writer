@@ -41,17 +41,31 @@ export type ConnectorFetchOutcome =
     | { state: "ok"; body: unknown }
     /** The provider rejected the credential: it was revoked, or it lapsed. */
     | { state: "expired" }
+    /**
+     * The resource is not visible to whoever asked. Distinct from `error`
+     * because it is the ONE failure a credential might fix: GitHub answers 404
+     * rather than 403 for a private repository, deliberately, so that an
+     * unauthenticated caller cannot probe for existence. An anonymous read
+     * that lands here is exactly the case worth offering a connection for.
+     */
+    | { state: "notFound" }
     /** Anything else: offline, refused, rate-limited, malformed, redirected. */
     | { state: "error" };
 
 /**
- * Perform one authenticated GET against a connector's pinned API and return
- * its parsed JSON body. Never throws.
+ * Perform one GET against a connector's pinned API and return its parsed JSON
+ * body. Never throws.
+ *
+ * `token` is nullable on purpose. Most cards this fetches are public, and a
+ * public read needs no credential at all — sending one anyway would mean
+ * demanding a grant to show a title that is already world-readable. When it is
+ * null no `authorization` header is built, so an anonymous read is anonymous
+ * in fact rather than by intention.
  */
 export async function fetchConnectorCard(
     spec: ConnectorSpec,
     requestUrl: string,
-    token: string,
+    token: string | null,
 ): Promise<ConnectorFetchOutcome> {
     let parsed: URL;
     try {
@@ -80,12 +94,20 @@ export async function fetchConnectorCard(
             redirect: "manual",
             headers: {
                 accept: "application/json",
-                authorization: `Bearer ${token}`,
+                ...(token === null ? {} : { authorization: `Bearer ${token}` }),
                 "user-agent": "Birta-Writer/connector",
             },
         });
         if (res.status === 401) {
             return { state: "expired" };
+        }
+        // 403 is GitHub's rate-limit answer as well as its forbidden answer,
+        // and the anonymous limit is low enough (60/hour, keyed on the IP) that
+        // a big document can reach it. Both readings are "ask again later with
+        // more standing", which is what the connect offer says, so they share
+        // an outcome rather than guessing between them from a header.
+        if (res.status === 404 || res.status === 403) {
+            return { state: "notFound" };
         }
         if (!res.ok) {
             return { state: "error" };

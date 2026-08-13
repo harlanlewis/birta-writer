@@ -63,6 +63,12 @@ interface ConnectorRecord {
     auth: ConnectorSpec["auth"];
     /** Present only for `token` (and future `oauth-pkce`) strategies. */
     token?: string;
+    /**
+     * The user opted into the broader grant that reads private resources.
+     * Absent or false means the connection is the public, read-only one, which
+     * is the default and is all most links need.
+     */
+    privateAccess?: boolean;
 }
 
 /** Per-card-shape response mappers, keyed by connector. */
@@ -89,6 +95,15 @@ export class ConnectorService {
         return live;
     }
 
+    /**
+     * Does this connection already hold the broader, private-reading grant?
+     * False for a service connected on the default public tier, which is what
+     * makes an upgrade a thing the connect flow can still offer.
+     */
+    async hasPrivateAccess(id: ConnectorId): Promise<boolean> {
+        return (await this.readRecord(id))?.privateAccess === true;
+    }
+
     /** The connected-state map the webview needs to render locked cards. */
     async connectionStates(): Promise<Record<string, boolean>> {
         const entries = await Promise.all(
@@ -108,8 +123,17 @@ export class ConnectorService {
      *
      * Returns null when the user cancelled (no error, no toast, no record).
      */
-    async connect(id: ConnectorId): Promise<{ ok: boolean; message?: string } | null> {
+    async connect(
+        id: ConnectorId,
+        opts: { includePrivate?: boolean } = {},
+    ): Promise<{ ok: boolean; message?: string } | null> {
         const spec = CONNECTORS[id];
+        // The broader grant is requested only when the user asked for it. For
+        // GitHub the difference is not cosmetic: the default is a scopeless,
+        // read-only, public-information token, and the opt-in is `repo`, which
+        // GitHub does not offer in a read-only form at all.
+        const includePrivate = opts.includePrivate === true && spec.privateScopes !== undefined;
+        const scopes = includePrivate ? spec.privateScopes! : spec.scopes;
         // Connecting ends in a verify call, so it is a network act and the
         // master switch governs it like any other. Refusing here rather than
         // in the command keeps the guarantee at the site that would break it.
@@ -128,7 +152,7 @@ export class ConnectorService {
         try {
             session = await vscode.authentication.getSession(
                 spec.builtinProviderId ?? spec.id,
-                [...spec.scopes],
+                [...scopes],
                 { createIfNone: true },
             );
         } catch {
@@ -151,7 +175,7 @@ export class ConnectorService {
                     : vscode.l10n.t("Could not reach {0} to confirm the connection.", spec.label),
             };
         }
-        await this.writeRecord(id, { auth: spec.auth });
+        await this.writeRecord(id, { auth: spec.auth, ...(includePrivate ? { privateAccess: true } : {}) });
         return { ok: true };
     }
 
@@ -210,16 +234,30 @@ export class ConnectorService {
         const spec = CONNECTORS[id];
         const record = await this.readRecord(id);
         this.connected.set(id, record !== null);
-        if (!record) {
-            // The innermost consent layer is closed. No request is made, which
-            // is what "a disconnected service costs zero" means in practice.
-            return { state: "locked", connector: id };
+
+        // A card for a PUBLIC resource needs no credential, and most links are
+        // public. Reading anonymously when there is no connection is what makes
+        // connecting an upgrade rather than an entry fee: the consent layers
+        // above (network, embeds, this provider) already governed whether to
+        // ask GitHub anything at all, and they are the layers the user set.
+        let token: string | null = null;
+        if (record) {
+            token = await this.credential(spec, record);
+            if (!token) {
+                return { state: "expired", connector: id };
+            }
         }
-        const token = await this.credential(spec, record);
-        if (!token) {
-            return { state: "expired", connector: id };
-        }
+
         const outcome = await fetchConnectorCard(spec, requestUrl, token);
+        if (outcome.state === "notFound") {
+            // Not visible to whoever just asked. A broader grant may fix it —
+            // GitHub answers 404 for a private repository precisely so an
+            // anonymous caller learns nothing — so offer the connection when
+            // one is still available, and call it an error when the user
+            // already holds the broadest grant this connector has.
+            const canUpgrade = !record || (spec.privateScopes !== undefined && record.privateAccess !== true);
+            return { state: canUpgrade ? "locked" : "error", connector: id };
+        }
         if (outcome.state !== "ok") {
             return { state: outcome.state, connector: id };
         }
@@ -242,7 +280,10 @@ export class ConnectorService {
         // card's reconnect affordance is where the user chooses to act.
         const session = await vscode.authentication.getSession(
             spec.builtinProviderId ?? spec.id,
-            [...spec.scopes],
+            // The scopes the connection was actually made with. Asking for the
+            // broader set here would silently fail to match a public-only
+            // connection's session and read as `expired`.
+            [...(record.privateAccess === true && spec.privateScopes ? spec.privateScopes : spec.scopes)],
             { silent: true },
         );
         return session?.accessToken ?? null;
@@ -268,7 +309,12 @@ export class ConnectorService {
                 return null;
             }
             const token = (parsed as { token?: unknown }).token;
-            return { auth, ...(typeof token === "string" ? { token } : {}) };
+            const privateAccess = (parsed as { privateAccess?: unknown }).privateAccess;
+            return {
+                auth,
+                ...(typeof token === "string" ? { token } : {}),
+                ...(privateAccess === true ? { privateAccess: true } : {}),
+            };
         } catch {
             return null;
         }

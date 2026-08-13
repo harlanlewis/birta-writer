@@ -35,15 +35,25 @@ async function pickConnector(
     const rows: ConnectorPick[] = [];
     for (const id of CONNECTOR_IDS) {
         const connected = await service.isConnected(id);
-        if (connected !== (wanted === "connected")) {
+        const spec = CONNECTORS[id];
+        // For connecting, a service already connected on the PUBLIC tier is
+        // still offerable: the remaining choice is whether to widen it. Without
+        // this the private grant would be unreachable for anyone who connected
+        // once, which is everyone who ever used the feature.
+        const upgradeable =
+            connected && spec.privateScopes !== undefined && !(await service.hasPrivateAccess(id));
+        const offer = wanted === "connected" ? connected : !connected || upgradeable;
+        if (!offer) {
             continue;
         }
-        const spec = CONNECTORS[id];
         rows.push({
             id,
             label: spec.label,
-            description: connected ? vscode.l10n.t("Connected") : undefined,
-            detail: wanted === "disconnected" ? spec.scopeNote : undefined,
+            description: connected
+                ? upgradeable && wanted === "disconnected"
+                    ? vscode.l10n.t("Connected — public repositories only")
+                    : vscode.l10n.t("Connected")
+                : undefined,
         });
     }
     if (rows.length === 0) {
@@ -59,6 +69,39 @@ async function pickConnector(
 }
 
 /**
+ * Ask how much access to request, or null when the user dismissed.
+ *
+ * The default tier is offered first and named as the recommendation, because
+ * it is what almost every card needs: a public repository's title is
+ * world-readable and the public grant reads it. The wider tier states its cost
+ * in the row itself rather than at the provider's consent screen, where the
+ * only remaining choice is to accept or abandon.
+ *
+ * A connector with no `privateScopes` has one tier and is never asked about.
+ */
+async function pickAccessLevel(id: ConnectorId): Promise<boolean | null> {
+    const spec = CONNECTORS[id];
+    if (spec.privateScopes === undefined) {
+        return false;
+    }
+    const publicRow = {
+        label: vscode.l10n.t("Public repositories only"),
+        description: vscode.l10n.t("Recommended"),
+        detail: vscode.l10n.t("Read-only, and grants no access to your private repositories."),
+        includePrivate: false,
+    };
+    const privateRow = {
+        label: vscode.l10n.t("Include private repositories"),
+        detail: spec.scopeNote,
+        includePrivate: true,
+    };
+    const chosen = await vscode.window.showQuickPick([publicRow, privateRow], {
+        placeHolder: vscode.l10n.t("How much of {0} should Birta be able to read?", spec.label),
+    });
+    return chosen ? chosen.includePrivate : null;
+}
+
+/**
  * Run the connect flow and report its outcome. Shared by the palette command
  * and the locked card's just-in-time affordance so the two cannot drift: the
  * card is a shortcut into the same flow, never a second one.
@@ -68,7 +111,11 @@ export async function runConnectFlow(
     id: ConnectorId,
     broadcast: () => void,
 ): Promise<void> {
-    const result = await service.connect(id);
+    const includePrivate = await pickAccessLevel(id);
+    if (includePrivate === null) {
+        return;
+    }
+    const result = await service.connect(id, { includePrivate });
     if (!result) {
         // Cancelled at the provider's consent screen. Silence is the right
         // answer to a deliberate no.

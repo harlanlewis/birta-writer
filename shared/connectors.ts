@@ -55,14 +55,24 @@ export interface ConnectorSpec {
      */
     builtinProviderId?: string;
     /**
-     * The scopes requested at connect time. Read-only and minimal
-     * (NETWORK_POSTURE invariant 9) — a connector that cannot narrow its
-     * grant must say so in `scopeNote`.
+     * The scopes requested by an ordinary connect. Read-only and minimal
+     * (NETWORK_POSTURE invariant 9), and for GitHub that means EMPTY: a
+     * scopeless OAuth token reads public repository, user and gist data and
+     * nothing else, which is every card this connector builds unless the user
+     * asks for private ones.
      */
     scopes: readonly string[];
     /**
-     * What the grant actually covers, shown before the user proceeds. Present
-     * whenever the scope is broader than "the thing on the card".
+     * The scopes an opt-in private connect requests, when the provider offers
+     * no way to read private resources without a broader grant than we want.
+     * Absent when `scopes` already reaches everything.
+     */
+    privateScopes?: readonly string[];
+    /**
+     * What `privateScopes` actually covers, shown before the user proceeds.
+     * Required whenever `privateScopes` is broader than reading — which for
+     * GitHub it unavoidably is, because no OAuth scope grants read-only access
+     * to a private repository.
      */
     scopeNote?: string;
     /**
@@ -87,12 +97,20 @@ export const CONNECTORS: Record<ConnectorId, ConnectorSpec> = {
         label: "GitHub",
         auth: "builtin",
         builtinProviderId: "github",
-        // `repo` is GitHub's narrowest grant that still reads a private
-        // repository's issues and pull requests; there is no read-only
-        // variant of it in the classic scope set VS Code's built-in provider
-        // issues, which is exactly why scopeNote exists.
-        scopes: ["repo"],
-        scopeNote: "GitHub's repo scope also permits writes; Birta only ever reads.",
+        // EMPTY on purpose. GitHub documents a scopeless token as "read-only
+        // access to public information (including user profile info,
+        // repository info, and gists)", which is every card this connector
+        // builds for a public link, and it lifts the rate limit from the
+        // anonymous 60/hour-per-IP to 5,000/hour. Asking for more than that
+        // to show a world-readable title would be a grant the card never uses.
+        scopes: [],
+        // `repo` is GitHub's narrowest grant that reads a PRIVATE repository's
+        // issues and pull requests, and it is not narrow: there is no
+        // read-only variant anywhere in the OAuth scope set, so reading a
+        // private repo necessarily carries write. That is why this is opt-in
+        // rather than the default, and why scopeNote is mandatory beside it.
+        privateScopes: ["repo"],
+        scopeNote: "GitHub grants no read-only access to private repositories: this also permits writes. Birta only ever reads.",
         apiHosts: ["api.github.com"],
         verifyUrl: "https://api.github.com/user",
     },
