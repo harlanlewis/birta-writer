@@ -137,9 +137,11 @@ The editor can't silently "correct" Markdown you wrote deliberately, and an edit
 
 Wikilinks, `==highlights==`, callouts, and `:::` directives are stored as their exact source bytes and written back unchanged. The conventions from tools like Obsidian round-trip exactly, even the parts Birta renders as plain interactive elements.
 
-### YAML frontmatter is handled out of band
+### Frontmatter is handled out of band
 
 The frontmatter block is lifted off the top of the file before the editor ever sees it, then reattached on save. Your metadata is immune to any editor reformatting: key order, comments, and spacing are exactly as you left them.
+
+Both conventions are recognized: YAML between `---` fences, and TOML between `+++` fences, as Hugo and Zola write it. A block is only ever closed by the fence it was opened with, so neither dialect can be rewritten into the other. YAML blocks that are a flat list of keys get an editable table; a TOML block is edited as its own source text, because the table's quoting rules are YAML's and applying them would write YAML into a TOML file.
 
 ### Anything unrecognized stays visible, never deleted
 
