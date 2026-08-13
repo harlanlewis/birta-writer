@@ -4,8 +4,16 @@
  * `math_inline` and `wiki_link` both hold their raw source as text content with
  * `marks: ""` (plugins/math.ts, plugins/wikiLinks.ts). Milkdown's parser keeps
  * one ambient mark set across `openNode`, so a node built with `addText` while
- * `strong` is open gets marked content, and `marks: ""` makes that document fail
- * `doc.check()`. Both runners therefore build their text node directly.
+ * `strong` is open gets marked content. Both runners therefore build their text
+ * node directly.
+ *
+ * THE SYMPTOM IS DATA LOSS, not just an invalid document, and the round-trip
+ * assertion below is the one that catches it. Measured against the pre-fix
+ * parser: `Alpha **$a^2$** beta.` serializes back as `Alpha $a^2$ beta.` — the
+ * mark lands on the node's inner text instead of the node, so the serializer
+ * emits no `**` and the emphasis is silently gone from the file. `doc.check()`
+ * throwing is the louder half and the cheaper thing to assert, but a reader who
+ * only fixed the check would not know bytes were at stake.
  *
  * This is a whole-class gate rather than two spot checks, because the class is
  * what the bug belongs to: any future inline node storing source as content
