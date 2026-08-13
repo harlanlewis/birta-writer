@@ -47,7 +47,7 @@ const ATOM_IDENTITY: Record<string, (node: ProseNode) => string> = {
     // Math source is real text content (MAR-74); the entry pins the atom's
     // identity as a unit on top of the text leaves inside it.
     math_inline: (n) => n.textContent,
-    wiki_link: (n) => String(n.attrs["raw"] ?? ""),
+    wiki_link: (n) => n.textContent,
     footnote_reference: (n) => String(n.attrs["label"] ?? ""),
     link_definition: (n) =>
         [n.attrs["identifier"], n.attrs["url"], n.attrs["title"] ?? ""].join(SEP),

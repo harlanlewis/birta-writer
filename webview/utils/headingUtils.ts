@@ -24,10 +24,53 @@ export interface DocHeading {
 }
 
 /**
+ * A textblock's text for SLUG purposes: `textContent`, minus the source bytes
+ * of any `wiki_link`.
+ *
+ * A wikilink holds its raw source as text content so the caret can edit it
+ * (MAR-74), which puts `metric|Display` into the enclosing heading's
+ * `textContent` where an atom used to contribute nothing. Slugs are the one
+ * consumer where that is not merely cosmetic: a heading's slug is the anchor
+ * that `[](#slug)` and `[[#heading]]` already point at in users' files, so
+ * letting raw wikilink bytes into it would silently break links that resolve
+ * today. Every slug source routes through here for that reason.
+ *
+ * What a wikilink OUGHT to contribute is a live question — it renders as its
+ * display text, so a heading reads "Cost Display" while its slug says "cost".
+ * This function deliberately preserves the shipped answer (nothing) rather than
+ * settling it; changing it changes anchors.
+ */
+export function slugTextOf(node: SlugTextNode): string {
+    let text = "";
+    node.forEach((child) => {
+        if (child.type.name === "wiki_link") {
+            return;
+        }
+        text += child.isText ? (child.text ?? "") : child.textContent;
+    });
+    return text;
+}
+
+/**
+ * The structural shape slugTextOf needs. Declared rather than taking `PmNode`
+ * so the fold layer, which addresses nodes through its own looser
+ * `ProseNodeLike`, can call this without a cast.
+ */
+interface SlugTextChild {
+    type: { name: string };
+    isText: boolean;
+    text?: string | null | undefined;
+    textContent: string;
+}
+interface SlugTextNode {
+    forEach: (f: (child: SlugTextChild) => void) => void;
+}
+
+/**
  * Walk the ProseMirror document and collect its headings in document order,
- * skipping empty ones. Reads the DOC MODEL, never the rendered DOM: `textContent`
- * here is the clean heading text, whereas the DOM's textContent would include
- * the `##` gutter-marker glyphs and corrupt every slug.
+ * skipping empty ones. Reads the DOC MODEL, never the rendered DOM: the model
+ * text here is the clean heading text, whereas the DOM's textContent would
+ * include the `##` gutter-marker glyphs and corrupt every slug.
  *
  * This is the shared outline walk behind BOTH the table of contents (whose
  * getHeadings wraps it with position caching) and the section-link picker, so
@@ -43,7 +86,7 @@ export function collectDocHeadings(doc: PmNode): DocHeading[] {
             return true; // a container — keep descending
         }
         if (node.type.name === "heading") {
-            const text = node.textContent.trim();
+            const text = slugTextOf(node).trim();
             if (text) {
                 headings.push({ level: node.attrs["level"] as number, text, pos });
             }

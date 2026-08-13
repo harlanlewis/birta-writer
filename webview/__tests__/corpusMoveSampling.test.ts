@@ -804,8 +804,13 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         // Target: the end-of-document drop slot, addressed directly — it
         // carries no node of its own (same reasoning as M6's target above,
         // including the size tripwire and why a raw offset needs one).
-        expect(v.state.doc.content.size, "logseq/page.md changed; M7's target offset is stale").toBe(1048);
-        const target = 1046;
+        // The tripwire fired on 2026-08-13 without the fixture changing: MAR-74
+        // moved `wiki_link`'s raw bytes from an attr into text CONTENT, so every
+        // wikilink in this fixture grew from one position to its source length
+        // plus two. The document gained 59 positions and every offset past the
+        // first wikilink shifted by exactly that. Re-derived, not guessed.
+        expect(v.state.doc.content.size, "logseq/page.md changed; M7's target offset is stale").toBe(1107);
+        const target = 1105;
 
         expect(moveBlocks(v, { from: srcPos, to: srcPos + src.nodeSize }, target)).toBe(true);
 
@@ -870,7 +875,7 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         const editor = await makeEditor(fixture.content);
         const v = editorView(editor);
         const preDoc = v.state.doc;
-        const src = v.state.doc.nodeAt(922)!;
+        const src = v.state.doc.nodeAt(981)!;
         // The sweep addresses this pair positionally; assert the position
         // still names the node the pair was found on, so a fixture edit
         // retargets loudly rather than pinning some unrelated gesture.
@@ -894,11 +899,13 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
             return true;
         });
         expect(armers, "M8 arms via exactly one artifact-lead item").toHaveLength(1);
-        expect(armers[0]).toBeLessThan(922); // the Project Atlas item, not the move
-        // Same tripwire as M6/M7, plus the target's own identity: 921 is the
-        // blockquote the paragraph is being lifted out of.
-        expect(preDoc.content.size, "logseq/page.md changed; M8's offsets are stale").toBe(1048);
-        expect(preDoc.nodeAt(921)!.type.name).toBe("blockquote");
+        expect(armers[0]).toBeLessThan(981); // the Project Atlas item, not the move
+        // Same tripwire as M6/M7, plus the target's own identity: 980 is the
+        // blockquote the paragraph is being lifted out of. Every offset here
+        // moved by +59 on 2026-08-13 for the reason M7's tripwire records —
+        // MAR-74 gave `wiki_link` text content — with the fixture untouched.
+        expect(preDoc.content.size, "logseq/page.md changed; M8's offsets are stale").toBe(1107);
+        expect(preDoc.nodeAt(980)!.type.name).toBe("blockquote");
 
         // The gesture must be REFUSED, and refused for the RIGHT reason.
         // moveBlocks returns false from six distinct paths (no-op put-back,
@@ -907,7 +914,7 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         // from any of them. The warn line names the path.
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
-            expect(moveBlocks(v, { from: 922, to: 960 }, 921)).toBe(false);
+            expect(moveBlocks(v, { from: 981, to: 1019 }, 980)).toBe(false);
             expect(
                 warn.mock.calls.map((c) => c.join(" ")).join("\n"),
                 "must be the save-survival refusal, not one of the other five",

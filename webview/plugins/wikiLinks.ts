@@ -15,18 +15,25 @@
  * The construct bails unless the second char is also `[`, so `[text](url)`,
  * `[ref]` shortcuts, footnotes `[^1]`, and task markers `[x]` never reach it.
  *
- * In ProseMirror a wikilink is an inline ATOM node (the image_ref precedent),
- * not a mark: the display text (alias) differs from the target, and an atom
- * makes it structurally impossible for typing to desync the visible text from
- * the raw form. `raw` is the only canonical attr; target/heading/alias are
- * derived (parseWikiRaw) for display and navigation only.
+ * In ProseMirror a wikilink is an inline node holding its raw inner bytes as
+ * REAL TEXT CONTENT, not a mark and not an attr-only atom: the display text
+ * (alias) differs from the target, so the two faces are a NodeView concern
+ * (components/wikiLink) rather than a schema one. Content-as-source is what
+ * lets the caret walk inside and edit per-character like inline code (MAR-74),
+ * mirroring `math_inline`; `wikiLinkEditPlugin` owns the reveal behavior.
+ *
+ * The raw bytes are the node's `textContent` and nothing else stores them —
+ * target/heading/alias are derived at every read (parseWikiRaw) for display and
+ * navigation. Deriving rather than caching is what keeps the visible text from
+ * desyncing from the raw form now that typing inside is possible; a cached attr
+ * would be a second source of truth with no one to reconcile it.
  *
  * Navigation (the openFile `wiki` flag) and creation UI live elsewhere; this
  * module is parse/render/serialize only, registered unconditionally in
  * serialization.ts so round-trip behavior never depends on configuration.
  */
 import type { Node as MdastNode } from "@milkdown/transformer";
-import { nodeRule } from "../pm";
+import { Fragment, InputRule } from "../pm";
 import { $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 
 export const wikiLinkId = "wiki_link";
@@ -195,11 +202,14 @@ const wikiLinkToMarkdown = {
             _parent: unknown,
             state: { stack?: string[] } | undefined,
         ): string {
+            // An emptied wikilink serializes as `[[]]` rather than throwing:
+            // the node's content can be empty between the keystroke that
+            // clears it and the caret leaving (wikiLinkEdit deletes it only on
+            // exit), and a save inside that window reaches this handler. The
+            // mdast node carries no `value` at all in that case.
+            const raw = node.value ?? "";
             const inCell = state?.stack?.includes("tableCell") ?? false;
-            const value = inCell
-                ? node.value.replace(/(?<!\\)\|/g, "\\|")
-                : node.value;
-            return `[[${value}]]`;
+            return `[[${inCell ? raw.replace(/(?<!\\)\|/g, "\\|") : raw}]]`;
         },
     },
 };
@@ -220,55 +230,67 @@ export const remarkWikiLinkPlugin = $remark("remarkWikiLink", () => remarkWikiLi
 
 // ─── ProseMirror schema ─────────────────────────────────────────────────────
 
-/** Attrs derived from `raw` for DOM and click routing. */
-export function attrsFromRaw(raw: string): Record<string, string> {
-    const { target, heading, alias } = parseWikiRaw(raw);
-    return { raw, target, heading: heading ?? "", alias: alias ?? "" };
+/**
+ * A wikilink node's raw inner bytes — its text content, the single source of
+ * truth. Every consumer reads through here rather than an attr, so there is
+ * nothing to keep in sync when the user types inside the node.
+ */
+export function wikiRawOf(node: { textContent: string }): string {
+    return node.textContent;
+}
+
+/** DOM dataset derived from `raw`, for click routing and the link popup. */
+export function wikiDatasetFromRaw(raw: string): Record<string, string> {
+    const { target, heading } = parseWikiRaw(raw);
+    return {
+        "data-type": "wiki-link",
+        "data-raw": raw,
+        "data-target": target,
+        "data-heading": heading ?? "",
+    };
 }
 
 export const wikiLinkSchema = $nodeSchema(wikiLinkId, () => ({
     group: "inline",
     inline: true,
-    atom: true,
+    content: "text*",
     selectable: true,
     marks: "",
-    attrs: {
-        raw: { default: "" },
-        target: { default: "" },
-        heading: { default: "" },
-        alias: { default: "" },
-    },
+    // Input rules must not fire inside a wikilink: a target containing `**` or
+    // `_` is a filename, not emphasis, and converting it would change the bytes
+    // that serialize back to disk.
+    code: true,
     parseDOM: [
         {
             tag: 'a[data-type="wiki-link"]',
-            getAttrs: (dom) => attrsFromRaw((dom as HTMLElement).dataset["raw"] ?? ""),
+            // `data-raw` wins over the element's text: our own clipboard HTML
+            // carries both and they agree, but HTML copied from a build that
+            // predates content-as-source carries the DISPLAY text (an alias)
+            // in the hole, which would silently become the new raw.
+            getContent: (dom, schema) => {
+                const el = dom as HTMLElement;
+                const raw = el.dataset["raw"] ?? el.textContent ?? "";
+                return raw ? Fragment.from(schema.text(raw)) : Fragment.empty;
+            },
         },
     ],
-    toDOM: (node) => {
-        const raw = node.attrs["raw"] as string;
-        return [
-            "a",
-            {
-                "data-type": "wiki-link",
-                "data-raw": raw,
-                "data-target": node.attrs["target"] as string,
-                "data-heading": node.attrs["heading"] as string,
-                class: "wiki-link",
-                contenteditable: "false",
-            },
-            wikiDisplayText(raw),
-        ];
-    },
+    toDOM: (node) => ["a", { ...wikiDatasetFromRaw(wikiRawOf(node)), class: "wiki-link" }, 0],
     parseMarkdown: {
         match: (node) => node.type === "wikiLink",
         runner: (state, node, type) => {
-            state.addNode(type, attrsFromRaw((node["value"] as string) ?? ""));
+            const value = (node["value"] as string) ?? "";
+            // The source text is built directly rather than through addText,
+            // which stamps the parser's AMBIENT marks onto it: `**[[x]]**`
+            // parses with `strong` still open, and `marks: ""` then rejects the
+            // node's own content. The wikilink NODE still carries the mark (its
+            // parent governs that); only the raw bytes inside must stay plain.
+            state.addNode(type, undefined, value ? [state.schema.text(value)] : []);
         },
     },
     toMarkdown: {
         match: (node) => node.type.name === wikiLinkId,
         runner: (state, node) => {
-            state.addNode("wikiLink", undefined, node.attrs["raw"] as string);
+            state.addNode("wikiLink", undefined, wikiRawOf(node));
         },
     },
 }));
@@ -280,11 +302,18 @@ export const wikiLinkSchema = $nodeSchema(wikiLinkId, () => ({
  */
 export const WIKI_LINK_RULE_REGEX = /\[\[([^[\]]+)\]\]$/;
 
-export const wikiLinkInputRule = $inputRule((ctx) =>
-    nodeRule(WIKI_LINK_RULE_REGEX, wikiLinkSchema.type(ctx), {
-        getAttr: (match) => attrsFromRaw(match[1] ?? ""),
-    }),
-);
+export const wikiLinkInputRule = $inputRule((ctx) => {
+    const type = wikiLinkSchema.type(ctx);
+    // A plain InputRule (not nodeRule): the raw bytes live as the node's text
+    // CONTENT, which nodeRule's attr-only factory can't create.
+    return new InputRule(WIKI_LINK_RULE_REGEX, (state, match, start, end) => {
+        const value = match[1];
+        if (!value) {
+            return null;
+        }
+        return state.tr.replaceRangeWith(start, end, type.create(null, state.schema.text(value)));
+    });
+});
 
 /** All wikilink plugins, flattened for `Editor.use()` / pureCommonmark. */
 export const wikiLinksPlugin = [

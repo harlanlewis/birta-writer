@@ -23,7 +23,7 @@
  *   - `email` — mailto.
  */
 import type { Node as ProseNode } from "../pm";
-import { parseWikiRaw, wikiDisplayText, wikiLinkId } from "../plugins/wikiLinks";
+import { parseWikiRaw, wikiDisplayText, wikiLinkId, wikiRawOf } from "../plugins/wikiLinks";
 import { singleTextblockInlineEdit } from "../utils/textblockEdit";
 
 export type LinkKind = "web" | "local" | "doc" | "email";
@@ -60,7 +60,7 @@ function makeCollector(defs: Map<string, string>) {
     const visit = (node: ProseNode, pos: number): boolean => {
         if (node.type.name === wikiLinkId) {
             flush();
-            const raw = (node.attrs["raw"] ?? "") as string;
+            const raw = wikiRawOf(node);
             const parts = parseWikiRaw(raw);
             const href = parts.target + (parts.heading ? `#${parts.heading}` : "");
             // Destination-classified: a file target is a local file; a bare

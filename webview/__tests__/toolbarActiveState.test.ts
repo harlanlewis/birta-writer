@@ -55,6 +55,17 @@ function nodeSelect(editor: Editor, typeName: string): void {
     v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, pos)));
 }
 
+/** Put the caret INSIDE a source-carrying inline node's text content. */
+function caretInside(editor: Editor, typeName: string): void {
+    const v = view(editor);
+    let pos = -1;
+    v.state.doc.descendants((n, p) => {
+        if (pos < 0 && n.type.name === typeName) { pos = p; }
+    });
+    if (pos < 0) { throw new Error(`node not found: ${typeName}`); }
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos + 1)));
+}
+
 function view(editor: Editor): EditorView {
     return editor.action((ctx) => ctx.get(editorViewCtx));
 }
@@ -191,6 +202,22 @@ describe("computeToolbarActiveState", () => {
         expect(s.inlineMath).toBe(false);
         // wikiLink is a node, not a mark — marks.link stays false (index.ts ORs the two).
         expect(s.marks.link).toBe(false);
+        expect(s.formatApplicable).toBe(false);
+    });
+
+    it("a caret inside a wikilink's revealed source should report wikiLink too", async () => {
+        // Arrange — clicking a wikilink REVEALS it rather than node-selecting
+        // it (MAR-74), so this is the common case, not the exotic one: without
+        // it the Link button goes dark exactly while the user edits the link.
+        const editor = await makeEditor("see [[Some Page]] here");
+        caretInside(editor, "wiki_link");
+
+        // Act
+        const s = stateOf(editor);
+
+        // Assert
+        expect(s.wikiLink).toBe(true);
+        expect(s.inlineMath).toBe(false);
         expect(s.formatApplicable).toBe(false);
     });
 

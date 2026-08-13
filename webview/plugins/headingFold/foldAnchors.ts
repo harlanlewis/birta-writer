@@ -8,6 +8,7 @@
  */
 import type { EditorState } from "../../pm";
 import { slugify } from "../../utils/slug";
+import { slugTextOf } from "../../utils/headingUtils";
 import { getWebviewState, setWebviewState } from "../../messaging";
 import { foldPluginKey } from "../foldState";
 import {
@@ -51,10 +52,13 @@ export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldA
     }
     const counts = new Map<string, number>();
     doc.forEach((node: any, offset: number) => {
+        // Held before the guard: isHeadingNode narrows to ProseNodeLike, which
+        // deliberately has no `forEach`, and slugTextOf walks children.
+        const heading = node;
         if (!isHeadingNode(node)) {
             return;
         }
-        const slug = slugify((node as { textContent?: string }).textContent ?? "");
+        const slug = slugify(slugTextOf(heading));
         const occurrence = counts.get(slug) ?? 0;
         counts.set(slug, occurrence + 1);
         if (folded.has(offset)) {
@@ -108,10 +112,12 @@ export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> 
         const ranges = cachedFoldRanges(doc);
         const counts = new Map<string, number>();
         doc.forEach((node: any, offset: number) => {
+            // Held before the guard, for the reason above.
+            const heading = node;
             if (!isHeadingNode(node)) {
                 return;
             }
-            const slug = slugify((node as { textContent?: string }).textContent ?? "");
+            const slug = slugify(slugTextOf(heading));
             const occurrence = counts.get(slug) ?? 0;
             counts.set(slug, occurrence + 1);
             if (wanted.has(`${slug}:${occurrence}`) && ranges.get(offset)) {

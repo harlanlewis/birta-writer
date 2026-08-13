@@ -188,11 +188,13 @@ export const mathInlineSchema = $nodeSchema(mathInlineId, () => ({
         match: (node) => node.type === "inlineMath",
         runner: (state, node, type) => {
             const value = (node["value"] as string) ?? "";
-            state.openNode(type);
-            if (value) {
-                state.addText(value);
-            }
-            state.closeNode();
+            // The LaTeX is built directly rather than through addText, which
+            // stamps the parser's AMBIENT marks onto it: `**$a^2$**` parses with
+            // `strong` still open, and `marks: ""` then rejects the node's own
+            // content, producing a document that fails doc.check(). The formula
+            // NODE still carries the mark (its parent governs that); only the
+            // source inside must stay plain.
+            state.addNode(type, undefined, value ? [state.schema.text(value)] : []);
         },
     },
     toMarkdown: {

@@ -65,6 +65,7 @@ import {
     htmlEditKeymapPlugin,
     htmlLivePairsPlugin,
     mathInlineEditPlugin,
+    wikiLinkEditPlugin,
     wikiLinkCompletePlugin,
     headingLinkCompletePlugin,
     activeBlockPlugin,
@@ -659,6 +660,11 @@ export async function createEditor(
         // mathInlineEdit is even earlier: its boundary keys (arrow into / backspace
         // against a formula) are narrowly guarded and must beat every other handler.
         .use(mathInlineEditPlugin)
+        // wikiLinkEdit is the same shape over `wiki_link` (MAR-74), and shares
+        // the reason: its boundary keys must beat the base keymap. The two
+        // never contend — each returns false unless the caret is in its own
+        // node type.
+        .use(wikiLinkEditPlugin)
         // Live inline HTML pairs + the Mod-Enter source-panel opener. Early
         // for the same reason as mathInlineEdit: Mod-Enter on an html
         // NodeSelection must beat insertParagraph's Mod-Enter.

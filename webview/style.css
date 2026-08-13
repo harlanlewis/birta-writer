@@ -959,16 +959,10 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             border-radius: 2px;
         }
 
-        /* Wikilinks ([[target]]) — an inline atom that reads as a link; the
-           shared `a` rule below colors it, this only adds the selection ring
-           and a pointer (the atom is contenteditable=false). */
-        .wiki-link {
-            cursor: pointer;
-
-            &.ProseMirror-selectednode {
-                outline: 2px solid var(--vscode-focusBorder);
-            }
-        }
+        /* Wikilinks ([[target]]) live in components/wikiLink/wikiLink.css: the
+           node holds its raw bytes as content now (MAR-74), so its two faces
+           and their reveal state belong with the NodeView that paints them.
+           The shared `a` rule below still colors it. */
 
         /* Image references (![alt][ref]) — inline chip */
         .image-ref {

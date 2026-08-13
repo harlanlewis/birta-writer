@@ -112,10 +112,20 @@ export async function run({ page, check, baseUrl }) {
     check("inside real link → link active", (await activeIds()).includes("link"));
     check("inside real link → format still P (link is a mark on text)", (await fmtLabel()) === "P");
 
-    // ── 4. Wikilink atom (node-selected by clicking it): Link button lights ──
+    // ── 4. Wikilink (clicking reveals its source): Link button lights ──
     await clickSelector(".ProseMirror a.wiki-link");
-    check("selected wikilink → link active", (await activeIds()).includes("link"), `active=${JSON.stringify(await activeIds())}`);
-    check("selected wikilink → format N/A (—)", (await fmtLabel()) === "—");
+    check("clicked wikilink → link active", (await activeIds()).includes("link"), `active=${JSON.stringify(await activeIds())}`);
+    check("clicked wikilink → format N/A (—)", (await fmtLabel()) === "—");
+    // Clicking REVEALS the raw source rather than node-selecting the chip
+    // (MAR-74): the reveal class is what the caret being inside looks like, and
+    // it is the reason the two checks above still hold through a caret change.
+    check(
+        "clicked wikilink → its source is revealed for editing",
+        await page.$eval(".ProseMirror a.wiki-link", (a) =>
+            a.classList.contains("wiki-link--editing") &&
+            getComputedStyle(a.querySelector(".wiki-link-src")).display !== "none",
+        ),
+    );
 
     // ── 5. Inline-math atom (arrow onto it): Math button lights ──
     await arrowSelectAtomAfter("math and a", "math");

@@ -24,7 +24,7 @@ import {
     requestLinkTargetSuggestions,
 } from "../components/pathLink/linkTargetComplete";
 import { caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
-import { attrsFromRaw, wikiLinkId } from "./wikiLinks";
+import { wikiLinkId } from "./wikiLinks";
 
 /** Unclosed wikilink construct ending at the caret. */
 export const PARTIAL_WIKI_REGEX = /\[\[([^\[\]]*)$/;
@@ -127,7 +127,11 @@ const wikiCompleteSpec: CaretSuggestSpec = {
         if (!type) { return; }
         view.dispatch(
             state.tr
-                .replaceRangeWith(match.start, match.caret, type.create(attrsFromRaw(picked)))
+                .replaceRangeWith(
+                    match.start,
+                    match.caret,
+                    type.create(null, state.schema.text(picked)),
+                )
                 .scrollIntoView(),
         );
     },
