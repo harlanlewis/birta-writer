@@ -42,7 +42,14 @@
     cursor: grab;
     opacity: 0;
     transition: opacity 0.12s ease;
+    /* The drag's other half (MAR-340). Without this the browser owns a finger
+     * drag as a pan and cancels the reorder a few pointermoves in, whatever
+     * the JS does. Safe to spend here and nowhere near the cell text: a grip
+     * is a 12px pill in the gutter, not a surface anyone scrolls the document
+     * from. The same reason the gutter block handle carries it. */
+    touch-action: none;
 }
+
 .mw-grip.mw-near {
     opacity: 0.55;
 }
