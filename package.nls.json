@@ -208,5 +208,12 @@
   "command.editor.unfold.title": "Unfold",
   "command.editor.foldAll.title": "Fold All",
   "command.editor.unfoldAll.title": "Unfold All",
+  "command.editor.foldLevel1.title": "Fold Level 1",
+  "command.editor.foldLevel2.title": "Fold Level 2",
+  "command.editor.foldLevel3.title": "Fold Level 3",
+  "command.editor.foldLevel4.title": "Fold Level 4",
+  "command.editor.foldLevel5.title": "Fold Level 5",
+  "command.editor.foldLevel6.title": "Fold Level 6",
+  "command.editor.foldLevel7.title": "Fold Level 7",
   "command.editor.uncheckAllTasks.title": "Uncheck All Tasks"
 }

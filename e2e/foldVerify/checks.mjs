@@ -800,4 +800,85 @@ export async function run({ page, check, baseUrl }) {
             && revealChecks.revealed && revealChecks.bodyVisible,
         JSON.stringify(revealChecks));
     await shot(page, "08-reveal-on-drop");
+
+    // ── 9. Alt+click on a chevron folds the region AND everything nested in
+    //       it (MAR-116). A pointer modifier rather than a keyboard chord, so
+    //       it is only reachable through a real click: driven here because
+    //       nothing below the DOM event layer would prove the modifier
+    //       actually reaches the handler.
+    await page.reload();
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForTimeout(600);
+
+    /** Collapsed state of the headings this check cares about. */
+    const foldState = () => page.$$eval(".ProseMirror > *", (els) => {
+        const of = (text, tag) => {
+            const el = els.find((e) => e.tagName === tag && e.textContent.includes(text));
+            return el ? el.classList.contains("heading-fold-heading--collapsed") : null;
+        };
+        return { sectionA: of("Section A", "H1"), subA1: of("Sub A1", "H2"), sectionB: of("Section B", "H1") };
+    });
+
+    /**
+     * Viewport centre of the fold chevron in the gutter of the heading
+     * carrying `text`. Coordinates rather than an element handle: the chevron
+     * is hover-revealed, so Playwright's actionability wait never settles on
+     * it, and the modifier this check exists for cannot be carried by the
+     * in-page `.click()` the rest of this suite uses.
+     */
+    const chevronBox = (text, tag) => page.evaluate(({ t, g }) => {
+        const el = [...document.querySelectorAll(".ProseMirror > *")]
+            .find((e) => e.tagName === g && e.textContent.includes(t));
+        const btn = el?.querySelector(".heading-fold-toggle");
+        if (!btn) return null;
+        const r = btn.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }, { t: text, g: tag });
+
+    /** Click the chevron with raw input, optionally holding Alt. */
+    const clickChevron = async (text, tag, alt) => {
+        const box = await chevronBox(text, tag);
+        if (!box) return false;
+        await page.mouse.move(box.x, box.y); // reveal, and settle the hover
+        await page.waitForTimeout(120);
+        const settled = await chevronBox(text, tag);
+        if (alt) await page.keyboard.down("Alt");
+        await page.mouse.click(settled.x, settled.y);
+        if (alt) await page.keyboard.up("Alt");
+        await page.waitForTimeout(400);
+        return true;
+    };
+
+    const before = await foldState();
+    check("both sections start open", before.sectionA === false && before.subA1 === false,
+        JSON.stringify(before));
+
+    // Plain click first, for the contrast the recursive case is measured
+    // against: it folds the clicked section only.
+    check("the Section A chevron is reachable", await clickChevron("Section A", "H1", false));
+    const plain = await foldState();
+    check("a plain chevron click folds only the clicked section",
+        plain.sectionA === true && plain.subA1 === false, JSON.stringify(plain));
+
+    // Re-open it, then do the same click with Alt held.
+    await clickChevron("Section A", "H1", false);
+    await clickChevron("Section A", "H1", true);
+    const recursive = await foldState();
+    check("alt+click folds the section and its nested section together",
+        recursive.sectionA === true && recursive.subA1 === true, JSON.stringify(recursive));
+    check("alt+click leaves a sibling section alone",
+        recursive.sectionB === false, JSON.stringify(recursive));
+
+    // And back: one Alt+click on the closed region opens the whole subtree.
+    await clickChevron("Section A", "H1", true);
+    const reopened = await foldState();
+    check("alt+click on a closed region reopens its whole subtree",
+        reopened.sectionA === false && reopened.subA1 === false, JSON.stringify(reopened));
+
+    // A fold is a view state, never an edit: the recursive path must obey the
+    // same rule as every other fold producer.
+    const foldUpdates = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "update").length);
+    check("the recursive fold never dirtied the document", foldUpdates === 0, String(foldUpdates));
+    await shot(page, "09-alt-click-recursive");
 }
