@@ -77,6 +77,7 @@ export { tableAlignDefaultPlugin } from "./tableAlignDefault";
 export { cellClickFixPlugin } from "./tableCellClickFix";
 export { setLogTableSel } from "./tableDebug";
 export { blockKeysPlugin, deleteSelectedBlocks, duplicateSelectedBlocks, moveSelectedBlocks } from "./blockKeys";
+export { blockSourceKey, blockSourcePlugin } from "./blockSource";
 export { tabKeymapPlugin } from "./tabKeymap";
 export { tableKeymapPlugin } from "./tableKeymap";
 export { transformToLowercase, transformToTitleCase, transformToUppercase } from "./caseTransform";

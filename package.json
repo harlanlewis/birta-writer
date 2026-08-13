@@ -289,6 +289,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.editBlockSource",
+                "title": "%command.editor.editBlockSource.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.openLink",
                 "title": "%command.editor.openLink.title%",
                 "category": "Birta Writer"
@@ -671,6 +676,12 @@
                 "when": "activeCustomEditorId == 'birta.editor'"
             },
             {
+                "command": "birta.editor.editBlockSource",
+                "key": "ctrl+/",
+                "mac": "cmd+/",
+                "when": "activeCustomEditorId == 'birta.editor'"
+            },
+            {
                 "command": "birta.editor.openFindReplace",
                 "key": "ctrl+alt+f",
                 "mac": "cmd+alt+f",
@@ -964,6 +975,10 @@
                 },
                 {
                     "command": "birta.editor.openLink",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.editBlockSource",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

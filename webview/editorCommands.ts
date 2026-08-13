@@ -51,6 +51,7 @@ import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts
 import { armBlockStartHeadingComplete } from "@/plugins/headingLinkComplete";
 import { indentSelection, openBlockMenuAtCaret, outdentSelection } from "@/components/blockMenu";
 import { openLinkAtCaret } from "@/components/linkPopup";
+import { openBlockSource } from "@/plugins/blockSource";
 import { uncheckAllTasks } from "@/editing/checklistSink";
 import {
     convertListTreeAt,
@@ -724,6 +725,11 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
                 .then((m) => m.openSectionLinkPicker(view))
                 .catch((e) => console.error("[birta] section-link picker failed to load", e));
         }),
+    // Open the caret's block as editable Markdown (MAR-20). A caret with no
+    // block under it (a gap cursor between blocks) no-ops.
+    editBlockSource: (getEditor) => runProse(getEditor, (view) => {
+        openBlockSource(view);
+    }),
     // Follow the link at the caret (MAR-118) — the popup/block-menu routing,
     // palette-invocable. A caret on no link no-ops; focus returns to the
     // editor either way (palette invocations drop it on Quick Open).

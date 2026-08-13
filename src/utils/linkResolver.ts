@@ -18,6 +18,13 @@
  *       `/index.md`, `/_index.md` (trailing-slash links prefer index files)
  *   (e) fallback — suffix match over the cached workspace file index
  *
+ * Each of (a)–(e) runs over every FORM of the link path in turn: the raw
+ * bytes, the percent-decoded form, and last the form with Notion's 32-hex
+ * export ids removed from each segment (shared/notionIds.ts). Ordering is the
+ * whole safety argument for that last one: an intact export is fully tried
+ * before a cleaned name is considered, so a vault that still carries its ids
+ * can never be pulled off them.
+ *
  * Steps (c)–(e) run only in smart mode. Non-smart mode is pure path math
  * with no existence checks: relative and `@/` exactly as before, leading `/`
  * as workspace-root-relative (the pre-existing filesystem-root bug stays
@@ -27,6 +34,7 @@
  * caller injects stat + file-index IO so everything is unit-testable.
  */
 import * as path from "path";
+import { stripNotionIds } from "../../shared/notionIds";
 
 export interface ResolverIo {
     /** true iff absPath exists and is a regular file */
@@ -175,8 +183,18 @@ export async function resolveLinkPath(
     }
 
     // Smart: try the raw bytes and the percent-decoded form (`foo%20bar.md`
-    // usually means "foo bar.md", but a literally-named file still wins).
-    const forms = [...new Set([linkPath, safeDecode(linkPath)])];
+    // usually means "foo bar.md", but a literally-named file still wins),
+    // then those two again with Notion's export ids stripped. The stripped
+    // forms come LAST and must stay last: they are what makes a link into a
+    // renamed vault open, and reaching one before a name the vault literally
+    // has would resolve a live link onto a stale twin.
+    const literal = [linkPath, safeDecode(linkPath)];
+    const forms = [
+        ...new Set([
+            ...literal,
+            ...literal.map(stripNotionIds).filter((f): f is string => f !== null),
+        ]),
+    ];
     const bases: string[] = [];
     for (const raw of forms) {
         const hadTrailingSlash = raw.length > 1 && raw.endsWith("/");
@@ -222,7 +240,9 @@ export async function resolveLinkPath(
  * Resolves a wikilink target (heading already split off). Path-style targets
  * run the smart chain; bare names match by filename across the workspace —
  * case-insensitive, with or without the markdown extension, markdown files
- * preferred, shortest path then closest to the document as tiebreaks.
+ * preferred, shortest path then closest to the document as tiebreaks. A bare
+ * name carrying a Notion export id is retried without it once the name as
+ * written has matched nothing.
  * Smart mode only; non-smart callers route wikilink targets through
  * resolveLinkPath as plain relative paths.
  */
@@ -240,19 +260,29 @@ export async function resolveWikiTarget(
         return resolveLinkPath(trimmed, ctx, io);
     }
 
-    const lower = trimmed.toLowerCase();
-    const mdMatches: string[] = [];
-    const otherMatches: string[] = [];
-    for (const fsPath of await io.getFileIndex()) {
-        const base = path.basename(fsPath).toLowerCase();
-        const ext = path.extname(base);
-        const stem = ext ? base.slice(0, -ext.length) : base;
-        if (base === lower || stem === lower) {
-            if ((MD_SUFFIXES as readonly string[]).includes(ext)) mdMatches.push(fsPath);
-            else otherMatches.push(fsPath);
+    // The name as written, then the same name with a Notion export id
+    // stripped. Second, for the same reason the path chain tries it last: a
+    // file the vault literally has always outranks a cleaned-name guess.
+    const names = [trimmed];
+    const stripped = stripNotionIds(trimmed);
+    if (stripped) names.push(stripped);
+
+    const index = await io.getFileIndex();
+    for (const name of names) {
+        const lower = name.toLowerCase();
+        const mdMatches: string[] = [];
+        const otherMatches: string[] = [];
+        for (const fsPath of index) {
+            const base = path.basename(fsPath).toLowerCase();
+            const ext = path.extname(base);
+            const stem = ext ? base.slice(0, -ext.length) : base;
+            if (base === lower || stem === lower) {
+                if ((MD_SUFFIXES as readonly string[]).includes(ext)) mdMatches.push(fsPath);
+                else otherMatches.push(fsPath);
+            }
         }
+        const pool = mdMatches.length > 0 ? mdMatches : otherMatches;
+        if (pool.length > 0) return pickBest(pool, ctx.docFsPath);
     }
-    const pool = mdMatches.length > 0 ? mdMatches : otherMatches;
-    if (pool.length === 0) return null;
-    return pickBest(pool, ctx.docFsPath);
+    return null;
 }

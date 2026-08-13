@@ -69,6 +69,7 @@ export const EDITOR_COMMANDS = [
     // on no link is a quiet no-op. Palette + rebindable; no default chord
     // (Cmd+Click and the block menu already carry the common paths).
     { id: "openLink", title: "Open Link", palette: true, sections: [] },
+    { id: "editBlockSource", title: "Edit Block as Markdown", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [] },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
