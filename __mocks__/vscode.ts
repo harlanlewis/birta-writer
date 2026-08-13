@@ -173,6 +173,16 @@ export function fireDidSaveTextDocument(doc: FakeTextDocument): void {
     }
 }
 
+/** Listener list backing workspace.onDidCloseTextDocument */
+const textDocumentCloseListeners: Array<(doc: FakeTextDocument) => void> = [];
+
+/** Fires all registered onDidCloseTextDocument listeners (VS Code closing a document). */
+export function fireDidCloseTextDocument(doc: FakeTextDocument): void {
+    for (const listener of [...textDocumentCloseListeners]) {
+        listener(doc);
+    }
+}
+
 /** Registry of fake documents so workspace.applyEdit can route edits by uri */
 const fakeTextDocuments = new Map<string, FakeTextDocument>();
 
@@ -365,6 +375,19 @@ export const workspace = {
             };
         },
     ),
+    onDidCloseTextDocument: vi.fn(
+        (listener: (doc: FakeTextDocument) => void) => {
+            textDocumentCloseListeners.push(listener);
+            return {
+                dispose: vi.fn(() => {
+                    const idx = textDocumentCloseListeners.indexOf(listener);
+                    if (idx >= 0) {
+                        textDocumentCloseListeners.splice(idx, 1);
+                    }
+                }),
+            };
+        },
+    ),
     onWillSaveTextDocument: vi.fn(
         (listener: (e: FakeWillSaveEvent) => void) => {
             willSaveTextDocumentListeners.push(listener);
@@ -446,6 +469,11 @@ export class TabInputCustom {
         public readonly uri: unknown,
         public readonly viewType: string,
     ) {}
+}
+
+/** Tab input for a plain text editor (instanceof-checked alongside the above). */
+export class TabInputText {
+    constructor(public readonly uri: unknown) {}
 }
 
 /**

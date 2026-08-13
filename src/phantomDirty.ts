@@ -21,6 +21,11 @@
  * and runs no save participant. It is a way of saying "this document has no
  * unsaved changes" to a platform that has no other way to hear it.
  *
+ * The precondition is established by a read the revert does not repeat, so an
+ * external write landing between the two is a window nothing here can close.
+ * It degrades to taking disk, which is what an external write asks for; what
+ * it costs is the drift badge (MAR-152), which never appears for that one.
+ *
  * TARGETING is the whole risk, and it is the reason for the gate stack below.
  * The command reverts the ACTIVE editor and ignores its URI argument (MAR-138:
  * an earlier auto-revert design was a data-loss vector for exactly this
@@ -37,8 +42,9 @@
  * Every gate is re-read after the disk await, since focus and dirtiness both
  * move underneath it. Refusing costs the user a dot that stays lit until their
  * next save, which is the behavior they have today; taking it wrongly costs
- * them work. A tab whose input names no resource (a webview, a terminal) can
- * never be proven to be ours, so it counts as foreign when dirty.
+ * them work. So "ours" is read narrowly: a dirty tab counts as foreign unless
+ * its unsaved bytes ARE this TextDocument's, which naming the same file does
+ * not establish.
  */
 import * as vscode from "vscode";
 
@@ -64,7 +70,7 @@ export async function settlePhantomDirty(
         !document.isClosed &&
         panel.active &&
         activeTabIs(uriKey, viewType) &&
-        noForeignUnsavedWork(uriKey);
+        noForeignUnsavedWork(uriKey, viewType);
 
     if (!settleable()) { return false; }
 
@@ -94,24 +100,40 @@ function activeTabIs(uriKey: string, viewType: string): boolean {
     );
 }
 
-/** Whether every tab holding unsaved changes holds THIS document. */
-function noForeignUnsavedWork(uriKey: string): boolean {
+/** Whether every tab holding unsaved changes is backed by THIS TextDocument. */
+function noForeignUnsavedWork(uriKey: string, viewType: string): boolean {
     for (const group of vscode.window.tabGroups?.all ?? []) {
         for (const tab of group.tabs) {
-            if (tab.isDirty && tabResource(tab) !== uriKey) { return false; }
+            if (tab.isDirty && !isOurTextDocument(tab, uriKey, viewType)) { return false; }
         }
     }
     return true;
 }
 
 /**
- * The document a tab holds, as a uri key, or undefined when its input names no
- * single resource. Read structurally rather than by `instanceof` over the
- * TabInput* union: the question is only "which file", and every input that has
- * an answer spells it `uri` (text, custom, notebook) or `modified` (a diff,
- * whose right-hand side is the editable one).
+ * Whether a tab's unsaved work IS this document's, so that reverting the
+ * document loses nothing the tab was holding.
+ *
+ * Naming the same file is not enough, and this is the distinction the gate
+ * turns on. A custom editor keeps its own dirty state, unrelated to the
+ * TextDocument: `Open With > Hex Editor` on the same `.md` gives a tab whose
+ * uri matches ours and whose unsaved bytes a revert would discard. So a custom
+ * tab must also be OUR viewType, which is the only one whose dirty state is
+ * this document's. A plain text editor over the uri is backed by the same
+ * TextDocument and is safe.
+ *
+ * Everything else counts as foreign, including a diff and a notebook: a
+ * notebook's uri can match a text file it was opened from, and a diff's dirty
+ * side is a different model. The question here is never "which file" but
+ * "whose unsaved bytes", and the safe direction is to refuse.
  */
-function tabResource(tab: vscode.Tab): string | undefined {
-    const input = tab.input as { uri?: vscode.Uri; modified?: vscode.Uri } | undefined;
-    return (input?.modified ?? input?.uri)?.toString();
+function isOurTextDocument(tab: vscode.Tab, uriKey: string, viewType: string): boolean {
+    const input = tab.input;
+    if (input instanceof vscode.TabInputCustom) {
+        return input.viewType === viewType && input.uri.toString() === uriKey;
+    }
+    if (input instanceof vscode.TabInputText) {
+        return input.uri.toString() === uriKey;
+    }
+    return false;
 }

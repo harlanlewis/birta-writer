@@ -1,7 +1,9 @@
 <!doctype html>
 <!-- e2e harness page for undo-returns-to-the-loaded-bytes. Mirrors the
      provider template (src/MarkdownEditorProvider.ts) with acquireVsCodeApi
-     stubbed. `isMac: false` so the checks can press Control+Z on any runner.
+     stubbed. `isMac` sets only how a chord is SPELLED in the UI (webview/i18n),
+     never which one the keymap binds: ProseMirror resolves Mod from the
+     browser platform, so the checks press Meta like every other suite here.
      The document is one paragraph carrying an inline link, the construct whose
      label the caret is placed inside. -->
 <meta charset="utf-8">

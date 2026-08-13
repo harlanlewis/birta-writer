@@ -715,6 +715,16 @@ export class MarkdownEditorProvider
     ) {
         this._flush = new SaveFlushController<vscode.TextEdit>(flushTimeoutMs, flushBackend);
         this._watchWorkspaceIndex();
+        // The save point outlives its PANEL on purpose (a document closed dirty
+        // and reopened keeps it), so the panel's dispose is the wrong place to
+        // drop it. This is the right one: a document VS Code has closed cannot
+        // come back dirty from memory, and without it the map holds one full
+        // copy of every Markdown file opened for the life of the host.
+        this.context.subscriptions.push(
+            vscode.workspace.onDidCloseTextDocument((doc) => {
+                this._savePointText.delete(doc.uri.toString());
+            }),
+        );
     }
 
     /**
@@ -977,12 +987,22 @@ export class MarkdownEditorProvider
                                 // the edit queue, so no later update can slip
                                 // between the settle's checks and its revert.
                                 if (newContent === this._savePointText.get(uriKey)) {
-                                    await settlePhantomDirty(
-                                        document,
-                                        webviewPanel,
-                                        uriKey,
-                                        MarkdownEditorProvider.viewType,
-                                    );
+                                    try {
+                                        await settlePhantomDirty(
+                                            document,
+                                            webviewPanel,
+                                            uriKey,
+                                            MarkdownEditorProvider.viewType,
+                                        );
+                                    } catch (err) {
+                                        // A failed settle costs a dot that stays
+                                        // lit, never the edit that has already
+                                        // been applied above. Report rather than
+                                        // reject: the queue's recovery only runs
+                                        // when a later edit arrives, so a
+                                        // rejection here can go unhandled.
+                                        reportError("settlePhantomDirty", err);
+                                    }
                                 }
                             });
                         }

@@ -156,7 +156,7 @@ describe("settlePhantomDirty", () => {
         });
 
         it("a focused tab of another view type over the same file should be left dirty", async () => {
-            // Arrange — a raw text tab reports no viewType at all.
+            // Arrange — a tab input naming no viewType at all.
             const { document, panel } = await setup(SAVED);
             setTabs([{ input: { uri: vscode.Uri.file(FILE) }, isDirty: true }]);
 
@@ -166,6 +166,98 @@ describe("settlePhantomDirty", () => {
             // Assert
             expect(settled).toBe(false);
             expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+        });
+
+        it("a focused custom editor of another view type over the same file should be left dirty", async () => {
+            // Arrange — the viewType arm of the active-tab gate, which a bare
+            // `{ uri }` input never reaches: it fails the instanceof first.
+            const { document, panel } = await setup(SAVED);
+            setTabs([
+                { input: new vscode.TabInputCustom(vscode.Uri.file(FILE), "other.editor"), isDirty: true },
+            ]);
+
+            // Act
+            const settled = await settle(document, panel);
+
+            // Assert
+            expect(settled).toBe(false);
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+        });
+
+        it("another editor holding unsaved bytes of the same file should be left dirty", async () => {
+            // Arrange — `Open With > Hex Editor` on our own `.md`. It names our
+            // uri, so a gate that asks only "which file" calls it ours; its
+            // unsaved bytes are its own, and the revert discards them.
+            const { document, panel } = await setup(SAVED);
+            setTabs([
+                { input: ourTab(), isDirty: true },
+                { input: new vscode.TabInputCustom(vscode.Uri.file(FILE), "hexEditor.hexedit"), isDirty: true },
+            ]);
+
+            // Act
+            const settled = await settle(document, panel);
+
+            // Assert
+            expect(settled).toBe(false);
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+        });
+
+        it("a dirty tab naming no resource at all should be left dirty", async () => {
+            // Arrange — a webview or terminal cannot be proven to be ours.
+            const { document, panel } = await setup(SAVED);
+            setTabs([{ input: ourTab(), isDirty: true }, { input: undefined, isDirty: true }]);
+
+            // Act
+            const settled = await settle(document, panel);
+
+            // Assert
+            expect(settled).toBe(false);
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+        });
+
+        it("an untitled document should be left alone, having no file to be clean against", async () => {
+            // Arrange
+            const { document, panel } = await setup(SAVED);
+            (document as { isUntitled: boolean }).isUntitled = true;
+
+            // Act
+            const settled = await settle(document, panel);
+
+            // Assert
+            expect(settled).toBe(false);
+            expect(vscode.workspace.fs.readFile).not.toHaveBeenCalled();
+        });
+
+        it("a closed document should be left alone", async () => {
+            // Arrange
+            const { document, panel } = await setup(SAVED);
+            (document as { isClosed: boolean }).isClosed = true;
+
+            // Act
+            const settled = await settle(document, panel);
+
+            // Assert
+            expect(settled).toBe(false);
+            expect(vscode.workspace.fs.readFile).not.toHaveBeenCalled();
+        });
+
+        it("the same file open in a raw text tab should not block the settle", async () => {
+            // Arrange — a raw text editor over our uri is backed by the SAME
+            // TextDocument, so its dirty flag is the one being cleared and its
+            // unsaved bytes are the ones already proven equal to disk. The
+            // raw/WYSIWYG switch leaves exactly this pair open.
+            const { document, panel } = await setup(SAVED);
+            setTabs([
+                { input: ourTab(), isDirty: true },
+                { input: new vscode.TabInputText(vscode.Uri.file(FILE)), isDirty: true },
+            ]);
+
+            // Act
+            const settled = await settle(document, panel);
+
+            // Assert
+            expect(settled).toBe(true);
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith(REVERT);
         });
 
         it("another tab holding unsaved work should be left dirty", async () => {
