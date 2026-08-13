@@ -1,5 +1,5 @@
 /**
- * Corpus launch suite: every real markdown file in the corpus opens in the
+ * Corpus launch suite: every real document in the corpus opens in the
  * production bundle, paints, and leaves the main thread alive. The perf
  * fixtures are synthetic and the perf gates are delta gates, so a document
  * class that hangs the editor was invisible to both — this is the only place
@@ -13,16 +13,29 @@
  * hang Playwright calls past their own timeouts.
  */
 import { readdir, readFile } from "node:fs/promises";
-import { join, dirname, relative } from "node:path";
+import { join, dirname, relative, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = dirname(dirname(fileURLToPath(new URL(".", import.meta.url))));
 
-/** Corpus roots, relative to the repo. Recursed; only .md files are taken. */
+/** Corpus roots, relative to the repo. Recursed. */
 const CORPUS_DIRS = ["webview/__tests__/fixtures", "samples"];
 
-/** A corpus small enough to be a glob accident fails the suite. */
-const MIN_CORPUS_SIZE = 30;
+/**
+ * Document extensions the walk takes, mapped to the wire `format` the harness
+ * page must init with. An `.mdx` file opened as markdown is a DIFFERENT
+ * document (its islands parse as prose or HTML), so walking it without the
+ * format would test nothing this suite claims to test.
+ */
+const FORMAT_BY_EXT = { ".md": "markdown", ".mdx": "mdx" };
+
+/**
+ * Per-format floors. A corpus small enough to be a glob accident fails the
+ * suite, and each format needs its OWN floor: `.mdx` is a handful of files
+ * against hundreds of `.md`, so a total-only floor would stay green with the
+ * mdx walk broken to zero.
+ */
+const MIN_CORPUS_SIZE = { markdown: 30, mdx: 3 };
 
 /** Generous by design: these are hang watchdogs, not perf gates. The outer
  *  deadline is a last resort for a renderer that hangs Playwright itself, so
@@ -33,20 +46,31 @@ const RENDER_SETTLE_MS = 20000;
 const PING_CEILING_MS = 2000;
 const DOC_DEADLINE_MS = 60000;
 
+/**
+ * Every corpus document, plus a census of the file extensions the walk passed
+ * over. The census is reported: a walk that reached nothing green-lights the
+ * whole suite, and "0 documents" and "0 failures" read identically from a
+ * summary line.
+ */
 async function collectCorpus() {
     const files = [];
+    const skipped = new Map();
     for (const dir of CORPUS_DIRS) {
         const stack = [join(repoRoot, dir)];
         while (stack.length) {
             const d = stack.pop();
             for (const entry of await readdir(d, { withFileTypes: true })) {
                 const p = join(d, entry.name);
-                if (entry.isDirectory()) stack.push(p);
-                else if (entry.name.endsWith(".md")) files.push(p);
+                if (entry.isDirectory()) { stack.push(p); continue; }
+                const ext = extname(entry.name).toLowerCase();
+                const format = FORMAT_BY_EXT[ext];
+                if (format) files.push({ path: p, format });
+                else skipped.set(ext || "(none)", (skipped.get(ext || "(none)") ?? 0) + 1);
             }
         }
     }
-    return files.sort();
+    files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    return { files, skipped };
 }
 
 const deadline = (ms, label) =>
@@ -56,15 +80,15 @@ const deadline = (ms, label) =>
  * Open one document in a fresh context and report how it settled.
  * Returns { ok: true, paintedMs, pingMs } or { ok: false, why }.
  */
-async function openDoc(browser, baseUrl, content) {
+async function openDoc(browser, baseUrl, content, format) {
     const ctx = await browser.newContext({ viewport: { width: 1000, height: 900 } });
     try {
         const page = await ctx.newPage();
         const pageErrors = [];
         page.on("pageerror", (e) => pageErrors.push(String(e)));
-        await page.addInitScript((c) => {
-            window.__perfInit = { content: c, lineMap: [] };
-        }, content);
+        await page.addInitScript((init) => {
+            window.__perfInit = { content: init.content, format: init.format, lineMap: [] };
+        }, { content, format });
 
         const t0 = Date.now();
         await page.goto(`${baseUrl}/`, { waitUntil: "commit" });
@@ -126,23 +150,31 @@ async function openDoc(browser, baseUrl, content) {
 
 export async function run({ page, check, baseUrl }) {
     const browser = page.context().browser();
-    const corpus = await collectCorpus();
-    check(`corpus inventory is real (${corpus.length} documents)`, corpus.length >= MIN_CORPUS_SIZE,
-        `expected >= ${MIN_CORPUS_SIZE}`);
+    const { files, skipped } = await collectCorpus();
 
-    for (const file of corpus) {
+    const census = [...skipped.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([ext, n]) => `${ext} x${n}`)
+        .join(", ");
+    for (const [format, floor] of Object.entries(MIN_CORPUS_SIZE)) {
+        const n = files.filter((f) => f.format === format).length;
+        check(`corpus inventory is real: ${n} ${format} documents`, n >= floor,
+            `expected >= ${floor}; not walked: ${census || "nothing"}`);
+    }
+
+    for (const { path: file, format } of files) {
         const name = relative(repoRoot, file);
         const content = await readFile(file, "utf8");
         let result;
         try {
             result = await Promise.race([
-                openDoc(browser, baseUrl, content),
+                openDoc(browser, baseUrl, content, format),
                 deadline(DOC_DEADLINE_MS, "document open"),
             ]);
         } catch (e) {
             result = { ok: false, why: String(e.message ?? e) };
         }
-        check(`${name} opens and stays alive`, result.ok,
+        check(`${name} opens and stays alive (${format})`, result.ok,
             result.ok ? `paint ${result.paintedMs}ms, ping ${result.pingMs}ms` : result.why);
     }
 }
