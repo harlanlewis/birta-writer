@@ -326,12 +326,30 @@ describe("footnotes inside a directive", () => {
 
     // MAR-362: with NO blank line before the close fence, the footnote
     // definition's lazy-continuation-line rule swallows the `:::` as its own
-    // continuation text, so the whole span never becomes a container_directive
-    // — it silently degrades to plain paragraphs instead.
+    // continuation text, so the span never becomes a container_directive and
+    // degrades to plain paragraphs instead.
+    //
+    // `it.fails` greens on ANY rejection, so a broken `makeEditor` would keep
+    // these passing while proving nothing. The two cases above share that
+    // helper and assert positively, which is what holds it honest.
+    const UNSPACED =
+        ":::note\nA note with a footnote reference[^dnote3] inside it.\n\n[^dnote3]: Definition also inside the directive.\n:::\n";
+
     it.fails("a footnote definition immediately followed by the close fence should still be a directive [MAR-362]", async () => {
-        const doc = ":::note\nA note with a footnote reference[^dnote3] inside it.\n\n[^dnote3]: Definition also inside the directive.\n:::\n";
-        const { editor, view } = await makeEditor(doc);
-        expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
-        await editor.destroy();
+        const { editor, view } = await makeEditor(UNSPACED);
+        try {
+            expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+        } finally {
+            // The expect throws, so without this the jsdom container and a
+            // live EditorView outlive the test.
+            await editor.destroy();
+        }
+    });
+
+    // The half a user actually notices, and the more serious one: the close
+    // fence comes back indented, so opening the file and saving it without
+    // typing rewrites a line. Phase-0 fidelity, not a parsing nicety.
+    it.fails("a footnote definition before the close fence should not indent the fence on save [MAR-362]", async () => {
+        expect(await roundTrip(UNSPACED)).toBe(UNSPACED);
     });
 });

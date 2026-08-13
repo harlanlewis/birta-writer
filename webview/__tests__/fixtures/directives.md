@@ -48,7 +48,7 @@ A footnote reference lives inside a directive[^dnote] while its definition sits 
 [^dnote]: The definition for the footnote referenced above.
 
 :::note
-A footnote reference[^dnote2] and its own definition both live inside the same directive, separated from the closing fence by a blank line (MAR-362).
+A footnote reference[^dnote2] and its own definition both live inside the same directive, separated from the closing fence by a blank line. That blank line is what MAR-362's shape omits, and the broken shape is deliberately not in this file: it drifts bytes on a zero-edit save, which every corpus sweep reading this fixture would report as a round-trip failure rather than as the parse bug it is.
 
 [^dnote2]: The definition, also inside the directive.
 
