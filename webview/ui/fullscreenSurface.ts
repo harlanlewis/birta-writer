@@ -8,7 +8,7 @@
  * the diagram used the shared dismiss layer).
  *
  * One preview is deliberately NOT one of these: the image picker's enlarge
- * (`showLightbox` in components/toolbar/index.ts) opens from inside the
+ * (`showLightbox` in components/toolbar/imageInsertPanel.ts) opens from inside the
  * image-insert modal, not from the document. It has to stack above that modal
  * where this surface stacks below it, and its Escape has to return the user to
  * the picker rather than dismiss both. Folding it in needs an answer for a
