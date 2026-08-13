@@ -623,4 +623,62 @@ export async function run({ page, check, baseUrl }) {
         return !!a && getComputedStyle(a).display !== "none";
     });
     check("the caret in the paragraph reveals the raw link", revealed);
+
+    // ── The per-provider roster (MAR-186) ───────────────────────────────────
+    // Driven against the real bundle rather than inferred from the unit sweep:
+    // the claim is that switching one provider off stops ITS cards and leaves
+    // every other provider's alone. The decoration pass re-runs on doc changes,
+    // so typing a character is enough to re-gate without an extension message.
+    const ROSTER_OFF = ["figma", "miro"];
+    const countByKind = () => page.evaluate(
+        (kinds) => Object.fromEntries(
+            kinds.map((k) => [k, document.querySelectorAll(`.embed-card[data-embed-kind="${k}"]`).length]),
+        ),
+        ALL_KINDS,
+    );
+    /** Caret to the heading, then one keystroke: a doc change far from every card. */
+    const typeInHeading = async (ch) => {
+        await page.evaluate(() => {
+            const h = document.querySelector(".ProseMirror h1");
+            const range = document.createRange();
+            range.setStart(h.firstChild ?? h, 0);
+            range.collapse(true);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        });
+        await page.keyboard.type(ch);
+        await page.waitForTimeout(400);
+    };
+
+    // Settle FIRST, and only then snapshot. The check above leaves the caret in
+    // an embed paragraph, where reveal-on-caret is deliberately hiding that
+    // card — a baseline read there counts one card fewer, and the caret move
+    // below would restore it, which reads as the roster adding a card. The
+    // roster has to be the only thing that changes between the two snapshots.
+    await typeInHeading("x");
+    const beforeRoster = await countByKind();
+
+    await page.evaluate((off) => {
+        window.__i18n.embedProviders = Object.fromEntries(off.map((k) => [k, false]));
+    }, ROSTER_OFF);
+    await typeInHeading("y");
+
+    const afterRoster = await countByKind();
+
+    const wentQuiet = ROSTER_OFF.every((k) => beforeRoster[k] > 0 && afterRoster[k] === 0);
+    check(
+        `switching ${ROSTER_OFF.join(" and ")} off removes their cards`,
+        wentQuiet,
+        JSON.stringify({ before: beforeRoster, after: afterRoster }),
+    );
+
+    // The control. Without it, a gate that dropped EVERY card would pass above.
+    const survivors = ALL_KINDS.filter((k) => !ROSTER_OFF.includes(k));
+    const keptTheRest = survivors.every((k) => afterRoster[k] === beforeRoster[k]);
+    check(
+        `the other ${survivors.length} providers keep their cards`,
+        keptTheRest,
+        JSON.stringify({ before: beforeRoster, after: afterRoster }),
+    );
 }

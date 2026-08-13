@@ -16,6 +16,8 @@
 
 - Edit an image's alt text and path from the keyboard: an image block's menu offers Edit Alt Text and Edit Image Path, which focus the image toolbar's own inputs, plus a row that cycles the image's display width.
 
+- Every embed provider has its own switch. Until now the only lever was the single URL Embeds setting, which turned every provider on or off together, so keeping YouTube cards meant also handing Google, Figma and Miro the ids of whatever you had linked. There is now one key per provider (`birta.embeds.providers.youtube`, `birta.embeds.providers.figma`, and so on), each on by default. They are user-level only, like the network and embed settings above them, so a repository's checked-in settings cannot switch a provider back on. Turning one off reaches the documents you already have open, leaves that provider's links looking like ordinary links, and stops the editor asking it for a title. Pasting one of its links offers you a page title again, the way any other link does.
+
 - A What's New row in the toolbar's gear menu opens the release history in your browser, so what shipped in an update is reachable from the editor rather than only from the Marketplace page. It sits with Birta Writer Settings, appears on the toolbar's right-click menu too, and is available as a Command Palette command. Birta requests nothing itself: it hands the address to VS Code, which opens your browser, so the row works with the master network switch off.
 
 ### Changed
