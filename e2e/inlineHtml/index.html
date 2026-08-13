@@ -39,6 +39,17 @@
     // the point of the line is the onerror attribute, which must not survive.
     "Nothing dangerous: <img src=\"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7\" onerror=\"window.__xss = true\">",
     "",
+    // MAR-366. The style element is NESTED, which is the whole point: a
+    // top-level one is dropped incidentally by fragment parsing, so a fixture
+    // carrying only that would prove nothing. The rule targets the topbar
+    // rather than the editor, so a failure is visible as a specific element
+    // disappearing rather than as the page looking broken.
+    "<div><style>.editor-topbar{display:none}</style>styled</div>",
+    "",
+    "<div id=\"escapee\" style=\"position:fixed;inset:0;background:red\">covers</div>",
+    "",
+    "Press <button>go</button> now.",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

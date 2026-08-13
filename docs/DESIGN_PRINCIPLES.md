@@ -114,6 +114,16 @@ It degrades to the default, never to a guess. These are keyed by content, so an 
 
 The counter-case is a choice Markdown CAN spell: a bullet character, an ordered delimiter, a callout's fold marker. Those belong in the file, recorded as the author typed them, and `sourceStyle.ts` exists for exactly that. The test is not whether a choice is cosmetic, it is whether the file can say it.
 
+## Rendered HTML is output, not a surface
+
+A document's inline HTML is preserved byte for byte, edited as source, and drawn as output. The drawing is where the scope of this feature could run away, because rendering costs the editor nothing per tag: the browser does it. So the rendered face of an html atom is inert by construction. It does not hold the caret, it does not become schema structure, and it gains no affordance of its own. A click anywhere on it opens the source panel, which is the one way in. The single exception is the `<details>` toggle, because a disclosure that cannot disclose is worse than no disclosure.
+
+Focus follows the same rule, since a control the caret can reach is a surface whether or not it was meant to be one. Every focusable element in a rendered face leaves the tab order once sanitized (`components/htmlView`).
+
+A document's CSS is filtered rather than trusted, which is the part with no fallback behind it. Scripts are refused twice, by the sanitizer and by the CSP; nothing rendered can reach the network, because `default-src 'none'` allows no origin an inline tag could name. CSS has neither guard: `style-src` must carry `'unsafe-inline'` for the editor's own styles, and the rendered face is `display: contents`, so it has no box for CSS containment to hold. That leaves the sanitizer as the only place the question can be answered, and it answers it in two parts. A `<style>` element never applies, because its selectors are global and reach the editor rather than the document. A `style` attribute keeps its presentational declarations and loses the ones that would leave the atom's box (`utils/sanitizeLoader.ts`).
+
+The distinction worth carrying to the next feature here: preserving a construct, editing its source, and rendering it are three different scopes, and only the third is open-ended. A request to render more is a request to decide, again, what a document may do to the editor around it.
+
 ## Analysis never blocks interactivity
 
 Decoration and analysis settle in after first paint, on idle. Never on the mount path, and never as a reaction to the user's first keystroke. The editor is interactive before the first proofread pass runs. (Enforced by the deferred first pass in `proofread.ts`; measured by `e2e/perf/`.)

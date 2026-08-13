@@ -12,8 +12,17 @@
  *  - tag HTML   → DOMPurify-sanitized rendered output (never executes; the
  *    sanitizer strips scripts and handlers, and the webview CSP is behind it)
  *  - comment    → the dimmed chip (`.html-comment`), raw text
+ *  - style      → the same chip (`.html-css-source`), raw text
  *  - editing    → a code surface: a syntax-highlighted mirror under a
  *    transparent `<textarea>`, the two-layer editor the code lightbox uses
+ *
+ * The rendered face is OUTPUT, not a surface (MAR-366). A document's CSS is
+ * filtered rather than trusted: `<style>` never applies, and the escaping
+ * `style` declarations are dropped by the hook in utils/sanitizeLoader.ts.
+ * The CSP cannot do this job, because `style-src` must carry 'unsafe-inline'
+ * for the editor's own styles. Nothing rendered here holds focus either: every
+ * focusable descendant is given `tabindex="-1"` once sanitized, so the one way
+ * into an atom is the source panel.
  *
  * The panel wears one of two faces. An atom alone in its block is the whole
  * line of HTML, so it opens as a full-width code block with a hint row. An
@@ -31,8 +40,8 @@
  * Mod+Enter keymap in plugins/htmlLivePairs.ts dispatches it at the selected
  * atom's DOM, since a plugin cannot reach the NodeView instance directly).
  * A click on a rendered `<summary>` is left to the native `<details>` toggle
- * instead of opening the panel — the one rendered control DOMPurify keeps
- * interactive.
+ * instead of opening the panel — the one interaction the rendered face keeps,
+ * and the reason `summary` is absent from the FOCUSABLE list below.
  *
  * Committing: blur or Mod+Enter commits (an unchanged value just closes);
  * Escape cancels. An emptied value deletes the node. Mod+/ commits and hands
@@ -55,6 +64,16 @@ import { kbd, t } from "@/i18n";
 export const HTML_EDIT_EVENT = "birta:html-edit";
 
 const COMMENT_RE = /^<!--[\s\S]*?-->$/;
+/** A value that is nothing but a `<style>` element, which renders as a chip. */
+const STYLE_ELEMENT_RE = /^<style[\s>][\s\S]*<\/style>$/i;
+/**
+ * Focusable descendants of a rendered face.
+ *
+ * `summary` is deliberately absent: it is focusable natively, carries no
+ * attribute to rewrite, and its toggle is the one interaction the rendered
+ * face keeps.
+ */
+const FOCUSABLE = "a[href], button, input, select, textarea, [tabindex]";
 
 interface HtmlView {
     dom: HTMLElement;
@@ -66,15 +85,23 @@ interface HtmlView {
 
 /** Paint the resting face for `raw` into `dom`; returns the sanitize handle. */
 function paint(dom: HTMLElement, raw: string): Promise<void> {
-    if (COMMENT_RE.test(raw.trim())) {
-        dom.className = "html-inline html-comment";
+    const value = raw.trim();
+    const comment = COMMENT_RE.test(value);
+    if (comment || STYLE_ELEMENT_RE.test(value)) {
+        // Two kinds, one chip recipe (style.css). A style element has to reach
+        // it explicitly: the sanitizer drops the element AND its contents, so
+        // without a face of its own the node would paint as an empty span,
+        // which is the silent drop the preserve-everything promise rules out.
+        dom.className = comment ? "html-inline html-comment" : "html-inline html-css-source";
         // A child span, not bare textContent: the editing face hides the
         // rendered children with `> :not(.html-src-panel)`, which cannot match
         // a text node.
         const chip = document.createElement("span");
-        chip.textContent = raw.trim();
+        chip.textContent = value;
         dom.replaceChildren(chip);
-        dom.title = t("HTML comment — preserved in the file, hidden in rendered output. Click to edit.");
+        dom.title = comment
+            ? t("HTML comment — preserved in the file, hidden in rendered output. Click to edit.")
+            : t("CSS — preserved in the file, not applied to the editor. Click to edit.");
         return Promise.resolve();
     }
     dom.className = "html-inline";
@@ -82,6 +109,15 @@ function paint(dom: HTMLElement, raw: string): Promise<void> {
     return sanitizeInto(dom, raw, {
         USE_PROFILES: { html: true },
         ADD_ATTR: ["align", "width", "height"],
+        // FORBID_CONTENTS as well as FORBID_TAGS: dropping the element alone
+        // would let KEEP_CONTENT spill the stylesheet into the document as
+        // visible text.
+        FORBID_TAGS: ["style"],
+        FORBID_CONTENTS: ["style"],
+    }).then(() => {
+        for (const el of dom.querySelectorAll(FOCUSABLE)) {
+            el.setAttribute("tabindex", "-1");
+        }
     });
 }
 

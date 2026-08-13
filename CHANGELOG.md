@@ -26,6 +26,8 @@
 
 ### Fixed
 
+- A document's HTML can no longer restyle the editor around it. A `<style>` element in your file applied to the whole window, so a stylesheet meant for a published page could dim the toolbar or hide parts of the editor, and nothing said why. It now shows as a dimmed chip, kept in the file and not applied, and clicking it opens its source the way an HTML comment does. A `style` attribute still renders as written, minus the declarations that would let a box leave its place in the document, such as `position: fixed`. Nothing rendered from HTML takes a Tab stop any more, so the caret stays in your text. No file is changed by any of this: the bytes come back exactly as authored.
+
 - Editing an HTML tag over two lines no longer costs the block underneath it. Where a tag sat mid-sentence in a list item, and the value you applied ran to a second line, a code block or table directly beneath that item was read back as part of the HTML and was gone the next time the file opened. The bytes on disk were always right; what changed was what they parsed as. A tag alone at the start of the line was already guarded, so this affected the case where prose came first.
 
 - A heading refuses a line break in one of its tags rather than losing the heading. Applying a value containing a newline to a tag inside a heading pushed the rest of the line out of it, and a heading written in the underlined style was destroyed outright: the underline was absorbed by the HTML and the heading became ordinary paragraphs. The panel now declines the break and says why, the way a table cell already did. Nothing changes for a paragraph, where a tag spanning several lines is ordinary.

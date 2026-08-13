@@ -913,9 +913,12 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             }
         }
 
-        /* HTML comments: visible as a dimmed chip instead of vanishing.
-           Overrides .html-inline's display: contents so the chip has a box. */
-        .html-comment {
+        /* Inline HTML that is preserved but never rendered: a comment, or a
+           <style> element whose CSS the editor refuses to apply. Visible as a
+           dimmed chip instead of vanishing. Overrides .html-inline's
+           display: contents so the chip has a box. */
+        .html-comment,
+        .html-css-source {
             display: inline-block;
             max-width: 100%;
             padding: 0 0.35em;

@@ -12,6 +12,9 @@
  * Also pins the two invariants the laziness must not weaken: the comment chip
  * (which needs no sanitizer) is still filled, and sanitization still strips
  * event handlers.
+ *
+ * And the containment contract (MAR-366): a document's CSS cannot reach the
+ * editor around it, and nothing rendered can take focus.
  */
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
@@ -44,4 +47,36 @@ export async function run({ page, check, baseUrl }) {
     });
     check("event-handler attributes are stripped by the sanitizer",
         img !== null && img.onerror === null && img.xss === false, JSON.stringify(img));
+
+    // MAR-366. These three need a layout engine, so jsdom cannot answer them:
+    // whether a rule APPLIES, whether a box ESCAPES, and what the real tab
+    // order is. The unit suite asserts the sanitizer's output; this asserts
+    // what the browser then does with it.
+    await page.waitForFunction(() =>
+        document.querySelector(".html-inline #escapee") !== null, null, { timeout: 10000 });
+
+    const topbar = await page.evaluate(() => {
+        const el = document.querySelector(".editor-topbar");
+        return { display: getComputedStyle(el).display, styleTags: document.querySelectorAll(".html-inline style").length };
+    });
+    check("a document's <style> neither applies nor survives in the DOM",
+        topbar.display !== "none" && topbar.styleTags === 0, JSON.stringify(topbar));
+
+    const escapee = await page.evaluate(() => {
+        const el = document.querySelector(".html-inline #escapee");
+        const rect = el.getBoundingClientRect();
+        return {
+            position: getComputedStyle(el).position,
+            coversViewport: rect.width >= innerWidth && rect.height >= innerHeight,
+        };
+    });
+    check("a fixed-position style attribute cannot escape its atom",
+        escapee.position !== "fixed" && !escapee.coversViewport, JSON.stringify(escapee));
+
+    // The IDL property, not the attribute: it reports the browser's own
+    // sequential focus order, which is the thing being claimed.
+    const buttonTabIndex = await page.evaluate(() =>
+        document.querySelector(".html-inline button")?.tabIndex ?? null);
+    check("a rendered control is outside the tab order",
+        buttonTabIndex === -1, JSON.stringify(buttonTabIndex));
 }
