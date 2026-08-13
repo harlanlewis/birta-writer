@@ -343,6 +343,17 @@ describe("grip drag reorder", () => {
         );
         v = view(editor);
         expect(v.state.selection instanceof CellSelection).toBe(false);
+
+        // The cancel must have TORN THE SESSION DOWN, not merely declined to
+        // select. Without that, the assertion above passes with the
+        // `pointercancel` listener deleted outright, because selection only
+        // ever happens in the drag's own end handler. A mouseup afterwards is
+        // what tells the two apart: on a live session it selects the row.
+        document.dispatchEvent(
+            new MouseEvent("mouseup", { bubbles: true, clientX: 5, clientY: 25 }),
+        );
+        v = view(editor);
+        expect(v.state.selection instanceof CellSelection).toBe(false);
     });
 
     // The teardown must be reached by the pointer that armed the session, so a

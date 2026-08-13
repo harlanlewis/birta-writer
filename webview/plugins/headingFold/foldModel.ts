@@ -669,9 +669,9 @@ export function foldablesAtLevel(doc: any, level: number): number[] {
 
 /**
  * Every foldable inside `pos`'s own hidden range, plus `pos` itself — the run
- * a recursive fold acts on (MAR-116). Document order, so a caller folding the
- * whole run leaves the outermost fold last and the plugin's own bookkeeping
- * sees the same order a user clicking inward would produce.
+ * a recursive fold acts on (MAR-116). Ascending document order, so `pos` comes
+ * FIRST and its descendants follow, the same order a user clicking outside-in
+ * would produce.
  */
 export function foldableSubtree(doc: any, pos: number): number[] {
     const range = foldHiddenRange(doc, pos);

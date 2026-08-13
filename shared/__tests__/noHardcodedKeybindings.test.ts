@@ -101,6 +101,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
         "webview/plugins/headingFold/foldGutter.ts":
             "Alt+click recursive fold (mouse modifier), not a keybinding",
+        "webview/plugins/headingSticky.ts":
+            "Alt+click recursive fold on the pinned heading's chevron (mouse modifier), not a keybinding",
     };
 
     // `getModifierState("Meta"|"Control")` is the same read by another name and

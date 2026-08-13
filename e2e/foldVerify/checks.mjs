@@ -881,4 +881,5 @@ export async function run({ page, check, baseUrl }) {
         window.__posted.filter((m) => m.type === "update").length);
     check("the recursive fold never dirtied the document", foldUpdates === 0, String(foldUpdates));
     await shot(page, "09-alt-click-recursive");
+
 }

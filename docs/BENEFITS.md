@@ -205,7 +205,7 @@ Markdown's whole appeal is that it survives the trip through any plain-text chan
 
 Both are for navigating long documents, and neither touches the file. You get structure you can move through without scrolling, and without it leaking into what's saved.
 
-Headings, list items, tables, code blocks, quotes, callouts, `:::` directives and footnote definitions all fold from the same gutter chevron, and each collapses to whatever line names what is hidden. Levels count nesting rather than heading rank, so a code block or table at the top of a file folds at level 1 alongside the sections, and a document whose headings start at `##` still has a level 1 to fold.
+Headings, list items, tables, code blocks, quotes, callouts, `:::` directives and footnote definitions fold from the same gutter chevron, and each collapses to whatever line names what is hidden. A block offers the chevron only where there is something to hide behind a first line, so a two-line quote that is really one paragraph has nothing to fold and shows no control. Levels count nesting rather than heading rank, so a code block or table at the top of a file folds at level 1 alongside the sections, and a document whose headings start at `##` still has a level 1 to fold.
 
 ### The switch to raw Markdown carries your cursor, and your selection
 

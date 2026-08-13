@@ -24,6 +24,7 @@ import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import {
+    allFoldablePositions,
     foldLevels,
     foldablesAtLevel,
     foldableSubtree,
@@ -134,7 +135,17 @@ describe("fold levels — where the heading reading breaks down", () => {
         const levels = foldLevels(doc);
         // The count assertion is the point: a level map that silently reached
         // nothing would satisfy every "is level N right" test above.
-        expect(levels.size).toBeGreaterThanOrEqual(5);
+        //
+        // Exact, not a floor. `foldLevels` drops any foldable whose
+        // `foldHiddenRange` comes back null, so a kind can stop being reachable
+        // while a `>= 5` bound stays green on a fixture that yields exactly 5.
+        // `allFoldablePositions` is the population it is supposed to cover, so
+        // comparing against it costs nothing and cannot drift with the fixture.
+        const positions = allFoldablePositions(doc);
+        expect(levels.size).toBe(positions.length);
+        // And the fixture has to be worth running: a document with one foldable
+        // would satisfy the equality above.
+        expect(positions.length).toBeGreaterThanOrEqual(5);
         for (const [, level] of levels) {
             expect(level).toBeGreaterThanOrEqual(1);
         }

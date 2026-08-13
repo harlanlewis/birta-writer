@@ -323,3 +323,37 @@ describe("editing inside a callout", () => {
         await editor.destroy();
     });
 });
+
+/**
+ * A callout inside a list item had no round-trip coverage at all, which is why
+ * these exist. They pin the SHAPE, not any one change to it.
+ *
+ * Worth stating what they are not, because the reasoning that produced them was
+ * wrong in a checkable way. `callouts.ts` now carries the blockquote's
+ * `position` through, and `list.ts`'s `hasInternalBlank` reads each child's
+ * `position.start.line` directly, deferring the moment one is missing. That
+ * reads like a behaviour change for exactly these documents. It is not one:
+ * removing the `position` again leaves all three byte-identical, so whatever
+ * `hasInternalBlank` answers here, the emitted bytes do not depend on it.
+ *
+ * The mechanism was traced by reading; the consequence was assumed and did not
+ * survive being run. Kept because the coverage gap was real either way.
+ */
+describe("a callout inside a list item", () => {
+    it("a tight item holding a callout should round-trip byte-identically", async () => {
+        const doc = "- a\n  > [!NOTE]\n  > b\n- c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a loose item holding a callout should keep its blank lines", async () => {
+        // The other direction, so the fix cannot be "always tight": an item
+        // that really is spread must stay spread.
+        const doc = "- a\n\n  > [!NOTE]\n  > b\n\n- c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a callout as an item's first block should round-trip byte-identically", async () => {
+        const doc = "- > [!NOTE]\n  > b\n- c\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+});

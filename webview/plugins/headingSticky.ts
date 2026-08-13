@@ -5,6 +5,7 @@ import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
 import {
     foldHiddenRange,
+    foldSubtreeAt,
     headingFoldPluginKey,
     wireMarkerButtonProtocol,
     type HeadingFoldMeta,
@@ -133,6 +134,21 @@ export function setStickyContent(
             // (gutterBlockPos) applied to the sticky clone. A doc change is
             // exactly what shifts that content, so the refresh still covers it.
             const livePos = Number(sticky.dataset["headingPos"] ?? headingPos);
+
+            // Alt+click folds the region and everything nested inside it, the
+            // same pointer modifier the in-flow chevron carries (MAR-116). This
+            // copy is the same control by construction: same icon, same label,
+            // same tooltip, and the two were deliberately brought into parity.
+            // A modifier that worked on one and silently did nothing on the
+            // other would read as the feature being broken.
+            if (event.altKey) {
+                if (foldSubtreeAt(view.state, view.dispatch.bind(view), livePos, !collapsed)) {
+                    view.focus();
+                    hideTooltip();
+                    scrollHeadingIntoStickyPosition(view, livePos);
+                }
+                return;
+            }
 
             const tr = view.state.tr
                 .setMeta(headingFoldPluginKey, { type: "toggle", pos: livePos } satisfies HeadingFoldMeta)

@@ -56,8 +56,17 @@ const IMPLICIT_ONLY = [
     "span.html-inline",
 ];
 
-/** A floor, so a sweep that reached almost nothing cannot read as a clean one. */
-const MIN_CHROME_KINDS = 60;
+/**
+ * A floor, so a sweep that reached almost nothing cannot read as a clean one.
+ *
+ * It was 60, set against a count of 79 that included 35 SVG and MathML interior
+ * nodes. Those are not HTMLElement, so `isContentEditable` read `undefined` on
+ * every one of them, and `!undefined` counted each as compliant. Roughly half
+ * the reached population was answering no question at all. The sweep now skips
+ * them and reports them separately; run `node e2e/run.mjs touchChromeAudit` for
+ * the live figures rather than trusting this comment.
+ */
+const MIN_CHROME_KINDS = 35;
 
 /**
  * Chrome this fixture cannot bring on screen, each with the reason it is
@@ -120,21 +129,34 @@ const sweep = (page) => page.evaluate(() => {
     if (!root) return { rows: [], error: "no .ProseMirror" };
     const INTERACTIVE = new Set(["pointer", "grab", "grabbing", "col-resize", "row-resize", "ew-resize", "ns-resize", "move"]);
     const rows = [];
+    const foreign = [];
     const seen = new Set();
     for (const el of root.querySelectorAll("*")) {
         const cs = getComputedStyle(el);
         if (el.tagName !== "BUTTON" && !INTERACTIVE.has(cs.cursor)) continue;
         if (cs.pointerEvents === "none") continue;
         const cls = String(el.className?.baseVal ?? el.className ?? "").trim();
-        const key = `${el.tagName.toLowerCase()}.${cls.split(" ")[0]}|${el.isContentEditable}`;
+        const sel = `${el.tagName.toLowerCase()}.${cls.split(" ")[0]}`;
+        // `isContentEditable` is an HTMLElement property. SVG and MathML nodes
+        // are Element but not HTMLElement, so it reads `undefined` on every
+        // interior node of a rendered mermaid diagram or KaTeX formula. Those
+        // used to enter `rows` with no verdict and be counted as compliant,
+        // because `!undefined` is true: they inflated the reached count by
+        // roughly half and told the editability question nothing.
+        //
+        // They are not chrome in the sense this audit means. What could be
+        // retargeted is a diagram's own container, which IS an HTMLElement and
+        // is still swept. Counted separately so the exclusion stays visible.
+        if (!(el instanceof HTMLElement)) {
+            if (!seen.has(`foreign|${sel}`)) { seen.add(`foreign|${sel}`); foreign.push(sel); }
+            continue;
+        }
+        const key = `${sel}|${el.isContentEditable}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        rows.push({
-            sel: `${el.tagName.toLowerCase()}.${cls.split(" ")[0]}`,
-            editable: el.isContentEditable,
-        });
+        rows.push({ sel, editable: el.isContentEditable });
     }
-    return { rows };
+    return { rows, foreign };
 });
 
 export async function run({ page, check, baseUrl }) {
@@ -169,7 +191,7 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(400);
 
     // ── 2. The attribute sweep, with both counts asserted.
-    const { rows } = await sweep(page);
+    const { rows, foreign } = await sweep(page);
     const editable = rows.filter((r) => r.editable).map((r) => r.sel).sort();
     const declared = rows.filter((r) => !r.editable);
     check("the sweep reached a substantial amount of chrome",
@@ -177,9 +199,21 @@ export async function run({ page, check, baseUrl }) {
     check("all interactive chrome declares itself non-editable, bar the wikilink's own source",
         JSON.stringify(editable) === JSON.stringify([...EDITABLE_BY_DESIGN].sort()),
         JSON.stringify(editable));
-    check("the declared and editable counts account for the whole sweep",
-        declared.length + editable.length === rows.length,
-        `${declared.length} declared + ${editable.length} editable = ${rows.length}`);
+    // `declared` and `editable` are exact complements of one array, so summing
+    // them to `rows.length` is true for any value of `r.editable` and no change
+    // to production code can turn it red. What is worth asserting is that every
+    // row carried a real verdict: an element the sweep failed to find would
+    // arrive with `editable: null`, which is neither, and would otherwise be
+    // counted as "declared" and vanish into the pass.
+    const undecided = rows.filter((r) => r.editable !== true && r.editable !== false);
+    check("every kind the sweep enumerated returned a real verdict",
+        undecided.length === 0,
+        `${undecided.length} undecided of ${rows.length}: ${JSON.stringify(undecided.map((r) => r.sel))}`);
+    // What the sweep deliberately did NOT judge, named rather than dropped, so
+    // the reached count above cannot quietly absorb it.
+    check("the non-HTML interiors it skipped are reported, not silently dropped",
+        Array.isArray(foreign),
+        `${foreign.length} SVG/MathML kinds skipped: ${JSON.stringify(foreign.slice(0, 8))}${foreign.length > 8 ? " …" : ""}`);
 
     // ── 3. The chrome that only prosemirror-view's implicit stamp protects.
     const implicit = await page.evaluate((sels) => sels.map((s) => {
