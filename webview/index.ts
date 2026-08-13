@@ -46,6 +46,7 @@ import { bankOpenBlockSourcePanel } from "./components/blockSource";
 import { mark, measure } from "./perf";
 import type { DocumentFormat, ToWebviewMessage } from "../shared/messages";
 import { resolveFormat } from "./format/loader";
+import { describeParseFailure } from "./format/parseError";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
 import {
@@ -589,9 +590,12 @@ async function initEditor(
             // document cannot open WYSIWYG. Show the banner and hand off to
             // the extension, which surfaces the error and reopens the text
             // editor. Nothing was modified — no editor mounted.
-            const message = e instanceof Error ? e.message : String(e);
-            renderFatalParseBanner(container, message);
-            notifyFatalParse(message);
+            // The position is in BODY coordinates (this side never sees the
+            // frontmatter), so the extension is what turns it into a document
+            // line the user can navigate to.
+            const { reason, at } = describeParseFailure(e);
+            renderFatalParseBanner(container, reason);
+            notifyFatalParse(reason, at);
             return;
         }
         // Markdown never fails to parse (every byte sequence is valid), so

@@ -48,6 +48,47 @@ import { normalizeTocVisibility } from "../shared/tocVisibility";
  */
 const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
+/**
+ * File extensions this editor can open, and the set a clicked link routes
+ * into the WYSIWYG view rather than handing to `vscode.open`. It must mirror
+ * `contributes.customEditors[].selector` in package.json: an extension named
+ * here but not there sends `vscode.openWith` at a viewType that refuses the
+ * file, and the click lands nowhere. `package.json`'s selector is the
+ * authority; `editorSelectorParity.test.ts` reads both and fails on a drift.
+ */
+const WYSIWYG_EXT_REGEX = /\.(md|markdown|mdx)$/i;
+
+/** A `(3:1)` or `(3:1-3:6)` position embedded in a parser's own message. */
+const EMBEDDED_POSITION_REGEX = /\((\d+):(\d+)(?:-(\d+):(\d+))?\)/g;
+
+/**
+ * The message shown when a document's format cannot be parsed and the tab
+ * falls back to the text editor.
+ *
+ * The webview renders the BODY, so every position it reports counts from the
+ * first body line; the user is about to be looking at the whole file in the
+ * text editor, where that line is `frontmatterLines` further down. Shifting is
+ * this side's job because the frontmatter is this side's secret: the webview
+ * has never seen it (see `_prepareContentForDisplay`).
+ */
+export function fatalParseNotice(
+    error: string,
+    at: { line: number; column: number } | undefined,
+    frontmatterLines: number,
+): string {
+    const shifted = frontmatterLines > 0
+        ? error.replace(EMBEDDED_POSITION_REGEX, (_m, l1, c1, l2, c2) =>
+            l2 === undefined
+                ? `(${Number(l1) + frontmatterLines}:${c1})`
+                : `(${Number(l1) + frontmatterLines}:${c1}-${Number(l2) + frontmatterLines}:${c2})`)
+        : error;
+    const head = "This file isn't valid MDX, so it opened in the text editor instead";
+    if (!at) {
+        return `${head}: ${shifted}`;
+    }
+    return `${head}. Line ${at.line + frontmatterLines}, column ${at.column}: ${shifted}`;
+}
+
 export function isSafeExternalUrl(rawUrl: string): boolean {
     try {
         const scheme = vscode.Uri.parse(rawUrl, true).scheme.toLowerCase() + ":";
@@ -894,7 +935,13 @@ export class MarkdownEditorProvider
                         // mounted an editor, so the document is untouched and
                         // the tab cannot be dirty from this session.
                         void vscode.window.showErrorMessage(
-                            `This file isn't valid MDX, so it opened in the text editor instead: ${message.error}`,
+                            fatalParseNotice(
+                                message.error,
+                                message.line !== undefined && message.column !== undefined
+                                    ? { line: message.line, column: message.column }
+                                    : undefined,
+                                sourceLineCount(this._frontmatterMap.get(uriKey) ?? ""),
+                            ),
                         );
                         MarkdownEditorProvider.suppressAutoSwitch.add(document.uri.toString());
                         setTimeout(() => MarkdownEditorProvider.suppressAutoSwitch.delete(document.uri.toString()), 2000);
@@ -1712,11 +1759,13 @@ export class MarkdownEditorProvider
         }
 
         const targetUri = vscode.Uri.file(absPath);
-        if (/\.(md|markdown)$/i.test(absPath)) {
-            // .md file: open with WYSIWYG preview; the line number is passed via
-            // setPendingNavigation. A non-numeric fragment (file.md#some-heading,
-            // [[page#Heading]]) resolves to the matching heading's line; no match
-            // just opens the file without scrolling.
+        if (WYSIWYG_EXT_REGEX.test(absPath)) {
+            // A file this editor can open: open with WYSIWYG preview; the line
+            // number is passed via setPendingNavigation. A non-numeric fragment
+            // (file.md#some-heading, [[page#Heading]]) resolves to the matching
+            // heading's line; no match just opens the file without scrolling.
+            // `.mdx` routes here too and picks up MDX mode from the init
+            // format, which is derived from the same URI.
             let navLine = lineNumber;
             if (navLine === undefined && fragment) {
                 navLine = await this._findHeadingLine(targetUri, fragment);
