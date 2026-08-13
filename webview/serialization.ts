@@ -663,8 +663,13 @@ const paragraphOpensBlock = new WeakMap<object, boolean>();
  */
 function opensRawHtmlBlock(node: FlowNode, item: unknown, state: unknown): boolean {
     if (node.type !== "paragraph") return false;
-    const first = node.children?.[0] as { type?: string } | undefined;
-    if (first?.type !== "html") return false;
+    // ANY html child, not just the first. A text node's `<` is escaped, so an
+    // html child is still what it takes to put a raw `<` at a line start, but
+    // that argument is about line ONE only. An html value is editable and
+    // routinely multi-line, so a paragraph whose first child is text can open
+    // a block on a later line, which is exactly what htmlBlockOpenAtEnd below
+    // exists to catch and what a first-child gate stopped it ever seeing.
+    if (!node.children?.some((c) => (c as { type?: string }).type === "html")) return false;
     const cached = paragraphOpensBlock.get(node as object);
     if (cached !== undefined) return cached;
     const handle = (state as SerializerState | null)?.handle;

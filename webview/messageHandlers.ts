@@ -229,6 +229,19 @@ export function createMessageHandlers(
             }
         },
         async externalUpdate(msg, container) {
+            // Bank an open source panel BEFORE the incoming content replaces
+            // local state, so the user's uncommitted text is part of what the
+            // merge re-bases rather than something it overwrites. The panel
+            // lives in a NodeView that any transaction touching its node
+            // recreates, and `destroy` does not commit; a focused element
+            // removed from the document fires no blur, so without this the
+            // typed value is dropped with nothing to undo. Same seam as
+            // flushSave and the mode switch.
+            const openView = getEditorView();
+            if (openView) {
+                bankOpenHtmlPanel(openView);
+                bankOpenBlockSourcePanel(openView);
+            }
             // Record the version we're syncing to so subsequent outbound edits
             // carry it as baseSyncVersion (stale-update rejection on the
             // extension side).
