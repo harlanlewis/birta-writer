@@ -33,6 +33,7 @@ import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { trackEditorReflow } from "@/ui/editorReflow";
 import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
+import { notionDisplayTarget } from "../../../shared/notionIds";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -689,6 +690,22 @@ export function setupLinkPopup(
         });
     }
 
+    /**
+     * Paint the header's target line. A Notion export writes its links as
+     * `Room%201%207a6f70896bfc4e5e976d588412b74370.md`, which tells a reader
+     * nothing the title does not, so that shape shows its decoded, id-free
+     * name instead. Every other href is shown exactly as the file holds it.
+     *
+     * DISPLAY only. `title` keeps the raw target, which this element already
+     * uses for the ellipsized case, so the real address is one hover away;
+     * the URL field, the copy button, and the open routing all read
+     * `currentLink.href` and never this text. Nothing here can reach the file.
+     */
+    function setUrlDisplay(href: string): void {
+        urlEl.textContent = notionDisplayTarget(href) ?? href;
+        urlEl.title = href;
+    }
+
     function updatePopupContent(link: LinkInfo): void {
         const kind = getLinkKind(link.href);
 
@@ -702,8 +719,7 @@ export function setupLinkPopup(
         }
 
         // URL display
-        urlEl.textContent = link.href;
-        urlEl.title = link.href;
+        setUrlDisplay(link.href);
 
         // Anchor hint + Open button tooltip
         if (kind === "anchor") {
@@ -1291,8 +1307,7 @@ export function setupLinkPopup(
             wiki: isWiki || undefined,
         };
         lastApplied = { text: newText, href: newHref, format };
-        urlEl.textContent = currentLink.href;
-        urlEl.title = currentLink.href;
+        setUrlDisplay(currentLink.href);
     }
 
     // ── Remove button ─────────────────────────────────────────────
