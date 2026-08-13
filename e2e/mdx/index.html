@@ -1,13 +1,16 @@
 <!doctype html>
-<!-- Corpus launch stub: the perf harness page (e2e/perf/index.html) minus the
-     measurement flags — same provider-mirroring CSP, same synchronous
-     ready→init reply, driving the exact production bundle. checks.mjs injects
-     each corpus document as window.__perfInit before any script runs. -->
+<!-- e2e harness page for MDX documents. Mirrors the provider template
+     (src/MarkdownEditorProvider.ts) with acquireVsCodeApi stubbed, and takes
+     the document AND its wire format from window.__mdxInit, which checks.mjs
+     injects before any script runs. The format matters here more than
+     anywhere else: it is what sends the entry down format/loader.ts's lazy
+     import, so a page that forgot it would silently test the markdown
+     pipeline against an .mdx file and pass. -->
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
   content="default-src 'none';
            style-src 'self' 'unsafe-inline';
-           script-src 'nonce-corpusharness' 'self';
+           script-src 'nonce-mdxharness' 'self';
            img-src 'self' data:;
            font-src 'self' data:;">
 <style>
@@ -30,27 +33,27 @@
     --vscode-list-activeSelectionForeground: #ffffff;
     --vscode-list-hoverBackground: #2a2d2e;
     --vscode-textLink-foreground: #3794ff;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-textPreformat-foreground: #ce9178;
+    --vscode-errorForeground: #f48771;
     --vscode-editor-font-family: monospace;
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
-<script nonce="corpusharness">
+<script nonce="mdxharness">
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
   window.__posted = [];
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);
       if (msg.type === "ready") {
-        const init = window.__perfInit || { content: "# Sample\n\ntext\n" };
+        const init = window.__mdxInit || { content: "# Sample\n\ntext\n" };
         window.postMessage({
           type: "init",
           content: init.content,
-          // The provider derives this from the document URI; the runner
-          // derives it from the corpus file's extension. Absent means
-          // markdown, exactly as on the real wire.
           format: init.format,
-          lineMap: init.lineMap || [],
+          lineMap: [],
           syncVersion: 0,
         }, "*");
       }
@@ -62,4 +65,4 @@
 <link rel="stylesheet" href="dist/webview.css">
 <div class="editor-topbar"></div>
 <div id="editor"></div>
-<script type="module" nonce="corpusharness" src="dist/webview.js"></script>
+<script type="module" nonce="mdxharness" src="dist/webview.js"></script>

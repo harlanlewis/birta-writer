@@ -24,6 +24,7 @@ import { setMermaidThemeMode, setPlantUmlThemeMode } from "./components/codeBloc
 import { applyFoldingControls } from "./utils/foldingControls";
 import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
 import { bankOpenHtmlPanel } from "./components/htmlView";
+import { bankOpenBlockSourcePanel } from "./components/blockSource";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
@@ -294,6 +295,7 @@ export function createMessageHandlers(
             const view = getEditorView();
             if (view) {
                 bankOpenHtmlPanel(view);
+                bankOpenBlockSourcePanel(view);
             }
             notifyFlushResult(msg.id, flushPendingEdit(msg.id));
         },

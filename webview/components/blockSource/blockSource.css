@@ -1,0 +1,45 @@
+/* Source-peek (MAR-20): a block's Markdown, editable in place. */
+
+.block-source-hidden {
+    display: none;
+}
+
+.block-source {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-2);
+    margin: var(--ui-space-3) 0;
+}
+
+.block-source-area {
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--ui-space-4);
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: var(--ui-radius-l);
+    background: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
+    line-height: 1.5;
+    resize: none;
+    overflow: hidden;
+    tab-size: 4;
+
+    &:focus {
+        outline: none;
+    }
+}
+
+.block-source-hint {
+    display: flex;
+    gap: var(--ui-space-4);
+    color: var(--ui-menu-ink-dim);
+    font-size: var(--ui-fs-s);
+    user-select: none;
+}
+
+.block-source-error {
+    color: var(--vscode-inputValidation-errorForeground, var(--vscode-editor-foreground));
+    font-size: var(--ui-fs-s);
+}

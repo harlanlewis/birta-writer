@@ -9,8 +9,13 @@
  */
 import type { LinkTargetSuggestionItem } from "./messages";
 
-/** File extensions treated as markdown and ranked before other files. */
-const MARKDOWN_EXT_REGEX = /\.(md|markdown)$/i;
+/**
+ * File extensions this editor opens, ranked before other files. `.mdx` is
+ * here because a link to one opens in the editor exactly as `.md` does, so
+ * ranking it with the plain files it is not would bury the target the author
+ * is most likely reaching for.
+ */
+const MARKDOWN_EXT_REGEX = /\.(md|markdown|mdx)$/i;
 
 /** URL scheme prefix (http:, https:, mailto:, vscode:, ...). */
 const SCHEME_REGEX = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;

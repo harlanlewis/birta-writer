@@ -43,19 +43,68 @@ export async function run({ page, check, baseUrl }) {
     const rowIndex = rows.findIndex((r) => r.src.startsWith("total")) + 1;
     const srcBox = await (await page.$(`.calc-row:nth-child(${rowIndex}) .calc-row-src`)).boundingBox();
     const resBox = await (await page.$(`.calc-row:nth-child(${rowIndex}) .calc-row-result`)).boundingBox();
-    await page.mouse.move(srcBox.x + 2, srcBox.y + srcBox.height / 2);
+    // A red here reads as `""`, and three different failures produce that same
+    // empty string: the press landed on nothing, the ledger repainted out from
+    // under the gesture, or a selection was made and then destroyed mid-drag.
+    // Watch all three across the drag so ONE red run says which, rather than
+    // costing a session of reruns to reproduce (MAR-359).
+    await page.evaluate(() => {
+        const w = { repaints: 0, escaped: null, t0: performance.now() };
+        window.__dragWatch = w;
+        w.obs = new MutationObserver((recs) => { w.repaints += recs.length; });
+        // "The ledger repainted out from under the gesture" is one of the
+        // three causes this watcher exists to tell apart, so the ledger being
+        // gone here is a result to report, not a TypeError that errors the
+        // whole suite before any check runs.
+        const host = document.querySelector(".calc-render");
+        if (!host) { w.missing = true; return; }
+        w.obs.observe(host, { childList: true, subtree: true, characterData: true });
+        w.onSel = () => {
+            const node = window.getSelection()?.anchorNode;
+            const el = node?.nodeType === 1 ? node : node?.parentElement;
+            if (w.escaped || !el || el.closest(".calc-render")) { return; }
+            w.escaped = {
+                ms: Math.round(performance.now() - w.t0),
+                at: el.className || el.nodeName,
+            };
+        };
+        document.addEventListener("selectionchange", w.onSel);
+    });
+    const pressX = srcBox.x + 2, pressY = srcBox.y + srcBox.height / 2;
+    await page.mouse.move(pressX, pressY);
+    // Did the press land on the row it aimed at? A press that misses, because
+    // the block re-rendered between the box read and the press, leaves exactly
+    // the empty selection a destroyed drag does. Asked at the press itself: a
+    // second boundingBox read is only a proxy for the same question.
+    const pressLanded = await page.evaluate(([x, y]) => {
+        // Time the watcher from the press, so a reported "Nms in" is directly
+        // comparable to the editor's own post-focus deadline.
+        window.__dragWatch.t0 = performance.now();
+        return !!document.elementFromPoint(x, y)?.closest(".calc-row-src");
+    }, [pressX, pressY]);
     await page.mouse.down();
     await page.mouse.move(resBox.x + resBox.width - 2, resBox.y + resBox.height / 2, { steps: 12 });
     await page.mouse.up();
+    const dragWatch = await page.evaluate(() => {
+        const w = window.__dragWatch;
+        w.obs?.disconnect();
+        document.removeEventListener("selectionchange", w.onSel);
+        return {
+            // MutationRecords, not repaints: the failure line should not name
+            // a quantity larger than what was counted.
+            mutations: w.repaints,
+            missing: !!w.missing,
+            escaped: w.escaped,
+            collapsed: window.getSelection()?.isCollapsed,
+        };
+    });
 
-    // Poll for the selection instead of reading once after a fixed wait. A
-    // synthetic drag settles on the browser's own schedule, and on a loaded
-    // machine 150 ms is not always enough: this check went red in a full run
-    // with `""` — no selection yet — and passed 14/14 in isolation minutes
-    // later. Polling keeps the assertion identical (the selection must still
-    // span source AND value) while removing the dependence on how busy the
-    // machine is; a real regression wipes the selection and every poll sees the
-    // same empty string the fixed wait did.
+    // Poll for the selection instead of reading once after a fixed wait: a
+    // synthetic drag settles on the browser's own schedule, and 150 ms is not
+    // always enough. The poll absorbs a slow settle and nothing else. An empty
+    // string at the END of it is NOT proof of a regression, which is what the
+    // watcher above is for: the drag can also be destroyed in flight, and then
+    // every poll sees the same empty string a fixed wait would (MAR-359).
     const settledSelection = async (predicate) => {
         let text = "";
         for (let i = 0; i < 40; i++) {
@@ -69,9 +118,25 @@ export async function run({ page, check, baseUrl }) {
     const dragText = await settledSelection(
         (t) => t.includes("total = rent + budget") && t.includes("6500"),
     );
-    check("a mouse drag in the ledger survives (ignoreMutation)",
-        dragText.includes("total = rent + budget") && dragText.includes("6500"),
-        JSON.stringify(dragText));
+    const dragOk = dragText.includes("total = rent + budget") && dragText.includes("6500");
+    check("a mouse drag in the ledger survives (ignoreMutation)", dragOk,
+        dragOk ? JSON.stringify(dragText) : [
+            JSON.stringify(dragText),
+            `pressLanded=${pressLanded}`,
+            dragWatch.missing
+                ? "the ledger was already gone before the drag: nothing was watched"
+                : `ledgerMutations=${dragWatch.mutations}`,
+            `endedCollapsed=${dragWatch.collapsed}`,
+            dragWatch.escaped
+                // The known cause, and the one this drag cannot defend against:
+                // the editor took focus on the press, and prosemirror-view's
+                // post-focus timer wrote its OWN selection over the drag while
+                // the mouse was still down. Its guard against exactly that is
+                // keyed on `view.input.mouseDown`, which the ledger NodeView's
+                // stopEvent deliberately prevents from ever being set.
+                ? `selection left the ledger ${dragWatch.escaped.ms}ms after the press, to "${dragWatch.escaped.at}": the editor overwrote the drag (MAR-359)`
+                : "selection never left the ledger",
+        ].join(" | "));
 
     await page.mouse.dblclick(srcBox.x + 10, srcBox.y + srcBox.height / 2);
     const dblText = await settledSelection((t) => t.trim().length > 0);

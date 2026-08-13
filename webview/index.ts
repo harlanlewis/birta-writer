@@ -42,9 +42,11 @@ import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { bankOpenHtmlPanel } from "./components/htmlView";
+import { bankOpenBlockSourcePanel } from "./components/blockSource";
 import { mark, measure } from "./perf";
 import type { DocumentFormat, ToWebviewMessage } from "../shared/messages";
 import { resolveFormat } from "./format/loader";
+import { describeParseFailure } from "./format/parseError";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
 import {
@@ -409,6 +411,10 @@ function getSwitchTarget():
     // where no natural blur precedes this call). Story in
     // selectionSurfaceCoverage's ISLAND_REGISTRY; pinned in e2e/htmlEdit.
     bankOpenHtmlPanel(view);
+    // The block source panel banks for the same reason (MAR-20): its text is
+    // the user's current intent for that block, and a switch that read the
+    // document first would leave on the bytes they were editing away from.
+    bankOpenBlockSourcePanel(view);
     const { doc, selection } = view.state;
     const { head, empty } = selection;
     const sourceLines = getMarkdownSource().split("\n");
@@ -584,9 +590,12 @@ async function initEditor(
             // document cannot open WYSIWYG. Show the banner and hand off to
             // the extension, which surfaces the error and reopens the text
             // editor. Nothing was modified — no editor mounted.
-            const message = e instanceof Error ? e.message : String(e);
-            renderFatalParseBanner(container, message);
-            notifyFatalParse(message);
+            // The position is in BODY coordinates (this side never sees the
+            // frontmatter), so the extension is what turns it into a document
+            // line the user can navigate to.
+            const { reason, at } = describeParseFailure(e);
+            renderFatalParseBanner(container, reason);
+            notifyFatalParse(reason, at);
             return;
         }
         // Markdown never fails to parse (every byte sequence is valid), so

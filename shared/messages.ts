@@ -360,7 +360,12 @@ export type ToExtensionMessage =
     // unlike markdown, where every byte sequence is valid). The extension
     // surfaces `error` and falls back to the text editor. The webview has not
     // modified anything: the editor never mounted.
-    | { type: "fatalParse"; error: string };
+    //
+    // `line` and `column` are the parser's position and are in BODY
+    // coordinates, like every other line on this wire: the webview renders the
+    // body, and the extension adds its own frontmatter offset before showing a
+    // number to the user. Absent when the parser reported no position.
+    | { type: "fatalParse"; error: string; line?: number; column?: number };
 
 /**
  * Extension → WebView messages.

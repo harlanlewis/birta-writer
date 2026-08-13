@@ -6,6 +6,8 @@
 
 ### Added
 
+- Edit a block's Markdown source in place. Press Cmd+/ (Ctrl+/ on Windows and Linux) with the caret in a block and the block is replaced by a small panel holding its own Markdown, so precise syntax is reachable without leaving for the raw editor. Cmd+Enter or the same chord applies, clicking away applies, Escape cancels, and clearing the text deletes the block. Select several blocks first, by any of the usual means, and they open together. Editing a block that cites a footnote or a reference link keeps those references intact, even though their definitions live elsewhere in the document, and applying a block you did not type in leaves the file untouched. A list opens as a whole list rather than one item at a time, and what you apply is read as Markdown, so a spelling the editor writes differently comes back in the editor's spelling.
+
 - HTML is editable in place. Click any inline HTML tag or comment chip, or press Cmd+Enter (Ctrl+Enter on Windows and Linux) with one selected, and its raw source opens in a small panel right where it stands. Clicking away or pressing the chord again commits, Escape cancels, and clearing the text deletes the tag. The committed bytes reach the file exactly as typed, and saving or switching to the raw editor mid-edit commits first instead of discarding what you typed. Inside a table cell, a value that would break the row apart (a newline, or a pipe the cell cannot carry) is refused with a cue instead of written.
 
 - Plain paired inline tags render live. Text between `<u>` and `</u>` shows underlined, and the same for `<sub>`, `<sup>`, `<kbd>` and `<mark>`, with the tags themselves dimmed to small chips that stay clickable for editing. A tag carrying attributes, or one never closed, keeps its previous appearance, and the rendering is display only: the file's bytes are untouched.
@@ -26,9 +28,17 @@
 
 - A highlighted menu row keeps its text readable. Rows that light up under the keyboard or the mouse now carry their theme's matching text color rather than the resting one, and the keyboard row adds a focus outline so "what Enter hits" is unmistakable even on a theme whose highlight is very faint. On themes that paint a strong, solid highlight the focused row's label was previously near-unreadable against it. A row's icons and shortcut hints now dim relative to that row's own text instead of a fixed muted color, so they stay legible on the resting background and the hover wash alike.
 
+- The link popup shows a Notion export's target readably. Notion writes every page's file and folder with a 32-character id on the end and percent-encodes the result, so the popup used to read `Room%201%207a6f70896bfc4e5e976d588412b74370.md` where the title had already told you it was Room 1. That now reads as `Room 1.md`, with the address the file actually holds one hover away. Display only: the URL field, the copy button and what a click opens all still read the real target, and nothing rewrites the link in your file.
+
 - A Miro board card opens the board itself when you click it. Loading the card used to land on Miro's own preloader, which held the canvas behind a second "See the board" click even though clicking the card was already the decision to load it.
 
 ### Fixed
+
+- A link to an `.mdx` file opens it in the editor. Following a relative link or a wikilink to one used to land in the raw text editor, because the routing that decides which editor opens a target predates MDX support. Links that name the extension, links that leave it off, and wikilinks all route to the editor now, and heading fragments on them still land on the right line. `.mdx` files also rank alongside `.md` in link-target suggestions instead of below every other file type. A link that leaves the extension off still prefers a plain `.md` file when both spellings exist.
+
+- The notification for an MDX file the editor cannot parse says where the problem is. It used to give the reason with no position at all, so a fatal parse error in a long document meant hunting for it by hand. The line and column are now included, and they count from the top of the file rather than from the end of the frontmatter, so they match what the raw editor shows you.
+
+- Links from a Notion export keep working after a converter renames the files. Notion suffixes every page's file and folder with a 32-character id, and the importers people run to tidy a vault strip those ids, which left every link inside the vault pointing at a name no longer on disk. A link that matches nothing as written is now retried with the ids removed, so it opens. A name the vault literally has always wins first, so a partly-converted vault holding both spellings still opens the one the link names, and wikilinks get the same retry.
 
 - Adding a paragraph and deleting it again leaves the file exactly as it was. Deleting a paragraph's text used to leave two blank lines where it had been, and those blank lines stayed: they reached the file on a save that landed while the emptied line still existed, and no later save could take them out again, because the editor deliberately preserves your own blank-line spacing and could not tell yours from these. No content was ever lost, but a document you only visited came back with spacing you did not write, and a diff carried noise you did not author.
 

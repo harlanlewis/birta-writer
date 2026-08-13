@@ -181,6 +181,7 @@ describe("editor command keybinding contributions", () => {
             { win: "ctrl+h", linux: "ctrl+h" },
         ],
         insertLink: [{ key: "ctrl+k", mac: "cmd+k" }],
+        editBlockSource: [{ key: "ctrl+/", mac: "cmd+/" }],
         findNext: [{ key: "f3" }, { mac: "cmd+g" }],
         findPrevious: [{ key: "shift+f3" }, { mac: "cmd+shift+g" }],
         findSelection: [{ key: "ctrl+d", mac: "cmd+d" }],
