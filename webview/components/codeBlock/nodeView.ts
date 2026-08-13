@@ -433,9 +433,12 @@ export function createCodeBlockView(
     //    `stopPropagation()` on mousedown, so a bubble-phase listener on the
     //    wrapper would never see them.
     //
-    // Because blurring the host collapses the DOM selection, a selection
-    // inside the chrome (a drag that just ended in the calc ledger) is
-    // captured first and re-asserted after: inert editor, intact copy.
+    // Because blurring the host collapses the DOM selection, any selection
+    // inside the chrome is captured first and re-asserted after: inert editor,
+    // intact copy. A gesture in the calc ledger, the one pane that opts text
+    // selection back in, leaves the host unfocused throughout (calcLedger.ts),
+    // so the `hasFocus` early return is what covers it now. The capture stays
+    // regardless: it is what keeps the blur safe for any chrome selection.
     const makeEditorInert = (): void => {
         if (!view.hasFocus()) { return; }
         const sel = window.getSelection();

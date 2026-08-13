@@ -192,6 +192,20 @@ describe("calc code-block preview", () => {
         expect(ledger(nv)).toEqual(["x = 2 + 3 =|5", "x * 2|= 10"]);
     });
 
+    it("a press inside the ledger should find the pane focusable before the editor host", async () => {
+        const { nv } = await makeCodeBlockView("```calc\ntotal = 2 + 3\n```\n");
+        await wait();
+        const row = nv.dom.querySelector(".calc-row-src");
+        const pane = nv.dom.querySelector(".calc-preview");
+        expect(row).not.toBeNull();
+        // The browser focuses the nearest focusable ancestor of whatever a
+        // mousedown hits, and this is that walk. It has to stop at the pane:
+        // the editor's editable host taking the focus is what arms
+        // prosemirror-view's post-focus selection re-assert, which then writes
+        // over a ledger drag still in progress (MAR-361).
+        expect(row.closest("[tabindex]")).toBe(pane);
+    });
+
     it("a rounded display should offer the full-precision value as a hover tooltip", async () => {
         const { nv } = await makeCodeBlockView("```calc\n10 / 3\n2 + 3\n```\n");
         await wait();
