@@ -489,7 +489,7 @@ describe("a close fence swallowed by a lazy continuation [MAR-362]", () => {
     // ROW rather than into a paragraph, so the paragraph-splitting repair
     // cannot reach it. An HTML block is the same shape. Flipping to green
     // means the case was fixed.
-    it.fails("a table before the close fence is still swallowed", async () => {
+    it.fails("a table before the close fence is still swallowed [MAR-365]", async () => {
         const doc = ":::note\n\n| a |\n| - |\n| b |\n:::\n";
         const { editor, view } = await makeEditor(doc);
         try {
