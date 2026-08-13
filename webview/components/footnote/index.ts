@@ -199,6 +199,12 @@ export function createFootnoteReferenceView(
     _getPos: () => number | undefined,
 ): FootnoteReferenceView {
     let node = initialNode;
+    // This chrome is clickable and never declares itself non-editable, because
+    // it does not have to: the view has no contentDOM, so prosemirror-view
+    // stamps `contentEditable="false"` on this root. That stamp is what stops
+    // Blink handing a finger's contact to the surrounding prose (MAR-340), and
+    // it disappears the moment this view gains a contentDOM or pre-sets a
+    // `contenteditable` attribute. Pinned by behaviour in e2e/touchChromeAudit.
     const dom = document.createElement("sup");
     dom.className = "footnote-ref";
     dom.dataset["type"] = "footnote_reference";

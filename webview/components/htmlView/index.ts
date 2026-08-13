@@ -189,6 +189,12 @@ export function createHtmlView(
     view?: EditorView,
     getPos?: () => number | undefined,
 ): HtmlView {
+    // Clickable chrome that hosts a live textarea, and it declares nothing:
+    // with no contentDOM on this view, prosemirror-view stamps
+    // `contentEditable="false"` on the root itself. That stamp is what keeps a
+    // finger's contact here rather than on the prose beside it (MAR-340), and
+    // a contentDOM appearing, or a `contenteditable` attribute pre-set here,
+    // removes it. Pinned by behaviour in e2e/touchChromeAudit.
     const dom = document.createElement("span");
     dom.dataset["type"] = "html";
     // Fixed at creation: a changed value recreates the whole view (there is

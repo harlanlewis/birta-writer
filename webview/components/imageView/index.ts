@@ -225,6 +225,17 @@ export function createImageView(
     let currentNode = node;
 
     // ── Outer wrapper ─────────────────────────────────────────
+    // Nothing here sets contentEditable, and it must stay non-editable all the
+    // same: this NodeView has NO contentDOM, so prosemirror-view stamps
+    // `contentEditable="false"` on the root for us. That stamp is what keeps a
+    // finger's contact on this chrome instead of on the text beside it, which
+    // is the defect MAR-340 found on the table overlay. Two refactors would
+    // silently remove it: giving this view a contentDOM, or pre-setting a
+    // `contenteditable` attribute here (PM skips the stamp when one exists).
+    // The caption <input> below is the exposed one, being a direct child of
+    // this root with no declaration of its own, where the toolbar sibling
+    // self-declares. e2e/touchChromeAudit asserts the runtime property rather
+    // than restating PM's rule, so a refactor that removes it turns red.
     const wrapper = document.createElement("div");
     wrapper.className = "image-wrapper";
 
