@@ -108,6 +108,20 @@ Some claims deserve a footnote.[^1]
 
 Click it, or press Cmd+Enter with a tag selected, and the raw source opens in a small panel right where it stands. Every other kind of block opens the same way with Cmd+/, which hands you that block's own Markdown.
 
+Which matters most for the shapes Markdown cannot spell, like a table with merged cells:
+
+<table>
+<tr><th>Column</th><th colspan="2">Spans two</th></tr>
+<tr><td>Row</td><td>left</td><td>right</td></tr>
+</table>
+
+A `<summary>` keeps its native toggle, the one piece of rendered HTML that stays interactive. Everything else, including the body below, opens the source when clicked.
+
+<details>
+<summary>Open me</summary>
+The body is rendered HTML rather than markdown, and its bytes are preserved exactly.
+</details>
+
 ## Frontmatter
 
 See the very top of this file - the YAML block renders as an editable table, and round-trips losslessly.

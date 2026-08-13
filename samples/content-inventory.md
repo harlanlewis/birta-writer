@@ -893,6 +893,55 @@ An HTML comment preserved and shown dimmed:
 
 <!-- This is an HTML comment. It survives round-trips. -->
 
+### What a document reaches for HTML to say
+
+These are the shapes Markdown has no syntax for, which is why they arrive in real files. Each renders as a sanitized preview and keeps its exact bytes.
+
+A table with merged cells, the most common reason a Markdown table gets abandoned:
+
+<table>
+<tr><th>Stage</th><th colspan="2">Round trip</th></tr>
+<tr><td>Parse</td><td>bytes in</td><td rowspan="2">fingerprint compared</td></tr>
+<tr><td>Serialize</td><td>bytes out</td></tr>
+</table>
+
+An image with a real caption, rather than alt text standing in for one:
+
+<figure>
+<img src="images/cats.jpeg" alt="Two cats on a cat tree" width="240">
+<figcaption>A caption is part of the figure. Markdown's alt text is not.</figcaption>
+</figure>
+
+A definition list, which CommonMark leaves to dialects:
+
+<dl>
+<dt>Fidelity</dt>
+<dd>What the file said is what comes back.</dd>
+<dt>Preview</dt>
+<dd>What the editor draws, which is allowed to differ.</dd>
+</dl>
+
+### A disclosure is the one thing that stays interactive
+
+Clicking anywhere on rendered HTML opens its source, with a single exception: a `<summary>` keeps its native toggle, because a disclosure that cannot disclose is worse than no disclosure. Open and close this one, then click its body text to edit the source.
+
+<details>
+<summary>What the sanitizer keeps</summary>
+Everything here is rendered HTML, not markdown, so a * stays a star. The toggle works; the rest of the block opens the source panel.
+</details>
+
+### CSS a document carries
+
+A `style` attribute renders as written, minus the declarations that would let a box leave its place in the document. The first line below is centered and colored; the second asks to cover the window and is drawn in the flow instead.
+
+<div style="text-align: center; font-variant: small-caps">Presentational declarations are kept</div>
+
+<div style="position: fixed; inset: 0; width: 100vw">Escaping declarations are dropped, and the rest of the attribute still applies</div>
+
+A `<style>` element is preserved in the file and never applied, because its selectors are global and would reach the editor rather than this document. It shows as a dimmed chip, and clicking it opens the source like any other:
+
+<style>.editor-topbar { display: none }</style>
+
 ### Live inline pairs
 
 Five paired tags render live: <u>underline</u>, <sub>subscript</sub>, <sup>superscript</sup>, <kbd>Cmd</kbd>, and <mark>marked text</mark>. The tags themselves dim to small chips that stay clickable for editing, and the rendering is display only - the bytes are untouched, so a water molecule written H<sub>2</sub>O is still `H<sub>2</sub>O` on save. Case is HTML's, so <SUB>an uppercase pair</SUB> renders too, and pairs nest: x<sup>2<sup>3</sup></sup>.
