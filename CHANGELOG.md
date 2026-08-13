@@ -28,6 +28,8 @@
 
 - Bold or italic wrapped around inline math no longer loses its emphasis on save. A line reading `**$a^2$**` came back as `$a^2$`: the emphasis was dropped from the file the first time the document was saved, silently and with nothing to undo it. Underline-style emphasis and strikethrough around a formula were affected the same way. Wikilinks now carry the same guarantee.
 
+- The pinned heading at the top of the screen keeps its collapse chevron hidden until you point at it. Scrolling into a section pins that section's heading under the toolbar, and the pinned copy carried a chevron at all times, while the real heading in the document reveals one only on hover. Both now follow the same rule, and the pinned copy honors `editor.showFoldingControls` in all three of its values rather than only in `never`. It honors it independently of `birta.blockHandles`, which governs the level badge beside it: setting the chevrons to show always no longer leaves them hidden on the pinned heading because block handles were set to hover, which is how the two settings already composed in the document. A folded section keeps its chevron, since that is state rather than a control. Clicking the chevron collapses the section and scrolls its heading back up into place, as before.
+
 - Selecting text inside a `calc` block's ledger no longer loses the selection partway through the drag. Pressing in a ledger row and dragging quickly across it, when the editor did not already have focus, could leave the selection wiped and nothing to copy. Since a ledger click deliberately leaves the editor inert, the unfocused case was the common one: the first drag after opening a document, and every drag after a previous ledger click.
 
 ---

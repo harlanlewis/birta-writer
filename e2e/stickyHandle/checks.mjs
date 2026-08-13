@@ -4,10 +4,23 @@
  *   - scrolling past a heading shows the sticky mirror with its title,
  *   - the H-badge is a real <button> block handle (not a display-only span)
  *     and clicking it opens the block menu, marking the badge menu-open,
- *   - in "Hover only" mode (body.handles-rest-hover) the sticky gutter rests
- *     at opacity 0 and reveals while the sticky title is hovered — except
- *     when the stuck heading is collapsed (data-collapsed carve-out).
+ *   - in "Hover only" mode (body.handles-rest-hover) the sticky LEVEL BADGE
+ *     rests at opacity 0 and reveals while the sticky title is hovered —
+ *     except when the stuck heading is collapsed (data-collapsed carve-out),
+ *   - the fold chevron rests hidden like its in-flow twin, follows
+ *     `editor.showFoldingControls` through all three modes, and is governed
+ *     by that setting ALONE — the two controls share a gutter, never a rule,
+ *   - the chevron is reachable and folds the section it names.
  */
+/**
+ * The level badge's resting contrast, held in exact parity with the in-flow
+ * `.heading-fold-marker` (see .heading-sticky-marker in style.css). Revealing
+ * a hidden badge restores THIS, not full contrast — full contrast is reserved
+ * for the badge's own hover and menu-open states, so a check that expects 1
+ * from a reveal is measuring the wrong thing.
+ */
+const BADGE_REST_OPACITY = 0.7;
+
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
@@ -63,15 +76,15 @@ export async function run({ page, check, baseUrl }) {
     check("Escape closes the menu and clears the badge's menu-open state",
         !closed.menu && !closed.menuOpenClass, JSON.stringify(closed));
 
-    // ── 3. "Hover only" mode: gutter rests hidden, reveals on sticky hover ──
+    // ── 3. "Hover only" mode: the badge rests hidden, reveals on sticky hover ──
     // The toolbarMenu suite covers the real toggle path; here the body class
     // is applied directly, exactly what the toolbar pick does.
     await page.evaluate(() => document.body.classList.add("handles-rest-hover"));
     await page.mouse.move(500, 800); // pointer well away from the sticky
     await page.waitForTimeout(300); // opacity transition is 120ms
-    const restOpacity = await page.$eval(".heading-sticky-gutter", (el) =>
+    const restOpacity = await page.$eval(".heading-sticky-marker", (el) =>
         parseFloat(getComputedStyle(el).opacity));
-    check("hover-only mode: sticky gutter rests at opacity 0", restOpacity === 0,
+    check("hover-only mode: the sticky level badge rests at opacity 0", restOpacity === 0,
         `opacity=${restOpacity}`);
     const textBox = await page.$eval(".heading-sticky-text", (el) => {
         const r = el.getBoundingClientRect();
@@ -79,10 +92,10 @@ export async function run({ page, check, baseUrl }) {
     });
     await page.mouse.move(textBox.x, textBox.y);
     await page.waitForTimeout(300);
-    const hoverOpacity = await page.$eval(".heading-sticky-gutter", (el) =>
+    const hoverOpacity = await page.$eval(".heading-sticky-marker", (el) =>
         parseFloat(getComputedStyle(el).opacity));
-    check("hover-only mode: hovering the sticky title reveals the gutter",
-        hoverOpacity > 0.9, `opacity=${hoverOpacity}`);
+    check("hover-only mode: hovering the sticky title reveals the badge",
+        hoverOpacity === BADGE_REST_OPACITY, `opacity=${hoverOpacity}`);
     // The badge stays clickable through the reveal (the full loop).
     const markerBox2 = await page.$eval(".heading-sticky-marker", (el) => {
         const r = el.getBoundingClientRect();
@@ -94,12 +107,14 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(150);
     check("hover-only mode: the revealed badge still opens the menu",
         (await page.$(".block-menu")) !== null);
-    // While the menu is open the gutter must not fade, even unhovered.
+    // While the menu is open the badge must not fade, even unhovered. Full
+    // contrast here, not BADGE_REST_OPACITY: menu-open is one of the two
+    // states that take the badge past its resting value.
     await page.mouse.move(500, 800);
     await page.waitForTimeout(300);
-    const menuOpenOpacity = await page.$eval(".heading-sticky-gutter", (el) =>
+    const menuOpenOpacity = await page.$eval(".heading-sticky-marker", (el) =>
         parseFloat(getComputedStyle(el).opacity));
-    check("hover-only mode: gutter never fades while its menu is open",
+    check("hover-only mode: the badge never fades while its menu is open",
         menuOpenOpacity > 0.9, `opacity=${menuOpenOpacity}`);
     await page.keyboard.press("Escape");
     await page.evaluate(() => document.body.classList.remove("handles-rest-hover"));
@@ -122,7 +137,7 @@ export async function run({ page, check, baseUrl }) {
     check("scrolling into the next section swaps the sticky title",
         !swapped.hidden && swapped.text === "Section Two", JSON.stringify(swapped));
 
-    // ── 5. Hover-only mode spares a COLLAPSED stuck heading's gutter ──
+    // ── 5. Hover-only mode spares a COLLAPSED stuck heading's badge ──
     // A collapsed section must keep its badge visible (the in-flow parity
     // rule). Holding a REAL collapsed heading stuck is not stable in this
     // two-section fixture — collapsing a section puts the next heading
@@ -140,18 +155,18 @@ export async function run({ page, check, baseUrl }) {
         document.querySelector(".heading-sticky-title").dataset.collapsed = "true";
     });
     await page.waitForTimeout(300);
-    const collapsedRest = await page.$eval(".heading-sticky-gutter", (el) =>
+    const collapsedRest = await page.$eval(".heading-sticky-marker", (el) =>
         parseFloat(getComputedStyle(el).opacity));
-    check("hover-only mode: a collapsed sticky's gutter stays visible at rest",
-        collapsedRest === 1, `opacity=${collapsedRest}`);
+    check("hover-only mode: a collapsed sticky keeps its badge visible at rest",
+        collapsedRest === BADGE_REST_OPACITY, `opacity=${collapsedRest}`);
     // Restore the expanded stamp: the hide rule applies again.
     await page.evaluate(() => {
         document.querySelector(".heading-sticky-title").dataset.collapsed = "false";
     });
     await page.waitForTimeout(300);
-    const expandedRest = await page.$eval(".heading-sticky-gutter", (el) =>
+    const expandedRest = await page.$eval(".heading-sticky-marker", (el) =>
         parseFloat(getComputedStyle(el).opacity));
-    check("hover-only mode: the expanded sticky's gutter hides at rest again",
+    check("hover-only mode: the expanded sticky hides its badge at rest again",
         expandedRest === 0, `opacity=${expandedRest}`);
     await page.evaluate(() => document.body.classList.remove("handles-rest-hover"));
 
@@ -364,4 +379,182 @@ export async function run({ page, check, baseUrl }) {
     check("the sticky tracks a move-without-resize column shift",
         Math.abs(shifted.stickyLeft - shifted.columnLeft) <= 1, JSON.stringify(shifted));
     await page.evaluate(() => document.body.classList.remove("sticky-shift-probe"));
+
+    // ── 11. The fold chevron rests hidden, like the in-flow chevron ──
+    // The bar is a mirror: it must not offer a fold control while the heading
+    // it mirrors is offering none. Baseline is VS Code's
+    // `editor.showFoldingControls: "mouseover"` (no body class), and the
+    // reveal is hovering the bar. "Section One" is stuck here and is foldable
+    // (its section runs to "Section Two"), so the chevron is rendered.
+    await page.waitForTimeout(250); // the shift probe scrolled to 400
+    check("the stuck heading offers a fold chevron",
+        (await page.$(".heading-sticky-toggle")) !== null);
+    await page.mouse.move(500, 800); // pointer well away from the sticky
+    await page.waitForTimeout(300); // opacity transition is 120ms
+    const chevronRest = await page.$eval(".heading-sticky-toggle", (el) => {
+        const s = getComputedStyle(el);
+        return { opacity: parseFloat(s.opacity), pointerEvents: s.pointerEvents };
+    });
+    check("mouseover mode: the sticky chevron rests at opacity 0",
+        chevronRest.opacity === 0, JSON.stringify(chevronRest));
+    // Not merely invisible: an unrevealed chevron must not swallow a click
+    // aimed at what sits under it.
+    check("mouseover mode: the resting chevron takes no pointer events",
+        chevronRest.pointerEvents === "none", JSON.stringify(chevronRest));
+
+    // The badge, by contrast, is resident in this mode (`blockHandles:
+    // "headings"`, the default) — the two controls share a gutter and must
+    // not share a rest rule.
+    const badgeRest = await page.$eval(".heading-sticky-marker", (el) =>
+        parseFloat(getComputedStyle(el).opacity));
+    check("mouseover mode: the H-badge stays resident while the chevron hides",
+        badgeRest > 0, `opacity=${badgeRest}`);
+
+    const titleBox = await page.$eval(".heading-sticky-text", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + Math.min(40, r.width / 2), y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(titleBox.x, titleBox.y);
+    await page.waitForTimeout(300);
+    const chevronHover = await page.$eval(".heading-sticky-toggle", (el) => {
+        const s = getComputedStyle(el);
+        return { opacity: parseFloat(s.opacity), pointerEvents: s.pointerEvents };
+    });
+    check("mouseover mode: hovering the sticky title reveals the chevron",
+        chevronHover.opacity > 0.9 && chevronHover.pointerEvents === "auto",
+        JSON.stringify(chevronHover));
+
+    // Collapsed is state, not chrome: a folded section keeps its chevron.
+    // Stamped directly, as in section 5 above — holding a really-collapsed
+    // heading stuck is not stable in this two-section fixture.
+    await page.mouse.move(500, 800);
+    await page.waitForTimeout(200);
+    await page.evaluate(() => {
+        document.querySelector(".heading-sticky-title").dataset.collapsed = "true";
+    });
+    await page.waitForTimeout(300);
+    const chevronCollapsed = await page.$eval(".heading-sticky-toggle", (el) =>
+        parseFloat(getComputedStyle(el).opacity));
+    check("mouseover mode: a collapsed sticky keeps its chevron at rest",
+        chevronCollapsed === 1, `opacity=${chevronCollapsed}`);
+    await page.evaluate(() => {
+        document.querySelector(".heading-sticky-title").dataset.collapsed = "false";
+    });
+
+    // ── 12. The chevron follows `editor.showFoldingControls` in both extremes ──
+    // "always" is the mode the new rest rule could silently break: before it,
+    // the sticky chevron was unconditionally resident, so the mode was
+    // satisfied by accident.
+    await page.evaluate(() => document.body.classList.add("fold-controls-always"));
+    await page.mouse.move(500, 800);
+    await page.waitForTimeout(300);
+    const alwaysRest = await page.$eval(".heading-sticky-toggle", (el) => {
+        const s = getComputedStyle(el);
+        return { opacity: parseFloat(s.opacity), pointerEvents: s.pointerEvents };
+    });
+    check("always mode: the sticky chevron is resident at rest",
+        alwaysRest.opacity === 1 && alwaysRest.pointerEvents === "auto",
+        JSON.stringify(alwaysRest));
+    await page.evaluate(() => document.body.classList.remove("fold-controls-always"));
+
+    await page.evaluate(() => document.body.classList.add("fold-controls-never"));
+    await page.waitForTimeout(150);
+    const neverDisplay = await page.$eval(".heading-sticky-toggle", (el) =>
+        getComputedStyle(el).display);
+    check("never mode: the sticky chevron is not rendered at all",
+        neverDisplay === "none", `display=${neverDisplay}`);
+    await page.evaluate(() => document.body.classList.remove("fold-controls-never"));
+
+    // ── 13. The two settings govern the two controls independently ──
+    // The chevron and the level badge share a gutter, never a rule:
+    // `editor.showFoldingControls` owns the chevron, `birta.blockHandles` owns
+    // the badge. Crossing them is the case that catches a rule written on the
+    // shared parent — dimming the gutter reads as "both hidden" and silently
+    // overrides a user's explicit "always". This is exactly how the in-flow
+    // pair composes, and the bar claims to mirror it.
+    // Read each control's OWN computed opacity, which is only honest because
+    // nothing dims the gutter between them: opacity does not inherit, so a
+    // child of a dimmed parent reports the opacity it was given, not the one
+    // it renders at.
+    await page.evaluate(() => {
+        document.body.classList.add("fold-controls-always", "handles-rest-hover");
+        // Explicit: BOTH rules carve out data-collapsed, so a stale "true"
+        // left by section 11 would make the badge check pass for the wrong
+        // reason. Reported below so a failure is diagnosable.
+        document.querySelector(".heading-sticky-title").dataset.collapsed = "false";
+    });
+    await page.mouse.move(500, 800);
+    await page.waitForTimeout(300);
+    const crossed = await page.evaluate(() => ({
+        chevron: parseFloat(getComputedStyle(
+            document.querySelector(".heading-sticky-toggle")).opacity),
+        badge: parseFloat(getComputedStyle(
+            document.querySelector(".heading-sticky-marker")).opacity),
+        gutter: parseFloat(getComputedStyle(
+            document.querySelector(".heading-sticky-gutter")).opacity),
+        collapsed: document.querySelector(".heading-sticky-title").dataset.collapsed,
+    }));
+    check("always + hover-only: the chevron obeys showFoldingControls and stays resident",
+        crossed.chevron === 1, JSON.stringify(crossed));
+    check("always + hover-only: the badge obeys blockHandles and hides",
+        crossed.badge === 0, JSON.stringify(crossed));
+    check("neither rule dims the gutter they share",
+        crossed.gutter === 1, JSON.stringify(crossed));
+    await page.evaluate(() => {
+        document.body.classList.remove("fold-controls-always", "handles-rest-hover");
+    });
+
+    // ── 14. The chevron is reachable, and folding from the bar scrolls ──
+    // Everything above measures opacity, which is not the same as usable. The
+    // gutter hangs in the margin OUTSIDE the bar's own box, so a pointer
+    // approaching the chevron from the left never enters the element the
+    // reveal rule keys on; it works only because the gutter is itself a hit
+    // surface. A rest rule that left the chevron pointer-events:none with no
+    // hoverable ancestor under the cursor would pass every check above and be
+    // dead to the mouse.
+    await page.mouse.move(500, 800);
+    await page.waitForTimeout(250);
+    const geom = await page.evaluate(() => {
+        const t = document.querySelector(".heading-sticky-toggle").getBoundingClientRect();
+        const bar = document.querySelector(".heading-sticky-title").getBoundingClientRect();
+        return { toggleRight: t.right, barLeft: bar.left, x: t.x + t.width / 2, y: t.y + t.height / 2 };
+    });
+    check("the chevron sits outside the bar's own box (in the margin)",
+        geom.toggleRight <= geom.barLeft, JSON.stringify(geom));
+    await page.mouse.move(geom.x, geom.y);
+    await page.waitForTimeout(300);
+    const approached = await page.$eval(".heading-sticky-toggle", (el) => {
+        const s = getComputedStyle(el);
+        return { opacity: parseFloat(s.opacity), pointerEvents: s.pointerEvents };
+    });
+    check("approaching the chevron from the margin reveals it and arms it",
+        approached.opacity > 0.9 && approached.pointerEvents === "auto",
+        JSON.stringify(approached));
+
+    // The full loop: the click folds the section the bar names, and scrolls
+    // that heading back into the slot the bar was occupying — which is what
+    // keeps a fold from mid-section changing the heading at the top of the
+    // screen out from under the reader.
+    await page.mouse.click(geom.x, geom.y);
+    await page.waitForTimeout(400);
+    const folded = await page.evaluate(() => {
+        const h = [...document.querySelectorAll(".ProseMirror h1")]
+            .find((el) => el.textContent.includes("Section One"));
+        const topbarBottom = document.querySelector(".editor-topbar").getBoundingClientRect().bottom;
+        return {
+            collapsed: h?.classList.contains("heading-fold-heading--collapsed") ?? false,
+            headingTop: Math.round(h.getBoundingClientRect().top),
+            topbarBottom: Math.round(topbarBottom),
+            fillerVisible: [...document.querySelectorAll(".ProseMirror p")]
+                .some((p) => p.textContent.includes("one filler 1.") && p.offsetParent !== null),
+        };
+    });
+    check("clicking the sticky chevron folds the section it names",
+        folded.collapsed, JSON.stringify(folded));
+    check("the folded section's content is gone from the page",
+        !folded.fillerVisible, JSON.stringify(folded));
+    check("the fold scrolls its heading into the slot the bar was holding",
+        folded.headingTop >= folded.topbarBottom &&
+            folded.headingTop <= folded.topbarBottom + 24,
+        JSON.stringify(folded));
 }
