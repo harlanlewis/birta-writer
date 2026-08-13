@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- e2e harness for font-change scroll anchoring. Mirrors the provider template
+     (src/MarkdownEditorProvider.ts) with acquireVsCodeApi stubbed, and echoes
+     the two settings writes the font menu makes (setFontPreset, setFontSize)
+     back as the extension does — the family swap has no optimistic apply, so
+     the echo IS the apply path. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-font-family: Arial, Helvetica, sans-serif;
+    /* A wide sans default, distinct from BOTH the serif and the monospace
+       preset stacks, so every swap the checks make rewraps the document. (A
+       monospace default collides with the mono preset: Courier New and Menlo
+       share an advance width, and the round trip back to the editor font
+       reflows nothing.) */
+    --vscode-editor-font-family: Verdana, Geneva, sans-serif;
+    --vscode-editor-font-size: 14px;
+    --vscode-font-size: 13px;
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-list-hoverBackground: rgba(255, 255, 255, 0.08);
+    --vscode-focusBorder: #007fd4;
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  // The built-in stacks (shared/fontPresets.ts). Duplicated here rather than
+  // imported because the harness page is plain HTML; the checks assert the
+  // resolved family lands, so a drift shows up as a failing check.
+  window.__stacks = {
+    sans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+    serif: '"Iowan Old Style", "Palatino", Charter, ui-serif, Georgia, serif',
+    mono: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace',
+  };
+  window.__i18n = {
+    translations: {},
+    isMac: true,
+    toolbar: { placements: {}, order: [] },
+    fontPreset: "editor",
+    fontSize: 100,
+    contentWidth: "full",
+    maxContentWidth: 100,
+    frontmatterExpanded: true,
+  };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        // Long paragraphs of VARYING length. Length alone is not enough: two
+        // fonts of different advance widths can still wrap one fixed-length
+        // paragraph into the same number of lines, and then a swap reflows
+        // nothing measurable and the anchoring checks pass vacuously. Spreading
+        // the lengths puts several paragraphs near a wrap boundary, so any
+        // change in advance width moves the document's total height.
+        const paras = Array.from({ length: 40 }, (_, i) =>
+          `para ${String(i).padStart(2, "0")} — the quick brown fox jumps over the lazy dog again and again, ` +
+          "wrapping differently in every font so a preset swap genuinely reflows this line, " +
+          "and the sentence runs on well past the width of the pane so the wrap point, the line " +
+          "count and therefore the height of this paragraph all depend on the glyph metrics of " +
+          "whichever font family the content is currently rendered in. " +
+          "and it carries on a little further still, ".repeat(i % 9)
+        ).join("\n\n");
+        window.postMessage({
+          type: "init",
+          content: "# Sample\n\nThe quick brown fox jumps over.\n\n" + paras + "\n",
+          syncVersion: 1,
+        }, "*");
+      }
+      // The extension's settings write-back, echoed to every open editor.
+      if (msg.type === "setFontPreset") {
+        window.postMessage({
+          type: "setFontFamily",
+          fontFamily: msg.preset === "editor" ? null : window.__stacks[msg.preset],
+          preset: msg.preset,
+          stacks: window.__stacks,
+        }, "*");
+      }
+      if (msg.type === "setFontSize") {
+        window.postMessage({ type: "setFontSize", size: msg.size }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
