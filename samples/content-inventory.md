@@ -9,6 +9,8 @@ Every content type Birta Writer supports has an example here. So does every edge
 
 When support for a new content type lands, add an example here *with its edge cases*; when one changes, update it. Keep the "Not yet supported" section honest - move items up into the body as they land.
 
+Everything below is Markdown. An `.mdx` file opens in Birta too - right-click the file, Open With, or set an editor association - in a mode that parses real MDX: prose is edited exactly as it is here, while `import` and `export` lines, JSX components and `{expressions}` render as labeled read-only blocks, are never executed, and reach the file byte-for-byte. A file that is not valid MDX opens in the plain text editor instead, with the parser's message and the line and column it failed at, because an MDX parse error is fatal where Markdown has none.
+
 ---
 
 ## Headings
@@ -137,6 +139,14 @@ log(100) =>
 
 That last one won't answer, on purpose. `log` means base 10 in spreadsheets and pocket calculators, and the natural log in Python, R, and most other programming languages - so any answer here would be wrong for half the people who paste the equation somewhere else, with nothing in the number to show it. Instead the menu offers both readings with their values, and picking one rewrites the equation to say `log10` or `ln`. The same principle sets the rest of the grammar: `%` is modulo with the sign of the divisor (as in `MOD`, Python, and Wolfram, not JavaScript's `%`), trig is in radians, `round` sends halves away from zero, `^` is right-associative, and `-2 ^ 2` is `-4`.
 
+A variable defined by a conversion remembers the unit it is in, so it converts again without restating it - `t` below is in days, and asking for weeks answers `0.142857`:
+
+t = 24*60*60*1000 ms in days
+
+t in weeks =>
+
+The unit does not carry through arithmetic: `t * 2 in weeks` still has to be written as `t * 2 days in weeks`. A conversion between incompatible units, a duration into kilograms say, is refused rather than guessed, and a redefinition (`t = 5`) drops the tag rather than leaving an old unit attached to a new number.
+
 Accepted `=>` answers stay **alive**: edit the expression - or a definition above it - and the number updates in place. Editing the answer itself is your override; the editor never fights it. Try it: change `rent = 1500` above after accepting a result below.
 
 Maintenance stops at the editor's own edits, and where it stops you get a **cue** instead of a silent wrong number. Move an answer above its definition, edit the file in the raw editor or a `git checkout`, or just open a file whose answers no longer hold, and the result span picks up a faint warning tint - **stale** when the expression now computes something different, tint plus a strikethrough for **broken** when it no longer computes at all (a vanished definition, `1/0`, an impossible conversion). Click the cue for **Update**, **Remove answer**, or **Ignore**; nothing touches the file until you pick one, and each is a single undo step. Only answers whose premises live outside their own text are ever cued - a plain `=` result or a constant-only arrow like `2+3 => 5` is your prose, and the editor doesn't second-guess it. To see one: accept an answer below, then change `budget = 5000` from the raw editor (Cmd+Shift+P → "Edit Raw Markdown") and switch back.
@@ -158,7 +168,7 @@ Both inline forms live under `birta.calc.enabled`. Fragments are never computed:
 
 [spec]: https://example.com/spec "Reference definition"
 
-Hover a link for the popup (clicking pins it open): it shows **where the link actually opens** (`→ path`, straight from the resolver) and the actions `open · copy · unlink · edit` - editing covers text, URL, and (for local links) a **Local link format** switch (`markdown` ⇄ `[[wiki]]`) that converts the link in place. Edits **save on blur**; there is no confirm button. External links open through VS Code's own trusted-domains prompt, or Cmd/Ctrl+click the link itself.
+Hover a link for the popup (clicking pins it open): it shows **where the link actually opens** (`→ path`, straight from the resolver) and the actions `open · copy · unlink · edit` - editing covers text, URL, and (for local links) a **Local link format** switch (`markdown` ⇄ `[[wiki]]`) that converts the link in place. Edits **save on blur**; there is no confirm button. External links open through VS Code's own trusted-domains prompt, or Cmd/Ctrl+click the link itself. Following the link at the caret is also a command, **Open Link** (`birta.editor.openLink`, and a row in the block menu), which routes exactly like Cmd+Click and can be given a keybinding of your own.
 
 Pasting a bare URL inserts `[url](url)` immediately - one history step, offline-safe, and the final answer if you want nothing more. Paste-unfurl (`birta.pasteUnfurl.enabled`, on by default but inert until the master network switch is on) then fetches the page title in the background and **offers** it in a small pill near the link: take it to swap the link text for the title, or ignore it and it fades on its own. The document is never touched until you accept - `birta.pasteUnfurl.autoApply` opts into the silent upgrade, the same shape as `birta.calc.autoInsert`. With the master switch off the paste still inserts the plain link, makes no request, and quietly offers to turn the switch on.
 
@@ -201,6 +211,8 @@ Obsidian-style wikilinks parse, navigate, and round-trip **byte-identically**. T
 - Same-page heading: [[#wikilinks]]
 - Colon in a title is just a title, never a URL scheme: [[note: plan]]
 - Citation shape stays a normal CommonMark link, never a wikilink: [[1]](https://example.com)
+
+A wikilink is editable where it sits, the way inline code and inline math are. Arrow or backspace against its edge, or click it, and it opens to show the raw text between its brackets; move the caret away and it closes back to the resolved link. A bracket typed inside is refused, because it would break the link apart on save, and emptying one removes it when you leave. Heading anchors are unaffected: a heading containing a wikilink keeps exactly the link address it had.
 
 In a table cell the alias pipe is escaped (`\|`), and it still reads as one cell:
 
@@ -250,7 +262,11 @@ https://www.figma.com/file/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
 ### GitHub
 
-A GitHub link gets a compact info card built **from the URL alone** - zero network, so it renders even with the network switch off. Four shapes are recognized - repo, pull request, issue, and file:
+A GitHub link gets a compact info card. With the network switch off it is built **from the URL alone** - zero network, so it renders anyway, saying what the address spells out. With the network switch and URL embeds on, the same card carries the real title and state, read from GitHub's own API: a repository's description, an issue's title, and for a pull request whether it is open, draft, closed, or **merged** (GitHub reports a merged pull request as closed, and the two are not the same news).
+
+No account is needed for any of that, because a public repository's title is world-readable. Connecting your GitHub account, through **Connect Service** in the palette or the one-click offer on a card that could not be read, is an upgrade rather than the price of entry: it buys private repositories and a request budget that is yours rather than shared with everything else on your network. The recommended level asks GitHub for no permissions at all; a second level exists only for private repositories, which GitHub will not grant read-only, and it says so in its own row. Birta only ever reads. The credential is held by VS Code's own GitHub sign-in, never reaches the document or this webview, and **Disconnect Service** removes it.
+
+Four shapes are recognized - repo, pull request, issue, and file:
 
 https://github.com/harlanlewis/birta-writer
 
@@ -270,7 +286,7 @@ https://docs.google.com/presentation/d/e/2PACX-1vShiXR-dpEfn5BVMK88BM0RAIKGIFlW2
 
 https://docs.google.com/spreadsheets/d/e/2PACX-1vQvfslN3Xa7nMYeC2fhPTEPIyjsbTzi_8F9pX-4zpqwjXLab5qXhiFhA_JvZT-Si6fF67mE-WlWesbL/pubhtml
 
-An **ordinary** Docs/Slides/Sheets link (the `/edit` URL you copy from the address bar) refuses to be framed - Google answers with `X-Frame-Options: SAMEORIGIN` - so it gets a compact info card instead of a doomed iframe. Like the GitHub cards, it is built from the URL alone and renders with the network off. This one is a real public spreadsheet, so ↗ opens the sheet rather than a sign-in wall:
+An **ordinary** Docs/Slides/Sheets link (the `/edit` URL you copy from the address bar) refuses to be framed - Google answers with `X-Frame-Options: SAMEORIGIN` - so it gets a compact info card instead of a doomed iframe. Like the GitHub card with the network off, it is built from the URL alone and never asks Google anything. This one is a real public spreadsheet, so ↗ opens the sheet rather than a sign-in wall:
 
 https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
 
@@ -324,7 +340,9 @@ Those two are the whole of the broken-card demonstration here. The rest of the f
 
 A note on what that buys, since a fixture is easy to over-trust: the corpus suite renders every one of those documents and round-trips its bytes, so a failure shape that crashed the editor or rewrote the file would be caught. Neither it nor any other suite asserts what the *card* does with a 404 or a sign-in wall, because a real assertion needs the provider's real answer. `e2e/embedsOnline` covers card chrome against stubbed responses; the live behavior is checked by opening this file.
 
-Two switches govern all of this. `birta.embeds.enabled` is the feature itself - turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the info cards (GitHub, Linear, ordinary Google file links) still render - they fetch nothing - while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
+Three switches govern all of this. `birta.embeds.enabled` is the feature itself - turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the info cards (GitHub, Linear, ordinary Google file links) still render - they fetch nothing - while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
+
+The third is per provider. Every provider has its own key - `birta.embeds.providers.youtube`, `birta.embeds.providers.figma`, and so on through the list above - each on by default, so keeping YouTube cards no longer means also handing Google, Figma and Miro the ids of whatever you have linked. They are user-level only, like the two switches above them, so a repository's checked-in settings cannot switch a provider back on. Turning one off reaches documents you already have open, leaves that provider's links looking like ordinary links, and stops the editor asking it for a title - pasting one of its links offers you a page title again, the way any other link does.
 
 ---
 
@@ -449,6 +467,8 @@ Ordered list markers respect arbitrary starts, parens, and lazy lists (all numbe
 
 ### Block content inside items
 
+Tab and Shift+Tab indent and outdent a list item. The same pair of moves reaches every container from the keyboard: Cmd+] (Ctrl+] on Windows and Linux) moves the current block into the container ending just above it, and Cmd+[ lifts it out of its enclosing quote, callout or list. The block menu offers both as **Indent** and **Outdent**. On list items these run the exact machinery Tab and Shift+Tab use, so the two paths cannot diverge, and a move that would land content inside a folded region is refused rather than applied invisibly.
+
 A list item can carry any block without dissolving the list:
 
 - A bullet holding a quote:
@@ -495,6 +515,8 @@ Quotes nest without any callout involved:
 
 > An outer quote.
 > > And a nested quote inside it.
+
+A quote folds from the gutter, alongside the headings, callouts, list items, tables and code blocks that already did. It collapses to its first line, so what stays on screen names what is hidden. Folding is visual only and never edits the file.
 
 ### Callouts
 
@@ -553,13 +575,15 @@ Notion's markdown export writes callouts as `<aside>` HTML ("there is no Markdow
 
 </aside>
 
+An aside folds from the gutter too, collapsing to its emoji title line for the same reason a quote collapses to its first.
+
 The `<img>`-icon variant and unclosed asides stay as the read-only sanitized HTML preview, byte-preserved.
 
 ---
 
 ## Container directives
 
-`:::name` fenced blocks (the Docusaurus admonition syntax) render as labeled containers with an editable body and title. Known names pick up callout-style accents; `{attrs}` are preserved raw; `::::` nests. Typing `:::name ` in an empty paragraph creates one.
+`:::name` fenced blocks (the Docusaurus admonition syntax) render as labeled containers with an editable body and title. Known names pick up callout-style accents; `{attrs}` are preserved raw; `::::` nests. Typing `:::name ` in an empty paragraph creates one, and a directive folds from the gutter like a quote or a callout.
 
 :::note
 A basic directive. The body is ordinary editable markdown: **bold**, `code`, [links](https://example.com), lists…
@@ -591,6 +615,8 @@ this line and the fence above render as plain paragraphs.
 
 ## Tables
 
+Rows and columns are edited from the overlay grips, from the right-click menu, or from the keyboard: Cmd+. (Ctrl+. on Windows and Linux) with the caret in a cell opens the block menu with a **Table** section acting on that cell - insert rows above or below, insert columns left or right, set the column's alignment, delete the row or column. The two menus run the same commands against the same cell, so they cannot drift apart.
+
 | Feature | Supported | Notes |
 |---|:---:|---|
 | Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
@@ -607,7 +633,7 @@ this line and the fence above render as plain paragraphs.
 
 ## Images
 
-Inline image with a relative path and a title. The alt text is the editable caption under the image (revealed on selection when empty); the title is the hover tooltip, as in published HTML. Click the image for the toolbar - a file-name chip that edits the path (autocompletes workspace images), zoom, delete, and the editable title on its own row. Edits apply on Enter or click-away, Escape cancels.
+Inline image with a relative path and a title. The alt text is the editable caption under the image (revealed on selection when empty); the title is the hover tooltip, as in published HTML. Click the image for the toolbar - a file-name chip that edits the path (autocompletes workspace images), zoom, delete, and the editable title on its own row. Edits apply on Enter or click-away, Escape cancels. The same reach exists without the mouse: an image block's menu offers **Edit Alt Text** and **Edit Image Path**, which focus those inputs, a row that cycles the display width, and **View Fullscreen**, the lightbox the zoom button opens.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
 
@@ -767,6 +793,10 @@ typo * 2
 log10(400+π^2)
 3 km in mi
 180 lb to kg
+
+// a converted definition keeps its unit, so it converts again
+t = 24*60*60*1000 ms in days
+t in weeks
 ```
 
 Every line is resolved against the definitions **above** it, like a page you read down: a definition enters scope, an expression shows its value, a line that reads as a formula but can't compute is flagged, and blank/comment lines pass through. Unit conversions work here too - same offline catalog as `=>`. Blocks have their own switch, `birta.calc.blocks.enabled`, independent of the inline forms' `birta.calc.enabled`.
@@ -784,6 +814,8 @@ $E = mc^2$
 ```
 
 Currency stays as plain text, such as $5 or $5000.
+
+Emphasis wrapped around a formula survives the save: **$a^2$** keeps its bold, _$b^2$_ its italic, and ~~$c^2$~~ its strikethrough, rather than coming back as a bare formula.
 
 ### Block equations
 
@@ -809,7 +841,7 @@ tags: [reference, corpus, regression]
 
 ## Footnotes
 
-A sentence with a footnote reference.[^note] Footnotes are auto-numbered and their definitions round-trip.
+A sentence with a footnote reference.[^note] Footnotes are auto-numbered and their definitions round-trip. A multi-paragraph definition folds from the gutter, the same as a quote or a directive.
 
 Named labels work too,[^named] and a definition can hold more than one paragraph.
 
@@ -853,13 +885,34 @@ And the spaced `- - -` form keeps its spaces:
 
 ## Raw HTML
 
-Inline and block HTML render as a sanitized, read-only preview (editing raw HTML requires the source editor):
+Block HTML renders as a sanitized preview, and an inline tag or comment renders as a dimmed chip. Both are editable where they stand: click a chip, or press Cmd+Enter (Ctrl+Enter on Windows and Linux) with one selected, and the raw source opens in a small panel. Clicking away or pressing the chord again commits, Escape cancels, and clearing the text deletes the tag. The committed bytes reach the file exactly as typed. Inside a table cell, a value that would break the row apart - a newline, or a pipe the cell cannot carry - is refused with a cue instead of written.
 
 <div align="center"><strong>Centered raw HTML block</strong></div>
 
 An HTML comment preserved and shown dimmed:
 
 <!-- This is an HTML comment. It survives round-trips. -->
+
+### Live inline pairs
+
+Five paired tags render live: <u>underline</u>, <sub>subscript</sub>, <sup>superscript</sup>, <kbd>Cmd</kbd>, and <mark>marked text</mark>. The tags themselves dim to small chips that stay clickable for editing, and the rendering is display only - the bytes are untouched, so a water molecule written H<sub>2</sub>O is still `H<sub>2</sub>O` on save. Case is HTML's, so <SUB>an uppercase pair</SUB> renders too, and pairs nest: x<sup>2<sup>3</sup></sup>.
+
+The match is deliberately narrow. A tag carrying an attribute, and a tag that is never closed, each keep the previous appearance rather than rendering:
+
+- an attribute: <sub class="x">not a subscript</sub>
+- never closed: <mark>plain to the end of the line
+
+So does a pair whose halves sit in different blocks, since the match is per textblock. This <u>open tag and the close tag two lines down are
+
+both chips, and neither of these paragraphs is underlined</u> by them.
+
+---
+
+## Block source
+
+Any block's own Markdown is editable in place: put the caret in it and press Cmd+/ (Ctrl+/ on Windows and Linux), and the block is replaced by a small panel holding its source, so a precise piece of syntax is reachable without leaving for the raw editor. Cmd+Enter or the same chord applies, clicking away applies, Escape cancels, and clearing the text deletes the block. Select several blocks first, by any means, and they open together; a list opens whole rather than one item at a time.
+
+What you apply is read as Markdown, so a spelling the editor writes differently comes back in the editor's spelling. A block citing a footnote or a reference link keeps those references intact even though their definitions live elsewhere in this file, and applying a block you did not type in leaves the file untouched.
 
 ---
 
@@ -952,4 +1005,4 @@ Obsidian's transclusion form `![[page]]` is not treated as an embed - it renders
 
 ### Definition lists
 
-`term` / `: definition` syntax is not parsed. Parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags`.
+`term` / `: definition` syntax is not parsed. Parked with `%%comments%%`, `[TOC]`, and `#tags`.
