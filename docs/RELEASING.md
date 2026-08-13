@@ -76,15 +76,23 @@ The semver releases up to `0.2.3` were never publicly installable. They live in 
 
 ## Release notes
 
-`scripts/gen-release-notes.mjs` reads the commit range and this version's section of `CHANGELOG.md`, then asks Claude to write [cursor.com/changelog](https://cursor.com/changelog)-style notes. Run by hand against an unstamped tree, it falls back to `[Unreleased]`.
+`scripts/gen-release-notes.mjs` reads this version's section of `CHANGELOG.md` and condenses it into [cursor.com/changelog](https://cursor.com/changelog)-style notes. Run by hand against an unstamped tree, it falls back to `[Unreleased]`.
 
 It reads the stamped section for a reason. Reading `[Unreleased]` unconditionally is what made four consecutive nightly releases re-announce the entire product, because nothing ever rolled that section and it had accumulated every entry ever written.
 
-Without an `ANTHROPIC_API_KEY`, or when the API call fails, it re-sections those same changelog entries into the notes taxonomy itself, mechanically, and only drops to a categorized commit list when there is no changelog section to read at all. So a release never blocks on the model, and never publishes less than the changelog already said.
+Without an `ANTHROPIC_API_KEY`, when a call fails, or when a reply does not hold exactly one line per changelog entry, it re-sections those same changelog entries into the notes taxonomy itself, mechanically, and only drops to a categorized commit list when there is no changelog section to read at all. So a release never blocks on the model, and never publishes less than the changelog already said.
 
 That order matters more than it looks. The commit list used to be the only fallback, and it did not read `CHANGELOG.md` at all: a `Security` entry did not merely land in the wrong section, it never reached the notes, and the commit subject appeared in its place under `Fixes`. It also published what the observability rule excludes (`refactor: internal cleanup` went out under `Other`), and it contradicted the `_No user-visible changes_` marker by listing the commits that marker exists to suppress.
 
-The two paths differ in kind, and it is worth knowing which one produced a set of notes. The no-key path is mechanical: sections are renamed by table, nothing is dropped, and a heading the taxonomy does not know is passed through under its own name rather than discarded. The AI path is instructed, not constrained: the prompt names every section and states the mapping, and the tests pin the prompt, but the placement is the model's. Read a `Security` section in the published notes against `CHANGELOG.md` the first time one ships.
+Both paths place an entry the same way, by the `NOTES_SECTIONS` table, and neither can move one. The no-key path renames sections wholesale. The AI path is called once per changelog section, is never shown a heading or a destination, and returns one line per entry for the caller to file; a reply holding any other number of lines is refused, because merging, splitting and dropping are indistinguishable after the fact.
+
+That is a change of kind, not of degree. The AI path used to receive the whole release at once and be told the mapping in prose, which is a request rather than a constraint, and `v2026.813.0` is what a request bought: four `Fixed` entries were published under `Improved`, so a reader comparing the release page against the Marketplace changelog found the same release sorted two ways. What the model still decides is the wording of each line and which one to four entries are lifted into `Highlights`. What it cannot decide is where anything goes.
+
+`Security` is the exception, and does not go to the model at all. It is written to a standard the rest of the changelog is not, say what an attacker could and could not do and then stop, and the clause saying what was *not* exposed is half of what a reader needs to decide whether to act. Condensing a paragraph to a line is the operation that drops a qualifier, so those entries are published as written. They read longer than the notes around them, which is the emphasis that section should have.
+
+A malformed reply is retried once before the path is abandoned, so a single stray code fence costs a retry rather than the release's condensed notes.
+
+One thing no check can see: whether the line returned for entry three describes entry three. Order is asked for and assumed.
 
 ### What goes in
 
@@ -104,11 +112,11 @@ The two surfaces express the same taxonomy in their own vocabulary:
 | `CHANGELOG.md` (the record) | Keep a Changelog: `Added` / `Changed` / `Fixed` / `Removed` / `Deprecated` / `Security`. Flag breaking changes inline; don't add a Highlights section, because the generator lifts those. |
 | Generated release notes | `Breaking changes` → `Security` → `Highlights` → `New` → `Improved` → `Fixed` → `Deprecated` → `Removed`, and nothing else. |
 
-Every changelog section maps onto one of those, and the mapping is stated in two places that are checked against each other: the `NOTES_SECTIONS` table `scripts/gen-release-notes.mjs` applies without a key, and the prose rule in the same file's prompt.
+Every changelog section maps onto one of those, and the mapping is stated once, as the `NOTES_SECTIONS` table in `scripts/gen-release-notes.mjs`. Both body paths file entries by it, and no prompt restates it. The two headings with no source section are promotions out of one, declared alongside it in `PROMOTIONS`.
 
 | `CHANGELOG.md` | Release notes |
 |---|---|
-| `Security` | `Security` |
+| `Security` | `Security`, published as the changelog wrote it |
 | `Added` | `New`, with the 1-4 headline items promoted to `Highlights` |
 | `Changed` | `Improved` |
 | `Fixed` | `Fixed` |
@@ -117,7 +125,7 @@ Every changelog section maps onto one of those, and the mapping is stated in two
 
 `Security` leads because the reader is scanning it to decide whether to act, which is the same reason `Breaking changes` lead. This taxonomy has no separate axis for urgency; placement is the axis. `Highlights` is a promotion out of `New`, not a source section, which is why you should never write one in `CHANGELOG.md` by hand.
 
-`shared/__tests__/releaseNotes.test.ts` holds this to the code. It fails if a Keep a Changelog section loses its route, if the prompt and the table disagree, if an entry is dropped on the way through, or if a heading appears in our own `CHANGELOG.md` that the notes cannot place.
+`shared/__tests__/releaseNotes.test.ts` holds this to the code. It fails if a Keep a Changelog section loses its route, if a destination or a promotion is built but never printed, if an entry is dropped on the way through, or if a heading appears in our own `CHANGELOG.md` that the notes cannot place. It also runs the AI path end to end against a stub standing in for the API, which is what lets placement be asserted rather than argued: the stub echoes the section each line came from, and the test fails if a line surfaces under any other heading. Before that stub existed, every assertion about the AI path was an assertion about the prompt.
 
 A first release is the special case. With no prior public version, every observable change is *New*: there is nothing to Improve or Fix against yet, which is why the initial `[Unreleased]` reads as one consolidated feature list.
 
