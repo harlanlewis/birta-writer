@@ -50,6 +50,14 @@ const ISLAND_REGISTRY: Record<string, string> = {
         "a switch maps to the atom's own line; getSwitchTarget blurs an open panel before " +
         "reading (webview/index.ts), so the switch leaves on committed bytes even on the " +
         "in-webview chord path, where no natural blur precedes it. Pinned in e2e/htmlEdit.",
+    "components/blockSource/index.ts":
+        "the block source textarea (MAR-20) — a textarea's internal caret is invisible to " +
+        "document.getSelection() by construction, and the panel only ever opens off a caret or " +
+        "selection INSIDE the block it stands in for, so the parked ProseMirror selection is " +
+        "still in that block and a switch maps to the block's own line; getSwitchTarget banks " +
+        "an open panel before reading (webview/index.ts), as does the save flush " +
+        "(messageHandlers.ts flushSave), so both leave on committed bytes even on the " +
+        "in-webview command path, where no natural blur precedes them. Pinned in e2e/blockSource.",
     "ui/clipboard.ts":
         "the execCommand copy fallback's hidden textarea — created on document.body, focused, " +
         "copied and removed synchronously inside one call, so no selection outlives it; " +

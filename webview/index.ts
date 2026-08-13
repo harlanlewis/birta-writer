@@ -42,6 +42,7 @@ import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { bankOpenHtmlPanel } from "./components/htmlView";
+import { bankOpenBlockSourcePanel } from "./components/blockSource";
 import { mark, measure } from "./perf";
 import type { DocumentFormat, ToWebviewMessage } from "../shared/messages";
 import { resolveFormat } from "./format/loader";
@@ -409,6 +410,10 @@ function getSwitchTarget():
     // where no natural blur precedes this call). Story in
     // selectionSurfaceCoverage's ISLAND_REGISTRY; pinned in e2e/htmlEdit.
     bankOpenHtmlPanel(view);
+    // The block source panel banks for the same reason (MAR-20): its text is
+    // the user's current intent for that block, and a switch that read the
+    // document first would leave on the bytes they were editing away from.
+    bankOpenBlockSourcePanel(view);
     const { doc, selection } = view.state;
     const { head, empty } = selection;
     const sourceLines = getMarkdownSource().split("\n");

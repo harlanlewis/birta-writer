@@ -84,6 +84,7 @@ import {
     insertParagraphKeymapPlugin,
     tabKeymapPlugin,
     blockKeysPlugin,
+    blockSourcePlugin,
     tableKeymapPlugin,
     toggleHighlightCommand,
     trailingHrParagraphPlugin,
@@ -846,6 +847,7 @@ export async function createEditor(
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(blockKeysPlugin)
+        .use(blockSourcePlugin)
         // The gap cursor itself: the caret widget, click-to-gap, and arrow
         // handling for every case blockEdgeGapCursorKeymapPlugin (above)
         // declines. Registered LAST among key handlers on purpose — each
