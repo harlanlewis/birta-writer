@@ -51,7 +51,7 @@ export async function run({ page, check, baseUrl }) {
     );
 
     await page.evaluate(() => { window.__posted.length = 0; });
-    await page.keyboard.press("Control+z");
+    await page.keyboard.press("Meta+z");
     await page.waitForTimeout(600);
 
     const undone = await shipped(page);
