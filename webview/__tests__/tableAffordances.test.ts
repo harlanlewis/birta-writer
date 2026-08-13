@@ -21,6 +21,7 @@ import {
 } from "@milkdown/core";
 import { CellSelection, TableMap } from "../pm";
 import { revealTableAffordances } from "./helpers/revealTableAffordances";
+import { dispatchMouseGesture } from "./helpers/pointerGesture";
 import type { Node as PMNode } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
@@ -69,11 +70,11 @@ function tableNode(v: EditorView): PMNode {
     return node;
 }
 
-/** A grip is click-selected via a mousedown with no travel, then a mouseup. */
+/** A grip is click-selected via a press with no travel, then a release. */
 function pressGrip(el: Element): void {
-    el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    // beginDrag listens on document for mouseup; no mousemove ⇒ treated as click.
-    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    dispatchMouseGesture(el, "mousedown", {});
+    // beginDrag listens on document for pointerup; no move ⇒ treated as click.
+    dispatchMouseGesture(document, "mouseup", {});
 }
 
 describe("nearestTargets (contextual reveal math)", () => {
@@ -184,7 +185,7 @@ describe("insert + buttons", () => {
             `.mw-insert--${kind}[data-gap="${gap}"] .mw-insert-btn`,
         );
         expect(btn, `insert button for ${kind} gap ${gap}`).not.toBeNull();
-        btn!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        dispatchMouseGesture(btn!, "mousedown", {});
     }
 
     it("clicking a row insert should add exactly one row", () => {
@@ -293,18 +294,72 @@ describe("grip drag reorder", () => {
     it("should add .mw-table--dragging during a drag and remove it after", () => {
         const wrapper = document.querySelector(".mw-table") as HTMLElement;
         const grip = document.querySelector('.mw-grip--row[data-row="1"]')!;
-        grip.dispatchEvent(
-            new MouseEvent("mousedown", { bubbles: true, clientX: 5, clientY: 25 }),
-        );
+        dispatchMouseGesture(grip!, "mousedown", { clientX: 5, clientY: 25 });
         expect(wrapper.classList.contains("mw-table--dragging")).toBe(false);
         // Travel past the drag threshold flips the gesture into a real drag.
-        document.dispatchEvent(
-            new MouseEvent("mousemove", { bubbles: true, clientX: 5, clientY: 75 }),
+        dispatchMouseGesture(document, "mousemove", { clientX: 5, clientY: 75 });
+        expect(wrapper.classList.contains("mw-table--dragging")).toBe(true);
+        dispatchMouseGesture(document, "mouseup", { clientX: 5, clientY: 75 });
+        expect(wrapper.classList.contains("mw-table--dragging")).toBe(false);
+    });
+
+    /** Row texts 1..3, the readable form of "did the reorder happen". */
+    function bodyRows(): string[] {
+        v = view(editor);
+        const node = tableNode(v);
+        const map = TableMap.get(node);
+        return [1, 2, 3].map(
+            (r) => node.nodeAt(map.positionAt(r, 0, node))!.textContent,
         );
+    }
+
+    // A gesture the browser takes away arrives as pointercancel and NO
+    // pointerup (MAR-340). Committing there would land the row wherever the
+    // finger was when the system intervened, so the session has to tear down
+    // and do nothing — including not falling through to the press-without-
+    // travel branch, which would answer a stolen pan with a row selection.
+    it("a pointercancel mid-drag should abandon the reorder without moving a row", () => {
+        stubRowLayout();
+        const wrapper = document.querySelector(".mw-table") as HTMLElement;
+        const before = bodyRows();
+        const grip = document.querySelector('.mw-grip--row[data-row="1"]')!;
+        dispatchMouseGesture(grip, "mousedown", { clientX: 5, clientY: 25 });
+        dispatchMouseGesture(document, "mousemove", { clientX: 5, clientY: 75 });
         expect(wrapper.classList.contains("mw-table--dragging")).toBe(true);
         document.dispatchEvent(
-            new MouseEvent("mouseup", { bubbles: true, clientX: 5, clientY: 75 }),
+            new MouseEvent("pointercancel", { bubbles: true, clientX: 5, clientY: 75 }),
         );
+        expect(wrapper.classList.contains("mw-table--dragging")).toBe(false);
+        expect(document.querySelectorAll(".mw-grip--dragging")).toHaveLength(0);
+        expect(bodyRows()).toEqual(before);
+    });
+
+    it("a pointercancel on a press with no travel should not select the row", () => {
+        stubRowLayout();
+        const grip = document.querySelector('.mw-grip--row[data-row="1"]')!;
+        dispatchMouseGesture(grip, "mousedown", { clientX: 5, clientY: 25 });
+        document.dispatchEvent(
+            new MouseEvent("pointercancel", { bubbles: true, clientX: 5, clientY: 25 }),
+        );
+        v = view(editor);
+        expect(v.state.selection instanceof CellSelection).toBe(false);
+    });
+
+    // The teardown must be reached by the pointer that armed the session, so a
+    // second finger's release cannot end the first one's drag.
+    it("a non-primary pointerup should not end the drag the primary started", () => {
+        stubRowLayout();
+        const wrapper = document.querySelector(".mw-table") as HTMLElement;
+        const grip = document.querySelector('.mw-grip--row[data-row="1"]')!;
+        dispatchMouseGesture(grip, "mousedown", { clientX: 5, clientY: 25 });
+        dispatchMouseGesture(document, "mousemove", { clientX: 5, clientY: 75 });
+        expect(wrapper.classList.contains("mw-table--dragging")).toBe(true);
+        const foreign = new MouseEvent("pointerup", { bubbles: true, clientX: 5, clientY: 75 });
+        Object.defineProperty(foreign, "isPrimary", { value: false });
+        document.dispatchEvent(foreign);
+        expect(wrapper.classList.contains("mw-table--dragging")).toBe(true);
+        // The primary's own release still ends it.
+        dispatchMouseGesture(document, "mouseup", { clientX: 5, clientY: 75 });
         expect(wrapper.classList.contains("mw-table--dragging")).toBe(false);
     });
 
@@ -313,16 +368,10 @@ describe("grip drag reorder", () => {
         selectRowRange(1, 2);
         stubRowLayout();
         const grip = document.querySelector('.mw-grip--row[data-row="1"]')!;
-        grip.dispatchEvent(
-            new MouseEvent("mousedown", { bubbles: true, clientX: 5, clientY: 25 }),
-        );
+        dispatchMouseGesture(grip!, "mousedown", { clientX: 5, clientY: 25 });
         // Move to y=75 → past the last row's band (row 3 spans 60..80).
-        document.dispatchEvent(
-            new MouseEvent("mousemove", { bubbles: true, clientX: 5, clientY: 75 }),
-        );
-        document.dispatchEvent(
-            new MouseEvent("mouseup", { bubbles: true, clientX: 5, clientY: 75 }),
-        );
+        dispatchMouseGesture(document, "mousemove", { clientX: 5, clientY: 75 });
+        dispatchMouseGesture(document, "mouseup", { clientX: 5, clientY: 75 });
         v = view(editor);
         const node = tableNode(v);
         const map = TableMap.get(node);
@@ -337,16 +386,10 @@ describe("grip drag reorder", () => {
         stubRowLayout();
         // Drag row 3's grip (not in the selection) up above the selection.
         const grip = document.querySelector('.mw-grip--row[data-row="3"]')!;
-        grip.dispatchEvent(
-            new MouseEvent("mousedown", { bubbles: true, clientX: 5, clientY: 65 }),
-        );
+        dispatchMouseGesture(grip!, "mousedown", { clientX: 5, clientY: 65 });
         // Drop into the leading half of row 2's band (40..60) → between 1 and 2.
-        document.dispatchEvent(
-            new MouseEvent("mousemove", { bubbles: true, clientX: 5, clientY: 45 }),
-        );
-        document.dispatchEvent(
-            new MouseEvent("mouseup", { bubbles: true, clientX: 5, clientY: 45 }),
-        );
+        dispatchMouseGesture(document, "mousemove", { clientX: 5, clientY: 45 });
+        dispatchMouseGesture(document, "mouseup", { clientX: 5, clientY: 45 });
         v = view(editor);
         const node = tableNode(v);
         const map = TableMap.get(node);
