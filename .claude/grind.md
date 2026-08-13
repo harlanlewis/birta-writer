@@ -18,6 +18,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 - One PR per session with the tickets and the verification done. The session completes the merge: wait for CI, squash, delete branch, pull `main`, and end there.
 - Merging deploys: no.
+- `pnpm run install:local` is the LAST act, after the pull, and then tell the user to reload. `AGENTS.md`'s end-of-work handoff already requires it and does not say when, which reads as "some time during the session": run it before the merge and the user reloads into whatever the tree held at that moment. A session that keeps working afterwards, as every session does, hands them a build its own later commits contradict. Install from the merged default branch or the install is a lie about what shipped.
 
 ## Lanes
 
