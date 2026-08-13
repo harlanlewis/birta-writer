@@ -1,0 +1,103 @@
+<!doctype html>
+<!-- e2e harness: every construct that renders interactive chrome INSIDE the
+     contentEditable root, in one document, so the audit in checks.mjs can
+     enumerate them all in a single page (MAR-340). Content is deliberately
+     one plain example per construct: the subject is the chrome, not fidelity. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: rgba(0, 127, 212, 0.26);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-icon-foreground: #cccccc; --vscode-input-placeholderForeground: #888888;
+    --vscode-symbolIcon-keywordForeground: #c586c0;
+    --vscode-editorWarning-foreground: #cca700; --vscode-editorInfo-foreground: #3794ff;
+    --vscode-editorError-foreground: #f14c4c;
+    --vscode-editor-findMatchHighlightBackground: rgba(234, 92, 0, 0.33);
+    --vscode-textLink-foreground: #3794ff;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 99 };
+  window.__posted = [];
+  const DOC = [
+    "# Heading one",
+    "",
+    "A plain paragraph, which carries a block gutter marker.",
+    "",
+    "- a list item",
+    "- another list item",
+    "",
+    "- [ ] an unchecked task",
+    "- [ ] a second unchecked task",
+    "",
+    "| one | two |",
+    "| --- | --- |",
+    "| r1a | r1b |",
+    "| r2a | r2b |",
+    "",
+    "> [!TIP]",
+    "> A callout with an editable title.",
+    "",
+    ":::note",
+    "A container directive.",
+    ":::",
+    "",
+    "```js",
+    "const answer = 42;",
+    "console.log(answer);",
+    "```",
+    "",
+    "```mermaid",
+    "graph LR",
+    "    A[Write] --> B[Preview]",
+    "```",
+    "",
+    "```calc",
+    "subtotal = 10 * 3",
+    "subtotal * 1.2 =",
+    "```",
+    "",
+    "Inline $E = mc^2$ and a block:",
+    "",
+    "$$",
+    "\\int_0^1 x^2 \\, dx",
+    "$$",
+    "",
+    "![A local image](pixel.png)",
+    "",
+    "A [[wiki link]] and a [regular link](https://example.com/target).",
+    "",
+    "A claim with a footnote.[^1]",
+    "",
+    "[^1]: The footnote body.",
+    "",
+    "<div align=\"center\"><strong>Raw HTML preview.</strong></div>",
+    "",
+    "## Heading two",
+    "",
+    "Closing paragraph.",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
