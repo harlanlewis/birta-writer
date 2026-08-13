@@ -125,6 +125,36 @@ export async function run({ page, check, baseUrl }) {
     );
     check("the panel closes on commit", await panelGone(), "textarea still present");
 
+    // ── A selection spanning blocks opens them together ─────────────────────
+    // The CHANGELOG claims this, so it gets driven rather than inferred from
+    // the range arithmetic.
+    await page.evaluate(() => {
+        const blocks = [...document.querySelectorAll(".ProseMirror > *")];
+        const first = blocks.find((el) => el.textContent.includes("Heading"));
+        const second = blocks.find((el) => el.textContent.includes("A claim citing a note"));
+        const range = document.createRange();
+        range.setStart(first, 0);
+        range.setEnd(second, second.childNodes.length);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    });
+    await page.waitForTimeout(150);
+    await openPanel();
+    const spanning = await page.evaluate(() => ({
+        hidden: document.querySelectorAll(".ProseMirror .block-source-hidden").length,
+        value: document.querySelector(".ProseMirror .block-source-area").value,
+    }));
+    check(
+        "a selection spanning two blocks opens both in one panel",
+        spanning.hidden === 2 &&
+            spanning.value.includes("# Heading") &&
+            spanning.value.includes("A claim citing a note"),
+        JSON.stringify(spanning),
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
     // ── Committing an untouched block is a no-op ─────────────────────────────
     await caretInParagraph("A claim citing a note");
     await openPanel();
