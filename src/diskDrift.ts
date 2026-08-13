@@ -30,6 +30,7 @@ import * as vscode from "vscode";
 // Mechanism B of the external-change seam: the debounce constant and the
 // unify-vs-divide rationale live in src/externalChanges.ts (MAR-152 ADR).
 import { DISK_DRIFT_DEBOUNCE_MS } from "./externalChanges";
+import { readDiskText } from "./utils/diskText";
 
 export interface DiskDriftHooks {
     /**
@@ -160,7 +161,7 @@ export class DiskDriftController {
 
         let diskText: string;
         try {
-            diskText = await this._readDiskText(document.uri);
+            diskText = await readDiskText(document.uri);
         } catch {
             // Deleted or unreadable: VS Code's own orphaned-file handling owns
             // this; nothing for the badge to say.
@@ -177,12 +178,5 @@ export class DiskDriftController {
         if (was === drifted) { return; }
         if (drifted) { this._drifted.add(uriKey); } else { this._drifted.delete(uriKey); }
         this._hooks.onDriftChange(uriKey, drifted);
-    }
-
-    /** The file's content, decoded as UTF-8 with any BOM stripped (matching TextDocument.getText). */
-    private async _readDiskText(uri: vscode.Uri): Promise<string> {
-        const bytes = await vscode.workspace.fs.readFile(uri);
-        const text = Buffer.from(bytes).toString("utf8");
-        return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
     }
 }

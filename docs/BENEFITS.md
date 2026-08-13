@@ -159,7 +159,7 @@ The old trap where a quick Cmd+S seemed to "not take" and the change quietly van
 
 The conflict is never resolved silently. If another tool (a terminal, git, an AI assistant) rewrites a file you have open _with unsaved edits_, a warning badge appears, and one click reloads from disk or shows a side-by-side compare. A file with no unsaved edits just reloads on its own.
 
-Editing alongside tools that also write your files is normal now. Birta surfaces the collision and lets _you_ pick the winner, instead of guessing a merge or quietly discarding a side. The editor never writes or reverts your document on its own, and it never takes over a raw editor holding unsaved changes: rendering one means closing it, and closing an unsaved file is what makes VS Code ask whether to save, so Birta leaves that tab alone until you've saved it yourself.
+Editing alongside tools that also write your files is normal now. Birta surfaces the collision and lets _you_ pick the winner, instead of guessing a merge or quietly discarding a side. The editor never writes your document on its own, and never reverts one holding unsaved work: the single revert it makes unprompted is on a document already identical to its file, to clear an unsaved-changes flag with nothing left to describe, and it stands down while the file on disk has moved. It never takes over a raw editor holding unsaved changes: rendering one means closing it, and closing an unsaved file is what makes VS Code ask whether to save, so Birta leaves that tab alone until you've saved it yourself.
 
 ## It understands the Markdown people actually write
 
@@ -225,7 +225,7 @@ Reorganizing a long document is the one edit that's genuinely painful in raw Mar
 
 - It matches your VS Code theme, with no per-editor color settings, recoloring live when you switch themes or the OS flips light and dark. The document looks like the rest of your editor, always, with nothing to configure.
 - It starts fast. Heavy dependencies (math, diagrams, syntax grammars) load only when a document needs them, so opening a file paints quickly and switching in and out of the editor never feels like a penalty.
-- Saving is just VS Code saving. The editor is backed by a native text document, so `files.autoSave`, the dirty-dot in the tab, and hot-exit all work exactly as they do everywhere else. There is no bespoke save model to learn or distrust.
+- Saving is just VS Code saving. The editor is backed by a native text document, so `files.autoSave`, the dirty-dot in the tab, and hot-exit all work exactly as they do everywhere else, down to the dot clearing when you undo back to the content the file already holds. There is no bespoke save model to learn or distrust.
 - Your images never leave your machine. Pasted and dropped images are stored locally in your workspace, deduplicated by content hash. No surprise uploads, and the document is self-contained.
 
 ## Offline by default

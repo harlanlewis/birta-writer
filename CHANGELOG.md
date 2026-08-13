@@ -18,6 +18,8 @@
 
 ### Fixed
 
+- Undoing back to the content the file already holds clears the unsaved-changes dot again. Typing a character and pressing Cmd+Z (Ctrl+Z on Windows and Linux) restored the document byte for byte, yet the tab and the window's close button went on reporting unsaved changes, because VS Code counts a document's edits rather than comparing what it holds. The editor now clears the flag once its content matches the file, so closing the tab stops asking about a change you already took back. It stays lit in the two cases where clearing it would mean acting on an unsettled file: while another editor holds unsaved work, and while the file has changed on disk since you opened it.
+
 - A block can be dragged to reorder it by touch. On a touchscreen the gutter handle could already be tapped to open its menu, and every verb in that menu worked, but the drag itself listened for mouse events only, so a block could not be moved by finger at all. Dragging now runs on pointer events, which is one code path for mouse, pen and finger rather than a separate touch mode. A drag the system takes away, such as an incoming call or a system gesture, leaves the document untouched instead of stranding the block mid-move, and a second finger landing during a drag no longer steers it.
 
 - Bold or italic wrapped around inline math no longer loses its emphasis on save. A line reading `**$a^2$**` came back as `$a^2$`: the emphasis was dropped from the file the first time the document was saved, silently and with nothing to undo it. Underline-style emphasis and strikethrough around a formula were affected the same way. Wikilinks now carry the same guarantee.
