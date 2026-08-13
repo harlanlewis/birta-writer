@@ -8,6 +8,11 @@
  * through the REAL Milkdown editor (real parser, real schema) like
  * foldPlugin.test.ts, so position math matches production.
  *
+ * MAR-116 — the same for the container kinds: a blockquote and a Notion
+ * `<aside>` fold to their first LINE (they have no chrome of their own), a
+ * container directive and a footnote definition fold to their chrome ROW,
+ * and nothing but an item carries fold chrome inside a list item.
+ *
  * MAR-263 — fold-decision EXHAUSTIVENESS (the sweep the file's name always
  * promised, at the bottom): every block node type must carry an explicit
  * fold decision — proven foldable by a fixture, or allowlisted with a
@@ -623,6 +628,272 @@ describe("code block folding (fold to the chrome row)", () => {
     });
 });
 
+/**
+ * MAR-116 — the chrome-less containers. A blockquote and a Notion `<aside>`
+ * have no title bar of their own: their FIRST CHILD BLOCK is the line the
+ * fold keeps, exactly as a list item's is. The aside is the one to watch —
+ * folding it to its node boundary (the `callout` grammar) would hide the
+ * emoji line that names it, because that line is document content here and
+ * an attr-held title bar there.
+ */
+describe("blockquote and Notion-aside folding (fold to the first line)", () => {
+    const QUOTE = "> first line\n>\n> second block\n>\n> third block";
+    const ASIDE = "<aside>\n💡 First line\n\nsecond block\n\n</aside>";
+
+    it("folding a quote should hide everything after its first line", async () => {
+        // Arrange
+        const editor = await makeEditor(QUOTE);
+        const v = view(editor);
+        const quotePos = deepPosOf(v, "blockquote");
+        const quote = v.state.doc.nodeAt(quotePos)!;
+
+        // Act
+        const range = foldHiddenRange(v.state.doc, quotePos)!;
+        toggle(v, quotePos);
+
+        // Assert
+        expect(range.from).toBe(quotePos + 1 + quote.firstChild!.nodeSize);
+        expect(range.to).toBe(quotePos + quote.nodeSize - 1);
+        expect(textIsHidden(v, "first line")).toBe(false);
+        expect(textIsHidden(v, "second block")).toBe(true);
+        expect(textIsHidden(v, "third block")).toBe(true);
+        // The tail is hidden by decoration; the first line keeps its own DOM.
+        expect(document.querySelectorAll("blockquote > .heading-fold-hidden")).toHaveLength(2);
+        expect(document.querySelector("blockquote > p:first-of-type")?.className ?? "").not.toContain(
+            "heading-fold-hidden",
+        );
+    });
+
+    it("the collapsed quote's first line should trail an ellipsis whose click expands", async () => {
+        // Arrange
+        const editor = await makeEditor(QUOTE);
+        const v = view(editor);
+        toggle(v, deepPosOf(v, "blockquote"));
+
+        // Act + Assert: the shared `…` chip, mounted in the visible line.
+        const ellipsis = document.querySelector<HTMLButtonElement>("blockquote .fold-ellipsis");
+        expect(ellipsis).not.toBeNull();
+        ellipsis!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(folded(v).size).toBe(0);
+    });
+
+    it("a one-block quote should not be foldable", async () => {
+        const editor = await makeEditor("> only line");
+        const v = view(editor);
+        const quotePos = deepPosOf(v, "blockquote");
+        expect(foldHiddenRange(v.state.doc, quotePos)).toBeNull();
+        toggle(v, quotePos);
+        expect(folded(v).size).toBe(0);
+    });
+
+    it("a quote that OPENS with a list should not fold; the first item's chevron does", async () => {
+        // The stub-rule decision (MAR-116): a container whose first child is
+        // not itself a line has no line of its own to fold to — collapsing it
+        // would leave that whole first structure on screen under a chevron
+        // claiming to have hidden it. The capability moves to the item.
+        const editor = await makeEditor("> - alpha\n>   - beta\n> - gamma\n>\n> trailing");
+        const v = view(editor);
+        const quotePos = deepPosOf(v, "blockquote");
+
+        expect(foldHiddenRange(v.state.doc, quotePos)).toBeNull();
+        toggle(v, quotePos);
+        expect(folded(v).size).toBe(0);
+        // No dead chevron on the quote; the item that owns the line has one.
+        expect(document.querySelectorAll("blockquote > .heading-fold-gutter--foldable")).toHaveLength(0);
+        expect(foldHiddenRange(v.state.doc, itemPosByLine(v, "alpha"))).not.toBeNull();
+    });
+
+    it("a quote opening with a heading should fold (a heading IS a line)", async () => {
+        const editor = await makeEditor("> # Title\n>\n> body");
+        const v = view(editor);
+        const quotePos = deepPosOf(v, "blockquote");
+        toggle(v, quotePos);
+        expect(textIsHidden(v, "Title")).toBe(false);
+        expect(textIsHidden(v, "body")).toBe(true);
+    });
+
+    it("a caret dropped into a collapsed quote's hidden tail should be ejected", async () => {
+        // Arrange
+        const editor = await makeEditor(`${QUOTE}\n\ntail`);
+        const v = view(editor);
+        const quotePos = deepPosOf(v, "blockquote");
+        toggle(v, quotePos);
+        const hidden = foldHiddenRange(v.state.doc, quotePos)!;
+
+        // Act
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, hidden.from + 3)));
+
+        // Assert
+        expect(
+            v.state.selection.from >= hidden.to || v.state.selection.to <= hidden.from,
+        ).toBe(true);
+    });
+
+    it("Cmd+Alt+[ inside a quote's tail should leave the caret on its first line", async () => {
+        // A chrome-less container keeps a visible, editable line, so the fold
+        // command's escape stays LOCAL to it (foldEscapeSelection) rather than
+        // parking the caret before the block the way a collapsed callout,
+        // directive or code block has to.
+        // `intro` matters: with no block before the quote, an escape aimed
+        // BEFORE it falls forward into the quote's own first line anyway, and
+        // the two candidate landings would be equal by construction.
+        const editor = await makeEditor(`intro\n\n${QUOTE}`);
+        const v = view(editor);
+        const quotePos = deepPosOf(v, "blockquote");
+        const range = foldHiddenRange(v.state.doc, quotePos)!;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, range.from + 2)));
+
+        // Act
+        expect(foldAtCaret(v.state, v.dispatch)).toBe(true);
+
+        // Assert: inside the quote, before its hidden tail — its first line.
+        expect(folded(v).has(quotePos)).toBe(true);
+        expect(v.state.selection.from).toBeGreaterThan(quotePos);
+        expect(v.state.selection.from).toBeLessThan(range.from);
+    });
+
+    it("toggling a quote fold should leave state.doc reference-identical", async () => {
+        const editor = await makeEditor(QUOTE);
+        const v = view(editor);
+        const docBefore = v.state.doc;
+        const quotePos = deepPosOf(v, "blockquote");
+        toggle(v, quotePos);
+        toggle(v, quotePos);
+        expect(v.state.doc).toBe(docBefore);
+    });
+
+    it("folding a Notion aside should KEEP its first line, never hide the whole body", async () => {
+        // Arrange
+        const editor = await makeEditor(ASIDE);
+        const v = view(editor);
+        const asidePos = deepPosOf(v, "notion_callout");
+        const aside = v.state.doc.nodeAt(asidePos)!;
+
+        // Act
+        const range = foldHiddenRange(v.state.doc, asidePos)!;
+        toggle(v, asidePos);
+
+        // Assert: the emoji line is CONTENT here — a callout-style whole-body
+        // fold (from === asidePos + 1) would take the aside's title with it.
+        expect(range.from).toBe(asidePos + 1 + aside.firstChild!.nodeSize);
+        expect(textIsHidden(v, "First line")).toBe(false);
+        expect(textIsHidden(v, "second block")).toBe(true);
+        expect(document.querySelector(".callout-aside.collapsed")).not.toBeNull();
+        expect(document.querySelector(".callout-aside .fold-ellipsis")).not.toBeNull();
+    });
+
+    it("a Notion aside with only its first line should not be foldable", async () => {
+        const editor = await makeEditor("<aside>\n💡 Only a line\n\n</aside>");
+        const v = view(editor);
+        const asidePos = deepPosOf(v, "notion_callout");
+        expect(foldHiddenRange(v.state.doc, asidePos)).toBeNull();
+        toggle(v, asidePos);
+        expect(folded(v).size).toBe(0);
+    });
+});
+
+/**
+ * MAR-116 — the chrome-bearing containers. A container directive keeps its
+ * header (name badge + title) and a footnote definition its label marker,
+ * both held OUTSIDE the document content, so the fold hides the whole body
+ * exactly as a callout's does.
+ */
+describe("directive and footnote-definition folding (fold to the chrome row)", () => {
+    it("a directive should hide its whole body, header row untouched", async () => {
+        // Arrange
+        const editor = await makeEditor(":::note Title\nbody para\n\nsecond para\n:::");
+        const v = view(editor);
+        const pos = deepPosOf(v, "container_directive");
+        const node = v.state.doc.nodeAt(pos)!;
+
+        // Act
+        const range = foldHiddenRange(v.state.doc, pos)!;
+        toggle(v, pos);
+
+        // Assert: the title lives in an attr, so nothing hidden is chrome.
+        expect(range).toEqual({ from: pos + 1, to: pos + node.nodeSize - 1 });
+        expect(node.attrs["title"]).toBe("Title");
+        expect(textIsHidden(v, "body para")).toBe(true);
+        expect(textIsHidden(v, "second para")).toBe(true);
+        expect(document.querySelector(".container-directive.collapsed")).not.toBeNull();
+    });
+
+    it("an empty directive should not be foldable", async () => {
+        const editor = await makeEditor(":::note\n\n:::");
+        const v = view(editor);
+        const pos = deepPosOf(v, "container_directive");
+        expect(foldHiddenRange(v.state.doc, pos)).toBeNull();
+        toggle(v, pos);
+        expect(folded(v).size).toBe(0);
+    });
+
+    it("a footnote definition should hide its whole body, label marker untouched", async () => {
+        // Arrange
+        const editor = await makeEditor("ref[^1]\n\n[^1]: the note\n\n    a second para");
+        const v = view(editor);
+        const pos = deepPosOf(v, "footnote_definition");
+        const node = v.state.doc.nodeAt(pos)!;
+
+        // Act
+        const range = foldHiddenRange(v.state.doc, pos)!;
+        toggle(v, pos);
+
+        // Assert: the label is an attr, so the badge survives the fold.
+        expect(range).toEqual({ from: pos + 1, to: pos + node.nodeSize - 1 });
+        expect(node.attrs["label"]).toBe("1");
+        expect(textIsHidden(v, "the note")).toBe(true);
+        expect(textIsHidden(v, "a second para")).toBe(true);
+        expect(textIsHidden(v, "ref")).toBe(false);
+    });
+
+    it("a caret in a directive body should be ejected when the body folds", async () => {
+        // The plugin's own caret guard, over a kind it had never seen: an
+        // interior-hiding fold ejects to the OWNING node's edges, because
+        // Selection.near inside a collapsed body returns hidden positions.
+        const editor = await makeEditor("intro\n\n:::note T\nbody\n:::");
+        const v = view(editor);
+        const pos = deepPosOf(v, "container_directive");
+        const range = foldHiddenRange(v.state.doc, pos)!;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, range.from + 1)));
+
+        // Act
+        toggle(v, pos);
+
+        // Assert
+        expect(v.state.selection.from).toBeLessThanOrEqual(pos);
+    });
+});
+
+/**
+ * The chrome-parity invariant, from the other side: the model refuses a fold
+ * for anything but an ITEM inside a list item, so the decoration pass must
+ * not paint a chevron there either. It used to (a nested callout's chevron
+ * was a control that did nothing when clicked).
+ */
+describe("no fold chrome where the model refuses a fold", () => {
+    it("a callout inside a list item should render no chevron at all", async () => {
+        // Arrange
+        const editor = await makeEditor("- item\n\n  > [!note] T\n  > body\n\ntail");
+        const v = view(editor);
+        const calloutPos = deepPosOf(v, "callout");
+
+        // Assert: model refuses, and no gutter offers it.
+        expect(foldHiddenRange(v.state.doc, calloutPos)).toBeNull();
+        const chevrons = document.querySelectorAll(".callout .heading-fold-gutter--foldable");
+        expect(chevrons).toHaveLength(0);
+        // The item itself still folds — this is a parity fix, not a removal.
+        expect(document.querySelectorAll("li > .heading-fold-gutter--foldable")).toHaveLength(1);
+    });
+
+    it("a blockquote inside a list item should render no chevron either", async () => {
+        const editor = await makeEditor("- item\n\n  > first\n  >\n  > second\n\ntail");
+        const v = view(editor);
+        const quotePos = deepPosOf(v, "blockquote");
+        expect(foldHiddenRange(v.state.doc, quotePos)).toBeNull();
+        expect(document.querySelectorAll("blockquote > .heading-fold-gutter--foldable")).toHaveLength(0);
+    });
+});
+
 describe("Fold All scope (one grammar, every foldable)", () => {
     const MIXED = [
         "# Section",
@@ -717,6 +988,10 @@ const FOLDABLE_FIXTURES: Record<string, string> = {
     "list_item": "- parent\n  - child",
     "table": "| H |\n| --- |\n| a |",
     "code_block": "```js\nconst x = 1;\n```",
+    "blockquote": "> first line\n>\n> tail",
+    "notion_callout": "<aside>\n💡 First line\n\nbody\n\n</aside>",
+    "container_directive": ":::note Title\nbody\n:::",
+    "footnote_definition": "ref[^1]\n\n[^1]: the note",
 };
 
 /**
@@ -726,10 +1001,6 @@ const FOLDABLE_FIXTURES: Record<string, string> = {
 const NOT_FOLDABLE_ALLOWLIST: Record<string, string> = {
     "doc": "the document itself",
     "paragraph": "single prose block — it IS its own first line; nothing beyond it to hide",
-    "blockquote": "container-body fold is planned, not shipped (MAR-116 v2); today its first line is content, not chrome",
-    "notion_callout": "callout variant outside the fold grammar — isFoldableCallout matches `callout` only (MAR-116 widening candidate)",
-    "container_directive": "directive container outside the fold grammar (MAR-116 widening candidate)",
-    "footnote_definition": "labeled definition block; no fold affordance designed for its body (MAR-116 widening candidate)",
     "hr": "leaf atom — nothing to hide",
     "link_definition": "leaf atom; orphaned definitions only",
     "bullet_list": "the fold unit is the list ITEM (first-line semantics); the list node has no line of its own to fold to",
@@ -746,11 +1017,12 @@ describe("every block type has a fold decision (MAR-263)", () => {
         const editor = await makeEditor("seed");
         const schema = editor.action((ctx) => ctx.get(schemaCtx));
 
+        const blockTypes = Object.entries(schema.nodes)
+            .filter(([, type]) => type.isBlock)
+            .map(([name]) => name);
+
         const undecided: string[] = [];
-        for (const [name, type] of Object.entries(schema.nodes)) {
-            if (!type.isBlock) {
-                continue;
-            }
+        for (const name of blockTypes) {
             const foldable = name in FOLDABLE_FIXTURES;
             const allowlisted = name in NOT_FOLDABLE_ALLOWLIST;
             if (foldable && allowlisted) {
@@ -774,6 +1046,15 @@ describe("every block type has a fold decision (MAR-263)", () => {
             ...Object.keys(NOT_FOLDABLE_ALLOWLIST),
         ].filter((name) => !(name in schema.nodes));
         expect(stale, "fold decisions for node types that no longer exist").toEqual([]);
+
+        // The sweep asserts its own reach: a loop that enumerated nothing
+        // reports no undecided types and passes saying nothing at all. The
+        // floor is the decision lists themselves (no magic number), which
+        // also catches a decision recorded for an INLINE node type.
+        expect(
+            blockTypes.length,
+            "the schema sweep did not enumerate one block node type per fold decision",
+        ).toBe(Object.keys(FOLDABLE_FIXTURES).length + Object.keys(NOT_FOLDABLE_ALLOWLIST).length);
     });
 
     it("each FOLDABLE_FIXTURES entry demonstrates a live fold through the real editor", async () => {
