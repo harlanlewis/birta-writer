@@ -11,9 +11,10 @@
  * lines precede the body the webview renders and therefore offset every
  * document line the two sides exchange (MAR-23).
  *
- * A frontmatter block always ends with its closing `---`, with or without the
- * trailing newline a file that ends there would lack, so counting line
- * terminators is exactly the number of lines the BODY is pushed down by.
+ * A frontmatter block always ends with its closing fence (`---` or `+++`), with
+ * or without the trailing newline a file that ends there would lack, so counting
+ * line terminators is exactly the number of lines the BODY is pushed down by.
+ * The count is delimiter-agnostic, so no dialect needs a case here.
  */
 export function sourceLineCount(text: string): number {
     let count = 0;

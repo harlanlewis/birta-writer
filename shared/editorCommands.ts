@@ -259,6 +259,21 @@ export const EDITOR_COMMANDS = [
     { id: "unfold", title: "Unfold", palette: true, sections: [] },
     { id: "foldAll", title: "Fold All", palette: true, sections: [] },
     { id: "unfoldAll", title: "Unfold All", palette: true, sections: [] },
+    // Fold every region at one nesting level (MAR-116), mirroring VS Code's
+    // editor.foldLevel1..7. "Level" is containment depth in the fold tree, not
+    // a heading's own rank — a top-level code block or table has no rank, and
+    // the argument for the choice lives on foldModel's foldLevels. Palette
+    // only, with no default chord: VS Code's own Cmd+K Cmd+N chords are two-
+    // stroke sequences this editor cannot claim, and seven bindings would be a
+    // large unrequested claim on the user's keymap. All seven are rebindable
+    // through the workbench like any contributed command.
+    { id: "foldLevel1", title: "Fold Level 1", palette: true, sections: [] },
+    { id: "foldLevel2", title: "Fold Level 2", palette: true, sections: [] },
+    { id: "foldLevel3", title: "Fold Level 3", palette: true, sections: [] },
+    { id: "foldLevel4", title: "Fold Level 4", palette: true, sections: [] },
+    { id: "foldLevel5", title: "Fold Level 5", palette: true, sections: [] },
+    { id: "foldLevel6", title: "Fold Level 6", palette: true, sections: [] },
+    { id: "foldLevel7", title: "Fold Level 7", palette: true, sections: [] },
     // Clear every checked box in the task list containing the caret, in one
     // undo step — resets a reusable checklist. Palette-only (also offered on the
     // block menu of a task list); no default chord.

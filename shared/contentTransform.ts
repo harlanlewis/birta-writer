@@ -4,16 +4,24 @@
  */
 
 /**
- * Extracts the YAML frontmatter from Markdown content.
- * Only recognizes the standard format at the very start of the file (--- ... ---).
- * The closing fence must be a FULL line of exactly `---` (followed by a line
- * break or end of file): inner lines that merely start with `---` (e.g.
- * `--- draft` or `----`) must not terminate the block, otherwise a save cycle
- * would truncate the document at that line. The lazy quantifier backtracks
- * past such lines until the real closing fence is found.
+ * Extracts the frontmatter block from Markdown content.
+ * Only recognizes a block at the very start of the file, fenced by either
+ * `---` (YAML) or `+++` (TOML, the Hugo/Zola convention).
+ *
+ * The closing fence must be a FULL line of exactly the OPENING delimiter
+ * (followed by a line break or end of file), which the backreference enforces.
+ * Two properties follow, and both are load-bearing:
+ *
+ * - Inner lines that merely start with the delimiter (`--- draft`, `----`,
+ *   `++++`) must not terminate the block, otherwise a save cycle would truncate
+ *   the document at that line. The lazy quantifier backtracks past such lines
+ *   until the real closing fence is found.
+ * - A block opened with one delimiter is never closed by the other. A
+ *   mismatched pair is not frontmatter at all, so the panel can never write one
+ *   dialect's fence over the other's.
  */
 export function extractFrontmatter(content: string): { frontmatter: string; body: string } {
-    const match = content.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+    const match = content.match(/^(---|\+\+\+)\r?\n[\s\S]*?\r?\n\1(?:\r?\n|$)/);
     if (match) {
         return { frontmatter: match[0], body: content.slice(match[0].length) };
     }

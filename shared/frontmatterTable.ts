@@ -40,11 +40,27 @@ export type FmEntry = {
     list?: FmList;
 };
 
-/** Splits a fenced frontmatter block into opening fence, inner text and closing fence. */
-export function splitFences(raw: string): { prefix: string; inner: string; suffix: string } | null {
-    const m = raw.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)$/);
+/** The fence style a frontmatter block is written in: YAML `---` or TOML `+++`. */
+export type FmDelimiter = "---" | "+++";
+
+export type FmFences = {
+    prefix: string;
+    inner: string;
+    suffix: string;
+    /** Which dialect the block is fenced in. Read this instead of re-sniffing `raw`. */
+    delimiter: FmDelimiter;
+};
+
+/**
+ * Splits a fenced frontmatter block into opening fence, inner text and closing
+ * fence. The closing fence must repeat the OPENING delimiter (the backreference
+ * enforces it), matching `extractFrontmatter`: a block opened `+++` and closed
+ * `---` is not a block, so no caller can be handed a mismatched pair to rewrite.
+ */
+export function splitFences(raw: string): FmFences | null {
+    const m = raw.match(/^((---|\+\+\+)\r?\n)([\s\S]*?)(\r?\n\2\r?\n?)$/);
     if (!m) { return null; }
-    return { prefix: m[1]!, inner: m[2]!, suffix: m[3]! };
+    return { prefix: m[1]!, inner: m[3]!, suffix: m[4]!, delimiter: m[2] as FmDelimiter };
 }
 
 /** Is `value` safe to keep as an unquoted plain YAML scalar? */
@@ -135,11 +151,18 @@ function splitInlineFlow(body: string): string[] | null {
  * multi-line flow sequence with one item per line, or block `- item` lines).
  * Returns null for anything richer — nested maps, comments, block scalars,
  * anchors, CRLF — which routes the panel to the raw editor instead.
+ *
+ * TOML blocks always take that same route. Every rule below is a YAML rule:
+ * the `key:` split, and the quoting `quoteItem` and `isSafePlain` apply on the
+ * way back out. A TOML block that happened to satisfy them would be re-emitted
+ * as YAML into a file whose fences say TOML, so the dialect is refused here
+ * rather than relied on to fail line by line.
  */
 export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
     if (raw.includes("\r")) { return null; }
     const fences = splitFences(raw);
     if (!fences) { return null; }
+    if (fences.delimiter !== "---") { return null; }
     const lines = fences.inner === "" ? [] : fences.inner.split("\n");
     const entries: FmEntry[] = [];
 

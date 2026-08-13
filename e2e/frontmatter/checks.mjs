@@ -254,4 +254,54 @@ export async function run({ page, check, baseUrl }) {
         btnBox !== null && offGap <= onGap - btnBox.height,
         `offGap=${offGap} onGap=${onGap} buttonHeight=${btnBox?.height}`,
     );
+
+    // ── 12. TOML (+++) front matter reaches the panel, and edits round-trip ──
+    // The panel is the whole point: before MAR-363 a `+++` block was not front
+    // matter at all, so its fences and keys were document body. jsdom can
+    // assert the routing; only the real bundle shows the block actually leaving
+    // the editor content.
+    await page.goto(`${baseUrl}/index.html?toml=1`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForSelector("#frontmatter-panel .fm-raw-editor", { timeout: 10000 });
+    await page.waitForTimeout(200);
+
+    const tomlRaw = page.locator("#frontmatter-panel .fm-raw-editor");
+    check(
+        "a TOML block loads into the metadata panel, fences stripped",
+        (await tomlRaw.inputValue()) === 'title = "Content inventory"\ndraft = false',
+        JSON.stringify(await tomlRaw.inputValue()),
+    );
+    check(
+        "a TOML block gets the raw editor, not the YAML table",
+        (await page.locator("#frontmatter-panel .frontmatter-table").count()) === 0,
+    );
+    check(
+        "the TOML raw editor is labelled as TOML",
+        (await tomlRaw.getAttribute("aria-label")) === "Edit metadata as TOML",
+        await tomlRaw.getAttribute("aria-label"),
+    );
+    // Whether the block reaches the body is decided by extractFrontmatter on the
+    // extension side, and this harness posts `content` and `frontmatter`
+    // independently, so it cannot discriminate that. It is covered where it
+    // lives, in shared/__tests__/contentTransform.test.ts.
+
+    // Type a real edit and blur: it must come back fenced in +++, not ---.
+    // The caret is placed by script rather than by End or Control+End: both
+    // stop at the end of the first LINE in a macOS Chromium textarea, which
+    // appends in the wrong place and still yields a correctly fenced block, so
+    // the check would read as a pass on a gesture it never made. The typing and
+    // the blur that commits it are real.
+    await tomlRaw.evaluate((el) => {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+    });
+    await tomlRaw.press("Enter");
+    await tomlRaw.pressSequentially("weight = 3");
+    await page.locator(".milkdown .ProseMirror").click();
+    await page.waitForTimeout(200);
+    check(
+        "committing a TOML edit writes it back between +++ fences",
+        (await lastFm()) === '+++\ntitle = "Content inventory"\ndraft = false\nweight = 3\n+++\n',
+        JSON.stringify(await lastFm()),
+    );
 }

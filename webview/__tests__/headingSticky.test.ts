@@ -10,7 +10,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import type { EditorView } from "../pm";
 import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { foldedHiddenRanges, headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
 import { setStickyContent, headingStickyPlugin, stickyHeadingFoldable } from "../plugins/headingSticky";
 import { setBlockMenuContext, closeBlockMenu } from "../components/blockMenu";
 
@@ -118,6 +118,64 @@ describe("sticky heading gutter", () => {
         // coordinate resolution falls back to the heading's start).
         expect(editorView.state.selection.from).toBe(FIRST_HEADING_POS + 1);
         expect(editorView.state.selection.empty).toBe(true);
+    });
+
+    /**
+     * The pinned chevron and the in-flow one are the same control by
+     * construction: same icon, same label, same tooltip, deliberately brought
+     * to parity. They are nonetheless separate buttons with separate click
+     * handlers, and the recursive-fold modifier shipped on one of them only,
+     * which a review of the reconciled diff caught (MAR-116).
+     *
+     * jsdom rather than e2e because the subject is a branch in a `click`
+     * handler, not pointer semantics: `MouseEvent` carries `altKey` here and
+     * the rest of this suite already drives the sticky controls this way.
+     */
+    it("alt+clicking the sticky chevron should fold the nested section too", async () => {
+        const editor = await makeEditor("# Outer\n\nBody.\n\n## Inner\n\nInner body.");
+        const editorView = view(editor);
+        const sticky = makeSticky(editorView, FIRST_HEADING_POS);
+        const innerPos = FIRST_HEADING_POS
+            + editorView.state.doc.child(0).nodeSize
+            + editorView.state.doc.child(1).nodeSize;
+        // The click scrolls the pinned heading back into place, which lands
+        // on a rAF. Left pending it fires after afterEach destroys the view and
+        // `nodeDOM` throws into the runner: every test still green, exit code
+        // non-zero. Run it inline instead, and absorb the scroll jsdom cannot do.
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+        vi.stubGlobal("scrollTo", vi.fn());
+        const toggle = sticky.querySelector<HTMLButtonElement>(".heading-sticky-toggle");
+        expect(toggle, "the pinned heading must carry a fold chevron").not.toBeNull();
+
+        toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, altKey: true }));
+
+        const folded = foldedHiddenRanges(editorView.state);
+        // Both the clicked heading AND the section nested inside it. A plain
+        // toggle folds only the first, so `innerPos` is what discriminates.
+        expect(folded.some((r) => r.pos === FIRST_HEADING_POS)).toBe(true);
+        expect(folded.some((r) => r.pos === innerPos)).toBe(true);
+    });
+
+    it("a plain click on the sticky chevron should fold only its own section", async () => {
+        const editor = await makeEditor("# Outer\n\nBody.\n\n## Inner\n\nInner body.");
+        const editorView = view(editor);
+        const sticky = makeSticky(editorView, FIRST_HEADING_POS);
+        const innerPos = FIRST_HEADING_POS
+            + editorView.state.doc.child(0).nodeSize
+            + editorView.state.doc.child(1).nodeSize;
+        // The click scrolls the pinned heading back into place, which lands
+        // on a rAF. Left pending it fires after afterEach destroys the view and
+        // `nodeDOM` throws into the runner: every test still green, exit code
+        // non-zero. Run it inline instead, and absorb the scroll jsdom cannot do.
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+        vi.stubGlobal("scrollTo", vi.fn());
+        const toggle = sticky.querySelector<HTMLButtonElement>(".heading-sticky-toggle");
+
+        toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+        const folded = foldedHiddenRanges(editorView.state);
+        expect(folded.some((r) => r.pos === FIRST_HEADING_POS)).toBe(true);
+        expect(folded.some((r) => r.pos === innerPos)).toBe(false);
     });
 
     it("the sticky badge click should derive the heading position from data-heading-pos at click time", async () => {

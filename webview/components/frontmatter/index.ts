@@ -1,7 +1,8 @@
 /**
  * components/frontmatter/index.ts
  *
- * Renders and manages the editable YAML frontmatter panel.
+ * Renders and manages the editable frontmatter panel, for YAML (`---`) and
+ * TOML (`+++`) blocks alike.
  *
  * Lossless-first design (fixes data loss, Linear MAR-6):
  * - A conservative line classifier (`isFlatFrontmatter`) decides whether the
@@ -11,6 +12,9 @@
  * - Anything else (nested maps, lists, block scalars, comments, anchors,
  *   colon-less lines, CRLF files, ...) is edited in a raw monospace textarea
  *   whose content is written back verbatim. No line is ever dropped.
+ * - The table is YAML-only, by construction rather than by omission: its
+ *   classifier and its quoting both encode YAML rules, so a TOML block takes
+ *   the raw route however flat it looks (MAR-363).
  */
 
 import { IconChevronDown, IconChevronUp, IconPlus, IconTrash2, IconX } from "../../ui/icons";
@@ -44,6 +48,10 @@ export function isFlatFrontmatter(raw: string): boolean {
     if (raw.includes("\r")) { return false; }
     const fences = splitFences(raw);
     if (!fences) { return false; }
+    // Every rule below is a YAML rule, so a TOML block is never flat here. Kept
+    // in step with parseTabularFrontmatter, which refuses the dialect for the
+    // same reason: the two classifiers have to answer alike.
+    if (fences.delimiter !== "---") { return false; }
     const lines = fences.inner === "" ? [] : fences.inner.split("\n");
     for (const line of lines) {
         if (line.trim() === "") { continue; } // blank lines are preserved by the serializer
@@ -753,14 +761,16 @@ function addNewRow(tbody: HTMLElement, panel: HTMLElement): void {
 }
 
 /**
- * Creates the raw YAML editor used for non-flat blocks. The textarea shows the
- * exact inner YAML text; committing writes it back verbatim between the
- * original fences (no reformatting, no trimming).
+ * Creates the raw editor used for non-flat blocks, and for every TOML block.
+ * The textarea shows the exact inner text; committing writes it back verbatim
+ * between the original fences (no reformatting, no trimming), so the block's
+ * own dialect survives untouched.
  */
 function createRawEditor(raw: string): HTMLTextAreaElement {
     const fences = splitFences(raw);
     const prefix = fences?.prefix ?? '';
     const suffix = fences?.suffix ?? '';
+    const isToml = fences?.delimiter === '+++';
     // Last committed text; Escape reverts to it, blur commits when it differs.
     let committed = fences ? fences.inner : raw;
     // Browsers normalize textarea newlines to LF (the "API value"), so a CRLF inner
@@ -778,7 +788,7 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
     textarea.id = FM_CONTENT_ID;
     textarea.value = committed;
     textarea.spellcheck = false;
-    textarea.setAttribute('aria-label', t('Edit metadata as YAML'));
+    textarea.setAttribute('aria-label', isToml ? t('Edit metadata as TOML') : t('Edit metadata as YAML'));
     textarea.rows = Math.max(committed.split('\n').length, 2);
     // Local typing undo (VS Code swallows Cmd+Z before the textarea sees it).
     // Its chord handler swallows the chord first; the panel's committed-state
@@ -811,15 +821,21 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
             setInvalid(null);
             return;
         }
-        // The extension re-extracts frontmatter with a first-`---` regex
-        // (shared/contentTransform.ts), so an inner line of `---` (or the YAML
-        // document-end marker `...`) would truncate the block and corrupt the document
-        // on the next edit cycle. Reject any line merely STARTING with either marker
-        // (`--- draft`, `----`, ...): older extraction regexes and third-party
-        // frontmatter parsers treat those as closing fences too, so prefix matching
-        // is the safe defense in depth. Refuse the commit and flag the textarea.
-        if (toLf(textarea.value).split('\n').some((line) => /^(---|\.\.\.)/.test(line))) {
-            setInvalid(t('Metadata cannot contain a line starting with "---" or "..."'));
+        // The extension re-extracts frontmatter with a first-fence regex
+        // (shared/contentTransform.ts), so an inner line repeating THIS block's
+        // delimiter would truncate the block and corrupt the document on the next
+        // edit cycle. The YAML document-end marker `...` counts for a YAML block.
+        // Reject any line merely STARTING with the marker (`--- draft`, `----`,
+        // `++++`): older extraction regexes and third-party frontmatter parsers
+        // treat those as closing fences too, so prefix matching is the safe defense
+        // in depth. The other dialect's fence is harmless here and stays allowed,
+        // because extraction scans for the opener's own delimiter and nothing else.
+        // Refuse the commit and flag the textarea.
+        const forbiddenLead = isToml ? /^\+\+\+/ : /^(---|\.\.\.)/;
+        if (toLf(textarea.value).split('\n').some((line) => forbiddenLead.test(line))) {
+            setInvalid(isToml
+                ? t('Metadata cannot contain a line starting with "+++"')
+                : t('Metadata cannot contain a line starting with "---" or "..."'));
             return;
         }
         setInvalid(null);

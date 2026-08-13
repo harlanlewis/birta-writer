@@ -111,6 +111,94 @@ describe("extractFrontmatter", () => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// extractFrontmatter — TOML (+++) front matter
+// ─────────────────────────────────────────────────────────────
+describe("extractFrontmatter with TOML delimiters", () => {
+    it("a +++ delimited block at the start of the file is separated as frontmatter", () => {
+        const content = '+++\ntitle = "Test"\ndate = 2024-01-01\n+++\n# Hello';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe('+++\ntitle = "Test"\ndate = 2024-01-01\n+++\n');
+        expect(body).toBe("# Hello");
+    });
+
+    it("a TOML block with a table header is separated as frontmatter", () => {
+        const content = '+++\ntitle = "Test"\n\n[taxonomies]\ntags = ["a", "b"]\n+++\n# Hello';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe('+++\ntitle = "Test"\n\n[taxonomies]\ntags = ["a", "b"]\n+++\n');
+        expect(body).toBe("# Hello");
+    });
+
+    it("a +++ opener closed by --- is not frontmatter (the closing fence must match the opener)", () => {
+        // Accepting a mismatched pair would let the panel write one dialect's
+        // fence over the other's on the next save.
+        const content = '+++\ntitle = "A"\n---\n# Body';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("");
+        expect(body).toBe(content);
+    });
+
+    it("a --- opener closed by +++ is not frontmatter", () => {
+        const content = "---\ntitle: A\n+++\n# Body";
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("");
+        expect(body).toBe(content);
+    });
+
+    it("an inner line merely starting with +++ does not terminate the block", () => {
+        const content = '+++\ntitle = "A"\n++++\nmore = "x"\n+++\n# Body';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe('+++\ntitle = "A"\n++++\nmore = "x"\n+++\n');
+        expect(body).toBe("# Body");
+    });
+
+    it("an inner --- line does not terminate a TOML block", () => {
+        const content = '+++\ntitle = "A"\n---\nmore = "x"\n+++\n# Body';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe('+++\ntitle = "A"\n---\nmore = "x"\n+++\n');
+        expect(body).toBe("# Body");
+    });
+
+    it("a TOML block with Windows CRLF line endings is recognized", () => {
+        const content = '+++\r\ntitle = "Test"\r\n+++\r\n# Body';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe('+++\r\ntitle = "Test"\r\n+++\r\n');
+        expect(body).toBe("# Body");
+    });
+
+    it("a TOML closing fence at end of file without a trailing newline is recognized", () => {
+        const content = '+++\ntitle = "A"\n+++';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe('+++\ntitle = "A"\n+++');
+        expect(body).toBe("");
+    });
+
+    it("a +++ block not at the start of the file is not recognized", () => {
+        const content = 'Some text\n+++\ntitle = "Test"\n+++\n';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("");
+        expect(body).toBe(content);
+    });
+
+    it("an unclosed +++ opener yields no frontmatter", () => {
+        const content = '+++\ntitle = "A"\n# Body';
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("");
+        expect(body).toBe(content);
+    });
+
+    it("a TOML block round-trips byte-for-byte through restoreContentForSave", () => {
+        const content = '+++\ntitle = "A"\ndraft = true\n+++\n# Body\n';
+        const { frontmatter, body } = extractFrontmatter(content);
+        // Assert the split happened first: restoreContentForSave rebuilds the
+        // original string just as well from an empty frontmatter and the whole
+        // file as body, so the round trip alone would pass unrecognized.
+        expect(frontmatter).toBe('+++\ntitle = "A"\ndraft = true\n+++\n');
+        expect(body).toBe("# Body\n");
+        expect(restoreContentForSave(body, frontmatter, new Map())).toBe(content);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────
 // restoreContentForSave
 // ─────────────────────────────────────────────────────────────
 describe("restoreContentForSave", () => {

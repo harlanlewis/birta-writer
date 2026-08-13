@@ -137,9 +137,11 @@ The editor can't silently "correct" Markdown you wrote deliberately, and an edit
 
 Wikilinks, `==highlights==`, callouts, and `:::` directives are stored as their exact source bytes and written back unchanged. The conventions from tools like Obsidian round-trip exactly, even the parts Birta renders as plain interactive elements.
 
-### YAML frontmatter is handled out of band
+### Frontmatter is handled out of band
 
 The frontmatter block is lifted off the top of the file before the editor ever sees it, then reattached on save. Your metadata is immune to any editor reformatting: key order, comments, and spacing are exactly as you left them.
+
+Both conventions are recognized: YAML between `---` fences, and TOML between `+++` fences, as Hugo and Zola write it. A block is only ever closed by the fence it was opened with, so neither dialect can be rewritten into the other. YAML blocks that are a flat list of keys get an editable table; a TOML block is edited as its own source text, because the table's quoting rules are YAML's and applying them would write YAML into a TOML file.
 
 ### Anything unrecognized stays visible, never deleted
 
@@ -202,6 +204,8 @@ Markdown's whole appeal is that it survives the trip through any plain-text chan
 ### Folding and go-to-heading
 
 Both are for navigating long documents, and neither touches the file. You get structure you can move through without scrolling, and without it leaking into what's saved.
+
+Headings, list items, tables, code blocks, quotes, callouts, `:::` directives and footnote definitions fold from the same gutter chevron, and each collapses to whatever line names what is hidden. A block offers the chevron only where there is something to hide behind a first line, so a two-line quote that is really one paragraph has nothing to fold and shows no control. Levels count nesting rather than heading rank, so a code block or table at the top of a file folds at level 1 alongside the sections, and a document whose headings start at `##` still has a level 1 to fold.
 
 ### The switch to raw Markdown carries your cursor, and your selection
 

@@ -649,6 +649,41 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.foldLevel1",
+                "title": "%command.editor.foldLevel1.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.foldLevel2",
+                "title": "%command.editor.foldLevel2.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.foldLevel3",
+                "title": "%command.editor.foldLevel3.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.foldLevel4",
+                "title": "%command.editor.foldLevel4.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.foldLevel5",
+                "title": "%command.editor.foldLevel5.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.foldLevel6",
+                "title": "%command.editor.foldLevel6.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.foldLevel7",
+                "title": "%command.editor.foldLevel7.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.uncheckAllTasks",
                 "title": "%command.editor.uncheckAllTasks.title%",
                 "category": "Birta Writer"
@@ -1261,6 +1296,34 @@
                 },
                 {
                     "command": "birta.editor.unfoldAll",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.foldLevel1",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.foldLevel2",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.foldLevel3",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.foldLevel4",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.foldLevel5",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.foldLevel6",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.foldLevel7",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

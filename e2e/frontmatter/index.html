@@ -42,6 +42,10 @@
   const FRONTMATTER = "---\ntitle: Content inventory\ntags:\n  - reference\n  - showcase\n---\n";
   // ?empty=1 boots a document with no frontmatter, for the fm-empty checks.
   const EMPTY = new URLSearchParams(location.search).get("empty") === "1";
+  // ?toml=1 boots a TOML (+++) block, which routes to the raw editor rather
+  // than the table: every table rule is a YAML rule (MAR-363).
+  const TOML = new URLSearchParams(location.search).get("toml") === "1";
+  const TOML_FRONTMATTER = '+++\ntitle = "Content inventory"\ndraft = false\n+++\n';
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);
@@ -49,7 +53,7 @@
         window.postMessage({
           type: "init",
           content: EMPTY ? "# Sample\n\ntext\n" : CONTENT,
-          frontmatter: EMPTY ? undefined : FRONTMATTER,
+          frontmatter: EMPTY ? undefined : (TOML ? TOML_FRONTMATTER : FRONTMATTER),
           syncVersion: 1,
         }, "*");
       }

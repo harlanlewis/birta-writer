@@ -606,6 +606,88 @@ export function allFoldablePositions(doc: any): number[] {
 }
 
 /**
+ * Every foldable paired with its NESTING LEVEL, 1 for the outermost.
+ *
+ * "Level" here is containment depth in the tree of foldable regions, and that
+ * choice is the whole design of the fold-level commands (MAR-116). The obvious
+ * alternative, reading level off a heading's own rank so that level 2 means
+ * "every h2", cannot be used: it is not merely a different answer, it is
+ * undefined for most of what this editor folds. A top-level code block, table,
+ * callout, blockquote or `:::` directive has no heading rank at all, so that
+ * reading cannot place them anywhere, and they are exactly the blocks a reader
+ * most wants collapsed. Containment covers every kind with one rule, and it is
+ * also what VS Code's own `editor.foldLevelN` means.
+ *
+ * The two readings agree wherever the heading reading is meaningful — in a
+ * document whose headings start at h1 and descend by one, an h2's section is
+ * contained in an h1's, so its level is 2 either way. They part company on a
+ * document that starts at h2 (containment calls it level 1, as VS Code does,
+ * and folding it does something; the heading reading calls it level 2 and
+ * leaves level 1 folding nothing), and on any top-level non-heading foldable.
+ * `foldLevels.test.ts` asserts both the agreement and the divergence, so this
+ * paragraph cannot quietly stop being true.
+ *
+ * Computed with a stack in document order rather than by testing every pair:
+ * fold ranges come from a tree and are therefore properly nested, so an open
+ * range is closed exactly when a position passes its end. That keeps this
+ * O(n log n) in the number of foldables instead of O(n²) — it runs only on an
+ * explicit command, never on the paint or keystroke path, but a document with
+ * a few thousand foldables would make the difference visible.
+ */
+export function foldLevels(doc: any): Map<number, number> {
+    const entries: { pos: number; to: number }[] = [];
+    for (const pos of allFoldablePositions(doc)) {
+        const range = foldHiddenRange(doc, pos);
+        if (range) {
+            entries.push({ pos, to: range.to });
+        }
+    }
+    entries.sort((a, b) => a.pos - b.pos);
+    const levels = new Map<number, number>();
+    // Ends of the ranges still open at the current position, innermost last.
+    const open: number[] = [];
+    for (const { pos, to } of entries) {
+        while (open.length > 0 && open[open.length - 1]! <= pos) {
+            open.pop();
+        }
+        levels.set(pos, open.length + 1);
+        open.push(to);
+    }
+    return levels;
+}
+
+/** The foldables at exactly `level`, in document order. */
+export function foldablesAtLevel(doc: any, level: number): number[] {
+    const out: number[] = [];
+    for (const [pos, depth] of foldLevels(doc)) {
+        if (depth === level) {
+            out.push(pos);
+        }
+    }
+    return out.sort((a, b) => a - b);
+}
+
+/**
+ * Every foldable inside `pos`'s own hidden range, plus `pos` itself — the run
+ * a recursive fold acts on (MAR-116). Ascending document order, so `pos` comes
+ * FIRST and its descendants follow, the same order a user clicking outside-in
+ * would produce.
+ */
+export function foldableSubtree(doc: any, pos: number): number[] {
+    const range = foldHiddenRange(doc, pos);
+    if (!range) {
+        return [];
+    }
+    const out = [pos];
+    for (const candidate of allFoldablePositions(doc)) {
+        if (candidate > pos && candidate >= range.from && candidate < range.to) {
+            out.push(candidate);
+        }
+    }
+    return out.sort((a, b) => a - b);
+}
+
+/**
  * Where a selection that would land inside newly hidden content escapes to.
  * Kinds with a visible caret home keep the caret local: a heading's own
  * line, a list item's or chrome-less container's first line, a table's

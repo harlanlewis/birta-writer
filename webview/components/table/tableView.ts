@@ -94,6 +94,18 @@ export interface NearestTargets {
     colGap: number;
 }
 
+/**
+ * A pointer that is not the one steering the live drag — a second finger,
+ * which must neither retarget the drop nor end the session.
+ *
+ * Written as an explicit `=== false` rather than `!isPrimary`, matching
+ * blockMenu/drag.ts: jsdom's synthetic events leave the property undefined,
+ * which `!` would read as foreign and drop every event the unit tests send.
+ */
+function foreignPointer(event: PointerEvent): boolean {
+    return event.isPrimary === false;
+}
+
 /** Index of the bound containing `p`, else the nearest edge bound. */
 function clampIndex(
     p: number,
@@ -234,10 +246,43 @@ class TableController {
 
     // Bound so add/removeEventListener target the same reference.
     private readonly onScroll = () => this.scheduleReposition();
-    private readonly onDocMove = (e: MouseEvent) => this.onDragMove(e);
-    private readonly onDocUp = (e: MouseEvent) => this.onDragEnd(e);
+    private readonly onDocMove = (e: PointerEvent) => this.onDragMove(e);
+    private readonly onDocUp = (e: PointerEvent) => this.onDragEnd(e, true);
+    // A gesture the browser took away (a pan it decided to own, a system
+    // interruption) produces pointercancel and NO pointerup. Tearing down
+    // without committing is the only correct answer: the drop index would be
+    // wherever the finger happened to be when the system intervened.
+    private readonly onDocCancel = (e: PointerEvent) => this.onDragEnd(e, false);
     private readonly onPointerMove = (e: PointerEvent) => this.onWrapperMove(e);
-    private readonly onPointerLeave = () => this.scheduleHideNear();
+    /**
+     * A hovering pointer wandering off the table takes the reveal with it,
+     * after a grace period long enough to cross the gutter to a grip.
+     *
+     * A finger is different in kind, not in degree: it does not wander off, it
+     * ceases to exist. Blink destroys the touch pointer on release and fires
+     * `pointerleave` for it, so an ungated hide wipes the chrome ~140ms after
+     * every tap — the reveal flashes and is gone before it can be used, which
+     * is indistinguishable from never revealing at all.
+     *
+     * Reading `pointerType` here is a statement about the gesture in hand, not
+     * about the device, and that is the distinction MAR-340 turns on. The
+     * `(pointer: coarse)` media query was rejected because it answers for the
+     * PRIMARY pointer and so misfires on exactly the hybrids this ticket is
+     * about; a Surface in laptop mode reports `fine` while its screen is still
+     * a touchscreen. This property cannot misfire that way: it describes the
+     * very event that arrived, so the same hybrid gets the mouse answer for
+     * its trackpad and the touch answer for its screen, gesture by gesture.
+     *
+     * `"touch"` and not `!== "mouse"` because touch is what e2e/touchTable can
+     * actually drive. A pen that does not hover plausibly needs the same
+     * treatment on lift, and nothing here has been run against one.
+     */
+    private readonly onPointerLeave = (e: PointerEvent) => {
+        if (e.pointerType === "touch") {
+            return;
+        }
+        this.scheduleHideNear();
+    };
     private readonly onAffordanceEnter = () => this.cancelHideNear();
 
     constructor(
@@ -283,6 +328,13 @@ class TableController {
         // pointer can reach grips that live outside the wrapper box.
         this.wrapper.addEventListener("pointermove", this.onPointerMove);
         this.wrapper.addEventListener("pointerleave", this.onPointerLeave);
+        // The same reveal, armed by the same handler, from the one positional
+        // event a TAP delivers (MAR-340). A finger produces pointerdown and
+        // pointerup at rest and no pointermove at all, so a move-only reveal
+        // leaves this table's chrome not merely hidden but never CONSTRUCTED —
+        // ensureBuilt is on that path. Nothing here is touch-specific: a mouse
+        // reaches it too, where it re-reveals what the hover already showed.
+        this.wrapper.addEventListener("pointerdown", this.onPointerMove);
 
         this.syncStructure();
     }
@@ -424,7 +476,20 @@ class TableController {
         );
         // The header row (index 0) may not be dragged, but it can still be
         // click-selected — the drag path itself guards the header.
-        grip.addEventListener("mousedown", (e) => {
+        //
+        // Pointer, not mouse, so one code path serves every input (MAR-340).
+        // Blink synthesizes no compatibility mousedown while a finger is
+        // DRAGGING — only after a tap resolves — so a mouse-armed reorder
+        // could never start under touch. button 0 is the primary contact for
+        // every pointer type: left button, pen tip, finger. Non-primary
+        // pointers are ignored so a second finger cannot arm a rival session.
+        // The grip's `touch-action: none` (table.css) is the other half: it is
+        // what stops the browser claiming the gesture as a pan, and without it
+        // this session is cancelled a few pointermoves in.
+        grip.addEventListener("pointerdown", (e: PointerEvent) => {
+            if (e.button !== 0 || e.isPrimary === false) {
+                return;
+            }
             e.preventDefault();
             e.stopPropagation();
             hideTooltip();
@@ -914,7 +979,7 @@ class TableController {
 
     // ── Drag-to-reorder ─────────────────────────────────────────────────────
 
-    private beginDrag(e: MouseEvent, kind: "row" | "col", fromIdx: number): void {
+    private beginDrag(e: PointerEvent, kind: "row" | "col", fromIdx: number): void {
         const pos = this.getPos();
         if (pos == null) {
             return;
@@ -953,8 +1018,9 @@ class TableController {
             startY: e.clientY,
             dragging: false,
         };
-        document.addEventListener("mousemove", this.onDocMove);
-        document.addEventListener("mouseup", this.onDocUp);
+        document.addEventListener("pointermove", this.onDocMove);
+        document.addEventListener("pointerup", this.onDocUp);
+        document.addEventListener("pointercancel", this.onDocCancel);
     }
 
     /**
@@ -987,9 +1053,9 @@ class TableController {
         return null;
     }
 
-    private onDragMove(e: MouseEvent): void {
+    private onDragMove(e: PointerEvent): void {
         const d = this.drag;
-        if (!d) {
+        if (!d || foreignPointer(e)) {
             return;
         }
         const dx = e.clientX - d.startX;
@@ -1015,9 +1081,16 @@ class TableController {
         this.updateDropIndicator(e, d);
     }
 
-    private onDragEnd(e: MouseEvent): void {
-        document.removeEventListener("mousemove", this.onDocMove);
-        document.removeEventListener("mouseup", this.onDocUp);
+    private onDragEnd(e: PointerEvent, commit: boolean): void {
+        // A second finger's release must not end the session the first one is
+        // steering, so the teardown below is reached only by the pointer that
+        // armed it — or by a cancel, which is never non-primary in practice.
+        if (foreignPointer(e)) {
+            return;
+        }
+        document.removeEventListener("pointermove", this.onDocMove);
+        document.removeEventListener("pointerup", this.onDocUp);
+        document.removeEventListener("pointercancel", this.onDocCancel);
         const d = this.drag;
         this.drag = null;
         this.dropLine.style.display = "none";
@@ -1027,6 +1100,14 @@ class TableController {
             this.markDraggedGrips(d, false);
         }
         if (!d) {
+            return;
+        }
+        // Cancelled: the chrome is already torn down above, and nothing else
+        // may happen. Not the reorder (the drop index is meaningless), and not
+        // the select-on-press below either — a gesture the browser took away
+        // is not a click, so answering it with a selection would leave a
+        // whole row highlighted by a pan the user meant as a scroll.
+        if (!commit) {
             return;
         }
 
@@ -1113,7 +1194,7 @@ class TableController {
     }
 
     /** Destination index (post-splice) under the pointer, or -1. */
-    private findTarget(e: MouseEvent, d: DragState): number {
+    private findTarget(e: PointerEvent, d: DragState): number {
         const rows = this.rowEls();
         if (d.kind === "row") {
             for (let i = 0; i < rows.length; i++) {
@@ -1182,7 +1263,7 @@ class TableController {
         this.ghost.style.display = "block";
     }
 
-    private updateDropIndicator(e: MouseEvent, d: DragState): void {
+    private updateDropIndicator(e: PointerEvent, d: DragState): void {
         const rows = this.rowEls();
         const wrap = this.wrapper.getBoundingClientRect();
         const tableRect = this.table.getBoundingClientRect();
@@ -1260,9 +1341,11 @@ class TableController {
         window.removeEventListener("scroll", this.onScroll, { capture: true });
         window.removeEventListener(SAFE_AREA_CHANGE_EVENT, this.onScroll);
         this.wrapper.removeEventListener("pointermove", this.onPointerMove);
+        this.wrapper.removeEventListener("pointerdown", this.onPointerMove);
         this.wrapper.removeEventListener("pointerleave", this.onPointerLeave);
-        document.removeEventListener("mousemove", this.onDocMove);
-        document.removeEventListener("mouseup", this.onDocUp);
+        document.removeEventListener("pointermove", this.onDocMove);
+        document.removeEventListener("pointerup", this.onDocUp);
+        document.removeEventListener("pointercancel", this.onDocCancel);
         this.cancelHideNear();
         if (typeof cancelAnimationFrame === "function") {
             if (this.rafId !== null) {
@@ -1294,6 +1377,16 @@ export function createTableView(
 
     const overlay = document.createElement("div");
     overlay.className = "mw-table-overlay";
+    // The overlay sits INSIDE the contentEditable root, so without this Blink
+    // reads it as editable content and retargets a touch landing on a grip to
+    // the nearest editable text for caret placement — measured through CDP, a
+    // contact aimed at the centre of a row grip arrived with the neighbouring
+    // `td` as its target, so the reorder never armed and `touch-action` was
+    // read off the cell rather than the grip (MAR-340). A mouse was never
+    // affected, which is why this survived: it retargets nothing.
+    // The block gutter widgets carry the same attribute for the same reason
+    // (plugins/headingFold/foldGutter.ts).
+    overlay.contentEditable = "false";
 
     // Collapsed `…` (MAR-125): the shared fold-ellipsis mounted in the
     // wrapper, shown only while the fold plugin's decoration marks the

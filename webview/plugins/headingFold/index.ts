@@ -33,6 +33,9 @@ export {
     cachedFoldRanges,
     computeFoldRanges,
     findHeadingFoldRange,
+    foldLevels,
+    foldablesAtLevel,
+    foldableSubtree,
     findSectionHeadingPosAt,
     foldHiddenRange,
     foldedHiddenRanges,
@@ -63,6 +66,8 @@ export {
 export {
     foldAllCommand,
     foldAtCaret,
+    foldSubtreeAt,
+    foldToLevel,
     foldRevealKeymapPlugin,
     revealOnBackspace,
     revealOnDelete,

@@ -7,7 +7,7 @@
  * invisible to the user's keybinding configuration.
  *
  * Two scans enforce this, each against an explicit allowlist:
- *   1. Files reading `metaKey`/`ctrlKey`: every current use is either the
+ *   1. Files reading `metaKey`/`ctrlKey`/`altKey`: every current use is either the
  *      key-leak guard, a typing-level ProseMirror scope check, an
  *      input-local key, or a mouse-modifier check. A new file matching
  *      modifiers fails here until it is consciously allowlisted (with a
@@ -99,15 +99,27 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
         "webview/components/pathLink/index.ts":
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
+        "webview/plugins/headingFold/foldGutter.ts":
+            "Alt+click recursive fold (mouse modifier), not a keybinding",
+        "webview/plugins/headingSticky.ts":
+            "Alt+click recursive fold on the pinned heading's chevron (mouse modifier), not a keybinding",
     };
 
     // `getModifierState("Meta"|"Control")` is the same read by another name and
     // was invisible here: a chord matched that way is just as unrebindable.
-    const MODIFIER_READ_RE = /\b(metaKey|ctrlKey|getModifierState)\b/;
+    // `altKey` is here for the same reason, and its absence was a real hole
+    // rather than a decision: `getModifierState("Alt")` was already caught
+    // while the direct property read was not, so a file reading ONLY `altKey`
+    // passed a guard that never looked at it. Every reader in the tree was
+    // allowlisted for `metaKey`/`ctrlKey` anyway, which is why the hole stayed
+    // invisible until one arrived that reads Alt alone.
+    const MODIFIER_READ_RE = /\b(metaKey|ctrlKey|altKey|getModifierState)\b/;
 
     it("the modifier matcher should flag every way a chord modifier is read", () => {
         expect(MODIFIER_READ_RE.test("if (e.metaKey || e.ctrlKey) {")).toBe(true);
         expect(MODIFIER_READ_RE.test('e.getModifierState("Meta")')).toBe(true);
+        // The read that used to slip through: Alt alone, as a property.
+        expect(MODIFIER_READ_RE.test("if (e.altKey) {")).toBe(true);
         expect(MODIFIER_READ_RE.test('if (e.key === "Escape") {')).toBe(false);
     });
 

@@ -64,6 +64,11 @@ export function createBlockSourcePanel(
     source: string,
     handlers: BlockSourcePanelHandlers,
 ): BlockSourcePanel {
+    // Mounted as a Decoration.widget inside the contentEditable root, and
+    // non-editable only because prosemirror-view stamps every widget root that
+    // does not ask for `raw: true`. That stamp is what stops Blink handing a
+    // finger's contact on this panel to the prose behind it (MAR-340); a
+    // `raw: true` on the spec that mounts this widget would remove it.
     const dom = document.createElement("div");
     dom.className = "block-source";
 
