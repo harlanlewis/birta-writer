@@ -194,6 +194,11 @@ export class MarkdownEditorProvider
     // reading the file on every sync of a typing burst.
     private readonly _savePointText = new Map<string, string>();
 
+    // Documents inside a save's participant window. Those edits reach the
+    // document outside the edit queue, so this is what the phantom-dirty
+    // settle checks to know the queue is not the whole story right now.
+    private readonly _savingDocuments = new Set<string>();
+
     // The flush/seq protocol bookkeeping (sync versions, applied-seq high-water
     // marks, in-flight save flushes) lives in the SaveFlushController — see
     // shared/saveFlushController.ts for the invariants. Constructed in the
@@ -993,6 +998,7 @@ export class MarkdownEditorProvider
                                             webviewPanel,
                                             uriKey,
                                             MarkdownEditorProvider.viewType,
+                                            () => this._savingDocuments.has(uriKey),
                                         );
                                     } catch (err) {
                                         // A failed settle costs a dot that stays
@@ -1552,14 +1558,18 @@ export class MarkdownEditorProvider
             // changes.
             onChangeObserved: () => this._flush.bumpVersion(uriKey),
             onChangeSettled: () => {
+                // One materialization: `getText()` copies the whole document
+                // out of the piece table, and the clean branch below is the
+                // common one under files.autoSave.
+                const text = document.getText();
                 // A change that leaves the document clean (VS Code's own reload
                 // of an externally written file, a revert, a git checkout) put
                 // it on a new save point.
-                if (!document.isDirty) { this._savePointText.set(uriKey, document.getText()); }
+                if (!document.isDirty) { this._savePointText.set(uriKey, text); }
                 const panel = this._webviewPanels.get(uriKey);
                 if (!panel) { return; }
                 // The document settled back to the webview's state within the debounce window
-                if (document.getText() === this._lastSyncedText.get(uriKey)) { return; }
+                if (text === this._lastSyncedText.get(uriKey)) { return; }
                 this._pushExternalUpdate(document, panel, uriKey);
             },
         });
@@ -1571,6 +1581,14 @@ export class MarkdownEditorProvider
         // never persist content older than the editor state.
         const willSaveSubscription = vscode.workspace.onWillSaveTextDocument((e) => {
             if (e.document.uri.toString() !== uriKey) { return; }
+            // A save's participant edits bypass the edit queue (see
+            // SaveFlushController), so the queue is not a total order over the
+            // document's writers and the phantom-dirty settle must not run
+            // inside this window: it would judge the document against bytes
+            // the save is about to replace. Cleared on didSave, and re-set
+            // here, so a save that never completes costs a lit dot until the
+            // next one rather than wedging the settle for the session.
+            this._savingDocuments.add(uriKey);
             e.waitUntil(this._flushWebviewEdits(document, uriKey));
         });
         // Settle the held applied-ack (see _pendingFlushAcks): the save is done,
@@ -1581,6 +1599,7 @@ export class MarkdownEditorProvider
             // The write moved the save point; an undo back to the PREVIOUS one
             // is now a real edit. Recorded before the ack bookkeeping below,
             // which returns early when no flush was in flight.
+            this._savingDocuments.delete(uriKey);
             this._savePointText.set(uriKey, saved.getText());
             const pending = this._pendingFlushAcks.get(uriKey);
             if (!pending) { return; }

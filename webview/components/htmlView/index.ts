@@ -169,6 +169,10 @@ function buildSourcePanel(value: string, block: boolean): SourcePanel {
             note.replaceChildren(hint(message));
         },
         clearError(): void {
+            // Idempotent: this runs on every keystroke, and rebuilding the
+            // resting hint when no error is showing tears down and recreates a
+            // laid-out row to replace it with byte-identical content.
+            if (!note.classList.contains("html-src-note--error")) { return; }
             area.removeAttribute("aria-invalid");
             area.title = "";
             restingHint();
@@ -213,19 +217,33 @@ export function createHtmlView(
         view?.focus();
     };
 
-    /** Is the atom at `pos` inside a table? A GFM row is one source line and
-     * a `|` delimits cells, so a value carrying either would tear the row or
-     * shift cells off the end on the next save (the serializer emits html
-     * bytes verbatim, bypassing the escaping text nodes get). */
-    const inTable = (pos: number): boolean => {
+    /** The name of an ancestor of `pos` matching `names`, innermost first. */
+    const ancestor = (pos: number, names: ReadonlySet<string>): string | null => {
         const $pos = view!.state.doc.resolve(pos);
         for (let depth = $pos.depth; depth > 0; depth--) {
-            if ($pos.node(depth).type.name === "table") {
-                return true;
+            const name = $pos.node(depth).type.name;
+            if (names.has(name)) {
+                return name;
             }
         }
-        return false;
+        return null;
     };
+
+    /**
+     * Is the atom at `pos` in a host whose whole content is ONE source line?
+     *
+     * The serializer emits html bytes verbatim, bypassing the escaping text
+     * nodes get, so a committed newline reaches the file as a line break and
+     * ends any host that a line break ends. A table row is one line and `|`
+     * delimits its cells. A heading is one line too: an ATX heading loses its
+     * tail, and at a setext depth the underline lands after a line that opens
+     * an HTML block, which absorbs it and destroys the heading outright.
+     *
+     * A paragraph is deliberately NOT here. It holds as many lines as it likes,
+     * and multi-line raw HTML in one is what the block face exists to edit.
+     */
+    const SINGLE_LINE_HOSTS = new Set(["table", "heading"]);
+    const singleLineHost = (pos: number): string | null => ancestor(pos, SINGLE_LINE_HOSTS);
 
     /**
      * Is the atom at `pos` the whole of its block? Such an atom is a line of
@@ -233,12 +251,13 @@ export function createHtmlView(
      * prose opens inline, where a block panel would displace the line around
      * it. Whitespace beside the atom does not count as prose.
      *
-     * A table cell is never a block, whatever it holds. The block face is
-     * full-width with margins of its own, which inside a cell widens the
-     * column and pushes the row apart around a control the user is typing in.
+     * A single-line host is never a block, whatever it holds. The block face is
+     * full-width with margins of its own, which inside a table cell widens the
+     * column and pushes the row apart around a control the user is typing in,
+     * and over a heading replaces the line with a panel taller than it.
      */
     const isWholeBlock = (pos: number): boolean => {
-        if (inTable(pos)) {
+        if (singleLineHost(pos) !== null) {
             return false;
         }
         const $pos = view!.state.doc.resolve(pos);
@@ -269,12 +288,19 @@ export function createHtmlView(
             close();
             return;
         }
-        // Refuse, panel open, when the bytes would corrupt a table row —
-        // the repo's convention for content-losing gestures is refusal with
-        // a cue, never a silent normalization of what the user typed.
-        if (/[\n|]/.test(value) && value !== currentValue && inTable(pos)) {
-            panel.showError(t("A table cell cannot hold a newline or an unescaped | — it would break the row"));
-            return;
+        // Refuse, panel open, when the bytes would tear the host apart. The
+        // repo's convention for content-losing gestures is refusal with a cue,
+        // never a silent normalization of what the user typed.
+        if (value !== currentValue) {
+            const host = singleLineHost(pos);
+            if (host === "table" && /[\n|]/.test(value)) {
+                panel.showError(t("A table cell cannot hold a newline or an unescaped | — it would break the row"));
+                return;
+            }
+            if (host === "heading" && value.includes("\n")) {
+                panel.showError(t("A heading is one line — a line break here would split it"));
+                return;
+            }
         }
         close();
         if (value === currentValue) {

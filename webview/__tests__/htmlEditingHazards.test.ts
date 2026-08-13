@@ -155,6 +155,62 @@ describe("table-cell commits are refused when they would tear the row", () => {
     });
 });
 
+describe("a host that cannot hold two source lines refuses a newline", () => {
+    // A table cell was the first such host found, so the guard asked
+    // `inTable`. The question it meant to ask is whether the host block can
+    // hold more than one source line, and a heading cannot either: the newline
+    // ends the heading, and at depth 1 or 2 the serializer's setext fallback
+    // puts the underline where the second line's HTML block absorbs it, taking
+    // the whole heading with it.
+    const ATX = "### Release <span>x</span>\n\nBody.\n";
+    // Setext in the SOURCE, not just at a setext-eligible depth: sourceStyle
+    // preserves the form a heading was written in, so an ATX `##` round-trips
+    // as ATX and never reaches the underline hazard at all.
+    const SETEXT = "Release <span>x</span>\n-------\n\nBody.\n";
+
+    it("a newline committed into a heading's tag should be refused, document untouched", async () => {
+        const editor = await makeEditor(ATX);
+        const before = editor.action(getMarkdown());
+        const view = getView(editor);
+        const { dom } = htmlAtom(view, "<span>");
+
+        commitThrough(dom, "<span>\n<div>");
+
+        expect(editor.action(getMarkdown())).toBe(before);
+        await editor.destroy();
+    });
+
+    it("a setext-depth heading should keep its own node rather than becoming paragraphs", async () => {
+        const editor = await makeEditor(SETEXT);
+        const view = getView(editor);
+        const { dom } = htmlAtom(view, "<span>");
+
+        commitThrough(dom, "<span>\n<div>");
+
+        const reparsed = await makeEditor(editor.action(getMarkdown()));
+        const names: string[] = [];
+        reparsed.action((ctx) => {
+            ctx.get(editorViewCtx).state.doc.descendants((n) => { names.push(n.type.name); });
+        });
+        expect(names).toContain("heading");
+        await editor.destroy();
+        await reparsed.destroy();
+    });
+
+    it("the same multi-line value in an ordinary paragraph still commits", async () => {
+        // The guard must stay narrow: a paragraph CAN hold two source lines,
+        // and multi-line raw HTML there is the panel's normal mode.
+        const editor = await makeEditor("Para <span>x</span> here.\n");
+        const view = getView(editor);
+        const { dom } = htmlAtom(view, "<span>");
+
+        commitThrough(dom, "<span>\n<div>");
+
+        expect(editor.action(getMarkdown())).toContain("<span>\n<div>");
+        await editor.destroy();
+    });
+});
+
 describe("a later-line HTML block opener cannot swallow a glued sibling", () => {
     it("a fence tight after the edited paragraph should survive the round trip", async () => {
         const editor = await makeEditor("- <span>x</span> intro\n  ```\n  code\n  ```\n- second\n");
@@ -163,6 +219,31 @@ describe("a later-line HTML block opener cannot swallow a glued sibling", () => 
         // The hazard value: line one opens nothing, line two opens a
         // condition-6 block that only a blank line closes.
         view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { value: "<span>x</span>\n<div>" }));
+
+        const out = editor.action(getMarkdown());
+        const reparsed = await makeEditor(out);
+        const names: string[] = [];
+        reparsed.action((ctx) => {
+            ctx.get(editorViewCtx).state.doc.descendants((n) => {
+                names.push(n.type.name);
+            });
+        });
+        expect(names).toContain("code_block");
+        await editor.destroy();
+        await reparsed.destroy();
+    });
+
+    it("a fence should survive when the edited atom is NOT the paragraph's first child", async () => {
+        // The same hazard with the atom in the middle of the line. The gap
+        // check used to ask only whether the paragraph's FIRST child was an
+        // html node, which is a sound proxy for "can line ONE start with a raw
+        // `<`" and no proxy at all for a later line. Since a panel-committed
+        // value is routinely multi-line, a text-first paragraph reaches the
+        // same absorbed-fence state the atom-first one is guarded against.
+        const editor = await makeEditor("- intro <span>x</span>\n  ```\n  code\n  ```\n- second\n");
+        const view = getView(editor);
+        const { pos } = htmlAtom(view, "<span>");
+        view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { value: "<span>\n<div>" }));
 
         const out = editor.action(getMarkdown());
         const reparsed = await makeEditor(out);

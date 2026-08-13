@@ -23,8 +23,11 @@
  *
  * The precondition is established by a read the revert does not repeat, so an
  * external write landing between the two is a window nothing here can close.
- * It degrades to taking disk, which is what an external write asks for; what
- * it costs is the drift badge (MAR-152), which never appears for that one.
+ * It costs more than taking disk, which is what an external write asks for:
+ * the re-read returns bytes that are not the ones the webview last synced, so
+ * the change is not an echo, the sync version bumps, and an update serialized
+ * before the bump is rejected and repushed. Keystrokes typed inside the window
+ * go with it, and the drift badge (MAR-152) never appears for that one.
  *
  * TARGETING is the whole risk, and it is the reason for the gate stack below.
  * The command reverts the ACTIVE editor and ignores its URI argument (MAR-138:
@@ -63,11 +66,13 @@ export async function settlePhantomDirty(
     panel: vscode.WebviewPanel,
     uriKey: string,
     viewType: string,
+    saveInFlight: () => boolean = () => false,
 ): Promise<boolean> {
     const settleable = (): boolean =>
         document.isDirty &&
         !document.isUntitled &&
         !document.isClosed &&
+        !saveInFlight() &&
         panel.active &&
         activeTabIs(uriKey, viewType) &&
         noForeignUnsavedWork(uriKey, viewType);
