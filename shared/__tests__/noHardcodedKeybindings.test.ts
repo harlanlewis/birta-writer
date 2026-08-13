@@ -66,7 +66,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
         "webview/components/findBar/index.ts":
             "bar-local input keys (Mod+Enter = replace all inside the replace input)",
         "webview/components/htmlView/index.ts":
-            "panel-local input keys (Mod+Enter = commit inside the HTML source textarea) — findBar's idiom",
+            "panel-local input keys (Mod+Enter = commit, Mod+/ = commit and hand off to the block " +
+            "source panel, inside the HTML source textarea) — findBar's idiom",
         "webview/components/blockSource/index.ts":
             "panel-local input keys (Mod+Enter and Mod+/ = commit inside the block source textarea) — " +
             "htmlView's idiom; the OPENING chord is the contributed birta.editor.editBlockSource keybinding",

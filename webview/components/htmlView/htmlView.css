@@ -1,36 +1,138 @@
 /* HTML source panel (MAR-14): the editing face createHtmlView swaps in over
    its rendered output. The resting faces (.html-inline, .html-comment) keep
-   their rules in style.css — this file owns only the panel. */
+   their rules in style.css — this file owns only the panel.
 
-.editor .html-inline--editing {
+   Two layers, the code lightbox's arrangement: the highlighted mirror sits in
+   normal flow and gives the panel its height, and the textarea is stretched
+   over it with transparent ink so only its caret and selection show. Both
+   layers must therefore wrap identically — same box, same font metrics, same
+   white-space and overflow-wrap (the values below are the textarea's UA
+   defaults, restated on the mirror so neither can drift). */
+
+.milkdown .editor .html-inline.html-inline--editing {
     /* The resting face is display: contents; the panel needs a box. */
     display: inline-block;
     max-width: 100%;
     vertical-align: top;
 
+    /* The chip's resting skin is the ATOM's, and the panel is its child, so
+       every one of these reaches the editing surface unless it is undone here.
+       A comment chip (style.css, .html-comment) carries all four: the opacity
+       and background dim a control the user is typing into, and its 0.85em
+       compounds with the mirror's 0.9em to shrink the source twice over. */
+    opacity: 1;
+    padding: 0;
+    background: none;
+    font-size: 1em;
+
     /* Hide the rendered face while the source panel is open. */
-    > :not(.html-src) {
+    > :not(.html-src-panel) {
         display: none;
     }
+}
 
-    .html-src {
+/* An atom that is the whole of its block edits as a full-width code block. */
+.milkdown .editor .html-inline.html-inline--editing-block {
+    display: block;
+    width: 100%;
+}
+
+.milkdown .editor .html-src-panel {
+    display: inline-block;
+    max-width: 100%;
+    vertical-align: top;
+
+    &.html-src-panel--block {
         display: block;
-        box-sizing: border-box;
-        width: min(100%, 60ch);
-        min-width: 12ch;
-        resize: none;
-        padding: 0.2em 0.35em;
-        border: 1px solid var(--vscode-focusBorder);
-        border-radius: var(--ui-radius-s);
-        background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground);
-        font-family: var(--vscode-editor-font-family, monospace);
-        font-size: 0.9em;
-        line-height: 1.4;
-        white-space: pre-wrap;
-
-        &:focus {
-            outline: none;
-        }
+        width: 100%;
+        margin: 0.6em 0;
     }
+}
+
+.milkdown .editor .html-src-code {
+    display: block;
+    position: relative;
+    min-width: 8ch;
+    overflow: hidden;
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: var(--ui-radius-l);
+    background: var(--vscode-textCodeBlock-background);
+}
+
+.milkdown .editor .html-src-mirror,
+.milkdown .editor .html-src {
+    display: block;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.5em 0.7em;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.9em;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    tab-size: 4;
+}
+
+/* Highlight layer: the panel's size, and the only ink the reader sees. */
+.milkdown .editor .html-src-mirror {
+    /* A floor only. The emptied value is already one line tall, because the
+       mirror always carries the trailing newline the textarea needs (see
+       refresh), and that newline is what renders the caret's line box. */
+    min-height: 1.5em;
+    color: var(--vscode-editor-foreground);
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Input layer: transparent ink over the mirror, sized to it rather than to a
+   row count, so the box is always exactly as tall as the wrapped source. */
+.milkdown .editor .html-src {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    resize: none;
+    overflow: hidden;
+    background: transparent;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: var(--vscode-editor-foreground);
+
+    &:focus {
+        outline: none;
+    }
+
+    &::selection {
+        background: var(--vscode-editor-selectionBackground);
+        -webkit-text-fill-color: transparent;
+    }
+}
+
+/* Hint row, and the seat of a refused commit's reason. Non-interactive chrome:
+   hit-testing passes through it, so a click here lands on the panel and
+   commits like any other click outside the textarea. */
+.milkdown .editor .html-src-note {
+    display: none;
+    margin-top: var(--ui-space-2);
+    color: var(--ui-menu-ink-dim);
+    font-family: var(--vscode-font-family);
+    font-size: var(--ui-fs-s);
+    pointer-events: none;
+    user-select: none;
+
+    > span + span {
+        margin-left: var(--ui-space-4);
+    }
+
+    &.html-src-note--error {
+        color: var(--vscode-inputValidation-errorForeground, var(--vscode-editor-foreground));
+    }
+}
+
+/* The hint belongs to the block face, where there is a line of its own for it.
+   Inline, the panel sits in a line of prose and only a refusal earns the room. */
+.milkdown .editor .html-src-panel--block > .html-src-note,
+.milkdown .editor .html-src-note--error {
+    display: block;
 }

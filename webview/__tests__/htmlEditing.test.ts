@@ -11,6 +11,8 @@ import type { EditorView } from "../pm";
 import { NodeSelection } from "../pm";
 import { createHtmlView, HTML_EDIT_EVENT } from "../components/htmlView";
 import { htmlEditKeymapPlugin, htmlLivePairsPlugin, pairsInBlock } from "../plugins/htmlLivePairs";
+import { blockSourcePlugin } from "../plugins/blockSource";
+import { ensureGrammars } from "../highlighter";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 
 async function makeEditor(markdown: string): Promise<Editor> {
@@ -27,6 +29,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(htmlLivePairsPlugin)
         .use(htmlEditKeymapPlugin)
+        .use(blockSourcePlugin)
         .use(pureCommonmark)
         .use(gfmFidelity)
         .create();
@@ -139,6 +142,122 @@ describe("html source panel", () => {
             f(view, new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true })));
 
         expect(dom.querySelector("textarea.html-src")).not.toBeNull();
+        await editor.destroy();
+    });
+});
+
+describe("the panel's code surface", () => {
+    /** The panel's two layers for the first html atom, with its panel root. */
+    function surface(dom: HTMLElement): {
+        root: HTMLElement;
+        area: HTMLTextAreaElement;
+        mirror: HTMLElement;
+        note: HTMLElement;
+    } {
+        return {
+            root: dom.querySelector(".html-src-panel") as HTMLElement,
+            area: dom.querySelector("textarea.html-src") as HTMLTextAreaElement,
+            mirror: dom.querySelector(".html-src-mirror") as HTMLElement,
+            note: dom.querySelector(".html-src-note") as HTMLElement,
+        };
+    }
+
+    it("opening should mirror the bytes under the textarea, with the trailing newline that gives the box its last line", async () => {
+        const editor = await makeEditor("Before <sub>x</sub> after.\n");
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+
+        const { area, mirror } = surface(dom);
+        expect(mirror.textContent).toBe(`${area.value}\n`);
+        await editor.destroy();
+    });
+
+    it("typing should keep the mirror in step with the textarea", async () => {
+        // A single line long enough to wrap: the sizing case a row count
+        // cannot see, so the mirror has to be what the box is measured from.
+        const long = `<span title="${"x".repeat(200)}">`;
+        const editor = await makeEditor("Before <sub>x</sub> after.\n");
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+        const { area, mirror } = surface(dom);
+        area.value = long;
+        area.dispatchEvent(new Event("input"));
+
+        expect(mirror.textContent).toBe(`${long}\n`);
+        await editor.destroy();
+    });
+
+    it("registered grammars should colour the mirror, not the textarea", async () => {
+        await ensureGrammars();
+        const editor = await makeEditor("Before <sub>x</sub> after.\n");
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+        const { area, mirror } = surface(dom);
+        area.value = '<div align="center">';
+        area.dispatchEvent(new Event("input"));
+
+        expect(mirror.querySelectorAll("span.token").length).toBeGreaterThan(0);
+        // The ink the user reads is the mirror's; the textarea stays text.
+        expect(area.querySelector("span")).toBeNull();
+        await editor.destroy();
+    });
+
+    it("an atom that is the whole of its block should open the block face", async () => {
+        const editor = await makeEditor('<div align="center">Centred.</div>\n');
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+
+        expect(surface(dom).root.classList.contains("html-src-panel--block")).toBe(true);
+        expect(dom.classList.contains("html-inline--editing-block")).toBe(true);
+        await editor.destroy();
+    });
+
+    it("a tag inside prose should open the inline face, with no hint row displacing the line", async () => {
+        const editor = await makeEditor("Before <sub>x</sub> after.\n");
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+
+        expect(surface(dom).root.classList.contains("html-src-panel--block")).toBe(false);
+        expect(dom.classList.contains("html-inline--editing-block")).toBe(false);
+        await editor.destroy();
+    });
+
+    it("the block face should carry the apply and cancel hints", async () => {
+        const editor = await makeEditor('<div align="center">Centred.</div>\n');
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+
+        const hints = surface(dom).note.textContent ?? "";
+        expect(hints).toContain("to apply");
+        expect(hints).toContain("to cancel");
+        await editor.destroy();
+    });
+
+    it("Mod+/ should commit and hand off to the block source panel", async () => {
+        const editor = await makeEditor("Before <sub>x</sub> after.\n");
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+        const { area } = surface(dom);
+        area.value = "<kbd>";
+        area.dispatchEvent(new KeyboardEvent("keydown", { key: "/", ctrlKey: true, bubbles: true }));
+
+        expect(editor.action(getMarkdown())).toBe("Before <kbd>x</sub> after.\n");
+        expect(view.dom.querySelector("textarea.html-src")).toBeNull();
+        expect(view.dom.querySelector("textarea.block-source-area")).not.toBeNull();
         await editor.destroy();
     });
 });

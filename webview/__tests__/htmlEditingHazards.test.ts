@@ -18,6 +18,7 @@ import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "../pm";
 import { bankOpenHtmlPanel, createHtmlView, HTML_EDIT_EVENT } from "../components/htmlView";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
+import { blockSourcePlugin } from "../plugins/blockSource";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -33,6 +34,11 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(pureCommonmark)
         .use(gfmFidelity)
+        // The block-source opener registers per Schema on create. Without it
+        // `openBlockSource` returns false for every editor here, and the
+        // Mod+/ handoff is unobservable: the refusal test below cannot tell a
+        // held-back escalation from one that simply had nowhere to go.
+        .use(blockSourcePlugin)
         .create();
 }
 
@@ -78,6 +84,49 @@ describe("table-cell commits are refused when they would tear the row", () => {
 
         expect(area.getAttribute("aria-invalid")).toBe("true");
         expect(dom.querySelector("textarea.html-src")).not.toBeNull();
+        expect(editor.action(getMarkdown())).toBe(before);
+        await editor.destroy();
+    });
+
+    it("the refusal should state its reason in the panel, and withdraw it once the bytes change", async () => {
+        const editor = await makeEditor(TABLE);
+        const view = getView(editor);
+        const { dom } = htmlAtom(view, "<u>");
+
+        const area = commitThrough(dom, '<span title="a|b">');
+        const note = dom.querySelector(".html-src-note") as HTMLElement;
+        expect(note.classList.contains("html-src-note--error")).toBe(true);
+        expect(note.textContent).toContain("break the row");
+
+        area.value = "<span>";
+        area.dispatchEvent(new Event("input"));
+
+        expect(note.classList.contains("html-src-note--error")).toBe(false);
+        expect(area.getAttribute("aria-invalid")).toBeNull();
+        await editor.destroy();
+    });
+
+    it("a refused Mod+/ should keep the panel rather than hand off a value it would not take", async () => {
+        // The handoff commits first and escalates only if the commit closed
+        // the panel. A refusal must therefore leave the user exactly where
+        // they were: this panel open, holding the bytes they typed, and no
+        // block-source panel opened behind it over a value that never landed.
+        const editor = await makeEditor(TABLE);
+        const before = editor.action(getMarkdown());
+        const view = getView(editor);
+        const { dom } = htmlAtom(view, "<u>");
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+        const area = dom.querySelector("textarea.html-src") as HTMLTextAreaElement;
+        area.value = '<span title="a|b">';
+        area.dispatchEvent(new Event("input"));
+        area.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "/", metaKey: true, bubbles: true, cancelable: true }),
+        );
+
+        expect(dom.querySelector("textarea.html-src")).not.toBeNull();
+        expect(area.value).toBe('<span title="a|b">');
+        expect(document.querySelector("textarea.block-source-area")).toBeNull();
         expect(editor.action(getMarkdown())).toBe(before);
         await editor.destroy();
     });
