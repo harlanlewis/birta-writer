@@ -942,14 +942,14 @@ Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall thro
 
 ### Wikilink embeds
 
-Obsidian's transclusion form `![[page]]` is not treated as an embed - it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched (MAR-45):
+Obsidian's transclusion form `![[page]]` is not treated as an embed - it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched:
 
 ![[image-target]]
 
 ### Emoji shortcodes
 
-`:smile:` stays literal text; a byte-preserving renderer is under consideration (MAR-46).
+`:smile:` stays literal text; a byte-preserving renderer is under consideration:
 
 ### Definition lists
 
-`term` / `: definition` syntax is not parsed. Parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags`. Under consideration (MAR-47)
+`term` / `: definition` syntax is not parsed. Parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags`.
