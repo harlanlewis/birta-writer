@@ -11,10 +11,14 @@
  * legible instead of hidden inside a shared code path.
  *
  * Discipline:
- *  - A DISCONNECTED service costs zero. No message is posted for it at all:
- *    the locked state is derived here from the connection map, so a document
- *    with thirty links to an unconnected service makes thirty cards and no
- *    requests.
+ *  - A card is asked for whether or not the service is connected, because most
+ *    of them are public and a public read carries no credential. This module
+ *    once short-circuited to `locked` from the connection map and posted no
+ *    message at all, which made the extension's anonymous read unreachable:
+ *    the gate that decides whether to contact a provider is the embeds switch,
+ *    not the connection, and it is checked on the extension side too.
+ *  - A provider with NO connector still costs zero here: no message, no chrome.
+ *    That is the only free case, and it is free because there is nothing to ask.
  *  - One ask per `kind:id` per session, with the same dropped-reply backstop
  *    embedMeta uses. Failures are cached; a dead endpoint is asked once.
  *  - Render-only: results reach card bodies through a callback, and nothing
@@ -46,13 +50,6 @@ let entries = new Map<string, CardEntry>();
 /** requestId → entry key, to route `embedCardResult` replies. */
 let requests = new Map<string, string>();
 let requestCounter = 0;
-/**
- * Which connectors the user has connected, as the extension last reported.
- * Empty means nothing is connected, which is both the correct default and the
- * quiet one: before the first `connectorStateChanged` arrives, every card is
- * locked and no request is made.
- */
-let connected: Record<string, boolean> = {};
 /** Connectors whose connect affordance the reader dismissed this session. */
 let dismissed = new Set<string>();
 
@@ -66,31 +63,28 @@ export function _resetEmbedConnectorForTests(): void {
     entries = new Map();
     requests = new Map();
     requestCounter = 0;
-    connected = {};
     dismissed = new Set();
 }
 
 /**
- * Record the extension's connection map. The caller re-gates the embed
- * decorations afterwards, which rebuilds every card against the new map — that
- * rebuild, not a subscriber list, is how a freshly connected service unlocks
- * the cards already on screen.
+ * A connect or disconnect happened: drop every cached answer, because it
+ * changes what all of them would have been. The caller re-gates the embed
+ * decorations afterwards, which rebuilds every card and re-asks — that rebuild,
+ * not a subscriber list, is how a freshly connected service upgrades the cards
+ * already on screen.
  *
- * Cached answers are dropped, because a connect or disconnect changes what
- * every one of them would have been.
+ * The map itself is deliberately NOT stored. Nothing here decides anything from
+ * the connection any more: the extension answers `locked` when a read comes
+ * back not-visible, and that answer is a fact about the resource rather than
+ * about the account. Keeping a mirror of it would only invite a second, staler
+ * source of truth for a question this module no longer asks.
  */
-export function setConnectorStates(states: Record<string, boolean>): void {
-    connected = states;
+export function setConnectorStates(_states: Record<string, boolean>): void {
     for (const entry of entries.values()) {
         if (entry.timer) { clearTimeout(entry.timer); }
     }
     entries = new Map();
     requests = new Map();
-}
-
-/** Has the user connected the service behind this provider? */
-export function connectorConnected(connector: string): boolean {
-    return connected[connector] === true;
 }
 
 /** Has the reader waved away this connector's connect affordance this session? */
@@ -109,9 +103,14 @@ export function requestConnect(connector: string): void {
 }
 
 /**
- * Ask for the cards of every connector-capable embed in `embeds` whose service
- * is connected and which this session has not asked about. Called from the
- * embed plugin's idle pass, never on the keystroke path.
+ * Ask for the cards of every connector-capable embed in `embeds` this session
+ * has not asked about, connected or not. Called from the embed plugin's idle
+ * pass, never on the keystroke path.
+ *
+ * Deliberately NOT gated on the connection: the extension reads a public
+ * resource anonymously, and gating here would make that unreachable. The
+ * consent gates that decide whether to contact the provider at all (network,
+ * embeds, this provider) are re-checked extension-side before any request.
  */
 export function queueEmbedCardResolution(
     embeds: ReadonlyArray<{ match: { kind: EmbedKind; id: string }; href: string }>,
@@ -119,9 +118,8 @@ export function queueEmbedCardResolution(
     for (const embed of embeds) {
         const { kind, id } = embed.match;
         const connector = connectorForEmbedKind(kind);
-        // No connector, or one the user has not connected: no message, no
-        // fetch. The card renders its locked state from the map alone.
-        if (!connector || !connectorConnected(connector)) {
+        // No connector at all: nothing to ask, no chrome to render.
+        if (!connector) {
             continue;
         }
         const key = keyOf(kind, id);
@@ -163,10 +161,14 @@ function settle(key: string, result: EmbedCardResult | null): void {
 
 /**
  * Subscribe a card to its connector result. A provider with no connector never
- * calls back at all (there is no connector chrome for it). An unconnected
- * service calls back SYNCHRONOUSLY with `locked`, derived here and costing no
- * message. A known answer likewise calls back synchronously; a pending one
- * calls back when the reply lands.
+ * calls back at all (there is no connector chrome for it). A known answer calls
+ * back synchronously; a pending one calls back when the reply lands.
+ *
+ * `locked` is NOT derived here any more. It is the extension's answer to a read
+ * that came back not-visible, which is a different fact from "not connected":
+ * a public repository resolves `ready` with no connection at all, and deriving
+ * the lock from the connection map would have shown a connect offer on cards
+ * that never needed one.
  */
 export function subscribeEmbedCard(
     kind: EmbedKind,
@@ -175,10 +177,6 @@ export function subscribeEmbedCard(
 ): void {
     const connector = connectorForEmbedKind(kind);
     if (!connector) {
-        return;
-    }
-    if (!connectorConnected(connector)) {
-        apply({ state: "locked", connector });
         return;
     }
     const entry = entries.get(keyOf(kind, id));

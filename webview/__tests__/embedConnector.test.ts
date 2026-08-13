@@ -1,19 +1,28 @@
 /**
- * The webview connector store (MAR-198): the disconnected-costs-zero rule, the
- * session dedupe, the dismissal that keeps a document of locked links quiet,
- * and the reply backstop.
+ * The webview connector store (MAR-198): who gets asked, the session dedupe,
+ * the dismissal that keeps a document of locked links quiet, and the reply
+ * backstop.
  *
- * The claim this file exists to pin is the cheap half of the security story:
- * with a service disconnected, the webview posts NO message at all, so the
- * extension is never given the chance to make a credentialed request. Message
- * posting goes through the mocked acquireVsCodeApi (setup.ts); nothing here
- * imports the editor, so the store cannot touch the document by construction.
+ * This file used to pin the opposite of what it now pins, and the correction is
+ * worth stating. It claimed that a disconnected service posts NO message, and
+ * called that the cheap half of the security story. It was neither cheap nor
+ * security: gating the ASK on the connection made the extension's anonymous
+ * read of a public repository unreachable, so a world-readable title needed an
+ * account. The credential decision belongs where the credential is, which is
+ * the extension; this side asks, and renders whatever comes back.
+ *
+ * What a disconnected service still costs nothing for is a provider with no
+ * connector at all — nothing to ask, no chrome.
+ *
+ * Message posting goes through the mocked acquireVsCodeApi (setup.ts); nothing
+ * here imports the editor, so the store cannot touch the document by
+ * construction.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import {
     _resetEmbedConnectorForTests,
-    connectorConnected,
+
     connectorDismissed,
     dismissConnector,
     handleEmbedCardResult,
@@ -44,17 +53,23 @@ describe("embedConnector store", () => {
         vi.useRealTimers();
     });
 
-    describe("a disconnected service costs zero", () => {
-        it("queueing with nothing connected should post NO message", () => {
+    describe("a connector-capable card is asked for, connected or not", () => {
+        it("queueing with nothing connected should still post one ask each", () => {
+            // This used to post nothing, deriving `locked` from the connection
+            // map, which made the extension's anonymous read of a PUBLIC
+            // repository unreachable. The gate that decides whether to contact
+            // the provider is the embeds switch, re-checked extension-side.
             queueEmbedCardResolution([GH, GH2]);
-            expect(posted("resolveEmbedCard")).toHaveLength(0);
+            expect(posted("resolveEmbedCard")).toHaveLength(2);
         });
 
-        it("subscribing with nothing connected should answer locked synchronously", () => {
+        it("subscribing with nothing connected should wait for the answer, not assume locked", () => {
+            // `locked` is the extension's answer to a read that came back
+            // not-visible, which is a different fact from "not connected": a
+            // public repository resolves `ready` with no connection at all.
             const apply = vi.fn();
             subscribeEmbedCard("github", GH.match.id, apply);
-            expect(apply).toHaveBeenCalledWith({ state: "locked", connector: "github" });
-            expect(posted("resolveEmbedCard")).toHaveLength(0);
+            expect(apply).not.toHaveBeenCalled();
         });
 
         it("a provider with no connector should never call back at all", () => {
@@ -129,19 +144,21 @@ describe("embedConnector store", () => {
             expect(posted("resolveEmbedCard")).toHaveLength(1);
         });
 
-        it("disconnecting should send subscribers back to locked", () => {
+        it("disconnecting should drop cached answers and re-ask", () => {
+            // Not "back to locked": a disconnect changes what every cached
+            // answer would have been, and the fresh read decides. A public
+            // repository still resolves after one.
             setConnectorStates({ github: true });
-            expect(connectorConnected("github")).toBe(true);
-            setConnectorStates({ github: false });
-            expect(connectorConnected("github")).toBe(false);
-            const apply = vi.fn();
-            subscribeEmbedCard("github", GH.match.id, apply);
-            expect(apply).toHaveBeenCalledWith({ state: "locked", connector: "github" });
-        });
+            queueEmbedCardResolution([GH]);
+            expect(posted("resolveEmbedCard")).toHaveLength(1);
+            // Asked once per session, so a second queue with no state change
+            // adds nothing — which is what makes the re-ask below meaningful.
+            queueEmbedCardResolution([GH]);
+            expect(posted("resolveEmbedCard")).toHaveLength(1);
 
-        it("a connector absent from the map should read as not connected", () => {
-            setConnectorStates({});
-            expect(connectorConnected("github")).toBe(false);
+            setConnectorStates({ github: false });
+            queueEmbedCardResolution([GH]);
+            expect(posted("resolveEmbedCard")).toHaveLength(2);
         });
     });
 
