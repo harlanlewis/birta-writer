@@ -2174,6 +2174,22 @@
                     "default": true,
                     "description": "%config.smartLinks.description%"
                 },
+                "birta.logseq": {
+                    "order": 106.1,
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "auto",
+                        "on"
+                    ],
+                    "default": "off",
+                    "enumDescriptions": [
+                        "%config.logseq.off%",
+                        "%config.logseq.auto%",
+                        "%config.logseq.on%"
+                    ],
+                    "description": "%config.logseq.description%"
+                },
                 "birta.network.enabled": {
                     "order": 105,
                     "type": "boolean",

@@ -35,6 +35,8 @@ export interface ToolbarLayoutDeps {
     dbgItem: HTMLElement | null;
     /** The disk-drift badge, pinned at the front of the right zone. */
     syncConflictItem: HTMLElement;
+    /** The Logseq status badge, pinned just after the disk-drift badge. */
+    logseqItem: HTMLElement;
 }
 
 export interface ToolbarLayout {
@@ -51,11 +53,14 @@ export interface ToolbarLayout {
     setDebugMode: (enabled: boolean) => void;
     /** Show or hide the disk-drift badge. */
     setSyncConflict: (active: boolean) => void;
+    /** Show or hide the Logseq status badge. */
+    setLogseq: (active: boolean) => void;
 }
 
 export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
-    const { topbar, items, dbgItem, syncConflictItem } = deps;
+    const { topbar, items, dbgItem, syncConflictItem, logseqItem } = deps;
     let syncConflictVisible = false;
+    let logseqVisible = false;
 
     const toolbar = document.createElement("div");
     toolbar.className = "toolbar";
@@ -300,7 +305,12 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             dbgItem.style.display = debugVisible ? "" : "none";
         }
 
-        // Disk-drift badge: pinned at the front of the right zone.
+        // Status badges: pinned at the front of the right zone, drift first.
+        // Both are inserted before the current first child in reverse order, so
+        // the drift badge ends up ahead of the Logseq one — a warning outranks
+        // a mode indicator.
+        rightZone.insertBefore(logseqItem, rightZone.firstChild);
+        logseqItem.style.display = logseqVisible ? "" : "none";
         rightZone.insertBefore(syncConflictItem, rightZone.firstChild);
         syncConflictItem.style.display = syncConflictVisible ? "" : "none";
 
@@ -333,6 +343,12 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             // invisible — the collapsed bar's expand tab tints instead, so drift
             // is never a state the UI silently sits in.
             document.body.classList.toggle("has-sync-conflict", active);
+            // Same as debug: the right zone's width changed.
+            overflow?.update(availableWidth());
+        },
+        setLogseq(active: boolean): void {
+            logseqVisible = active;
+            logseqItem.style.display = active ? "" : "none";
             // Same as debug: the right zone's width changed.
             overflow?.update(availableWidth());
         },
