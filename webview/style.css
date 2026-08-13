@@ -2175,6 +2175,20 @@ body.toolbar-hidden::before {
     pointer-events: auto;
 }
 
+/* And for the MAR-116 foldables. Blockquotes host their gutter directly
+   (no NodeView); the container directive and the footnote definition host
+   theirs inside their own body, beside the chrome row that survives the
+   fold. Each takes the callout's quiet-gutter guard, since all three nest. */
+.milkdown .editor blockquote:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .container-directive:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .directive-body > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .footnote-def:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .footnote-def-content > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor blockquote.collapsed > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .container-directive.collapsed > .directive-body > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .footnote-def.collapsed > .footnote-def-content > .heading-fold-gutter--foldable .heading-fold-toggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 /* Fold-affordance visibility derived from the user's own editor config
    (MAR-110, no new setting). The baseline above is VS Code's default
    `editor.showFoldingControls: "mouseover"`. */

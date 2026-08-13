@@ -116,7 +116,11 @@
         }
     }
 
-    &.collapsed {
+    /* Notion asides are excluded: they have no title bar, so their first
+       CHILD BLOCK is the line a fold keeps (foldModel's first-line grammar,
+       MAR-116) and the fold's own decorations hide the rest. Hiding the whole
+       body here would take the aside's title line with it. */
+    &.collapsed:not(.callout-aside) {
         /* The body normally supplies the bottom whitespace; collapsed, the
            title must carry it or the box reads top-heavy (0.5em over 0). */
         .callout-title {

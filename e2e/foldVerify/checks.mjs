@@ -256,6 +256,77 @@ export async function run({ page, check, baseUrl }) {
         await page.waitForTimeout(150);
     }
 
+    // ── 3c. A blockquote folds to its FIRST LINE (MAR-116) ──
+    // The chrome-less container grammar, which only a browser can settle:
+    // the reveal is a :hover rule and the hiding is a display:none the
+    // decoration pass paints on the children after the first.
+    // The fixture is taller than one viewport; an off-screen block's rect is
+    // negative and the hover never fires (same reason clickHeadingChevron
+    // scrolls first).
+    await page.$$eval(".ProseMirror > blockquote", (els, t) => {
+        els.find((e) => e.textContent.includes(t))?.scrollIntoView({ block: "center" });
+    }, "quote intro");
+    await page.waitForTimeout(100);
+    const quoteIntro = await rectOf(page, ".ProseMirror > blockquote > p", "quote intro");
+    await page.mouse.move(quoteIntro.cx, quoteIntro.cy);
+    await page.waitForTimeout(200);
+    const quoteChevron = await page.evaluate(() => {
+        const q = [...document.querySelectorAll(".ProseMirror > blockquote")]
+            .find((el) => el.textContent.includes("quote intro"));
+        const el = q?.querySelector(":scope > .heading-fold-gutter--foldable .heading-fold-toggle");
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { cx: r.x + r.width / 2, cy: r.y + r.height / 2,
+            opacity: parseFloat(getComputedStyle(el).opacity) };
+    });
+    check("hovering a blockquote reveals its gutter chevron",
+        quoteChevron !== null && quoteChevron.opacity > 0.5, JSON.stringify(quoteChevron));
+    if (quoteChevron) {
+        await page.mouse.click(quoteChevron.cx, quoteChevron.cy);
+        await page.waitForTimeout(150);
+    }
+    const quoteFolded = await page.evaluate(() => {
+        const q = [...document.querySelectorAll(".ProseMirror > blockquote")]
+            .find((el) => el.textContent.includes("quote intro"));
+        if (!q) return null;
+        const first = q.querySelector(":scope > p");
+        const nested = q.querySelector(":scope > .callout");
+        const chip = q.querySelector(".fold-ellipsis");
+        const fr = first?.getBoundingClientRect() ?? null;
+        const cr = chip?.getBoundingClientRect() ?? null;
+        return {
+            collapsed: q.classList.contains("collapsed"),
+            firstLineVisible: fr !== null && fr.height > 0 &&
+                getComputedStyle(first).display !== "none",
+            tailHidden: nested !== null && getComputedStyle(nested).display === "none",
+            chipInFirstLine: fr !== null && cr !== null &&
+                cr.top >= fr.top - 2 && cr.bottom <= fr.bottom + 2,
+        };
+    });
+    check("collapsing a blockquote keeps its first line and hides the rest",
+        quoteFolded !== null && quoteFolded.collapsed && quoteFolded.firstLineVisible &&
+        quoteFolded.tailHidden && quoteFolded.chipInFirstLine,
+        JSON.stringify(quoteFolded));
+    await shot(page, "04b-quote-collapsed");
+    // Click the chip → expands (and leaves the quote open for later math).
+    const quoteChip = await rectOf(page, ".ProseMirror > blockquote.collapsed .fold-ellipsis");
+    if (quoteChip) {
+        await page.mouse.click(quoteChip.cx, quoteChip.cy);
+        await page.waitForTimeout(150);
+    }
+    const quoteExpanded = await page.evaluate(() => {
+        const q = [...document.querySelectorAll(".ProseMirror > blockquote")]
+            .find((el) => el.textContent.includes("quote intro"));
+        const nested = q?.querySelector(":scope > .callout");
+        return {
+            collapsed: q?.classList.contains("collapsed") ?? null,
+            tailVisible: nested ? getComputedStyle(nested).display !== "none" : false,
+        };
+    });
+    check("clicking the blockquote's … expands it",
+        quoteExpanded.collapsed === false && quoteExpanded.tailVisible,
+        JSON.stringify(quoteExpanded));
+
     // ── 4. Body-class visibility modes (driven via setFoldingControls, the
     //       same message the provider sends on config change) ──
     // Precondition: the note callout is collapsed (from check 1); collapse

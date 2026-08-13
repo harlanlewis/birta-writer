@@ -104,6 +104,15 @@ describe("structureFingerprint — every decoration input is captured", () => {
         expect(Boolean(computeFoldRanges(withBody).get(betaWithBody))).toBe(true);
     });
 
+    it("folding a chrome-less container should change the fingerprint (MAR-116)", async () => {
+        // A blockquote's collapsed state drives BOTH its gutter widget key and
+        // the hidden-children decorations its own subtree carries, so a
+        // fingerprint that missed it would map stale widgets over a fold the
+        // user just toggled.
+        const doc = view(await makeEditor("> first line\n>\n> tail")).state.doc;
+        expect(fp(doc, new Set([0]), true)).not.toBe(fp(doc, new Set(), true));
+    });
+
     it("a position-only edit (same structure, shifted text) should NOT change the fingerprint", async () => {
         // The load-bearing invariant behind reuse-and-map: two docs with
         // identical heading structure but different body lengths fingerprint

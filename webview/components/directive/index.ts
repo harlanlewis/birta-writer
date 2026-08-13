@@ -15,6 +15,8 @@ import "./directive.css";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
+import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import { attrsFromFences, openFenceWithTitle } from "@/plugins/directives";
 
 interface DirectiveView {
@@ -54,7 +56,23 @@ export function createDirectiveView(
         title.contentEditable = "true";
     }
 
-    header.append(badge, title);
+    // Collapsed `…` (MAR-116): the NodeView mount of the shared fold
+    // ellipsis, the callout's protocol on this header. Visible only while
+    // the host carries the `collapsed` class (a node decoration from the
+    // fold plugin); clicking expands with zero steps and no history entry.
+    const ellipsis = createFoldEllipsis(initialNode.childCount, () => {
+        const pos = getPos();
+        if (pos === undefined) return;
+        view.dispatch(
+            view.state.tr
+                .setMeta(foldPluginKey, { type: "set", pos, folded: false } satisfies FoldMeta)
+                .setMeta("addToHistory", false),
+        );
+        view.focus();
+    });
+    ellipsis.dom.classList.add("directive-fold-ellipsis");
+
+    header.append(badge, title, ellipsis.dom);
 
     const content = document.createElement("div");
     content.className = "directive-body";
@@ -112,6 +130,7 @@ export function createDirectiveView(
         if (document.activeElement !== title) {
             title.textContent = (node.attrs["title"] as string) ?? "";
         }
+        ellipsis.setCount(node.childCount);
     };
     render();
 

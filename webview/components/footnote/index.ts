@@ -3,6 +3,8 @@ import { bindActivate } from "@/ui/dom";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
+import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import { scrollElementBelowTopbar } from "@/utils/headingUtils";
 import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 
@@ -262,7 +264,7 @@ interface FootnoteDefinitionView {
 export function createFootnoteDefinitionView(
     initialNode: PMNode,
     view: EditorView,
-    _getPos: () => number | undefined,
+    getPos: () => number | undefined,
 ): FootnoteDefinitionView {
     let node = initialNode;
 
@@ -286,7 +288,23 @@ export function createFootnoteDefinitionView(
         jumpToFirstReference(view, (node.attrs["label"] as string) ?? "");
     });
 
-    marker.append(badge, backlink);
+    // Collapsed `…` (MAR-116): the NodeView mount of the shared fold
+    // ellipsis, the callout's protocol on this label marker. Visible only
+    // while the host carries the `collapsed` class (a node decoration from
+    // the fold plugin); clicking expands, zero steps and no history entry.
+    const ellipsis = createFoldEllipsis(initialNode.childCount, () => {
+        const pos = getPos();
+        if (pos === undefined) return;
+        view.dispatch(
+            view.state.tr
+                .setMeta(foldPluginKey, { type: "set", pos, folded: false } satisfies FoldMeta)
+                .setMeta("addToHistory", false),
+        );
+        view.focus();
+    });
+    ellipsis.dom.classList.add("footnote-fold-ellipsis");
+
+    marker.append(badge, backlink, ellipsis.dom);
 
     const content = document.createElement("div");
     content.className = "footnote-def-content";
@@ -299,6 +317,7 @@ export function createFootnoteDefinitionView(
         const idx = computeDisplayIndex(view.state.doc).get(label);
         badge.textContent = idx !== undefined ? String(idx) : label;
         badge.title = `[^${label}]`;
+        ellipsis.setCount(node.childCount);
     };
     renderBadge();
 

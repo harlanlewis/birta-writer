@@ -49,8 +49,57 @@ export function isListItemNode(node: { type: { name: string } } | null | undefin
     return node?.type.name === "list_item";
 }
 
+/**
+ * Containers whose own CHROME ROW survives a fold while the whole body
+ * hides — the callout grammar: a container directive keeps its header
+ * (name badge + title), a footnote definition its label marker. Both hold
+ * that row outside the document content, exactly as `callout` holds its
+ * title in an attr, so nothing the fold hides was ever the block's label.
+ */
+export function isChromeContainerNode(node: { type: { name: string } } | null | undefined): boolean {
+    const name = node?.type.name;
+    return name === "container_directive" || name === "footnote_definition";
+}
+
+/**
+ * Containers with NO chrome of their own, whose FIRST CHILD BLOCK is the
+ * visible line a fold keeps — the list-item grammar (MAR-116).
+ *
+ * A Notion `<aside>` belongs here rather than with `callout`, and that is
+ * the distinction to hold on to: its first line is the callout's title held
+ * as document CONTENT (the emoji line, sub-parsed at load), while a marker
+ * callout keeps its title in an attr and draws a title bar. Folding an aside
+ * to its node boundary would hide the one line naming it.
+ */
+export function isFirstLineContainerNode(node: { type: { name: string } } | null | undefined): boolean {
+    const name = node?.type.name;
+    return name === "blockquote" || name === "notion_callout";
+}
+
+/** A block that IS one line — the only stub a chrome-less container has to
+ * fold to. */
+function isLineBlock(node: { type: { name: string } }): boolean {
+    return node.type.name === "paragraph" || node.type.name === "heading";
+}
+
+/**
+ * A chrome-less container folds only when something follows a first child
+ * that is itself a LINE. A quote opening with a list or a nested quote owns
+ * no line of its own — the reason `bullet_list` is not a fold unit either —
+ * and collapsing it would leave that whole first structure on screen under a
+ * chevron claiming to have hidden it. The line belongs to the first item,
+ * which carries its own chevron, so the capability moves rather than
+ * disappearing.
+ */
+export function firstLineContainerHasTail(node: {
+    childCount: number;
+    firstChild: { type: { name: string } } | null;
+}): boolean {
+    return node.childCount > 1 && node.firstChild !== null && isLineBlock(node.firstChild);
+}
+
 /** Whether any ancestor of `pos` is a list item — the chrome-parity gate
- * shared by callouts, tables, and code blocks (see isFoldableCallout). */
+ * every non-item kind passes through (see isFoldableCallout). */
 function hasListItemAncestor(doc: any, pos: number): boolean {
     const $pos = doc.resolve(pos);
     for (let depth = $pos.depth; depth > 0; depth--) {
@@ -84,54 +133,89 @@ export function tableHasBody(node: { childCount: number; child(i: number): { chi
     return false;
 }
 
-/** A table folds to its HEADER ROW: foldable when body rows exist. Same
- * list-item chrome-parity gate as callouts (no gutter → no invisible fold). */
-function isFoldableTable(doc: any, pos: number, node: any): boolean {
-    return isTableNode(node) && tableHasBody(node) && !hasListItemAncestor(doc, pos);
-}
-
-/** A code block (plain fence, math, mermaid) folds to its chrome/header row:
- * foldable when it has any content. Same chrome-parity gate as callouts. */
-function isFoldableCodeBlock(doc: any, pos: number, node: any): boolean {
-    return isCodeBlockNode(node) && node.content.size > 0 && !hasListItemAncestor(doc, pos);
-}
-
-/** Every node kind the fold plugin may own an entry for (MAR-110 + MAR-125). */
+/** Every node kind the fold plugin may own an entry for (MAR-110, MAR-125,
+ * MAR-116). Kind only: whether a given INSTANCE folds is blockFoldExtent's
+ * question. */
 export function isFoldableKindNode(node: any): boolean {
     return (
         isHeadingNode(node) ||
         isCalloutNode(node) ||
         isListItemNode(node) ||
         isTableNode(node) ||
-        isCodeBlockNode(node)
+        isCodeBlockNode(node) ||
+        isChromeContainerNode(node) ||
+        isFirstLineContainerNode(node)
     );
 }
 
 /**
- * A callout is foldable whenever it has a body (MAR-110 — no longer only
- * when the source carries a `+`/`-` marker): anything beyond one empty
- * paragraph counts.
+ * A chrome-bearing container has a body to hide whenever it holds anything
+ * beyond one empty paragraph (MAR-110 — a callout no longer needs the
+ * source's `+`/`-` marker to be foldable).
  */
-export function calloutHasBody(node: { childCount: number; firstChild: { childCount: number } | null }): boolean {
+export function containerHasBody(node: { childCount: number; firstChild: { childCount: number } | null }): boolean {
     return !(node.childCount === 1 && (node.firstChild?.childCount ?? 0) === 0);
 }
 
 /**
- * THE foldable-callout invariant, shared by every layer that can create or
- * honor a callout fold (the meta guards in apply(), Fold All, fold-at-caret,
- * persistence restore, syntax seeding, and — via foldHiddenRange — the caret
- * guard and drop guards): a callout nested inside a list item is NOT
- * foldable. The decoration pass renders fold chrome only for top-level
- * blocks and container children (emitContainerChildGutters); list-item
- * children go through emitItemGutters, which has no fold context, so a fold
- * entry there would hide nothing visibly while the caret guard ejected
- * carets from the "hidden" body and drop guards vetoed the region — an
- * invisible fold, unrecoverable by undo (fold metas are history-exempt).
- * Feature-completing this (threading fold context through emitItemGutters)
- * is the future alternative to the restriction.
+ * THE foldable-callout invariant (syntax seeding and persistence restore
+ * ask it by name; every other layer inherits it through foldHiddenRange's
+ * shared gate): a callout nested inside a LIST ITEM is not foldable, and
+ * neither is anything else but an item there. A fold entry inside an item
+ * hides nothing the user can see while the caret guard ejects carets from
+ * the "hidden" body and the drop guards veto the region — an invisible
+ * fold, unrecoverable by undo (fold metas are history-exempt). The
+ * decoration pass carries the same gate as the structural `inListItem`
+ * flag, so chrome and model refuse together. Feature-completing this
+ * (fold chrome inside items) is the future alternative to the restriction.
  */
 export function isFoldableCallout(doc: any, pos: number, node: any): boolean {
-    return isCalloutNode(node) && calloutHasBody(node) && !hasListItemAncestor(doc, pos);
+    return isCalloutNode(node) && containerHasBody(node) && !hasListItemAncestor(doc, pos);
+}
+
+/**
+ * The range a NON-heading block hides when collapsed, or null when this
+ * INSTANCE is not foldable — derived from the node alone, without the
+ * list-item chrome-parity gate. Three grammars, one per stub:
+ *   - a chrome row stays and the whole body hides (callout, container
+ *     directive, footnote definition, code block);
+ *   - a first LINE stays and everything after it hides (list item,
+ *     blockquote, Notion aside);
+ *   - a header ROW stays and the body rows hide (table).
+ *
+ * Separated from foldHiddenRange so the decoration pass can ask the same
+ * question about a node it already holds: it knows structurally whether it
+ * is inside a list item (only emitItemGutters descends there), so neither
+ * layer pays a resolve and chrome cannot claim a fold the model refuses.
+ */
+export function blockFoldExtent(node: any, pos: number): HeadingFoldRange | null {
+    if (!node) {
+        return null;
+    }
+    // Both built lazily: this runs per descendant in allFoldablePositions and
+    // per candidate position in the drag/drop guards, where most nodes fold
+    // nothing at all.
+    const wholeBody = (): HeadingFoldRange => ({ from: pos + 1, to: pos + node.nodeSize - 1 });
+    const afterFirstChild = (): HeadingFoldRange => ({
+        from: pos + 1 + node.firstChild.nodeSize,
+        to: pos + node.nodeSize - 1,
+    });
+    if (isCalloutNode(node) || isChromeContainerNode(node)) {
+        return containerHasBody(node) ? wholeBody() : null;
+    }
+    if (isCodeBlockNode(node)) {
+        return node.content.size > 0 ? wholeBody() : null;
+    }
+    if (isListItemNode(node)) {
+        return listItemHasDescendants(node) ? afterFirstChild() : null;
+    }
+    if (isFirstLineContainerNode(node)) {
+        return firstLineContainerHasTail(node) ? afterFirstChild() : null;
+    }
+    if (isTableNode(node)) {
+        return tableHasBody(node) ? afterFirstChild() : null;
+    }
+    return null;
 }
 
 /** A heading NODE's level attr (the DOM-element twin lives in utils/headingUtils). */
@@ -293,13 +377,11 @@ export function foldedSectionEnd(state: EditorState, blockPos: number): number |
 
 /**
  * The content range a fold at `pos` HIDES when collapsed, or null when the
- * block isn't foldable. The kinds differ in where the hidden content lives:
- * a heading hides its following section (blocks OUTSIDE the node); a callout
- * or code block hides its own body (everything INSIDE the node); a list item
- * or table hides everything inside AFTER its first child (the item's first
- * line / the header row stays visible and editable). Everything that needs
- * to reason about invisible content — drop guards, reveal-on-navigate, the
- * caret skip-over — derives from this one map.
+ * block isn't foldable — blockFoldExtent under the list-item chrome-parity
+ * gate, plus the heading case (a heading is the one kind whose hidden
+ * content lives OUTSIDE the node: its following section). Everything that
+ * needs to reason about invisible content — drop guards, reveal-on-navigate,
+ * the caret skip-over — derives from this one map.
  */
 export function foldHiddenRange(doc: any, pos: number): HeadingFoldRange | null {
     const node = doc.nodeAt(pos);
@@ -308,23 +390,17 @@ export function foldHiddenRange(doc: any, pos: number): HeadingFoldRange | null 
         // top-level offsets, so a nested heading simply misses.
         return cachedFoldRanges(doc).get(pos) ?? null;
     }
-    // The isFoldable* predicates exclude list-item-nested callouts/tables/
-    // code blocks (no gutter chrome there), so the meta guards, the caret
-    // guard, and the drop guards all inherit the state/decoration-parity
-    // invariant from this one map.
-    if (isFoldableCallout(doc, pos, node)) {
-        return { from: pos + 1, to: pos + node.nodeSize - 1 };
+    const extent = blockFoldExtent(node, pos);
+    // Nested ITEMS fold (their gutters are emitItemGutters' own); anything
+    // else inside a list item gets no fold chrome there, so the meta guards,
+    // the caret guard, and the drop guards all inherit the state/decoration-
+    // parity invariant from this one gate. Asked LAST: it resolves a
+    // position, and every caller that walks a document reaches this function
+    // with far more blocks that fold nothing than blocks that do.
+    if (extent === null || (!isListItemNode(node) && hasListItemAncestor(doc, pos))) {
+        return null;
     }
-    if (isListItemNode(node) && listItemHasDescendants(node)) {
-        return { from: pos + 1 + node.firstChild!.nodeSize, to: pos + node.nodeSize - 1 };
-    }
-    if (isFoldableTable(doc, pos, node)) {
-        return { from: pos + 1 + node.firstChild!.nodeSize, to: pos + node.nodeSize - 1 };
-    }
-    if (isFoldableCodeBlock(doc, pos, node)) {
-        return { from: pos + 1, to: pos + node.nodeSize - 1 };
-    }
-    return null;
+    return extent;
 }
 
 /** Every currently-hidden range (both kinds), with its owning fold position. */
@@ -532,12 +608,15 @@ export function allFoldablePositions(doc: any): number[] {
 /**
  * Where a selection that would land inside newly hidden content escapes to.
  * Kinds with a visible caret home keep the caret local: a heading's own
- * line, a list item's first line, a table's header row. A collapsed callout
- * or code block has no editable line left, so the caret lands just before
- * the block.
+ * line, a list item's or chrome-less container's first line, a table's
+ * header row. A collapsed callout, directive, footnote definition or code
+ * block has no editable line left, so the caret lands just before the block.
  */
 export function foldEscapeSelection(tr: Transaction, node: any, pos: number): Selection {
-    return isHeadingNode(node) || isListItemNode(node) || isTableNode(node)
+    return isHeadingNode(node) ||
+        isListItemNode(node) ||
+        isTableNode(node) ||
+        isFirstLineContainerNode(node)
         ? TextSelection.near(tr.doc.resolve(Math.min(pos + 1, tr.doc.content.size)))
         : Selection.near(tr.doc.resolve(pos), -1);
 }
