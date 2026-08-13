@@ -83,6 +83,23 @@ export async function run({ page, check, baseUrl }) {
         return !!document.elementFromPoint(x, y)?.closest(".calc-row-src");
     }, [pressX, pressY]);
     await page.mouse.down();
+    // Whether the drag above is destroyed is a race no harness can force: it
+    // turns on when the browser delivers a coalesced `selectionchange` versus
+    // when prosemirror-view's post-focus `selectionToDOM` fires. What holds
+    // every run is the precondition, and it is the one the ledger removes —
+    // the editor's host taking the focus at all. `selectionToDOM` bails when
+    // the editor does not own the focus, so a press that leaves the host
+    // unfocused closes the path instead of racing it (MAR-361).
+    //
+    // Read with the button still down. The mouseup blurs the host either way,
+    // so once the gesture is over the two states read the same.
+    const pressFocus = await page.evaluate(() => ({
+        active: document.activeElement?.className ?? "",
+        pmFocused: !!document.querySelector(".ProseMirror")?.classList.contains("ProseMirror-focused"),
+    }));
+    check("a ledger press leaves the editor host unfocused",
+        !pressFocus.pmFocused && pressFocus.active.includes("calc-preview"),
+        JSON.stringify(pressFocus));
     await page.mouse.move(resBox.x + resBox.width - 2, resBox.y + resBox.height / 2, { steps: 12 });
     await page.mouse.up();
     const dragWatch = await page.evaluate(() => {

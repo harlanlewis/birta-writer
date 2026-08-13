@@ -67,6 +67,24 @@ export function createCalcLedger(opts: {
     const calcPreview = document.createElement("div");
     calcPreview.className = "calc-preview";
     calcPreview.contentEditable = "false";
+    // Focusable, so a press inside the ledger stops here instead of walking on
+    // to ProseMirror's editable host, which is where the browser's search for
+    // a focusable ancestor otherwise ends for read-only chrome.
+    //
+    // The host taking that focus is what arms prosemirror-view's post-focus
+    // selection re-assert (`handlers.focus` schedules a `selectionToDOM`), and
+    // the only guard it has against fighting a live drag reads
+    // `view.input.mouseDown` — a field a `stopEvent`'d mousedown never sets,
+    // because the view never sees the event. Unguarded, that re-assert writes
+    // the editor's own selection over a ledger drag still in progress and
+    // leaves a bare caret with nothing to copy (MAR-361).
+    //
+    // `selectionToDOM` bails whenever the editor does not own the focus, so
+    // holding the focus here closes that path and every other one keyed on the
+    // same test, rather than racing a deadline that belongs to a dependency.
+    // `tabindex="-1"` stays out of the tab order, and mouse focus on a plain
+    // element is not `:focus-visible`, so no ring is drawn.
+    calcPreview.tabIndex = -1;
     const calcRender = document.createElement("div");
     calcRender.className = "calc-render";
     calcPreview.appendChild(calcRender);
