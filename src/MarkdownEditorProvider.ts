@@ -31,6 +31,8 @@ import { extractOgTitle } from "./utils/openGraph";
 import { isPubliclyRoutableUrl } from "./utils/urlGuard";
 import { readCappedText } from "./utils/cappedRead";
 import { fetchEmbedTitle } from "./utils/embedMetaFetcher";
+import type { ConnectorService } from "./connectors/connectorService";
+import { asConnectorId, runConnectFlow } from "./connectors/commands";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
@@ -497,6 +499,31 @@ export class MarkdownEditorProvider
         }
     }
 
+    /**
+     * The connector service (MAR-198), owned by activate() because it holds
+     * `context.secrets`. Absent until then, and absent in unit tests that
+     * construct a provider directly — every use site treats that as "no
+     * connectors", which is the same answer as "nothing connected".
+     */
+    private _connectors: ConnectorService | null = null;
+
+    public setConnectorService(service: ConnectorService): void {
+        this._connectors = service;
+    }
+
+    /**
+     * Tell every open webview which services are connected. Called when a
+     * webview reports ready, and after every connect or disconnect, so a card
+     * locked a moment ago unlocks in place rather than on the next reopen.
+     */
+    public broadcastConnectorState(): void {
+        const connectors = this._connectors;
+        if (!connectors) { return; }
+        connectors.connectionStates()
+            .then((states) => this.postToAll({ type: "connectorStateChanged", connectors: states }))
+            .catch((err) => reportError("connectorState", err));
+    }
+
     /** Sends a message to the active editor panel (no-op when none is active). */
     public postToActivePanel(msg: ToWebviewMessage): void {
         if (this._activePanel) { postToWebview(this._activePanel.webview, msg); }
@@ -794,6 +821,12 @@ export class MarkdownEditorProvider
                                 state: "conflict",
                             });
                         }
+                        // Which services are connected (MAR-198). Sent after
+                        // init because reading it is async (the keychain) while
+                        // the __i18n snapshot is baked synchronously into the
+                        // HTML. The webview's default is "nothing connected",
+                        // so the wait costs a locked card, never a wrong fetch.
+                        this.broadcastConnectorState();
                         break;
                     }
                     case "update":
@@ -1136,6 +1169,34 @@ export class MarkdownEditorProvider
                                 .catch((err) => reportError("resolveEmbedMeta", err));
                         }
                         break;
+                    case "resolveEmbedCard":
+                        // Connector card (rung 2, render-only): resolve against
+                        // the provider's API with the connected credential.
+                        // Always replies — a null result or a named locked /
+                        // expired / error state — so the webview's backstop
+                        // timer rarely fires. The .catch is a backstop for a
+                        // post to a disposed panel.
+                        if (message.id && message.url) {
+                            this._handleResolveEmbedCard(panel, message.id, message.url)
+                                .catch((err) => reportError("resolveEmbedCard", err));
+                        }
+                        break;
+                    case "connectService": {
+                        // The locked card's just-in-time affordance, into the
+                        // same flow the palette command runs. The connector id
+                        // is validated against the known roster, so a stale or
+                        // rogue message cannot name a service that does not
+                        // exist.
+                        const service = this._connectors;
+                        const connector = typeof message.connector === "string"
+                            ? asConnectorId(message.connector)
+                            : null;
+                        if (service && connector) {
+                            runConnectFlow(service, connector, () => this.broadcastConnectorState())
+                                .catch((err) => reportError("connectService", err));
+                        }
+                        break;
+                    }
                     case "requestFmSuggestions":
                         if (message.key !== undefined) {
                             this._handleRequestFmSuggestions(document, panel, message.key)
@@ -2072,6 +2133,22 @@ export class MarkdownEditorProvider
             networkOverride: this._networkWriteInFlight ?? undefined,
         });
         postToWebview(panel.webview, { type: "embedMetaResult", id, url, title });
+    }
+
+    /**
+     * Connector card resolution: resolve and ALWAYS reply. Recognition, the
+     * request built from validated parts, the pinned hosts, the credential and
+     * the cache all live in connectors/; this method only routes the reply.
+     * With no service (unit tests, or an activate that has not run) the answer
+     * is null, which leaves the rung-0 card exactly as it is.
+     */
+    private async _handleResolveEmbedCard(
+        panel: vscode.WebviewPanel,
+        id: string,
+        url: string,
+    ): Promise<void> {
+        const result = (await this._connectors?.resolveCard(url)) ?? null;
+        postToWebview(panel.webview, { type: "embedCardResult", id, url, result });
     }
 
     /**

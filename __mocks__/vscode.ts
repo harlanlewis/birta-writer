@@ -427,6 +427,16 @@ export const env = {
     },
 };
 
+/**
+ * The built-in authentication providers (`vscode.authentication`), which the
+ * `builtin` connector strategy uses for GitHub. Resolves `undefined` by
+ * default — no session — because that is the state a fresh machine is in, and
+ * a test that wants a session says so explicitly.
+ */
+export const authentication = {
+    getSession: vi.fn(async (): Promise<{ accessToken: string } | undefined> => undefined),
+};
+
 /** Host version string, as `vscode.version` reports it. */
 export const version = "1.99.0";
 

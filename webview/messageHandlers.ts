@@ -46,6 +46,7 @@ import {
 } from "./imageUpload";
 import { handleUnfurlResult } from "./unfurl";
 import { handleEmbedMetaResult } from "./embedMeta";
+import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 
 // ── Global table wrap mode ─────────────────────────────────
@@ -366,6 +367,19 @@ export function createMessageHandlers(
             // Embed-card metadata reply: settle the store; subscribed card
             // captions fill in. Render-only — never touches the document.
             handleEmbedMetaResult(msg.id, msg.title);
+        },
+        embedCardResult(msg) {
+            // Connector card reply: settle the store; subscribed cards fill in
+            // their status chip and detail line. Render-only, and there is no
+            // field here a credential could arrive in.
+            handleEmbedCardResult(msg.id, msg.result);
+        },
+        connectorStateChanged(msg) {
+            // Which services are connected. Re-gating repaints every card
+            // against the new map, which is how a service connected a moment
+            // ago unlocks the cards already on screen without a reload.
+            setConnectorStates(msg.connectors);
+            regateEmbedsIfPossible();
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);

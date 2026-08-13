@@ -32,6 +32,13 @@ import {
 } from "./embedProviders";
 import { notifyOpenUrl } from "../messaging";
 import { subscribeEmbedMeta } from "../embedMeta";
+import {
+    connectorDismissed,
+    dismissConnector,
+    requestConnect,
+    subscribeEmbedCard,
+} from "../embedConnector";
+import { CONNECTORS, type ConnectorId, type EmbedCardResult } from "../../shared/connectors";
 import { t } from "../i18n";
 // blockWidth is eager (NodeViews use it); referencing it here adds nothing.
 import { embedWidthAnchor, getBlockWidth, setBlockWidth } from "../blockWidth";
@@ -480,11 +487,100 @@ function infoCardText(provider: EmbedProvider, id: string): { title: string; det
     return { title, detail: parts.kind === "blob" ? parts.path ?? "" : "" };
 }
 
+/** The master network switch, as the info card reads it (mirrors embed.ts). */
+function networkOn(): boolean {
+    return window.__i18n?.network ?? false;
+}
+
+/**
+ * The connector chrome on an info card (MAR-198): a status chip when the card
+ * resolved, and a quiet connect or reconnect affordance when it did not.
+ *
+ * Every failure is NAMED. A blank card would leave the reader unable to tell a
+ * service they never connected from a grant that lapsed from a request that
+ * did not come back, and only the first two are worth acting on.
+ *
+ * Quiet at scale: the affordance is a small inline button, not a pill or a
+ * toast, and dismissing it suppresses it for that connector for the rest of
+ * the session — a document with thirty locked links asks once.
+ */
+function connectorChrome(card: HTMLElement, result: EmbedCardResult): void {
+    if (result.state === "ready") {
+        if (!result.card.status) {
+            return;
+        }
+        const chip = document.createElement("span");
+        chip.className = "embed-card__status";
+        chip.textContent = result.card.status;
+        card.appendChild(chip);
+        return;
+    }
+    if (result.state === "error") {
+        // Connected, current, and this one request failed. Say so and stop:
+        // there is nothing here for the reader to act on, so an affordance
+        // would be noise.
+        const chip = document.createElement("span");
+        chip.className = "embed-card__status embed-card__status--muted";
+        chip.textContent = t("Unavailable");
+        card.appendChild(chip);
+        return;
+    }
+    const spec = CONNECTORS[result.connector as ConnectorId];
+    if (!spec) {
+        return;
+    }
+    // Connecting ends in a network request, so the master switch gates the
+    // offer as it gates everything beneath it. Offering a button that would
+    // refuse is worse than not offering it.
+    if (!networkOn() || connectorDismissed(result.connector)) {
+        return;
+    }
+    const wrap = document.createElement("span");
+    wrap.className = "embed-card__connect";
+
+    const connect = document.createElement("button");
+    connect.type = "button";
+    // The same composition the just-in-time network opt-in uses for its accept
+    // and dismiss pair (networkOptIn), because this is the same gesture one
+    // layer further in: a quiet offer the reader can take or wave away.
+    connect.className = "ui-btn ui-btn--chip embed-card__connect-btn";
+    connect.textContent = result.state === "expired"
+        ? t("Reconnect")
+        : t("Connect");
+    // The full cost of the grant, before the user commits to the flow.
+    connect.title = result.state === "expired"
+        ? t("Your {0} connection expired. Reconnect to show live cards.").replace("{0}", spec.label)
+        : t("Connect {0} to show live cards (read-only).").replace("{0}", spec.label)
+            + (spec.scopeNote ? ` ${spec.scopeNote}` : "");
+    guardActivation(connect);
+    connect.addEventListener("click", () => requestConnect(result.connector));
+    wrap.appendChild(connect);
+
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "ui-btn ui-btn--icon ui-notice__dismiss embed-card__connect-dismiss";
+    dismiss.setAttribute("aria-label", t("Dismiss"));
+    dismiss.title = t("Dismiss");
+    dismiss.textContent = "×";
+    guardActivation(dismiss);
+    dismiss.addEventListener("click", () => {
+        dismissConnector(result.connector);
+        wrap.remove();
+    });
+    wrap.appendChild(dismiss);
+
+    card.appendChild(wrap);
+}
+
 /**
  * The info card (GitHub, Linear, non-published Google files): a compact row
  * derived entirely from the URL — mark (where one exists), title, and a
  * detail line. No frame, no play button, and no code path that could ever
  * create an iframe; it renders even with the network switch off.
+ *
+ * A provider with a connector (MAR-198) layers rung 1 on top of that row: the
+ * URL-derived text is what the card says until an authenticated resolve
+ * answers, and what it keeps saying if one never does.
  */
 function renderInfoCard(provider: EmbedProvider, id: string, sourceUrl?: string): HTMLElement {
     const card = cardShell(provider);
@@ -517,6 +613,38 @@ function renderInfoCard(provider: EmbedProvider, id: string, sourceUrl?: string)
         text.appendChild(detail);
     }
     card.appendChild(text);
+
+    // Rung 1 (MAR-198). The callback fires synchronously for a locked card and
+    // for a cached answer, so the resolved state is usually on screen before
+    // the card's first paint; a pending resolve fills in when it lands.
+    subscribeEmbedCard(provider.kind, id, (result) => {
+        if (!result) {
+            return;
+        }
+        if (result.state === "ready") {
+            title.textContent = result.card.title;
+            // Keep the URL-derived identity visible whenever the API supplied
+            // a different headline: on a pull-request card the API's title is
+            // the PR's, and losing owner/repo would cost the reader the one
+            // fact that says WHERE it is.
+            const bits: string[] = [];
+            if (result.card.title !== parts.title) {
+                bits.push(parts.title);
+            }
+            if (result.card.subtitle) {
+                bits.push(result.card.subtitle);
+            }
+            const line = bits.join(" · ");
+            if (line) {
+                detail.textContent = line;
+                if (!detail.parentNode) {
+                    text.appendChild(detail);
+                }
+            }
+        }
+        connectorChrome(card, result);
+    });
+
     card.appendChild(externalButton(provider, id, sourceUrl));
     return card;
 }

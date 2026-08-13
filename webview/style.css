@@ -2963,3 +2963,42 @@ body.block-marqueeing .milkdown .editor {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* Connector chrome (MAR-198). The status chip states the one fact the URL
+   could not know; the connect affordance is what a locked card offers instead.
+   Both sit to the right of the text block and shrink last, so a long title
+   never pushes the state off the card. */
+.embed-card__status {
+    flex: none;
+    margin-left: auto;
+    padding: 1px 8px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: var(--ui-radius-l);
+    color: var(--vscode-foreground);
+    font-size: var(--ui-fs-s);
+    white-space: nowrap;
+}
+
+.embed-card__status--muted {
+    color: var(--vscode-descriptionForeground);
+}
+
+.embed-card__connect {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+/* The offer itself is .ui-btn--chip; only its flow inside the card row is
+   local. The dismiss is the bare .ui-btn--icon + .ui-notice__dismiss
+   composition, exactly as the network opt-in pill builds it, and needs no
+   rule of its own. */
+.embed-card__connect-btn {
+    flex: 0 0 auto;
+    padding: 1px var(--ui-space-3);
+    font: inherit;
+    font-size: var(--ui-fs-s);
+    white-space: nowrap;
+}

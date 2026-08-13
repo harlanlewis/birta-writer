@@ -124,6 +124,16 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.connectService",
+                "title": "%command.connectService.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.disconnectService",
+                "title": "%command.disconnectService.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.sendFeedback",
                 "title": "%command.sendFeedback.title%",
                 "category": "Birta Writer"

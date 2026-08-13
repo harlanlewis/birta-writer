@@ -44,6 +44,7 @@ import { notifyOpenUrl } from "../messaging";
 // The metadata store is eager (messageHandlers routes replies through it);
 // importing it here adds nothing to the launch bundle.
 import { queueEmbedMetaResolution } from "../embedMeta";
+import { queueEmbedCardResolution } from "../embedConnector";
 // The component-owned delete primitive (deleteRange + fold meta), via the
 // blockMenu facade — deep imports are guarded by blockMenuFacade.test.ts.
 import { deleteBlockRange } from "../components/blockMenu";
@@ -473,6 +474,13 @@ export const embedPlugin = $prose(() =>
                         metaIdle = requestIdle(() => {
                             metaIdle = null;
                             queueEmbedMetaResolution(embeds);
+                            // Connector cards ride the same idle pass, for the
+                            // same reason: a credentialed fetch is decoration
+                            // and must never sit in front of interactivity.
+                            // The queue itself skips every provider whose
+                            // service is not connected, so this costs nothing
+                            // until the user connects one.
+                            queueEmbedCardResolution(embeds);
                         }, FIRST_PASS_IDLE_TIMEOUT_MS);
                     } else if (embeds !== lastEmbeds) {
                         lastEmbeds = embeds;
