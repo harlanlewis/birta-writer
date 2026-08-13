@@ -912,4 +912,29 @@ describe("link popup — Show as embed (card ⇄ link, the reverse direction)", 
         await hover(anchorByText("plain site"));
         expect(getPopup().querySelector<HTMLElement>(".lp-btn-embed")!.style.display).toBe("none");
     });
+
+    it("a provider switched off in the roster should NOT offer it", async () => {
+        // Offering the conversion would be a button that does nothing: the
+        // decoration pass skips this provider, so the converted link would sit
+        // there as bare text with no card.
+        window.__i18n = {
+            ...(window.__i18n ?? { translations: {} }),
+            embedProviders: { youtube: false },
+        } as unknown as typeof window.__i18n;
+
+        await hover(anchorByText("watch this"));
+        expect(getPopup().querySelector<HTMLElement>(".lp-btn-embed")!.style.display).toBe("none");
+    });
+
+    it("a DIFFERENT provider switched off should leave the offer standing", async () => {
+        window.__i18n = {
+            ...(window.__i18n ?? { translations: {} }),
+            embedProviders: { figma: false },
+        } as unknown as typeof window.__i18n;
+
+        await hover(anchorByText("watch this"));
+        expect(
+            getPopup().querySelector<HTMLElement>(".lp-btn-embed")!.style.display,
+        ).not.toBe("none");
+    });
 });

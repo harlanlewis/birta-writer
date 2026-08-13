@@ -418,6 +418,44 @@ describe("provider URLs are owned by embeds, not paste-unfurl", () => {
         expect(posted.length).toBe(1);
     });
 
+    it("with THIS provider switched off its URL should fall through to unfurl", async () => {
+        // Ownership has to track the roster, not just the feature flag: a
+        // provider switched off will never card, so holding its links would
+        // leave them with no card AND no title — the one outcome neither
+        // feature intends.
+        window.__i18n = {
+            translations: {}, isMac: false,
+            network: true, pasteUnfurl: true, embedsEnabled: true,
+            embedProviders: { youtube: false },
+        };
+        await setupAtEnd("hello \n");
+
+        firePaste(v, YT);
+
+        const posted = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "unfurlUrl");
+        expect(posted.length).toBe(1);
+    });
+
+    it("with a DIFFERENT provider switched off the URL should stay embed-owned", async () => {
+        // The control: releasing every provider's links the moment any one is
+        // switched off would satisfy the test above while breaking ownership.
+        window.__i18n = {
+            translations: {}, isMac: false,
+            network: true, pasteUnfurl: true, embedsEnabled: true,
+            embedProviders: { figma: false },
+        };
+        await setupAtEnd("hello \n");
+
+        firePaste(v, YT);
+
+        const posted = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "unfurlUrl");
+        expect(posted.length).toBe(0);
+    });
+
     it("with network OFF a provider URL should still offer the opt-in", async () => {
         window.__i18n = {
             translations: {}, isMac: false,

@@ -2177,6 +2177,111 @@
                     "scope": "application",
                     "markdownDescription": "%config.embeds.enabled.description%"
                 },
+                "birta.embeds.providers.youtube": {
+                    "order": 105.31,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show YouTube links as cards. A still facade until you click; the player frame is created only then. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave YouTube links looking like ordinary links."
+                },
+                "birta.embeds.providers.vimeo": {
+                    "order": 105.32,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Vimeo links as cards. A still facade until you click; the player frame is created only then. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Vimeo links looking like ordinary links."
+                },
+                "birta.embeds.providers.loom": {
+                    "order": 105.33,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Loom links as cards. A still facade until you click; the player frame is created only then. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Loom links looking like ordinary links."
+                },
+                "birta.embeds.providers.figma": {
+                    "order": 105.34,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Figma links as cards. Design, board, slides, deck and prototype links. A still facade until you click; the frame is created only then. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Figma links looking like ordinary links."
+                },
+                "birta.embeds.providers.github": {
+                    "order": 105.35,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show GitHub links as cards. Repository, file, pull-request and issue cards. Built from the link alone, so it needs no network and requests nothing. Requires `#birta.embeds.enabled#`. Turn this off to leave GitHub links looking like ordinary links."
+                },
+                "birta.embeds.providers.googledrive": {
+                    "order": 105.36,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Google Drive links as cards. A preview frame for a link-shared file, created only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Google Drive links looking like ordinary links."
+                },
+                "birta.embeds.providers.googledocs": {
+                    "order": 105.37,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Google Docs links as cards. A published-to-web document, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Google Docs links looking like ordinary links."
+                },
+                "birta.embeds.providers.googleslides": {
+                    "order": 105.38,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Google Slides links as cards. A published-to-web deck, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Google Slides links looking like ordinary links."
+                },
+                "birta.embeds.providers.googlesheets": {
+                    "order": 105.39,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Google Sheets links as cards. A published-to-web sheet, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Google Sheets links looking like ordinary links."
+                },
+                "birta.embeds.providers.googlefile": {
+                    "order": 105.40,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Google edit links links as cards. Ordinary `/edit` links to Docs, Slides and Sheets, which Google refuses to let anyone frame. Shown as a card instead. Built from the link alone, so it needs no network and requests nothing. Requires `#birta.embeds.enabled#`. Turn this off to leave Google edit links links looking like ordinary links."
+                },
+                "birta.embeds.providers.miro": {
+                    "order": 105.41,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Miro links as cards. A public board, framed for pan and zoom only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Miro links looking like ordinary links."
+                },
+                "birta.embeds.providers.linear": {
+                    "order": 105.42,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Linear links as cards. Issue cards. Built from the link alone, so it needs no network and requests nothing. Requires `#birta.embeds.enabled#`. Turn this off to leave Linear links looking like ordinary links."
+                },
+                "birta.embeds.providers.codepen": {
+                    "order": 105.43,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show CodePen links as cards. A pen, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave CodePen links looking like ordinary links."
+                },
+                "birta.embeds.providers.codesandbox": {
+                    "order": 105.44,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show CodeSandbox links as cards. A sandbox, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave CodeSandbox links looking like ordinary links."
+                },
+                "birta.embeds.providers.stackblitz": {
+                    "order": 105.45,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show StackBlitz links as cards. A project, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave StackBlitz links looking like ordinary links."
+                },
                 "birta.calc.enabled": {
                     "order": 107,
                     "type": "boolean",

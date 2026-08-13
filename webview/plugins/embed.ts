@@ -38,7 +38,7 @@ import type { Command, EditorState, EditorView, Node as ProseNode } from "../pm"
 import { Decoration, DecorationSet, keymap, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
-import { providerFor, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
+import { embedProviderOn, providerFor, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
 // messaging is in the eager bundle already; referencing it here adds nothing.
 import { notifyOpenUrl } from "../messaging";
 // The metadata store is eager (messageHandlers routes replies through it);
@@ -55,14 +55,16 @@ import { anchorAt, embedWidthAnchor, getBlockWidth, registerAnchorKind } from ".
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
 
 /**
- * The two gates (MAR-179 / MAR-186), read separately because they mean
+ * The three gates (MAR-179 / MAR-186), read separately because they mean
  * different things. The FEATURE key governs whether embed cards exist at all.
  * The master NETWORK switch (offline by default) governs *requests*, not
  * rendering — so it gates only the providers whose card fetches something
  * (needsNetwork). A no-network provider like GitHub builds its card from the
- * URL alone and renders even offline; that is the render ladder's Rung 0. The
- * flags are baked into __i18n at panel load (like calc); regateEmbeds() below
- * covers live flips.
+ * URL alone and renders even offline; that is the render ladder's Rung 0.
+ * The per-provider ROSTER (embedProviderOn, in collectEmbeds below) governs
+ * which providers the user wants among those the first two permit. The flags
+ * are baked into __i18n at panel load (like calc); regateEmbeds() below covers
+ * live flips of all three.
  */
 function embedsFeatureOn(): boolean {
     return window.__i18n?.embedsEnabled ?? true;
@@ -309,6 +311,12 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         // The network switch gates requests: providers whose card would fetch
         // (thumbnail/player) wait for it; no-network cards render regardless.
         if (!network && providerFor(match.kind).needsNetwork) {
+            return;
+        }
+        // …and the roster gates which providers the user wants at all, which
+        // the master switch cannot express: a provider switched off leaves its
+        // links plain even when both consent gates are open.
+        if (!embedProviderOn(match.kind)) {
             return;
         }
         const identity = `${match.kind}:${match.id}`;

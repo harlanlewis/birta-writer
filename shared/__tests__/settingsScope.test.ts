@@ -14,18 +14,25 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import { EMBED_KINDS, embedProviderSettingKey } from "../embedProviders";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const props: Record<string, { scope?: string }> =
     pkg.contributes.configuration.properties;
 
-/** Every key that gates a network request or an automatic file write. */
+/**
+ * Every key that gates a network request or an automatic file write. The
+ * per-provider roster is enumerated from EMBED_KINDS rather than listed, so a
+ * provider added later inherits the guard instead of needing to be remembered
+ * here — which is the failure mode this file exists to prevent.
+ */
 const CONSENT_KEYS = [
     "birta.network.enabled",
     "birta.pasteUnfurl.enabled",
     "birta.pasteUnfurl.autoApply",
     "birta.embeds.enabled",
+    ...EMBED_KINDS.map((kind) => `birta.${embedProviderSettingKey(kind)}`),
 ];
 
 describe("consent setting scopes", () => {

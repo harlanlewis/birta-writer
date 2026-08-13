@@ -20,6 +20,7 @@
 
 import {
     canonicalEmbedUrl,
+    embedProviderEnabled,
     codepenEmbedUrl,
     codesandboxEmbedUrl,
     figmaEmbedUrl,
@@ -71,12 +72,35 @@ export {
     youtubeEmbedUrl,
     youtubeId,
     youtubeThumbnailUrl,
+    EMBED_KINDS,
+    embedProviderEnabled,
+    embedProviderSettingKey,
     type EmbedKind,
     type EmbedMatch,
     type GithubCardParts,
     type GoogleFileCardParts,
     type LinearCardParts,
 } from "../../shared/embedProviders";
+
+/**
+ * Is this provider switched on for this webview (birta.embeds.providers.<kind>)?
+ *
+ * THE webview-side read of the roster. Every site that asks "is this URL
+ * embed-owned?" must route through here, not just the card renderer: with a
+ * provider switched off its links stop being the embed feature's property, so
+ * paste-unfurl may title them again and the link popup must stop offering a
+ * card. A site that reads only `embedsEnabled` silently keeps ownership of a
+ * link it no longer renders, which shows up as a link nothing will touch.
+ *
+ * Deliberately NOT combined with the two consent gates here. Callers pair it
+ * with whichever of them their site actually needs, which differs: the
+ * renderer wants the feature gate, paste-unfurl reads ownership WITHOUT the
+ * master switch on purpose (see its own note), and rung-0 providers render
+ * with the master off entirely.
+ */
+export function embedProviderOn(kind: EmbedKind): boolean {
+    return embedProviderEnabled(kind, window.__i18n?.embedProviders);
+}
 
 /**
  * One provider's capabilities — the single place its behavior is declared.

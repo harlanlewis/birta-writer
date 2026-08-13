@@ -176,6 +176,21 @@ export interface BirtaConfig extends ProofreadConfig {
      * would rewrite the link text and the card only renders while text === href.
      */
     embedsEnabled: boolean;
+    /**
+     * Per-provider embed roster (birta.embeds.providers.<kind>), read as one
+     * nested map like `toolbar.items`. The contributed per-provider defaults
+     * are merged in by VS Code itself, so the code default is the empty map
+     * and an absent entry means ON (embedProviderEnabled owns that rule).
+     *
+     * The roster sits BENEATH the two consent gates and relaxes neither: a
+     * provider switched on still renders nothing unless `embedsEnabled`, and
+     * still fetches nothing unless `networkEnabled`. What it adds is the
+     * choice the master switch cannot express — running YouTube without
+     * handing Google, Miro or Figma the ids a document happens to reference.
+     * That choice is consent, so these keys are application-scope like the
+     * gates above them (MAR-199); settingsScope.test.ts pins it.
+     */
+    embedProviders: Record<string, boolean>;
     /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
     calcAutoInsert: boolean;
     /**
@@ -293,6 +308,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     calcAutoInsert: "calc.autoInsert",
     autoUpdateAnchors: "autoUpdateAnchors",
     embedsEnabled: "embeds.enabled",
+    embedProviders: "embeds.providers",
     checklistSinkChecked: "checklist.sinkChecked",
     notesCustomMarkers: "notes.customMarkers",
     notesHighlightMarkers: "notes.highlightMarkers",
@@ -404,6 +420,11 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // `networkEnabled && embedsEnabled`. Render-only, so the file is unchanged;
     // with the master off there is no card and no thumbnail network load.
     embedsEnabled: true,
+    // Every provider ships ON, so the master switch stays the only thing off
+    // by default and turning it on still gives the full roster. The empty map
+    // is the CODE default only: VS Code merges the contributed per-provider
+    // defaults into a real read, and an absent entry reads as ON either way.
+    embedProviders: {},
     // Self-sinking checklists ship OFF: reordering on a checkbox click is a
     // surprising motion until asked for, so the default is a plain in-place flip.
     checklistSinkChecked: false,

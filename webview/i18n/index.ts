@@ -31,6 +31,12 @@ declare global {
             calcAutoInsert?: boolean;
             /** URL embeds: render a bare YouTube link as an inline facade card (birta.embeds.enabled). */
             embedsEnabled?: boolean;
+            /**
+             * Per-provider embed roster (birta.embeds.providers.<kind>), keyed
+             * by EmbedKind. An absent entry means ON — read it through
+             * embedProviderEnabled, never directly, so that rule has one home.
+             */
+            embedProviders?: Record<string, boolean>;
             /** Auto-update in-note `#slug` anchor links on heading rename (birta.autoUpdateAnchors). */
             autoUpdateAnchors?: boolean;
             /** Self-sinking checklists: checked items drop below unchecked (birta.checklist.sinkChecked). */
