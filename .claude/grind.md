@@ -16,7 +16,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 ## Landing
 
-- One PR per session with the tickets and the verification done; wait for CI, squash, delete branch, pull `main`.
+- One PR per session with the tickets and the verification done. The session completes the merge: wait for CI, squash, delete branch, pull `main`, and end there.
 - Merging deploys: no.
 
 ## Lanes
