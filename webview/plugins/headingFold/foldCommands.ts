@@ -23,6 +23,8 @@ import {
     cachedFoldRanges,
     foldEscapeSelection,
     foldHiddenRange,
+    foldableSubtree,
+    foldablesAtLevel,
     foldedHiddenRanges,
     isHeadingNode,
 } from "./foldModel";
@@ -182,6 +184,94 @@ export const unfoldAllCommand: Command = (state, dispatch) => {
     }
     return true;
 };
+
+/**
+ * Fold every foldable at nesting level `level`, leaving shallower ones open
+ * (MAR-116; VS Code's `editor.foldLevelN`). What "level" means is decided in
+ * foldModel's `foldLevels`, and it is containment depth rather than a
+ * heading's own rank — the argument is there, and `foldLevels.test.ts` holds
+ * it to it.
+ *
+ * Levels other than `level` are left exactly as the user had them, which is
+ * VS Code's behaviour too: this command adds folds, it never opens one. A
+ * level with nothing at it returns false, so the palette reports a no-op
+ * rather than dispatching an empty transaction.
+ */
+export function foldToLevel(level: number): Command {
+    return (state, dispatch) => {
+        const pluginState = foldPluginKey.getState(state);
+        if (!pluginState?.enabled) {
+            return false;
+        }
+        const positions = foldablesAtLevel(state.doc, level)
+            .filter((pos) => !pluginState.folded.has(pos));
+        if (positions.length === 0) {
+            return false;
+        }
+        if (dispatch) {
+            dispatchFoldMany(state, dispatch, positions, true);
+        }
+        return true;
+    };
+}
+
+/**
+ * Fold or unfold `pos` AND everything nested inside it (MAR-116; the Alt+click
+ * chevron gesture, mirroring VS Code's recursive fold).
+ *
+ * `folded` is decided by the caller from the clicked region's own current
+ * state, so one gesture is one intent: Alt+click a closed region and its whole
+ * subtree opens, Alt+click an open one and the subtree closes. Deciding
+ * per-descendant instead would make the gesture a scatter of toggles whose
+ * result depends on what happened to be open underneath.
+ */
+export function foldSubtreeAt(
+    state: EditorState,
+    dispatch: ((tr: Transaction) => void) | undefined,
+    pos: number,
+    folded: boolean,
+): boolean {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled) {
+        return false;
+    }
+    const positions = foldableSubtree(state.doc, pos);
+    if (positions.length === 0) {
+        return false;
+    }
+    if (dispatch) {
+        dispatchFoldMany(state, dispatch, positions, folded);
+    }
+    return true;
+}
+
+/**
+ * The many-position twin of dispatchFold, with the same invariants: zero
+ * steps, no history entry, and the selection ejected out of anything that is
+ * about to be hidden. The ejection tests every range being folded, not just
+ * the outermost: a recursive fold hides its descendants' bodies too, and the
+ * caret can be sitting in one of them.
+ */
+function dispatchFoldMany(
+    state: EditorState,
+    dispatch: (tr: Transaction) => void,
+    positions: number[],
+    folded: boolean,
+): void {
+    const tr = state.tr
+        .setMeta(foldPluginKey, { type: "setMany", positions, folded } satisfies FoldMeta)
+        .setMeta("addToHistory", false);
+    if (folded) {
+        for (const pos of positions) {
+            const range = foldHiddenRange(state.doc, pos);
+            if (range && state.selection.from < range.to && state.selection.to > range.from) {
+                tr.setSelection(foldEscapeSelection(tr, state.doc.nodeAt(pos), pos));
+                break;
+            }
+        }
+    }
+    dispatch(tr);
+}
 
 // ─── Backspace/Delete at a fold boundary: reveal, never edit hidden content ─
 

@@ -23,6 +23,7 @@ export {
     foldAllCommand,
     foldAtCaret,
     foldRevealKeymapPlugin,
+    foldToLevel,
     headingFoldPlugin,
     unfoldAllCommand,
     unfoldAtCaret,

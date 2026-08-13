@@ -41,6 +41,7 @@ import {
     isFoldableKindNode,
     isHeadingNode,
 } from "./foldModel";
+import { foldSubtreeAt } from "./foldCommands";
 
 /**
  * The document position of the block a gutter widget belongs to, derived at
@@ -194,6 +195,23 @@ function createFoldToggle(view: EditorView, gutter: HTMLElement, collapsed: bool
         const blockPos = gutterBlockPos(view, gutter);
         const node = blockPos === null ? null : view.state.doc.nodeAt(blockPos);
         if (blockPos === null || !isFoldableKindNode(node)) {
+            return;
+        }
+
+        // Alt+click folds or unfolds this region AND everything nested inside
+        // it (MAR-116, VS Code's recursive fold). A POINTER modifier, not a
+        // keyboard chord: it qualifies a click that already exists rather than
+        // binding a key, so there is no rebindable command to contribute and
+        // nothing for the workbench keybinding UI to show. That is the same
+        // category as the Cmd/Ctrl+click link opens elsewhere in this editor.
+        // The whole subtree is driven to THIS chevron's target state rather
+        // than each descendant being toggled on its own, so one gesture is one
+        // intent (see foldSubtreeAt).
+        if (event.altKey) {
+            if (foldSubtreeAt(view.state, view.dispatch.bind(view), blockPos, !collapsed)) {
+                view.focus();
+                hideTooltip();
+            }
             return;
         }
 

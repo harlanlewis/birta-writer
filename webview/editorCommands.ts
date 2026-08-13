@@ -33,6 +33,7 @@ import {
     expandSelection,
     foldAllCommand,
     foldAtCaret,
+    foldToLevel,
     insertCalloutCommand,
     insertFootnoteCommand,
     insertHorizontalRuleCommand,
@@ -828,6 +829,17 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     unfold: (getEditor) => runCommand(getEditor, unfoldAtCaret),
     foldAll: (getEditor) => runCommand(getEditor, foldAllCommand),
     unfoldAll: (getEditor) => runCommand(getEditor, unfoldAllCommand),
+    // MAR-116: one entry per level, each a thin binding of the shared
+    // foldToLevel factory. Seven ids rather than one command taking a
+    // level argument, because the palette is the only surface these have
+    // and a palette row cannot prompt for a number.
+    foldLevel1: (getEditor) => runCommand(getEditor, foldToLevel(1)),
+    foldLevel2: (getEditor) => runCommand(getEditor, foldToLevel(2)),
+    foldLevel3: (getEditor) => runCommand(getEditor, foldToLevel(3)),
+    foldLevel4: (getEditor) => runCommand(getEditor, foldToLevel(4)),
+    foldLevel5: (getEditor) => runCommand(getEditor, foldToLevel(5)),
+    foldLevel6: (getEditor) => runCommand(getEditor, foldToLevel(6)),
+    foldLevel7: (getEditor) => runCommand(getEditor, foldToLevel(7)),
     // Clear every checked box in the caret's task list (one undo step), then
     // refocus — a palette invocation dropped focus on the Quick Open input.
     uncheckAllTasks: (getEditor) => runProse(getEditor, (view) => {
