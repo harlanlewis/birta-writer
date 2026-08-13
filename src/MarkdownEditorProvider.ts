@@ -7,6 +7,7 @@ import { extractFrontmatter, restoreContentForSave } from "../shared/contentTran
 import { extractListValuesByKey, rankListValues } from "../shared/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { DiskDriftController } from "./diskDrift";
+import { settlePhantomDirty } from "./phantomDirty";
 import { judgeReplacement } from "../shared/destructiveGuard";
 import { postToWebview } from "./webviewMessaging";
 import {
@@ -186,6 +187,12 @@ export class MarkdownEditorProvider
     // onDidChangeTextDocument compares against this to tell webview-originated
     // edits (echoes of our own applyEdit) from genuine external changes.
     private readonly _lastSyncedText = new Map<string, string>();
+
+    // The document's text as of the last moment it had no unsaved changes: what
+    // a revert would find on disk. A string compare against it is the cheap
+    // gate that keeps the phantom-dirty settle (src/phantomDirty.ts) from
+    // reading the file on every sync of a typing burst.
+    private readonly _savePointText = new Map<string, string>();
 
     // The flush/seq protocol bookkeeping (sync versions, applied-seq high-water
     // marks, in-flight save flushes) lives in the SaveFlushController — see
@@ -708,6 +715,16 @@ export class MarkdownEditorProvider
     ) {
         this._flush = new SaveFlushController<vscode.TextEdit>(flushTimeoutMs, flushBackend);
         this._watchWorkspaceIndex();
+        // The save point outlives its PANEL on purpose (a document closed dirty
+        // and reopened keeps it), so the panel's dispose is the wrong place to
+        // drop it. This is the right one: a document VS Code has closed cannot
+        // come back dirty from memory, and without it the map holds one full
+        // copy of every Markdown file opened for the life of the host.
+        this.context.subscriptions.push(
+            vscode.workspace.onDidCloseTextDocument((doc) => {
+                this._savePointText.delete(doc.uri.toString());
+            }),
+        );
     }
 
     /**
@@ -755,6 +772,12 @@ export class MarkdownEditorProvider
         // Save the panel reference (used to push content on revert)
         const uriKey = document.uri.toString();
         this._webviewPanels.set(uriKey, webviewPanel);
+        // A document with nothing unsaved IS its own save point. Recorded (and
+        // deliberately not dropped when the panel is disposed) because it is a
+        // fact about the file rather than about this editor: a document that is
+        // dirty when reopened has no other way to learn where its save point
+        // was, and a stale entry can cost only the disk read that confirms it.
+        if (!document.isDirty) { this._savePointText.set(uriKey, document.getText()); }
         // A freshly resolved editor is the active one.
         this._activePanel = webviewPanel;
         this._activeDocument = document;
@@ -956,6 +979,31 @@ export class MarkdownEditorProvider
                                 if (outcome === "noop") { return; }
                                 this._pinTabOnFirstEdit(uriKey);
                                 postToWebview(webviewPanel.webview, { type: "lineMapUpdate", ...this._lineMapFor(document.getText()) });
+                                // An edit that lands the buffer back on the
+                                // save point — the webview's own Cmd+Z undoing
+                                // to the state the file was opened or saved in
+                                // — leaves VS Code claiming unsaved changes for
+                                // a document that has none (MAR-364). Inside
+                                // the edit queue, so no later update can slip
+                                // between the settle's checks and its revert.
+                                if (newContent === this._savePointText.get(uriKey)) {
+                                    try {
+                                        await settlePhantomDirty(
+                                            document,
+                                            webviewPanel,
+                                            uriKey,
+                                            MarkdownEditorProvider.viewType,
+                                        );
+                                    } catch (err) {
+                                        // A failed settle costs a dot that stays
+                                        // lit, never the edit that has already
+                                        // been applied above. Report rather than
+                                        // reject: the queue's recovery only runs
+                                        // when a later edit arrives, so a
+                                        // rejection here can go unhandled.
+                                        reportError("settlePhantomDirty", err);
+                                    }
+                                }
                             });
                         }
                         break;
@@ -1504,6 +1552,10 @@ export class MarkdownEditorProvider
             // changes.
             onChangeObserved: () => this._flush.bumpVersion(uriKey),
             onChangeSettled: () => {
+                // A change that leaves the document clean (VS Code's own reload
+                // of an externally written file, a revert, a git checkout) put
+                // it on a new save point.
+                if (!document.isDirty) { this._savePointText.set(uriKey, document.getText()); }
                 const panel = this._webviewPanels.get(uriKey);
                 if (!panel) { return; }
                 // The document settled back to the webview's state within the debounce window
@@ -1526,6 +1578,10 @@ export class MarkdownEditorProvider
         // actually reached the document.
         const didSaveSubscription = vscode.workspace.onDidSaveTextDocument((saved) => {
             if (saved.uri.toString() !== uriKey) { return; }
+            // The write moved the save point; an undo back to the PREVIOUS one
+            // is now a real edit. Recorded before the ack bookkeeping below,
+            // which returns early when no flush was in flight.
+            this._savePointText.set(uriKey, saved.getText());
             const pending = this._pendingFlushAcks.get(uriKey);
             if (!pending) { return; }
             this._pendingFlushAcks.delete(uriKey);
