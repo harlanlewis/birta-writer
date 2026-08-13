@@ -33,6 +33,21 @@ function setNetwork(enabled: boolean): void {
     };
 }
 
+/** Ask, then answer, the way the plugin's idle pass and the reply do. */
+function resolveFor(
+    match: typeof REPO,
+    result: Parameters<typeof handleEmbedCardResult>[1],
+): void {
+    queueEmbedCardResolution([{ match, href: HREF }]);
+    // The LAST request, not the first: a case that resets the store mid-test
+    // leaves earlier request ids in the mock's history, and routing a reply to
+    // a cleared entry silently does nothing.
+    const requests = mockVscodeApi.postMessage.mock.calls
+        .map((c) => c[0] as { type: string; id: string })
+        .filter((m) => m.type === "resolveEmbedCard");
+    handleEmbedCardResult(requests[requests.length - 1].id, result);
+}
+
 describe("the connector card states", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -40,7 +55,21 @@ describe("the connector card states", () => {
         setNetwork(true);
     });
 
-    it("a service never connected should keep its URL-derived card and offer to connect", () => {
+    it("a card should be asked for even with nothing connected", () => {
+        // The gate that decides whether to contact GitHub is the embeds switch,
+        // not the connection: most cards are public and a public read carries
+        // no credential. This module once derived `locked` from the connection
+        // map and posted nothing, which made the extension's anonymous read
+        // unreachable — so "a request was made" is the claim worth pinning.
+        queueEmbedCardResolution([{ match: REPO, href: HREF }]);
+        const asked = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "resolveEmbedCard");
+        expect(asked).toHaveLength(1);
+    });
+
+    it("a read that came back not-visible should keep its URL-derived card and offer to connect", () => {
+        resolveFor(REPO, { state: "locked", connector: "github" });
         const card = renderEmbedCard(REPO, HREF);
         expect(text(card, ".embed-card__title")).toBe("birtalabs/birta-writer");
         const connect = card.querySelector(".embed-card__connect-btn");
@@ -48,11 +77,22 @@ describe("the connector card states", () => {
         // What the grant costs, before the user commits to the flow.
         expect(connect?.getAttribute("title")).toContain("read-only");
         expect(connect?.getAttribute("title")).toContain("also permits writes");
-        // Locked is derived locally: no message was posted for it.
-        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("a public repository should resolve with no connection and no offer", () => {
+        // The case the old gating made impossible to reach.
+        resolveFor(REPO, {
+            state: "ready",
+            connector: "github",
+            card: { title: "birtalabs/birta-writer", subtitle: "A Markdown editor" },
+        });
+        const card = renderEmbedCard(REPO, HREF);
+        expect(text(card, ".embed-card__detail")).toContain("A Markdown editor");
+        expect(card.querySelector(".embed-card__connect")).toBeNull();
     });
 
     it("clicking connect should ask the extension and name the connector", () => {
+        resolveFor(REPO, { state: "locked", connector: "github" });
         const card = renderEmbedCard(REPO, HREF);
         (card.querySelector(".embed-card__connect-btn") as HTMLElement).click();
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
@@ -62,10 +102,12 @@ describe("the connector card states", () => {
     });
 
     it("dismissing should remove the offer, and suppress it on the next card", () => {
+        resolveFor(REPO, { state: "locked", connector: "github" });
         const first = renderEmbedCard(REPO, HREF);
         (first.querySelector(".embed-card__connect-dismiss") as HTMLElement).click();
         expect(first.querySelector(".embed-card__connect")).toBeNull();
         // Quiet at scale: a document of locked links asks once, not once each.
+        resolveFor(PR, { state: "locked", connector: "github" });
         const second = renderEmbedCard(PR, HREF);
         expect(second.querySelector(".embed-card__connect")).toBeNull();
     });
@@ -89,17 +131,8 @@ describe("the connector card states", () => {
             setConnectorStates({ github: true });
         });
 
-        /** Ask, then answer, the way the plugin's idle pass and the reply do. */
-        function resolve(result: Parameters<typeof handleEmbedCardResult>[1]): void {
-            queueEmbedCardResolution([{ match: PR, href: HREF }]);
-            // The LAST request, not the first: a case that resets the store
-            // mid-test leaves earlier request ids in the mock's history, and
-            // routing a reply to a cleared entry silently does nothing.
-            const requests = mockVscodeApi.postMessage.mock.calls
-                .map((c) => c[0] as { type: string; id: string })
-                .filter((m) => m.type === "resolveEmbedCard");
-            handleEmbedCardResult(requests[requests.length - 1].id, result);
-        }
+        const resolve = (result: Parameters<typeof handleEmbedCardResult>[1]): void =>
+            resolveFor(PR, result);
 
         it("a resolved pull request should show its title, its origin, and its state", () => {
             resolve({

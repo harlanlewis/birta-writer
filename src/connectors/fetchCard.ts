@@ -101,13 +101,21 @@ export async function fetchConnectorCard(
         if (res.status === 401) {
             return { state: "expired" };
         }
-        // 403 is GitHub's rate-limit answer as well as its forbidden answer,
-        // and the anonymous limit is low enough (60/hour, keyed on the IP) that
-        // a big document can reach it. Both readings are "ask again later with
-        // more standing", which is what the connect offer says, so they share
-        // an outcome rather than guessing between them from a header.
-        if (res.status === 404 || res.status === 403) {
+        // 404 is the not-visible answer, and for GitHub it is also the
+        // private-repository answer: it replies 404 rather than 403 so an
+        // anonymous caller cannot probe for existence.
+        if (res.status === 404) {
             return { state: "notFound" };
+        }
+        // 403 is the rate-limit answer as well as the forbidden one. It counts
+        // as not-visible ONLY for an anonymous read, where connecting genuinely
+        // helps: the anonymous budget is 60/hour keyed on the IP and shared
+        // with everything else on it, against 5,000/hour for any signed-in
+        // user. For a request that already carried a credential, connecting
+        // more buys nothing — every authenticated tier shares one budget — so
+        // offering an upgrade there would be a suggestion that cannot work.
+        if (res.status === 403) {
+            return { state: token === null ? "notFound" : "error" };
         }
         if (!res.ok) {
             return { state: "error" };
