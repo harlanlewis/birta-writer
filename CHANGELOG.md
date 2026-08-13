@@ -34,6 +34,10 @@
 
 ### Fixed
 
+- A link to an `.mdx` file opens it in the editor. Following a relative link or a wikilink to one used to land in the raw text editor, because the routing that decides which editor opens a target predates MDX support. Links that name the extension, links that leave it off, and wikilinks all route to the editor now, and heading fragments on them still land on the right line. `.mdx` files also rank alongside `.md` in link-target suggestions instead of below every other file type. A link that leaves the extension off still prefers a plain `.md` file when both spellings exist.
+
+- The notification for an MDX file the editor cannot parse says where the problem is. It used to give the reason with no position at all, so a fatal parse error in a long document meant hunting for it by hand. The line and column are now included, and they count from the top of the file rather than from the end of the frontmatter, so they match what the raw editor shows you.
+
 - Links from a Notion export keep working after a converter renames the files. Notion suffixes every page's file and folder with a 32-character id, and the importers people run to tidy a vault strip those ids, which left every link inside the vault pointing at a name no longer on disk. A link that matches nothing as written is now retried with the ids removed, so it opens. A name the vault literally has always wins first, so a partly-converted vault holding both spellings still opens the one the link names, and wikilinks get the same retry.
 
 - Adding a paragraph and deleting it again leaves the file exactly as it was. Deleting a paragraph's text used to leave two blank lines where it had been, and those blank lines stayed: they reached the file on a save that landed while the emptied line still existed, and no later save could take them out again, because the editor deliberately preserves your own blank-line spacing and could not tell yours from these. No content was ever lost, but a document you only visited came back with spacing you did not write, and a diff carried noise you did not author.
