@@ -52,7 +52,9 @@ import { createToolbarLayout, type ToolbarLayout } from "./layout";
 import type { ToolbarItemId } from "./registry";
 import { computeToolbarActiveState, DETACHED_STATE, type ToolbarActiveState } from "./activeState";
 import { notifyOpenSettings, notifyOpenKeybindings, notifyResolveSyncConflict } from "@/messaging";
-import type { ToolbarConfig, FontPreset, FontStacks, ProofreadOptionKey } from "../../../shared/messages";
+import type { ToolbarConfig, FontPreset, FontStacks, ProofreadOptionKey, LogseqReason } from "../../../shared/messages";
+import { bindActivate } from "@/ui/dom";
+import { applyTooltip } from "@/ui/tooltip";
 import { type ContentWidthMode } from "../../../shared/contentWidth";
 import { type BlockHandlesMode } from "../../../shared/blockHandles";
 import './toolbar.css';
@@ -79,6 +81,8 @@ export function initToolbar(
     setDebugMode: (enabled: boolean) => void;
     /** Show/hide the disk-drift badge (file on disk changed vs unsaved edits). */
     setSyncConflict: (active: boolean) => void;
+    /** Show the Logseq badge with the reason's tooltip, or hide it (null). */
+    setLogseq: (reason: LogseqReason | null) => void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig: (config: ToolbarConfig) => void;
     /** Update the font picker's active-preset indicator (and optional stack previews). */
@@ -244,6 +248,40 @@ export function initToolbar(
     );
     syncConflictItem.style.display = "none";
 
+    // ── Logseq badge (pinned just after the disk-drift badge, not
+    //    user-placeable; hidden unless the extension says this file is being
+    //    handled as Logseq). It is a WORD rather than a glyph on purpose: the
+    //    thing it has to communicate is a format's name, and no icon says
+    //    "Logseq" without being learned first.
+    //
+    //    One treatment, three reasons (docs/DESIGN_PRINCIPLES.md, "One
+    //    treatment per meaning"). Whether the graph, the file's own content, or
+    //    the setting put the badge there changes the tooltip, never the
+    //    drawing: what the user acts on is the same in all three cases, and the
+    //    reason is what they read when they want to know why.
+    //
+    //    Deliberately absent from TOOLBAR_ITEM_IDS, so there is no
+    //    `toolbar.items.logseq` placement setting. `birta.logseq` already
+    //    decides whether this exists at all, and a second switch for the same
+    //    question is the failure "One switch, one announcement" names. The
+    //    disk-drift badge is the precedent for a pinned, non-placeable status
+    //    item. ──
+    const LOGSEQ_TOOLTIPS: Record<LogseqReason, string> = {
+        graph: t("This file is in a Logseq graph, so its outliner conventions are preserved. Click to change."),
+        content: t("This file reads as a Logseq page, so its outliner conventions are preserved. Click to change."),
+        forced: t("Every file is handled as Logseq because you set it that way. Click to change."),
+    };
+    // Built by hand rather than through createButton because the tooltip text
+    // depends on the reason, which arrives after the bar is built: this keeps
+    // the tooltip HANDLE so the text can be set later without a second binding.
+    const logseqBtn = document.createElement("button");
+    logseqBtn.className = "ui-btn tb-btn tb-logseq-btn";
+    logseqBtn.textContent = t("Logseq");
+    const logseqTip = applyTooltip(logseqBtn, "", { placement: "below" });
+    bindActivate(logseqBtn, () => notifyOpenSettings("birta.logseq"));
+    const logseqItem = wrap("logseq", logseqBtn);
+    logseqItem.style.display = "none";
+
     // ── Checks (spelling, grammar, style + the note-marker highlight) ──
     const checks = createChecksMenu(onShowProofreading);
     items.styleCheck = wrap("styleCheck", checks.el);
@@ -274,7 +312,7 @@ export function initToolbar(
     }));
 
     // ── Placement, overflow, customize mode, whole-bar visibility ──
-    layout = createToolbarLayout({ topbar, items, dbgItem, syncConflictItem });
+    layout = createToolbarLayout({ topbar, items, dbgItem, syncConflictItem, logseqItem });
 
     // Expose the toolbar-owned actions to the shared editor-command registry so
     // the command palette / context menu reach the exact same code paths.
@@ -346,6 +384,10 @@ export function initToolbar(
         },
         setDebugMode: layout.setDebugMode,
         setSyncConflict: layout.setSyncConflict,
+        setLogseq(reason: LogseqReason | null): void {
+            if (reason) { logseqTip.setText(LOGSEQ_TOOLTIPS[reason]); }
+            layout.setLogseq(reason !== null);
+        },
         applyConfig: layout.applyConfig,
         setFontPreset: typography.setFontPreset,
         setFontSize: typography.setFontSize,

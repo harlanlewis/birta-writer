@@ -198,8 +198,11 @@ describe("transformToUppercase", () => {
         run(view, transformToUppercase);
         // Assert
         const wiki = view.state.doc.nodeAt(nodePos(view, "wiki_link"))!;
-        expect(wiki.attrs["raw"]).toBe("Target|alias");
-        expect(inlineRuns(view).map((r) => r.text)).toEqual(["SEE ", " NOW"]);
+        expect(wiki.textContent).toBe("Target|alias");
+        // The raw is a run of its own since MAR-74 made it text content, and it
+        // sits between two uppercased runs still carrying its original case —
+        // which is the point: the transform reached around it, not past it.
+        expect(inlineRuns(view).map((r) => r.text)).toEqual(["SEE ", "Target|alias", " NOW"]);
     });
 
     it("a caret-only selection should return false and dispatch nothing", async () => {
@@ -384,13 +387,18 @@ describe("transformToTitleCase", () => {
     });
 
     it("an inline atom between words should start a new word", async () => {
-        // Arrange
-        const view = await makeEditor("alpha [[Link]]beta");
+        // Arrange — the wikilink's raw is lowercase on purpose: it is a file
+        // target, and title-casing it would change the bytes that serialize
+        // back to disk. Since MAR-74 that raw is real text content inside the
+        // selection, so "stays lowercase" is the assertion that proves the
+        // transform still skips it rather than merely not reaching it.
+        const view = await makeEditor("alpha [[link]]beta");
         selectAll(view);
         // Act
         run(view, transformToTitleCase);
-        // Assert — "beta" follows the atom with no space, yet starts a word.
-        expect(inlineRuns(view).map((r) => r.text)).toEqual(["Alpha ", "Beta"]);
+        // Assert — "beta" follows the atom with no space, yet starts a word,
+        // and the wikilink's source is untouched between them.
+        expect(inlineRuns(view).map((r) => r.text)).toEqual(["Alpha ", "link", "Beta"]);
     });
 
     it("each block of a multi-block selection should start a new word", async () => {

@@ -27,7 +27,7 @@ import {
 } from "@/components/pathLink/linkTargetComplete";
 import { createLinkFormatSwitch, wikiAllowedFor } from "./formatSwitch";
 import { onOutsideClick } from "@/ui/outsideClick";
-import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
+import { parseWikiRaw, wikiDisplayText, wikiLinkId, wikiRawOf } from "@/plugins/wikiLinks";
 import { embedProviderOn, recognizeProvider } from "@/utils/embedProviders";
 import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
@@ -236,7 +236,12 @@ export function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
         if (!bounds) return null;
         return {
             href,
-            text,
+            // DERIVED, never the anchor's textContent: the node holds its raw
+            // bytes as content (MAR-74), so the element carries both faces —
+            // the rendered chip and the hidden source span. Reading textContent
+            // here put `target|alias` into the text field, and converting to a
+            // markdown link wrote `[target|alias](target)` into the file.
+            text: wikiDisplayText(anchor.getAttribute("data-raw") ?? ""),
             from: bounds.from,
             to: bounds.to,
             readOnly: href.startsWith("#"),
@@ -312,8 +317,7 @@ function resolveAnchorHeading(
  * the `#slug` form so it opens through the anchor branch like any `#` link. */
 function wikiHrefOfNode(node: PMNode | null | undefined): string | null {
     if (!node || node.type.name !== "wiki_link") return null;
-    const target = String(node.attrs["target"] ?? "");
-    const heading = String(node.attrs["heading"] ?? "");
+    const { target, heading } = parseWikiRaw(wikiRawOf(node));
     if (!target) return heading ? `#${slugify(heading)}` : null;
     return heading ? `${target}#${heading}` : target;
 }
@@ -1245,8 +1249,11 @@ export function setupLinkPopup(
             // Bytes that can't live inside [[…]] would silently change the
             // document's structure on the next parse — refuse the apply.
             if (/\[\[|\]\]|[\r\n]/.test(raw)) { return; }
-            tr = tr.replaceWith(from, to, wikiType.create(attrsFromRaw(raw)));
-            newTo = from + 1; // inline atom
+            const wikiNode = wikiType.create(null, state.schema.text(raw));
+            tr = tr.replaceWith(from, to, wikiNode);
+            // The node carries its raw bytes as content (MAR-74), so its end is
+            // the two boundary tokens plus the source, not the old atom's 1.
+            newTo = from + wikiNode.nodeSize;
             isWiki = true;
         } else if (currentLink.wiki) {
             // Wiki → markdown conversion: the atom becomes linked text.

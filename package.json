@@ -124,6 +124,16 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.connectService",
+                "title": "%command.connectService.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.disconnectService",
+                "title": "%command.disconnectService.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.sendFeedback",
                 "title": "%command.sendFeedback.title%",
                 "category": "Birta Writer"
@@ -2163,6 +2173,22 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.smartLinks.description%"
+                },
+                "birta.logseq": {
+                    "order": 106.1,
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "auto",
+                        "on"
+                    ],
+                    "default": "off",
+                    "enumDescriptions": [
+                        "%config.logseq.off%",
+                        "%config.logseq.auto%",
+                        "%config.logseq.on%"
+                    ],
+                    "description": "%config.logseq.description%"
                 },
                 "birta.network.enabled": {
                     "order": 105,

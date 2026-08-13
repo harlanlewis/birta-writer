@@ -959,16 +959,10 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             border-radius: 2px;
         }
 
-        /* Wikilinks ([[target]]) — an inline atom that reads as a link; the
-           shared `a` rule below colors it, this only adds the selection ring
-           and a pointer (the atom is contenteditable=false). */
-        .wiki-link {
-            cursor: pointer;
-
-            &.ProseMirror-selectednode {
-                outline: 2px solid var(--vscode-focusBorder);
-            }
-        }
+        /* Wikilinks ([[target]]) live in components/wikiLink/wikiLink.css: the
+           node holds its raw bytes as content now (MAR-74), so its two faces
+           and their reveal state belong with the NodeView that paints them.
+           The shared `a` rule below still colors it. */
 
         /* Image references (![alt][ref]) — inline chip */
         .image-ref {
@@ -2181,6 +2175,20 @@ body.toolbar-hidden::before {
     pointer-events: auto;
 }
 
+/* And for the MAR-116 foldables. Blockquotes host their gutter directly
+   (no NodeView); the container directive and the footnote definition host
+   theirs inside their own body, beside the chrome row that survives the
+   fold. Each takes the callout's quiet-gutter guard, since all three nest. */
+.milkdown .editor blockquote:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .container-directive:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .directive-body > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .footnote-def:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .footnote-def-content > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor blockquote.collapsed > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .container-directive.collapsed > .directive-body > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .footnote-def.collapsed > .footnote-def-content > .heading-fold-gutter--foldable .heading-fold-toggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 /* Fold-affordance visibility derived from the user's own editor config
    (MAR-110, no new setting). The baseline above is VS Code's default
    `editor.showFoldingControls: "mouseover"`. */
@@ -2261,9 +2269,17 @@ body.handles-rest-hover:where(:not(.handles-quiet)) .milkdown .editor :where(.he
 }
 
 /* Markers advertise dragability; the whole page shows a grabbing cursor
-   during a session so the affordance never flickers mid-drag. */
+   during a session so the affordance never flickers mid-drag.
+
+   `touch-action: none` is what lets a finger drag a block at all (MAR-340).
+   Without it the browser claims a finger that moves off the handle as a page
+   pan and no drag session ever starts (e2e/touchBlocks goes red on its
+   removal). The handle stays tappable either way, because a tap needs no
+   touch-action, and the page still scrolls from anywhere that is not the
+   handle itself. */
 .milkdown .editor .heading-fold-marker {
     cursor: grab;
+    touch-action: none;
 }
 
 body.block-dragging,
@@ -2967,5 +2983,44 @@ body.block-marqueeing .milkdown .editor {
     color: var(--vscode-descriptionForeground);
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Connector chrome (MAR-198). The status chip states the one fact the URL
+   could not know; the connect affordance is what a locked card offers instead.
+   Both sit to the right of the text block and shrink last, so a long title
+   never pushes the state off the card. */
+.embed-card__status {
+    flex: none;
+    margin-left: auto;
+    padding: 1px 8px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: var(--ui-radius-l);
+    color: var(--vscode-foreground);
+    font-size: var(--ui-fs-s);
+    white-space: nowrap;
+}
+
+.embed-card__status--muted {
+    color: var(--vscode-descriptionForeground);
+}
+
+.embed-card__connect {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+/* The offer itself is .ui-btn--chip; only its flow inside the card row is
+   local. The dismiss is the bare .ui-btn--icon + .ui-notice__dismiss
+   composition, exactly as the network opt-in pill builds it, and needs no
+   rule of its own. */
+.embed-card__connect-btn {
+    flex: 0 0 auto;
+    padding: 1px var(--ui-space-3);
+    font: inherit;
+    font-size: var(--ui-fs-s);
     white-space: nowrap;
 }

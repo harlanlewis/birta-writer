@@ -41,10 +41,11 @@ export interface ToolbarActiveState {
     /** The caret is inside a table. */
     readonly inTable: boolean;
     /**
-     * A `wiki_link` atom is node-selected. Wikilinks (like inline math) are inline
-     * ATOMS, not marks — arrowing onto one selects the whole node — so a
-     * `rangeHasMark` probe can never see them; the toolbar lights the Link button
-     * off this instead. `marks.link` still covers real `[text](url)` links.
+     * A `wiki_link` node is node-selected OR the caret is inside its revealed
+     * raw source (the link's text content — wikiLinkEdit.ts). A wikilink is a
+     * node rather than a mark, so a `rangeHasMark` probe can never see one and
+     * the toolbar lights the Link button off this instead. `marks.link` still
+     * covers real `[text](url)` links.
      */
     readonly wikiLink: boolean;
     /**
@@ -154,6 +155,7 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
     let inTable = false;
     let inCodeBlock = false;
     let inMathSource = false;
+    let inWikiSource = false;
     let inFootnoteDef = false;
 
     // Walk the ancestor chain innermost→outermost. Each container is recorded the
@@ -184,6 +186,12 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
             // Caret inside a formula's revealed source (math_inline holds its
             // LaTeX as text content — mathInlineEdit.ts).
             inMathSource = true;
+        } else if (name === "wiki_link") {
+            // Caret inside a wikilink's revealed source (wiki_link holds its
+            // raw bytes as text content — wikiLinkEdit.ts). Clicking a wikilink
+            // reveals rather than node-selects it, so without this the Link
+            // button goes dark exactly when the user is editing the link.
+            inWikiSource = true;
         } else if (name === "footnote_definition") {
             inFootnoteDef = true;
         }
@@ -203,13 +211,15 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
         // heading-capable textblock, so the format control greys to "—" there
         // too (the table-cell / code-block treatment).
         formatApplicable:
-            !inTable && !inCodeBlock && !inMathSource &&
+            !inTable && !inCodeBlock && !inMathSource && !inWikiSource &&
             (selectedNode === null || selectedNode.isTextblock),
         list,
         quote,
         code,
         inTable,
-        wikiLink: selectedName === "wiki_link",
+        // Node-selected (⌘.) OR caret inside the revealed source, exactly as
+        // inlineMath below — clicking a wikilink does the latter.
+        wikiLink: selectedName === "wiki_link" || inWikiSource,
         // Node-selected (click/drag) OR caret inside the revealed source.
         inlineMath: selectedName === "math_inline" || inMathSource,
         imageSelected: selectedName === "image" || selectedName === "image_ref",

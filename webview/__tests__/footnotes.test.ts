@@ -38,6 +38,7 @@ import type { Node as PMNode } from "../pm";
 import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { createEditor } from "../editor";
+import { foldPluginKey } from "../plugins/foldState";
 import { insertFootnoteCommand } from "../plugins";
 import {
     computeDisplayIndex,
@@ -266,6 +267,43 @@ describe("footnote NodeViews (real editor stack)", () => {
             container.querySelectorAll<HTMLElement>(".footnote-def-badge"),
         ).find((b) => b.dataset["label"] === "note");
         expect(badge1?.textContent).toBe("2");
+    });
+
+    it("a collapsed definition should keep its badge and offer the … chip that expands it", async () => {
+        // MAR-116: the definition's LABEL is chrome held in an attr, so the
+        // fold hides the whole body the way a callout's does.
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        editor = await createEditor(container, "ref[^1]\n\n[^1]: the note body\n", () => {});
+        const view = editor.action((ctx) => ctx.get(editorViewCtx));
+        let pos = -1;
+        view.state.doc.descendants((node, offset) => {
+            if (pos === -1 && node.type.name === "footnote_definition") pos = offset;
+            return pos === -1;
+        });
+        expect(pos).toBeGreaterThanOrEqual(0);
+
+        // Act
+        view.dispatch(
+            view.state.tr
+                .setMeta(foldPluginKey, { type: "toggle", pos })
+                .setMeta("addToHistory", false),
+        );
+
+        // Assert: the marker row survives the fold, chip beside the badge.
+        const def = container.querySelector<HTMLElement>(".footnote-def")!;
+        expect(def.classList.contains("collapsed")).toBe(true);
+        expect(def.querySelector(".footnote-def-badge")?.textContent).toBe("1");
+        const chip = def.querySelector<HTMLElement>(
+            ".footnote-def-marker .footnote-fold-ellipsis",
+        );
+        expect(chip).not.toBeNull();
+
+        // Act: the chip expands, with no document edit.
+        const docBefore = view.state.doc;
+        chip!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(foldPluginKey.getState(view.state)!.folded.size).toBe(0);
+        expect(view.state.doc).toBe(docBefore);
     });
 
     function countRefs(container: HTMLElement): number {

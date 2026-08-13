@@ -410,10 +410,12 @@ export function itemMarkerSpec(listNode: any, item: any): MarkerSpec {
     return { key: "ul", icon: IconList, label: t("List item") };
 }
 
-/** The collapsed list item's `…` widget: expand is a `set` meta targeting
- * the innermost FOLDED list-item ancestor derived at CLICK time (the
- * heading-ellipsis protocol applied to items). */
-export function createItemEllipsis(view: EditorView, hiddenCount: number): HTMLElement {
+/** The `…` widget trailing a collapsed FIRST-LINE fold's visible line (a
+ * list item, a blockquote, a Notion aside): expand is a `set` meta targeting
+ * the innermost FOLDED ancestor derived at CLICK time (the heading-ellipsis
+ * protocol applied to blocks that keep a line). Innermost wins, so a chip
+ * inside nested folds always expands the one that hid it. */
+export function createStubEllipsis(view: EditorView, hiddenCount: number): HTMLElement {
     const ellipsis = createFoldEllipsis(hiddenCount, () => {
         if (!ellipsis.dom.isConnected) {
             return;
@@ -423,7 +425,7 @@ export function createItemEllipsis(view: EditorView, hiddenCount: number): HTMLE
             const $pos = view.state.doc.resolve(view.posAtDOM(ellipsis.dom, 0));
             for (let depth = $pos.depth; depth > 0; depth--) {
                 const before = $pos.before(depth);
-                if ($pos.node(depth).type.name === "list_item" && folded?.has(before)) {
+                if (folded?.has(before)) {
                     view.dispatch(
                         view.state.tr
                             .setMeta(foldPluginKey, {

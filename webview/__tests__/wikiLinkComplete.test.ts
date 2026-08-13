@@ -143,7 +143,7 @@ describe("caret wikilink autocompletion", () => {
 
         let raw: string | null = null;
         v.state.doc.descendants((node) => {
-            if (node.type.name === "wiki_link") raw = node.attrs["raw"] as string;
+            if (node.type.name === "wiki_link") raw = node.textContent;
         });
         expect(raw).toBe("uber");
         expect(editor.action(getMarkdown())).toBe("x [[uber]]\n");
@@ -183,7 +183,7 @@ describe("caret wikilink autocompletion", () => {
 
         let raw: string | null = null;
         v.state.doc.descendants((node) => {
-            if (node.type.name === "wiki_link") raw = node.attrs["raw"] as string;
+            if (node.type.name === "wiki_link") raw = node.textContent;
         });
         expect(raw).toBe("uber");
     });

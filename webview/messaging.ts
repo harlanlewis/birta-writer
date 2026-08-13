@@ -197,6 +197,26 @@ export function notifyResolveEmbedMeta(id: string, url: string): void {
 }
 
 /**
+ * Connector card resolution (rung 2, MAR-198): ask the extension to fetch the
+ * card fields a URL alone cannot know, using the credential the user connected.
+ * The reply arrives as an `embedCardResult` correlated by `id`, carrying
+ * sanitized fields or a named locked/expired/error state — never a credential.
+ * Only posted for a connector the extension has said is connected.
+ */
+export function notifyResolveEmbedCard(id: string, url: string): void {
+    vscode.postMessage({ type: "resolveEmbedCard", id, url });
+}
+
+/**
+ * The locked card's just-in-time "Connect" affordance. The extension runs the
+ * same flow the palette command runs and answers by rebroadcasting the
+ * connection map; the webview never handles the credential, or hears about it.
+ */
+export function notifyConnectService(connector: string): void {
+    vscode.postMessage({ type: "connectService", connector });
+}
+
+/**
  * Just-in-time opt-in (MAR-179): the user accepted the "Enable" affordance
  * offered when they did something that would use the network while the master
  * switch (`birta.network.enabled`) was off. The extension persists the setting

@@ -57,7 +57,7 @@ import { linkAtCaret, openLinkAtCaret } from "../linkPopup";
 import { focusImageInputAt, imageWidthControlAt, openImageLightbox } from "../imageView";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
-import { getTopbarBottom } from "../../utils/headingUtils";
+import { getTopbarBottom, slugTextOf } from "../../utils/headingUtils";
 import { hideTooltip } from "../../ui/tooltip";
 import { registerEscapeLayer } from "../../ui/escapeLayers";
 import { clampLeft, viewportSize } from "../../ui/anchoredPlacement";
@@ -794,10 +794,10 @@ export function headingAnchorSlug(doc: ProseNode, pos: number): string | null {
     if (!target || target.type.name !== "heading") {
         return null;
     }
-    const base = slugify(target.textContent);
+    const base = slugify(slugTextOf(target));
     let priorDuplicates = 0;
     doc.descendants((node: ProseNode, nodePos: number) => {
-        if (node.type.name === "heading" && nodePos < pos && slugify(node.textContent) === base) {
+        if (node.type.name === "heading" && nodePos < pos && slugify(slugTextOf(node)) === base) {
             priorDuplicates++;
         }
         return true;

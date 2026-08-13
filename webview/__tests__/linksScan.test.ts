@@ -13,7 +13,11 @@ const schema = new Schema({
     nodes: {
         doc: { content: "block+" },
         paragraph: { group: "block", content: "inline*" },
-        wiki_link: { group: "inline", inline: true, atom: true, attrs: { raw: { default: "" } } },
+        // Mirrors plugins/wikiLinks.ts: the raw bytes are text CONTENT, not an
+        // attr (MAR-74). A hand-mirrored schema drifts from the real one, so
+        // when this test fails on a node shape, fix it here rather than
+        // weakening the assertion.
+        wiki_link: { group: "inline", inline: true, content: "text*", marks: "" },
         link_definition: { group: "block", atom: true, attrs: { identifier: { default: "" }, url: { default: "" } } },
         text: { group: "inline" },
     },
@@ -72,7 +76,9 @@ describe("scanLinks", () => {
     });
 
     it("a wikilink to a file is a LOCAL destination (syntax never makes a group)", () => {
-        const doc = schema.node("doc", null, [p(schema.node("wiki_link", { raw: "README|the readme" }))]);
+        const doc = schema.node("doc", null, [
+            p(schema.node("wiki_link", null, [schema.text("README|the readme")])),
+        ]);
         const [link] = scanLinks(doc);
         expect(link!.kind).toBe("local");
         expect(link!.text).toBe("the readme");
@@ -81,7 +87,9 @@ describe("scanLinks", () => {
     });
 
     it("a bare [[#heading]] wikilink is an in-document destination", () => {
-        const doc = schema.node("doc", null, [p(schema.node("wiki_link", { raw: "#wikilinks" }))]);
+        const doc = schema.node("doc", null, [
+            p(schema.node("wiki_link", null, [schema.text("#wikilinks")])),
+        ]);
         const [link] = scanLinks(doc);
         expect(link!.kind).toBe("doc");
     });

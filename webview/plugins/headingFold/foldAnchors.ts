@@ -8,17 +8,15 @@
  */
 import type { EditorState } from "../../pm";
 import { slugify } from "../../utils/slug";
+import { slugTextOf } from "../../utils/headingUtils";
 import { getWebviewState, setWebviewState } from "../../messaging";
 import { foldPluginKey } from "../foldState";
 import {
     cachedFoldRanges,
     foldHiddenRange,
     isCalloutNode,
-    isCodeBlockNode,
     isFoldableCallout,
     isHeadingNode,
-    isListItemNode,
-    isTableNode,
 } from "./foldModel";
 
 // ─── T2 persistence (webview state bag, structural anchors) ─────────────────
@@ -34,9 +32,10 @@ export interface FoldAnchors {
     headings: string[];
     /** Root-relative child-index paths (`"2"`, `"1/0"`) for callouts. */
     callouts: string[];
-    /** Same path encoding for the other node-anchored foldables (list
-     * items, tables, code blocks — MAR-125). A separate array (not merged
-     * into `callouts`) so older persisted bags round-trip untouched. */
+    /** Same path encoding for every other node-anchored foldable (list
+     * items, tables, code blocks, blockquotes, Notion asides, directives,
+     * footnote definitions). A separate array (not merged into `callouts`)
+     * so older persisted bags round-trip untouched. */
     blocks: string[];
 }
 
@@ -51,10 +50,13 @@ export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldA
     }
     const counts = new Map<string, number>();
     doc.forEach((node: any, offset: number) => {
+        // Held before the guard: isHeadingNode narrows to ProseNodeLike, which
+        // deliberately has no `forEach`, and slugTextOf walks children.
+        const heading = node;
         if (!isHeadingNode(node)) {
             return;
         }
-        const slug = slugify((node as { textContent?: string }).textContent ?? "");
+        const slug = slugify(slugTextOf(heading));
         const occurrence = counts.get(slug) ?? 0;
         counts.set(slug, occurrence + 1);
         if (folded.has(offset)) {
@@ -64,7 +66,10 @@ export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldA
     for (const pos of folded) {
         const node = doc.nodeAt(pos);
         const isCallout = isCalloutNode(node);
-        if (!isCallout && !isListItemNode(node) && !isTableNode(node) && !isCodeBlockNode(node)) {
+        // Headings anchored by slug above; everything else that currently
+        // hides something anchors by path — asked of the model rather than a
+        // second kind list, so a widened grammar persists without an edit here.
+        if (!isCallout && (isHeadingNode(node) || foldHiddenRange(doc, pos) === null)) {
             continue;
         }
         const $pos = doc.resolve(pos);
@@ -108,10 +113,12 @@ export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> 
         const ranges = cachedFoldRanges(doc);
         const counts = new Map<string, number>();
         doc.forEach((node: any, offset: number) => {
+            // Held before the guard, for the reason above.
+            const heading = node;
             if (!isHeadingNode(node)) {
                 return;
             }
-            const slug = slugify((node as { textContent?: string }).textContent ?? "");
+            const slug = slugify(slugTextOf(heading));
             const occurrence = counts.get(slug) ?? 0;
             counts.set(slug, occurrence + 1);
             if (wanted.has(`${slug}:${occurrence}`) && ranges.get(offset)) {
@@ -132,11 +139,7 @@ export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> 
     }
     for (const encoded of anchors.blocks ?? []) {
         const hit = resolveChildPath(doc, encoded);
-        if (
-            hit &&
-            (isListItemNode(hit.node) || isTableNode(hit.node) || isCodeBlockNode(hit.node)) &&
-            foldHiddenRange(doc, hit.pos) !== null
-        ) {
+        if (hit && !isHeadingNode(hit.node) && foldHiddenRange(doc, hit.pos) !== null) {
             folded.add(hit.pos);
         }
     }

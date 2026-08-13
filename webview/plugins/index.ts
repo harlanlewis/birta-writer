@@ -55,6 +55,7 @@ export {
 // editor.ts, gated on the network master switch). Import it directly.
 export { htmlEditKeymapPlugin, htmlLivePairsPlugin } from "./htmlLivePairs";
 export { mathInlineEditPlugin } from "./mathInlineEdit";
+export { wikiLinkEditPlugin } from "./wikiLinkEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export { headingLinkCompletePlugin } from "./headingLinkComplete";
 export {

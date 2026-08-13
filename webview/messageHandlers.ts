@@ -46,6 +46,7 @@ import {
 } from "./imageUpload";
 import { handleUnfurlResult } from "./unfurl";
 import { handleEmbedMetaResult } from "./embedMeta";
+import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 
 // ── Global table wrap mode ─────────────────────────────────
@@ -96,6 +97,8 @@ export interface ToolbarController {
     setBlockHandles(mode: import("../shared/blockHandles").BlockHandlesMode): void;
     /** Show/hide the disk-drift badge (file on disk changed vs unsaved edits). */
     setSyncConflict(active: boolean): void;
+    /** Show the Logseq badge with the reason's tooltip, or hide it (null). */
+    setLogseq(reason: import("../shared/messages").LogseqReason | null): void;
 }
 
 /** Editor state-management interface. */
@@ -367,6 +370,19 @@ export function createMessageHandlers(
             // captions fill in. Render-only — never touches the document.
             handleEmbedMetaResult(msg.id, msg.title);
         },
+        embedCardResult(msg) {
+            // Connector card reply: settle the store; subscribed cards fill in
+            // their status chip and detail line. Render-only, and there is no
+            // field here a credential could arrive in.
+            handleEmbedCardResult(msg.id, msg.result);
+        },
+        connectorStateChanged(msg) {
+            // Which services are connected. Re-gating repaints every card
+            // against the new map, which is how a service connected a moment
+            // ago unlocks the cards already on screen without a reload.
+            setConnectorStates(msg.connectors);
+            regateEmbedsIfPossible();
+        },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
         },
@@ -540,6 +556,9 @@ export function createMessageHandlers(
         },
         syncConflict(msg) {
             topbarTb?.setSyncConflict(msg.state === "conflict");
+        },
+        logseqState(msg) {
+            topbarTb?.setLogseq(msg.reason);
         },
     };
 }

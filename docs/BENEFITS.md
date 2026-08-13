@@ -35,6 +35,7 @@ Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual
         - ...or quick conversions:
             - 24901 mile in km => 40074.274944
             - t = 24\*60\*60\*1000ms in days => 1
+            - t in weeks => 0.142857
             - t\*365 days in weeks => 52.142857
 
     - The answers are portable, because the equation stays plain text and any calculator can be handed it. Where notations disagree, Birta follows the overwhelming majority: `%` is modulo carrying the divisor's sign, `round` sends halves away from zero, trig is in radians, `-2 ^ 2` is `-4`. Where there is no majority, it declines to answer rather than guess. A bare `log(...)` is base 10 in spreadsheets and natural in Python, so it computes as neither. The menu offers both readings with their values, and picking one rewrites the equation to `log10` or `ln` so the meaning travels with the file.
@@ -240,6 +241,10 @@ Paste-unfurl contacts only the host of a bare URL you paste (with nothing select
 ### URL embed cards
 
 A card contacts only the named provider of a bare link on its own line: a YouTube thumbnail at render, and a title lookup at that provider's own oEmbed endpoint, so the card can name what it embeds. The player is created only when you click, whether that's YouTube in privacy mode (`youtube-nocookie.com`), a Loom or Vimeo video (Vimeo's always loads with its `dnt=1` do-not-track flag), a live Figma frame, a published Google document through Google's own embed endpoints, a Miro board's login-free live view, or a CodePen, CodeSandbox or StackBlitz playground in that provider's own embedded editor. Each provider's exact hosts are pinned in one shared table that also generates the webview's content-security-policy. Never a wildcard, never an aggregation service.
+
+A GitHub link asks `api.github.com` about the repository, issue or pull request it names, so the card can show a title, a state, and whether a pull request merged. That read is anonymous: a public repository's title is world-readable, and requiring an account to display it would ask for more than the card spends. The request is rebuilt from the id in your link rather than from the link text, goes only to GitHub's own API host, is not followed across a redirect, and nothing fetched is written into your file.
+
+Connecting your GitHub account is an upgrade on top of that, not the price of entry, and it is a separate decision from the switch above. It buys two things: private repositories, and a rate limit that is yours rather than shared with everything else on your IP address. The picker offers the narrow tier first and it is the recommended one, because it asks GitHub for no permissions at all beyond reading public information. The wider tier exists only for private repositories, and it says plainly in the row what it costs: GitHub grants no read-only access to a private repository, so that tier also permits writes. Birta only ever reads. The credential is held by VS Code's own GitHub sign-in, never by a settings file and never by the webview, which is the least trusted surface here because it renders your document's own content. Disconnecting deletes it, and a connection is something Birta records for itself, never a sign-in it inherits from another extension.
 
 ### You're asked in place, and the choice is yours alone
 

@@ -26,15 +26,18 @@ import { watchExternalDocumentChanges } from "./externalChanges";
 import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtmlAttr } from "./webviewHtml";
 import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
+import { detectLogseq } from "./utils/logseqDetect";
 import { scanHeadings } from "../shared/headingScan";
 import { extractOgTitle } from "./utils/openGraph";
 import { isPubliclyRoutableUrl } from "./utils/urlGuard";
 import { readCappedText } from "./utils/cappedRead";
 import { fetchEmbedTitle } from "./utils/embedMetaFetcher";
+import type { ConnectorService } from "./connectors/connectorService";
+import { asConnectorId, runConnectFlow } from "./connectors/commands";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import type { ToExtensionMessage, ToWebviewMessage, TextCount } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, TextCount, LogseqReason } from "../shared/messages";
 import type { EditorSelectionContext } from "../shared/agentContext";
 import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
@@ -497,6 +500,110 @@ export class MarkdownEditorProvider
         }
     }
 
+    /**
+     * The connector service (MAR-198), owned by activate() because it holds
+     * `context.secrets`. Absent until then, and absent in unit tests that
+     * construct a provider directly — every use site treats that as "no
+     * connectors", which is the same answer as "nothing connected".
+     */
+    private _connectors: ConnectorService | null = null;
+
+    public setConnectorService(service: ConnectorService): void {
+        this._connectors = service;
+    }
+
+    /**
+     * Tell every open webview which services are connected. Called when a
+     * webview reports ready, and after every connect or disconnect, so a card
+     * locked a moment ago unlocks in place rather than on the next reopen.
+     */
+    public broadcastConnectorState(): void {
+        const connectors = this._connectors;
+        if (!connectors) { return; }
+        connectors.connectionStates()
+            .then((states) => this.postToAll({ type: "connectorStateChanged", connectors: states }))
+            .catch((err) => reportError("connectorState", err));
+    }
+
+    /**
+     * Detect whether `document` belongs to a Logseq graph and tell its webview.
+     *
+     * The `birta.logseq: off` default returns before any IO and before the
+     * detector is even called, so the feature costs one setting read per open
+     * for everyone who does not use it. `auto` stats the document's ancestor
+     * directories, which is why this is a message sent AFTER `init` rather than
+     * a field baked into the launch bootstrap (see `logseqState` in
+     * shared/messages.ts).
+     *
+     * Fire-and-forget: a panel disposed mid-detection makes postToWebview
+     * throw, which is a dead editor rather than a failure worth reporting.
+     *
+     * `announceOff` is the difference between the two callers. On open, `off`
+     * sends nothing at all — the webview boots with the badge hidden, so a
+     * message saying so is the one message the default configuration could
+     * still have been paying. On a settings change it must be sent, or a panel
+     * already told "logseq" would keep the badge after the setting went off.
+     */
+    public detectLogseqFor(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        announceOff = false,
+    ): void {
+        const mode = readBirtaSetting("logseq", document.uri);
+        if (mode === "off") {
+            if (announceOff) { this._postLogseqState(panel, null); }
+            return;
+        }
+        const workspaceRoot =
+            vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? null;
+        detectLogseq(
+            mode,
+            {
+                docFsPath: document.uri.fsPath,
+                workspaceRootFsPath: workspaceRoot,
+                text: document.getText(),
+            },
+            {
+                isFile: (p) => this._statIsType(p, vscode.FileType.File),
+                isDirectory: (p) => this._statIsType(p, vscode.FileType.Directory),
+            },
+        )
+            .then((reason) => this._postLogseqState(panel, reason))
+            .catch((err) => reportError("logseqDetect", err));
+    }
+
+    /** Post to a panel that may already be gone (see detectLogseqFor). */
+    private _postLogseqState(
+        panel: vscode.WebviewPanel,
+        reason: LogseqReason | null,
+    ): void {
+        try {
+            postToWebview(panel.webview, { type: "logseqState", reason });
+        } catch {
+            // Panel disposed while detection was in flight.
+        }
+    }
+
+    /** `stat` reduced to "is it this kind of node", with missing → false. */
+    private async _statIsType(absPath: string, kind: vscode.FileType): Promise<boolean> {
+        try {
+            const st = await vscode.workspace.fs.stat(vscode.Uri.file(absPath));
+            return (st.type & kind) !== 0;
+        } catch {
+            return false;
+        }
+    }
+
+    /** Re-run Logseq detection for every open editor (the setting changed). */
+    public redetectLogseqAll(): void {
+        for (const [uriKey, panel] of this._webviewPanels) {
+            const doc = vscode.workspace.textDocuments.find(
+                (d) => d.uri.toString() === uriKey,
+            );
+            if (doc) { this.detectLogseqFor(doc, panel, true); }
+        }
+    }
+
     /** Sends a message to the active editor panel (no-op when none is active). */
     public postToActivePanel(msg: ToWebviewMessage): void {
         if (this._activePanel) { postToWebview(this._activePanel.webview, msg); }
@@ -794,6 +901,15 @@ export class MarkdownEditorProvider
                                 state: "conflict",
                             });
                         }
+                        // Which services are connected (MAR-198). Sent after
+                        // init because reading it is async (the keychain) while
+                        // the __i18n snapshot is baked synchronously into the
+                        // HTML. The webview's default is "nothing connected",
+                        // so the wait costs a locked card, never a wrong fetch.
+                        this.broadcastConnectorState();
+                        // Same placement, and the same reason: detection is
+                        // async while init is on the path to first paint.
+                        this.detectLogseqFor(document, webviewPanel);
                         break;
                     }
                     case "update":
@@ -1136,6 +1252,34 @@ export class MarkdownEditorProvider
                                 .catch((err) => reportError("resolveEmbedMeta", err));
                         }
                         break;
+                    case "resolveEmbedCard":
+                        // Connector card (rung 2, render-only): resolve against
+                        // the provider's API with the connected credential.
+                        // Always replies — a null result or a named locked /
+                        // expired / error state — so the webview's backstop
+                        // timer rarely fires. The .catch is a backstop for a
+                        // post to a disposed panel.
+                        if (message.id && message.url) {
+                            this._handleResolveEmbedCard(panel, message.id, message.url)
+                                .catch((err) => reportError("resolveEmbedCard", err));
+                        }
+                        break;
+                    case "connectService": {
+                        // The locked card's just-in-time affordance, into the
+                        // same flow the palette command runs. The connector id
+                        // is validated against the known roster, so a stale or
+                        // rogue message cannot name a service that does not
+                        // exist.
+                        const service = this._connectors;
+                        const connector = typeof message.connector === "string"
+                            ? asConnectorId(message.connector)
+                            : null;
+                        if (service && connector) {
+                            runConnectFlow(service, connector, () => this.broadcastConnectorState())
+                                .catch((err) => reportError("connectService", err));
+                        }
+                        break;
+                    }
                     case "requestFmSuggestions":
                         if (message.key !== undefined) {
                             this._handleRequestFmSuggestions(document, panel, message.key)
@@ -2072,6 +2216,22 @@ export class MarkdownEditorProvider
             networkOverride: this._networkWriteInFlight ?? undefined,
         });
         postToWebview(panel.webview, { type: "embedMetaResult", id, url, title });
+    }
+
+    /**
+     * Connector card resolution: resolve and ALWAYS reply. Recognition, the
+     * request built from validated parts, the pinned hosts, the credential and
+     * the cache all live in connectors/; this method only routes the reply.
+     * With no service (unit tests, or an activate that has not run) the answer
+     * is null, which leaves the rung-0 card exactly as it is.
+     */
+    private async _handleResolveEmbedCard(
+        panel: vscode.WebviewPanel,
+        id: string,
+        url: string,
+    ): Promise<void> {
+        const result = (await this._connectors?.resolveCard(url)) ?? null;
+        postToWebview(panel.webview, { type: "embedCardResult", id, url, result });
     }
 
     /**

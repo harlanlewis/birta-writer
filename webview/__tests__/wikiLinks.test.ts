@@ -83,14 +83,17 @@ describe("wikiDisplayText", () => {
 });
 
 describe("wiki_link node parsing", () => {
-    it("renders a wikilink as an inline atom anchor with derived attrs", async () => {
+    it("renders a wikilink as an anchor carrying its derived routing dataset", async () => {
         const { editor, container } = await makeEditor("A [[target#head|alias]] link.\n");
         const el = container.querySelector('a[data-type="wiki-link"]');
         expect(el).not.toBeNull();
         expect(el!.getAttribute("data-raw")).toBe("target#head|alias");
         expect(el!.getAttribute("data-target")).toBe("target");
         expect(el!.getAttribute("data-heading")).toBe("head");
-        expect(el!.textContent).toBe("alias");
+        // This harness has no NodeView, so the anchor is the schema's toDOM:
+        // a content hole holding the RAW bytes. The display text ("alias") is
+        // the NodeView's render face, covered in wikiLinkView.test.ts.
+        expect(el!.textContent).toBe("target#head|alias");
         await editor.destroy();
     });
 
@@ -121,9 +124,13 @@ describe("wiki_link node parsing", () => {
             if (node.isText && node.text === "y") yPos = pos;
         });
         expect(yPos).toBeGreaterThan(-1);
-        view.dispatch(view.state.tr.replaceWith(yPos, yPos + 1, type.create({
-            raw: "page|shown", target: "page", heading: "", alias: "shown",
-        })));
+        view.dispatch(
+            view.state.tr.replaceWith(
+                yPos,
+                yPos + 1,
+                type.create(null, view.state.schema.text("page|shown")),
+            ),
+        );
 
         const out = editor.action(getMarkdown());
         expect(out).toContain("[[page\\|shown]]");
@@ -198,7 +205,7 @@ describe("typing [[target]] should create a wiki_link atom", () => {
 
         let found: string | null = null;
         view.state.doc.descendants((node) => {
-            if (node.type.name === "wiki_link") found = node.attrs["raw"] as string;
+            if (node.type.name === "wiki_link") found = node.textContent;
         });
         expect(found).toBe("my page#head|shown");
         expect(editor.action(getMarkdown())).toBe("start [[my page#head|shown]]\n");

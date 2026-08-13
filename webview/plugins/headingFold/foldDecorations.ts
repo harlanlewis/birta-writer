@@ -15,23 +15,21 @@ import {
     createBlockGutter,
     createHeadingEllipsis,
     createHeadingFoldGutter,
-    createItemEllipsis,
+    createStubEllipsis,
     itemMarkerSpec,
     nestedChildSpec,
     type GutterFoldInfo,
 } from "./foldGutter";
 import {
-    calloutHasBody,
+    blockFoldExtent,
     computeFoldRanges,
     getHeadingLevel,
-    isCalloutNode,
-    isCodeBlockNode,
     isContainerNode,
+    isFirstLineContainerNode,
+    isFoldableKindNode,
     isHeadingNode,
     isListNode,
-    isTableNode,
     listItemHasDescendants,
-    tableHasBody,
     type HeadingFoldRange,
 } from "./foldModel";
 
@@ -52,6 +50,10 @@ function emitNestedChildGutter(
     parts: string[] | null,
     foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
     depth: number,
+    // Whether this subtree sits inside a LIST ITEM, where nothing but the
+    // items themselves carries fold chrome (foldModel's chrome-parity gate).
+    // Structural, so the gate costs no doc.resolve here.
+    inListItem: boolean,
 ): void {
     if (isListNode(child)) {
         // A list directly inside a container clears that container's bar(s):
@@ -61,9 +63,9 @@ function emitNestedChildGutter(
         emitItemGutters(child, childPos, decorations, parts, foldCtx, depth);
         return;
     }
+    const fold = blockFoldInfo(child, childPos, foldCtx, inListItem);
     const spec = nestedChildSpec(child);
     if (spec !== null) {
-        const fold = blockFoldInfo(child, childPos, foldCtx);
         const foldKey = foldKeyPart(fold);
         parts?.push(`c${depth}${spec.key}${foldKey}`);
         decorations?.push(
@@ -81,8 +83,11 @@ function emitNestedChildGutter(
     } else {
         parts?.push("·");
     }
+    if (decorations && isCollapsedFirstLine(child, fold)) {
+        emitFirstLineFold(child, childPos, decorations);
+    }
     if (isContainerNode(child)) {
-        emitContainerChildGutters(child, childPos, decorations, parts, foldCtx, depth + 1);
+        emitContainerChildGutters(child, childPos, decorations, parts, foldCtx, depth + 1, inListItem);
     }
 }
 
@@ -99,35 +104,79 @@ function emitContainerChildGutters(
     parts: string[] | null,
     foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
     depth = 1,
+    inListItem = false,
 ): void {
     container.forEach((child: any, offset: number) => {
-        emitNestedChildGutter(child, containerPos + 1 + offset, decorations, parts, foldCtx, depth);
+        emitNestedChildGutter(
+            child,
+            containerPos + 1 + offset,
+            decorations,
+            parts,
+            foldCtx,
+            depth,
+            inListItem,
+        );
     });
 }
 
-/** Fold info for a foldable non-heading block's gutter (callout, table,
- * code block — MAR-110/125), or null for everything else (and for
- * everything while `editor.folding` is off — zero fold chrome). Only
- * invoked from the top-level and container-children passes, which never
- * run inside list items, so the chrome-parity gate holds by construction. */
+/**
+ * Fold info for a foldable non-heading block's gutter (callout, table, code
+ * block, container directive, footnote definition, blockquote, Notion aside
+ * — MAR-110/125/116), or null for everything else, for everything inside a
+ * LIST ITEM (the chrome-parity gate: no fold chrome there, so no chevron),
+ * and for everything while `editor.folding` is off — zero fold chrome.
+ *
+ * Foldability is blockFoldExtent's answer, not a second list of per-kind
+ * body probes: a chevron the model refuses is a control that does nothing
+ * when clicked, which is what a nested callout's used to be.
+ */
 function blockFoldInfo(
     node: any,
     pos: number,
     foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
+    inListItem: boolean,
 ): GutterFoldInfo | null {
-    if (!foldCtx.enabled) {
+    if (!foldCtx.enabled || inListItem || !isFoldableKindNode(node) || isHeadingNode(node)) {
         return null;
     }
-    if (isCalloutNode(node)) {
-        return { foldable: calloutHasBody(node), collapsed: foldCtx.folded.has(pos) };
-    }
-    if (isTableNode(node)) {
-        return { foldable: tableHasBody(node), collapsed: foldCtx.folded.has(pos) };
-    }
-    if (isCodeBlockNode(node)) {
-        return { foldable: node.content.size > 0, collapsed: foldCtx.folded.has(pos) };
-    }
-    return null;
+    return { foldable: blockFoldExtent(node, pos) !== null, collapsed: foldCtx.folded.has(pos) };
+}
+
+/** Whether a block is a COLLAPSED chrome-less container, the state whose
+ * content decorations emitFirstLineFold draws. (A list item is the same
+ * grammar but reaches the helper through emitItemGutters, which already
+ * holds its own fold info.) */
+function isCollapsedFirstLine(node: any, fold: GutterFoldInfo | null): boolean {
+    return Boolean(fold?.collapsed && fold.foldable && isFirstLineContainerNode(node));
+}
+
+/**
+ * A first-line fold's content decorations: every child after the block's own
+ * first line hidden, and that line trailed by the shared `…` chip (clicking
+ * it expands). The hidden children keep their own decorations; display:none
+ * on the blocks suppresses them wholesale. Shared by list items and the
+ * chrome-less containers (blockquote, Notion aside), which fold identically.
+ */
+function emitFirstLineFold(node: any, pos: number, decorations: Decoration[]): void {
+    const hiddenCount = node.childCount - 1;
+    node.forEach((child: any, offset: number, index: number) => {
+        if (index === 0) {
+            return;
+        }
+        const childPos = pos + 1 + offset;
+        decorations.push(
+            Decoration.node(childPos, childPos + child.nodeSize, {
+                class: "heading-fold-hidden",
+            }),
+        );
+    });
+    decorations.push(
+        Decoration.widget(
+            pos + 1 + node.firstChild.nodeSize - 1,
+            (view: EditorView) => createStubEllipsis(view, hiddenCount),
+            { key: `e:i:${hiddenCount}`, side: 1 },
+        ),
+    );
 }
 
 /** The widget-key / fingerprint suffix a fold state contributes. */
@@ -222,29 +271,7 @@ function emitItemGutters(
             ),
         );
         if (collapsed && decorations) {
-            // Hide every child block after the item's first line, and trail
-            // that line with the `…` chip (the heading idiom — clicking
-            // expands). The hidden children keep their own decorations;
-            // display:none on the blocks suppresses them wholesale.
-            const hiddenCount = item.childCount - 1;
-            item.forEach((child: any, childOffset: number) => {
-                if (childOffset === 0) {
-                    return;
-                }
-                const childPos = itemPos + 1 + childOffset;
-                decorations.push(
-                    Decoration.node(childPos, childPos + child.nodeSize, {
-                        class: "heading-fold-hidden",
-                    }),
-                );
-            });
-            decorations.push(
-                Decoration.widget(
-                    itemPos + 1 + item.firstChild!.nodeSize - 1,
-                    (view: EditorView) => createItemEllipsis(view, hiddenCount),
-                    { key: `e:i:${hiddenCount}`, side: 1 },
-                ),
-            );
+            emitFirstLineFold(item, itemPos, decorations);
         }
         // The item's continuation content (everything after its first line).
         // Nested lists are unit-bearing lists of their own at the SAME
@@ -260,7 +287,15 @@ function emitItemGutters(
             if (isListNode(child)) {
                 emitItemGutters(child, childPos, decorations, parts, foldCtx, containerDepth);
             } else if (childOffset > 0) {
-                emitNestedChildGutter(child, childPos, decorations, parts, foldCtx, containerDepth + 1);
+                emitNestedChildGutter(
+                    child,
+                    childPos,
+                    decorations,
+                    parts,
+                    foldCtx,
+                    containerDepth + 1,
+                    true,
+                );
             }
         });
     });
@@ -352,7 +387,7 @@ export function structureFingerprint(
             parts.push("L");
             emitItemGutters(node, offset, null, parts, foldCtx);
         } else {
-            const fold = blockFoldInfo(node, offset, foldCtx);
+            const fold = blockFoldInfo(node, offset, foldCtx, false);
             parts.push(`${blockMarkerSpec(node)?.key ?? "·"}${foldKeyPart(fold)}`);
             if (isContainerNode(node)) {
                 emitContainerChildGutters(node, offset, null, parts, foldCtx);
@@ -393,7 +428,7 @@ export function buildHeadingFoldDecorations(
                 return;
             }
             const spec = blockMarkerSpec(node);
-            const fold = blockFoldInfo(node, offset, foldCtx);
+            const fold = blockFoldInfo(node, offset, foldCtx, false);
             if (spec !== null) {
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
@@ -413,6 +448,9 @@ export function buildHeadingFoldDecorations(
                         { key: `g:${spec.key}${foldKeyPart(fold)}`, side: -1 },
                     ),
                 );
+            }
+            if (isCollapsedFirstLine(node, fold)) {
+                emitFirstLineFold(node, offset, decorations);
             }
             if (isContainerNode(node)) {
                 emitContainerChildGutters(node, offset, decorations, null, foldCtx);

@@ -12,6 +12,8 @@ import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
 import { registerSendFeedback } from "./feedback/sendFeedback";
+import { ConnectorService } from "./connectors/connectorService";
+import { registerConnectorCommands } from "./connectors/commands";
 import { captureNavTarget } from "./searchNavigation";
 import {
     getBirtaConfiguration,
@@ -131,6 +133,17 @@ export function activate(context: vscode.ExtensionContext) {
     const wordCountStatusBar = new WordCountStatusBar();
     context.subscriptions.push(wordCountStatusBar);
     MarkdownEditorProvider.current?.setWordCountView(wordCountStatusBar);
+
+    // Embed connectors (MAR-198). Created here because this is where
+    // `context.secrets` lives: the credential custody is the service's whole
+    // reason to exist, and nothing else in the extension is handed the
+    // SecretStorage handle. Constructing it costs one object and reads no
+    // keychain entry; the first read happens when a card asks.
+    const connectors = new ConnectorService(context.secrets);
+    MarkdownEditorProvider.current?.setConnectorService(connectors);
+    registerConnectorCommands(context, connectors, () => {
+        MarkdownEditorProvider.current?.broadcastConnectorState();
+    });
 
     // Coding-agent bridge: expose the WYSIWYG editor's live file + selection to
     // agents that read vscode.window.activeTextEditor (undefined for a custom
@@ -452,6 +465,12 @@ export function activate(context: vscode.ExtensionContext) {
                     type: "setDebugMode",
                     enabled: v,
                 });
+            }
+            if (e.affectsConfiguration("birta.logseq")) {
+                // Per-document, so this re-runs detection rather than
+                // broadcasting one value: turning it on has to decide the
+                // question separately for each open file.
+                MarkdownEditorProvider.current?.redetectLogseqAll();
             }
             if (e.affectsConfiguration("birta.tableWrap")) {
                 MarkdownEditorProvider.current?.postToAll({

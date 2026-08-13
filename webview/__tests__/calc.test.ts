@@ -13,6 +13,7 @@ import {
     convertUnit,
     evaluateCalc,
     isCalcStructurallyValid,
+    isUnitForm,
     detectArrowExpression,
     parseDefinition,
     buildScopeFromLines,
@@ -706,6 +707,74 @@ describe("buildScopeFromLines", () => {
         const scope = buildScopeFromLines(["# Heading", "some prose", "y = 7"]);
         expect(scope.get("y")).toBe(7);
         expect(scope.size).toBe(1);
+    });
+});
+
+describe("unit-tagged variables", () => {
+    it("a definition whose RHS converts should let the bare variable convert again", () => {
+        const scope = buildScopeFromLines(["t = 24*60*60*1000 ms in days"]);
+        expect(scope.get("t")).toBe(1);
+        expect(evaluateCalc("t in weeks", scope)).toBeCloseTo(1 / 7, 12);
+        expect(formatCalcResult(evaluateCalc("t in weeks", scope)!)).toBe("0.142857");
+        expect(evaluateCalc("t to weeks", scope)).toBeCloseTo(1 / 7, 12); // `to` reads the same
+    });
+
+    it("an untagged variable should never convert", () => {
+        expect(evaluateCalc("t in weeks", buildScopeFromLines(["t = 5"]))).toBeNull();
+    });
+
+    it("a redefinition should clear the tag, never leave an old unit on a new number", () => {
+        const scope = buildScopeFromLines(["t = 1 day in days", "t = 5"]);
+        expect(scope.get("t")).toBe(5);
+        expect(evaluateCalc("t in weeks", scope)).toBeNull();
+    });
+
+    it("a tag should chain: a conversion of a tagged variable is itself tagged", () => {
+        const scope = buildScopeFromLines(["t = 1 day in days", "u = t in weeks"]);
+        expect(evaluateCalc("u in days", scope)).toBeCloseTo(1, 12);
+    });
+
+    it("incompatible dimensions should refuse rather than guess", () => {
+        expect(evaluateCalc("t in kg", buildScopeFromLines(["t = 1 day in days"]))).toBeNull();
+    });
+
+    it("the tag should NOT survive arithmetic — restating the unit is the way", () => {
+        const scope = buildScopeFromLines(["t = 1 day in days", "u = t * 2"]);
+        expect(scope.get("u")).toBe(2);
+        expect(evaluateCalc("u in weeks", scope)).toBeNull();
+        // The workaround the refusal leaves standing, and it computes today.
+        expect(evaluateCalc("t * 2 days in weeks", scope)).toBeCloseTo(2 / 7, 12);
+    });
+
+    it("a number in front should still mean the next word is a UNIT, not a variable", () => {
+        // `t` is both a tagged duration here and the tonne. The two shapes are
+        // disjoint — a numeric expression in front is a unit conversion, and
+        // nothing else — so the collision costs nothing either way.
+        const scope = buildScopeFromLines(["t = 1 day in days"]);
+        expect(evaluateCalc("2 t in kg", scope)).toBe(2000);
+        expect(evaluateCalc("t in kg", scope)).toBeNull(); // a day is not a mass
+    });
+
+    it("the shape should count as a unit form — its premise is the catalog", () => {
+        // What tells the stale-cue classifier to DEFER a line while the lazy
+        // unit engine is cold, where every conversion answers null.
+        expect(isUnitForm("t in weeks")).toBe(true);
+        expect(isUnitForm("t * 2")).toBe(false);
+    });
+
+    it("the bare-variable shape should be structurally valid, so `=>` can offer it", () => {
+        expect(isCalcStructurallyValid("t in weeks")).toBe(true);
+        expect(isCalcStructurallyValid("pay in cash")).toBe(false); // `cash` is no unit
+        expect(detectArrowExpression("t in weeks =>")?.expr).toBe("t in weeks");
+        // A prose lead-in trims to the conversion, not past it to a bare `weeks`.
+        expect(detectArrowExpression("the total t in weeks =>")?.expr).toBe("t in weeks");
+    });
+
+    it("an unresolved conversion should name its VARIABLE, never the keyword", () => {
+        // What the broken-cue message says, and what the mid-edit guard asks
+        // about: `in` and `weeks` are not names a definition could restore.
+        expect(unresolvedVariables("t in weeks", new Map())).toEqual(["t"]);
+        expect(unresolvedVariables("t in weeks", new Map([["t", 1]]))).toEqual([]);
     });
 });
 

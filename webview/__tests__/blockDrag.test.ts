@@ -24,6 +24,7 @@ import {
 } from "../components/blockMenu";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey } from "../plugins/headingFold";
+import { dispatchMouseGesture } from "./helpers/pointerGesture";
 
 let editors: Editor[] = [];
 let activeEditor: Editor | null = null;
@@ -263,11 +264,7 @@ describe("drag session robustness", () => {
     function marker(): HTMLButtonElement {
         return document.querySelector<HTMLButtonElement>(".heading-fold-marker")!;
     }
-    const mouse = (
-        target: EventTarget,
-        type: string,
-        opts: MouseEventInit,
-    ) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
+    const mouse = dispatchMouseGesture;
 
     it("releasing the button outside the window should end the session", async () => {
         const editor = await makeEditor("Alpha\n\nBeta");
@@ -329,11 +326,7 @@ describe("drop-zone providers", () => {
     function marker(): HTMLButtonElement {
         return document.querySelector<HTMLButtonElement>(".heading-fold-marker")!;
     }
-    const mouse = (
-        target: EventTarget,
-        type: string,
-        opts: MouseEventInit,
-    ) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
+    const mouse = dispatchMouseGesture;
 
     /** A stub zone: pure coordinate math, so jsdom's zero-rect layout is
      * irrelevant — everything right of x=100 is "inside". */

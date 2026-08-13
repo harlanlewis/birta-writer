@@ -11,6 +11,7 @@ import type { BlockHandlesMode } from "./blockHandles";
 import type { FoldingControlsMode } from "./foldingControls";
 import type { MermaidThemeMode } from "./mermaid";
 import type { PlantUmlThemeMode } from "./plantuml";
+import type { EmbedCardResult } from "./connectors";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -44,6 +45,21 @@ export type TableWrapMode = "none" | "normal" | "aggressive";
  * format never changes while it is open, so only `init` carries it.
  */
 export type DocumentFormat = "markdown" | "mdx";
+
+/**
+ * Logseq handling, matching the `birta.logseq` enum. `off` runs no detection
+ * at all; `auto` decides per document; `on` forces the treatment for a page
+ * opened outside its graph.
+ */
+export type LogseqMode = "off" | "auto" | "on";
+
+/**
+ * Why a document is being handled as Logseq. Carried on `logseqState` because
+ * the badge's tooltip has to say which of the three it is: a user who sees the
+ * badge on a file they did not expect needs to know whether the graph, the
+ * file's own content, or their own setting put it there.
+ */
+export type LogseqReason = "graph" | "content" | "forced";
 
 /** TOC dock side, matching the `birta.tocPosition` enum. */
 export type TocPosition = "left" | "right";
@@ -240,6 +256,20 @@ export type ToExtensionMessage =
     // `embedMetaResult` (null title on any failure/gate). Nothing fetched here
     // is ever written to the document; it decorates the card's caption.
     | { type: "resolveEmbedMeta"; id: string; url: string }
+    // Embed-card CONNECTOR resolution (rung 2, render-only; MAR-198): ask the
+    // provider's own API, with the credential the user connected, for the card
+    // fields a URL alone cannot know. Same discipline as resolveEmbedMeta and
+    // one step stricter: `url` only SELECTS a connector, the request is rebuilt
+    // from validated parts, and the credential never crosses back — the reply
+    // carries sanitized card fields or a named locked/expired/error state.
+    // The webview only posts this for a connector it has been told is
+    // connected, so a disconnected service costs no message and no fetch.
+    | { type: "resolveEmbedCard"; id: string; url: string }
+    // The locked card's just-in-time "Connect" affordance, and the palette
+    // command's twin: run the connect flow for one service. No credential is
+    // named here and none comes back; the extension replies by rebroadcasting
+    // `connectorStateChanged`.
+    | { type: "connectService"; connector: string }
     // The webview's per-document view-state bag (fold anchors, scroll,
     // frontmatter collapse), mirrored to the extension so it survives the
     // raw-editor round trip (see the init message's viewState note). Never
@@ -434,6 +464,31 @@ export type ToWebviewMessage =
     // echoes the request target; `id` correlates. Render-only — the webview
     // caches it for card captions and never touches the document with it.
     | { type: "embedMetaResult"; id: string; url: string; title: string | null }
+    // Reply to `resolveEmbedCard`: sanitized card fields, or the named state
+    // that says why there are none. `result` is null when the URL has no
+    // authenticated rung at all (unrecognized, no connector, a shape the API
+    // cannot improve on, or a closed gate), which means "leave the rung-0 card
+    // alone". Render-only: nothing here reaches the document.
+    | { type: "embedCardResult"; id: string; url: string; result: EmbedCardResult | null }
+    // Which services the user has connected, as a connector id to boolean map.
+    // Sent once when a webview reports ready and again after every connect or
+    // disconnect, so a card that was locked a moment ago unlocks in place. It
+    // is the webview's whole picture of connection state: no credential, and
+    // no way to derive one.
+    | { type: "connectorStateChanged"; connectors: Record<string, boolean> }
+    // Whether this document is handled as Logseq, and why (`reason` is null
+    // when it is not). Sent after `init` for the same reason
+    // connectorStateChanged is: detection stats the document's ancestor
+    // directories, which is async, while `init` is on the path to first paint.
+    // The webview's default is "not Logseq", so the wait costs a badge that
+    // appears a beat late, never a wrong claim about the file. Re-sent to every
+    // open editor when `birta.logseq` changes.
+    //
+    // A consumer that needs the flag while PARSING the init content (MAR-131's
+    // round-trip handling) cannot read it here — it arrives after. Moving
+    // detection ahead of `init` is that ticket's call to make, and it buys the
+    // earlier flag at the cost of an await on the open path.
+    | { type: "logseqState"; reason: LogseqReason | null }
     | { type: "setTableWrap"; wrap: TableWrapMode }
     // Live master-network-switch update (settings UI edit or the just-in-time
     // opt-in accepted in ANOTHER webview): flips `window.__i18n.network` so
