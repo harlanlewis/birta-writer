@@ -440,6 +440,11 @@ export type ToWebviewMessage =
     // time (not at plugin composition): a settings-UI edit, palette toggle
     // command, or another webview's menu switch reaches every open editor.
     | { type: "featureGateChanged"; gate: "calcEnabled" | "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl" | "pasteUnfurlAutoApply" | "embedsEnabled" | "frontmatterAddButton"; enabled: boolean }
+    // Live update for the per-provider embed roster. A map rather than a
+    // featureGateChanged boolean because the whole roster arrives at once:
+    // VS Code reports "birta.embeds.providers" changed without saying which
+    // provider, so the current map is what there is to send.
+    | { type: "embedProvidersChanged"; providers: Record<string, boolean> }
     // Live update for birta.copyFormat (a string gate, read at copy time).
     | { type: "copyFormatChanged"; format: "markdown" | "richText" }
     // Live update for birta.pasteFormat (a string gate, read at paste time).

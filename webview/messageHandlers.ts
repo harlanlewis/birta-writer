@@ -412,6 +412,15 @@ export function createMessageHandlers(
                 refreshFrontmatterEmptyState();
             }
         },
+        embedProvidersChanged(msg) {
+            // Same read-at-use-time shape as the gates above: replacing the
+            // __i18n map is the whole update, and the re-gate repaints the
+            // documents already open.
+            if (window.__i18n) {
+                window.__i18n.embedProviders = msg.providers;
+            }
+            regateEmbedsIfPossible();
+        },
         setBlockHandles(msg) {
             applyBlockHandles(msg.mode);
             topbarTb?.setBlockHandles(msg.mode);

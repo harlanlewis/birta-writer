@@ -28,7 +28,7 @@ import {
 import { createLinkFormatSwitch, wikiAllowedFor } from "./formatSwitch";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
-import { recognizeProvider } from "@/utils/embedProviders";
+import { embedProviderOn, recognizeProvider } from "@/utils/embedProviders";
 import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { trackEditorReflow } from "@/ui/editorReflow";
@@ -1306,7 +1306,11 @@ export function setupLinkPopup(
     function embedEligible(link: LinkInfo): boolean {
         if (link.readOnly || link.wiki) { return false; }
         if (!(window.__i18n?.embedsEnabled ?? true)) { return false; }
-        if (!recognizeProvider(link.href)) { return false; }
+        const match = recognizeProvider(link.href);
+        // Offering a card for a provider switched off in the roster would be a
+        // button that does nothing: the decoration pass skips that provider, so
+        // the converted link would sit there as plain text.
+        if (!match || !embedProviderOn(match.kind)) { return false; }
         const view = liveView();
         if (!view) { return false; }
         try {

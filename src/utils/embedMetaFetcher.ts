@@ -33,6 +33,7 @@ import { sanitizeTitle } from "./openGraph";
 import { readCappedText } from "./cappedRead";
 import {
     canonicalEmbedUrl,
+    embedProviderEnabled,
     OEMBED_HOSTS,
     oembedEndpoint,
     recognizeEmbed,
@@ -75,6 +76,14 @@ export function fetchEmbedTitle(
     }
     const match = recognizeEmbed(url);
     if (!match) {
+        return Promise.resolve(null);
+    }
+    // Same defense in depth, one level finer: the webview does not queue a
+    // resolution for a provider switched off in the roster, so reaching here
+    // with one means a stale or rogue message. Checked after recognition
+    // because the roster is keyed by kind, and still before the cache so a
+    // later re-enable is not poisoned by a cached "gate closed" null.
+    if (!embedProviderEnabled(match.kind, readBirtaSetting("embedProviders"))) {
         return Promise.resolve(null);
     }
     const key = `${match.kind}:${match.id}`;

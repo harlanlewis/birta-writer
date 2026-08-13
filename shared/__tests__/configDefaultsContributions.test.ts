@@ -6,11 +6,13 @@
  * setting without teaching the snapshot about it (or letting either side's
  * default drift) fails the build.
  *
- * The per-item `toolbar.items.*` / `floatingToolbar.items.*` keys are excluded
- * here: their snapshot fields are the nested object reads (code default `{}`,
- * VS Code merges the contributed per-item defaults in), and their per-item
- * drift is pinned by toolbarDefaultsContributions.test.ts /
- * floatingToolbarDefaultsContributions.test.ts.
+ * The per-item `toolbar.items.*` / `floatingToolbar.items.*` /
+ * `embeds.providers.*` keys are excluded here: their snapshot fields are the
+ * nested object reads (code default `{}`, VS Code merges the contributed
+ * per-item defaults in), and their per-item drift is pinned by
+ * toolbarDefaultsContributions.test.ts /
+ * floatingToolbarDefaultsContributions.test.ts /
+ * embedProviderRoster.test.ts.
  */
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
@@ -27,12 +29,13 @@ const props: Record<string, { default?: unknown }> =
     pkg.contributes.configuration.properties;
 
 /** Per-item keys covered by their own registry drift tests, not the snapshot. */
-const PER_ITEM_KEY = /^birta\.(toolbar|floatingToolbar)\.items\./;
+const PER_ITEM_KEY = /^birta\.((toolbar|floatingToolbar)\.items|embeds\.providers)\./;
 
 /** Snapshot fields whose setting is the nested map itself (no contributed key). */
 const NESTED_MAP_FIELDS = new Set<keyof BirtaConfig>([
     "toolbarPlacements",
     "floatingToolbarItems",
+    "embedProviders",
 ]);
 
 const settingToField = new Map<string, keyof BirtaConfig>(

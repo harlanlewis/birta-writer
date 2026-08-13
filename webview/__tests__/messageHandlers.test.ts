@@ -166,6 +166,51 @@ describe("requestSwitchToTextEditor handler", () => {
     });
 });
 
+describe("embedProvidersChanged handler", () => {
+    afterEach(() => {
+        delete window.__i18n;
+    });
+
+    it("a roster message should replace the map so open documents re-gate without a reload", () => {
+        // The live path MAR-183 exists for: without it, switching a provider
+        // off would leave its cards on screen until the file was reopened.
+        // Swapping the __i18n map IS the update; the repaint is the re-gate,
+        // which needs a live view and is covered by embedDecorations.
+        window.__i18n = {
+            translations: {},
+            embedProviders: { figma: false },
+        } as unknown as typeof window.__i18n;
+        const handlers = createMessageHandlers(stubDeps());
+
+        handlers.embedProvidersChanged?.(
+            { type: "embedProvidersChanged", providers: { miro: false } } as Extract<
+                ToWebviewMessage,
+                { type: "embedProvidersChanged" }
+            >,
+            document.createElement("div"),
+        );
+
+        // Replaced wholesale, not merged: VS Code reports the section changed
+        // without saying which provider, so the incoming map is the whole
+        // truth. A merge would strand figma:false after it was switched back on.
+        expect(window.__i18n?.embedProviders).toEqual({ miro: false });
+    });
+
+    it("an absent bootstrap should be a no-op rather than a throw", () => {
+        delete window.__i18n;
+        const handlers = createMessageHandlers(stubDeps());
+        expect(() =>
+            handlers.embedProvidersChanged?.(
+                { type: "embedProvidersChanged", providers: { miro: false } } as Extract<
+                    ToWebviewMessage,
+                    { type: "embedProvidersChanged" }
+                >,
+                document.createElement("div"),
+            ),
+        ).not.toThrow();
+    });
+});
+
 describe("scrollToLine handler", () => {
     // Arriving from the raw editor or a search hit moves the CARET too, not
     // just the scroll position — otherwise typing after a switch lands at the

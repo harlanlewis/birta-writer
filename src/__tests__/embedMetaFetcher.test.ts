@@ -14,11 +14,16 @@ const YT = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 const LOOM = `https://www.loom.com/share/${"0".repeat(32)}`;
 
 /** Configure the birta config mock's gates (defaults pass everything else). */
-function mockGates(opts: { network: boolean; embeds?: boolean }): void {
+function mockGates(opts: {
+    network: boolean;
+    embeds?: boolean;
+    providers?: Record<string, boolean>;
+}): void {
     (vscode.workspace.getConfiguration as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
         get: vi.fn((key: string, defaultValue?: unknown) => {
             if (key === "network.enabled") { return opts.network; }
             if (key === "embeds.enabled") { return opts.embeds ?? true; }
+            if (key === "embeds.providers") { return opts.providers ?? {}; }
             return defaultValue;
         }),
         inspect: vi.fn(() => undefined),
@@ -64,6 +69,28 @@ describe("fetchEmbedTitle", () => {
         vi.stubGlobal("fetch", fetchSpy);
         expect(await fetchEmbedTitle(YT)).toBeNull();
         expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("a provider switched off in the roster should resolve null with ZERO fetches", async () => {
+        // Defense in depth: the webview never queues a resolution for a
+        // provider the user switched off, so arriving here means a stale or
+        // rogue message. The extension must not be the one that contacts the
+        // host the user just declined.
+        mockGates({ network: true, providers: { youtube: false } });
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+        expect(await fetchEmbedTitle(YT)).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("a provider switched off should not silence a DIFFERENT provider", async () => {
+        // The paired half: a gate that read the roster but ignored the kind
+        // would pass the assertion above by refusing everything.
+        mockGates({ network: true, providers: { youtube: false } });
+        const fetchSpy = vi.fn(async () => jsonResponse({ title: "Loom clip" }));
+        vi.stubGlobal("fetch", fetchSpy);
+        expect(await fetchEmbedTitle(LOOM)).toBe("Loom clip");
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
     it("an unrecognized URL should resolve null with ZERO fetches", async () => {

@@ -112,7 +112,7 @@ webview/i18n/index.ts                         t() / kbd() translation functions
 webview/ui/fullscreenSurface.ts               THE fullscreen shell (grounds + control geography) every lightbox composes
 webview/ui/icons.ts                           SVG icons
 webview/ui/tooltip.ts                         Tooltip component
-webview/components/toolbar/index.ts           Top main toolbar
+webview/components/toolbar/index.ts           Top main toolbar: composition root over the sibling modules (layout, menus, typography, image panel)
 webview/components/selectionToolbar/index.ts  Floating selection toolbar
 webview/components/table/tableView.ts         Table NodeView (overlay chrome: grips, insert bars, drag-reorder)
 webview/components/table/reorder.ts           Pure row/column block-reorder + drop-index helpers

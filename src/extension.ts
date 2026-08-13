@@ -507,6 +507,16 @@ export function activate(context: vscode.ExtensionContext) {
                     enabled: readBirtaSetting("embedsEnabled"),
                 });
             }
+            if (e.affectsConfiguration("birta.embeds.providers")) {
+                // The roster needs its own live path for the same reason the
+                // feature key did (MAR-183): without one, switching a provider
+                // off would leave its cards on screen until the file was
+                // reopened. The webview re-runs the decoration pass on receipt.
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "embedProvidersChanged",
+                    providers: readBirtaSetting("embedProviders"),
+                });
+            }
             if (e.affectsConfiguration("birta.frontmatterAddButton")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "featureGateChanged",

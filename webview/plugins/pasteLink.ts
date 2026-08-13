@@ -42,7 +42,7 @@ import { openLinkEditor } from "@/components/linkPopup";
 import { offerNetworkOptIn } from "@/components/networkOptIn";
 import { notifyUnfurl } from "@/messaging";
 import { registerPendingUnfurl } from "@/unfurl";
-import { providerFor, recognizeProvider } from "@/utils/embedProviders";
+import { embedProviderOn, providerFor, recognizeProvider } from "@/utils/embedProviders";
 import { t } from "@/i18n";
 
 /** Scheme URL (https://…, ftp://…, and the authority-less mailto:). */
@@ -248,7 +248,12 @@ function handleEmptySelectionPaste(
     // the fetch FAILS. Ownership keys off the embed FEATURE flag, not the master
     // switch: with network off the card is what the user gets once they opt in,
     // so the title is still the wrong thing to fetch.
-    const providerMatch = embedsFeatureEnabled() ? recognizeProvider(href) : null;
+    // A provider switched OFF in the roster releases its links the same way
+    // the feature flag does: no card will ever render for them, so unfurl
+    // titles them like any other URL. Ownership has to track the roster or a
+    // disabled provider's links become untouchable — no card, and no title.
+    const recognized = embedsFeatureEnabled() ? recognizeProvider(href) : null;
+    const providerMatch = recognized && embedProviderOn(recognized.kind) ? recognized : null;
     if (providerMatch) {
         if (!networkEnabled() && providerFor(providerMatch.kind).needsNetwork) {
             // Offer the master switch for the CARD, not for a title fetch.

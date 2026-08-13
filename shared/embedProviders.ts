@@ -707,6 +707,42 @@ const EXTRACTORS: readonly { kind: EmbedKind; extract: (url: string) => string |
 ];
 
 /**
+ * Every provider kind, in recognition order. Derived from EXTRACTORS rather
+ * than written out again, so the roster cannot drift from what the recognizer
+ * can actually match: a kind absent here is a kind no URL resolves to.
+ * `embedProviderContributions.test.ts` walks this to pin one contributed
+ * setting per provider.
+ */
+export const EMBED_KINDS: readonly EmbedKind[] = EXTRACTORS.map(({ kind }) => kind);
+
+/** Setting key, under the `birta.` prefix, for one provider's switch. */
+export function embedProviderSettingKey(kind: EmbedKind): string {
+    return `embeds.providers.${kind}`;
+}
+
+/**
+ * Is this one provider switched on (birta.embeds.providers.<kind>)?
+ *
+ * The roster is a layer BENEATH the two consent gates, never a replacement for
+ * them: `birta.network.enabled` still governs every request and
+ * `birta.embeds.enabled` still governs whether cards exist at all. This only
+ * answers which providers the user wants among those already permitted, which
+ * is why it is safe for an absent entry to mean ON.
+ *
+ * Absent means ON deliberately. VS Code merges the contributed per-provider
+ * defaults, so a live read is normally complete; a PARTIAL map means a webview
+ * booted before a provider existed, and failing closed there would silently
+ * blank every card the user already had. Failing open costs nothing the
+ * consent gates were not already holding.
+ */
+export function embedProviderEnabled(
+    kind: EmbedKind,
+    providers: Record<string, boolean> | undefined,
+): boolean {
+    return providers?.[kind] !== false;
+}
+
+/**
  * Recognize which provider (if any) a bare link href points at. Returns the
  * provider kind and stable id, or null when no provider matches. Pure and
  * deterministic; both sides call this (the webview via its presentation
