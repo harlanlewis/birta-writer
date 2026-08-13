@@ -282,6 +282,14 @@ export async function run({ page, check, baseUrl }) {
     check("menu tracks its marker through a scroll",
         glued.menu && glued.marker && glued.tracks === true, JSON.stringify(glued));
     await page.keyboard.press("Escape");
+    // Put the page back at the top. The wheel above really does scroll now
+    // that #editor carries a scrollable tail band, and every case below
+    // clicks the FIRST block's marker by viewport coordinate — which lands
+    // above the window, on nothing, while the page stays where the wheel left
+    // it. (A short document could not scroll at all before that band existed,
+    // which is what made the reset unnecessary rather than correct.)
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(100);
 
     // ── 5b. Small viewport: the menu fits the available band and scrolls ──
     // (Regression: it used to clamp to y=8, sliding under the fixed topbar

@@ -354,7 +354,21 @@ export async function run({ page, check, baseUrl }) {
     // hangs over the tail paragraph's midpoint.
     await page.locator(".ProseMirror p").last().click({ position: { x: 10, y: 5 } });
     await page.waitForTimeout(150); // let ProseMirror settle the click's text selection
-    await page.keyboard.press("End"); // the edge click lands at line start
+    // The edge click lands at line start; collapse to the end of the line by
+    // hand rather than with End, which Chromium hands to the scroller first and
+    // only lets through as a caret move when the page cannot scroll that way —
+    // and #editor's tail band means it usually can.
+    await page.evaluate(() => {
+        const ps = document.querySelectorAll(".ProseMirror p");
+        const node = ps[ps.length - 1].lastChild;
+        const range = document.createRange();
+        range.setStart(node, node.nodeValue.length);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    });
+    await page.waitForTimeout(150);
     await page.keyboard.type(" appended");
     await page.waitForTimeout(600);
     posted = await updates();

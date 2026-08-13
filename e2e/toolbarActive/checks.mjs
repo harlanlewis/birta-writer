@@ -55,6 +55,10 @@ export async function run({ page, check, baseUrl }) {
             while ((n = walk.nextNode())) {
                 const i = n.textContent.indexOf(needle);
                 if (i >= 0) {
+                    // Centre it first: the click is by viewport coordinate, and
+                    // #editor's tail band leaves the page free to be scrolled
+                    // anywhere by an earlier case, or by the caret itself.
+                    n.parentElement.scrollIntoView({ block: "center" });
                     const r = document.createRange();
                     r.setStart(n, i + Math.min(2, needle.length));
                     r.setEnd(n, i + Math.min(3, needle.length));

@@ -48,24 +48,56 @@ export async function run({ page, check, baseUrl }) {
         olAll: document.querySelectorAll(".ProseMirror ol").length,
     }));
     /**
-     * Click, then let ProseMirror read the click's text selection out of the
-     * DOM. The read is deferred (a `selectionchange` the observer flushes on a
-     * later tick), so a keystroke sent immediately after the click acts on the
-     * editor's PREVIOUS selection — for a freshly-booted document, position 1.
-     * Without this the whole suite silently exercises the first item instead of
-     * the one it clicked, and still produces plausible-looking lists. The same
-     * settle wait is why imageView's checks carry one.
+     * Collapse the caret to the start or end of a block's text — `selector`, or
+     * the block the caret is already in when it is null. ProseMirror reads the
+     * DOM selection back on `selectionchange`, so this is an ordinary caret
+     * placement, just a deterministic one.
+     *
+     * The settle wait after it is load-bearing: that read is deferred to a later
+     * tick, so a keystroke sent immediately acts on the editor's PREVIOUS
+     * selection — for a freshly-booted document, position 1. Without it the
+     * whole suite silently exercises the first item instead of the one it named,
+     * and still produces plausible-looking lists.
+     *
+     * Home and End cannot do this job. Chromium hands them to the scroller
+     * first and only falls back to moving the caret when the page cannot scroll
+     * any further that way, so with `#editor`'s scrollable tail band under
+     * the document they move the caret exactly when the page happens to already
+     * be parked at that end. That reads as an intermittent test.
      */
-    const clickInto = async (selector) => {
-        await page.click(selector);
+    const placeCaret = async (selector, side) => {
+        // Resolved to a handle first: these selectors use Playwright's
+        // :has-text(), which querySelector cannot parse.
+        const host = selector ? await page.locator(selector).first().elementHandle() : null;
+        const ok = await page.evaluate(({ host, side }) => {
+            const target = host
+                ?? window.getSelection().anchorNode?.parentElement?.closest("p, li, h1, h2, h3");
+            if (!target) return false;
+            const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+            let first = null, last = null;
+            while (walker.nextNode()) {
+                first ??= walker.currentNode;
+                last = walker.currentNode;
+            }
+            const node = side === "end" ? last : first;
+            if (!node) return false;
+            document.querySelector(".ProseMirror").focus();
+            const range = document.createRange();
+            range.setStart(node, side === "end" ? node.nodeValue.length : 0);
+            range.collapse(true);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return true;
+        }, { host, side });
         await page.waitForTimeout(150);
+        return ok;
     };
 
     // ── 1. The motivating gesture: a nested ordered list, keyboard only. ──
     // Caret at the end of "steps", Enter for a fresh sibling item, Tab to
     // indent it into a sublist, then type the marker.
-    await clickInto(".ProseMirror li:has-text('steps')");
-    await page.keyboard.press("End");
+    await placeCaret(".ProseMirror li:has-text('steps')", "end");
     await page.keyboard.press("Enter");
     await page.keyboard.press("Tab");
     await page.keyboard.type("1. Rinse");
@@ -93,8 +125,7 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 3. A marker on a top-level item splits its list — three blocks, which
     // is what the bytes say, and the user can see it. ──
-    await clickInto(".ProseMirror li:has-text('notes') p");
-    await page.keyboard.press("Home");
+    await placeCaret(".ProseMirror li:has-text('notes') p", "start");
     await page.keyboard.type("1. ");
     const split = await waitForUpdate((doc) => hasLine(doc, "1. notes"));
     check("a marker typed on a top-level item retypes that item alone",
@@ -111,14 +142,13 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 5. A task marker ticks a box from the keyboard, on the same line it
     // was typed on. ──
-    await clickInto(".ProseMirror li:has-text('groceries') p");
-    await page.keyboard.press("Home");
+    await placeCaret(".ProseMirror li:has-text('groceries') p", "start");
     await page.keyboard.type("[ ] ");
     const tasked = await waitForUpdate((doc) => hasLine(doc, "- [ ] groceries"));
     check("`[ ] ` makes the item a task", hasLine(tasked, "- [ ] groceries"),
         `doc=${JSON.stringify(tasked)}`);
 
-    await page.keyboard.press("Home");
+    await placeCaret(null, "start");
     await page.keyboard.type("[x] ");
     const ticked = await waitForUpdate((doc) => hasLine(doc, "- [x] groceries"));
     check("`[x] ` on an open task ticks it instead of leaving literal text",
@@ -129,8 +159,7 @@ export async function run({ page, check, baseUrl }) {
     // CommonMark has no lettered marker (utils/orderedMarkers.ts), so the two
     // halves of this are inseparable: the markers on screen must change and the
     // bytes must not.
-    await clickInto(".ProseMirror li:has-text('notes') p");
-    await page.keyboard.press("End");
+    await placeCaret(".ProseMirror li:has-text('notes') p", "end");
     await page.keyboard.press("Enter");
     // Shift+Tab lifts the new item out to the top level so the list it starts
     // is not a nested one, whose style the by-depth cascade would also set.
@@ -221,8 +250,7 @@ export async function run({ page, check, baseUrl }) {
     // (it splits on a marker change since MAR-337), and a numbering STYLE is
     // not a spelling, so without this branch there is no typed way to letter a
     // numbered list. ──
-    await clickInto(".ProseMirror li:has-text('beta') p");
-    await page.keyboard.press("Home");
+    await placeCaret(".ProseMirror li:has-text('beta') p", "start");
     await page.keyboard.type("a. ");
     await page.waitForTimeout(250);
     const restyled = await page.evaluate(() => {
@@ -253,12 +281,11 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 8. A misfire in plain prose is answerable with one Backspace, the digit
     // rule's own mitigation — the accepted cost of `A. Smith` converting. ──
-    await clickInto(".ProseMirror li:has-text('groceries') p");
-    await page.keyboard.press("End");
+    await placeCaret(".ProseMirror li:has-text('groceries') p", "end");
     await page.keyboard.press("Enter");
     await page.keyboard.press("Shift+Tab");
     await page.keyboard.type("Smith");
-    await page.keyboard.press("Home");
+    await placeCaret(null, "start");
     await page.keyboard.type("A. ");
     await page.waitForTimeout(250);
     const misfired = await page.evaluate(() =>

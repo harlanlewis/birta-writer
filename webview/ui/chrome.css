@@ -330,16 +330,19 @@
    what each menu's JS toggles; the surface then adds only the parts this
    cannot know, such as which children go back to full ink.
 
-   The wash comes from the theme; the outline does NOT, and that is deliberate.
-   A theme is free to make its selection a whisper (VS Code Light Modern's is
-   1.15 against the menu it sits on, and several themes wash the row at 8% of
-   an accent), so the wash alone cannot be trusted to answer the only question
-   this state exists to answer. The outline is ours and reads at any strength. */
+   The ground and its paired ink are the WHOLE state, and the omission is a
+   deliberate trade. A rule drawn inside the row box reads as a hairline above
+   and below the row, which is a group divider's spelling rather than a
+   selection's, and one taken from focusBorder draws at that weight on every
+   theme, with nothing a theme can soften. What the trade costs lands on the
+   other end: where a theme's list selection is a whisper against the menu
+   ground, this state answers "what does Enter hit" quietly. Anything
+   reinstated here has to answer the divider reading first, and a surface that
+   needs more can retheme --ui-menu-selected-bg, the way the slash menu already
+   retunes its hover tokens. */
 .ui-menu-row--selected {
     background: var(--ui-menu-selected-bg);
     color: var(--ui-menu-selected-ink);
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: -1px;
 }
 
 /* Restoring full ink on a filled row's icon/badge/hint is left to the SURFACE

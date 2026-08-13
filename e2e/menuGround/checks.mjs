@@ -16,8 +16,8 @@
  *    exactly the sort of thing that either works or silently computes to
  *    something useless, and only a browser can answer it.
  *
- * 3. A keyboard-focused row carries a background, an ink DIFFERENT from the
- *    resting ink, and a focus outline. The harness paints
+ * 3. A keyboard-focused row carries a background and an ink DIFFERENT from the
+ *    resting ink, and no rule of its own. The harness paints
  *    list.activeSelectionBackground a solid #0060c0 the way VS Code Light+
  *    does; a row that took that fill and kept the resting #d4d4d4 was the
  *    shipped 1.75:1 defect.
@@ -120,8 +120,13 @@ export async function run({ page, check, baseUrl }) {
     check("the focused row's label clears AA on its own fill",
         contrast(focusedStyle.color, focusedStyle.bg) >= 4.5,
         contrast(focusedStyle.color, focusedStyle.bg).toFixed(2));
-    check("the focused row carries a focus outline, whatever the theme's wash",
-        focusedStyle.outlineStyle !== "none" && parseFloat(focusedStyle.outlineWidth) > 0,
+    // The ground and its ink are the whole state; a rule drawn inside the row
+    // box reads as a hairline above and below it, which is a group divider's
+    // spelling, so the row must draw none. Asserted on the COMPUTED style
+    // because that is what a reader sees: a source-text guard would still pass
+    // with the outline reinstated from some other rule in the cascade.
+    check("the focused row draws no rule of its own",
+        focusedStyle.outlineStyle === "none" || parseFloat(focusedStyle.outlineWidth) === 0,
         `${focusedStyle.outlineStyle} ${focusedStyle.outlineWidth}`);
     // A filled row shows its parts at full ink — the dim would be spent against
     // a fill whose knockout the theme already chose.
