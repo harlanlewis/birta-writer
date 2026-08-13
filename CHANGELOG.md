@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.813.0] - 2026, August 13
+
 ### Added
 
 - Edit a block's Markdown source in place. Press Cmd+/ (Ctrl+/ on Windows and Linux) with the caret in a block and the block is replaced by a small panel holding its own Markdown, so precise syntax is reachable without leaving for the raw editor. Cmd+Enter or the same chord applies, clicking away applies, Escape cancels, and clearing the text deletes the block. Select several blocks first, by any of the usual means, and they open together. Editing a block that cites a footnote or a reference link keeps those references intact, even though their definitions live elsewhere in the document, and applying a block you did not type in leaves the file untouched. A list opens as a whole list rather than one item at a time, and what you apply is read as Markdown, so a spelling the editor writes differently comes back in the editor's spelling.
