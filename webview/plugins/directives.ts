@@ -22,6 +22,10 @@
  * paragraph with the content (`:::note\ncontent\n:::` is ONE CommonMark
  * paragraph) or were separated by blank lines — without them, serialization
  * would add or drop blank lines.
+ *
+ * The one place raw source is consulted is the swallowed-close-fence repair
+ * (see LAZY_CONTINUABLE below), where the decoded text of two different
+ * documents is identical and only the bytes decide.
  */
 import { InputRule } from "../pm";
 import { $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
@@ -116,8 +120,8 @@ interface DirectiveMdastNode {
     data?: { isInline?: boolean };
     children?: DirectiveMdastNode[];
     position?: {
-        start?: { line?: number };
-        end?: { line?: number };
+        start?: { line?: number; column?: number; offset?: number };
+        end?: { line?: number; column?: number; offset?: number };
     };
 }
 
@@ -169,12 +173,191 @@ function paragraphFrom(
     return children.length > 0 ? { ...para, children } : null;
 }
 
+// ─── Close fences swallowed by a lazy continuation (MAR-362) ────────────────
+//
+// A close fence written flush left with no blank line above it never reaches
+// us as its own paragraph. CommonMark lazy continuation folds an unindented
+// non-blank line into whatever paragraph is open inside a list item, a
+// blockquote, or a footnote definition, so the `:::` arrives as the last
+// SOFT LINE of that block's final paragraph:
+//
+//   :::note              list > listItem > paragraph("a\n:::")
+//   - a
+//   :::
+//
+// The repair splits that line back off and closes the directive there. The
+// hazard is that mdast strips a container's indentation, so a genuinely
+// indented `    :::` inside a footnote definition — real content, which the
+// author meant to keep — decodes to the exact same paragraph text. Only the
+// raw source line tells the two apart, hence `source`.
+
+/**
+ * Block types whose children were parsed from a SUBSTRING of the document
+ * (`notionCallouts.ts` sub-parses an aside's lead), so their `position`
+ * offsets index that substring and address unrelated bytes of the file. Only
+ * the source-reading repair below can be misled by them, and it declines
+ * rather than reading a line it has no claim on.
+ */
+const FOREIGN_COORDINATES = new Set(["notionCallout"]);
+
+/** Block types a following unindented line can lazily continue. */
+const LAZY_CONTINUABLE = new Set([
+    "blockquote",
+    "callout",
+    "footnoteDefinition",
+    "list",
+    "listItem",
+]);
+
+/** Container prefix (`> `, indentation) of the line holding `offset`. */
+function linePrefix(source: string, offset: number): string {
+    return source.slice(source.lastIndexOf("\n", offset - 1) + 1, offset);
+}
+
+/** The whole raw source line holding `offset`, and where it starts. */
+function rawLineAt(source: string, offset: number): { start: number; text: string } {
+    const start = source.lastIndexOf("\n", offset - 1) + 1;
+    const nl = source.indexOf("\n", offset);
+    return { start, text: source.slice(start, nl < 0 ? source.length : nl) };
+}
+
+/**
+ * True when some line between the open fence's paragraph and `beforeStart`
+ * is a close fence at `prefix` too. The FIRST such line is the one that
+ * closes the directive, and by the time this runs it is already buried
+ * mid-paragraph inside a block, where splitting it back out would take a
+ * reparse. So an ambiguous run declines the repair rather than closing at a
+ * later fence and swallowing the real one into the body.
+ */
+function closeFenceEarlier(
+    source: string,
+    openEnd: number,
+    beforeStart: number,
+    prefix: string,
+    minColons: number,
+): boolean {
+    const from = source.indexOf("\n", openEnd);
+    if (from < 0 || from + 1 >= beforeStart) return false;
+    for (const raw of source.slice(from + 1, beforeStart).split("\n")) {
+        if (raw.startsWith(prefix) && closeFenceColons(raw.slice(prefix.length)) >= minColons) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Last-child-first descent to the paragraph that ends `node`, outermost
+ * first. Null when any step leaves the lazy-continuable set, which keeps the
+ * repair to blocks that can actually have swallowed a line.
+ */
+function lastParagraphPath(node: DirectiveMdastNode): DirectiveMdastNode[] | null {
+    const path: DirectiveMdastNode[] = [];
+    let cur = node;
+    while (cur.type !== "paragraph") {
+        if (!LAZY_CONTINUABLE.has(cur.type)) return null;
+        const last = cur.children?.[cur.children.length - 1];
+        if (!last) return null;
+        path.push(cur);
+        cur = last;
+    }
+    path.push(cur);
+    return path;
+}
+
+/** A copy of `pos` ending at `endOffset`, which must be a line's last byte. */
+function endingAt(
+    pos: DirectiveMdastNode["position"],
+    source: string,
+    endOffset: number,
+): DirectiveMdastNode["position"] {
+    if (!pos?.end) return pos;
+    const line = rawLineAt(source, endOffset);
+    return {
+        ...pos,
+        end: {
+            line: (pos.end.line ?? 1) - 1,
+            column: endOffset - line.start + 1,
+            offset: endOffset,
+        },
+    };
+}
+
+/**
+ * Splits a swallowed close fence off `sib`'s last paragraph. Returns the
+ * rebuilt sibling and the fence's decoded text, or null when `sib` does not
+ * end in one.
+ *
+ * `prefix` is the container prefix of the OPENING fence's line: the close
+ * fence must sit at that same column to be a fence rather than content, and
+ * comparing raw lines is what tells an absorbed `:::` from an indented one.
+ * Every ancestor on the path gets its `position.end` pulled back to the line
+ * above, so a re-scan of the trimmed tree (nested directives) still reads the
+ * source line it thinks it is reading.
+ */
+function splitSwallowedClose(
+    sib: DirectiveMdastNode,
+    minColons: number,
+    prefix: string,
+    source: string,
+    openEnd: number,
+): { sibling: DirectiveMdastNode; closeFence: string } | null {
+    const path = lastParagraphPath(sib);
+    if (!path) return null;
+    const para = path[path.length - 1]!;
+    if (!para.children?.length) return null;
+
+    const segs = segmentize(para.children);
+    // The split needs a break node in front of the fence segment, and a
+    // paragraph must not be emptied into nothing. A raw lazy continuation
+    // always has the line it continued above it; the exception is a callout,
+    // whose marker line callouts.ts peels off into an attr, and whose body
+    // paragraph can therefore be the fence alone. That case is declined.
+    if (segs.length < 2) return null;
+    // The last segment: the only one that can be the fence, since a block
+    // absorbs every line up to the one it ends on. `closeFenceEarlier` below
+    // is what makes taking it safe when the run held more than one candidate.
+    const last = segs[segs.length - 1]!;
+    const lastLine = segmentText(para.children, last);
+    if (lastLine === null) return null;
+    const colons = closeFenceColons(lastLine);
+    if (colons < minColons) return null;
+
+    const endOffset = para.position?.end?.offset;
+    if (typeof endOffset !== "number") return null;
+    const line = rawLineAt(source, endOffset);
+    if (!line.text.startsWith(prefix)) return null;
+    // Exact match, not `>=`: the raw fence has to be the decoded one, or the
+    // attrs would no longer serialize back verbatim.
+    if (closeFenceColons(line.text.slice(prefix.length)) !== colons) return null;
+    if (closeFenceEarlier(source, openEnd, line.start, prefix, minColons)) return null;
+
+    const trimmedEnd = line.start - 1;
+    let rebuilt: DirectiveMdastNode = {
+        ...para,
+        children: para.children.slice(0, last.start - 1),
+        position: endingAt(para.position, source, trimmedEnd),
+    };
+    for (let k = path.length - 2; k >= 0; k--) {
+        const parent = path[k]!;
+        rebuilt = {
+            ...parent,
+            children: [...parent.children!.slice(0, -1), rebuilt],
+            position: endingAt(parent.position, source, trimmedEnd),
+        };
+    }
+    return { sibling: rebuilt, closeFence: lastLine };
+}
+
 /**
  * Scans one parent's children for directive runs and wraps them. Returns the
  * rewritten child list. Runs bottom-up (callers recurse first), so nested
  * directives with higher colon counts wrap inner ones written with fewer.
  */
-function wrapDirectives(children: DirectiveMdastNode[]): DirectiveMdastNode[] {
+function wrapDirectives(
+    children: DirectiveMdastNode[],
+    source: string | null,
+): DirectiveMdastNode[] {
     const out: DirectiveMdastNode[] = [];
     let i = 0;
 
@@ -200,7 +383,9 @@ function wrapDirectives(children: DirectiveMdastNode[]): DirectiveMdastNode[] {
             if (line !== null && closeFenceColons(line) >= open.colons) {
                 const inner = node.children.slice(segs[1]!.start, segs[s]!.start - 1);
                 const content = paragraphFrom(node, inner);
-                out.push(makeDirective(openLine!, line, true, true, content ? [content] : []));
+                out.push(
+                    makeDirective(openLine!, line, true, true, content ? [content] : [], source),
+                );
                 // Anything after the closer segment stays a paragraph.
                 const tail = node.children.slice(segs[s]!.end + 1);
                 if (tail.length > 0) out.push({ ...node, children: tail });
@@ -216,6 +401,15 @@ function wrapDirectives(children: DirectiveMdastNode[]): DirectiveMdastNode[] {
         const body: DirectiveMdastNode[] = [];
         const attachedFirst = paragraphFrom(node, openRemainder);
         if (attachedFirst) body.push(attachedFirst);
+        // The column the close fence has to sit at. A split paragraph's start
+        // is stale but still on a line of the same container, so its prefix is
+        // the right one.
+        const openStart = node.position?.start?.offset;
+        const openEnd = node.position?.end?.offset;
+        const prefix =
+            source !== null && typeof openStart === "number" && typeof openEnd === "number"
+                ? linePrefix(source, openStart)
+                : null;
 
         for (let j = i + 1; j < children.length; j++) {
             const sib = children[j]!;
@@ -233,7 +427,9 @@ function wrapDirectives(children: DirectiveMdastNode[]): DirectiveMdastNode[] {
                         // The closer is its own paragraph.
                         const closeAttached = linesAdjacent(body[body.length - 1] ?? node, sib);
                         out.push(
-                            makeDirective(openLine!, lastLine, openAttached, closeAttached, body),
+                            makeDirective(
+                                openLine!, lastLine, openAttached, closeAttached, body, source,
+                            ),
                         );
                     } else {
                         // The closer is the last line of a content paragraph.
@@ -241,9 +437,28 @@ function wrapDirectives(children: DirectiveMdastNode[]): DirectiveMdastNode[] {
                         const closing = paragraphFrom(sib, before);
                         if (closing) body.push(closing);
                         out.push(
-                            makeDirective(openLine!, lastLine, openAttached, true, body),
+                            makeDirective(openLine!, lastLine, openAttached, true, body, source),
                         );
                     }
+                    i = j + 1;
+                    continue outer;
+                }
+            } else if (prefix !== null) {
+                // A closer a lazy continuation absorbed into this sibling: the
+                // fence never became a paragraph of its own, so it is always
+                // attached (no blank line could have preceded it).
+                const swallowed = splitSwallowedClose(
+                    sib, open.colons, prefix, source!, openEnd!,
+                );
+                if (swallowed) {
+                    const openAttached =
+                        attachedFirst !== null || linesAdjacent(node, body[0] ?? swallowed.sibling);
+                    body.push(swallowed.sibling);
+                    out.push(
+                        makeDirective(
+                            openLine!, swallowed.closeFence, openAttached, true, body, source,
+                        ),
+                    );
                     i = j + 1;
                     continue outer;
                 }
@@ -265,6 +480,7 @@ function makeDirective(
     openAttached: boolean,
     closeAttached: boolean,
     children: DirectiveMdastNode[],
+    source: string | null,
 ): DirectiveMdastNode {
     return {
         type: "containerDirective",
@@ -276,7 +492,7 @@ function makeDirective(
         // paragraphs that only now became wrappable siblings.
         children:
             children.length > 0
-                ? wrapDirectives(children)
+                ? wrapDirectives(children, source)
                 : [{ type: "paragraph", children: [] }],
     };
 }
@@ -345,18 +561,27 @@ const directiveToMarkdown = {
     },
 };
 
-function remarkDirectives(this: any): (tree: unknown) => void {
+function remarkDirectives(this: any): (tree: unknown, file: unknown) => void {
     const data = this.data();
     const list = data["toMarkdownExtensions"] ?? (data["toMarkdownExtensions"] = []);
     list.push(directiveToMarkdown);
 
-    return (tree: unknown) => {
-        const walk = (node: DirectiveMdastNode): void => {
+    return (tree: unknown, file: unknown) => {
+        // Raw bytes, for the swallowed-close-fence repair above: mdast strips
+        // a container's indentation, so only the source distinguishes an
+        // absorbed close fence from an indented one that is real content.
+        const raw = (file as { value?: unknown } | undefined)?.value;
+        const source = typeof raw === "string" ? raw : String(raw ?? "");
+        const walk = (node: DirectiveMdastNode, src: string | null): void => {
             if (!node.children) return;
-            node.children.forEach(walk);
-            node.children = wrapDirectives(node.children);
+            // Inside a FOREIGN_COORDINATES node the offsets index a different
+            // string, so the repair loses its source and declines; every other
+            // branch of the transform reads the tree only and is unaffected.
+            const inner = FOREIGN_COORDINATES.has(node.type) ? null : src;
+            node.children.forEach((child) => walk(child, inner));
+            node.children = wrapDirectives(node.children, inner);
         };
-        walk(tree as DirectiveMdastNode);
+        walk(tree as DirectiveMdastNode, source);
     };
 }
 
