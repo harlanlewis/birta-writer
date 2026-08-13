@@ -205,6 +205,8 @@ Markdown's whole appeal is that it survives the trip through any plain-text chan
 
 Both are for navigating long documents, and neither touches the file. You get structure you can move through without scrolling, and without it leaking into what's saved.
 
+Headings, list items, tables, code blocks, quotes, callouts, `:::` directives and footnote definitions all fold from the same gutter chevron, and each collapses to whatever line names what is hidden. Levels count nesting rather than heading rank, so a code block or table at the top of a file folds at level 1 alongside the sections, and a document whose headings start at `##` still has a level 1 to fold.
+
 ### The switch to raw Markdown carries your cursor, and your selection
 
 Cmd+Shift+M opens the other editor at the line you were working at, and at the exact column where the mapping is unambiguous. It works in both directions, so you can switch mid-sentence and keep typing. A selection survives the trip whole, drag direction included, with block selections arriving as whole source lines, and the arriving cursor is centered on screen. Scrolled away from a bare cursor, it takes you to what's on screen instead. Navigation _into_ the editor arrives the same way: click a hit in VS Code's search and the match is selected and centered, as it would be in the raw editor.
