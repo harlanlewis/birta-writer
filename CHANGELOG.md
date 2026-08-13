@@ -4,10 +4,6 @@
 
 ## [Unreleased]
 
----
-
-## [2026.813.0] - 2026, August 13
-
 ### Added
 
 - Edit a wikilink where it sits. A `[[target|alias]]` used to be one solid chip: arrowing onto it selected the whole thing, and the only way to change it was the link popup. The caret now walks into it and edits it character by character, the way inline code and inline math already work. Arrow or backspace against its edge and it opens, showing the raw text between its brackets; move the caret away and it closes back to the resolved link. Clicking it opens it for editing rather than selecting it. A bracket typed inside is refused, because it would break the link apart on save, and emptying one removes it when you leave. Heading anchors are unaffected: a heading containing a wikilink keeps exactly the link address it had before.
@@ -19,6 +15,20 @@
 - A variable defined by a unit conversion remembers its unit. In a `calc` block, writing `t = 24*60*60*1000 ms in days` and then `t in weeks` now answers `0.142857`, where before it answered nothing and you had to restate the unit as `t days in weeks`. The unit does not carry through arithmetic: `t * 2 in weeks` still needs writing as `t * 2 days in weeks`. A conversion between incompatible units, such as a duration into kilograms, is refused rather than guessed.
 
 - GitHub links show live detail. With the network switch and URL Embeds on, a repository, issue or pull request link renders with its real title and state, and a pull request says whether it merged, instead of only what the address spells out. No account is needed: a public repository's title is world-readable, so the card is built from an anonymous read, exactly as every other provider's card already was. Connecting your GitHub account, through the new Connect Service command or a quiet one-click offer on a card that could not be read, is an upgrade rather than the price of entry. It buys private repositories and a request budget that is yours rather than shared with everything else on your network, and it offers two levels: the recommended one asks GitHub for no permissions at all beyond reading public information, and a second exists only for private repositories, which GitHub will not grant read-only, so that level says in the row that it also permits writes. Birta only ever reads. The credential is held by VS Code's own GitHub sign-in and never reaches the document or the editor's webview; the request goes only to GitHub's own API host and carries only the id in your link. Disconnect Service removes it.
+
+### Fixed
+
+- A block can be dragged to reorder it by touch. On a touchscreen the gutter handle could already be tapped to open its menu, and every verb in that menu worked, but the drag itself listened for mouse events only, so a block could not be moved by finger at all. Dragging now runs on pointer events, which is one code path for mouse, pen and finger rather than a separate touch mode. A drag the system takes away, such as an incoming call or a system gesture, leaves the document untouched instead of stranding the block mid-move, and a second finger landing during a drag no longer steers it.
+
+- Bold or italic wrapped around inline math no longer loses its emphasis on save. A line reading `**$a^2$**` came back as `$a^2$`: the emphasis was dropped from the file the first time the document was saved, silently and with nothing to undo it. Underline-style emphasis and strikethrough around a formula were affected the same way. Wikilinks now carry the same guarantee.
+
+- Selecting text inside a `calc` block's ledger no longer loses the selection partway through the drag. Pressing in a ledger row and dragging quickly across it, when the editor did not already have focus, could leave the selection wiped and nothing to copy. Since a ledger click deliberately leaves the editor inert, the unfocused case was the common one: the first drag after opening a document, and every drag after a previous ledger click.
+
+---
+
+## [2026.813.0] - 2026, August 13
+
+### Added
 
 - Edit a block's Markdown source in place. Press Cmd+/ (Ctrl+/ on Windows and Linux) with the caret in a block and the block is replaced by a small panel holding its own Markdown, so precise syntax is reachable without leaving for the raw editor. Cmd+Enter or the same chord applies, clicking away applies, Escape cancels, and clearing the text deletes the block. Select several blocks first, by any of the usual means, and they open together. Editing a block that cites a footnote or a reference link keeps those references intact, even though their definitions live elsewhere in the document, and applying a block you did not type in leaves the file untouched. A list opens as a whole list rather than one item at a time, and what you apply is read as Markdown, so a spelling the editor writes differently comes back in the editor's spelling.
 
@@ -51,12 +61,6 @@
 - A Miro board card opens the board itself when you click it. Loading the card used to land on Miro's own preloader, which held the canvas behind a second "See the board" click even though clicking the card was already the decision to load it.
 
 ### Fixed
-
-- A block can be dragged to reorder it by touch. On a touchscreen the gutter handle could already be tapped to open its menu, and every verb in that menu worked, but the drag itself listened for mouse events only, so a block could not be moved by finger at all. Dragging now runs on pointer events, which is one code path for mouse, pen and finger rather than a separate touch mode. A drag the system takes away, such as an incoming call or a system gesture, leaves the document untouched instead of stranding the block mid-move, and a second finger landing during a drag no longer steers it.
-
-- Bold or italic wrapped around inline math no longer loses its emphasis on save. A line reading `**$a^2$**` came back as `$a^2$`: the emphasis was dropped from the file the first time the document was saved, silently and with nothing to undo it. Underline-style emphasis and strikethrough around a formula were affected the same way. Wikilinks now carry the same guarantee.
-
-- Selecting text inside a `calc` block's ledger no longer loses the selection partway through the drag. Pressing in a ledger row and dragging quickly across it, when the editor did not already have focus, could leave the selection wiped and nothing to copy. Since a ledger click deliberately leaves the editor inert, the unfocused case was the common one: the first drag after opening a document, and every drag after a previous ledger click.
 
 - Changing the content font size keeps your place in the document. Every step of A− and A+ in the toolbar's A menu re-heights every line above you as well as the one you are reading, and the passage you were on used to be thrown a long way down the page, far enough that finding it again was a scroll hunt. The line at the top of the window now stays at the top of the window, the same way a Full Width and Fixed flip already behaved. Switching the content font family holds to that line too, whether the change comes from the menu, from the settings, or from another open editor.
 
