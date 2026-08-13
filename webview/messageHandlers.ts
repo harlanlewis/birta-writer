@@ -479,19 +479,31 @@ export function createMessageHandlers(
             topbarTb?.applyConfig(msg.config);
         },
         setFontFamily(msg) {
-            const root = document.documentElement;
-            if (msg.fontFamily) {
-                root.style.setProperty("--content-font-family", msg.fontFamily);
-            } else {
-                // The "editor" preset: unset, so the CSS falls back to the
-                // VS Code editor font (--vscode-editor-font-family).
-                root.style.removeProperty("--content-font-family");
-            }
+            // Anchored: swapping the family changes every glyph's metrics, so
+            // the whole document rewraps and re-heights. Keep the top visible
+            // line stable, exactly as a width flip does. This is the only apply
+            // path for a preset change, wherever it came from (the menu posts
+            // and waits for this echo).
+            withScrollAnchor(getEditorView(), () => {
+                const root = document.documentElement;
+                if (msg.fontFamily) {
+                    root.style.setProperty("--content-font-family", msg.fontFamily);
+                } else {
+                    // The "editor" preset: unset, so the CSS falls back to the
+                    // VS Code editor font (--vscode-editor-font-family).
+                    root.style.removeProperty("--content-font-family");
+                }
+            });
             topbarTb?.setFontPreset(msg.preset, msg.stacks);
         },
         setFontSize(msg) {
             const size = clampFontSizePercent(msg.size);
-            document.documentElement.style.setProperty("--content-font-scale", String(size / 100));
+            // Anchored for the same reason as the family swap; the toolbar's
+            // own optimistic apply anchors too, so this echo re-applies an
+            // identical value and measures a zero delta.
+            withScrollAnchor(getEditorView(), () => {
+                document.documentElement.style.setProperty("--content-font-scale", String(size / 100));
+            });
             topbarTb?.setFontSize(size);
         },
         setContentWidth(msg) {

@@ -2,10 +2,17 @@
  * webview/utils/scrollAnchor.ts
  *
  * Keep the top visible content line stable across a layout mutation that
- * rewraps the document — a page width-mode flip (Full ⇄ Fixed) rewraps every
- * paragraph, and without anchoring whatever you were reading jumps to a
- * different scroll depth. (The font-size stepper has the same reflow shape
- * and can wrap this helper later.)
+ * rewraps the document — a page width-mode flip (Full ⇄ Fixed), a content font
+ * family swap, or a font-size step all rewrap every paragraph, and without
+ * anchoring whatever you were reading jumps to a different scroll depth.
+ *
+ * Chromium's own scroll anchoring covers some of this unaided, so do not read
+ * a stable-looking page as proof this helper is unnecessary: the browser picks
+ * its own anchor node rather than the top visible line, and its adjustment is
+ * suppressed when a style change in the same frame touches margin, padding or
+ * size, which is exactly what a font-size step does through em-based spacing.
+ * e2e/fontAnchor runs the size case under production CSS and the family cases
+ * with the browser heuristic switched off, for that reason.
  *
  * Shape: capture the document position rendered at the top of the viewport
  * (just under the fixed topbar), run the mutation, then scroll by however far

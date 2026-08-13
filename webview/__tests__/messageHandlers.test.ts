@@ -8,6 +8,7 @@ import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "
 import { applyBlockHandles, currentBlockHandlesMode } from "../utils/blockHandles";
 import { setEditorCommandHost } from "../editorCommands";
 import type { ToWebviewMessage, ToolbarConfig } from "../../shared/messages";
+import { anchorStubView } from "./helpers/anchorStubView";
 import { FONT_PRESET_STACKS } from "../../shared/fontPresets";
 
 /** Minimal deps: the editorCommand handler only reaches state.getEditor. */
@@ -522,6 +523,27 @@ describe("setFontFamily handler", () => {
         // Assert
         expect(document.documentElement.style.getPropertyValue("--content-font-family")).toBe("");
     });
+
+    it("a family swap should scroll by the anchor line's displacement", () => {
+        // Arrange: the anchored line sits 40px lower after the swap (a serif
+        // stack fits the paragraphs above into fewer lines).
+        Object.defineProperty(window, "scrollY", { value: 500, configurable: true });
+        const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {});
+        const view = anchorStubView({ topsByCall: [300, 340] });
+        const deps = { ...stubDeps(), actions: { ...stubDeps().actions, getEditorView: () => view } };
+        const handlers = createMessageHandlers(deps);
+
+        // Act
+        handlers.setFontFamily?.(
+            { type: "setFontFamily", fontFamily: "Georgia, serif", preset: "serif", stacks: FONT_PRESET_STACKS },
+            container,
+        );
+
+        // Assert: applied, and the top visible line put back where it was.
+        expect(document.documentElement.style.getPropertyValue("--content-font-family").trim()).toBe("Georgia, serif");
+        expect(scrollBy).toHaveBeenCalledWith(0, 40);
+        scrollBy.mockRestore();
+    });
 });
 
 describe("setFontSize handler", () => {
@@ -563,6 +585,23 @@ describe("setFontSize handler", () => {
         handlers.setFontSize?.({ type: "setFontSize", size: 90 }, container);
 
         expect(document.documentElement.style.getPropertyValue("--content-font-scale").trim()).toBe("0.9");
+    });
+
+    it("a size change should scroll by the anchor line's displacement", () => {
+        // Arrange: bigger type pushes the anchored line 120px down the page.
+        Object.defineProperty(window, "scrollY", { value: 500, configurable: true });
+        const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {});
+        const view = anchorStubView({ topsByCall: [200, 320] });
+        const deps = { ...stubDeps(), actions: { ...stubDeps().actions, getEditorView: () => view } };
+        const handlers = createMessageHandlers(deps);
+
+        // Act
+        handlers.setFontSize?.({ type: "setFontSize", size: 120 }, container);
+
+        // Assert
+        expect(document.documentElement.style.getPropertyValue("--content-font-scale").trim()).toBe("1.2");
+        expect(scrollBy).toHaveBeenCalledWith(0, 120);
+        scrollBy.mockRestore();
     });
 });
 

@@ -109,10 +109,15 @@ export function createTypographyControl(): TypographyControl {
         setFontSizeActive(size);
         // Apply immediately so repeated clicks give live feedback; the settings
         // round-trip re-broadcasts the same value to every open editor.
-        document.documentElement.style.setProperty(
-            "--content-font-scale",
-            String(currentFontSize / 100),
-        );
+        // Anchored: a scale change re-heights and rewraps every line — keep the
+        // top visible line the top visible line (the echo re-applies the same
+        // value a round trip later, an anchored no-op).
+        withScrollAnchor(getEditorView(), () => {
+            document.documentElement.style.setProperty(
+                "--content-font-scale",
+                String(currentFontSize / 100),
+            );
+        });
         notifySetFontSize(currentFontSize);
     }
 

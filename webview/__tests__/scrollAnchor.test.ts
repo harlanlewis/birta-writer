@@ -6,51 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { withScrollAnchor } from "../utils/scrollAnchor";
-import type { EditorView } from "../pm";
-
-interface StubOptions {
-    posAtCoords?: (() => { pos: number } | null) | (() => never);
-    topsByCall?: number[];
-    /** coordsAtPos returns FLAT rects (hidden content) — the embed case. */
-    degenerateCoords?: boolean;
-    /** nodeDOM block-box tops consumed when coords are degenerate. */
-    blockTopsByCall?: number[];
-    isDestroyed?: boolean;
-}
-
-function stubView(opts: StubOptions = {}): EditorView {
-    const tops = [...(opts.topsByCall ?? [])];
-    const blockTops = [...(opts.blockTopsByCall ?? [])];
-    const blockDom = document.createElement("div");
-    blockDom.getBoundingClientRect = () => {
-        const top = blockTops.shift();
-        if (top === undefined) {
-            throw new Error("no block measurements");
-        }
-        return { top } as DOMRect;
-    };
-    return {
-        isDestroyed: opts.isDestroyed ?? false,
-        dom: {
-            getBoundingClientRect: () => ({ left: 100, width: 800 }),
-            contains: () => true,
-        },
-        posAtCoords: opts.posAtCoords ?? (() => ({ pos: 42 })),
-        coordsAtPos: () => {
-            const top = tops.shift();
-            if (top === undefined) {
-                throw new Error("no more measurements");
-            }
-            return opts.degenerateCoords ? { top, bottom: top } : { top, bottom: top + 16 };
-        },
-        state: {
-            doc: {
-                resolve: () => ({ depth: 1, before: () => 7 }),
-            },
-        },
-        nodeDOM: () => blockDom,
-    } as unknown as EditorView;
-}
+import { anchorStubView as stubView } from "./helpers/anchorStubView";
 
 let scrollBy: ReturnType<typeof vi.spyOn>;
 
