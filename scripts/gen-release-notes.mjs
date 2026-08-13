@@ -178,23 +178,80 @@ export function parseSections(body) {
 }
 
 /**
- * A section's bullet entries, marker stripped and continuation lines folded in.
+ * A section's items: its bullet entries, marker stripped and continuation
+ * lines folded in, and any `####` sub-heading grouping them.
  *
- * Returns null for a section that is not a plain bullet list, which is the
- * shape the AI path condenses one-for-one. Prose before the first bullet is the
- * case that matters: counting it as part of no entry would drop it silently,
- * and there is no count for the caller to check it against.
+ * Returns null for a section that is not a bullet list under optional
+ * sub-headings, which is the shape the AI path condenses one-for-one. Prose
+ * before the first bullet is the case that matters: counting it as part of no
+ * entry would drop it silently, and there is no count for the caller to check
+ * it against.
+ *
+ * A sub-heading is carried through rather than condensed, and never reaches
+ * the model. A large release groups its entries under `####` headings, and a
+ * section is condensed on its own, so the model cannot see which entries a
+ * heading spans and must not be asked to reproduce one. Treating a sub-heading
+ * as unparseable instead is what made a release's whole AI path fall back:
+ * `2026.803.0` and `2026.731.0` both group this way.
  */
-export function bulletEntries(lines) {
-  const entries = [];
+export function sectionItems(lines) {
+  const items = [];
+  let open = false;
   for (const line of lines) {
     const text = line.trim();
     if (!text) continue;
-    if (/^[-*]\s+/.test(text)) entries.push(text.replace(/^[-*]\s+/, ""));
-    else if (entries.length) entries[entries.length - 1] += ` ${text}`;
-    else return null;
+    if (/^#{4,}\s+/.test(text)) {
+      items.push({ kind: "heading", text });
+      open = false;
+    } else if (/^[-*]\s+/.test(text)) {
+      items.push({ kind: "entry", text: text.replace(/^[-*]\s+/, "") });
+      open = true;
+    } else if (open) {
+      items[items.length - 1].text += ` ${text}`;
+    } else {
+      return null;
+    }
   }
-  return entries;
+  return items;
+}
+
+/** Just the entry texts of `sectionItems`, in order, or null on the same shapes. */
+export function bulletEntries(lines) {
+  const items = sectionItems(lines);
+  return items && items.filter((i) => i.kind === "entry").map((i) => i.text);
+}
+
+/**
+ * A section's items rendered back to markdown, each entry taking its published
+ * text from `lines` by position.
+ *
+ * A null in `lines` is an entry lifted into a promotion, which prints under
+ * that heading INSTEAD of here. A sub-heading left with nothing under it goes
+ * with them, since a heading over no entries names an empty group.
+ */
+export function renderItems(items, lines) {
+  const out = [];
+  let at = -1;
+  for (const item of items) {
+    if (item.kind === "heading") {
+      out.push(item);
+      continue;
+    }
+    at += 1;
+    if (lines[at] != null) out.push({ kind: "entry", text: lines[at] });
+  }
+
+  const parts = [];
+  for (const [i, item] of out.entries()) {
+    if (item.kind === "heading") {
+      if (out[i + 1]?.kind === "entry") parts.push(item.text);
+      continue;
+    }
+    const last = parts[parts.length - 1];
+    if (last?.startsWith("- ")) parts[parts.length - 1] = `${last}\n- ${item.text}`;
+    else parts.push(`- ${item.text}`);
+  }
+  return parts.join("\n\n");
 }
 
 /**
@@ -284,11 +341,17 @@ export const INSTALL_LINKS =
 /**
  * Condense ONE changelog section, and nothing else.
  *
- * The model is never shown a heading and never asked where an entry belongs.
- * It receives the entries of a single section and returns one line for each,
- * in the order given; the caller puts them under the heading NOTES_SECTIONS
- * already decided. Placement is therefore structural, and the model keeps the
- * job it is actually good at, which is turning a paragraph into a line.
+ * The model is never asked where an entry belongs. It receives the entries of
+ * a single section and returns one line for each, in the order given; the
+ * caller puts them under the heading NOTES_SECTIONS already decided. Placement
+ * is therefore structural, and the model keeps the job it is actually good at,
+ * which is turning a paragraph into a line.
+ *
+ * It does see two headings, and neither is a placement decision. The section's
+ * own name is context for the rewrite, and a promotion names its destination
+ * because choosing WHICH entries lead is the one judgement delegated here. The
+ * choice is still bounded structurally: `validateSection` enforces the
+ * promotion's min and max against the answer.
  *
  * Asking for the whole document in one call is what published v2026.813.0 with
  * four `Fixed` entries under `Improved`: the mapping was stated in this prompt
@@ -377,6 +440,18 @@ export function validateSection(reply, entries, promotion) {
   return { lines, promoted };
 }
 
+/**
+ * A degradation the release job must be able to SEE.
+ *
+ * Nothing here ever fails a release over its notes, so every fallback is a
+ * message in a green run. `::warning` is what puts one in the run summary
+ * rather than only in the log body, where the notes silently reverting to the
+ * raw changelog looks exactly like success.
+ */
+function warn(reason) {
+  console.error(`::warning title=Release notes::AI path abandoned, published the fallback: ${reason}`);
+}
+
 async function ask(prompt) {
   const res = await fetch(`${apiBase()}/v1/messages`, {
     method: "POST",
@@ -390,6 +465,9 @@ async function ask(prompt) {
       max_tokens: 4000,
       messages: [{ role: "user", content: prompt }],
     }),
+    // One call per section, sequentially, so a wedged endpoint stalls the
+    // release job for the sum of their timeouts rather than one of them.
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
   const data = await res.json();
@@ -469,31 +547,40 @@ export async function aiNotes(changelog) {
 
   try {
     for (const section of sections) {
-      const entries = bulletEntries(section.lines);
-      if (!entries) {
-        console.error(`Release-notes section "${section.heading}" is not a bullet list.`);
+      const items = sectionItems(section.lines);
+      if (!items) {
+        warn(`section "${section.heading}" is not a bullet list`);
         return null;
       }
+      const entries = items.filter((i) => i.kind === "entry").map((i) => i.text);
       if (!entries.length) continue;
 
       const mapped = NOTES_SECTIONS.find(([from]) => from === section.heading)?.[1] ?? section.heading;
 
       if (VERBATIM.has(section.heading)) {
-        push(mapped, entries.map((e) => `- ${e}`).join("\n"));
+        push(mapped, renderItems(items, entries));
         continue;
       }
 
-      const promotion = PROMOTIONS[section.heading];
+      const promotion = Object.hasOwn(PROMOTIONS, section.heading)
+        ? PROMOTIONS[section.heading]
+        : undefined;
       const ok = await condense(section.heading, entries, promotion);
-      if (!ok) return null;
+      if (!ok) {
+        warn(`section "${section.heading}" was not condensed`);
+        return null;
+      }
 
       const lifted = new Set(ok.promoted.map((p) => p.entry));
       for (const p of ok.promoted) push(promotion.heading, `**${p.title}**\n${p.summary}`);
-      const kept = ok.lines.filter((_, i) => !lifted.has(i + 1));
-      if (kept.length) push(mapped, kept.map((l) => `- ${l}`).join("\n"));
+      const kept = renderItems(
+        items,
+        ok.lines.map((l, i) => (lifted.has(i + 1) ? null : l)),
+      );
+      if (kept) push(mapped, kept);
     }
   } catch (err) {
-    console.error(`Release-notes generation failed, using fallback: ${err}`);
+    warn(`generation failed: ${err}`);
     return null;
   }
 

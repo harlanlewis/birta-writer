@@ -46,8 +46,11 @@ import {
     commitNotes,
     NOTES_ORDER,
     NOTES_SECTIONS,
+    parseSections,
     PROMOTIONS,
+    renderItems,
     SECTION_PROMPT,
+    sectionItems,
     validateSection,
     VERBATIM,
     // @ts-expect-error — plain-JS CLI module, intentionally untyped.
@@ -242,6 +245,53 @@ describe("bulletEntries", () => {
         // There is no entry for it to belong to, so a count check downstream
         // cannot notice it going missing.
         expect(bulletEntries(["Some prose.", "- One."])).toBeNull();
+    });
+
+    it("a section grouped under sub-headings should still yield its entries", () => {
+        // A `####` group is the shape a large release is written in, and
+        // refusing it abandoned the AI path for the WHOLE release, silently.
+        // Two of this repo's own releases are grouped this way, and they are
+        // the long ones that most need condensing.
+        expect(
+            bulletEntries(["#### Editing", "", "- One.", "", "#### Folds", "", "- Two."]),
+        ).toEqual(["One.", "Two."]);
+    });
+});
+
+describe("sectionItems", () => {
+    it("a sub-heading should be kept in place around the entries it groups", () => {
+        expect(sectionItems(["#### Editing", "- One.", "#### Folds", "- Two."])).toEqual([
+            { kind: "heading", text: "#### Editing" },
+            { kind: "entry", text: "One." },
+            { kind: "heading", text: "#### Folds" },
+            { kind: "entry", text: "Two." },
+        ]);
+    });
+
+    it("a wrapped entry under a sub-heading should fold into the entry, not the heading", () => {
+        expect(sectionItems(["#### Editing", "- One", "  continued."])).toEqual([
+            { kind: "heading", text: "#### Editing" },
+            { kind: "entry", text: "One continued." },
+        ]);
+    });
+
+    it("prose under a sub-heading but before its first bullet should still refuse", () => {
+        expect(sectionItems(["#### Editing", "Some prose.", "- One."])).toBeNull();
+    });
+});
+
+describe("renderItems", () => {
+    it("a group whose entries were all promoted away should take its heading with it", () => {
+        // A heading left over an empty group names nothing.
+        const items = sectionItems(["#### Gone", "- One.", "#### Kept", "- Two."]);
+        expect(renderItems(items, [null, "Two line."])).toBe("#### Kept\n\n- Two line.");
+    });
+
+    it("entries under one heading should stay a tight list", () => {
+        const items = sectionItems(["#### Kept", "- One.", "- Two."]);
+        expect(renderItems(items, ["One line.", "Two line."])).toBe(
+            "#### Kept\n\n- One line.\n- Two line.",
+        );
     });
 });
 
@@ -486,22 +536,53 @@ describe("the AI path", () => {
 
     it("an entry should be published under the section its changelog section maps to", async () => {
         // The regression, stated as an invariant rather than an example. The
-        // model is the variable here and it cannot move anything: it is never
-        // told a destination, and the reply it gives is filed by the table.
-        // v2026.813.0 published four `Fixed` entries under `Improved`.
+        // model is the variable here and it cannot move anything: the reply it
+        // gives is filed by the table. v2026.813.0 published four `Fixed`
+        // entries under `Improved`.
+        //
+        // Asserted in BOTH directions, and over a set whose size is checked. A
+        // one-directional sweep ("no entry appears where it does not belong")
+        // passes just as well on notes that dropped every entry on the floor.
         const sections = sectionsOf((await aiNotes(FULL)) as string);
 
-        for (const [from, to] of NOTES_SECTIONS as [string, string][]) {
-            const mine = `${from} entry`;
-            for (const [heading, body] of sections) {
-                const belongs = heading === to || heading === PROMOTIONS[from]?.heading;
-                expect(
-                    body.includes(mine),
-                    `a ${from} entry was published under ${heading}`,
-                ).toBe(belongs && body.includes(mine));
-                if (!belongs) expect(body).not.toContain(mine);
-            }
+        // One marker per changelog entry, and the single heading it must end
+        // up under. A condensed entry carries the stub's echo; a VERBATIM one
+        // carries its own text, since it never reaches the stub; a promoted
+        // one is rewritten by the stub into a title, and its line must then
+        // appear nowhere at all.
+        const want = new Map<string, string>();
+        const absent: string[] = [];
+        for (const s of parseSections(FULL).sections) {
+            const from = s.heading;
+            const to = (NOTES_SECTIONS as [string, string][]).find(([f]) => f === from)?.[1] ?? from;
+            const verbatim = VERBATIM.has(from);
+            (bulletEntries(s.lines) as string[]).forEach((entry, i) => {
+                // Entry 1 of a promoting section is the one the stub promotes.
+                const promotion = !verbatim && i === 0 ? PROMOTIONS[from] : undefined;
+                if (promotion) {
+                    want.set(`${from} title`, promotion.heading);
+                    absent.push(`${from} entry ${i + 1}`);
+                    return;
+                }
+                want.set(verbatim ? entry : `${from} entry ${i + 1}`, to);
+            });
         }
+
+        for (const [marker, heading] of want) {
+            const found = [...sections].filter(([, body]) => body.includes(marker));
+            expect(
+                found.map(([h]) => h),
+                `"${marker}" should be published under exactly "${heading}"`,
+            ).toEqual([heading]);
+        }
+        for (const marker of absent) {
+            expect([...sections].filter(([, body]) => body.includes(marker))).toEqual([]);
+        }
+        // The enumeration asserts its own size: a marker set built from an
+        // empty parse would make every check above vacuous. One destination
+        // per changelog entry, and the two promoted lines withdrawn.
+        expect(want.size).toBe(7);
+        expect(absent).toEqual(["Added entry 1", "Removed entry 1"]);
     });
 
     it("a promoted entry should leave its own section rather than appear twice", async () => {
@@ -591,5 +672,25 @@ describe("the repository's own CHANGELOG.md", () => {
 
         expect(headings.length).toBeGreaterThan(0);
         expect([...new Set(headings)].filter((h) => !known.has(h))).toEqual([]);
+    });
+
+    it("every released section should be a shape the AI path can read", () => {
+        // A section `sectionItems` refuses abandons the AI path for the WHOLE
+        // release, and it does so in a job that still exits 0, so the only
+        // symptom is an uncondensed release page nobody is watching for. This
+        // is the check that names the release, in a run someone reads.
+        const releases = changelog.split(/\n(?=## \[)/).filter((b) => b.startsWith("## ["));
+        const refused: string[] = [];
+        for (const release of releases) {
+            const name = release.split("\n")[0];
+            for (const s of parseSections(release).sections) {
+                if (sectionItems(s.lines) === null) refused.push(`${name} -> ${s.heading}`);
+            }
+        }
+
+        // Assert the sweep reached something: an empty release list would make
+        // the check below pass without reading a single section.
+        expect(releases.length).toBeGreaterThan(1);
+        expect(refused).toEqual([]);
     });
 });
