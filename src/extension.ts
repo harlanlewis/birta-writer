@@ -466,6 +466,12 @@ export function activate(context: vscode.ExtensionContext) {
                     enabled: v,
                 });
             }
+            if (e.affectsConfiguration("birta.logseq")) {
+                // Per-document, so this re-runs detection rather than
+                // broadcasting one value: turning it on has to decide the
+                // question separately for each open file.
+                MarkdownEditorProvider.current?.redetectLogseqAll();
+            }
             if (e.affectsConfiguration("birta.tableWrap")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setTableWrap",

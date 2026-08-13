@@ -26,6 +26,7 @@ import { watchExternalDocumentChanges } from "./externalChanges";
 import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtmlAttr } from "./webviewHtml";
 import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
+import { detectLogseq } from "./utils/logseqDetect";
 import { scanHeadings } from "../shared/headingScan";
 import { extractOgTitle } from "./utils/openGraph";
 import { isPubliclyRoutableUrl } from "./utils/urlGuard";
@@ -36,7 +37,7 @@ import { asConnectorId, runConnectFlow } from "./connectors/commands";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import type { ToExtensionMessage, ToWebviewMessage, TextCount } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, TextCount, LogseqReason } from "../shared/messages";
 import type { EditorSelectionContext } from "../shared/agentContext";
 import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
@@ -524,6 +525,85 @@ export class MarkdownEditorProvider
             .catch((err) => reportError("connectorState", err));
     }
 
+    /**
+     * Detect whether `document` belongs to a Logseq graph and tell its webview.
+     *
+     * The `birta.logseq: off` default returns before any IO and before the
+     * detector is even called, so the feature costs one setting read per open
+     * for everyone who does not use it. `auto` stats the document's ancestor
+     * directories, which is why this is a message sent AFTER `init` rather than
+     * a field baked into the launch bootstrap (see `logseqState` in
+     * shared/messages.ts).
+     *
+     * Fire-and-forget: a panel disposed mid-detection makes postToWebview
+     * throw, which is a dead editor rather than a failure worth reporting.
+     *
+     * `announceOff` is the difference between the two callers. On open, `off`
+     * sends nothing at all — the webview boots with the badge hidden, so a
+     * message saying so is the one message the default configuration could
+     * still have been paying. On a settings change it must be sent, or a panel
+     * already told "logseq" would keep the badge after the setting went off.
+     */
+    public detectLogseqFor(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        announceOff = false,
+    ): void {
+        const mode = readBirtaSetting("logseq", document.uri);
+        if (mode === "off") {
+            if (announceOff) { this._postLogseqState(panel, null); }
+            return;
+        }
+        const workspaceRoot =
+            vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? null;
+        detectLogseq(
+            mode,
+            {
+                docFsPath: document.uri.fsPath,
+                workspaceRootFsPath: workspaceRoot,
+                text: document.getText(),
+            },
+            {
+                isFile: (p) => this._statIsType(p, vscode.FileType.File),
+                isDirectory: (p) => this._statIsType(p, vscode.FileType.Directory),
+            },
+        )
+            .then((reason) => this._postLogseqState(panel, reason))
+            .catch((err) => reportError("logseqDetect", err));
+    }
+
+    /** Post to a panel that may already be gone (see detectLogseqFor). */
+    private _postLogseqState(
+        panel: vscode.WebviewPanel,
+        reason: LogseqReason | null,
+    ): void {
+        try {
+            postToWebview(panel.webview, { type: "logseqState", reason });
+        } catch {
+            // Panel disposed while detection was in flight.
+        }
+    }
+
+    /** `stat` reduced to "is it this kind of node", with missing → false. */
+    private async _statIsType(absPath: string, kind: vscode.FileType): Promise<boolean> {
+        try {
+            const st = await vscode.workspace.fs.stat(vscode.Uri.file(absPath));
+            return (st.type & kind) !== 0;
+        } catch {
+            return false;
+        }
+    }
+
+    /** Re-run Logseq detection for every open editor (the setting changed). */
+    public redetectLogseqAll(): void {
+        for (const [uriKey, panel] of this._webviewPanels) {
+            const doc = vscode.workspace.textDocuments.find(
+                (d) => d.uri.toString() === uriKey,
+            );
+            if (doc) { this.detectLogseqFor(doc, panel, true); }
+        }
+    }
+
     /** Sends a message to the active editor panel (no-op when none is active). */
     public postToActivePanel(msg: ToWebviewMessage): void {
         if (this._activePanel) { postToWebview(this._activePanel.webview, msg); }
@@ -827,6 +907,9 @@ export class MarkdownEditorProvider
                         // HTML. The webview's default is "nothing connected",
                         // so the wait costs a locked card, never a wrong fetch.
                         this.broadcastConnectorState();
+                        // Same placement, and the same reason: detection is
+                        // async while init is on the path to first paint.
+                        this.detectLogseqFor(document, webviewPanel);
                         break;
                     }
                     case "update":

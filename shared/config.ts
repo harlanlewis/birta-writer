@@ -18,7 +18,7 @@
  * values via the init bootstrap and live update messages.
  */
 
-import type { ProofreadConfig, TableWrapMode, TocPosition, ToolbarPlacements, FontPreset } from "./messages";
+import type { ProofreadConfig, LogseqMode, TableWrapMode, TocPosition, ToolbarPlacements, FontPreset } from "./messages";
 import { type TocVisibility, DEFAULT_TOC_VISIBILITY } from "./tocVisibility";
 import { DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, FONT_PRESET_STACKS } from "./fontPresets";
 import { DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH } from "./contentWidth";
@@ -118,6 +118,13 @@ export interface BirtaConfig extends ProofreadConfig {
     /** Nested `floatingToolbar.items` read; same merge rule as toolbarPlacements. */
     floatingToolbarItems: Record<string, boolean>;
     smartLinks: boolean;
+    /**
+     * Logseq handling (birta.logseq), off by default. `auto` detects whether
+     * the document belongs to a Logseq graph (src/utils/logseqDetect.ts);
+     * `on` forces the treatment for a page opened outside its graph. With
+     * `off` no detection runs at all.
+     */
+    logseq: LogseqMode;
     /**
      * Master network switch (birta.network.enabled) — offline by default
      * (MAR-179). Birta's positioning is "nothing leaves your machine", so this
@@ -300,6 +307,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     floatingToolbarEnabled: "floatingToolbar.enabled",
     floatingToolbarItems: "floatingToolbar.items",
     smartLinks: "smartLinks",
+    logseq: "logseq",
     networkEnabled: "network.enabled",
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
     pasteUnfurlAutoApply: "pasteUnfurl.autoApply",
@@ -388,6 +396,9 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     floatingToolbarEnabled: true,
     floatingToolbarItems: {},
     smartLinks: true,
+    // Logseq handling ships OFF: a user who does not keep a Logseq graph pays
+    // nothing for it, not even the ancestor stat walk that `auto` runs on open.
+    logseq: "off",
     // Master network switch ships OFF (MAR-179): Birta is offline by default,
     // so NO network feature runs until the user turns this on. This is the one
     // setting whose default is off; the per-feature keys below stay ON so

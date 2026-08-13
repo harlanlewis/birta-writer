@@ -97,6 +97,8 @@ export interface ToolbarController {
     setBlockHandles(mode: import("../shared/blockHandles").BlockHandlesMode): void;
     /** Show/hide the disk-drift badge (file on disk changed vs unsaved edits). */
     setSyncConflict(active: boolean): void;
+    /** Show the Logseq badge with the reason's tooltip, or hide it (null). */
+    setLogseq(reason: import("../shared/messages").LogseqReason | null): void;
 }
 
 /** Editor state-management interface. */
@@ -554,6 +556,9 @@ export function createMessageHandlers(
         },
         syncConflict(msg) {
             topbarTb?.setSyncConflict(msg.state === "conflict");
+        },
+        logseqState(msg) {
+            topbarTb?.setLogseq(msg.reason);
         },
     };
 }

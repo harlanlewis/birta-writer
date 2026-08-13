@@ -356,6 +356,30 @@ body.has-sync-conflict .toolbar-toggle-tab {
     color: var(--vscode-editorWarning-foreground);
 }
 
+/* Logseq badge: this file is being handled as a Logseq page. A word, not a
+   glyph, so it needs the horizontal padding the icon buttons do not.
+   Deliberately NOT the warning treatment above — this states a mode, it does
+   not warn, and the two must not read alike. It borrows the badge tokens VS
+   Code uses for a neutral count chip, which is the same "quiet, informative,
+   not an alert" register. Unlike the drift badge it has no hidden-toolbar
+   fallback: a mode nobody is being warned about can wait for the bar. */
+.tb-logseq-btn {
+    width: auto;
+    padding: 0 var(--ui-space-3);
+    font-size: var(--ui-fs-s);
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: var(--ui-radius-m);
+}
+
+/* A resting fill has to restate its own hover: the primitive's hover paints
+   the toolbar hover ground, which would drop the chip's fill entirely. */
+.tb-logseq-btn:hover {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    opacity: 0.85;
+}
+
 /* Track + sliding knob. Off: a dim neutral track. On: the toolbar's "on" accent
    (--vscode-button-background), matching the active fills for lists, the Full/
    Fixed width segments, and the style/spell-check toolbar buttons — focusBorder

@@ -46,6 +46,21 @@ export type TableWrapMode = "none" | "normal" | "aggressive";
  */
 export type DocumentFormat = "markdown" | "mdx";
 
+/**
+ * Logseq handling, matching the `birta.logseq` enum. `off` runs no detection
+ * at all; `auto` decides per document; `on` forces the treatment for a page
+ * opened outside its graph.
+ */
+export type LogseqMode = "off" | "auto" | "on";
+
+/**
+ * Why a document is being handled as Logseq. Carried on `logseqState` because
+ * the badge's tooltip has to say which of the three it is: a user who sees the
+ * badge on a file they did not expect needs to know whether the graph, the
+ * file's own content, or their own setting put it there.
+ */
+export type LogseqReason = "graph" | "content" | "forced";
+
 /** TOC dock side, matching the `birta.tocPosition` enum. */
 export type TocPosition = "left" | "right";
 // ToC show/hide preference. Type + normalizer live in ./tocVisibility (mirrors
@@ -461,6 +476,19 @@ export type ToWebviewMessage =
     // is the webview's whole picture of connection state: no credential, and
     // no way to derive one.
     | { type: "connectorStateChanged"; connectors: Record<string, boolean> }
+    // Whether this document is handled as Logseq, and why (`reason` is null
+    // when it is not). Sent after `init` for the same reason
+    // connectorStateChanged is: detection stats the document's ancestor
+    // directories, which is async, while `init` is on the path to first paint.
+    // The webview's default is "not Logseq", so the wait costs a badge that
+    // appears a beat late, never a wrong claim about the file. Re-sent to every
+    // open editor when `birta.logseq` changes.
+    //
+    // A consumer that needs the flag while PARSING the init content (MAR-131's
+    // round-trip handling) cannot read it here — it arrives after. Moving
+    // detection ahead of `init` is that ticket's call to make, and it buys the
+    // earlier flag at the cost of an await on the open path.
+    | { type: "logseqState"; reason: LogseqReason | null }
     | { type: "setTableWrap"; wrap: TableWrapMode }
     // Live master-network-switch update (settings UI edit or the just-in-time
     // opt-in accepted in ANOTHER webview): flips `window.__i18n.network` so

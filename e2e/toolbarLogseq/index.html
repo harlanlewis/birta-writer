@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- e2e harness: the Logseq status badge. Mirrors the provider template with
+     acquireVsCodeApi stubbed. The badge is driven entirely by logseqState
+     messages the extension posts after init, so the fixture document is
+     deliberately plain: nothing here decides whether the badge appears. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-inputOption-activeBackground: rgba(14,99,156,0.4); --vscode-inputOption-activeBorder: #007fd4;
+    /* The badge's own tokens, and the drift badge's, so the two can be told
+       apart by paint rather than only by class. */
+    --vscode-badge-background: #4d4d4d; --vscode-badge-foreground: #ffffff;
+    --vscode-statusBarItem-warningBackground: #a9782f;
+    --vscode-statusBarItem-warningForeground: #ffffff;
+    --vscode-statusBarItem-warningHoverBackground: #8e6526;
+    --vscode-editorWarning-foreground: #cca700;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Real toolbar height (~40px in VS Code at default font). */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage(
+          { type: "init", content: "# Sample\n\nAn ordinary paragraph.\n", syncVersion: 1 },
+          "*",
+        );
+      }
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
