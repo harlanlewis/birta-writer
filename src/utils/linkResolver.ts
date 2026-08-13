@@ -52,6 +52,19 @@ export interface ResolveContext {
 
 const MD_SUFFIXES = [".md", ".markdown"] as const;
 
+/**
+ * Extensions an extension-less link may be naming, in preference order. The
+ * editor opens `.mdx` in MDX mode (MAR-42), so `[text](./page)` must be able
+ * to reach `page.mdx` when no `page.md` exists.
+ *
+ * Deliberately NOT the same list as MD_SUFFIXES, which is also the
+ * markdown-preference TIER in resolveWikiTarget. Folding `.mdx` into that
+ * tier would change which file a bare `[[page]]` opens in a vault holding
+ * both spellings, and a link that names neither extension should keep
+ * resolving to the plain markdown twin it always did.
+ */
+const INFERRED_SUFFIXES = [...MD_SUFFIXES, ".mdx"] as const;
+
 function toPosix(p: string): string {
     return p.split(path.sep).join("/");
 }
@@ -86,7 +99,7 @@ function withSuffixes(base: string, hadTrailingSlash: boolean): string[] {
     }
     return [
         base,
-        ...MD_SUFFIXES.map((s) => base + s),
+        ...INFERRED_SUFFIXES.map((s) => base + s),
         path.join(base, "index.md"),
         path.join(base, "_index.md"),
     ];
@@ -135,7 +148,7 @@ async function resolveViaIndex(
     if (!tail) return null;
     const variants = [
         tail,
-        ...MD_SUFFIXES.map((s) => tail + s),
+        ...INFERRED_SUFFIXES.map((s) => tail + s),
         tail + "/index.md",
         tail + "/_index.md",
     ];

@@ -160,6 +160,29 @@ describe("resolveLinkPath — smart mode", () => {
     });
 });
 
+describe("resolveLinkPath — .mdx suffix inference", () => {
+    const DIR = path.join(ROOT, "content", "write", "ai-playbook");
+
+    it("an extension-less link should reach a .mdx file when no markdown twin exists", async () => {
+        const mdx = path.join(DIR, "page.mdx");
+        const io = makeIo([HUGO_DOC, mdx]);
+        expect(await resolveLinkPath("./page", ctx(), io)).toBe(mdx);
+    });
+
+    it("an extension-less link should still prefer the .md twin over the .mdx one", async () => {
+        const md = path.join(DIR, "page.md");
+        const mdx = path.join(DIR, "page.mdx");
+        const io = makeIo([HUGO_DOC, md, mdx]);
+        expect(await resolveLinkPath("./page", ctx(), io)).toBe(md);
+    });
+
+    it("a bare name should reach a .mdx file through the workspace index", async () => {
+        const mdx = path.join(ROOT, "elsewhere", "guide.mdx");
+        const io = makeIo([HUGO_DOC, mdx]);
+        expect(await resolveLinkPath("guide", ctx(), io)).toBe(mdx);
+    });
+});
+
 describe("resolveLinkPath — Notion export ids", () => {
     const DIR = path.join(ROOT, "content", "write", "ai-playbook");
     // A Notion export's own bytes: `%20`-encoded, 32 lowercase hex on the file
