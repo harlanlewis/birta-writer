@@ -2,9 +2,9 @@
 
 Status: a record of live behavior and directed work, not exploration.
 
-This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds), and the directed design ahead of it (MAR-198's connector foundation).
+This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds, the GitHub connector), and the directed design ahead of it (the rest of MAR-198's connector roster).
 
-All of it is checkable. Where it describes shipped behavior it is a fact about the tree. Where it describes MAR-198 it is directed but unbuilt, and says so.
+All of it is checkable. Where it describes shipped behavior it is a fact about the tree. Where it describes work MAR-198 has not reached, it is directed but unbuilt, and says so.
 
 ---
 
@@ -17,7 +17,7 @@ Every network capability sits on one rung. The rungs are ordered by what leaves 
 | 0. Nothing | No outbound request at all | Shipped, and the default. `birta.network.enabled` ships `false`; with it off the editor makes no outbound request | Everything, out of the box |
 | 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document; What's New (`birta.editor.openWhatsNew`) |
 | 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards |
-| 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Directed, not built (MAR-198) | Jira, Asana, Figma, private-GitHub cards |
+| 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Shipped for GitHub (MAR-198); every other provider directed, not built | GitHub repository, issue and pull-request cards; Jira, Asana and Figma still to come |
 | 3. Your document content | The document itself | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232), any cloud or sync surface |
 
 ### Rung 1 today: two features, and only one of them writes to the file
@@ -43,6 +43,16 @@ That is what makes rung 3 a category change rather than one more checkbox: publi
 ### Rung 2 is where identity enters
 
 Not a Birta account, a third-party one. The distinction is real and worth defending, but "Birta has no auth" stopped being true the moment MAR-198 was directed.
+
+#### Rung 2 today: one connector, and four gates in front of it
+
+GitHub is the only connected service. It authenticates through VS Code's own GitHub provider (`vscode.authentication.getSession`), which is the reason it could ship first: no application to register, no client secret to hide inside a distributed extension, and no token for the user to paste or for us to refresh. Connected, a GitHub repository, issue or pull-request link shows what its URL cannot know: the pull request's title and whether it merged, the issue's state, the repository's description and whether it is private.
+
+Four gates sit in front of a single credentialed request, and all four must be open: `birta.network.enabled`, then `birta.embeds.enabled`, then `birta.embeds.providers.github`, then the connection itself. The innermost one deserves its own sentence, because it is the one a reader would not guess. A VS Code GitHub session signed in for some other extension's sake is not consent for Birta to make requests with it: the connection is a record Birta writes when the user runs "Birta: Connect Service…" or clicks a locked card's connect affordance, and without that record a card answers `locked` and no request is made. Deleting it is what "Birta: Disconnect Service…" does.
+
+A card that cannot be built says which of the three reasons applies, because only two of them are worth acting on: never connected, a grant the provider no longer honours, or a request that failed. It never degrades to a blank card. `src/__tests__/connectorService.test.ts` pins the gates, the states, and the rule that no reply crossing to the webview may contain the credential; `src/__tests__/fetchCard.test.ts` pins the pinned-host and redirect behavior at the one site that attaches a token.
+
+The other two rungs of the auth ergonomics ladder, OAuth with PKCE through a URI handler and pasted personal access tokens, are shaped for in `shared/connectors.ts` and have no provider behind them yet. Neither is written, because a strategy nothing has run is not a strategy.
 
 ### Rung 0b is a rung, not a footnote
 
@@ -90,9 +100,11 @@ These come from shipped work (MAR-179, MAR-199) and from MAR-198's directed desi
 
 ### Credentials (rung 2)
 
-7. In the OS keychain, never in settings. `SecretStorage`, never `settings.json`, never settings sync, never the webview. The webview is the least-trusted surface, because it renders third-party content.
+7. In the OS keychain, never in settings. `SecretStorage`, never `settings.json`, never settings sync, never the webview. The webview is the least-trusted surface, because it renders third-party content. Enforced in `src/connectors/`, whose only value crossing the messaging boundary is a card payload with no field a token could occupy.
 8. No hosted auth broker. A relay holding client secrets or proxying tokens would contradict "nothing leaves your machine". If a provider cannot be done with a public client (PKCE) or a user-supplied token, it waits.
-9. Minimal read-only scopes. Where a provider's tokens cannot be narrowed, the connect UI says so before the user proceeds.
+9. Minimal read-only scopes. Where a provider's tokens cannot be narrowed, the connect UI says so before the user proceeds. GitHub is such a case: its `repo` scope is the narrowest classic grant that reads a private repository's issues and pull requests, and it also permits writes, which the connect picker states.
+14. Per-provider connect is a record Birta writes, not a session it finds. A credential the host already holds for another purpose is not consent, so a connector answers `locked` until the user connects it here. (Numbered from 14 because the numbering is one shared space across this document, and the telemetry invariants took 10 through 13.)
+15. Cards are cached in memory for the session and never written to disk. Persisting private card data to workspace or global state is a real privacy decision, and it is deferred rather than made by accident.
 
 ---
 
@@ -100,9 +112,9 @@ These come from shipped work (MAR-179, MAR-199) and from MAR-198's directed desi
 
 Every mechanism above that handles a credential is VS Code's:
 
-- `SecretStorage`, which is Electron `safeStorage`, OS-keychain-backed
-- `registerUriHandler`, which serves the `vscode://BirtaLabs.birta-writer/auth/{provider}` OAuth callback
-- `vscode.authentication.getSession`, the built-in GitHub provider, which makes GitHub's rung 2 nearly free
+- `SecretStorage`, which is Electron `safeStorage`, OS-keychain-backed, and which holds every connection record
+- `registerUriHandler`, which would serve the `vscode://BirtaLabs.birta-writer/auth/{provider}` OAuth callback (not built: no provider needs it yet)
+- `vscode.authentication.getSession`, the built-in GitHub provider, which is why GitHub's rung 2 shipped first and cost nothing
 - `"scope": "application"`, the guarantee that a shared workspace config cannot flip a consent key
 
 None of these has an analog on Tauri, Capacitor, iPadOS, or the web, so any surface beyond VS Code inherits three pieces of work that no host-adapter design has costed: a keychain, a callback-URL scheme, and a consent-scope guarantee. Invariant 2 in particular has no obvious reimplementation off VS Code, because application scope is a VS Code settings concept.
@@ -113,4 +125,4 @@ That is the live question, and it is a reason to treat this document as an input
 
 ## Tracking
 
-MAR-198 (connector foundation, the rung-2 design), MAR-186 (provider roadmap), MAR-179 and MAR-199 (the shipped consent ladder and its application scope, both Done), MAR-232 (rung 3, gated). The open portability question feeds MAR-226.
+MAR-198 (connector foundation: the seam and GitHub shipped, the rest of the roster open), MAR-186 (provider roadmap), MAR-179 and MAR-199 (the shipped consent ladder and its application scope, both Done), MAR-232 (rung 3, gated). The open portability question feeds MAR-226.
