@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.814.0] - 2026, August 14
+
 ### Added
 
 - A block of raw HTML now looks like a block. It sits in a bordered box, so you can see where it starts and ends instead of guessing from the prose around it, and hovering it reveals the same control column a code block or an embed carries: copy the source, or open it for editing. Clicking the block still opens its source, as before; the buttons make that reachable from the keyboard and visible to anyone who did not know to try. A tag inside a sentence is unchanged, since a box mid-sentence would break the line it belongs to.
