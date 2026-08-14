@@ -116,7 +116,9 @@ The counter-case is a choice Markdown CAN spell: a bullet character, an ordered 
 
 ## Rendered HTML is output, not a surface
 
-A document's inline HTML is preserved byte for byte, edited as source, and drawn as output. The drawing is where the scope of this feature could run away, because rendering costs the editor nothing per tag: the browser does it. So the rendered face of an html atom is inert by construction. It does not hold the caret, it does not become schema structure, and it gains no affordance of its own. A click anywhere on it opens the source panel, which is the one way in. The single exception is the `<details>` toggle, because a disclosure that cannot disclose is worse than no disclosure.
+A document's inline HTML is preserved byte for byte, edited as source, and drawn as output. The drawing is where the scope of this feature could run away, because rendering costs the editor nothing per tag: the browser does it. So the rendered face of an html atom is inert by construction. It does not hold the caret, it does not become schema structure, and nothing inside it becomes a control. A click anywhere on it opens the source panel, which is the one way in. The single exception is the `<details>` toggle, because a disclosure that cannot disclose is worse than no disclosure.
+
+Chrome is the other half of that sentence, and the distinction is the whole point rather than an exception to it. An atom that is the whole of its block is a set-piece, so it wears a box and the shared control column, exactly as a code block or an embed does. Those controls are the editor's, sitting outside the atom and acting on its source; the rule above governs what the document's own markup may become. A rendered `<button>` is refused precisely because it is the document's, and a copy-source button is offered precisely because it is not.
 
 Focus follows the same rule, since a control the caret can reach is a surface whether or not it was meant to be one. Every focusable element in a rendered face leaves the tab order once sanitized (`components/htmlView`).
 

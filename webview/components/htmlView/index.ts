@@ -58,6 +58,9 @@ import { sanitizeInto } from "@/utils/sanitizeLoader";
 import { ensureGrammars, highlight } from "@/highlighter";
 import { openBlockSource } from "@/plugins/blockSource";
 import { reportNodeViewFailure } from "@/crashReporter";
+import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
+import { copyTextToClipboard } from "@/ui/clipboard";
+import { IconCheck, IconCode, IconCopy } from "@/ui/icons";
 import { kbd, t } from "@/i18n";
 
 /** The custom event the Mod+Enter keymap dispatches to open the panel. */
@@ -83,8 +86,14 @@ interface HtmlView {
     destroy?: () => void;
 }
 
-/** Paint the resting face for `raw` into `dom`; returns the sanitize handle. */
-function paint(dom: HTMLElement, raw: string): Promise<void> {
+/**
+ * Paint the resting face for `raw` into `dom`.
+ *
+ * Resolves true when the face is RENDERED HTML, false when it is a chip. Only
+ * the rendered face can carry block chrome: a chip already demarcates itself
+ * and already reads as something to click.
+ */
+function paint(dom: HTMLElement, raw: string): Promise<boolean> {
     const value = raw.trim();
     const comment = COMMENT_RE.test(value);
     if (comment || STYLE_ELEMENT_RE.test(value)) {
@@ -102,7 +111,7 @@ function paint(dom: HTMLElement, raw: string): Promise<void> {
         dom.title = comment
             ? t("HTML comment — preserved in the file, hidden in rendered output. Click to edit.")
             : t("CSS — preserved in the file, not applied to the editor. Click to edit.");
-        return Promise.resolve();
+        return Promise.resolve(false);
     }
     dom.className = "html-inline";
     dom.title = "";
@@ -118,6 +127,7 @@ function paint(dom: HTMLElement, raw: string): Promise<void> {
         for (const el of dom.querySelectorAll(FOCUSABLE)) {
             el.setAttribute("tabindex", "-1");
         }
+        return true;
     });
 }
 
@@ -238,7 +248,8 @@ export function createHtmlView(
     // decoration classes PM applied to the dom, and PM skips reapplying
     // outer decorations it considers unchanged).
     const currentValue = initialNode.attrs["value"] ?? "";
-    const ready = paint(dom, currentValue);
+    const painted = paint(dom, currentValue);
+    const ready = painted.then(() => undefined);
 
     let panel: SourcePanel | null = null;
 
@@ -421,6 +432,103 @@ export function createHtmlView(
     dom.addEventListener("click", onClick);
     dom.addEventListener(HTML_EDIT_EVENT, open);
 
+    /**
+     * Is this atom the ONLY thing in its block?
+     *
+     * Stricter than isWholeBlock, which asks about the panel's shape and is
+     * true of every atom in an all-HTML paragraph. Block chrome belongs to the
+     * block, so a paragraph holding two atoms must not grow two of them.
+     */
+    const isSoleBlockAtom = (): boolean => {
+        const pos = livePos();
+        if (pos === null || !view) {
+            return false;
+        }
+        try {
+            if (!isWholeBlock(pos)) {
+                return false;
+            }
+            const parent = view.state.doc.resolve(pos).parent;
+            if (!parent.isTextblock) {
+                return false;
+            }
+            let atoms = 0;
+            parent.forEach((child) => {
+                if (child.type.name === "html") {
+                    atoms++;
+                }
+            });
+            return atoms === 1;
+        } catch {
+            // A position resolved against a doc this view has already fallen
+            // out of. No chrome is the right answer, and it is about to be
+            // rebuilt anyway.
+            return false;
+        }
+    };
+
+    let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /**
+     * Block chrome for an atom that is a set-piece in its own right: a box, so
+     * rendered HTML reads as a block rather than as loose prose, and the same
+     * hover-revealed control column every other rich block carries.
+     *
+     * Two gates, because block-ness can change without the value changing and
+     * a changed value is the only thing that rebuilds this view. This one runs
+     * once, at mount, and decides whether the chrome EXISTS. The paragraph's
+     * own `html-block` class (plugins/imageBlocks.ts) is maintained per
+     * transaction and decides whether it SHOWS, so prose typed beside the atom
+     * takes the box away without anything here running again.
+     */
+    const mountBlockChrome = (): void => {
+        if (!isSoleBlockAtom()) {
+            return;
+        }
+        dom.classList.add("html-inline--block");
+        const column = createBlockControlsColumn(dom);
+        const copy = makeBlockControlButton({
+            className: "html-copy-btn",
+            icon: IconCopy,
+            label: t("Copy Source"),
+            onClick: () => {
+                copyTextToClipboard(currentValue);
+                copy.setVerb(IconCheck, t("Copied!"));
+                if (copyTimer) {
+                    clearTimeout(copyTimer);
+                }
+                copyTimer = setTimeout(() => {
+                    copy.setVerb(IconCopy, t("Copy Source"));
+                    copyTimer = null;
+                }, 1500);
+            },
+        });
+        // The click-anywhere path opens the panel already; this is what makes
+        // it discoverable, and what makes it reachable from the keyboard.
+        const edit = makeBlockControlButton({
+            className: "html-edit-btn",
+            icon: IconCode,
+            label: t("Edit Source"),
+            onClick: () => {
+                if (!panel) {
+                    open();
+                }
+            },
+        });
+        // No `.bc-gap` between them, though the column's convention would put
+        // one before an editing verb. A gap separates GROUPS, and two buttons
+        // are not two groups: on a one-line block the column already overflows
+        // below the box, and spacing them further reads as two unrelated
+        // controls rather than one block's chrome.
+        column.add(copy.button, edit.button);
+        dom.appendChild(column.el);
+    };
+    void painted.then((rendered) => {
+        if (rendered) {
+            mountBlockChrome();
+        }
+    });
+
     return {
         dom,
         ready,
@@ -434,6 +542,10 @@ export function createHtmlView(
         destroy(): void {
             dom.removeEventListener("click", onClick);
             dom.removeEventListener(HTML_EDIT_EVENT, open);
+            if (copyTimer) {
+                clearTimeout(copyTimer);
+                copyTimer = null;
+            }
         },
     };
 }

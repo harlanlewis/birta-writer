@@ -913,6 +913,23 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             }
         }
 
+        /* An atom that is the whole of its block is a set-piece rather than
+           prose, so it wears a box and carries the shared control column, the
+           same anatomy as a code block or an embed.
+
+           Two selectors, one condition. The class is the NodeView's answer at
+           mount; `p.html-block` is the plugin's answer per transaction, so
+           prose typed beside the atom takes the box away on the next keystroke
+           without rebuilding the view. The box also stands down while the
+           source panel is open, which brings its own surface. */
+        p.html-block > .html-inline--block:not(.html-inline--editing) {
+            display: block;
+            position: relative;
+            padding: 0.6em 0.9em;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: var(--ui-radius-l);
+        }
+
         /* Inline HTML that is preserved but never rendered: a comment, or a
            <style> element whose CSS the editor refuses to apply. Visible as a
            dimmed chip instead of vanishing. Overrides .html-inline's

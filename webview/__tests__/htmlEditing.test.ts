@@ -4,7 +4,7 @@
  * production serialization config, NodeView, and plugin — no mocks — so a
  * commit's bytes are asserted where they matter: in the serialized markdown.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, nodeViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "../pm";
@@ -258,6 +258,85 @@ describe("the panel's code surface", () => {
         expect(editor.action(getMarkdown())).toBe("Before <kbd>x</sub> after.\n");
         expect(view.dom.querySelector("textarea.html-src")).toBeNull();
         expect(view.dom.querySelector("textarea.block-source-area")).not.toBeNull();
+        await editor.destroy();
+    });
+});
+
+describe("block chrome on an HTML set-piece", () => {
+    /** Reveal the deferred control column the way a pointer would. */
+    async function revealColumn(dom: HTMLElement): Promise<HTMLElement | null> {
+        await vi.waitFor(() => expect(dom.childElementCount).toBeGreaterThan(0));
+        dom.dispatchEvent(new Event("pointerenter"));
+        return dom.querySelector(".bc-col");
+    }
+
+    it("an atom that is the whole of its block should get the box and the column", async () => {
+        const editor = await makeEditor("<div>a set-piece</div>\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        const column = await revealColumn(dom);
+        expect(dom.classList.contains("html-inline--block")).toBe(true);
+        expect(column).not.toBeNull();
+        expect(column!.querySelector(".html-copy-btn")).not.toBeNull();
+        expect(column!.querySelector(".html-edit-btn")).not.toBeNull();
+        await editor.destroy();
+    });
+
+    it("a tag inside prose should get neither, since the chrome belongs to a block", async () => {
+        const editor = await makeEditor("Water is H<sub>2</sub>O.\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        await revealColumn(dom);
+        expect(dom.classList.contains("html-inline--block")).toBe(false);
+        expect(dom.querySelector(".bc-col")).toBeNull();
+        await editor.destroy();
+    });
+
+    it("a block holding two atoms should grow no column rather than two", async () => {
+        const editor = await makeEditor("<br><br>\n");
+        const view = getView(editor);
+
+        await vi.waitFor(() => expect(view.dom.querySelectorAll(".html-inline").length).toBe(2));
+        for (const el of view.dom.querySelectorAll(".html-inline")) {
+            el.dispatchEvent(new Event("pointerenter"));
+        }
+        expect(view.dom.querySelectorAll(".bc-col").length).toBe(0);
+        await editor.destroy();
+    });
+
+    it("a comment chip should keep its own face rather than growing a box", async () => {
+        const editor = await makeEditor("<!-- a note of its own -->\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        await revealColumn(dom);
+        expect(dom.classList.contains("html-comment")).toBe(true);
+        expect(dom.classList.contains("html-inline--block")).toBe(false);
+        await editor.destroy();
+    });
+
+    it("the copy button should put the atom's own bytes on the clipboard", async () => {
+        const writeText = vi.fn(() => Promise.resolve());
+        Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+        const editor = await makeEditor("<div>copy me</div>\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        const column = await revealColumn(dom);
+        (column!.querySelector(".html-copy-btn") as HTMLButtonElement).click();
+
+        expect(writeText).toHaveBeenCalledWith("<div>copy me</div>");
+        await editor.destroy();
+    });
+
+    it("the edit button should open the same panel a click opens", async () => {
+        const editor = await makeEditor("<div>edit me</div>\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        const column = await revealColumn(dom);
+        (column!.querySelector(".html-edit-btn") as HTMLButtonElement).click();
+
+        const area = dom.querySelector("textarea.html-src") as HTMLTextAreaElement;
+        expect(area).not.toBeNull();
+        expect(area.value).toBe("<div>edit me</div>");
         await editor.destroy();
     });
 });
