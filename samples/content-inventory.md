@@ -893,9 +893,9 @@ An HTML comment preserved and shown dimmed:
 
 <!-- This is an HTML comment. It survives round-trips. -->
 
-### What a document reaches for HTML to say
+### Markdown syntax gaps
 
-These are the shapes Markdown has no syntax for, which is why they arrive in real files. Each renders as a sanitized preview and keeps its exact bytes.
+Markdown has no syntax for any of these, which is why they arrive in real files as HTML. Each renders as a sanitized preview and keeps its exact bytes.
 
 A table with merged cells, the most common reason a Markdown table gets abandoned:
 
@@ -930,7 +930,7 @@ Clicking anywhere on rendered HTML opens its source, with a single exception: a 
 Everything here is rendered HTML, not markdown, so a * stays a star. The toggle works; the rest of the block opens the source panel.
 </details>
 
-### CSS a document carries
+### A document's own CSS
 
 A `style` attribute renders as written, minus the declarations that would let a box leave its place in the document. The first line below is centered and colored; the second asks to cover the window and is drawn in the flow instead.
 

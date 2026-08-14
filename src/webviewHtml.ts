@@ -144,6 +144,43 @@ function resolveCustomResourceUri(resourcePath: string, documentUri: vscode.Uri)
     return vscode.Uri.file(resolved);
 }
 
+/**
+ * The webview URIs a relative resource URL in RENDERED HTML resolves against.
+ *
+ * A Markdown image's `src` is rewritten to a webview URI before the content
+ * reaches the webview, but raw HTML reaches the file verbatim and is rendered
+ * from its own bytes, so an `<img src="images/cat.png">` inside an html block
+ * has nothing to resolve against and loads from the webview's own origin.
+ * Rewriting those bytes too would put a session-scoped URI in front of the user
+ * in the source panel, so the resolution happens at render instead
+ * (webview/utils/resourceUri.ts) and these are what it needs.
+ *
+ * Both end in `/`, because a base without one drops its last segment. Empty for
+ * a document that has no directory (untitled, or a non-`file` scheme), which
+ * leaves resolution off and every URL as authored.
+ */
+export function getResourceBaseUris(
+    webview: vscode.Webview,
+    documentUri: vscode.Uri,
+): { resourceBaseUri: string; workspaceBaseUri: string } {
+    if (documentUri.scheme !== "file") {
+        return { resourceBaseUri: "", workspaceBaseUri: "" };
+    }
+    const asDirectory = (uri: vscode.Uri): string => {
+        const webviewUri = webview.asWebviewUri(uri);
+        return webviewUri
+            .with({ path: webviewUri.path.endsWith("/") ? webviewUri.path : `${webviewUri.path}/` })
+            .toString();
+    };
+    const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri;
+    return {
+        resourceBaseUri: asDirectory(vscode.Uri.joinPath(documentUri, "..")),
+        // The `@/` alias is the workspace root, and falls back to the document's
+        // own directory exactly as the Markdown image rewrite does.
+        workspaceBaseUri: asDirectory(workspaceRoot ?? vscode.Uri.joinPath(documentUri, "..")),
+    };
+}
+
 /** The full document HTML for one editor webview. */
 export function buildWebviewHtml(
     webview: vscode.Webview,
@@ -256,10 +293,11 @@ export function buildWebviewHtml(
     const toolbar = getToolbarConfig(config);
     const floatingToolbar = getFloatingToolbarConfig(config);
     const documentUri = document.uri.toString();
+    const { resourceBaseUri, workspaceBaseUri } = getResourceBaseUris(webview, document.uri);
     // .replace(/</g, "\\u003c"): JSON.stringify leaves "<" intact, so a string
     // setting containing "</script>" would close the inline script element
     // early (no code execution under the nonce CSP, but style injection).
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri }).replace(/</g, "\\u003c")};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri, resourceBaseUri, workspaceBaseUri }).replace(/</g, "\\u003c")};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

@@ -339,6 +339,99 @@ describe("block chrome on an HTML set-piece", () => {
         expect(area.value).toBe("<div>edit me</div>");
         await editor.destroy();
     });
+
+    it("the column should stay pinned while the panel is open, so the edit has a visible way out", async () => {
+        const editor = await makeEditor("<div>edit me</div>\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        const column = await revealColumn(dom);
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+
+        expect(column!.classList.contains("bc-col--shown")).toBe(true);
+        // The hide rule is `> :not(.html-src-panel, .bc-col)`, so the column
+        // has to remain a CHILD of the atom, not of the panel that replaced
+        // the rendered face.
+        expect(dom.querySelector(":scope > .bc-col")).toBe(column);
+        await editor.destroy();
+    });
+
+    it("the edit button should become Preview while editing, and apply when pressed", async () => {
+        const editor = await makeEditor("<div>edit me</div>\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        const column = await revealColumn(dom);
+        const button = column!.querySelector(".html-edit-btn") as HTMLButtonElement;
+        expect(button.getAttribute("aria-label")).toBe("Edit Source");
+
+        button.click();
+        expect(button.getAttribute("aria-label")).toBe("Preview");
+
+        const area = dom.querySelector("textarea.html-src") as HTMLTextAreaElement;
+        area.value = "<div>edited by the button</div>";
+        button.click();
+
+        expect(dom.querySelector("textarea.html-src")).toBeNull();
+        expect(button.getAttribute("aria-label")).toBe("Edit Source");
+        expect(column!.classList.contains("bc-col--shown")).toBe(false);
+        expect(editor.action(getMarkdown())).toBe("<div>edited by the button</div>\n");
+        await editor.destroy();
+    });
+
+    it("the copy button should follow the open panel's text rather than the committed bytes", async () => {
+        const writeText = vi.fn(() => Promise.resolve());
+        Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+        const editor = await makeEditor("<div>committed</div>\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        const column = await revealColumn(dom);
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+        (dom.querySelector("textarea.html-src") as HTMLTextAreaElement).value = "<div>typed</div>";
+        (column!.querySelector(".html-copy-btn") as HTMLButtonElement).click();
+
+        expect(writeText).toHaveBeenCalledWith("<div>typed</div>");
+        await editor.destroy();
+    });
+});
+
+describe("the source panel's line numbers", () => {
+    it("a block panel should number every source line", async () => {
+        const editor = await makeEditor("<figure>\n<img src=\"a.png\">\n<figcaption>c</figcaption>\n</figure>\n");
+        const view = getView(editor);
+        const { dom } = firstHtmlDom(view);
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+        const gutter = dom.querySelector(".html-src-gutter");
+
+        expect(gutter).not.toBeNull();
+        expect([...gutter!.children].map((el) => el.textContent)).toEqual(["1", "2", "3", "4"]);
+        await editor.destroy();
+    });
+
+    it("the gutter should follow the source as it is typed", async () => {
+        const editor = await makeEditor("<div>one line</div>\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+        const area = dom.querySelector("textarea.html-src") as HTMLTextAreaElement;
+        expect(dom.querySelectorAll(".html-src-gutter > span").length).toBe(1);
+
+        area.value = "<div>\none\ntwo\n</div>";
+        area.dispatchEvent(new Event("input", { bubbles: true }));
+
+        expect(dom.querySelectorAll(".html-src-gutter > span").length).toBe(4);
+        await editor.destroy();
+    });
+
+    it("an inline panel should have no gutter, since it would be wider than what it numbers", async () => {
+        const editor = await makeEditor("Water is H<sub>2</sub>O.\n");
+        const { dom } = firstHtmlDom(getView(editor));
+
+        dom.dispatchEvent(new CustomEvent(HTML_EDIT_EVENT));
+
+        expect(dom.querySelector("textarea.html-src")).not.toBeNull();
+        expect(dom.querySelector(".html-src-gutter")).toBeNull();
+        await editor.destroy();
+    });
 });
 
 describe("live inline pairs", () => {

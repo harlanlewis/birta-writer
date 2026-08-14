@@ -13,6 +13,7 @@
  * of it by writing its own config.
  */
 import type DOMPurify from "dompurify";
+import { resolveResourceUrlsIn } from "./resourceUri";
 
 type DOMPurifyModule = typeof DOMPurify;
 
@@ -113,6 +114,11 @@ export function loadSanitizer(): Promise<DOMPurifyModule> {
  * inline-HTML node paints empty first — the same trade the lazy KaTeX and
  * Mermaid loaders already make, and invisible in practice because the node is
  * inline and the chunk is already on disk.
+ *
+ * Relative resource URLs are resolved against the document AFTER the sanitizer
+ * has run (utils/resourceUri.ts), so what gets a document-relative URL is only
+ * ever an element the filter already kept. The rewrite is the rendered
+ * attribute's alone: `raw` is the document's bytes and stays untouched.
  */
 export async function sanitizeInto(
     target: HTMLElement,
@@ -121,4 +127,5 @@ export async function sanitizeInto(
 ): Promise<void> {
     const purify = await loadSanitizer();
     target.innerHTML = purify.sanitize(raw, config) as string;
+    resolveResourceUrlsIn(target);
 }

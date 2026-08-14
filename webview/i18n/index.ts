@@ -90,6 +90,15 @@ declare global {
             plantumlTheme?: import("../../shared/plantuml").PlantUmlThemeMode;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
+            /**
+             * Webview URI of the document's own directory, trailing slash
+             * included: what a relative resource URL in rendered raw HTML
+             * resolves against (utils/resourceUri.ts). Empty when the document
+             * has no directory, which leaves resolution off.
+             */
+            resourceBaseUri?: string;
+            /** The same, for the workspace root, which the `@/` alias names. */
+            workspaceBaseUri?: string;
         };
     }
 }
