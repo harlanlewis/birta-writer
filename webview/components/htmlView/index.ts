@@ -444,27 +444,41 @@ export function createHtmlView(
         if (pos === null || !view) {
             return false;
         }
+        let parent;
         try {
-            if (!isWholeBlock(pos)) {
-                return false;
-            }
-            const parent = view.state.doc.resolve(pos).parent;
-            if (!parent.isTextblock) {
-                return false;
-            }
-            let atoms = 0;
-            parent.forEach((child) => {
-                if (child.type.name === "html") {
-                    atoms++;
-                }
-            });
-            return atoms === 1;
+            parent = view.state.doc.resolve(pos).parent;
         } catch {
             // A position resolved against a doc this view has already fallen
             // out of. No chrome is the right answer, and it is about to be
             // rebuilt anyway.
             return false;
         }
+        if (!parent.isTextblock) {
+            return false;
+        }
+        // One pass over the siblings, and the ancestor walk only for a
+        // candidate. This runs once per html atom on the MOUNT path, and a
+        // prose-heavy document holds far more inline atoms than blocks, so the
+        // common answer has to be the cheap one: `<sub>` in a sentence is
+        // rejected here by one resolve and one pass, never reaching
+        // singleLineHost's walk to the root. Same answer as
+        // `isWholeBlock(pos) && exactly one html child`, in less work.
+        let atoms = 0;
+        let prose = false;
+        parent.forEach((child) => {
+            if (child.type.name === "html") {
+                atoms++;
+                return;
+            }
+            if (child.isText && (child.text ?? "").trim() === "") {
+                return;
+            }
+            prose = true;
+        });
+        if (atoms !== 1 || prose) {
+            return false;
+        }
+        return singleLineHost(pos) === null;
     };
 
     let copyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -523,11 +537,19 @@ export function createHtmlView(
         column.add(copy.button, edit.button);
         dom.appendChild(column.el);
     };
-    void painted.then((rendered) => {
-        if (rendered) {
-            mountBlockChrome();
-        }
-    });
+    // The catch is not decoration: `paint` rejects if the sanitizer chunk
+    // fails to load, and nothing consumes `ready` in production, so a failure
+    // here would otherwise be an unhandled rejection and an atom that stays
+    // permanently empty with nothing said about it.
+    void painted
+        .then((rendered) => {
+            if (rendered) {
+                mountBlockChrome();
+            }
+        })
+        .catch((error: unknown) => {
+            reportNodeViewFailure("html", "paint", error instanceof Error ? error : new Error(String(error)));
+        });
 
     return {
         dom,

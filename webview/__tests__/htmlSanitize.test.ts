@@ -125,6 +125,29 @@ describe("a document's style element", () => {
     });
 });
 
+describe("filtering is a rendering decision, never a file one", () => {
+    it("a dropped declaration should still be in the file, byte for byte", async () => {
+        const source = '<div style="position: fixed; inset: 0; height: 100vh">x</div>\n';
+        const editor = await makeEditor(source);
+        const dom = await paintedHtmlDom(getView(editor));
+
+        // Filtered where it is drawn...
+        expect(dom.querySelector("div")?.getAttribute("style")).toBe("inset: 0");
+        // ...and untouched where it is saved. This is the whole contract: the
+        // sanitizer decides what the editor DRAWS and never what the file says.
+        expect(editor.action(getMarkdown())).toBe(source);
+        await editor.destroy();
+    });
+
+    it("a style attribute with nothing left should leave no empty attribute behind", async () => {
+        const editor = await makeEditor('<div style="position: absolute">x</div>\n');
+        const dom = await paintedHtmlDom(getView(editor));
+
+        expect(dom.querySelector("div")?.hasAttribute("style")).toBe(false);
+        await editor.destroy();
+    });
+});
+
 describe("the rendered face and focus", () => {
     it("a rendered control should be taken out of the tab order", async () => {
         const editor = await makeEditor("Press <button>go</button> now.\n");

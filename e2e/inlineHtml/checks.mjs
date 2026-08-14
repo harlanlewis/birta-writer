@@ -117,6 +117,17 @@ export async function run({ page, check, baseUrl }) {
     check("hovering the block reveals a copy and an edit-source control",
         column !== null && column.copy && column.edit, JSON.stringify(column));
 
+    // The column's buttons must stay REACHABLE, which is the stated reason the
+    // edit-source button exists at all. The rendered face's tabindex sweep runs
+    // over the same subtree these live in, so this is the assertion that keeps
+    // the two from colliding.
+    const reach = await page.evaluate(() => {
+        const col = document.querySelector(".html-inline--block .bc-col");
+        return [...col.querySelectorAll("button")].map((b) => b.tabIndex);
+    });
+    check("the column's own controls stay in the tab order",
+        reach.length > 0 && reach.every((t) => t === 0), JSON.stringify(reach));
+
     // The panel brings its own surface, so the resting box stands down.
     await page.click(".html-inline--block");
     await page.waitForSelector(".html-inline--editing textarea.html-src", { timeout: 5000 });
