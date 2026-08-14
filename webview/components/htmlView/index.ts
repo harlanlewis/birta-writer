@@ -12,8 +12,17 @@
  *  - tag HTML   → DOMPurify-sanitized rendered output (never executes; the
  *    sanitizer strips scripts and handlers, and the webview CSP is behind it)
  *  - comment    → the dimmed chip (`.html-comment`), raw text
+ *  - style      → the same chip (`.html-css-source`), raw text
  *  - editing    → a code surface: a syntax-highlighted mirror under a
  *    transparent `<textarea>`, the two-layer editor the code lightbox uses
+ *
+ * The rendered face is OUTPUT, not a surface (MAR-366). A document's CSS is
+ * filtered rather than trusted: `<style>` never applies, and the escaping
+ * `style` declarations are dropped by the hook in utils/sanitizeLoader.ts.
+ * The CSP cannot do this job, because `style-src` must carry 'unsafe-inline'
+ * for the editor's own styles. Nothing rendered here holds focus either: every
+ * focusable descendant is given `tabindex="-1"` once sanitized, so the one way
+ * into an atom is the source panel.
  *
  * The panel wears one of two faces. An atom alone in its block is the whole
  * line of HTML, so it opens as a full-width code block with a hint row. An
@@ -31,8 +40,8 @@
  * Mod+Enter keymap in plugins/htmlLivePairs.ts dispatches it at the selected
  * atom's DOM, since a plugin cannot reach the NodeView instance directly).
  * A click on a rendered `<summary>` is left to the native `<details>` toggle
- * instead of opening the panel — the one rendered control DOMPurify keeps
- * interactive.
+ * instead of opening the panel — the one interaction the rendered face keeps,
+ * and the reason `summary` is absent from the FOCUSABLE list below.
  *
  * Committing: blur or Mod+Enter commits (an unchanged value just closes);
  * Escape cancels. An emptied value deletes the node. Mod+/ commits and hands
@@ -49,12 +58,25 @@ import { sanitizeInto } from "@/utils/sanitizeLoader";
 import { ensureGrammars, highlight } from "@/highlighter";
 import { openBlockSource } from "@/plugins/blockSource";
 import { reportNodeViewFailure } from "@/crashReporter";
+import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
+import { copyTextToClipboard } from "@/ui/clipboard";
+import { IconCheck, IconCode, IconCopy } from "@/ui/icons";
 import { kbd, t } from "@/i18n";
 
 /** The custom event the Mod+Enter keymap dispatches to open the panel. */
 export const HTML_EDIT_EVENT = "birta:html-edit";
 
 const COMMENT_RE = /^<!--[\s\S]*?-->$/;
+/** A value that is nothing but a `<style>` element, which renders as a chip. */
+const STYLE_ELEMENT_RE = /^<style[\s>][\s\S]*<\/style>$/i;
+/**
+ * Focusable descendants of a rendered face.
+ *
+ * `summary` is deliberately absent: it is focusable natively, carries no
+ * attribute to rewrite, and its toggle is the one interaction the rendered
+ * face keeps.
+ */
+const FOCUSABLE = "a[href], button, input, select, textarea, [tabindex]";
 
 interface HtmlView {
     dom: HTMLElement;
@@ -64,24 +86,48 @@ interface HtmlView {
     destroy?: () => void;
 }
 
-/** Paint the resting face for `raw` into `dom`; returns the sanitize handle. */
-function paint(dom: HTMLElement, raw: string): Promise<void> {
-    if (COMMENT_RE.test(raw.trim())) {
-        dom.className = "html-inline html-comment";
+/**
+ * Paint the resting face for `raw` into `dom`.
+ *
+ * Resolves true when the face is RENDERED HTML, false when it is a chip. Only
+ * the rendered face can carry block chrome: a chip already demarcates itself
+ * and already reads as something to click.
+ */
+function paint(dom: HTMLElement, raw: string): Promise<boolean> {
+    const value = raw.trim();
+    const comment = COMMENT_RE.test(value);
+    if (comment || STYLE_ELEMENT_RE.test(value)) {
+        // Two kinds, one chip recipe (style.css). A style element has to reach
+        // it explicitly: the sanitizer drops the element AND its contents, so
+        // without a face of its own the node would paint as an empty span,
+        // which is the silent drop the preserve-everything promise rules out.
+        dom.className = comment ? "html-inline html-comment" : "html-inline html-css-source";
         // A child span, not bare textContent: the editing face hides the
         // rendered children with `> :not(.html-src-panel)`, which cannot match
         // a text node.
         const chip = document.createElement("span");
-        chip.textContent = raw.trim();
+        chip.textContent = value;
         dom.replaceChildren(chip);
-        dom.title = t("HTML comment — preserved in the file, hidden in rendered output. Click to edit.");
-        return Promise.resolve();
+        dom.title = comment
+            ? t("HTML comment — preserved in the file, hidden in rendered output. Click to edit.")
+            : t("CSS — preserved in the file, not applied to the editor. Click to edit.");
+        return Promise.resolve(false);
     }
     dom.className = "html-inline";
     dom.title = "";
     return sanitizeInto(dom, raw, {
         USE_PROFILES: { html: true },
         ADD_ATTR: ["align", "width", "height"],
+        // FORBID_CONTENTS as well as FORBID_TAGS: dropping the element alone
+        // would let KEEP_CONTENT spill the stylesheet into the document as
+        // visible text.
+        FORBID_TAGS: ["style"],
+        FORBID_CONTENTS: ["style"],
+    }).then(() => {
+        for (const el of dom.querySelectorAll(FOCUSABLE)) {
+            el.setAttribute("tabindex", "-1");
+        }
+        return true;
     });
 }
 
@@ -202,7 +248,8 @@ export function createHtmlView(
     // decoration classes PM applied to the dom, and PM skips reapplying
     // outer decorations it considers unchanged).
     const currentValue = initialNode.attrs["value"] ?? "";
-    const ready = paint(dom, currentValue);
+    const painted = paint(dom, currentValue);
+    const ready = painted.then(() => undefined);
 
     let panel: SourcePanel | null = null;
 
@@ -385,6 +432,125 @@ export function createHtmlView(
     dom.addEventListener("click", onClick);
     dom.addEventListener(HTML_EDIT_EVENT, open);
 
+    /**
+     * Is this atom the ONLY thing in its block?
+     *
+     * Stricter than isWholeBlock, which asks about the panel's shape and is
+     * true of every atom in an all-HTML paragraph. Block chrome belongs to the
+     * block, so a paragraph holding two atoms must not grow two of them.
+     */
+    const isSoleBlockAtom = (): boolean => {
+        const pos = livePos();
+        if (pos === null || !view) {
+            return false;
+        }
+        let parent;
+        try {
+            parent = view.state.doc.resolve(pos).parent;
+        } catch {
+            // A position resolved against a doc this view has already fallen
+            // out of. No chrome is the right answer, and it is about to be
+            // rebuilt anyway.
+            return false;
+        }
+        if (!parent.isTextblock) {
+            return false;
+        }
+        // One pass over the siblings, and the ancestor walk only for a
+        // candidate. This runs once per html atom on the MOUNT path, and a
+        // prose-heavy document holds far more inline atoms than blocks, so the
+        // common answer has to be the cheap one: `<sub>` in a sentence is
+        // rejected here by one resolve and one pass, never reaching
+        // singleLineHost's walk to the root. Same answer as
+        // `isWholeBlock(pos) && exactly one html child`, in less work.
+        let atoms = 0;
+        let prose = false;
+        parent.forEach((child) => {
+            if (child.type.name === "html") {
+                atoms++;
+                return;
+            }
+            if (child.isText && (child.text ?? "").trim() === "") {
+                return;
+            }
+            prose = true;
+        });
+        if (atoms !== 1 || prose) {
+            return false;
+        }
+        return singleLineHost(pos) === null;
+    };
+
+    let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /**
+     * Block chrome for an atom that is a set-piece in its own right: a box, so
+     * rendered HTML reads as a block rather than as loose prose, and the same
+     * hover-revealed control column every other rich block carries.
+     *
+     * Two gates, because block-ness can change without the value changing and
+     * a changed value is the only thing that rebuilds this view. This one runs
+     * once, at mount, and decides whether the chrome EXISTS. The paragraph's
+     * own `html-block` class (plugins/imageBlocks.ts) is maintained per
+     * transaction and decides whether it SHOWS, so prose typed beside the atom
+     * takes the box away without anything here running again.
+     */
+    const mountBlockChrome = (): void => {
+        if (!isSoleBlockAtom()) {
+            return;
+        }
+        dom.classList.add("html-inline--block");
+        const column = createBlockControlsColumn(dom);
+        const copy = makeBlockControlButton({
+            className: "html-copy-btn",
+            icon: IconCopy,
+            label: t("Copy Source"),
+            onClick: () => {
+                copyTextToClipboard(currentValue);
+                copy.setVerb(IconCheck, t("Copied!"));
+                if (copyTimer) {
+                    clearTimeout(copyTimer);
+                }
+                copyTimer = setTimeout(() => {
+                    copy.setVerb(IconCopy, t("Copy Source"));
+                    copyTimer = null;
+                }, 1500);
+            },
+        });
+        // The click-anywhere path opens the panel already; this is what makes
+        // it discoverable, and what makes it reachable from the keyboard.
+        const edit = makeBlockControlButton({
+            className: "html-edit-btn",
+            icon: IconCode,
+            label: t("Edit Source"),
+            onClick: () => {
+                if (!panel) {
+                    open();
+                }
+            },
+        });
+        // No `.bc-gap` between them, though the column's convention would put
+        // one before an editing verb. A gap separates GROUPS, and two buttons
+        // are not two groups: on a one-line block the column already overflows
+        // below the box, and spacing them further reads as two unrelated
+        // controls rather than one block's chrome.
+        column.add(copy.button, edit.button);
+        dom.appendChild(column.el);
+    };
+    // The catch is not decoration: `paint` rejects if the sanitizer chunk
+    // fails to load, and nothing consumes `ready` in production, so a failure
+    // here would otherwise be an unhandled rejection and an atom that stays
+    // permanently empty with nothing said about it.
+    void painted
+        .then((rendered) => {
+            if (rendered) {
+                mountBlockChrome();
+            }
+        })
+        .catch((error: unknown) => {
+            reportNodeViewFailure("html", "paint", error instanceof Error ? error : new Error(String(error)));
+        });
+
     return {
         dom,
         ready,
@@ -398,6 +564,10 @@ export function createHtmlView(
         destroy(): void {
             dom.removeEventListener("click", onClick);
             dom.removeEventListener(HTML_EDIT_EVENT, open);
+            if (copyTimer) {
+                clearTimeout(copyTimer);
+                copyTimer = null;
+            }
         },
     };
 }
