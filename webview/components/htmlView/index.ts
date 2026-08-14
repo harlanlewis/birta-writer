@@ -56,11 +56,17 @@ import type { EditorView } from "@/pm";
 import { NodeSelection } from "@/pm";
 import { sanitizeInto } from "@/utils/sanitizeLoader";
 import { ensureGrammars, highlight } from "@/highlighter";
+import { getVisualLineCounts, updateLineNumbers } from "../codeBlock/lineNumbers";
 import { openBlockSource } from "@/plugins/blockSource";
 import { reportNodeViewFailure } from "@/crashReporter";
-import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
+import {
+    createBlockControlsColumn,
+    makeBlockControlButton,
+    type BlockControlButton,
+    type BlockControlsColumn,
+} from "@/ui/blockControls";
 import { copyTextToClipboard } from "@/ui/clipboard";
-import { IconCheck, IconCode, IconCopy } from "@/ui/icons";
+import { IconCheck, IconCode, IconCopy, IconEye } from "@/ui/icons";
 import { kbd, t } from "@/i18n";
 
 /** The custom event the Mod+Enter keymap dispatches to open the panel. */
@@ -149,6 +155,14 @@ interface SourcePanel {
  * Every element is a `<span>`, styled into blocks by CSS. An html atom is
  * inline, so its NodeView lives inside a paragraph, and a block-level element
  * there is invalid nesting that the browser is free to hoist out of it.
+ *
+ * The block face carries the line-number gutter a code block carries, built
+ * from the same geometry (components/codeBlock/lineNumbers.ts). It is
+ * unconditional there for the same reason it is unconditional on a code block:
+ * `birta.lineNumbers` numbers the DOCUMENT's source lines and says in its own
+ * description that a code block's interior is left to its own numbers. The
+ * inline face has no gutter, because a gutter beside two words of `<sub>` is
+ * wider than what it numbers.
  */
 function buildSourcePanel(value: string, block: boolean): SourcePanel {
     const root = document.createElement("span");
@@ -156,6 +170,22 @@ function buildSourcePanel(value: string, block: boolean): SourcePanel {
 
     const code = document.createElement("span");
     code.className = "html-src-code";
+
+    // The gutter is a flex sibling of the two stacked layers, so those get a
+    // positioning box of their own: the textarea is stretched over the mirror
+    // with `inset: 0`, which without this wrapper would cover the numbers too.
+    const body = document.createElement("span");
+    body.className = "html-src-body";
+
+    const gutter = block ? document.createElement("span") : null;
+    if (gutter) {
+        // Its own class, not the code block's `.line-numbers-gutter`. What is
+        // shared is the GEOMETRY module below, which is where the wrapped-run
+        // arithmetic lives; the skin is restated in htmlView.css so the panel
+        // does not depend on codeBlock.css being in the loaded graph.
+        gutter.className = "html-src-gutter";
+        gutter.setAttribute("aria-hidden", "true");
+    }
 
     // Under the textarea, and never a target: it exists to carry the colors
     // and to give the panel its height.
@@ -172,7 +202,11 @@ function buildSourcePanel(value: string, block: boolean): SourcePanel {
     area.setAttribute("autocapitalize", "off");
     area.setAttribute("aria-label", t("HTML source"));
 
-    code.append(mirror, area);
+    body.append(mirror, area);
+    if (gutter) {
+        code.appendChild(gutter);
+    }
+    code.appendChild(body);
 
     const note = document.createElement("span");
     note.className = "html-src-note";
@@ -197,6 +231,13 @@ function buildSourcePanel(value: string, block: boolean): SourcePanel {
         // short of the textarea whenever the source ends in one, and an empty
         // value would measure zero.
         mirror.innerHTML = `${highlight(area.value, "html")}\n`;
+        if (gutter) {
+            // Word wrap is always on here (both layers are `pre-wrap`), so a
+            // source line can occupy several visual ones and each number cell
+            // has to be as tall as its wrapped run. Measure against the mirror:
+            // it is the layer in normal flow, so it is the one with a width.
+            updateLineNumbers(gutter, area.value, getVisualLineCounts(mirror, area.value, true));
+        }
     };
     refresh();
     // Grammars load lazily, and until they do `highlight` returns escaped
@@ -252,6 +293,15 @@ export function createHtmlView(
     const ready = painted.then(() => undefined);
 
     let panel: SourcePanel | null = null;
+    /**
+     * The block chrome, once mounted. The column stays on screen for the whole
+     * edit rather than being swapped away with the rendered face, so the panel
+     * has visible exits: without it the only ways out are Mod+Enter, Escape and
+     * Mod+/, none of which the panel shows. Null on an atom that carries no
+     * chrome (inline, or one of several in a paragraph), where every branch
+     * below is a no-op.
+     */
+    let chrome: { column: BlockControlsColumn; edit: BlockControlButton } | null = null;
 
     /** The node's live position, or null when the view is stale. */
     const livePos = (): number | null => {
@@ -267,6 +317,10 @@ export function createHtmlView(
         panel = null;
         open.root.remove();
         dom.classList.remove("html-inline--editing", "html-inline--editing-block");
+        // Back to the resting verb, and back to hover-revealed: a column pinned
+        // open over a rendered block is chrome nobody asked for.
+        chrome?.edit.setVerb(IconCode, t("Edit Source"));
+        chrome?.column.el.classList.remove("bc-col--shown");
         view?.focus();
     };
 
@@ -416,6 +470,16 @@ export function createHtmlView(
             dom.classList.add("html-inline--editing-block");
         }
         dom.appendChild(built.root);
+        if (chrome) {
+            // Pin it rather than leaning on `:focus-within`. Focus is about to
+            // land in the textarea and would reveal the column anyway, but a
+            // commit blurs first and would drop the column mid-gesture.
+            chrome.column.reveal();
+            chrome.column.el.classList.add("bc-col--shown");
+            // Same swap the code block makes between its source and its
+            // rendered diagram, and it is what makes Mod+Enter optional.
+            chrome.edit.setVerb(IconEye, t("Preview"));
+        }
         area.focus();
         area.setSelectionRange(area.value.length, area.value.length);
     };
@@ -506,7 +570,10 @@ export function createHtmlView(
             icon: IconCopy,
             label: t("Copy Source"),
             onClick: () => {
-                copyTextToClipboard(currentValue);
+                // The open panel's text, not the committed attr: while the
+                // panel is up, what the button is beside is what the user has
+                // typed, and copying the older bytes would be a quiet lie.
+                copyTextToClipboard(panel?.area.value ?? currentValue);
                 copy.setVerb(IconCheck, t("Copied!"));
                 if (copyTimer) {
                     clearTimeout(copyTimer);
@@ -518,13 +585,17 @@ export function createHtmlView(
             },
         });
         // The click-anywhere path opens the panel already; this is what makes
-        // it discoverable, and what makes it reachable from the keyboard.
+        // it discoverable, and what makes it reachable from the keyboard. It
+        // is the same button in both directions: open swaps its verb to
+        // Preview, so one control opens the source and applies it.
         const edit = makeBlockControlButton({
             className: "html-edit-btn",
             icon: IconCode,
             label: t("Edit Source"),
             onClick: () => {
-                if (!panel) {
+                if (panel) {
+                    commit();
+                } else {
                     open();
                 }
             },
@@ -536,6 +607,7 @@ export function createHtmlView(
         // controls rather than one block's chrome.
         column.add(copy.button, edit.button);
         dom.appendChild(column.el);
+        chrome = { column, edit };
     };
     // The catch is not decoration: `paint` rejects if the sanitizer chunk
     // fails to load, and nothing consumes `ready` in production, so a failure

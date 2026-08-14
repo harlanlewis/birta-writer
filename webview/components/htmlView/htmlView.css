@@ -25,8 +25,12 @@
     background: none;
     font-size: 1em;
 
-    /* Hide the rendered face while the source panel is open. */
-    > :not(.html-src-panel) {
+    /* Hide the rendered face while the source panel is open. The control
+       column is deliberately exempt: it stays on screen for the whole edit,
+       because it carries the panel's only visible way out (its Edit Source
+       button becomes Preview). Without the exemption the panel's exits are
+       Mod+Enter, Escape and Mod+/, none of which it shows. */
+    > :not(.html-src-panel, .bc-col) {
         display: none;
     }
 }
@@ -50,13 +54,49 @@
 }
 
 .milkdown .editor .html-src-code {
-    display: block;
-    position: relative;
+    display: flex;
+    align-items: stretch;
     min-width: 8ch;
     overflow: hidden;
     border: 1px solid var(--vscode-focusBorder);
     border-radius: var(--ui-radius-l);
     background: var(--vscode-textCodeBlock-background);
+}
+
+/* The two stacked layers' own positioning box. The textarea is stretched with
+   `inset: 0`, so without this it would cover the gutter beside it. */
+.milkdown .editor .html-src-body {
+    display: block;
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Line numbers, on the block face only. The skin is restated rather than
+   borrowed from the code block's `.line-numbers-gutter`, whose 36px top
+   padding reserves a floating chrome row this panel does not have; the shared
+   part is the geometry module the numbers are computed with. Metrics must
+   match .html-src-mirror exactly or every number drifts from its line. */
+.milkdown .editor .html-src-gutter {
+    display: block;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    min-width: 2.5em;
+    padding: 0.5em 0.6em;
+    border-right: 1px solid var(--vscode-panel-border);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.9em;
+    line-height: 1.5;
+    text-align: right;
+    color: var(--vscode-editorLineNumber-foreground);
+    pointer-events: none;
+    user-select: none;
+
+    > span {
+        display: block;
+        box-sizing: border-box;
+        line-height: 1.5;
+    }
 }
 
 .milkdown .editor .html-src-mirror,

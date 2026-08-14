@@ -24,9 +24,13 @@
 
 ### Changed
 
+- A block of raw HTML keeps its controls while you edit its source, and the source is numbered. The panel used to replace the block outright, so the copy and edit buttons vanished the moment it opened and the only ways out were Cmd+Enter, Escape, and the Cmd+/ escape hatch to raw Markdown, none of them shown anywhere. The control column now stays put, and its Edit Source button becomes Preview: press it to apply and go back, the way a diagram's code and its picture already swap. Copy follows what you have typed rather than the last saved bytes. Line numbers sit beside the source, matching a code block. A tag inside a sentence is unchanged: it still opens as a small box with no gutter and no column, because neither would fit around two words.
+
 - Editing HTML in place happens on a code surface. A tag that is a whole line of HTML opens as a full-width, syntax-highlighted code block with the apply and cancel keys named under it, and a tag inside a sentence opens as a small box that hugs its bytes and stays in the line. Either box is sized to the source it holds, so a long line that wraps is fully visible instead of scrolled inside a one-line field. Cmd+/ (Ctrl+/ on Windows and Linux) from inside the panel applies the edit and opens the block's raw Markdown, so the source-peek panel is reachable without closing this one first. A value refused inside a table cell now states its reason in the panel rather than only in a tooltip.
 
 ### Fixed
+
+- An image inside a raw HTML block renders again. An `<img>`, `<video>` or `<source>` whose path was written relative to the document drew as a broken-image placeholder, because only a Markdown image's path was ever resolved against the document's folder. Both forms now resolve the same way, including the `@/` workspace-root alias, and a `srcset` resolves every candidate in it. The file keeps the path exactly as you wrote it: the source panel still shows what you typed, and saving writes that back.
 
 - A document's HTML can no longer restyle the editor around it. A `<style>` element in your file applied to the whole window, so a stylesheet meant for a published page could dim the toolbar or hide parts of the editor, and nothing said why. It now shows as a dimmed chip, kept in the file and not applied, and clicking it opens its source the way an HTML comment does. A `style` attribute still renders as written, minus the declarations that would let a box leave its place in the document, such as `position: fixed`. Nothing rendered from HTML takes a Tab stop any more, so the caret stays in your text. No file is changed by any of this: the bytes come back exactly as authored.
 

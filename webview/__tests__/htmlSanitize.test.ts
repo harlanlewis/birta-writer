@@ -11,7 +11,7 @@
  * have applied, or a fixed div actually escaped: that needs a layout engine,
  * and `e2e/inlineHtml` asserts it there.
  */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, nodeViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "../pm";
@@ -144,6 +144,32 @@ describe("filtering is a rendering decision, never a file one", () => {
         const dom = await paintedHtmlDom(getView(editor));
 
         expect(dom.querySelector("div")?.hasAttribute("style")).toBe(false);
+        await editor.destroy();
+    });
+});
+
+describe("a resource url in rendered html", () => {
+    const BASE = "https://file+.vscode-resource.vscode-cdn.net/Users/x/notes/";
+    let restore: Window["__i18n"];
+
+    beforeEach(() => {
+        restore = window.__i18n;
+        window.__i18n = { translations: {}, isMac: false, resourceBaseUri: BASE, workspaceBaseUri: BASE };
+    });
+
+    afterEach(() => {
+        window.__i18n = restore;
+    });
+
+    it("a relative img src should be drawn against the document's directory", async () => {
+        const source = '<figure>\n<img src="images/cats.jpeg" alt="Two cats">\n<figcaption>A caption</figcaption>\n</figure>\n';
+        const editor = await makeEditor(source);
+        const dom = await paintedHtmlDom(getView(editor));
+
+        expect(dom.querySelector("img")?.getAttribute("src")).toBe(`${BASE}images/cats.jpeg`);
+        // The same contract the style filter holds: resolution decides what the
+        // editor DRAWS, and the file keeps the path the author wrote.
+        expect(editor.action(getMarkdown())).toBe(source);
         await editor.destroy();
     });
 });

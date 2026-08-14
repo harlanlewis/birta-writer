@@ -150,8 +150,95 @@ export async function run({ page, check, baseUrl }) {
             && Math.abs(emptied.area.height - emptied.mirror.height) < 1,
         JSON.stringify(emptied));
 
+    // ── The gutter, and the column that stays ────────────────────────────
+    //
+    // Both are layout claims jsdom cannot answer: whether the numbers line up
+    // with the source, and whether the column is actually on screen while the
+    // panel covers the rendered face.
+    await page.evaluate(() => {
+        const area = document.querySelector(".ProseMirror textarea.html-src");
+        area.value = "<figure>\n<img src=\"a.png\">\n<figcaption>c</figcaption>\n</figure>";
+        area.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.waitForTimeout(150);
+
+    const gutterBox = await page.evaluate(() => {
+        const gutter = document.querySelector(".ProseMirror .html-src-gutter");
+        const mirror = document.querySelector(".ProseMirror .html-src-mirror");
+        const area = document.querySelector(".ProseMirror textarea.html-src");
+        if (!gutter || !mirror) return null;
+        const g = gutter.getBoundingClientRect();
+        const m = mirror.getBoundingClientRect();
+        const gs = getComputedStyle(gutter);
+        const ms = getComputedStyle(mirror);
+        const first = gutter.firstElementChild?.getBoundingClientRect() ?? null;
+        return {
+            numbers: [...gutter.children].map((el) => el.textContent),
+            // The two things that make numbers drift from their lines.
+            fontMatch: gs.fontSize === ms.fontSize && gs.lineHeight === ms.lineHeight,
+            padMatch: Math.abs(parseFloat(gs.paddingTop) - parseFloat(ms.paddingTop)) < 0.5,
+            // Cell tops against the source lines they number. A total-height
+            // comparison would be wrong: the mirror always carries a trailing
+            // newline for the caret's line box, so it is one line taller than
+            // the run the gutter numbers.
+            firstTop: first ? first.top : null,
+            lastTop: gutter.lastElementChild?.getBoundingClientRect().top ?? null,
+            mirrorTextTop: m.top + parseFloat(ms.paddingTop),
+            lineHeight: parseFloat(ms.lineHeight),
+            // And it sits beside the input, never under it.
+            clearsInput: area.getBoundingClientRect().left >= g.right - 0.5,
+        };
+    });
+    check("the block panel numbers every source line",
+        gutterBox !== null && JSON.stringify(gutterBox.numbers) === JSON.stringify(["1", "2", "3", "4"]),
+        JSON.stringify(gutterBox));
+    check("the gutter's metrics match the source layer's",
+        gutterBox !== null && gutterBox.fontMatch && gutterBox.padMatch,
+        JSON.stringify(gutterBox));
+    check("number 1 sits on source line 1",
+        gutterBox !== null && Math.abs(gutterBox.firstTop - gutterBox.mirrorTextTop) < 1,
+        JSON.stringify(gutterBox));
+    check("number 4 sits on source line 4, so nothing drifted in between",
+        gutterBox !== null
+            && Math.abs(gutterBox.lastTop - (gutterBox.mirrorTextTop + 3 * gutterBox.lineHeight)) < 1.5,
+        JSON.stringify(gutterBox));
+    check("the gutter sits beside the input rather than under it",
+        gutterBox !== null && gutterBox.clearsInput, JSON.stringify(gutterBox));
+
+    const columnWhileEditing = await page.evaluate(() => {
+        const host = document.querySelector(".ProseMirror .html-inline--editing");
+        const col = host?.querySelector(":scope > .bc-col");
+        if (!col) return { present: false };
+        const rect = col.getBoundingClientRect();
+        const buttons = [...col.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+        return {
+            present: true,
+            display: getComputedStyle(col).display,
+            painted: rect.width > 0 && rect.height > 0,
+            buttons,
+        };
+    });
+    check("the control column survives the panel replacing the rendered face",
+        columnWhileEditing.present && columnWhileEditing.display !== "none" && columnWhileEditing.painted,
+        JSON.stringify(columnWhileEditing));
+    check("its editing verb reads Preview while the panel is open",
+        JSON.stringify(columnWhileEditing.buttons) === JSON.stringify(["Copy Source", "Preview"]),
+        JSON.stringify(columnWhileEditing));
+
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
+
+    const columnAtRest = await page.evaluate(() => {
+        const col = document.querySelector(".ProseMirror .html-inline--block > .bc-col");
+        return col
+            ? { pinned: col.classList.contains("bc-col--shown"),
+                buttons: [...col.querySelectorAll("button")].map((b) => b.getAttribute("aria-label")) }
+            : null;
+    });
+    check("cancelling puts the verb and the column's resting state back",
+        columnAtRest !== null && !columnAtRest.pinned
+            && JSON.stringify(columnAtRest.buttons) === JSON.stringify(["Copy Source", "Edit Source"]),
+        JSON.stringify(columnAtRest));
 
     // The inline face: an atom inside prose stays inside its line.
     await page.click(".ProseMirror .html-comment");
