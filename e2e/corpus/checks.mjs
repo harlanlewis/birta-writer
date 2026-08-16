@@ -107,21 +107,24 @@ async function openDoc(browser, baseUrl, content, format) {
         // Visibility is computed style: every code block carries a hidden
         // pane, and inactive ones keep an empty inline style.
         //
-        // `.diagram-preview` is the class BOTH engines' panes carry (they are
-        // adapters over one pane, diagramPane.ts), so this covers PlantUML too
-        // — which matters now that the sample corpus contains PlantUML: a
-        // Mermaid-only predicate would let the responsiveness probe below run
-        // while the PlantUML engine was still loading, and "still loading"
-        // reads exactly like "escaped its microtask chain" from here.
+        // `.diagram-preview` is the class EVERY engine's pane carries (they are
+        // adapters over one pane, diagramPane.ts), which matters because the
+        // corpus contains Mermaid, PlantUML and Graphviz: an engine the
+        // predicate cannot see would let the responsiveness probe below run
+        // while that engine was still loading, and "still loading" reads
+        // exactly like "escaped its microtask chain" from here.
+        //
+        // `data-settled` is stamped BY the shared pane once a render reaches a
+        // terminal state, diagram or error card. This used to enumerate the
+        // engines' own class names instead, and adding a third engine walked
+        // straight into the failure that shape always has: a Graphviz pane was
+        // waited on, could never match `.mermaid-*` or `.puml-*`, and timed the
+        // suite out. Ask the pane what it did; do not re-derive it per engine.
         await Promise.race([
             page.waitForFunction(() => {
                 const panes = [...document.querySelectorAll(".diagram-preview")]
                     .filter((p) => getComputedStyle(p).display !== "none");
-                return panes.every((p) =>
-                    p.querySelector(".mermaid-svg-container > svg") ||
-                    p.querySelector(".puml-svg-container > svg") ||
-                    p.querySelector(".mermaid-error") ||
-                    p.querySelector(".puml-error"));
+                return panes.every((p) => p.dataset.settled);
             }, { timeout: RENDER_SETTLE_MS, polling: 100 }),
             deadline(RENDER_SETTLE_MS + 1000, "diagram settle"),
         ]);
