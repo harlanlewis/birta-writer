@@ -69,16 +69,40 @@ export async function computeUnread(context: vscode.ExtensionContext): Promise<b
     }
     if (seen === installed) { return false; }
 
-    let changelog: string;
-    try {
-        const uri = vscode.Uri.joinPath(context.extensionUri, "CHANGELOG.md");
-        changelog = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
-    } catch {
-        // A VSIX without a readable CHANGELOG is a dark dot, never an error the
-        // user sees: this feature is advisory and must not fail an activation.
-        return false;
-    }
+    const changelog = await readChangelog(context);
+    if (changelog === null) { return false; }
     return hasUnseenSignificantRelease(changelog, seen, installed);
+}
+
+/**
+ * The shipped changelog's names, in the order they are tried.
+ *
+ * `vsce` LOWERCASES the well-known root documents when it packages: the VSIX
+ * holds `changelog.md` and `readme.md`, whatever the repository calls them. On
+ * a case-insensitive filesystem, which macOS is by default, reading
+ * `CHANGELOG.md` out of an installed extension therefore works by luck; on a
+ * case-sensitive one it does not, and the dot would simply never light, with no
+ * error anywhere because this feature is required to fail quiet.
+ *
+ * The capitalized name is second because it is what the repository holds, which
+ * is what `extensionUri` points at under an Extension Development Host.
+ *
+ * Verified by packaging and reading the file list, not by assuming either.
+ */
+const CHANGELOG_NAMES = ["changelog.md", "CHANGELOG.md"] as const;
+
+/** The shipped changelog's text, or null if none of its names is readable. */
+async function readChangelog(context: vscode.ExtensionContext): Promise<string | null> {
+    for (const name of CHANGELOG_NAMES) {
+        try {
+            const uri = vscode.Uri.joinPath(context.extensionUri, name);
+            return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+        } catch {
+            // Try the next spelling. An extension with no readable changelog at
+            // all is a dark dot, never an error the user sees.
+        }
+    }
+    return null;
 }
 
 /**
