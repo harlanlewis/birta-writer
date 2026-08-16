@@ -75,6 +75,22 @@ async function askLinkTargets(
     return JSON.stringify(panel.webview.postMessage.mock.calls.at(-1)?.[0] ?? {});
 }
 
+/** Drive the real frontmatter-suggestion handler. */
+async function askFmSuggestions(
+    provider: MarkdownEditorProvider,
+    panel: ReturnType<typeof makePanel>,
+    doc: vscode.TextDocument,
+    key: string,
+): Promise<void> {
+    await (provider as unknown as {
+        _handleRequestFmSuggestions: (
+            d: vscode.TextDocument,
+            p: unknown,
+            k: string,
+        ) => Promise<void>;
+    })._handleRequestFmSuggestions(doc, panel, key);
+}
+
 describe("workspace index caches invalidate on file create/delete (MAR-208)", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -140,6 +156,54 @@ describe("workspace index caches invalidate on file create/delete (MAR-208)", ()
 
         watcherListeners().create(vscode.Uri.file("/ws/added.md"));
         expect(cacheSlot()).toBeUndefined();
+    });
+
+    it("an .mdx file event should invalidate the frontmatter scan too", async () => {
+        // The scan reads `.mdx` because MDX is built from markdown's presets,
+        // so its `---` block IS front matter. The glob and this predicate are
+        // two halves of one fact, and `.mdx` is where they came apart: it does
+        // NOT end with `.md`, so a scan that collected MDX files while the
+        // watcher ignored them would serve stale suggestions for a whole TTL
+        // window (MAR-350).
+        findFiles.mockResolvedValue([]);
+        const provider = new MarkdownEditorProvider(makeContext());
+        const cacheSlot = (): unknown =>
+            (provider as unknown as { _fmScanCache: unknown })._fmScanCache;
+        const seedCache = (): void => {
+            (provider as unknown as { _fmScanCache: unknown })._fmScanCache = {
+                perFile: new Map(),
+                expires: Date.now() + 30_000,
+            };
+        };
+
+        seedCache();
+        watcherListeners().create(vscode.Uri.file("/ws/page.mdx"));
+        expect(cacheSlot(), "an .mdx create must clear it").toBeUndefined();
+
+        seedCache();
+        watcherListeners().remove(vscode.Uri.file("/ws/page.mdx"));
+        expect(cacheSlot(), "an .mdx delete must clear it").toBeUndefined();
+
+        // And the near miss stays a miss: `.mdxyz` is not a scanned extension,
+        // so a prefix test rather than an extension test would wrongly fire.
+        seedCache();
+        watcherListeners().create(vscode.Uri.file("/ws/notes.mdxyz"));
+        expect(cacheSlot(), "an unscanned extension must not clear it").toBeDefined();
+    });
+
+    it("the frontmatter scan should collect both markdown extensions", async () => {
+        // Pins the GLOB half. Asserting the argument is the only way to see it:
+        // the scan's answer over a mocked-empty workspace is the same whichever
+        // glob it passed, so an observable-only test cannot tell them apart.
+        findFiles.mockResolvedValue([]);
+        const provider = new MarkdownEditorProvider(makeContext());
+        const panel = makePanel();
+        const doc = makeFakeTextDocument("---\ntags: [a]\n---\n", vscode.Uri.file("/ws/note.md"));
+
+        await askFmSuggestions(provider, panel, doc, "tags");
+
+        const globs = findFiles.mock.calls.map(([glob]) => glob);
+        expect(globs, JSON.stringify(globs)).toContain("**/*.{md,mdx}");
     });
 
     it("the watcher and its listeners should be disposed with the extension", async () => {

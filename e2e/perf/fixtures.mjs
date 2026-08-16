@@ -12,6 +12,8 @@
  *   link-heavy — many BARE autolinks on their own lines (provider and not),
  *                exercising the embed recognizer walk that titled links never
  *                reach (bareLinkHref requires text === href)
+ *   html-heavy — raw HTML atoms, block and inline, exercising the html
+ *                NodeView's per-atom mount path (MAR-367)
  *
  * The three PROSE fixtures (tiny/medium/large, and xlarge below, which is built
  * from the same sections) deliberately trip the style check — see
@@ -168,6 +170,39 @@ const linkHeavy = (() => {
     return out;
 })();
 
+const htmlHeavy = (() => {
+    // Isolates the html NodeView the way code-heavy isolates the highlighter.
+    // Its mount path is PER ATOM: the view resolves a position and walks
+    // siblings to decide whether the atom owns its whole block
+    // (`isSoleBlockAtom`), sanitizes through the lazy DOMPurify chunk, and
+    // sweeps the rendered subtree for focusables. So the cost that matters
+    // scales with atom COUNT, and the fixture's job is to hold many.
+    //
+    // Three shapes, because they take different branches. A block atom alone in
+    // its block is the sole-block case; an atom sharing a paragraph with text is
+    // not, and inline pairs are the shape `htmlLivePairs` walks. The anchors and
+    // the button are there for the focusable sweep, which finds nothing in a
+    // fixture of bare `<div>`s and would then be measured doing nothing.
+    //
+    // NOT seeded into a gated fixture on purpose. Inflating medium/large/
+    // realistic shifts a baseline the launch gate compares against and spends CI
+    // time on every future PR, which is a call about what the gate should cost
+    // rather than a detail to slip in here (MAR-367).
+    let out = "# HTML-heavy document\n\nRaw HTML the way a working file carries it: pasted callouts, inline markup, embedded anchors.\n\n";
+    for (let i = 1; i <= 40; i++) {
+        out += `## HTML section ${i}\n\n`;
+        // A sole block atom, with a focusable inside it.
+        out += `<div class="callout tone-${i}">\n  <strong>Note ${i}</strong>\n  <a href="https://example.com/${i}">the reference</a>\n</div>\n\n`;
+        // Inline pairs sharing a paragraph with real text.
+        out += `Paragraph ${i} carries <b>bold</b> and <em>emphasis</em> as raw tags, plus <span class="tag">a span</span> mid-sentence, which is how a converted document arrives.\n\n`;
+        // A block atom that does NOT own its block: text, then a tag, then text.
+        out += `Trailing prose for ${i} <br /> continues after a break tag.\n\n`;
+        // A table cell's worth of markup, the shape an export tool emits.
+        out += `<details>\n  <summary>Detail ${i}</summary>\n  <p>Body text for detail ${i}.</p>\n  <button type="button">Act ${i}</button>\n</details>\n\n`;
+    }
+    return out;
+})();
+
 // ── realistic ───────────────────────────────────────────────────────────────
 // A working-file construct MIX the homogeneous fixtures can't produce: 7-row
 // tables, HTML-labeled mermaid (subgraphs, stateDiagram, styled nodes),
@@ -274,7 +309,7 @@ const realistic = (() => {
     return out;
 })();
 
-export const FIXTURES = { tiny, medium, large, "code-heavy": codeHeavy, math, "link-heavy": linkHeavy, realistic };
+export const FIXTURES = { tiny, medium, large, "code-heavy": codeHeavy, math, "link-heavy": linkHeavy, "html-heavy": htmlHeavy, realistic };
 
 // ~300 KB — the MAR-137 typing-lag tail (bites from ~40 KB up). Typing-harness
 // only: kept out of FIXTURES so `pnpm perf` runtimes and baseline.json stay

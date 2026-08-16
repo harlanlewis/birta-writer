@@ -87,6 +87,31 @@
     position: relative;
 }
 
+/* Unread-release dot on the settings gear. A single quiet mark on a control the
+   user already visits, cleared when the menu opens: never a count, never a
+   toast, never a modal. It is the same register as the Logseq badge (a state,
+   not an alert) and deliberately quieter than the drift badge, which warns.
+
+   The accent is --vscode-focusBorder with no literal fallback, per the theming
+   rule: inside VS Code the variable always exists. `pointer-events: none` keeps
+   the dot from ever eating the click that dismisses it, which is the one way a
+   quiet indicator could become an obstacle. */
+.tb-gear--unread {
+    position: relative;
+}
+
+.tb-gear--unread::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--vscode-focusBorder);
+    pointer-events: none;
+}
+
 /* Transparent hover bridge over the button→menu gap. The menu is a child of the
    wrap but sits MENU_GAP px below it, so without this strip the pointer would
    leave the wrap while crossing the gap and — now that the hide is instant — the

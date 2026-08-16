@@ -32,6 +32,7 @@ import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./compone
 import { setLogTableSel, syncExternalContent, flushPendingEdit, acknowledgeFlush } from "./editor";
 import { regateCalcCues, regateNoteMarkers, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
+import { setReadOnly } from "./readOnly";
 import { applyLintResults } from "./plugins/proofread";
 import { withScrollAnchor } from "./utils/scrollAnchor";
 import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
@@ -48,6 +49,7 @@ import { handleUnfurlResult } from "./unfurl";
 import { handleEmbedMetaResult } from "./embedMeta";
 import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
+import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -459,6 +461,12 @@ export function createMessageHandlers(
         setLineNumbers(msg) {
             actions.setLineNumbers(msg.enabled);
         },
+        setReadOnly(msg) {
+            // Straight through to the mode's one owner, which announces to
+            // every mirroring control (the toolbar toggle, the body class, the
+            // ProseMirror `editable` predicate). Nothing else caches it.
+            setReadOnly(msg.readOnly);
+        },
         setMermaidTheme(msg) {
             setMermaidThemeMode(msg.mode);
         },
@@ -506,6 +514,9 @@ export function createMessageHandlers(
         },
         toolbarConfig(msg) {
             topbarTb?.applyConfig(msg.config);
+        },
+        whatsNewUnread(msg) {
+            setWhatsNewUnread(msg.unread);
         },
         setFontFamily(msg) {
             // Anchored: swapping the family changes every glyph's metrics, so

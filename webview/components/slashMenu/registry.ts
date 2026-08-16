@@ -207,6 +207,12 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "tocToggle", group: "view", label: t("Toggle Table of Contents"), dynamicLabel: (s) => (s.tocOpen ? t("Hide Table of Contents") : t("Show Table of Contents")), icon: IconClipboardList, keywords: ["toc", "contents", "table of contents", "outline", "show", "hide", "toggle", "open", "close"], commandId: "toggleToc", searchOnly: true },
     { id: "tocSwap", group: "view", label: t("Swap Table of Contents Side"), dynamicLabel: (s) => (s.tocRight ? t("Move Table of Contents Left") : t("Move Table of Contents Right")), icon: IconArrowLeftRight, keywords: ["toc", "contents", "table of contents", "side", "swap", "move", "left", "right"], commandId: "swapTocSide", searchOnly: true },
     { id: "toolbarToggle", group: "view", label: t("Toggle Toolbar"), dynamicLabel: (s) => (s.toolbarVisible ? t("Hide Toolbar") : t("Show Toolbar")), icon: IconPanelTop, keywords: ["toolbar", "show", "hide", "toggle", "bar"], commandId: "toggleToolbar", searchOnly: true },
+    // A static label, unlike the three toggles above: the slash menu is only
+    // reachable by typing, which read-only refuses, so this row is only ever
+    // read in the editable direction and a dynamic label would have one arm
+    // nobody can see (MAR-53). Unlocking is the toolbar button's and the
+    // palette's job.
+    { id: "readOnly", group: "view", label: t("Lock Edits (Read-only)"), icon: IconPencil, keywords: ["read", "readonly", "read-only", "lock", "edit", "protect", "view"], commandId: "toggleReadOnly", searchOnly: true },
     { id: "fontEditor", group: "view", label: t("Editor font"), icon: "", badge: "A", keywords: ["font", "default", "typeface"], commandId: "fontEditor", searchOnly: true },
     { id: "fontSans", group: "view", label: t("Sans serif"), icon: "", badge: "A", keywords: ["font", "sans", "typeface"], commandId: "fontSans", searchOnly: true },
     { id: "fontSerif", group: "view", label: t("Serif"), icon: "", badge: "A", keywords: ["font", "serif", "typeface"], commandId: "fontSerif", searchOnly: true },

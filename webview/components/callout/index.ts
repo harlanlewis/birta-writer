@@ -24,6 +24,7 @@ import "./callout.css";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
+import { markEditableIsland } from "@/readOnly";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
@@ -179,12 +180,10 @@ export function createCalloutView(
     titleSpan.setAttribute("role", "textbox");
     titleSpan.setAttribute("aria-label", t("Callout title"));
     titleSpan.spellcheck = false;
-    try {
-        // Chromium/Electron; jsdom throws on unknown values.
-        titleSpan.contentEditable = "plaintext-only";
-    } catch {
-        titleSpan.contentEditable = "true";
-    }
+    // Prefers `plaintext-only` (Chromium/Electron; jsdom throws on unknown
+    // values) and, being its own contentEditable region rather than
+    // ProseMirror's, honors read-only through the island registry (MAR-53).
+    markEditableIsland(titleSpan);
 
     // ── Collapsed `…` (MAR-110): the NodeView mount of the shared fold
     //    ellipsis. Visible only while the host carries the `collapsed`

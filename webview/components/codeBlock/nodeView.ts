@@ -6,9 +6,9 @@
  * `<pre>`/`<code>` and its line gutter, and the code⇄preview state machine
  * that decides which pane is visible.
  *
- * Four languages are "previewable" — mermaid, plantuml, latex, calc — and
- * share one toggle. Each has its own pane module (`mermaidPane`, `plantUmlPane`,
- * `latexPane`,
+ * Five languages are "previewable" — mermaid, plantuml, graphviz, latex, calc —
+ * and share one toggle. Each has its own pane module (`mermaidPane`,
+ * `plantUmlPane`, `graphvizPane`, `latexPane`,
  * `calcLedger`), all the same shape: an `el` plus a `render` gated by an
  * `isActive` predicate this file supplies. A pane owns its own render memo and
  * exposes only a way to read or forget it; this file owns *when* they run —
@@ -58,6 +58,7 @@ import { createLatexPane } from "./latexPane";
 import { getVisualLineCounts, updateLineNumbers } from "./lineNumbers";
 import { openCodeLightbox, openDiagramLightbox, type LightboxHost } from "./lightbox";
 import { createMermaidPane } from "./mermaidPane";
+import { createGraphvizPane } from "./graphvizPane";
 import { createPlantUmlPane } from "./plantUmlPane";
 
 const shouldAutoConvertCodeBlock = (): boolean =>
@@ -138,13 +139,15 @@ export function createCodeBlockView(
     let isMermaid = currentLang === "mermaid";
     // ── PlantUML state (offline WASM engine, MAR-30) ──────
     let isPuml = normalizeCodeLanguage(currentLang) === "plant-uml";
+    // ── Graphviz state (DOT laid out by the shared WASM engine, MAR-330) ──
+    let isGraphviz = normalizeCodeLanguage(currentLang) === "dot";
     // ── LaTeX state (block math preview via KaTeX) ────────
     let isLatex = normalizeCodeLanguage(currentLang) === "latex";
     // ── Calc state (living-calculation preview, MAR-196) ──
     let isCalc = normalizeCodeLanguage(currentLang) === "calc" && calcBlocksEnabled();
     // A block that shows a rendered preview instead of raw code — mermaid,
     // PlantUML, LaTeX, or calc. All reuse the same toggle and container.
-    const isPreviewable = (): boolean => isMermaid || isPuml || isLatex || isCalc;
+    const isPreviewable = (): boolean => isMermaid || isPuml || isGraphviz || isLatex || isCalc;
     let isPreviewMode = false;
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
     // The NodeView's single lightbox slot; `destroy()` tears down whatever is
@@ -350,7 +353,7 @@ export function createCodeBlockView(
         });
     };
 
-    // ── The four preview panes ─────────────────────────────
+    // ── The five preview panes ─────────────────────────────
     // One per previewable language, all the same shape (`el` + a gated
     // `render`); `previewEl()` below picks the one the current language maps
     // to, and only that one is ever displayed. Mermaid and PlantUML are two
@@ -366,6 +369,11 @@ export function createCodeBlockView(
     });
     const pumlPreview = pumlPane.el;
 
+    const gvPane = createGraphvizPane({
+        isActive: () => isGraphviz && isPreviewMode,
+    });
+    const gvPreview = gvPane.el;
+
     const latexPane = createLatexPane({
         isActive: () => isLatex && isPreviewMode,
     });
@@ -380,7 +388,11 @@ export function createCodeBlockView(
 
     // The single element that is visible while in preview mode.
     const previewEl = (): HTMLElement =>
-        isCalc ? calcPreview : isLatex ? latexPreview : isPuml ? pumlPreview : mermaidPreview;
+        isCalc ? calcPreview
+            : isLatex ? latexPreview
+            : isPuml ? pumlPreview
+            : isGraphviz ? gvPreview
+            : mermaidPreview;
 
     /**
      * Is this node part of the block's read-only chrome? Everything the user
@@ -398,6 +410,7 @@ export function createCodeBlockView(
             resizeHandle.contains(target) ||
             mermaidPreview.contains(target) ||
             pumlPreview.contains(target) ||
+            gvPreview.contains(target) ||
             latexPreview.contains(target) ||
             calcPreview.contains(target)
         );
@@ -507,6 +520,8 @@ export function createCodeBlockView(
             mermaidPreview.style.height = `${newH}px`;
             pumlPreview.style.maxHeight = `${newH}px`;
             pumlPreview.style.height = `${newH}px`;
+            gvPreview.style.maxHeight = `${newH}px`;
+            gvPreview.style.height = `${newH}px`;
             latexPreview.style.maxHeight = `${newH}px`;
             latexPreview.style.height = `${newH}px`;
             calcPreview.style.maxHeight = `${newH}px`;
@@ -524,6 +539,7 @@ export function createCodeBlockView(
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
     wrapper.appendChild(pumlPreview);
+    wrapper.appendChild(gvPreview);
     wrapper.appendChild(latexPreview);
     wrapper.appendChild(calcPreview);
     wrapper.appendChild(resizeHandle);
@@ -577,6 +593,7 @@ export function createCodeBlockView(
         // with a DIFFERENT pane, and the old one must not linger (MAR-204).
         mermaidPreview.style.display = "none";
         pumlPreview.style.display = "none";
+        gvPreview.style.display = "none";
         latexPreview.style.display = "none";
         calcPreview.style.display = "none";
         previewEl().style.display = "flex";
@@ -592,6 +609,7 @@ export function createCodeBlockView(
         pre.classList.remove("code-pre--preview-hidden");
         mermaidPreview.style.display = "none";
         pumlPreview.style.display = "none";
+        gvPreview.style.display = "none";
         latexPreview.style.display = "none";
         calcPreview.style.display = "none";
         wordWrapBtn.style.display = "inline-flex";
@@ -602,6 +620,7 @@ export function createCodeBlockView(
         if (isCalc) void calcLedger.render(code);
         else if (isLatex) void latexPane.render(code);
         else if (isPuml) pumlPane.render(code);
+        else if (isGraphviz) gvPane.render(code);
         else mermaidPane.render(code);
     }
 
@@ -637,8 +656,8 @@ export function createCodeBlockView(
     fullscreenBtn.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
         const getLang = (): string => (node.attrs["language"] as string) || "";
-        if ((isMermaid || isPuml) && isPreviewMode) {
-            const pane = isPuml ? pumlPane : mermaidPane;
+        if ((isMermaid || isPuml || isGraphviz) && isPreviewMode) {
+            const pane = isPuml ? pumlPane : isGraphviz ? gvPane : mermaidPane;
             openDiagramLightbox({
                 ...lightboxCtx,
                 getLang,
@@ -662,13 +681,14 @@ export function createCodeBlockView(
 
             const newLang = (updatedNode.attrs["language"] as string) || "";
             const wasPreviewable = isPreviewable();
-            const prevKind = isCalc ? "calc" : isLatex ? "latex" : isPuml ? "puml" : isMermaid ? "mermaid" : "";
+            const prevKind = isCalc ? "calc" : isLatex ? "latex" : isPuml ? "puml" : isGraphviz ? "graphviz" : isMermaid ? "mermaid" : "";
             isMermaid = newLang === "mermaid";
             isPuml = normalizeCodeLanguage(newLang) === "plant-uml";
+            isGraphviz = normalizeCodeLanguage(newLang) === "dot";
             isLatex = normalizeCodeLanguage(newLang) === "latex";
             isCalc = normalizeCodeLanguage(newLang) === "calc" && calcBlocksEnabled();
             const nowPreviewable = isPreviewable();
-            const newKind = isCalc ? "calc" : isLatex ? "latex" : isPuml ? "puml" : isMermaid ? "mermaid" : "";
+            const newKind = isCalc ? "calc" : isLatex ? "latex" : isPuml ? "puml" : isGraphviz ? "graphviz" : isMermaid ? "mermaid" : "";
 
             picker.update(newLang);
             const classLang = normalizeCodeLanguage(newLang);
@@ -751,6 +771,11 @@ export function createCodeBlockView(
                     if (newCode !== pumlPane.lastCode()) {
                         if (renderTimer) clearTimeout(renderTimer);
                         renderTimer = setTimeout(() => pumlPane.render(newCode), 600);
+                    }
+                } else if (isGraphviz) {
+                    if (newCode !== gvPane.lastCode()) {
+                        if (renderTimer) clearTimeout(renderTimer);
+                        renderTimer = setTimeout(() => gvPane.render(newCode), 600);
                     }
                 } else if (newCode !== mermaidPane.lastCode()) {
                     if (renderTimer) clearTimeout(renderTimer);

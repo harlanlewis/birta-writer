@@ -83,6 +83,7 @@ import type { EditorView } from "@/pm";
 import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
 import { notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
+import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { RELEASES_URL } from "../shared/product";
 
 export type GetEditor = () => Editor | null;
@@ -787,6 +788,10 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleStyleCheck: () => host.toggleProofread?.("styleCheck"),
     toggleNoteHighlights: () => host.toggleNoteHighlights?.(),
     toggleToolbar: () => host.toggleToolbar?.(),
+    // Straight to the mode's owner, which announces to the toolbar button, the
+    // body class and the `editable` predicate at once. No host hook: unlike
+    // the toolbar and TOC toggles this owns no chrome of its own.
+    toggleReadOnly: () => setReadOnly(!isReadOnly()),
     swapTocSide: () => host.swapTocSide?.(),
     focusReviewSidebar: () => host.focusReviewSidebar?.(),
     // Keyboard canon: same commands the hardcoded ProseMirror keymaps run
@@ -848,8 +853,21 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     }),
 };
 
-/** Dispatches an editor command by id; an unknown id is a safe no-op. */
+/**
+ * Dispatches an editor command by id; an unknown id is a safe no-op.
+ *
+ * In read-only mode a document-changing command is refused here rather than
+ * left to no-op against the transaction filter (MAR-53). Two reasons the gate
+ * earns a second layer: this is the one place that knows an id, so the refusal
+ * can be total for commands that never reach a transaction at all — the ones
+ * that open a writing surface (the frontmatter panel, the block-source panel,
+ * the block menu) — and it is what lets the chrome dim a control instead of
+ * offering a button that silently does nothing. `commandMutates` reads the
+ * exhaustive classification in webview/readOnly.ts, so a new command is
+ * refused-by-default only after its author has classified it.
+ */
 export function runEditorCommand(id: string, getEditor: GetEditor, args?: unknown): void {
+    if (isReadOnly() && commandMutates(id)) { return; }
     const fn = (editorCommands as Record<string, EditorCommandFn | undefined>)[id];
     fn?.(getEditor, args);
 }

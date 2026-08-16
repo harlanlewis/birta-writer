@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- A read-only mode, so the editor can be used as a reader without a stray keystroke changing the file. The toolbar carries an Edit / Read-only toggle next to Edit Raw Markdown, there is a Toggle Read-only command, and `birta.readOnly` sets the default for every document (off, editable). Reading keeps working in full: scrolling, selection and copy, find, folding, the table of contents, link popups and navigation, a code block's Copy button, and diagram previews. What goes inert is every way a document can change, including the ones that are not typing: the formatting buttons dim, the slash menu and input rules stop firing, paste and drop decline, dragging a block declines rather than promising a move, and the metadata panel and callout titles stop accepting edits. Rendering is identical between the modes, so nothing shifts when you toggle. Edit Raw Markdown still opens the file for editing, because that intent is explicit.
+
+- Graphviz diagrams render from a fence. Write ```` ```graphviz ````, ```` ```dot ```` or ```` ```gv ```` and the graph draws in place, with the same pan, zoom, fit-to-view and fullscreen the Mermaid and PlantUML previews already have. Graphviz is now in the code block language picker, and its source highlights. DOT was reachable before only through PlantUML, as `@startdot` inside a ```` ```plantuml ```` fence; a plain Graphviz fence was an ordinary code block. The engine was already shipping and runs entirely on your machine, so this reaches the network no more than any other diagram does. A Graphviz diagram keeps its own colours rather than following a dark editor theme, because recolouring it would mean rewriting the graph you wrote.
+
+- A quiet dot appears on the settings gear when a release you have not looked at contains a security fix or a breaking change. Opening the settings menu clears it. It is never a popup, a notification, a count, or a tab that opens itself, and it stays dark for everything else: releases are nightly, so a dot that lit for every one of them would be lit almost every day and would stop meaning anything. Nothing appears on a fresh install. `birta.whatsNew.indicator` turns it off for good.
+
+### Fixed
+
+- The review sidebar's By-type / In-order choice survives a reload. It was being written to a setting that does not exist, so it was discarded every time, silently.
+
+- Front matter suggestions read `.mdx` files too. An MDX file's `---` block is front matter exactly as a Markdown file's is, but the scan behind the metadata panel's key menu only ever looked at `.md`, so a workspace of MDX pages offered nothing and an MDX page's own values never appeared as a suggestion anywhere.
+
+- A `:::` directive whose last block is a table or a block of raw HTML now closes, and renders as the note or warning you wrote. The closing fence was being absorbed into the table as an extra row, or into the HTML as another line of it, so the whole directive silently stayed open and the fence showed up as document content. Your file was never damaged by this and saving was always safe; what was lost was the rendering.
+
 ---
 
 ## [2026.814.0] - 2026, August 14

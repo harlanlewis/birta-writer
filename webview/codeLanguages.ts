@@ -16,6 +16,13 @@ export const CODE_LANGUAGES: CodeLanguage[] = [
     ["dart", "Dart"],
     ["diff", "Diff", ["patch"]],
     ["docker", "Dockerfile", ["dockerfile"]],
+    // Graphviz. The VALUE is `dot` rather than `graphviz` because it has to
+    // match refractor's grammar name for the code view to highlight at all
+    // (`plant-uml` above is the same arrangement), while the LABEL is what the
+    // picker shows and `graphviz` is the alias people actually type in a fence.
+    // The user's own spelling is what stays in the file: normalization feeds
+    // the CSS class and the previewable check, never the stored attribute.
+    ["dot", "Graphviz", ["graphviz", "gv"]],
     ["elixir", "Elixir", ["ex", "exs"]],
     ["erlang", "Erlang", ["erl"]],
     ["fsharp", "F#", ["fs", "fsi", "fsx"]],

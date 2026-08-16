@@ -41,6 +41,7 @@ import {
     type DropBoundary,
 } from "../components/blockMenu";
 import type { EventManager } from "../eventManager";
+import { isReadOnly } from "../readOnly";
 
 /**
  * Whether a drag carries at least one image file. Read from `items` rather
@@ -192,6 +193,15 @@ export function initImageFileDrop(
 
     const track = (e: DragEvent): void => {
         if (!dragCarriesImageFile(e)) {
+            return;
+        }
+        // Read-only declines the gesture rather than aiming it (MAR-53). These
+        // are DOCUMENT-level listeners, so ProseMirror's `editable` predicate
+        // never sees them: without this the drop line would follow the pointer
+        // and then nothing would land, which promises an insert the mode has
+        // already refused. Declining also means no `preventDefault`, so the
+        // browser never fires `drop` here at all.
+        if (isReadOnly()) {
             return;
         }
         // Claiming the gesture is what lets a drop fire here at all.

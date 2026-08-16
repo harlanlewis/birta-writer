@@ -69,6 +69,20 @@ The same shape with no blank line before the closing fence[^dnote3]. Lazy contin
 > A blockquote the closing fence sits directly under.
 :::
 
+:::note
+
+| A table the closing fence sits directly under |
+|---|
+| GFM absorbs that fence as a row, so the repair drops the row (MAR-365). |
+:::
+
+:::note
+
+<div>
+A raw HTML block the closing fence sits directly under, absorbed into its bytes.
+</div>
+:::
+
 :::unclosed
 This fence never closes, so everything stays ordinary paragraphs.
 

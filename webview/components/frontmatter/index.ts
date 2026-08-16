@@ -19,6 +19,7 @@
 
 import { IconChevronDown, IconChevronUp, IconPlus, IconTrash2, IconX } from "../../ui/icons";
 import { t } from "../../i18n";
+import { markEditableIsland } from "../../readOnly";
 import { createButton } from "../../ui/dom";
 import { attachInputUndo, undoChordOf } from "../../utils/inputUndo";
 import { getWebviewState, notifyFrontmatterUpdate, setWebviewState } from "../../messaging";
@@ -374,11 +375,12 @@ function bindFmCell(
     tbody: HTMLElement,
     panel: HTMLElement,
 ): void {
-    td.contentEditable = 'true';
-    // Set the attribute explicitly as well: jsdom does not reflect the
-    // contentEditable property, and without the attribute the cell is not
-    // focusable there (browsers reflect it either way).
-    td.setAttribute('contenteditable', 'true');
+    // Rich `true` rather than plaintext-only (this panel has always allowed
+    // it), and registered as a read-only island so a locked document's panel
+    // cannot be typed into — its commit is refused at notifyFrontmatterUpdate
+    // either way, and a cell that accepts text it then discards is the worse
+    // half of that promise (MAR-53).
+    markEditableIsland(td, false);
     td.textContent = entry[field];
     td.dataset['orig'] = entry[field];
     const placeholder = field === 'key' ? 'key' : 'value';
@@ -488,8 +490,7 @@ function createFmChip(
     const text = document.createElement('span');
     text.className = 'fm-chip-text';
     text.textContent = item.value;
-    text.contentEditable = 'true';
-    text.setAttribute('contenteditable', 'true'); // jsdom focusability, see bindFmCell
+    markEditableIsland(text, false); // jsdom focusability + read-only, see bindFmCell
     text.spellcheck = false;
     text.dataset['orig'] = item.value;
     text.setAttribute('role', 'textbox');

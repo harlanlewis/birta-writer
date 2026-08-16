@@ -36,6 +36,7 @@ import csv from "refractor/csv";
 import dart from "refractor/dart";
 import diff from "refractor/diff";
 import docker from "refractor/docker";
+import dot from "refractor/dot";
 import elixir from "refractor/elixir";
 import erlang from "refractor/erlang";
 import fsharp from "refractor/fsharp";
@@ -95,7 +96,7 @@ import zig from "refractor/zig";
 export function registerGrammars(refractor: Refractor): void {
     [
         arduino, bash, basic, batch, c, clojure, cmake, coffeescript, cpp,
-        csharp, css, csv, dart, diff, docker, elixir, erlang, fsharp, git,
+        csharp, css, csv, dart, diff, docker, dot, elixir, erlang, fsharp, git,
         glsl, go, gradle, graphql, groovy, haskell, hcl, markup, http, ini,
         java, javascript, jq, json, json5, kotlin, latex, less, log, lua,
         makefile, markdown, matlab, nginx, objectivec, perl, php, plantUml,

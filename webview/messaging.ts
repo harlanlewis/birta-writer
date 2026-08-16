@@ -1,4 +1,5 @@
 import type { ToExtensionMessage, ToWebviewMessage, ProjectImage, TextCount } from "../shared/messages";
+import { isReadOnly } from "./readOnly";
 
 export type { ProjectImage };
 
@@ -74,6 +75,15 @@ export function notifyCopyAgentReference(): void {
 
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
+}
+
+/**
+ * The settings dropdown opened, so the installed release has been looked at.
+ * Fired on OPEN rather than on the What's-new row, because the dot claims only
+ * that something is unseen, and the menu is where it is seen.
+ */
+export function notifyWhatsNewSeen(): void {
+    vscode.postMessage({ type: "whatsNewSeen" });
 }
 
 /**
@@ -248,7 +258,19 @@ export function notifySetNoteHighlight(enabled: boolean): void {
     vscode.postMessage({ type: "setNoteHighlight", enabled });
 }
 
+/**
+ * Commit the frontmatter panel's edits.
+ *
+ * This is the ONE document write in the whole webview that does not go through
+ * a ProseMirror transaction: the panel keeps its own undo stack and the
+ * extension replaces the frontmatter byte range directly. Every other mutation
+ * path is caught structurally by the read-only transaction filter
+ * (plugins/readOnly.ts), which cannot see this one, so the mode is enforced
+ * here instead — at the single sender, rather than in the panel's several
+ * commit sites (MAR-53).
+ */
 export function notifyFrontmatterUpdate(frontmatter: string): void {
+    if (isReadOnly()) { return; }
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }
 

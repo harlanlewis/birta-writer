@@ -173,7 +173,7 @@ function paragraphFrom(
     return children.length > 0 ? { ...para, children } : null;
 }
 
-// ─── Close fences swallowed by a lazy continuation (MAR-362) ────────────────
+// ─── Close fences swallowed by the block above (MAR-362, MAR-365) ───────────
 //
 // A close fence written flush left with no blank line above it never reaches
 // us as its own paragraph. CommonMark lazy continuation folds an unindented
@@ -185,8 +185,13 @@ function paragraphFrom(
 //   - a
 //   :::
 //
-// The repair splits that line back off and closes the directive there. The
-// hazard is that mdast strips a container's indentation, so a genuinely
+// A GFM table and a raw HTML block absorb the same line without a paragraph to
+// put it in: the table takes it as a ROW, the HTML block as more of its own
+// bytes. The repair therefore descends to whichever block ENDS the sibling and
+// takes the fence back off in that block's terms (`tailFence`), then closes the
+// directive there.
+//
+// The hazard is that mdast strips a container's indentation, so a genuinely
 // indented `    :::` inside a footnote definition — real content, which the
 // author meant to keep — decodes to the exact same paragraph text. Only the
 // raw source line tells the two apart, hence `source`.
@@ -208,6 +213,14 @@ const LAZY_CONTINUABLE = new Set([
     "list",
     "listItem",
 ]);
+
+/**
+ * Block types that absorb the fence line itself, each in its own shape: a
+ * paragraph takes it as a soft line, a GFM table as a ROW, a raw HTML block as
+ * more of its bytes (MAR-365). The descent stops at whichever one it reaches,
+ * and `tailFence` knows how to take the fence back off each.
+ */
+const TAIL_BLOCKS = new Set(["paragraph", "table", "html"]);
 
 /** Container prefix (`> `, indentation) of the line holding `offset`. */
 function linePrefix(source: string, offset: number): string {
@@ -247,14 +260,14 @@ function closeFenceEarlier(
 }
 
 /**
- * Last-child-first descent to the paragraph that ends `node`, outermost
- * first. Null when any step leaves the lazy-continuable set, which keeps the
- * repair to blocks that can actually have swallowed a line.
+ * Last-child-first descent to the block that ends `node`, outermost first.
+ * Null when any step leaves the lazy-continuable set, which keeps the repair
+ * to blocks that can actually have swallowed a line.
  */
-function lastParagraphPath(node: DirectiveMdastNode): DirectiveMdastNode[] | null {
+function lastTailPath(node: DirectiveMdastNode): DirectiveMdastNode[] | null {
     const path: DirectiveMdastNode[] = [];
     let cur = node;
-    while (cur.type !== "paragraph") {
+    while (!TAIL_BLOCKS.has(cur.type)) {
         if (!LAZY_CONTINUABLE.has(cur.type)) return null;
         const last = cur.children?.[cur.children.length - 1];
         if (!last) return null;
@@ -284,7 +297,141 @@ function endingAt(
 }
 
 /**
- * Splits a swallowed close fence off `sib`'s last paragraph. Returns the
+ * A close fence found at the end of a tail block: its decoded text, its colon
+ * count, and how to rebuild the block without it. `rebuild` takes the offset
+ * of the last byte BEFORE the fence line, which only the caller knows.
+ */
+interface TailFence {
+    closeFence: string;
+    colons: number;
+    rebuild: (trimmedEnd: number) => DirectiveMdastNode;
+}
+
+/** The fence as a paragraph's last SOFT LINE. */
+function paragraphFence(
+    para: DirectiveMdastNode,
+    minColons: number,
+    source: string,
+): TailFence | null {
+    if (!para.children?.length) return null;
+    const children = para.children;
+    const segs = segmentize(children);
+    // The split needs a break node in front of the fence segment, and a
+    // paragraph must not be emptied into nothing. A raw lazy continuation
+    // always has the line it continued above it; the exception is a callout,
+    // whose marker line callouts.ts peels off into an attr, and whose body
+    // paragraph can therefore be the fence alone. That case is declined.
+    if (segs.length < 2) return null;
+    // The last segment: the only one that can be the fence, since a block
+    // absorbs every line up to the one it ends on. `closeFenceEarlier` is
+    // what makes taking it safe when the run held more than one candidate.
+    const last = segs[segs.length - 1]!;
+    const lastLine = segmentText(children, last);
+    if (lastLine === null) return null;
+    const colons = closeFenceColons(lastLine);
+    if (colons < minColons) return null;
+    return {
+        closeFence: lastLine,
+        colons,
+        rebuild: (trimmedEnd) => ({
+            ...para,
+            children: children.slice(0, last.start - 1),
+            position: endingAt(para.position, source, trimmedEnd),
+        }),
+    };
+}
+
+/**
+ * The fence as a GFM table's last ROW. The row must be the lone cell it takes
+ * to spell a bare `:::` line; a wider row could not have been one.
+ */
+function tableFence(
+    table: DirectiveMdastNode,
+    minColons: number,
+    source: string,
+): TailFence | null {
+    const rows = table.children;
+    // Dropping the row has to leave a table behind: a one-row table's only row
+    // is its header, and the delimiter line that made the run a table is not in
+    // the tree to rebuild one from. No document reaches this — a table's
+    // position ends on its LAST row's line, and a one-row table's next source
+    // line is the delimiter, which the raw-line check below never reads as a
+    // fence — so it is a bound on the arm rather than a case that fires.
+    if (!rows || rows.length < 2) return null;
+    const cells = rows[rows.length - 1]!.children;
+    if (cells?.length !== 1) return null;
+    const inline = cells[0]!.children;
+    if (inline?.length !== 1) return null;
+    const only = inline[0]!;
+    if (only.type !== "text" || typeof only.value !== "string") return null;
+    const colons = closeFenceColons(only.value);
+    if (colons < minColons) return null;
+    return {
+        closeFence: only.value,
+        colons,
+        rebuild: (trimmedEnd) => ({
+            ...table,
+            children: rows.slice(0, -1),
+            position: endingAt(table.position, source, trimmedEnd),
+        }),
+    };
+}
+
+/** The fence as the last line of a raw HTML block's bytes. */
+function htmlFence(
+    html: DirectiveMdastNode,
+    minColons: number,
+    source: string,
+): TailFence | null {
+    const value = html.value;
+    if (typeof value !== "string") return null;
+    // A single-line block IS the fence rather than a block that swallowed one,
+    // and taking the line would leave an empty node behind.
+    const nl = value.lastIndexOf("\n");
+    if (nl < 0) return null;
+    const lastLine = value.slice(nl + 1);
+    const colons = closeFenceColons(lastLine);
+    if (colons < minColons) return null;
+    return {
+        closeFence: lastLine,
+        colons,
+        rebuild: (trimmedEnd) => ({
+            ...html,
+            value: value.slice(0, nl),
+            position: endingAt(html.position, source, trimmedEnd),
+        }),
+    };
+}
+
+/** The fence at the end of whichever tail block the descent reached. */
+function tailFence(
+    leaf: DirectiveMdastNode,
+    minColons: number,
+    source: string,
+): TailFence | null {
+    if (leaf.type === "table") return tableFence(leaf, minColons, source);
+    if (leaf.type === "html") return htmlFence(leaf, minColons, source);
+    if (leaf.type !== "paragraph" || !leaf.children?.length) return null;
+    // A raw HTML block reaches this transform as a paragraph holding one
+    // `html` child (see serialization.ts), so its bytes are where the fence is.
+    const children = leaf.children;
+    const lastChild = children[children.length - 1]!;
+    const inner = lastChild.type === "html" ? htmlFence(lastChild, minColons, source) : null;
+    if (inner) {
+        return {
+            ...inner,
+            rebuild: (trimmedEnd) => ({
+                ...leaf,
+                children: [...children.slice(0, -1), inner.rebuild(trimmedEnd)],
+                position: endingAt(leaf.position, source, trimmedEnd),
+            }),
+        };
+    }
+    return paragraphFence(leaf, minColons, source);
+}
+
+/**
+ * Splits a swallowed close fence off the block `sib` ends with. Returns the
  * rebuilt sibling and the fence's decoded text, or null when `sib` does not
  * end in one.
  *
@@ -302,42 +449,23 @@ function splitSwallowedClose(
     source: string,
     openEnd: number,
 ): { sibling: DirectiveMdastNode; closeFence: string } | null {
-    const path = lastParagraphPath(sib);
+    const path = lastTailPath(sib);
     if (!path) return null;
-    const para = path[path.length - 1]!;
-    if (!para.children?.length) return null;
+    const leaf = path[path.length - 1]!;
+    const fence = tailFence(leaf, minColons, source);
+    if (!fence) return null;
 
-    const segs = segmentize(para.children);
-    // The split needs a break node in front of the fence segment, and a
-    // paragraph must not be emptied into nothing. A raw lazy continuation
-    // always has the line it continued above it; the exception is a callout,
-    // whose marker line callouts.ts peels off into an attr, and whose body
-    // paragraph can therefore be the fence alone. That case is declined.
-    if (segs.length < 2) return null;
-    // The last segment: the only one that can be the fence, since a block
-    // absorbs every line up to the one it ends on. `closeFenceEarlier` below
-    // is what makes taking it safe when the run held more than one candidate.
-    const last = segs[segs.length - 1]!;
-    const lastLine = segmentText(para.children, last);
-    if (lastLine === null) return null;
-    const colons = closeFenceColons(lastLine);
-    if (colons < minColons) return null;
-
-    const endOffset = para.position?.end?.offset;
+    const endOffset = leaf.position?.end?.offset;
     if (typeof endOffset !== "number") return null;
     const line = rawLineAt(source, endOffset);
     if (!line.text.startsWith(prefix)) return null;
     // Exact match, not `>=`: the raw fence has to be the decoded one, or the
     // attrs would no longer serialize back verbatim.
-    if (closeFenceColons(line.text.slice(prefix.length)) !== colons) return null;
+    if (closeFenceColons(line.text.slice(prefix.length)) !== fence.colons) return null;
     if (closeFenceEarlier(source, openEnd, line.start, prefix, minColons)) return null;
 
     const trimmedEnd = line.start - 1;
-    let rebuilt: DirectiveMdastNode = {
-        ...para,
-        children: para.children.slice(0, last.start - 1),
-        position: endingAt(para.position, source, trimmedEnd),
-    };
+    let rebuilt: DirectiveMdastNode = fence.rebuild(trimmedEnd);
     for (let k = path.length - 2; k >= 0; k--) {
         const parent = path[k]!;
         rebuilt = {
@@ -346,7 +474,7 @@ function splitSwallowedClose(
             position: endingAt(parent.position, source, trimmedEnd),
         };
     }
-    return { sibling: rebuilt, closeFence: lastLine };
+    return { sibling: rebuilt, closeFence: fence.closeFence };
 }
 
 /**
@@ -443,10 +571,14 @@ function wrapDirectives(
                     i = j + 1;
                     continue outer;
                 }
-            } else if (prefix !== null) {
+            }
+            if (prefix !== null) {
                 // A closer a lazy continuation absorbed into this sibling: the
                 // fence never became a paragraph of its own, so it is always
-                // attached (no blank line could have preceded it).
+                // attached (no blank line could have preceded it). Reached for
+                // a PARAGRAPH sibling too, which the segment scan above leaves
+                // untouched when the fence is inside an `html` child's bytes
+                // rather than in a text segment of its own.
                 const swallowed = splitSwallowedClose(
                     sib, open.colons, prefix, source!, openEnd!,
                 );

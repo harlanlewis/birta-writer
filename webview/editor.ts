@@ -1,6 +1,7 @@
 import {
     defaultValueCtx,
     Editor,
+    editorViewOptionsCtx,
     nodeViewCtx,
     parserCtx,
     rootCtx,
@@ -22,6 +23,7 @@ import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
+import { isReadOnly } from "./readOnly";
 import {
     anchorSyncPlugin,
     backtickWrapPlugin,
@@ -80,6 +82,7 @@ import {
     emptyLineHintPlugin,
     pendingRangePlugin,
     proofreadPlugin,
+    readOnlyPlugin,
     selectionPlugin,
     slashMenuPlugin,
     smartSelectKeymapPlugin,
@@ -636,6 +639,16 @@ export async function createEditor(
         .config((ctx) => {
             ctx.set(rootCtx, container);
             ctx.set(defaultValueCtx, initialMarkdown);
+            // Layer 1 of the read-only lock (MAR-53; see webview/readOnly.ts).
+            // A PREDICATE, not a constant: ProseMirror re-reads it on every
+            // view update, so the toolbar toggle is live and needs only the
+            // empty setProps the read-only plugin's view() issues. Reading the
+            // mode at config time instead would bake the launch value in and
+            // make the toggle reload-only.
+            ctx.update(editorViewOptionsCtx, (prev) => ({
+                ...prev,
+                editable: () => !isReadOnly(),
+            }));
             // Format-supplied stringify options that keep serializer output
             // close to the original file formatting (bullets, rules, table
             // widths).
@@ -870,6 +883,13 @@ export async function createEditor(
         // consulted for every plugin regardless of registration order, so
         // the guard sees the final transaction wherever it sits in the list.
         .use(contentGuardPlugin)
+        // Read-only lock (MAR-53), beside contentGuard because it is the same
+        // shape and relies on the same property of filterTransaction. Composed
+        // unconditionally: the mode is toggled per session from the toolbar, so
+        // gating composition on the launch value would make the toggle
+        // reload-only (the lesson the embed plugin's comment above records).
+        // It costs one `tr.docChanged` read per transaction while off.
+        .use(readOnlyPlugin)
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)
         .use(trailingHrParagraphPlugin)

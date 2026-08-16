@@ -315,6 +315,10 @@ export function createDiagramPane(opts: {
         // call while the engine lazily loads can't start a concurrent render.
         inFlightRender = true;
         naturalSvgW = 0; naturalSvgH = 0;
+        // A harness waiting on this pane must not read the PREVIOUS render's
+        // verdict while this one is in flight. See the `data-settled` note by
+        // the finally block.
+        delete preview.dataset["settled"];
         svgContainer.innerHTML = `<div class="${px}-loading">${t("Rendering...")}</div>`;
         const renderWidth = preview.clientWidth || 800;
 
@@ -358,6 +362,17 @@ export function createDiagramPane(opts: {
             inFlightRender = false;
             const next = pendingCode;
             pendingCode = null;
+            // ENGINE-AGNOSTIC SETTLED MARKER. A pane has settled when it holds
+            // either a diagram or an error card, and both states are terminal.
+            // An out-of-process harness cannot ask this file, so it asked the
+            // DOM by engine-specific class name instead: a hand-maintained list
+            // that a THIRD engine silently fell off (MAR-330). A Graphviz pane
+            // carried `.diagram-preview`, so `e2e/corpus` waited ON it, but its
+            // settled markers are `.gv-*`, which that list did not name, so the
+            // wait could only ever time out. Deriving the fact here means the
+            // next engine gets it for nothing. Stamped before the re-entry
+            // below, which clears it again if a repaint actually starts.
+            preview.dataset["settled"] = lastRenderFailed ? "error" : "ok";
             // Re-run for parked code, or when the theme moved on while this
             // render was in flight — the (code, theme) memo guard settles
             // what actually needs repainting. Failed renders never re-enter

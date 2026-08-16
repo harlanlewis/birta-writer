@@ -32,6 +32,10 @@
  *    own young optional peer, and the bridge is installed before the first
  *    `convert()` can run.
  *
+ *    That engine now comes from `utils/graphvizLoader.ts`, which ```graphviz
+ *    blocks use directly (MAR-330). Sharing the loader is what keeps a document
+ *    holding both from instantiating the same WASM module twice.
+ *
  * PROVENANCE, and what "update the engine" means here (checked 2026-08-08).
  * The npm package we depend on is a frozen snapshot, and updating it is not a
  * `pnpm update`. Know this before reaching for one:
@@ -76,6 +80,8 @@
  * `birta.network.enabled` being off (docs/NETWORK_POSTURE.md, rung 0).
  */
 
+import { loadGraphviz } from "./graphvizLoader";
+
 /** The subset of the engine we use: PlantUML source in, SVG markup out. */
 export type PlantUmlEngine = {
     /** Render PlantUML source to SVG markup. Throws on invalid input. */
@@ -92,22 +98,18 @@ const GRAPHVIZ_BRIDGE_KEY = "__graphviz_anywhere_render";
 let enginePromise: Promise<PlantUmlEngine> | null = null;
 
 async function instantiate(): Promise<PlantUmlEngine> {
-    const [glue, wasm, graphvizModule] = await Promise.all([
+    const [glue, wasm, graphviz] = await Promise.all([
         import("@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.js"),
         import("@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.wasm"),
-        import("@hpcc-js/wasm-graphviz"),
+        loadGraphviz(),
     ]);
 
     // Install the Graphviz bridge BEFORE instantiating, so no convert() can
-    // observe a half-wired engine. `layout(dot, format, engine)` — note the
-    // argument order differs from the bridge's (dot, engine, format).
-    const graphviz = await graphvizModule.Graphviz.load();
-    // The engine passes Graphviz's own format/engine names through as plain
-    // strings; @hpcc-js types them as unions, and a name it does not know is a
-    // runtime error there rather than something we can usefully narrow here.
-    type Layout = typeof graphviz.layout;
+    // observe a half-wired engine. The loader's `layout(dot, format, engine)`
+    // takes its arguments in a different order from the bridge's
+    // (dot, engine, format), which is the whole reason this wrapper exists.
     const bridge: GraphvizBridge = (dot, engine, format) =>
-        graphviz.layout(dot, format as Parameters<Layout>[1], engine as Parameters<Layout>[2]);
+        graphviz.layout(dot, format, engine);
     (globalThis as Record<string, unknown>)[GRAPHVIZ_BRIDGE_KEY] = bridge;
 
     // Cast: the BufferSource overload is the one that applies (we pass bytes,

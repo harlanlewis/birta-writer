@@ -35,7 +35,30 @@ import { DEFAULT_PLANTUML_THEME_MODE } from "./plantuml";
 export interface BirtaConfig extends ProofreadConfig {
     /** Which editor opens a markdown file by default. */
     defaultMode: "preview" | "markdown";
+    /**
+     * Open documents with edits locked (birta.readOnly), so the rendered editor
+     * can be used as a reader without a stray keystroke changing the file.
+     * Every reading affordance still works; only the ways to change the
+     * document are refused. The toolbar's Edit/Read-only toggle overrides this
+     * for the session, and the underlying file stays editable elsewhere — this
+     * prevents accidents, it is not a permission.
+     *
+     * Ships OFF (editable). A reading-first default is a change the owner makes
+     * later on evidence, never a launch guess: this is a WYSIWYG editor, and a
+     * user who opens one and cannot type has no way to know why.
+     *
+     * Distinct from `defaultMode`, which chooses WHICH editor opens a file.
+     */
+    readOnly: boolean;
     debugMode: boolean;
+    /**
+     * Show a quiet unread dot on the settings gear when releases the user has
+     * not looked at contain something significant (birta.whatsNew.indicator).
+     * Default ON, because the dot is gated hard enough to stay rare; see
+     * shared/whatsNew.ts for what clears the bar and why. Turning it off is
+     * honored forever: no prompt, no nag, nothing re-enables it.
+     */
+    whatsNewIndicator: boolean;
     tableWrap: TableWrapMode;
     codeBlockMaxHeight: number;
     codeBlockAutoConvert: boolean;
@@ -275,6 +298,8 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     // Editor surface
     defaultMode: "defaultMode",
     debugMode: "debugMode",
+    readOnly: "readOnly",
+    whatsNewIndicator: "whatsNew.indicator",
     tableWrap: "tableWrap",
     codeBlockMaxHeight: "codeBlockMaxHeight",
     codeBlockAutoConvert: "codeBlockAutoConvert",
@@ -351,6 +376,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Editor surface
     defaultMode: "preview",
     debugMode: false,
+    // Edits ship UNLOCKED: see the field's doc for why a reading-first default
+    // is a decision for evidence rather than for launch.
+    readOnly: false,
+    whatsNewIndicator: true,
     tableWrap: "normal",
     codeBlockMaxHeight: 600,
     codeBlockAutoConvert: true,

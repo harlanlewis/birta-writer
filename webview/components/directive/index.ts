@@ -15,6 +15,7 @@ import "./directive.css";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
+import { markEditableIsland } from "@/readOnly";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import { attrsFromFences, openFenceWithTitle } from "@/plugins/directives";
@@ -50,11 +51,9 @@ export function createDirectiveView(
     title.setAttribute("role", "textbox");
     title.setAttribute("aria-label", t("Directive title"));
     title.spellcheck = false;
-    try {
-        title.contentEditable = "plaintext-only";
-    } catch {
-        title.contentEditable = "true";
-    }
+    // The callout title's protocol on this header, read-only registry included
+    // (MAR-53) — see markEditableIsland.
+    markEditableIsland(title);
 
     // Collapsed `…` (MAR-116): the NodeView mount of the shared fold
     // ellipsis, the callout's protocol on this header. Visible only while

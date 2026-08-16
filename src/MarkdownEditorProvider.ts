@@ -44,6 +44,7 @@ import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
+import { acknowledgeSeen, unreadNow } from "./whatsNew";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -61,6 +62,25 @@ const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  * authority; `editorSelectorParity.test.ts` reads both and fails on a drift.
  */
 const WYSIWYG_EXT_REGEX = /\.(md|markdown|mdx)$/i;
+
+/**
+ * The extensions the front-matter suggestion scan reads, as ONE fact.
+ *
+ * The glob below and the watcher predicate have to agree: the scan is cached
+ * for a TTL window and only a create or delete of a file it reads can change
+ * its answer, so a file type the glob collects but the watcher ignores goes
+ * stale for the whole window. `.mdx` walked into exactly that, because it does
+ * not end with `.md` (MAR-350).
+ */
+const FM_SCAN_EXTENSIONS = ["md", "mdx"] as const;
+const FM_SCAN_GLOB = `**/*.{${FM_SCAN_EXTENSIONS.join(",")}}`;
+
+/** Does the front-matter scan read this path? */
+export function isFrontMatterScanned(fsPath: string): boolean {
+    const dot = fsPath.lastIndexOf(".");
+    return dot !== -1
+        && (FM_SCAN_EXTENSIONS as readonly string[]).includes(fsPath.slice(dot + 1).toLowerCase());
+}
 
 /** A `(3:1)` or `(3:1-3:6)` position embedded in a parser's own message. */
 const EMBEDDED_POSITION_REGEX = /\((\d+):(\d+)(?:-(\d+):(\d+))?\)/g;
@@ -751,7 +771,7 @@ export class MarkdownEditorProvider
         const watcher = vscode.workspace.createFileSystemWatcher("**/*");
         const invalidate = (uri: vscode.Uri): void => {
             this._linkFileCache = undefined;
-            if (uri.fsPath.endsWith(".md")) {
+            if (isFrontMatterScanned(uri.fsPath)) {
                 this._fmScanCache = undefined;
             }
         };
@@ -938,6 +958,17 @@ export class MarkdownEditorProvider
                         // Same placement, and the same reason: detection is
                         // async while init is on the path to first paint.
                         this.detectLogseqFor(document, webviewPanel);
+                        // The unread dot, from the answer activation already
+                        // computed. A webview is disposed on every switch to
+                        // the raw editor, so a fresh one has to be told; the
+                        // read is not repeated because the answer cannot have
+                        // changed in between.
+                        if (unreadNow()) {
+                            postToWebview(webviewPanel.webview, {
+                                type: "whatsNewUnread",
+                                unread: true,
+                            });
+                        }
                         break;
                     }
                     case "update":
@@ -1067,6 +1098,14 @@ export class MarkdownEditorProvider
                         if (message.url && isSafeExternalUrl(message.url)) {
                             void vscode.env.openExternal(vscode.Uri.parse(message.url));
                         }
+                        break;
+                    case "whatsNewSeen":
+                        // Stamp the install and drop the dot everywhere at
+                        // once: it is per-install state, so a second open
+                        // editor must not keep showing it.
+                        void acknowledgeSeen(this.context).then(() => {
+                            this.postToAll({ type: "whatsNewUnread", unread: false });
+                        });
                         break;
                     case "openFile": {
                         if (!message.path) break;
@@ -1362,8 +1401,16 @@ export class MarkdownEditorProvider
                         // Persist the review sidebar's By-type/In-order mode to
                         // birta.review.groupByType; the config-change listener
                         // echoes reviewConfig to every open editor.
+                        //
+                        // The argument is the SETTINGS key, not the config
+                        // snapshot's field name. They coincide for every flat
+                        // setting, which is why this was the one site that got
+                        // it wrong: `reviewGroupByType` is the field,
+                        // `review.groupByType` is the key, and writing the
+                        // field name addressed a setting that does not exist,
+                        // so the toggle never survived a reload.
                         void updateSettingRespectingScope(
-                            "reviewGroupByType",
+                            "review.groupByType",
                             Boolean(message.grouped),
                         );
                         break;
@@ -2484,7 +2531,13 @@ export class MarkdownEditorProvider
     ): Promise<void> {
         const now = Date.now();
         if (!this._fmScanCache || now >= this._fmScanCache.expires) {
-            const uris = await vscode.workspace.findFiles("**/*.md", "**/node_modules/**", 500);
+            // `.mdx` is in FM_SCAN_EXTENSIONS because the MDX format module is
+            // built from markdown's presets, so an MDX file's `---` block is
+            // front matter exactly as a `.md` file's is, and Astro and
+            // Starlight pages routinely carry one. Scanning only `.md` meant a
+            // workspace of MDX docs offered no suggestions at all, and its own
+            // values never appeared in a `.md` file's either (MAR-350).
+            const uris = await vscode.workspace.findFiles(FM_SCAN_GLOB, "**/node_modules/**", 500);
             const perFile = new Map<string, ReadonlyMap<string, string[]>>();
             await Promise.all(uris.map(async (uri) => {
                 try {

@@ -48,7 +48,7 @@ While superficially a single-document editor, Birta Writer has deep system aware
 
 - Display and edit both basic Markdown and extended syntax used by [Obsidian](https://obsidian.md), [Foam](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), [GitHub](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax), [Notion exports](https://www.notion.com/help/export-your-content), and others.
 - Crosslink local documents with Markdown links, [wikilinks](https://obsidian.md/help/links), or even [Logseq](https://www.markdownguide.org/tools/logseq/) with an inline file browser UI.
-- Interactive [Mermaid](https://mermaid.js.org) and [PlantUML](https://plantuml.com) diagrams, [LaTeX](https://en.wikipedia.org/wiki/LaTeX) rendering, images, and a full-featured visual table editor with drag-and-drop rows and columns. Both diagram languages render offline, on your machine.
+- Interactive [Mermaid](https://mermaid.js.org), [PlantUML](https://plantuml.com) and [Graphviz](https://graphviz.org) diagrams, [LaTeX](https://en.wikipedia.org/wiki/LaTeX) rendering, images, and a full-featured visual table editor with drag-and-drop rows and columns. All three diagram languages render offline, on your machine.
 - Optionally display rich link previews or embedded documents and videos.
 
 It's not a wiki, knowledge base, or [PKM](https://en.wikipedia.org/wiki/Personal_knowledge_management) - but it sure can act like one:
@@ -151,6 +151,12 @@ Syntax Birta doesn't model (inline tags, block references, raw HTML, an unknown 
 
 A move, duplicate, table reorder, or drag that would alter or drop document content is refused outright, with a brief notice, instead of applied. The convenience of block editing never comes at the cost of the document's integrity.
 
+### A document can be locked for reading
+
+A read-only mode locks every way the document can change, so a file you opened to read cannot be altered by a stray keystroke or a mis-aimed click. Reading is untouched: scrolling, selection and copy, find, folding, the outline, link navigation and diagram previews all keep working, and the rendering is identical between the two modes, so nothing shifts when you toggle.
+
+The lock is structural rather than a list of disabled buttons. Every change to a document goes through one gate, so a feature added later is covered whether or not anyone remembered this mode, and the affordances follow: a control that cannot act is dimmed rather than left to look live and do nothing. Editing raw Markdown still opens the file for editing, because that intent is explicit.
+
 ### A save always captures your latest edit
 
 The moment you type, the editor marks the document unsaved, within a few milliseconds, faster than you can reach Save. A save then waits, briefly and with a bound, for the editor to hand back its freshest content before writing to disk, and confirms what actually reached the document: content that arrived too late for its save marks the document unsaved again on the spot, so the next save or autosave writes it.
@@ -168,7 +174,7 @@ Editing alongside tools that also write your files is normal now. Birta surfaces
 CommonMark is the floor. On top of it Birta renders, live as you type, the extensions that show up in real documents:
 
 - GitHub Flavored Markdown: tables, task lists, strikethrough, autolinks, and footnotes.
-- Math (`$...$` and `$$...$$`, rendered with KaTeX), Mermaid diagrams, and PlantUML diagrams.
+- Math (`$...$` and `$$...$$`, rendered with KaTeX), Mermaid diagrams, PlantUML diagrams, and Graphviz diagrams (```` ```graphviz ````, ```` ```dot ````).
 - Wikilinks (`[[target]]`, `[[target|alias]]`, `[[target#heading]]`) that render, navigate, and autocomplete.
 - Highlights (`==text==`) and callouts or admonitions, in both the GitHub (`> [!NOTE]`) and Obsidian (`> [!tip]- Title`) spellings, plus `:::` container directives.
 - Reference-style links, raw HTML (rendered safely, editable in place, preserved byte for byte), and image handling with local, deduplicated storage.

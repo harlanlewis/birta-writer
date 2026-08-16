@@ -216,6 +216,13 @@ export type ToExtensionMessage =
     // stale `update` that would otherwise revert a fresher save-flush.
     | { type: "update"; content: string; baseSyncVersion: number; seq: number }
     | { type: "openUrl"; url: string }
+    /**
+     * The settings dropdown was opened, so the installed release counts as
+     * looked at. Opening the menu is the gesture, not clicking the What's-new
+     * row: the dot claims "there is something you have not seen", and the menu
+     * is where it is seen.
+     */
+    | { type: "whatsNewSeen" }
     // `wiki` marks a wikilink target: the fragment (if any) is always a
     // heading, never a line number, and bare names resolve by filename
     // across the workspace instead of as document-relative paths.
@@ -517,6 +524,13 @@ export type ToWebviewMessage =
     | { type: "reviewConfig"; groupByType: boolean }
     // Live toolbar layout update (per-item placement settings changed).
     | { type: "toolbarConfig"; config: ToolbarConfig }
+    /**
+     * Light or clear the settings gear's unread dot. Advisory only: it appears,
+     * waits, and does nothing on its own. Sent after activation computes it and
+     * again whenever the setting changes, never as part of `init`, so the
+     * CHANGELOG read stays off the mount path.
+     */
+    | { type: "whatsNewUnread"; unread: boolean }
     // Live editor content font update. `fontFamily` is the resolved CSS stack,
     // or null to inherit the VS Code editor font; `preset` drives the picker's
     // active state; `stacks` are the effective per-preset stacks (user
@@ -540,6 +554,11 @@ export type ToWebviewMessage =
     // Enabling loads the gutter's module on demand; disabling removes it from
     // the DOM entirely, so a webview that never enables it never pays for it.
     | { type: "setLineNumbers"; enabled: boolean }
+    // Live read-only update, after `birta.readOnly` changes (MAR-53). The
+    // setting is the DEFAULT, so this re-seeds the mode wholesale: a user who
+    // changes the global preference means it, and the session override they
+    // may have made with the toolbar toggle was about the old default.
+    | { type: "setReadOnly"; readOnly: boolean }
     // Live Mermaid theme-mode update, after `birta.mermaid.theme` changes.
     | { type: "setMermaidTheme"; mode: MermaidThemeMode }
     // Live PlantUML theme-mode update, after `birta.plantuml.theme` changes.
