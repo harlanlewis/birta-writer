@@ -369,6 +369,7 @@ body.mermaid-canvas-dark {
 
 /* ─── Inline preview area ─── */
 .mermaid-preview,
+.gv-preview,
 .puml-preview {
     /* display is controlled by JS (none / flex) */
     display: none;
@@ -388,6 +389,7 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-preview--panning,
+.gv-preview--panning,
 .puml-preview--panning {
     cursor: grabbing;
 }
@@ -397,6 +399,7 @@ body.mermaid-canvas-dark {
    compositing layer at CSS-pixel size, which would blur the diagram after scaling
    down on high-DPR (Retina) screens */
 .mermaid-svg-container,
+.gv-svg-container,
 .puml-svg-container {
     display: inline-block;
     flex-shrink: 0;
@@ -404,6 +407,7 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-svg-container svg,
+.gv-svg-container svg,
 .puml-svg-container svg {
     display: block;
     text-rendering: geometricPrecision;
@@ -411,6 +415,7 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-loading,
+.gv-loading,
 .puml-loading {
     position: absolute;
     inset: 0;
@@ -424,6 +429,7 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-error,
+.gv-error,
 .puml-error {
     display: flex;
     flex-direction: column;
@@ -436,6 +442,7 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-error-msg,
+.gv-error-msg,
 .puml-error-msg {
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--ui-fs-s);
@@ -470,6 +477,7 @@ body.mermaid-canvas-dark {
 
 /* ─── Top-right zoom overlay (floating over the preview area) ─── */
 .mermaid-zoom-overlay,
+.gv-zoom-overlay,
 .puml-zoom-overlay {
     position: absolute;
     top: 8px;
@@ -512,6 +520,7 @@ body.mermaid-canvas-dark {
 
 /* ─── Directional pan controls (cross layout at the bottom-right of the preview) ─── */
 .mermaid-pan-controls,
+.gv-pan-controls,
 .puml-pan-controls {
     position: absolute;
     bottom: 10px;
@@ -521,6 +530,7 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-pan-grid,
+.gv-pan-grid,
 .puml-pan-grid {
     display: grid;
     grid-template-columns: repeat(3, 22px);
@@ -857,6 +867,7 @@ body.code-block-word-wrap .fs-surface.code-lightbox-no-word-wrap .code-lightbox-
 }
 .code-block-wrapper.collapsed > .mermaid-preview,
 .code-block-wrapper.collapsed > .puml-preview,
+.code-block-wrapper.collapsed > .gv-preview,
 .code-block-wrapper.collapsed > .latex-preview,
 .code-block-wrapper.collapsed > .calc-preview,
 .code-block-wrapper.collapsed > .code-block-resize-handle {
