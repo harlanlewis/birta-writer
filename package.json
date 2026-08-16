@@ -2219,6 +2219,12 @@
                     "maximum": 600,
                     "description": "%config.tocWidth.description%"
                 },
+                "birta.whatsNew.indicator": {
+                    "order": 89,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.whatsNew.indicator.description%"
+                },
                 "birta.debugMode": {
                     "order": 90,
                     "type": "boolean",

@@ -36,6 +36,14 @@ export interface BirtaConfig extends ProofreadConfig {
     /** Which editor opens a markdown file by default. */
     defaultMode: "preview" | "markdown";
     debugMode: boolean;
+    /**
+     * Show a quiet unread dot on the settings gear when releases the user has
+     * not looked at contain something significant (birta.whatsNew.indicator).
+     * Default ON, because the dot is gated hard enough to stay rare; see
+     * shared/whatsNew.ts for what clears the bar and why. Turning it off is
+     * honored forever: no prompt, no nag, nothing re-enables it.
+     */
+    whatsNewIndicator: boolean;
     tableWrap: TableWrapMode;
     codeBlockMaxHeight: number;
     codeBlockAutoConvert: boolean;
@@ -275,6 +283,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     // Editor surface
     defaultMode: "defaultMode",
     debugMode: "debugMode",
+    whatsNewIndicator: "whatsNew.indicator",
     tableWrap: "tableWrap",
     codeBlockMaxHeight: "codeBlockMaxHeight",
     codeBlockAutoConvert: "codeBlockAutoConvert",
@@ -351,6 +360,7 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Editor surface
     defaultMode: "preview",
     debugMode: false,
+    whatsNewIndicator: true,
     tableWrap: "normal",
     codeBlockMaxHeight: 600,
     codeBlockAutoConvert: true,

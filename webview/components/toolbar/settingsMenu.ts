@@ -6,7 +6,7 @@
  */
 import { IconSettings, IconChevronDown } from "@/ui/icons";
 import { t, productName } from "@/i18n";
-import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifyWhatsNewSeen } from "@/messaging";
 import { openShortcutsHelp } from "../shortcutsHelp";
 import { createMenuTrigger, makeSep } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
@@ -23,6 +23,23 @@ export interface SettingsMenuDeps {
     setToolbarVisible: (visible: boolean) => void;
 }
 
+/**
+ * The live gear trigger, so the host's unread verdict can reach it without the
+ * toolbar threading a callback through every layer between. There is one
+ * settings menu per webview, and a webview is rebuilt from scratch on every
+ * open, so the reference cannot go stale for a surviving element.
+ */
+let gearTrigger: HTMLElement | undefined;
+
+/**
+ * Light or clear the unread dot. Advisory chrome: it appears, waits, and does
+ * nothing on its own, so an unread verdict arriving after the toolbar is built
+ * is the normal case rather than a race to guard.
+ */
+export function setWhatsNewUnread(unread: boolean): void {
+    gearTrigger?.classList.toggle("tb-gear--unread", unread);
+}
+
 export function createSettingsMenu({ startCustomize, setToolbarVisible }: SettingsMenuDeps): HTMLElement {
         const wrapEl = document.createElement("div");
         wrapEl.className = "tb-fmt-wrap";
@@ -31,6 +48,7 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
             html: IconSettings + IconChevronDown,
             ariaLabel: t("Settings"),
         });
+        gearTrigger = gearBtn;
 
         const menu = document.createElement("div");
         menu.className = "tb-fmt-menu tb-settings-menu";
@@ -85,7 +103,18 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
             addEntry(label, action);
         }
 
-        const { close: closeSettingsMenu } = wireHoverMenu(wrapEl, gearBtn, menu);
+        const { close: closeSettingsMenu } = wireHoverMenu(wrapEl, gearBtn, menu, {
+            onOpen: () => {
+                // Opening the menu IS the looking, so clear here rather than on
+                // the What's-new row: a user who opens the menu, sees the row
+                // and decides not to read the notes has still seen the signal,
+                // and a dot that survived that would be a nag.
+                if (gearBtn.classList.contains("tb-gear--unread")) {
+                    gearBtn.classList.remove("tb-gear--unread");
+                    notifyWhatsNewSeen();
+                }
+            },
+        });
 
         wrapEl.appendChild(gearBtn);
         wrapEl.appendChild(menu);

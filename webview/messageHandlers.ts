@@ -48,6 +48,7 @@ import { handleUnfurlResult } from "./unfurl";
 import { handleEmbedMetaResult } from "./embedMeta";
 import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
+import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -506,6 +507,9 @@ export function createMessageHandlers(
         },
         toolbarConfig(msg) {
             topbarTb?.applyConfig(msg.config);
+        },
+        whatsNewUnread(msg) {
+            setWhatsNewUnread(msg.unread);
         },
         setFontFamily(msg) {
             // Anchored: swapping the family changes every glyph's metrics, so

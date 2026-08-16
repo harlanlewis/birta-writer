@@ -44,6 +44,7 @@ import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
+import { acknowledgeSeen, unreadNow } from "./whatsNew";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -938,6 +939,17 @@ export class MarkdownEditorProvider
                         // Same placement, and the same reason: detection is
                         // async while init is on the path to first paint.
                         this.detectLogseqFor(document, webviewPanel);
+                        // The unread dot, from the answer activation already
+                        // computed. A webview is disposed on every switch to
+                        // the raw editor, so a fresh one has to be told; the
+                        // read is not repeated because the answer cannot have
+                        // changed in between.
+                        if (unreadNow()) {
+                            postToWebview(webviewPanel.webview, {
+                                type: "whatsNewUnread",
+                                unread: true,
+                            });
+                        }
                         break;
                     }
                     case "update":
@@ -1067,6 +1079,14 @@ export class MarkdownEditorProvider
                         if (message.url && isSafeExternalUrl(message.url)) {
                             void vscode.env.openExternal(vscode.Uri.parse(message.url));
                         }
+                        break;
+                    case "whatsNewSeen":
+                        // Stamp the install and drop the dot everywhere at
+                        // once: it is per-install state, so a second open
+                        // editor must not keep showing it.
+                        void acknowledgeSeen(this.context).then(() => {
+                            this.postToAll({ type: "whatsNewUnread", unread: false });
+                        });
                         break;
                     case "openFile": {
                         if (!message.path) break;

@@ -12,6 +12,7 @@ import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
 import { registerSendFeedback } from "./feedback/sendFeedback";
+import { refreshUnread } from "./whatsNew";
 import { ConnectorService } from "./connectors/connectorService";
 import { registerConnectorCommands } from "./connectors/commands";
 import { captureNavTarget } from "./searchNavigation";
@@ -242,6 +243,17 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }),
     );
+
+    // The unread-release dot. Fire and forget: the read is async and its answer
+    // is advisory chrome, so nothing waits on it and a failure is a dark dot.
+    // Deliberately NOT awaited into activation, and never folded into `init` —
+    // that would put a file read on the path to first paint.
+    const publishUnread = (): void => {
+        void refreshUnread(context).then((unread) => {
+            MarkdownEditorProvider.current?.postToAll({ type: "whatsNewUnread", unread });
+        });
+    };
+    publishUnread();
 
     // Debug mode: initialize the context variable
     const initialDebug = readBirtaSetting("debugMode");
@@ -573,6 +585,11 @@ export function activate(context: vscode.ExtensionContext) {
                 || e.affectsConfiguration("birta.spellCheck")
                 || e.affectsConfiguration("birta.grammarCheck")) {
                 broadcastProofreadConfig();
+            }
+            if (e.affectsConfiguration("birta.whatsNew.indicator")) {
+                // Turning it off must take the dot away now, not at the next
+                // window reload; turning it back on re-asks the question.
+                publishUnread();
             }
             if (e.affectsConfiguration("birta.toolbar")) {
                 MarkdownEditorProvider.current?.postToAll({

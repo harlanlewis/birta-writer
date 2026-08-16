@@ -77,6 +77,15 @@ export function notifyOpenUrl(url: string): void {
 }
 
 /**
+ * The settings dropdown opened, so the installed release has been looked at.
+ * Fired on OPEN rather than on the What's-new row, because the dot claims only
+ * that something is unseen, and the menu is where it is seen.
+ */
+export function notifyWhatsNewSeen(): void {
+    vscode.postMessage({ type: "whatsNewSeen" });
+}
+
+/**
  * Report word / character / reading-time counts for the live document (and the
  * current selection, if any) so the extension can render its status bar item
  * (MAR-29). Called debounced, off the keystroke path.
