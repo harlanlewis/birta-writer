@@ -257,6 +257,48 @@ export async function run({ page, check, baseUrl }) {
         check("read-only: the link popup still appears on hover", false, "no link found in the fixture");
     }
 
+    // ── The fullscreen code editor ──────────────────────────────────────────
+    // A code block's fullscreen surface holds a real `<textarea>`, which the
+    // ProseMirror `editable` flag cannot reach and the transaction filter only
+    // catches on COMMIT. Left alone it accepts typing and then silently drops
+    // it, which is the one failure mode worse than a dead button: the user
+    // watches their text appear and it never lands. Found at the seam, because
+    // the diagram lightbox shares this surface with the code one.
+    const fsBefore = await docText(page);
+    const opened = await page.evaluate(() => {
+        const wrapper = document.querySelector(".code-block-wrapper");
+        const btn = wrapper?.querySelector(".code-fullscreen-btn, [class*='fullscreen']");
+        btn?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        return !!document.querySelector(".code-lightbox-textarea");
+    });
+    if (opened) {
+        const ta = await page.evaluate(() => {
+            const t = document.querySelector(".code-lightbox-textarea");
+            return { readOnly: t.readOnly, before: t.value };
+        });
+        check(
+            "read-only: the fullscreen code editor refuses typing rather than discarding it",
+            ta.readOnly === true,
+            JSON.stringify(ta),
+        );
+        await page.evaluate(() => {
+            document.querySelector(".fs-close, [class*='close']")
+                ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(200);
+        check(
+            "read-only: opening the fullscreen editor changed nothing",
+            (await docText(page)) === fsBefore,
+        );
+    } else {
+        check(
+            "read-only: the fullscreen code editor refuses typing rather than discarding it",
+            false,
+            "could not open the fullscreen editor to test it",
+        );
+    }
+
     // ── The whole session wrote nothing ─────────────────────────────────────
     const totalWrites = await writeCount(page);
     check(

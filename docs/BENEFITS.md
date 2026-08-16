@@ -151,6 +151,12 @@ Syntax Birta doesn't model (inline tags, block references, raw HTML, an unknown 
 
 A move, duplicate, table reorder, or drag that would alter or drop document content is refused outright, with a brief notice, instead of applied. The convenience of block editing never comes at the cost of the document's integrity.
 
+### A document can be locked for reading
+
+A read-only mode locks every way the document can change, so a file you opened to read cannot be altered by a stray keystroke or a mis-aimed click. Reading is untouched: scrolling, selection and copy, find, folding, the outline, link navigation and diagram previews all keep working, and the rendering is identical between the two modes, so nothing shifts when you toggle.
+
+The lock is structural rather than a list of disabled buttons. Every change to a document goes through one gate, so a feature added later is covered whether or not anyone remembered this mode, and the affordances follow: a control that cannot act is dimmed rather than left to look live and do nothing. Editing raw Markdown still opens the file for editing, because that intent is explicit.
+
 ### A save always captures your latest edit
 
 The moment you type, the editor marks the document unsaved, within a few milliseconds, faster than you can reach Save. A save then waits, briefly and with a bound, for the editor to hand back its freshest content before writing to disk, and confirms what actually reached the document: content that arrived too late for its save marks the document unsaved again on the spot, so the next save or autosave writes it.

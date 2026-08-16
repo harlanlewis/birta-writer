@@ -42,6 +42,7 @@ import { escapeHtml } from "./escapeHtml";
 import { getLangLabel } from "./langPicker";
 import { getVisualLineCounts, updateLineNumbers } from "./lineNumbers";
 import { createPanPad, ZOOM_BTN, ZOOM_MAX, ZOOM_MIN, type DiagramRenderer } from "./diagramPane";
+import { isReadOnly } from "@/readOnly";
 
 /**
  * How far past its natural size a diagram may be scaled to fill the fullscreen
@@ -179,6 +180,13 @@ function buildCodeEditor(opts: {
     textarea.setAttribute("autocorrect", "off");
     textarea.setAttribute("autocapitalize", "off");
     textarea.value = initialCode;
+    // The fullscreen surface is a real `<textarea>`, so the editor's `editable`
+    // flag does not reach it and the transaction filter only refuses its commit.
+    // Left alone it would accept typing and silently drop it on close, which is
+    // the one failure worse than a dead button: the user watches the text
+    // appear and it never lands. `readOnly` keeps selection, scrolling and copy,
+    // which is exactly what a reader wants from this surface.
+    textarea.readOnly = isReadOnly();
     codeClone.innerHTML = highlight(initialCode, lang);
 
     codeArea.append(pre, textarea);
