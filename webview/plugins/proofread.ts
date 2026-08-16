@@ -14,6 +14,7 @@
  * inline code, and tech-like tokens are excluded.
  */
 import type { EditorView } from "../pm";
+import { isReadOnly } from "../readOnly";
 import { Decoration, DecorationSet } from "../pm";
 import { Plugin, PluginKey, TextSelection } from "../pm";
 import type { Node as ProseNode } from "../pm";
@@ -495,7 +496,12 @@ function applySuggestion(view: EditorView, from: number, to: number, suggestion:
 function lintFinding(view: EditorView, from: number, to: number, lint: HarperLint): PopupFinding {
     const word = view.state.doc.textBetween(from, to);
     const buttons: PopupButton[] = [];
-    for (const suggestion of lint.suggestions) {
+    // Read-only offers no fixes (MAR-53). The finding, the explanation, Add to
+    // dictionary and Ignore all stand — they are what a reader wants and none
+    // of them touches the document — but a suggestion button here would apply
+    // an edit the transaction filter has already refused, and a popup whose
+    // headline action does nothing is worse than one that never offered it.
+    for (const suggestion of isReadOnly() ? [] : lint.suggestions) {
         buttons.push({
             label: suggestion === "" ? t("Remove") : suggestion,
             run: () => applySuggestion(view, from, to, suggestion),
@@ -512,7 +518,7 @@ function lintFinding(view: EditorView, from: number, to: number, lint: HarperLin
 function styleFinding(view: EditorView, from: number, to: number, style: StyleFinding): PopupFinding {
     const word = view.state.doc.textBetween(from, to);
     const buttons: PopupButton[] = [];
-    if (style.suggestion !== null) {
+    if (style.suggestion !== null && !isReadOnly()) {
         const suggestion = style.suggestion;
         buttons.push({
             label: suggestion === "" ? t("Remove") : t("Fix"),

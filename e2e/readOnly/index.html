@@ -1,0 +1,104 @@
+<!doctype html>
+<!-- e2e harness page for read-only mode (MAR-53). ONE page, two modes: the
+     default boot is read-only, `?editable=1` boots the same bytes editable.
+     The rendering-identity check depends on that being the ONLY difference
+     between the two loads, so nothing else may branch on the query string.
+     Mirrors the provider template with acquireVsCodeApi stubbed. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-placeholderForeground: #888888;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editor-findMatchHighlightBackground: rgba(234, 92, 0, 0.33);
+    --vscode-editor-foldBackground: rgba(38, 79, 120, 0.3);
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-inputOption-activeBackground: #264f78;
+    --vscode-inputOption-activeForeground: #ffffff;
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-errorForeground: #f48771;
+    --vscode-textBlockQuote-background: rgba(128, 128, 128, 0.08);
+    --vscode-symbolIcon-keywordForeground: #c586c0;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { min-height: 48px; }
+</style>
+<script>
+  const READ_ONLY = new URLSearchParams(location.search).get("editable") !== "1";
+  window.__i18n = {
+    translations: {},
+    isMac: true,
+    readOnly: READ_ONLY,
+    toolbar: { placements: {}, order: [] },
+    frontmatterAddButton: true,
+  };
+  window.__posted = [];
+  // A construct census wide enough that a mutation path with a NodeView of its
+  // own (table, code block, callout, image, task list, math) has something to
+  // act on, and that the rendering-identity check compares real geometry
+  // rather than three paragraphs.
+  const CONTENT = [
+    "# Read-only sample",
+    "",
+    "Ordinary prose with **bold**, *italic*, `code` and a [link](https://example.com).",
+    "",
+    "- bullet one",
+    "- bullet two",
+    "",
+    "1. first",
+    "2. second",
+    "",
+    "- [ ] unchecked task",
+    "- [x] checked task",
+    "",
+    "| a | b |",
+    "| --- | --- |",
+    "| 1 | 2 |",
+    "",
+    "```js",
+    "const answer = 42;",
+    "```",
+    "",
+    "> [!note] A callout title",
+    "> callout body",
+    "",
+    "## Second section",
+    "",
+    "Trailing paragraph.",
+    "",
+  ].join("\n");
+  const FRONTMATTER = "---\ntitle: Sample\n---\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: CONTENT,
+          frontmatter: FRONTMATTER,
+          syncVersion: 1,
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

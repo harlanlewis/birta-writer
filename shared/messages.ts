@@ -554,6 +554,11 @@ export type ToWebviewMessage =
     // Enabling loads the gutter's module on demand; disabling removes it from
     // the DOM entirely, so a webview that never enables it never pays for it.
     | { type: "setLineNumbers"; enabled: boolean }
+    // Live read-only update, after `birta.readOnly` changes (MAR-53). The
+    // setting is the DEFAULT, so this re-seeds the mode wholesale: a user who
+    // changes the global preference means it, and the session override they
+    // may have made with the toolbar toggle was about the old default.
+    | { type: "setReadOnly"; readOnly: boolean }
     // Live Mermaid theme-mode update, after `birta.mermaid.theme` changes.
     | { type: "setMermaidTheme"; mode: MermaidThemeMode }
     // Live PlantUML theme-mode update, after `birta.plantuml.theme` changes.

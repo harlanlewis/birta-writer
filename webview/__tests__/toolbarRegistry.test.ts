@@ -30,7 +30,9 @@ describe("computeZones", () => {
             "table",
             "image",
         ]);
-        expect(zones.right).toEqual(["viewSource", "find", "styleCheck", "fontPreset", "settings"]);
+        // readOnly leads the right zone, beside viewSource: the two answer the
+        // same question about how you are working with this file (MAR-53).
+        expect(zones.right).toEqual(["readOnly", "viewSource", "find", "styleCheck", "fontPreset", "settings"]);
         expect(zones.hidden).toEqual([
             "strikethrough",
             "highlight",

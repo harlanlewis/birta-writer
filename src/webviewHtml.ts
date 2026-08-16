@@ -247,6 +247,10 @@ export function buildWebviewHtml(
     const networkEnabled = config.networkEnabled;
     const pasteUnfurl = config.pasteUnfurlEnabled;
     const pasteUnfurlAutoApply = config.pasteUnfurlAutoApply;
+    // Baked in rather than pushed after mount (MAR-53): the read-only lock is a
+    // predicate the very first view update reads, so a value arriving by
+    // message would paint one frame — and admit one keystroke — editable.
+    const readOnly = config.readOnly;
     const calcEnabled = config.calcEnabled;
     const calcBlocksEnabled = config.calcBlocksEnabled;
     const calcAutoInsert = config.calcAutoInsert;
@@ -297,7 +301,7 @@ export function buildWebviewHtml(
     // .replace(/</g, "\\u003c"): JSON.stringify leaves "<" intact, so a string
     // setting containing "</script>" would close the inline script element
     // early (no code execution under the nonce CSP, but style injection).
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri, resourceBaseUri, workspaceBaseUri }).replace(/</g, "\\u003c")};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, readOnly, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri, resourceBaseUri, workspaceBaseUri }).replace(/</g, "\\u003c")};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

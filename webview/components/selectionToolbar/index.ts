@@ -1,4 +1,5 @@
 import { commandsCtx } from "@milkdown/core";
+import { isReadOnly } from "@/readOnly";
 import {
     toggleStrongCommand,
     toggleEmphasisCommand,
@@ -1038,6 +1039,16 @@ export function setupSelectionToolbar(
     }
 
     function showAndPosition(view: EditorView): void {
+        // Every control on this bar acts on the document — formatting, links,
+        // block moves, table row and column edits — so read-only retires the
+        // whole surface rather than dimming a dozen buttons (MAR-53). Selecting
+        // text to read or copy is exactly what the mode is for, and a palette
+        // of dead buttons appearing over the selection would fight that.
+        // Copy stays reachable on Cmd+C and the native context menu.
+        if (isReadOnly()) {
+            hideToolbar();
+            return;
+        }
         lastView = view;
         // Start tracking scroll/reflow on first show (view.dom is live by now),
         // re-running showAndPosition so the bar follows its selection.

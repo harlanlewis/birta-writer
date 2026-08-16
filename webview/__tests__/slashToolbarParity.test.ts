@@ -34,6 +34,7 @@ const SLASH_COVERAGE: Record<ToolbarItemId, readonly string[]> = {
     math: ["math"],
     footnote: ["footnote"],
     clearFormatting: ["clearFormatting"],
+    readOnly: ["readOnly"],
     viewSource: ["viewSource"],
     find: ["find"],
     styleCheck: ["spellCheck", "grammarCheck", "styleCheck"],
