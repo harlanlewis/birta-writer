@@ -13,13 +13,20 @@
  * seeded phrase fails here rather than quietly returning the fixtures to zero.
  * `checks.mjs` drives the real bundle and counts the decorations that result.
  *
- * It asserts only over the PHRASE categories. The structural checks (long
- * sentence, passive, …) read raw markdown here, where the editor reads block
- * text with code excluded — `code-heavy` scores four `longSentences` hits on
- * source the editor never scans. A phrase match does not diverge that way, so it
- * is the part of this matcher that can answer a question about a fixture
- * honestly; the density that includes the structural checks is measured in the
- * browser, where the editor answers it.
+ * It enables only the PHRASE categories. The structural checks (long sentence,
+ * passive, …) read raw markdown here, where the editor reads block text with
+ * code excluded — `code-heavy` scores four `longSentences` hits on source the
+ * editor never scans. A phrase match does not diverge that way, so it is the
+ * part of this matcher that can answer a question about a fixture honestly; the
+ * density that includes the structural checks is measured in the browser, where
+ * the editor answers it.
+ *
+ * ONE structural check arrives anyway: `repeated` rides the style-check master
+ * switch and `compileStyleMatcher` appends it unconditionally, so the enabled
+ * map cannot turn it off. It reads raw markdown here like the others, which
+ * means an HTML attribute can trip it (`class="callout callout-1"` is a doubled
+ * word to the regex and nothing at all to a reader). Expect it in a zero
+ * assertion below, and fix the fixture rather than the assertion.
  */
 import { describe, it, expect } from "vitest";
 import { FIXTURES, TYPING_FIXTURES } from "./fixtures.mjs";
@@ -96,10 +103,19 @@ describe("launch-perf prose fixtures", () => {
     });
 
     it("the non-prose fixtures should stay unseeded, so they keep isolating their own path", () => {
-        // code-heavy is highlighter registration, math is the KaTeX path, and
-        // link-heavy is the embed recognizer; prose seeded into them would blur
-        // what they exist to isolate.
-        for (const name of ["code-heavy", "math", "link-heavy"]) {
+        // code-heavy is highlighter registration, math is the KaTeX path,
+        // link-heavy is the embed recognizer and html-heavy is the html
+        // NodeView; prose seeded into any of them would blur what it exists to
+        // isolate.
+        //
+        // DERIVED from the fixture set rather than listed, so a fixture added
+        // later cannot skip this bar. `realistic` is seeded on purpose and is
+        // the one non-prose fixture that must be excluded by name.
+        const isolating = Object.keys(FIXTURES).filter(
+            (n) => !PROSE_FIXTURES.includes(n) && n !== "realistic",
+        );
+        expect(isolating.length, "isolating fixtures enumerated").toBeGreaterThan(0);
+        for (const name of isolating) {
             expect(match(FIXTURES[name]).length, name).toBe(0);
         }
     });
