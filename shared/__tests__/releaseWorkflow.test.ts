@@ -16,7 +16,9 @@
  * looks plausible on its own.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 const workflow = readFileSync(
@@ -50,6 +52,59 @@ function publishJobs(): Array<{ name: string; body: string }> {
         .map((j) => ({ name: j.slice(0, j.indexOf(":")), body: j }));
     expect(jobs.length, "no publish jobs found in release.yml").toBeGreaterThan(1);
     return jobs;
+}
+
+/** A step's `run:` script, dedented out of the YAML block scalar. */
+function runScript(name: string): string {
+    const lines = workflow.split("\n").slice(stepLine(name) + 1);
+    const at = lines.findIndex((l) => /^\s*run: \|/.test(l));
+    expect(at, `step "${name}" has no run: | block`).toBeGreaterThan(-1);
+
+    const body = lines.slice(at + 1);
+    const indent = /^ */.exec(body[0])![0];
+    const end = body.findIndex((l) => l.trim() !== "" && !l.startsWith(indent));
+    return body
+        .slice(0, end === -1 ? undefined : end)
+        .map((l) => l.slice(indent.length))
+        .join("\n");
+}
+
+/**
+ * The verification section the checksum step appends, produced by RUNNING that
+ * step rather than by re-reading its format strings. The bug this guards is a
+ * shell semantic (a command substitution strips the trailing newline its
+ * `printf` argument appeared to carry), so a test that re-implements `printf`
+ * in TypeScript would be asserting the same belief that was wrong.
+ *
+ * `sha256sum` is GNU-only and absent on macOS, so the stub on PATH is what
+ * keeps this runnable off CI; it also fixes the digest, which no assertion
+ * here should depend on anyway.
+ */
+function renderChecksumNotes(): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "birta-relnotes-"));
+    try {
+        mkdirSync(path.join(dir, "releases"));
+        mkdirSync(path.join(dir, "bin"));
+        writeFileSync(path.join(dir, "releases", "birta-writer-2026.805.0.vsix"), "vsix");
+        writeFileSync(path.join(dir, "RELEASE_NOTES.md"), "## Birta Writer 2026.805.0\n");
+        writeFileSync(
+            path.join(dir, "bin", "sha256sum"),
+            "#!/bin/sh\nprintf '%s  %s\\n' 0000000000000000 \"$1\"\n",
+            { mode: 0o755 },
+        );
+
+        execFileSync("bash", ["-euo", "pipefail", "-c", runScript("Record the VSIX checksum")], {
+            cwd: dir,
+            env: {
+                ...process.env,
+                PATH: `${path.join(dir, "bin")}:${process.env.PATH}`,
+                GITHUB_REPOSITORY: "harlanlewis/birta-writer",
+            },
+        });
+        return readFileSync(path.join(dir, "RELEASE_NOTES.md"), "utf8");
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
 }
 
 describe("release.yml", () => {
@@ -129,6 +184,32 @@ describe("release.yml", () => {
             expect(steps, `${name} has no steps`).toBeGreaterThan(0);
             expect(gated, `${name}: ${steps} steps, ${gated} gated on ${guard}`).toBe(steps);
         }
+    });
+
+    it("the appended verification section should close every code fence on its own line", () => {
+        // A fence is only a fence at the start of a line, so a format string
+        // that appends ``` straight after a `%s` renders the closing fence as
+        // literal text and swallows the block. The trap is that the argument
+        // looks like it carries the newline: `$(cat …)` strips it.
+        const notes = renderChecksumNotes();
+        const fenced = notes.split("\n").filter((l) => l.includes("```"));
+
+        expect(fenced.length, `no fenced block in:\n${notes}`).toBeGreaterThan(0);
+        expect(fenced.length % 2, `unbalanced fences in:\n${notes}`).toBe(0);
+        for (const line of fenced) {
+            expect(line.trim(), `fence not alone on its line:\n${notes}`).toBe("```");
+        }
+    });
+
+    it("the verification section should be appended to the generated notes, not replace them", () => {
+        // The step redirects into the file the generator already wrote, so a
+        // `>` where `>>` belongs would drop every entry of the release and
+        // leave a body that still looks well formed.
+        const notes = renderChecksumNotes();
+
+        expect(notes.startsWith("## Birta Writer 2026.805.0\n")).toBe(true);
+        expect(notes).toContain("### Verifying this release");
+        expect(notes).toMatch(/0000000000000000 {2}birta-writer-2026\.805\.0\.vsix/);
     });
 
     it("the release guard's exclusion should match the stamp commit's subject", () => {
