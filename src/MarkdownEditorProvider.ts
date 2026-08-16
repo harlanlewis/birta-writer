@@ -63,6 +63,25 @@ const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  */
 const WYSIWYG_EXT_REGEX = /\.(md|markdown|mdx)$/i;
 
+/**
+ * The extensions the front-matter suggestion scan reads, as ONE fact.
+ *
+ * The glob below and the watcher predicate have to agree: the scan is cached
+ * for a TTL window and only a create or delete of a file it reads can change
+ * its answer, so a file type the glob collects but the watcher ignores goes
+ * stale for the whole window. `.mdx` walked into exactly that, because it does
+ * not end with `.md` (MAR-350).
+ */
+const FM_SCAN_EXTENSIONS = ["md", "mdx"] as const;
+const FM_SCAN_GLOB = `**/*.{${FM_SCAN_EXTENSIONS.join(",")}}`;
+
+/** Does the front-matter scan read this path? */
+export function isFrontMatterScanned(fsPath: string): boolean {
+    const dot = fsPath.lastIndexOf(".");
+    return dot !== -1
+        && (FM_SCAN_EXTENSIONS as readonly string[]).includes(fsPath.slice(dot + 1).toLowerCase());
+}
+
 /** A `(3:1)` or `(3:1-3:6)` position embedded in a parser's own message. */
 const EMBEDDED_POSITION_REGEX = /\((\d+):(\d+)(?:-(\d+):(\d+))?\)/g;
 
@@ -752,7 +771,7 @@ export class MarkdownEditorProvider
         const watcher = vscode.workspace.createFileSystemWatcher("**/*");
         const invalidate = (uri: vscode.Uri): void => {
             this._linkFileCache = undefined;
-            if (uri.fsPath.endsWith(".md")) {
+            if (isFrontMatterScanned(uri.fsPath)) {
                 this._fmScanCache = undefined;
             }
         };
@@ -2504,7 +2523,13 @@ export class MarkdownEditorProvider
     ): Promise<void> {
         const now = Date.now();
         if (!this._fmScanCache || now >= this._fmScanCache.expires) {
-            const uris = await vscode.workspace.findFiles("**/*.md", "**/node_modules/**", 500);
+            // `.mdx` is in FM_SCAN_EXTENSIONS because the MDX format module is
+            // built from markdown's presets, so an MDX file's `---` block is
+            // front matter exactly as a `.md` file's is, and Astro and
+            // Starlight pages routinely carry one. Scanning only `.md` meant a
+            // workspace of MDX docs offered no suggestions at all, and its own
+            // values never appeared in a `.md` file's either (MAR-350).
+            const uris = await vscode.workspace.findFiles(FM_SCAN_GLOB, "**/node_modules/**", 500);
             const perFile = new Map<string, ReadonlyMap<string, string[]>>();
             await Promise.all(uris.map(async (uri) => {
                 try {
