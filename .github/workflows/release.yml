@@ -257,7 +257,7 @@ jobs:
             printf '\n---\n\n### Verifying this release\n\n'
             printf 'This release carries a signed build-provenance attestation. To confirm the `.vsix` was built by this repository from this commit:\n\n'
             printf '```\ngh attestation verify %s --repo %s\n```\n\n' "$vsix" "$GITHUB_REPOSITORY"
-            printf 'SHA-256:\n\n```\n%s```\n' "$(cat SHA256SUMS.txt)"
+            printf 'SHA-256:\n\n```\n%s\n```\n' "$(cat SHA256SUMS.txt)"
           } >> ../RELEASE_NOTES.md
 
       # The release action creates the tag itself (at this run's commit) in the

@@ -52,6 +52,28 @@ function publishJobs(): Array<{ name: string; body: string }> {
     return jobs;
 }
 
+/**
+ * The verification section the checksum step appends, rendered the way the
+ * shell renders it: `\n` escapes expanded, and every `%s` standing in for a
+ * command substitution, which strips trailing newlines. A format string that
+ * relies on its argument to end the line therefore renders glued, exactly as
+ * the release page shows it.
+ */
+function renderChecksumNotes(): string {
+    const at = stepLine("Record the VSIX checksum");
+    const lines = workflow.split("\n").slice(at + 1);
+    const end = lines.findIndex((l) => /^      - (name|uses):/.test(l));
+    const block = lines.slice(0, end === -1 ? undefined : end).join("\n");
+
+    const formats = [...block.matchAll(/^\s*printf '([^']*)'/gm)].map((m) => m[1]);
+    expect(formats.length, "no printf lines in the checksum step").toBeGreaterThan(0);
+
+    return formats
+        .join("")
+        .replace(/%s/g, "sha256  birta-writer-2026.805.0.vsix")
+        .replace(/\\n/g, "\n");
+}
+
 describe("release.yml", () => {
     it("the changelog stamper should be invoked before the extension is packaged", () => {
         // Stamping after packaging would ship the unstamped file — the exact
@@ -128,6 +150,20 @@ describe("release.yml", () => {
             const gated = lines.filter((l) => l.trim() === `if: env.${guard} == 'true'`).length;
             expect(steps, `${name} has no steps`).toBeGreaterThan(0);
             expect(gated, `${name}: ${steps} steps, ${gated} gated on ${guard}`).toBe(steps);
+        }
+    });
+
+    it("the appended verification section should close every code fence on its own line", () => {
+        // A fence is only a fence at the start of a line, so a format string
+        // that appends ``` straight after a `%s` renders the closing fence as
+        // literal text and swallows the block. The trap is that the argument
+        // looks like it carries the newline: `$(cat …)` strips it.
+        const notes = renderChecksumNotes();
+        const fenced = notes.split("\n").filter((l) => l.includes("```"));
+
+        expect(fenced.length % 2, `unbalanced fences in:\n${notes}`).toBe(0);
+        for (const line of fenced) {
+            expect(line.trim(), `fence not alone on its line:\n${notes}`).toBe("```");
         }
     });
 
