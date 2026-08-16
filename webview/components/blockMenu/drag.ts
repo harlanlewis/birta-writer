@@ -48,6 +48,7 @@ import type { EditorView } from "../../pm";
 import type { EditorState } from "../../pm";
 import type { Node as ProseNode } from "../../pm";
 import { closeBlockMenu, moveRangeAt, outlineRangeAt } from "./menu";
+import { isReadOnly } from "../../readOnly";
 import {
     foldedHiddenRanges,
     hiddenRangeCoversTarget,
@@ -766,6 +767,17 @@ export interface DragSessionSource {
  * handle kind, via DragSessionSource.
  */
 export function startPointerDragSession(view: EditorView, source: DragSessionSource): void {
+    // A block move is a document edit, so read-only never arms a session
+    // (MAR-53). Refusing HERE rather than at each handle is what covers the
+    // gutter marker and the outline's section drag with one guard, and it is
+    // the right split for the gutter's two verbs: the tap that opens the block
+    // menu is a different gesture and still works. The commit would be vetoed
+    // by the transaction filter anyway — but the user would have watched the
+    // drag pill and the drop line promise a move that then silently did not
+    // happen, which reads as a lost edit rather than as a locked document.
+    if (isReadOnly()) {
+        return;
+    }
     const { startX, startY } = source;
     let dragging = false;
     let sessionStarted = false; // providers were told sessionStart

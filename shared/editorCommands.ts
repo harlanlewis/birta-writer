@@ -195,6 +195,13 @@ export const EDITOR_COMMANDS = [
     // does nothing. `toggleToc` (above) covers TOC visibility; these cover the
     // toolbar and the TOC dock side (mirroring the panel's own flip button).
     { id: "toggleToolbar", title: "Toggle Toolbar", palette: true, sections: [] },
+    // Edit / Read-only (MAR-53). A single toggle, like the toolbar and TOC
+    // entries above and for the same reason: the state is binary, so two
+    // idempotent palette rows would always leave one that does nothing. It
+    // overrides `birta.readOnly` for the session; changing the setting itself
+    // re-seeds every open document. No default chord — the editor's own chords
+    // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
+    { id: "toggleReadOnly", title: "Toggle Read-only", palette: true, sections: [] },
     { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [] },
     // MAR-294: once focus is inside the review sidebar its keyboard model is
     // complete (Escape returns to the editor from every region), but no gesture

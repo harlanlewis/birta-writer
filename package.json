@@ -534,6 +534,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.toggleReadOnly",
+                "title": "%command.editor.toggleReadOnly.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.swapTocSide",
                 "title": "%command.editor.swapTocSide.title%",
                 "category": "Birta Writer"
@@ -1207,6 +1212,10 @@
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
+                    "command": "birta.editor.toggleReadOnly",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
                     "command": "birta.editor.swapTocSide",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
@@ -1724,6 +1733,12 @@
                     "default": "preview",
                     "description": "%config.defaultMode.description%"
                 },
+                "birta.readOnly": {
+                    "order": 2,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.readOnly.description%"
+                },
                 "birta.contentWidth": {
                     "order": 4,
                     "type": "string",
@@ -2061,6 +2076,17 @@
                     ],
                     "default": "hidden",
                     "description": "Horizontal rule button: pick a toolbar zone or hide it."
+                },
+                "birta.toolbar.items.readOnly": {
+                    "order": 47,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "right",
+                    "description": "Edit / Read-only toggle (lock edits for this document): pick a toolbar zone or hide it."
                 },
                 "birta.toolbar.items.viewSource": {
                     "order": 48,

@@ -29,6 +29,14 @@ const WEBVIEW = path.join(REPO_ROOT, "webview");
  * mode switch reads selections made there.
  */
 const ISLAND_REGISTRY: Record<string, string> = {
+    "readOnly.ts":
+        "creates NO island of its own — it is the shared primitive the real island " +
+        "creators call (markEditableIsland, MAR-53), so the contentEditable write the " +
+        "sweep sees here lands on elements owned by callout, directive and frontmatter, " +
+        "whose stories are the three entries below. Those files still trip the sweep on " +
+        "their own role=\"textbox\" writes, so moving the write here did not narrow the " +
+        "guard's reach; this entry exists so the primitive itself is accounted for " +
+        "rather than silently exempt",
     "components/callout/index.ts":
         "title textbox → domChromeTarget's [role=\"textbox\"] path aligns onto the marker line",
     "components/directive/index.ts":

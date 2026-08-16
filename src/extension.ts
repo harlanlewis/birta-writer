@@ -651,6 +651,12 @@ export function activate(context: vscode.ExtensionContext) {
                 const mode = normalizeBlockHandlesMode(readBirtaSetting("blockHandles"));
                 MarkdownEditorProvider.current?.postToAll({ type: "setBlockHandles", mode });
             }
+            if (e.affectsConfiguration("birta.readOnly")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "setReadOnly",
+                    readOnly: readBirtaSetting("readOnly") === true,
+                });
+            }
             if (e.affectsConfiguration("birta.lineNumbers")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setLineNumbers",

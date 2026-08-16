@@ -38,6 +38,8 @@ import {
     IconSearch,
     IconFileCode,
     IconAlertTriangle,
+    IconPencil,
+    IconEye,
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
 import { btn } from "./menuPrimitives";
@@ -49,7 +51,8 @@ import { createChecksMenu } from "./checksMenu";
 import { createSettingsMenu } from "./settingsMenu";
 import { createDebugMenu, type DebugOpts } from "./debugMenu";
 import { createToolbarLayout, type ToolbarLayout } from "./layout";
-import type { ToolbarItemId } from "./registry";
+import { ITEM_MUTATES, type ToolbarItemId } from "./registry";
+import { isReadOnly, setReadOnly, subscribeReadOnly } from "@/readOnly";
 import { computeToolbarActiveState, DETACHED_STATE, type ToolbarActiveState } from "./activeState";
 import { notifyOpenSettings, notifyOpenKeybindings, notifyResolveSyncConflict } from "@/messaging";
 import type { ToolbarConfig, FontPreset, FontStacks, ProofreadOptionKey, LogseqReason } from "../../../shared/messages";
@@ -292,6 +295,36 @@ export function initToolbar(
     // viewport is preserved). No shortcut labels on these tooltips: both are
     // user-rebindable contributed keybindings and the webview cannot query
     // their effective bindings.
+    // Edit / Read-only (MAR-53). Two states on one control, because the state
+    // is binary and two idempotent buttons would always leave one that does
+    // nothing. Read-only's absence of edits is indistinguishable from "I have
+    // not typed yet", so the button carries the signal that owes the user
+    // (docs/DESIGN_PRINCIPLES.md, "A silent absence needs a signal"): the icon
+    // says which mode is ACTIVE, and the tooltip says what clicking does.
+    const readOnlyBtn = btn(IconPencil, "", () => setReadOnly(!isReadOnly()));
+    const readOnlyTip = applyTooltip(readOnlyBtn, "", { placement: "below" });
+    const paintReadOnly = (readOnly: boolean): void => {
+        readOnlyBtn.innerHTML = readOnly ? IconEye : IconPencil;
+        readOnlyBtn.classList.toggle("tb-btn--active", readOnly);
+        readOnlyBtn.setAttribute("aria-pressed", String(readOnly));
+        readOnlyBtn.setAttribute("aria-label", readOnly ? t("Read-only") : t("Editing"));
+        readOnlyTip.setText(readOnly
+            ? t("Read-only — edits are locked. Click to edit.")
+            : t("Editing. Click to lock edits."));
+        // Every item that acts on the document goes visibly dead, rather than
+        // staying live and no-opping against the transaction filter.
+        for (const [id, el] of Object.entries(items)) {
+            if (!ITEM_MUTATES[id as ToolbarItemId]) { continue; }
+            // `disabled` alone: `.ui-btn:disabled` already carries the dimmed
+            // resting state and the suppressed hover, so a class of our own
+            // here would be a second channel saying the same thing.
+            for (const control of el?.querySelectorAll("button") ?? []) {
+                control.disabled = readOnly;
+            }
+        }
+    };
+    items.readOnly = wrap("readOnly", readOnlyBtn);
+
     if (onSwitchToSource) {
         items.viewSource = wrap("viewSource", btn(
             IconFileCode,
@@ -313,6 +346,11 @@ export function initToolbar(
 
     // ── Placement, overflow, customize mode, whole-bar visibility ──
     layout = createToolbarLayout({ topbar, items, dbgItem, syncConflictItem, logseqItem });
+
+    // Paint the launch state, then repaint from the mode's one announcement —
+    // never from a private copy, and never defensively on menu open.
+    paintReadOnly(isReadOnly());
+    subscribeReadOnly(paintReadOnly);
 
     // Expose the toolbar-owned actions to the shared editor-command registry so
     // the command palette / context menu reach the exact same code paths.

@@ -29,6 +29,7 @@ export const TOOLBAR_ITEM_IDS = [
     "math",
     "footnote",
     "clearFormatting",
+    "readOnly",
     "viewSource",
     "find",
     "styleCheck",
@@ -79,11 +80,54 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     footnote: "hidden",
     // Clear Formatting ships hidden: reachable via the command palette and slash menu.
     clearFormatting: "hidden",
+    // Edit / Read-only, beside Edit Raw Markdown: the two controls answer the
+    // same question ("how am I working with this file right now") and belong
+    // next to each other.
+    readOnly: "right",
     viewSource: "right",
     find: "right",
     styleCheck: "right",
     fontPreset: "right",
     settings: "right",
+};
+
+/**
+ * Which toolbar items act on the document, and so must go inert while the
+ * editor is read-only (MAR-53).
+ *
+ * A `Record` over every id rather than a list of the mutating ones, so a new
+ * toolbar item fails to compile until its author has answered the question.
+ * The mode's correctness never depends on this table — a missed entry is a
+ * button that no-ops against the transaction filter, not one that edits — but
+ * a live-looking button that does nothing is the failure the mode's whole
+ * trust argument rests on avoiding, so the table is exhaustive by type for the
+ * same reason the command classification is.
+ */
+export const ITEM_MUTATES: Record<ToolbarItemId, boolean> = {
+    format: true,
+    bold: true,
+    italic: true,
+    strikethrough: true,
+    highlight: true,
+    inlineCode: true,
+    link: true,
+    listMenu: true,
+    quote: true,
+    codeBlock: true,
+    horizontalRule: true,
+    table: true,
+    image: true,
+    math: true,
+    footnote: true,
+    clearFormatting: true,
+    // Find without Replace, the mode toggle itself, the view controls and the
+    // gear all leave the document alone.
+    readOnly: false,
+    viewSource: false,
+    find: false,
+    styleCheck: false,
+    fontPreset: false,
+    settings: false,
 };
 
 // "center" is intentionally NOT valid: the zone was removed, and persisted

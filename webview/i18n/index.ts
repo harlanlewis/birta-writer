@@ -7,6 +7,13 @@ declare global {
         __i18n?: {
             translations: Record<string, string>;
             isMac: boolean;
+            /**
+             * Open with edits locked (birta.readOnly). Read ONCE, at module
+             * load, to seed webview/readOnly.ts — after that the mode's source
+             * of truth is that module, because the toolbar toggle overrides the
+             * setting for the session and a second copy here would go stale.
+             */
+            readOnly?: boolean;
             debugMode?: boolean;
             codeBlockAutoConvert?: boolean;
             /** Smart link resolution + wikilink autocomplete (birta.smartLinks). */
