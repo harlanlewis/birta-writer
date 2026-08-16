@@ -111,6 +111,9 @@ describe("fixture parse census", () => {
             "note",             // ... under a footnote definition
             "note",             // ... under a list item
             "note",             // ... under a blockquote
+            // Blocks that absorb the fence in their own terms (MAR-365).
+            "note",             // ... as a table's last row
+            "note",             // ... into a raw HTML block's bytes
         ]);
         // The unclosed fence and the spaced name stay ordinary text.
         expect(names).not.toContain("unclosed");
@@ -357,16 +360,18 @@ describe("footnotes inside a directive", () => {
 // so the `:::` arrives as that paragraph's last soft line and the directive
 // never closes. It is one class of bug, not one construct: footnote
 // definitions, list items and blockquotes all swallow it identically.
-describe("a close fence swallowed by a lazy continuation [MAR-362]", () => {
-    async function expectOneNote(doc: string): Promise<void> {
-        const { editor, view } = await makeEditor(doc);
-        try {
-            expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
-        } finally {
-            await editor.destroy();
-        }
+async function expectOneNote(doc: string): Promise<void> {
+    const { editor, view } = await makeEditor(doc);
+    try {
+        expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+    } finally {
+        // The expect throws, so without this the jsdom container and a live
+        // EditorView outlive the test.
+        await editor.destroy();
     }
+}
 
+describe("a close fence swallowed by a lazy continuation [MAR-362]", () => {
     const SWALLOWED: Array<[string, string]> = [
         [
             "a footnote definition",
@@ -484,16 +489,120 @@ describe("a close fence swallowed by a lazy continuation [MAR-362]", () => {
             await editor.destroy();
         }
     });
+});
 
-    // Known gap, same class, different repair: GFM absorbs the line as a table
-    // ROW rather than into a paragraph, so the paragraph-splitting repair
-    // cannot reach it. An HTML block is the same shape. Flipping to green
-    // means the case was fixed.
-    it.fails("a table before the close fence is still swallowed [MAR-365]", async () => {
-        const doc = ":::note\n\n| a |\n| - |\n| b |\n:::\n";
+// MAR-365: the same swallow, in the two blocks that do not absorb the line as
+// paragraph text. GFM takes it as a table ROW and a raw HTML block takes it as
+// more of its own bytes, so there is no soft line to split off and MAR-362's
+// repair had nothing to work with. The repair now ends at whichever block the
+// descent reaches and takes the fence back off it in that block's own terms:
+// drop the row, or trim the bytes.
+describe("a close fence swallowed by a table or an HTML block [MAR-365]", () => {
+    // Table delimiter rows are spelled the way the serializer spells them
+    // (`|---|`), so byte-identity is asserting the directive repair rather than
+    // re-asserting the table serializer's canonical form.
+    const SWALLOWED: Array<[string, string]> = [
+        ["a table", ":::note\n\n| a |\n|---|\n| b |\n:::\n"],
+        ["a table with no blank line under the open fence", ":::note\n| a |\n|---|\n| b |\n:::\n"],
+        ["a table in a blockquote", "> :::note\n>\n> | a |\n> |---|\n> | b |\n> :::\n"],
+        // The row-dropping arm has to leave a table behind: this one is a
+        // header and its delimiter, with the fence as the only body row.
+        ["a header-only table", ":::note\n\n| a |\n|---|\n:::\n"],
+        ["an HTML block", ":::note\n\n<div>\nhi\n</div>\n:::\n"],
+        ["an HTML block with no blank line under the open fence", ":::note\n<div>\nhi\n</div>\n:::\n"],
+        ["an HTML block in a blockquote", "> :::note\n>\n> <div>\n> hi\n> </div>\n> :::\n"],
+    ];
+    // A table or an HTML block INDENTED inside a list item is deliberately not
+    // here: a flush-left fence under one is not absorbed at all, it becomes its
+    // own paragraph, and the MAR-362 branch has always closed it. Both were
+    // driven and pass with this repair reverted, so they would pin nothing.
+
+    for (const [what, doc] of SWALLOWED) {
+        it(`${what} before the close fence should still close the directive`, async () => {
+            await expectOneNote(doc);
+        });
+
+        it(`${what} before the close fence should round-trip byte-identically`, async () => {
+            expect(await roundTrip(doc)).toBe(doc);
+        });
+    }
+
+    // What the user sees, rather than what the tree holds: the admonition is
+    // drawn around the table instead of the fences being loose text near it.
+    it("the rendered directive element contains the table", async () => {
+        const { editor, view } = await makeEditor(":::note\n\n| a |\n|---|\n| b |\n:::\n");
+        try {
+            expect(view.dom.querySelector(".container-directive table")).not.toBeNull();
+            expect(view.dom.textContent).not.toContain(":::");
+        } finally {
+            await editor.destroy();
+        }
+    });
+
+    // A table inside a LONGER outer fence: the inner directive has to be found
+    // by the re-scan `makeDirective` runs over the wrapped body, which reads
+    // source lines through the positions the repair rewrote.
+    it("a table in a directive nested inside another directive closes both", async () => {
+        const doc = "::::note\n\n:::tip\n\n| a |\n|---|\n| b |\n:::\n::::\n";
         const { editor, view } = await makeEditor(doc);
         try {
-            expect(findDirectives(view)).toHaveLength(1);
+            expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note", "tip"]);
+        } finally {
+            await editor.destroy();
+        }
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    // The same raw-line rule the paragraph repair lives by: an indented or
+    // quoted fence is content the author wrote, and mdast has already stripped
+    // the indentation that is the only thing telling the two apart.
+    const CONTENT: Array<[string, string]> = [
+        [
+            "an indented fence under a table in a list item",
+            ":::note\n- a\n\n  | a |\n  |---|\n  | b |\n  :::\n",
+        ],
+        ["a quoted fence under a table in a blockquote", ":::note\n> | a |\n> |---|\n> | b |\n> :::\n"],
+        [
+            "an indented fence under an HTML block in a list item",
+            ":::note\n- a\n\n  <div>\n  hi\n  </div>\n  :::\n",
+        ],
+    ];
+
+    for (const [what, doc] of CONTENT) {
+        it(`${what} is content, so nothing becomes a directive`, async () => {
+            const { editor, view } = await makeEditor(doc);
+            try {
+                expect(findDirectives(view)).toHaveLength(0);
+                expect(view.state.doc.textContent).toContain(":::");
+            } finally {
+                await editor.destroy();
+            }
+        });
+    }
+
+    // A one-cell row a user actually wrote is `| ::: |` in the source, which is
+    // not a fence line — so it stays a row, and the directive closes at the
+    // real fence below it.
+    it("a table row spelling a fence in cell bytes stays a row", async () => {
+        const doc = ":::note\n\n| a |\n|---|\n| ::: |\n\n:::\n";
+        const { editor, view } = await makeEditor(doc);
+        try {
+            expect(findDirectives(view).map((n) => n.attrs["name"])).toEqual(["note"]);
+            expect(view.state.doc.textContent).toContain(":::");
+        } finally {
+            await editor.destroy();
+        }
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    // Two flush-left fences absorbed by two tables: the first closes the
+    // directive, but it is a row of a table the repair would have to reach
+    // past, so the ambiguity declines exactly as it does for paragraphs.
+    it("two absorbed fences decline the repair", async () => {
+        const doc = ":::note\n\n| a |\n|---|\n:::\n:::tip\n\n| c |\n|---|\n:::\n";
+        const { editor, view } = await makeEditor(doc);
+        try {
+            expect(findDirectives(view)).toHaveLength(0);
         } finally {
             await editor.destroy();
         }
