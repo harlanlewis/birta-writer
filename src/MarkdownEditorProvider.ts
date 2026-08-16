@@ -1401,8 +1401,16 @@ export class MarkdownEditorProvider
                         // Persist the review sidebar's By-type/In-order mode to
                         // birta.review.groupByType; the config-change listener
                         // echoes reviewConfig to every open editor.
+                        //
+                        // The argument is the SETTINGS key, not the config
+                        // snapshot's field name. They coincide for every flat
+                        // setting, which is why this was the one site that got
+                        // it wrong: `reviewGroupByType` is the field,
+                        // `review.groupByType` is the key, and writing the
+                        // field name addressed a setting that does not exist,
+                        // so the toggle never survived a reload.
                         void updateSettingRespectingScope(
-                            "reviewGroupByType",
+                            "review.groupByType",
                             Boolean(message.grouped),
                         );
                         break;
