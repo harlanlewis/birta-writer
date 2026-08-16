@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Graphviz diagrams render from a fence. Write ```` ```graphviz ````, ```` ```dot ```` or ```` ```gv ```` and the graph draws in place, with the same pan, zoom, fit-to-view and fullscreen the Mermaid and PlantUML previews already have. Graphviz is now in the code block language picker, and its source highlights. DOT was reachable before only through PlantUML, as `@startdot` inside a ```` ```plantuml ```` fence; a plain Graphviz fence was an ordinary code block. The engine was already shipping and runs entirely on your machine, so this reaches the network no more than any other diagram does. A Graphviz diagram keeps its own colours rather than following a dark editor theme, because recolouring it would mean rewriting the graph you wrote.
+
+- A quiet dot appears on the settings gear when a release you have not looked at contains a security fix or a breaking change. Opening the settings menu clears it. It is never a popup, a notification, a count, or a tab that opens itself, and it stays dark for everything else: releases are nightly, so a dot that lit for every one of them would be lit almost every day and would stop meaning anything. Nothing appears on a fresh install. `birta.whatsNew.indicator` turns it off for good.
+
+### Fixed
+
+- A `:::` directive whose last block is a table or a block of raw HTML now closes, and renders as the note or warning you wrote. The closing fence was being absorbed into the table as an extra row, or into the HTML as another line of it, so the whole directive silently stayed open and the fence showed up as document content. Your file was never damaged by this and saving was always safe; what was lost was the rendering.
+
 ---
 
 ## [2026.814.0] - 2026, August 14
