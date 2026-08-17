@@ -97,7 +97,7 @@ export async function renderPlantUmlToSvg(code: string): Promise<string> {
     const engine = await loadPlantUml();
     const { source, addedLines } = applyPlantUmlTheme(code, currentPalette());
     try {
-        return engine.convert(source);
+        return await engine.convert(source);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(unshiftPlantUmlErrorLines(message, addedLines));

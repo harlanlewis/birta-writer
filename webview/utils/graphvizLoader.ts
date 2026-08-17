@@ -30,6 +30,17 @@ export type GraphvizEngine = {
 };
 
 let enginePromise: Promise<GraphvizEngine> | null = null;
+let engine: GraphvizEngine | null = null;
+
+/**
+ * The engine if it has already loaded, else null, without starting a load.
+ * The PlantUML bridge is synchronous (the compiled engine calls it mid-render),
+ * so it can only ever use an engine that is already here; this is how it finds
+ * out whether one is.
+ */
+export function peekGraphviz(): GraphvizEngine | null {
+    return engine;
+}
 
 /**
  * Load (and cache) the Graphviz engine. Every caller in a document shares one
@@ -46,14 +57,15 @@ export function loadGraphviz(): Promise<GraphvizEngine> {
                 // name it does not know is a runtime error there rather than
                 // something that can usefully be narrowed here.
                 type Layout = typeof graphviz.layout;
-                return {
-                    layout: (dot, format, engine) =>
+                engine = {
+                    layout: (dot, format, layoutEngine) =>
                         graphviz.layout(
                             dot,
                             format as Parameters<Layout>[1],
-                            engine as Parameters<Layout>[2],
+                            layoutEngine as Parameters<Layout>[2],
                         ),
                 };
+                return engine;
             })
             .catch((err) => {
                 enginePromise = null;
@@ -66,4 +78,5 @@ export function loadGraphviz(): Promise<GraphvizEngine> {
 /** Test seam: forget the cached engine so a suite can re-exercise the load. */
 export function resetGraphvizEngineForTests(): void {
     enginePromise = null;
+    engine = null;
 }
