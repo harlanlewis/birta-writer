@@ -108,6 +108,14 @@
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 0.9em;
     line-height: 1.5;
+    /* The textarea's UA `font` shorthand resets these to their initial values
+       while the mirror div inherits the document's, and the two layers then
+       wrap a long line at different points, so the box is one line short.
+       Inherit on both so they always agree with the document (MAR-52). */
+    font-kerning: inherit;
+    font-variant-ligatures: inherit;
+    font-optical-sizing: inherit;
+    text-spacing-trim: inherit;
     white-space: pre-wrap;
     overflow-wrap: break-word;
     tab-size: 4;

@@ -33,7 +33,12 @@ function getWrapColumnCount(target: HTMLElement): number {
     if (!ctx) {
         return 80;
     }
-    ctx.font = style.font;
+    // Assemble the font from its longhands rather than reading `style.font`:
+    // the shorthand serializes to "" whenever a longhand it resets is
+    // non-initial (font-kerning, font-variant-ligatures, font-optical-sizing
+    // are all set on the document), and an empty assignment leaves the canvas
+    // on its default font, so the column estimate is taken in the wrong face.
+    ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
     const charWidth = Math.max(1, ctx.measureText("M").width);
     return Math.max(1, Math.floor(width / charWidth));
 }
