@@ -19,7 +19,7 @@
  * nothing. A user who has turned the indicator off pays no read at all.
  */
 import * as vscode from "vscode";
-import { hasUnseenSignificantRelease } from "../shared/whatsNew";
+import { compareVersions, hasUnseenSignificantRelease } from "../shared/whatsNew";
 import { readBirtaSetting } from "./config";
 
 /**
@@ -43,10 +43,18 @@ function lastSeen(context: vscode.ExtensionContext): string | undefined {
  * Record the installed build as seen. Called when the settings dropdown OPENS,
  * not when the What's-new row is clicked: the dot's contract is "there is
  * something you have not looked at", and opening the menu is the looking.
+ *
+ * The stamp never moves BACKWARDS. "Seen" is a high-water mark: a build the
+ * user has already looked past stays looked past, so a downgrade, or a
+ * `0.0.0` local install sharing this memento with a Marketplace one, cannot
+ * lower it and re-light the dot for releases they have already read on the
+ * way back up.
  */
 export async function markSeen(context: vscode.ExtensionContext): Promise<void> {
     const installed = installedVersion(context);
     if (!installed || !context.globalState?.update) { return; }
+    const seen = lastSeen(context);
+    if (seen !== undefined && compareVersions(installed, seen) < 0) { return; }
     await context.globalState.update(LAST_SEEN_KEY, installed);
 }
 
@@ -71,7 +79,14 @@ export async function computeUnread(context: vscode.ExtensionContext): Promise<b
 
     const changelog = await readChangelog(context);
     if (changelog === null) { return false; }
-    return hasUnseenSignificantRelease(changelog, seen, installed);
+    if (hasUnseenSignificantRelease(changelog, seen, installed)) { return true; }
+    // Nothing worth a dot between seen and installed. Stamp installed so the
+    // next activation short-circuits above instead of re-reading and
+    // re-parsing the changelog for a verdict that cannot change until the
+    // build does. Safe because a later release falls in the new window either
+    // way; the user has not looked at anything, and had nothing to look at.
+    await markSeen(context);
+    return false;
 }
 
 /**

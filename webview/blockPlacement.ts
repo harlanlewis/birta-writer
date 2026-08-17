@@ -255,7 +255,11 @@ export function canPlaceBlock($pos: ResolvedPos, reach: BlockReach): boolean {
     // can become a heading or a list. Same fact the capability registry
     // spells `code_block.source: false`, read here off the schema so this
     // module stays import-free. A WRAP is unaffected — a fence goes inside a
-    // quote whole.
+    // quote whole. This is the ONE answer here that is policy rather than
+    // schema: `setBlockType` would happily turn a fence into a paragraph, so
+    // "hidden means inert" (conversionSurfaceParity.test.ts) holds outside a
+    // fence and is not claimed inside one, where the surfaces are already
+    // greyed or closed for the same reason.
     if (reach.effect === "retype" && $pos.node(start).type.spec.code) {
         return false;
     }
@@ -278,4 +282,29 @@ export function canPlaceBlock($pos: ResolvedPos, reach: BlockReach): boolean {
 /** Whether the command's block can land at `$pos`. */
 export function canPlaceCommandBlock($pos: ResolvedPos, id: EditorCommandId): boolean {
     return canPlaceBlock($pos, COMMAND_BLOCK_REACH[id]);
+}
+
+/**
+ * Whether a retype to `typeName` can happen IN PLACE: the caret's own block,
+ * swapped for the new type, still satisfies its parent's content expression.
+ * This is the question a retype command asks before deciding to lift a list
+ * line out of its list. A list item is `paragraph block*`, so its FIRST
+ * paragraph cannot become a fence or a heading and has to lift, but its
+ * second paragraph, or a paragraph quoted inside the item, can be retyped
+ * where it stands. Lifting those too would rip the whole item out of the
+ * list for a change the schema was happy to make in place. Same walk as
+ * `canPlaceBlock`'s first step, kept here so the retype policy has one home.
+ */
+export function canRetypeInPlace($pos: ResolvedPos, typeName: string): boolean {
+    const type = $pos.parent.type.schema.nodes[typeName];
+    if (!type) {
+        return false;
+    }
+    const start = blockDepth($pos);
+    if (start === 0) {
+        return false;
+    }
+    const parent = $pos.node(start - 1);
+    const index = $pos.index(start - 1);
+    return parent.canReplaceWith(index, index + 1, type);
 }

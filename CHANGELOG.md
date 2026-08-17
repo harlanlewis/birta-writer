@@ -10,11 +10,11 @@
 
 - Graphviz diagrams render from a fence. Write ```` ```graphviz ````, ```` ```dot ```` or ```` ```gv ```` and the graph draws in place, with the same pan, zoom, fit-to-view and fullscreen the Mermaid and PlantUML previews already have. Graphviz is now in the code block language picker, and its source highlights. DOT was reachable before only through PlantUML, as `@startdot` inside a ```` ```plantuml ```` fence; a plain Graphviz fence was an ordinary code block. The engine was already shipping and runs entirely on your machine, so this reaches the network no more than any other diagram does. A Graphviz diagram keeps its own colours rather than following a dark editor theme, because recolouring it would mean rewriting the graph you wrote.
 
-- A quiet dot appears on the settings gear when a release you have not looked at contains a security fix or a breaking change. Opening the settings menu clears it. It is never a popup, a notification, a count, or a tab that opens itself, and it stays dark for everything else: releases are nightly, so a dot that lit for every one of them would be lit almost every day and would stop meaning anything. Nothing appears on a fresh install. `birta.whatsNew.indicator` turns it off for good.
+- A quiet dot appears on the settings gear when a release you have not looked at contains a security fix, or removes or deprecates something you might rely on (its Security, Removed or Deprecated sections). Opening the settings menu clears it. It is never a popup, a notification, a count, or a tab that opens itself, and it stays dark for everything else: releases are nightly, so a dot that lit for every one of them would be lit almost every day and would stop meaning anything. Nothing appears on a fresh install. `birta.whatsNew.indicator` turns it off for good.
 
 - Focus mode: one toggle down to just the content. The Toggle Focus Mode command hides the editor toolbar and the table of contents, silences proofreading, and puts VS Code's own Zen Mode around it, so the activity bar, side bar, status bar and tabs go too. Toggling it again restores exactly what was there, including a toolbar you had already hidden and a check you had already turned off. Nothing it changes is written to your settings, so a window that closes mid-session leaves your configuration as you left it. There is no default keybinding, because Zen Mode already owns one; pick your own in Keyboard Shortcuts.
 
-- A `:::name` directive or a Notion aside can be turned into something else. Their gutter menus now carry a Turn-into section offering a quote, a callout, a list, prose or a code fence, which they never had. A directive's title travels across as the first line of the result rather than being dropped.
+- A `:::name` directive or a Notion aside can be turned into something else. Their gutter menus now carry a Turn-into section offering a quote, a callout, a list, prose or a code fence, which they never had. A directive's title travels across as the first line of the result rather than being dropped, and turning `:::warning` (or an aside with a warning icon) into a callout gives a `[!WARNING]`, not a note that lost its kind.
 
 - A conversion that loses something says so before you pick it. A Turn-into row that will drop a task list's checkmarks, or a callout's kind and fold state, now carries a quiet note naming what goes.
 
@@ -24,11 +24,13 @@
 
 - The toolbar's Lists and Code menus grey out inside a table cell, where neither can go, instead of offering picks that quietly do nothing. In the other direction, the slash menu inside a cell now offers Blockquote and the callouts, which it used to hide even though they work and wrap the whole table.
 
-- Opening a `.mdx` file renders it, instead of leaving it in the raw text editor while a `.md` file beside it renders. `[[wikilink]]` completion offers MDX pages too, so an MDX page can be reached by name. Front matter suggestions now also read `.markdown` files, which were never scanned.
+- Opening a `.mdx` file renders it, instead of leaving it in the raw text editor while a `.md` file beside it renders. `[[wikilink]]` completion offers MDX pages too, so an MDX page can be reached by name.
 
 - The review sidebar's By-type / In-order choice survives a reload. It was being written to a setting that does not exist, so it was discarded every time, silently.
 
-- Front matter suggestions read `.mdx` files too. An MDX file's `---` block is front matter exactly as a Markdown file's is, but the scan behind the metadata panel's key menu only ever looked at `.md`, so a workspace of MDX pages offered nothing and an MDX page's own values never appeared as a suggestion anywhere.
+- Front matter suggestions read `.mdx` and `.markdown` files too. An MDX file's `---` block is front matter exactly as a Markdown file's is, but the scan behind the metadata panel's key menu only ever looked at `.md`, so a workspace of MDX pages offered nothing and an MDX page's own values never appeared as a suggestion anywhere; `.markdown` files were never scanned either.
+
+- A footnote definition holding a block of raw HTML shows up in the editor again. The whole definition, note text included, used to vanish from view when its body carried an HTML block, because the parser could not build the node and dropped it; the file kept the bytes only because saving refuses a lossy round trip, so what was lost was the editing, not the data. It now renders like any other footnote and round-trips.
 
 - A `:::` directive whose last block is a table or a block of raw HTML now closes, and renders as the note or warning you wrote. The closing fence was being absorbed into the table as an extra row, or into the HTML as another line of it, so the whole directive silently stayed open and the fence showed up as document content. Your file was never damaged by this and saving was always safe; what was lost was the rendering.
 

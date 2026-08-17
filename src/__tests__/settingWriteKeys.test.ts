@@ -23,16 +23,34 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import { walkFiles } from "../../shared/__tests__/cjkScanner";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const contributed = new Set(Object.keys(pkg.contributes.configuration.properties));
 
-/** Source files that may write a setting. */
-const SOURCES = ["src/MarkdownEditorProvider.ts", "src/extension.ts", "src/config.ts"];
+/**
+ * Every extension-side source file. The whole tree rather than a list of the
+ * files that write settings today, because "a new write site is covered the
+ * day it lands" is only true if a new FILE is too.
+ */
+const SOURCES = walkFiles(path.join(root, "src"), [".ts"], ["__tests__", "test"])
+    .map((abs) => path.relative(root, abs));
 
-/** `updateSettingRespectingScope("some.key"` / `updateUserSetting("some.key"` */
-const WRITE_CALL = /update(?:SettingRespectingScope|UserSetting)\(\s*"([^"]+)"/g;
+/**
+ * The three spellings of a literal-key write on the `birta` section:
+ * `updateSettingRespectingScope("some.key"`, `updateUserSetting("some.key"`,
+ * and the raw `getBirtaConfiguration().update("some.key"` the consent and
+ * dictionary paths use. Multi-line calls are covered because `\s*` spans
+ * newlines.
+ *
+ * WHAT THIS CANNOT SEE, stated so nobody reads a green run as more than it is:
+ * a key passed as a variable (`setProofreadOption` reads its path out of a
+ * table) or built by a template literal (`toolbar.items.${id}`). Those sites
+ * are covered where their tables are: the proofread table and the toolbar
+ * item ids are each held to the manifest by their own tests.
+ */
+const WRITE_CALL = /(?:update(?:SettingRespectingScope|UserSetting)|getBirtaConfiguration\(\)\s*\.update)\(\s*"([^"]+)"/g;
 
 describe("settings the extension writes", () => {
     const found: Array<{ file: string; key: string }> = [];
@@ -42,6 +60,11 @@ describe("settings the extension writes", () => {
             found.push({ file: rel, key: m[1] });
         }
     }
+
+    it("should scan the whole extension tree, not a list of files", () => {
+        expect(SOURCES.length).toBeGreaterThan(10);
+        expect(new Set(found.map((f) => f.file)).size, "files with a write site").toBeGreaterThanOrEqual(3);
+    });
 
     it("should find write sites at all, or this guard is asserting over nothing", () => {
         // A sweep that enumerates nothing passes. The floor is deliberately

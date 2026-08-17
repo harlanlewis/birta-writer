@@ -7,7 +7,7 @@ import { normalizePlantUmlThemeMode } from "../shared/plantuml";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { scanHeadings } from "../shared/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
-import { isDocumentPath } from "../shared/documentExtensions";
+import { DOCUMENT_EXTENSIONS, isDocumentPath } from "../shared/documentExtensions";
 import { normalizeCopyFormat, normalizePasteFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, type BirtaApi } from "./agentBridge";
@@ -109,7 +109,7 @@ export function syncEditorAssociation(mode: string): void {
         ...(wbConfig.get<Record<string, string>>("editorAssociations") ?? {}),
     };
     let changed = false;
-    for (const glob of ["*.md", "*.markdown"]) {
+    for (const glob of DOCUMENT_EXTENSIONS.map((ext) => `*.${ext}`)) {
         if (mode === "markdown") {
             if (current[glob] !== "default") {
                 current[glob] = "default";

@@ -14,8 +14,9 @@
  *   (c) ancestor walk — every ancestor directory of the document up to the
  *       workspace root as a candidate site root (Hugo/Jekyll/Astro content
  *       dirs), nearest first
- *   (d) suffix inference — each base tried as-is, then `.md`, `.markdown`,
- *       `/index.md`, `/_index.md` (trailing-slash links prefer index files)
+ *   (d) suffix inference — each base tried as-is, then with each document
+ *       suffix (DOCUMENT_EXTENSIONS, plain spellings first), then as an
+ *       `index` or `_index` file (trailing-slash links prefer index files)
  *   (e) fallback — suffix match over the cached workspace file index
  *
  * Each of (a)–(e) runs over every FORM of the link path in turn: the raw
@@ -35,6 +36,7 @@
  */
 import * as path from "path";
 import { stripNotionIds } from "../../shared/notionIds";
+import { DOCUMENT_EXTENSIONS } from "../../shared/documentExtensions";
 
 export interface ResolverIo {
     /** true iff absPath exists and is a regular file */
@@ -50,20 +52,26 @@ export interface ResolveContext {
     smartLinks: boolean;
 }
 
-const MD_SUFFIXES = [".md", ".markdown"] as const;
+/**
+ * The plain-Markdown spellings: every format the editor opens EXCEPT MDX.
+ * This is the markdown-preference TIER in resolveWikiTarget, and it is a
+ * subset on purpose. Folding `.mdx` into it would change which file a bare
+ * `[[page]]` opens in a vault holding both spellings, and a link that names
+ * neither extension should keep resolving to the plain markdown twin it always
+ * did. Derived from the shared list rather than spelled out, so a new plain
+ * spelling joins the tier the day it is added.
+ */
+const MD_SUFFIXES: readonly string[] = DOCUMENT_EXTENSIONS
+    .filter((ext) => ext !== "mdx")
+    .map((ext) => `.${ext}`);
 
 /**
- * Extensions an extension-less link may be naming, in preference order. The
- * editor opens `.mdx` in MDX mode (MAR-42), so `[text](./page)` must be able
- * to reach `page.mdx` when no `page.md` exists.
- *
- * Deliberately NOT the same list as MD_SUFFIXES, which is also the
- * markdown-preference TIER in resolveWikiTarget. Folding `.mdx` into that
- * tier would change which file a bare `[[page]]` opens in a vault holding
- * both spellings, and a link that names neither extension should keep
- * resolving to the plain markdown twin it always did.
+ * Extensions an extension-less link may be naming, in preference order: every
+ * format the editor opens, plain spellings first. The editor opens `.mdx` in
+ * MDX mode (MAR-42), so `[text](./page)` must be able to reach `page.mdx`
+ * when no `page.md` exists.
  */
-const INFERRED_SUFFIXES = [...MD_SUFFIXES, ".mdx"] as const;
+const INFERRED_SUFFIXES: readonly string[] = DOCUMENT_EXTENSIONS.map((ext) => `.${ext}`);
 
 function toPosix(p: string): string {
     return p.split(path.sep).join("/");
@@ -290,7 +298,7 @@ export async function resolveWikiTarget(
             const ext = path.extname(base);
             const stem = ext ? base.slice(0, -ext.length) : base;
             if (base === lower || stem === lower) {
-                if ((MD_SUFFIXES as readonly string[]).includes(ext)) mdMatches.push(fsPath);
+                if (MD_SUFFIXES.includes(ext)) mdMatches.push(fsPath);
                 else otherMatches.push(fsPath);
             }
         }

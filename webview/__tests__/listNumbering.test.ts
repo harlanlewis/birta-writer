@@ -39,10 +39,15 @@ afterEach(async () => {
  * `vi.resetModules()` discipline blockWidth.test.ts uses, extended to the whole
  * plugin stack so the store the editor talks to is the one this test seeds.
  */
-async function make(markdown: string): Promise<Editor> {
+async function make(markdown: string, opts: { readOnlyAtMount?: boolean } = {}): Promise<Editor> {
     vi.resetModules();
     const { configureSerialization, gfmFidelity, pureCommonmark } =
         await import("../serialization");
+    // The read-only filter from the SAME fresh graph, so its module flag is the
+    // one this editor's plugins read.
+    const { readOnlyPlugin } = await import("../plugins/readOnly");
+    const { setReadOnly } = await import("../readOnly");
+    setReadOnly(opts.readOnlyAtMount === true);
     const root = document.createElement("div");
     document.body.appendChild(root);
     const editor = await Editor.make()
@@ -53,6 +58,7 @@ async function make(markdown: string): Promise<Editor> {
         })
         .use(pureCommonmark)
         .use(gfmFidelity)
+        .use(readOnlyPlugin)
         .create();
     editors.push(editor);
     return editor;
@@ -252,5 +258,56 @@ describe("cost when unused", () => {
         const v = view(editor);
         v.dispatch(v.state.tr.insertText("more", v.state.doc.content.size - 1));
         expect(bag?.["listNumbering"]).toBeUndefined();
+    });
+});
+
+/**
+ * Read-only's transaction filter drops the mount-time hydration like any other
+ * doc-changing transaction. The plugin must read whether its dispatch landed
+ * rather than assume it: an armed reconcile over a document that carries no
+ * attr would delete every stored style on the next doc identity change.
+ */
+describe("read-only at mount", () => {
+    /** An inbound external change, the one doc-changing transaction the filter lets through. */
+    async function externalEdit(v: EditorView): Promise<void> {
+        const { EXTERNAL_SYNC_META } = await import("../plugins/docChange");
+        v.dispatch(
+            v.state.tr
+                .insertText("more", v.state.doc.content.size - 1)
+                .setMeta(EXTERNAL_SYNC_META, true),
+        );
+    }
+
+    it("a refused hydration should not wipe the stored styles on the next doc change", async () => {
+        bag = { listNumbering: { "list:one": "lower-roman" } };
+        const editor = await make(`${LIST}\nprose\n`, { readOnlyAtMount: true });
+        const v = view(editor);
+        // The filter refused the hydration: no attr on the list.
+        expect(firstList(v.state.doc).node.attrs["numbering"]).toBeNull();
+
+        await externalEdit(v);
+        await flushIdle();
+        // Nothing reconciled a document with no attrs against the bag.
+        expect(bag?.["listNumbering"]).toEqual({ "list:one": "lower-roman" });
+    });
+
+    it("unlocking should land the hydration that the mount refused", async () => {
+        bag = { listNumbering: { "list:one": "lower-roman" } };
+        const editor = await make(LIST, { readOnlyAtMount: true });
+        const v = view(editor);
+        expect(firstList(v.state.doc).node.attrs["numbering"]).toBeNull();
+
+        const { setReadOnly } = await import("../readOnly");
+        setReadOnly(false);
+        expect(firstList(v.state.doc).node.attrs["numbering"]).toBe("lower-roman");
+        // And it was a presentation restore, not an edit.
+        expect(markdown(editor)).toBe(LIST);
+        // From here the reconcile is armed as on a normal mount: a real edit
+        // re-keys rather than drops.
+        const { pos, node } = firstList(v.state.doc);
+        const textEnd = pos + 1 + 1 + 1 + node.firstChild!.firstChild!.content.size;
+        v.dispatch(v.state.tr.insertText("X", textEnd));
+        await flushIdle();
+        expect(bag?.["listNumbering"]).toEqual({ "list:oneX": "lower-roman" });
     });
 });

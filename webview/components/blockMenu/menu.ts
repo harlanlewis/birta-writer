@@ -112,6 +112,7 @@ import {
     conversionKindAt,
     convertAt,
     type ConversionKind,
+    type FingerprintKey,
 } from "../../blockCapabilities";
 import { flashRange } from "../../editing/rangeIndicator";
 import { TextSelection, type EditorState } from "../../pm";
@@ -883,7 +884,7 @@ const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as Conve
  * them. Every key the registry can drop must appear here, which
  * blockMenu.test.ts sweeps rather than trusts.
  */
-export const LOSS_NOTES: Record<string, string> = {
+export const LOSS_NOTES: Record<FingerprintKey, string> = {
     "task:state": t("checkmarks dropped"),
     "callout:marker": t("callout marker dropped"),
     "directive:name": t("directive name dropped"),

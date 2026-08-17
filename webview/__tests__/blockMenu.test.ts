@@ -31,7 +31,7 @@ import {
     headingAnchorSlug,
     LOSS_NOTES,
 } from "../components/blockMenu";
-import { ALL_KINDS, contentEffectOf, conversionKindAt } from "../blockCapabilities";
+import { ALL_KINDS, contentEffectOf, conversionKindAt, convertAt } from "../blockCapabilities";
 import { createImageView } from "../components/imageView";
 import { NodeSelection, TextSelection } from "../pm";
 import { mockVscodeApi } from "./setup";
@@ -364,6 +364,38 @@ describe("Turn-into from a directive or a Notion callout", () => {
         expect(markdown(editor).trim()).toBe("> [!NOTE]\n> Read this\n>\n> Heads up");
     });
 
+    it("a directive whose name the callout alias table knows should keep its kind", async () => {
+        // `:::warning` and `[!WARNING]` are one idea in two spellings, and the
+        // table that resolves `[!warning]`'s kind is the one consulted here, so
+        // this is not a guessed mapping. Dropping it would leave a NOTE that
+        // lost the only thing the fence said.
+        const editor = await makeEditor(":::warning\nMind the gap\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        expect(markdown(editor).trim()).toBe("> [!WARNING]\n> Mind the gap");
+    });
+
+    it("a directive named by an Obsidian alias should resolve through the same table", async () => {
+        const editor = await makeEditor(":::hint\nTry this\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        expect(markdown(editor).trim()).toBe("> [!TIP]\n> Try this");
+    });
+
+    it("a directive whose name the table does not know should fall to the default kind", async () => {
+        const editor = await makeEditor(":::sidebar\nAside text\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        expect(markdown(editor).trim()).toBe("> [!NOTE]\n> Aside text");
+    });
+
+    it("a Notion callout should carry the kind its icon resolved to", async () => {
+        const editor = await makeEditor("<aside>\n⚠️ Careful now\n</aside>");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        expect(markdown(editor).trim()).toMatch(/^> \[!WARNING\]\n/);
+    });
+
     it("a directive's title should survive the trip to a blockquote, which has no attr for it", async () => {
         const editor = await makeEditor(":::note Read this\nHeads up\n:::");
         view(editor);
@@ -446,21 +478,35 @@ describe("Turn-into rows announce what a pick drops", () => {
         expect(hintOn(menu, "Task List")).toEqual({ text: "[ ]", note: false });
     });
 
+    /**
+     * One block of every conversion SOURCE kind the registry knows, including
+     * the two container spellings that only convert outward. The reach
+     * assertion below is what keeps this list honest: a source kind added to
+     * the registry without a block here shrinks the enumeration.
+     */
+    const EVERY_SOURCE_KIND = [
+        "plain text", "", "## Title", "", "- bullet", "", "1. ordered", "",
+        "- [ ] task", "", "> quote", "", "> [!NOTE]", "> callout body", "",
+        ":::warning Heads up", "directive body", ":::", "",
+        "<aside>", "⚠️ notion body", "</aside>", "",
+    ].join("\n");
+
     it("every key the registry can drop should have words for it", async () => {
-        // The registry declares WHAT drops; the menu owns the words. A key
-        // with no entry would silently show no warning at all, so the sweep
-        // enumerates every legal pair on a fixture holding every source kind
-        // and asserts both the wording coverage and its own size.
-        const editor = await makeEditor([
-            "plain text", "", "## Title", "", "- bullet", "", "1. ordered", "",
-            "- [ ] task", "", "> quote", "", "> [!NOTE]", "> callout body", "",
-        ].join("\n"));
+        // The registry declares WHAT drops; the menu owns the words. The
+        // compiler now holds LOSS_NOTES to the closed FingerprintKey union, so
+        // an unworded key cannot build; what this sweep still checks is that
+        // the fixture reaches every source kind and that every declarable
+        // key is actually declared by some legal pair, so a key with words
+        // and no declarer is visible too.
+        const editor = await makeEditor(EVERY_SOURCE_KIND);
         const v = view(editor);
         const dropped = new Set<string>();
+        const sources = new Set<string>();
         let pairs = 0;
         v.state.doc.forEach((_node, offset) => {
             const source = conversionKindAt(v, offset);
             if (source === null) { return; }
+            sources.add(source);
             for (const target of ALL_KINDS) {
                 const effect = contentEffectOf(source, target);
                 if (effect === null || typeof effect === "string") { continue; }
@@ -468,14 +514,54 @@ describe("Turn-into rows announce what a pick drops", () => {
                 for (const key of effect.drops ?? []) { dropped.add(key); }
             }
         });
-        expect(pairs).toBeGreaterThanOrEqual(20);
-        expect([...dropped].sort()).toEqual(["callout:marker", "task:state"]);
-        const unworded = [...dropped].filter((key) => LOSS_NOTES[key] === undefined);
-        expect(
-            unworded,
-            `dropped fingerprint key(s) with no wording in LOSS_NOTES ` +
-                `(webview/components/blockMenu/menu.ts): ${unworded.join(", ")}`,
-        ).toEqual([]);
+        expect(pairs).toBeGreaterThanOrEqual(30);
+        expect([...sources].sort()).toEqual([
+            "blockquote", "bulletList", "callout", "directive", "h2",
+            "notionCallout", "orderedList", "paragraph", "taskList",
+        ]);
+        expect([...dropped].sort()).toEqual(Object.keys(LOSS_NOTES).sort());
+    });
+
+    it("every legal conversion from every source kind should pass the content guard silently", async () => {
+        // The guard exists to hold the registry's declarations honest, so a
+        // declared drop the guard cannot read is the exact failure it would
+        // then report on every use: every directive and aside conversion
+        // logged "dropped undeclared marker" until the guard's key map named
+        // their markers. Drive every legal pair on a fresh editor and read the
+        // guard's own channel; the sweep asserts its size so it cannot pass
+        // by reaching nothing.
+        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        try {
+            let converted = 0;
+            const offenders: string[] = [];
+            const probe = await makeEditor(EVERY_SOURCE_KIND);
+            const positions: Array<{ offset: number; source: string }> = [];
+            view(probe).state.doc.forEach((_node, offset) => {
+                const source = conversionKindAt(view(probe), offset);
+                if (source !== null) { positions.push({ offset, source }); }
+            });
+            for (const { offset, source } of positions) {
+                for (const target of ALL_KINDS) {
+                    if (target === source) { continue; }
+                    const editor = await makeEditor(EVERY_SOURCE_KIND);
+                    const v = view(editor);
+                    if (conversionKindAt(v, offset) !== source) { continue; }
+                    errorSpy.mockClear();
+                    if (!convertAt(v, offset, target, () => editor)) { continue; }
+                    converted++;
+                    const guard = errorSpy.mock.calls
+                        .map((args) => args.map(String).join(" "))
+                        .filter((line) => line.includes("[ContentGuard]"));
+                    if (guard.length > 0) {
+                        offenders.push(`${source} -> ${target}: ${guard.join(" | ")}`);
+                    }
+                }
+            }
+            expect(converted).toBeGreaterThanOrEqual(30);
+            expect(offenders).toEqual([]);
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
 });
 

@@ -24,7 +24,7 @@ import { Fragment, type Node as ProseNode } from "../pm";
 import type { EditorView } from "../pm";
 import { ReplaceAroundStep, ReplaceStep } from "../pm";
 import { $prose } from "@milkdown/utils";
-import type { ContentEffect } from "../blockCapabilities";
+import type { ContentEffect, FingerprintKey } from "../blockCapabilities";
 import { t } from "../i18n";
 import { parseCalloutMarker } from "./callouts";
 import { parseOpenFence } from "./directives";
@@ -242,10 +242,16 @@ function isSubsequence(a: string, b: string): boolean {
 /**
  * Which marker category a declared FingerprintKey exempts. Keys with no
  * fingerprint footprint ("task:state" — `checked` is an attr the fingerprint
- * doesn't carry) simply map to nothing.
+ * doesn't carry) map to null. `Record` over the closed key union, so a new
+ * declarable drop cannot enter the registry without saying here which marker
+ * it lets go: every directive and aside conversion used to fire this audit
+ * as an "undeclared marker" because the two newer keys were missing.
  */
-const EFFECT_KEY_TO_MARKER_TYPE: Record<string, string> = {
+const EFFECT_KEY_TO_MARKER_TYPE: Record<FingerprintKey, string | null> = {
     "callout:marker": "callout",
+    "directive:name": "container_directive",
+    "notion:icon": "notion_callout",
+    "task:state": null,
 };
 
 /**
@@ -277,7 +283,7 @@ export function checkConversion(
             : "conversion lost text (flattened source is not contained in the result)";
     }
     const delta = diffFingerprints(fingerprintDoc(before), fingerprintDoc(after));
-    const declared = (list: readonly string[] | undefined): Set<string> => {
+    const declared = (list: readonly FingerprintKey[] | undefined): Set<string> => {
         const types = new Set<string>();
         for (const key of list ?? []) {
             const type = EFFECT_KEY_TO_MARKER_TYPE[key];

@@ -337,16 +337,32 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
    "no custom colors" rule: the point is theme-independence, and the paired
    Mermaid `theme` palette is chosen from the same decision so they never clash. */
 :root {
-    --mermaid-canvas: #ffffff; /* color-literal-ok: fixed non-theme diagram canvas (see comment above) */
+    /* The light sheet every diagram engine starts from, named once so a pane
+       that must stay light can say so without repeating the literal. */
+    --diagram-canvas-light: #ffffff; /* color-literal-ok: fixed non-theme diagram canvas (see comment above) */
     /* Ink for text drawn directly *on* the canvas (the loading placeholder). Must
        track the canvas, not the theme: on the forced-white canvas a dark-theme
        foreground would be light-on-white and invisible. #333 matches Mermaid's
        own default-theme text. */
-    --mermaid-canvas-fg: #333333; /* color-literal-ok: ink on the forced-white canvas (see comment above) */
+    --diagram-canvas-light-fg: #333333; /* color-literal-ok: ink on the forced-white canvas (see comment above) */
+    --mermaid-canvas: var(--diagram-canvas-light);
+    --mermaid-canvas-fg: var(--diagram-canvas-light-fg);
 }
 body.mermaid-canvas-dark {
     --mermaid-canvas: var(--vscode-textCodeBlock-background);
     --mermaid-canvas-fg: var(--vscode-editor-foreground);
+}
+/* The Mermaid decision lives on <body>, so every pane inherits it unless it
+   says otherwise. Graphviz has no dark mode at all (graphvizRuntime.ts), a
+   PlantUML pane is dark only by its own class, and the fullscreen surface is
+   told light or dark by the engine it holds; each re-pins the light sheet
+   here so a dark Mermaid setting cannot darken a pane whose engine painted
+   for white. Kept above the dark rules so a same-specificity dark wins the tie. */
+.gv-preview,
+.puml-preview:not(.puml-canvas-dark),
+.fs-surface.diagram-canvas-light {
+    --mermaid-canvas: var(--diagram-canvas-light);
+    --mermaid-canvas-fg: var(--diagram-canvas-light-fg);
 }
 /* PlantUML's dark canvas is per-PANE, not on <body> like Mermaid's, because
    birta.plantuml.theme and birta.mermaid.theme are independent: one document

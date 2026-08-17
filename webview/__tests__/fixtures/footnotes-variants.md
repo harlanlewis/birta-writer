@@ -37,3 +37,11 @@ An item in such a list can also carry a sublist of its own[^outline].
       - child two
 
     - sibling
+
+A note can hold a raw HTML block[^html], which used to make the whole definition vanish from the editor.
+
+[^html]: Text before the block.
+
+    <div class="aside">
+    Raw HTML inside a footnote definition.
+    </div>

@@ -100,6 +100,36 @@ describe("the unread dot's host half", () => {
         expect(await computeUnread(context)).toBe(false);
     });
 
+    it("a quiet upgrade should stamp the installed version so later activations skip the read", async () => {
+        // 2026.813.0 -> 2026.814.0 where nothing between is significant would
+        // otherwise re-read and re-parse the changelog on every activation
+        // until the user happened to open the gear menu.
+        const { context, update } = makeContext({ version: "2026.815.0", lastSeen: "2026.814.0", name: "changelog.md" });
+        expect(await computeUnread(context)).toBe(false);
+        expect(update).toHaveBeenCalledWith(expect.any(String), "2026.815.0");
+    });
+
+    it("an unread significant release should NOT stamp, or the dot would clear itself", async () => {
+        const { context, update } = makeContext({ lastSeen: "2026.813.0", name: "changelog.md" });
+        expect(await computeUnread(context)).toBe(true);
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it("markSeen should never move the high-water mark backwards", async () => {
+        // A downgrade, or a 0.0.0 local build sharing the memento with a
+        // Marketplace install, would otherwise re-light the dot for releases
+        // the user already read once the newer build is back.
+        const older = makeContext({ version: "2026.810.0", lastSeen: "2026.814.0", name: "changelog.md" });
+        await markSeen(older.context);
+        expect(older.update).not.toHaveBeenCalled();
+        expect(await computeUnread(older.context)).toBe(false);
+        expect(older.update).not.toHaveBeenCalled();
+
+        const local = makeContext({ version: "0.0.0", lastSeen: "2026.814.0", name: "changelog.md" });
+        await markSeen(local.context);
+        expect(local.update).not.toHaveBeenCalled();
+    });
+
     it("markSeen should degrade rather than throw when the host has no globalState", async () => {
         const context = {
             extensionUri: vscode.Uri.file("/ext"),
