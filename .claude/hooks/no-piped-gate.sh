@@ -2,11 +2,10 @@
 # PreToolUse hook (Bash matcher): block gate commands whose exit code is
 # replaced by a filter's.
 #
-# `pnpm test 2>&1 | tail -8` exits with tail's code — a red gate reads
-# green, and the failure detail is thrown away with it. MAR-141 carried
-# this as prose ("Never pipe a gate through tail") and one session broke
-# it twice anyway, so the rule is code now, in the repo's prose-guard
-# tradition: the prose is not the control.
+# `pnpm test 2>&1 | tail -8` exits with tail's code, so a red gate reads
+# green and the failure detail is thrown away with it. This was a prose
+# rule and prose did not hold it, which is the repo's prose-guard
+# tradition: where guidance is broken repeatedly, the rule becomes code.
 #
 # Two shapes of the same masking are blocked, because the code the caller
 # reads is the LAST command's either way:
@@ -78,7 +77,7 @@ ALTERNATIVES = (
 if re.search(GATE + SEG + FILTER, cmd):
     print(
         "gate-pipe-guard: this pipes a gate through a filter, which replaces the\n"
-        "gate's exit code with the filter's — a red gate reads green (MAR-141).\n"
+        "gate's exit code with the filter's, so a red gate reads green.\n"
         + ALTERNATIVES,
         file=sys.stderr,
     )

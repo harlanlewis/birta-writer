@@ -63,7 +63,8 @@ async function make(markdown: string) {
 
 describe("inline source-carrying nodes wrapped in a mark", () => {
     it("the enumeration should cover every source-content node and wrapper", () => {
-        // A sweep that reached nothing passes; assert its own size (MAR-141).
+        // A sweep that reached nothing passes; assert its own size
+        // (AGENTS.md, "Choosing what to assert").
         expect(SOURCE_CONTENT_NODES.map((n) => n.node).sort()).toEqual([
             "math_inline",
             "wiki_link",

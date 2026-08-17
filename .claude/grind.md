@@ -5,8 +5,16 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 ## Tracker
 
 - Linear team `MAR`.
-- Board guide: `MAR-141`. Verify against `git log` and the tree; work its do-inline ledger when a session touches a line's area, and prune lines sessions have worked past.
+- Derive the queue from Linear at the start of every session: the groomed union of `Todo`, `In Progress` and `Backlog`, ordered by the doctrine below. A stored ordering is a cache, and a stale one reads exactly like a considered one.
 - Maintainer-only kinds: none.
+
+## Findings
+
+A durable finding goes to exactly one of three places, chosen by what would catch the mistake next time: a line in `AGENTS.md`, a guard test, or a comment at the seam it constrains. Each of those is read or run on its own schedule, so a wrong one gets found.
+
+Nothing goes into a shared session narrative, and this file is not one. A document only sessions append to has no bound. Every line in it is true, every line describes something that really happened, and no session will delete another session's true sentence, so it grows until nobody reads it and its errors outlive the code they describe.
+
+A war story is not a finding. The finding is the sentence that changes what the next session does; if it cannot be written as that sentence, it belongs to the PR body and `git log`.
 
 ## Gates
 
@@ -31,7 +39,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 ## Priority doctrine
 
-First High-or-Urgent down the spine: `phase-0-fidelity` → `phase-1-performance` → `phase-2-syntax` → `phase-3-interaction` → `phase-4-differentiators`, then by priority. `phase-5-surfaces` never ranks (D8). With no High anywhere, the spine's top by priority. Holding the machine for one perf ticket blocks every other measurement-bound one, however highly it ranks.
+`AGENTS.md`, "Sequencing", carries the doctrine and it is not restated here. One binding that section does not carry: holding the machine for one perf ticket blocks every other measurement-bound one, however highly it ranks.
 
 ## Repo law
 
@@ -39,14 +47,13 @@ Read before touching code: `AGENTS.md`, `docs/DESIGN_PRINCIPLES.md`.
 
 ## Repo lore
 
-- On a perf ticket: four phase-1 tickets named a mechanism nobody profiled, and all four were wrong. Take a CDP sampling profile and fold native self-time into the nearest JS caller, or the top frames name no code you own. And calibrate a CI gate from CI: an idle laptop reports far steadier spans than a runner, and floors set from it were cleared by a null CI run on identical bundles.
-- The variable under test must be the only difference between the two reads. Restore a before from `git show main:<file>`, never `git checkout <file>`: once your fix is committed the latter restores the NEW code, both columns agree, and it reads as a null result. The same shape reaches UI counts, where the contaminant is leftover state rather than the tree: a probe snapshotted its baseline while reveal-on-caret was still suppressing a card, so its own caret move restored it and the change read as ADDING one. Run the after-gesture once BEFORE the baseline, and assert the old code is loaded or the state has settled, before believing the number. The trap voids an A/B, a revert-to-attribute, and a before/after count alike.
+Procedures a session cannot derive from the tree. Anything that reads as an account of how a bug was found belongs in `git log`, not here.
+
+- On a perf ticket: take a CDP sampling profile and fold native self-time into the nearest JS caller, or the top frames name no code you own. Calibrate a CI gate from a CI run rather than from a laptop, whose spans are steadier than a runner's.
+- The variable under test must be the only difference between the two reads. Restore a before from `git show main:<file>`, never `git checkout <file>`, which restores the new code once your fix is committed so both columns agree and it reads as a null result. For a UI count the contaminant is leftover state rather than the tree: run the after-gesture once before taking the baseline.
 - A mutation run expires on your next edit: a branch added afterwards can leave a proven test unreachable, with nothing red. Re-run mutations in the final state; a late-added gate is the usual culprit.
-- On an integration-suite red, A/B two axes before triage: the tree (base vs branch) and the VS Code build (`BIRTA_ITEST_VSCODE`). Either axis alone misattributes an upstream channel change (MAR-353). The census lesson ("evidence only about what it enumerated") lives in MAR-141.
-- Vitest: read the `Errors:` line of a passing run, not just `Tests:`. Unhandled errors exit non-zero with every test green. `pnpm typecheck` excludes `**/__tests__/**` by design, so a changed export signature stays green through typecheck and build and surfaces only as whatever the wrong value does at runtime, which on a fidelity gate reads as a corruption regression.
-- A simulation can reproduce a ticket's numbers exactly and still describe a state no gesture reaches. MAR-344's filed measurement forced a fallback on an unedited document, and a fallback only happens because an edit damaged the merge.
-- A contended machine FABRICATES failures; MAR-141 carries the full shape. `[vitest-worker]: Timeout calling ...` voids the run; reds scattered across suites your diff cannot reach are the tell. Check `uptime` first.
-- `pnpm perf:bundle` also exits 2 when the metafile is absent, which is the harness lock's code. A lane retrying "only on exit 2" therefore loops on a failure no wait can clear. Build with `node esbuild.mjs --production --metafile` first, and read the message rather than the code alone.
-- The harness lock refuses with exit 2. Loop on that code and only it; any other exit is the real result. The trap is worst in a probe you wrote yourself, where a nonzero exit is the signal you are hunting. Demand the evidence a verdict implies, a counted failure, never the exit code alone.
+- On an integration-suite red, A/B two axes before triage: the tree (base vs branch) and the VS Code build (`BIRTA_ITEST_VSCODE`). Either axis alone misattributes an upstream channel change (MAR-353).
+- Vitest: read the `Errors:` line of a passing run, not just `Tests:`. Unhandled errors exit non-zero with every test green. `pnpm typecheck` excludes `**/__tests__/**` by design, so a changed export signature stays green through typecheck and build and surfaces only as whatever the wrong value does at runtime.
+- Exit 2 is ambiguous. The harness lock refuses with it, and `pnpm perf:bundle` also exits 2 when the metafile is absent, so a lane retrying "only on exit 2" can loop on a failure no wait will clear. Read the message rather than the code, and build with `node esbuild.mjs --production --metafile` first.
 - `cd` persists between Bash calls, so inspecting a lane's worktree silently moves later commands. The worktree hook does NOT cover this: it refuses git aimed elsewhere (`-C`, a path argument) and any command too compound to verify, so multi-step shell splits into plain calls, but a bare `cd` passes it and every later command runs in the new directory.
 - A lane that adds dependencies reds the merge gate for a phantom reason: `merge-lane.sh` gates before anyone runs `pnpm install`, so the incoming import fails to resolve in the integration worktree. Install there, merge by hand, gate again. The durable fix belongs in the plugin's `merge-lane.sh`.

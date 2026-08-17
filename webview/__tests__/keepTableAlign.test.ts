@@ -187,7 +187,7 @@ describe("keepTableAlign", () => {
         // While we shipped a replacement, this guarded the identity FILTER that
         // dropped upstream's copy: a filter that silently stopped matching (a
         // rename, a shape change) would have left both running, paying the
-        // O(doc) walk again with nothing red (MAR-141's carve-out lesson).
+        // O(doc) walk again with nothing red.
         //
         // The filter is gone, but the count is still worth pinning from the
         // other side: `gfmFidelity` must not drop the plugin, and nothing must

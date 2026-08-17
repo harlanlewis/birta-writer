@@ -24,7 +24,7 @@
  * on purpose — it runs in CI's `unit-test` job, so it blocks a PR rather than
  * only nudging whoever happens to have the hook installed.
  *
- * Punctuation note: the `prose-guard` hook forbids em dashes in this file,
+ * Punctuation note: the `prose-guard` hook forbids em dashes in `CHANGELOG.md`,
  * and real UI strings contain them, so a verbatim quotation is impossible by
  * construction. Matching therefore normalizes dashes and quotes on BOTH sides.
  * That is a deliberate hole: it means this check cannot catch a

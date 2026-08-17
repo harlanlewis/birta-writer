@@ -3,6 +3,7 @@ name: devlog
 description: Record, close, update, or audit Linear issues; triggers: record a bug, known bug, feature request, record a feature request, close an issue, audit the backlog, /devlog
 version: 3.2.0
 ---
+
 # Devlog: Linear issue lifecycle skill
 
 ## Purpose
@@ -15,7 +16,7 @@ Manage the full lifecycle of Linear issues (team: Birta Writer, `MAR-` prefix), 
 
 Issue tracking lives ONLY in Linear. Never create GitHub issues for this project.
 
-***
+---
 
 ## Step 1: Confirm the action
 
@@ -27,7 +28,7 @@ Ask with AskUserQuestion (skip if the user's request already makes the action un
 - Close / update an existing issue → § Closing & updating
 - Audit the backlog → § Auditing the backlog
 
-***
+---
 
 ## Step 2A: Record a Known Bug
 
@@ -59,19 +60,19 @@ Call `save_issue` with:
 ## Reproduction steps
 
 <steps, plus the OBSERVED output pasted verbatim — not the expected one.
- If it wasn't reproduced this session, write "Not reproduced — <why>" and
- say what evidence the report rests on instead.>
+If it wasn't reproduced this session, write "Not reproduced — <why>" and
+say what evidence the report rests on instead.>
 
 ## Root cause analysis
 
 <the cause AND the observation that established it. If it wasn't
- established, open with "Hypothesis (unverified):" and name the single
- check that would confirm or kill it — that check is the first thing the
- fixer should run. "N/A — to be investigated" is fine; a confident-sounding
- guess is not.>
+established, open with "Hypothesis (unverified):" and name the single
+check that would confirm or kill it — that check is the first thing the
+fixer should run. "N/A — to be investigated" is fine; a confident-sounding
+guess is not.>
 ```
 
-***
+---
 
 ## Step 2B: Record a Feature Request
 
@@ -114,29 +115,29 @@ Call `save_issue` with:
 ## Implementation approach
 
 <rough plan and technical points — a HYPOTHESIS unless you have actually
- tried it. Label anything untried, so a later session takes it as a
- starting point rather than a decision already made. N/A if none yet.>
+tried it. Label anything untried, so a later session takes it as a
+starting point rather than a decision already made. N/A if none yet.>
 
 ## Affected files
 
 <expected list of files to change, N/A if not yet clear>
 ```
 
-***
+---
 
 ## Evidence discipline: what makes a ticket safe to act on
 
-A ticket is read weeks later by someone who has only the ticket. Everything in it is treated as established unless it says otherwise, so the filer's real job is marking which parts were *observed* and which were *believed*. Get this wrong and the cost lands on a future session, compounded: work built on a false cause looks correct and passes its own tests.
+A ticket is read weeks later by someone who has only the ticket. Everything in it is treated as established unless it says otherwise, so the filer's real job is marking which parts were _observed_ and which were _believed_. Get this wrong and the cost lands on a future session, compounded: work built on a false cause looks correct and passes its own tests.
 
-- Symptom and cause have different reliabilities, so label them separately. A sweep can be rigorous about *what* breaks and wrong about *why*, because the symptom was run and the cause was reasoned. (2026-07-25: one careful fidelity/performance audit filed six tickets. Every reproduction held up under later scrutiny; three causes were false. MAR-214 blamed round-trip protection for a `<br />` cell it never protected; MAR-219 described two refractor instances that are one object (`bare === core`); MAR-215's headline "91%" was 91% of a plugin-apply slice and 18% of dispatch. All three were fixed anyway, but each cost a session's detour first.)
+- Symptom and cause have different reliabilities, so label them separately. A sweep can be rigorous about _what_ breaks and wrong about _why_, because the symptom was run and the cause was reasoned. (2026-07-25: one careful fidelity/performance audit filed six tickets. Every reproduction held up under later scrutiny; three causes were false. MAR-214 blamed round-trip protection for a `<br />` cell it never protected; MAR-219 described two refractor instances that are one object (`bare === core`); MAR-215's headline "91%" was 91% of a plugin-apply slice and 18% of dispatch. All three were fixed anyway, but each cost a session's detour first.)
 - Never file a reproduction you haven't run. Paste the observed output, not the expected one; they diverge exactly when it matters. If it can't be reproduced in-session, write that in the ticket rather than filing the claim as fact.
-- A number needs its denominator, its source, and its date. A ratio without a denominator is not a measurement ("91%" of what?), and a figure copied from a committed baseline is a *record*, not a reading: `e2e/perf/bundle-baseline.json` had drifted 62,824 B behind `main`, so a ticket's "only 34 KB of headroom" was quoted in good faith and wrong by 3×. Say what was measured, against what, and when, or omit the number.
-- A prescribed fix is a hypothesis; mark it as one. A section headed "Fix, and why the obvious one is wrong" reads as settled engineering even when nobody tried it. Label an untried approach. (MAR-219's prescribed fix was in fact correct; its stated *reason* was not, so the fix survived and the justification had to be retracted.)
+- A number needs its denominator, its source, and its date. A ratio without a denominator is not a measurement ("91%" of what?), and a figure copied from a committed baseline is a _record_, not a reading: `e2e/perf/bundle-baseline.json` had drifted 62,824 B behind `main`, so a ticket's "only 34 KB of headroom" was quoted in good faith and wrong by 3×. Say what was measured, against what, and when, or omit the number.
+- A prescribed fix is a hypothesis; mark it as one. A section headed "Fix, and why the obvious one is wrong" reads as settled engineering even when nobody tried it. Label an untried approach. (MAR-219's prescribed fix was in fact correct; its stated _reason_ was not, so the fix survived and the justification had to be retracted.)
 - Findings filed as a batch inherit the batch's blind spot. If a sweep produced ten tickets and you verified two, the other eight are unverified, so mark that in each ticket, not once in a summary nobody will read alongside the ticket.
 
-The cheap version of all of this: before saving, reread the description and ask *which sentence here would a reader act on that I did not actually check?* Then either check it or label it.
+The cheap version of all of this: before saving, reread the description and ask _which sentence here would a reader act on that I did not actually check?_ Then either check it or label it.
 
-***
+---
 
 ## Label reference (team: Birta Writer)
 
@@ -151,7 +152,7 @@ The cheap version of all of this: before saving, reread the description and ask 
 
 Use existing labels only; do not create new ones without asking.
 
-***
+---
 
 ## Closing & updating
 
@@ -163,7 +164,7 @@ A feature can ship with a different implementation than the ticket described (e.
 
 1. `get_issue` for the full description and its acceptance criteria.
 2. Confirm the behavior actually exists in the working tree. Grep for the settings, plugin or files it promised, and check the CHANGELOG and `git log` for the shipping commit(s).
-3. Only close on confirmation. If it's *partly* done, re-scope instead (below), don't close.
+3. Only close on confirmation. If it's _partly_ done, re-scope instead (below), don't close.
 
 ### Close a shipped issue
 
@@ -183,11 +184,11 @@ When the code has outgrown a ticket's premise (e.g. MAR-35's three-zone design a
 
 Fixing work is when a false cause finally surfaces, and the discovery dies with the session unless it's written down. Comment the correction on the ticket, even when you're closing it in the same breath, and state plainly which claim was wrong and what the evidence is.
 
-This matters for two reasons beyond tidiness: the ticket is what a future reader trusts, and a wrong cause usually implies a wrong *fix direction* that someone will otherwise re-derive. (2026-07-25: MAR-214's "protection was the only thing preserving it" implied two candidate fixes, one of which (sub-line protection granularity) was substantial engine surgery. Once the premise was corrected, neither was needed. MAR-219's retraction similarly turned a claimed correctness fix into a bytes-only change, which is what the CHANGELOG then had to say.)
+This matters for two reasons beyond tidiness: the ticket is what a future reader trusts, and a wrong cause usually implies a wrong _fix direction_ that someone will otherwise re-derive. (2026-07-25: MAR-214's "protection was the only thing preserving it" implied two candidate fixes, one of which (sub-line protection granularity) was substantial engine surgery. Once the premise was corrected, neither was needed. MAR-219's retraction similarly turned a claimed correctness fix into a bytes-only change, which is what the CHANGELOG then had to say.)
 
 Do it whether the ticket's author was a previous session, an audit, or you.
 
-***
+---
 
 ## Auditing the backlog
 
@@ -199,7 +200,7 @@ Triggered by "audit the backlog", "what's next", or a completeness review. Goal:
 4. Report a prioritized "do next" using the `phase-*` spine (`phase-0-fidelity` first, because it's existential; then `2-syntax`, `3-interaction`, `4-differentiators`), ordered by `priority` within a phase, and honoring dependency/`blockedBy` links.
 5. Summarize the net effect (X open → Y open, what closed, what re-scoped).
 
-***
+---
 
 ## Report the result
 
@@ -213,12 +214,12 @@ Print identifiers and URLs so the user can click through:
 
 If several issues are touched, list every one.
 
-***
+---
 
 ## Notes
 
 - If the user's information is insufficient, proactively follow up so the issue has enough context.
-- Autonomous sessions (e.g. `/grind`) must clear the filing bar before creating an issue (grind §3.6): a nameable user-observable symptom or demonstrated hazard, and a genuine reason it can't be done in-session (blocked on a user decision/design/upstream, or untouched territory). Fix-now beats filing; low-value findings are declined in the session report, not filed (a small-but-real item that genuinely can't be done now may take a one-line slot on MAR-141's do-inline ledger instead of an issue). Never an omnibus "cleanups/follow-ups" ticket: one issue = one nameable outcome. Filing into `Backlog` is cheap for the filer and expensive for the queue.
+- Autonomous sessions (e.g. `/grind`) must clear the filing bar before creating an issue (grind §3.6): a nameable user-observable symptom or demonstrated hazard, and a genuine reason it can't be done in-session (blocked on a user decision/design/upstream, or untouched territory). Fix-now beats filing; low-value findings are declined in the session report, not filed.
 - Filing planned work touches only Linear, so do not modify local files for it. Closing/auditing may read local files and git to verify, but still records outcomes only in Linear (plus the CHANGELOG when you also ship the feature).
 - Check for duplicates first with `list_issues` (team: Birta Writer) before creating.
 - Prefer batching independent Linear calls (multiple `save_issue` / `save_comment`) in one step.
