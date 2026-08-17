@@ -22,6 +22,7 @@ import { configureSerialization, gfmFidelity, pureCommonmark } from "../serializ
 import { headingFoldPlugin, foldRevealKeymapPlugin } from "../plugins/headingFold";
 import { computeFoldRanges, isHeadingNode } from "../plugins/headingFold/foldModel";
 import { structureFingerprint } from "../plugins/headingFold/foldDecorations";
+import { headingGutterSpec } from "../plugins/headingFold/foldGutter";
 
 let editors: Editor[] = [];
 
@@ -123,5 +124,39 @@ describe("structureFingerprint — every decoration input is captured", () => {
             "# Alpha\n\na much longer paragraph body\n\n## Beta\n\nanother longer body here",
         )).state.doc;
         expect(fp(short, new Set(), true)).toBe(fp(long, new Set(), true));
+    });
+});
+
+describe("headingGutterSpec — one identity behind the widget key, the fingerprint and the badge", () => {
+    it("distinct (level, collapsed, foldable) inputs should derive distinct keys", () => {
+        // The key decides both DOM reuse (widget key) and rebuild (fingerprint
+        // part); a collision between two states would reuse a stale widget.
+        const keys = new Set<string>();
+        let inputs = 0;
+        for (let level = 1; level <= 6; level++) {
+            for (const collapsed of [false, true]) {
+                for (const foldable of [false, true]) {
+                    keys.add(headingGutterSpec(level, collapsed, foldable).key);
+                    inputs++;
+                }
+            }
+        }
+        expect(inputs).toBe(24);
+        expect(keys.size).toBe(inputs);
+    });
+
+    it("the badge should clamp to H1..H6 and read the same at every fold state", () => {
+        expect(headingGutterSpec(0, false, false).badge).toBe("H1");
+        expect(headingGutterSpec(9, false, false).badge).toBe("H6");
+        expect(headingGutterSpec(3, true, true).badge).toBe(headingGutterSpec(3, false, false).badge);
+    });
+
+    it("a rendered heading's marker text and pill should be the derived badge", async () => {
+        const v = view(await makeEditor("### Gamma\n\nbody"));
+        const marker = v.dom.querySelector<HTMLElement>(".heading-fold-heading .heading-fold-marker");
+        expect(marker).not.toBeNull();
+        const { badge } = headingGutterSpec(3, false, true);
+        expect(marker?.textContent).toBe(badge);
+        expect(marker?.dataset["pill"]).toBe(badge);
     });
 });
