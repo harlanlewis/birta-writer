@@ -209,6 +209,13 @@ function position(view: EditorView): void {
     );
     root.style.top = `${placed.top + window.scrollY}px`;
     root.style.left = `${placed.left + window.scrollX}px`;
+    // The reflow tracker re-runs this on every scroll, and the engine's clamps
+    // are for a card that is PARTLY off: a card scrolled wholly out of view
+    // would leave the palette pinned to a viewport edge over unrelated text.
+    // Hidden, not closed: the card is still selected, and it comes back with
+    // the card. `visibility` rather than `display`, so the palette keeps its
+    // measured size and a focused URL field keeps focus.
+    root.classList.toggle("embed-palette--offscreen", !placed.anchorInView);
 }
 
 /**

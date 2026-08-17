@@ -11,6 +11,12 @@
     display: flex;
     flex-direction: column;
     width: 280px;
+    /* The link it belongs to has scrolled wholly out of the viewport: keep
+       the box (and any focus inside it) and stop painting until it is back.
+       Set by the positioning pass, which runs on every scroll. */
+    &.lp-root--offscreen {
+        visibility: hidden;
+    }
     /* Real URLs and titles are long: the compact 280px suits the hover chip,
        but the EDITOR needs room — widen whenever the edit body is expanded,
        clamped to the viewport. */

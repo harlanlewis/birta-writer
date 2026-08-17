@@ -330,11 +330,6 @@ export function notifySetToolbarVisible(visible: boolean): void {
     vscode.postMessage({ type: "setToolbarVisible", visible });
 }
 
-/** Flip VS Code's Zen Mode, which owns the workbench chrome focus mode cannot reach. */
-export function notifyToggleWorkbenchZen(): void {
-    vscode.postMessage({ type: "toggleWorkbenchZen" });
-}
-
 /** Persist the TOC dock side (header flip button); echoes back as setTocPosition. */
 export function notifySetTocPosition(position: import("../shared/messages").TocPosition): void {
     vscode.postMessage({ type: "setTocPosition", position });

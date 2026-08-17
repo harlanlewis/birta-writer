@@ -5,6 +5,7 @@ import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/messaging";
 import type { TocVisibility } from "../../../shared/messages";
+import type { TocFocusState } from "@/focusMode";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
 import type { EventManager } from "@/eventManager";
@@ -76,11 +77,17 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
     /**
-     * Show or hide the panel WITHOUT persisting `tocVisibility`. Focus mode's
-     * half of the pair (MAR-72): it restores the prior state on exit, so a
-     * write here would make a temporary view into a preference change.
+     * Focus mode's pair (MAR-72): the panel's open state together with the
+     * user's standing show/hide decision, read on entry and written back on
+     * exit, WITHOUT persisting `tocVisibility`. Focus restores the prior
+     * state on exit, so a write here would make a temporary view into a
+     * preference change. The decision travels with the open flag because a
+     * round trip that left `userToggled` set would silence auto-open for the
+     * rest of the session, and because in overlay mode a "shown" decision
+     * has a closed panel that must come back closed.
      */
-    applyVisible: (visible: boolean) => void;
+    focusState: () => TocFocusState;
+    setFocusState: (state: TocFocusState) => void;
     isRight: () => boolean;
     /** Apply a birta.notes.customMarkers change to the Notes tab (rescan if shown). */
     setNotesMarkers: (markers: string[]) => void;
@@ -1602,8 +1609,22 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     return {
         panel,
         toggle,
-        applyVisible: (visible: boolean) => {
-            if (visible !== (isOpen || flyoutOpen)) { applyVisiblePreference(visible); }
+        focusState: () => ({
+            open: isOpen || flyoutOpen,
+            decision: userToggled ? (dockedUserCollapsed ? "hidden" : "shown") : "auto",
+        }),
+        setFocusState: (state: TocFocusState) => {
+            if (state.decision === "auto") {
+                // The heuristic answers for "auto", the same as a settings
+                // echo would: the outline may have changed while focused.
+                applyVisibility("auto");
+                return;
+            }
+            hideFlyoutImmediate();
+            userToggled = true;
+            dockedUserCollapsed = state.decision === "hidden";
+            isOpen = state.open;
+            syncTocState();
         },
         refresh,
         refreshContent,

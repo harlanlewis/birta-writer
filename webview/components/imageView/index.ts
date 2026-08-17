@@ -27,6 +27,7 @@ import { applyTooltip } from "@/ui/tooltip";
 import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
+import { isReadOnly, lockWithDocument } from "@/readOnly";
 import { openFullscreenSurface, type FullscreenSurface } from "@/ui/fullscreenSurface";
 import { trackEditorReflow } from "@/ui/editorReflow";
 import { safeAreaTop } from "@/utils/headingUtils";
@@ -277,6 +278,7 @@ export function createImageView(
     caption.placeholder = t("Alt text");
     caption.setAttribute("aria-label", t("Alt text"));
     isolateInput(caption);
+    lockWithDocument(caption);
     const detachCaptionUndo = attachInputUndo(caption);
 
     function updateCaption(alt: string): void {
@@ -433,6 +435,7 @@ export function createImageView(
     titleInput.placeholder = t("Title (shown on hover)");
     titleInput.setAttribute("aria-label", t("Image title"));
     isolateInput(titleInput);
+    lockWithDocument(titleInput);
     const detachTitleUndo = attachInputUndo(titleInput);
 
     function updateTitleField(title: string): void {
@@ -499,7 +502,9 @@ export function createImageView(
     let isEditingSrc = false;
 
     function startSrcEdit(): void {
-        if (isEditingSrc) {
+        // The path field is built on demand, so it cannot register with the
+        // lock sweep the way the caption and title do; refuse at the opener.
+        if (isEditingSrc || isReadOnly()) {
             return;
         }
         isEditingSrc = true;

@@ -28,6 +28,7 @@ import { Decoration, DecorationSet } from "../pm";
 import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { mathInlineId } from "./math";
+import { isReadOnly } from "../readOnly";
 
 /** The math node the caret sits inside, as {pos, end}, or null. */
 export function mathAroundSelection(state: EditorState): { pos: number; end: number } | null {
@@ -45,7 +46,8 @@ export function mathAroundSelection(state: EditorState): { pos: number; end: num
 
 /** Reveal-decoration for the formula the caret is inside (pure derivation). */
 export function revealDecorations(state: EditorState): DecorationSet {
-    const range = mathAroundSelection(state);
+    // A reader never sees the source: the reveal exists to edit it.
+    const range = isReadOnly() ? null : mathAroundSelection(state);
     if (!range) {
         return DecorationSet.empty;
     }
@@ -175,7 +177,7 @@ export const mathInlineEditPlugin = $prose(
                     _event: MouseEvent,
                     direct: boolean,
                 ): boolean {
-                    if (!direct || node.type.name !== mathInlineId) {
+                    if (!direct || node.type.name !== mathInlineId || isReadOnly()) {
                         return false;
                     }
                     // Clicking the rendered formula: caret inside at the end

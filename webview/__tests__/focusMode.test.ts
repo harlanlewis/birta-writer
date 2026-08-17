@@ -3,7 +3,7 @@
  *
  * The mode's whole risk is in the exit, not the entry: hiding chrome is
  * obvious and reversible, and the way this feature can hurt someone is by
- * restoring a state they never had — showing a toolbar they had hidden, or
+ * restoring a state they never had, showing a toolbar they had hidden, or
  * re-enabling a check they had turned off. So the cases below are mostly about
  * what comes back.
  *
@@ -18,37 +18,44 @@ import {
     setFocusMode,
     setFocusSurfaces,
     subscribeFocusMode,
-    reconcileProofreadingUnderFocus,
+    maskProofreadConfigUnderFocus,
+    maskToolbarConfigUnderFocus,
+    absorbTocVisibilityUnderFocus,
     resetFocusModeForTests,
+    TOC_COLLAPSED,
     type FocusSurfaces,
+    type TocFocusState,
 } from "../focusMode";
 
 /** The three surfaces focus collapses, as plain state a test can start anywhere. */
 interface FakeState {
     toolbarVisible: boolean;
-    tocOpen: boolean;
+    toc: TocFocusState;
     proofreadingOn: boolean;
 }
 
-function makeSurfaces(initial: FakeState): { state: FakeState; host: FocusSurfaces; zenCalls: () => number } {
-    const state = { ...initial };
-    let zen = 0;
+function makeSurfaces(initial: FakeState): { state: FakeState; host: FocusSurfaces } {
+    const state = { ...initial, toc: { ...initial.toc } };
     const host: FocusSurfaces = {
         toolbarVisible: () => state.toolbarVisible,
         setToolbarVisible: (v) => { state.toolbarVisible = v; },
-        tocOpen: () => state.tocOpen,
-        setTocOpen: (v) => { state.tocOpen = v; },
+        tocState: () => ({ ...state.toc }),
+        setTocState: (v) => { state.toc = { ...v }; },
         proofreadingOn: () => state.proofreadingOn,
         setProofreadingOn: (v) => { state.proofreadingOn = v; },
-        toggleWorkbenchZen: () => { zen++; },
     };
-    return { state, host, zenCalls: () => zen };
+    return { state, host };
 }
+
+/** Every TOC state the panel can report: three decisions, open or closed. */
+const TOC_STATES: TocFocusState[] = (["auto", "shown", "hidden"] as const).flatMap((decision) =>
+    [false, true].map((open) => ({ open, decision })),
+);
 
 /** Every starting combination of the three surfaces. */
 const ALL_STATES: FakeState[] = [false, true].flatMap((toolbarVisible) =>
-    [false, true].flatMap((tocOpen) =>
-        [false, true].map((proofreadingOn) => ({ toolbarVisible, tocOpen, proofreadingOn })),
+    TOC_STATES.flatMap((toc) =>
+        [false, true].map((proofreadingOn) => ({ toolbarVisible, toc, proofreadingOn })),
     ),
 );
 
@@ -62,7 +69,7 @@ describe("focus mode", () => {
     it("entering focus should leave every surface collapsed, from any starting state", () => {
         // Enumerated rather than sampled, and the count is asserted: a sweep
         // that reached nothing passes.
-        expect(ALL_STATES).toHaveLength(8);
+        expect(ALL_STATES).toHaveLength(24);
         for (const start of ALL_STATES) {
             resetFocusModeForTests();
             const { state, host } = makeSurfaces(start);
@@ -70,7 +77,7 @@ describe("focus mode", () => {
             setFocusMode(true);
             expect(state, `from ${JSON.stringify(start)}`).toEqual({
                 toolbarVisible: false,
-                tocOpen: false,
+                toc: TOC_COLLAPSED,
                 proofreadingOn: false,
             });
         }
@@ -80,7 +87,7 @@ describe("focus mode", () => {
         // The invariant the feature exists to keep. It holds regardless of what
         // the author expected the collapsed state to be, which an
         // expected-output assertion per surface would not.
-        expect(ALL_STATES).toHaveLength(8);
+        expect(ALL_STATES).toHaveLength(24);
         for (const start of ALL_STATES) {
             resetFocusModeForTests();
             const { state, host } = makeSurfaces(start);
@@ -94,33 +101,22 @@ describe("focus mode", () => {
     it("entering twice should not overwrite the snapshot, so the exit still restores", () => {
         // The one way this feature can lose state: a second entry snapshotting
         // the ALREADY-collapsed surfaces would make the exit restore nothing.
-        const { state, host } = makeSurfaces({ toolbarVisible: true, tocOpen: true, proofreadingOn: true });
+        const start: FakeState = { toolbarVisible: true, toc: { open: true, decision: "shown" }, proofreadingOn: true };
+        const { state, host } = makeSurfaces(start);
         setFocusSurfaces(host);
         setFocusMode(true);
         setFocusMode(true);
         setFocusMode(false);
-        expect(state).toEqual({ toolbarVisible: true, tocOpen: true, proofreadingOn: true });
+        expect(state).toEqual(start);
     });
 
     it("exiting when not in focus should be a no-op on every surface", () => {
-        const { state, host, zenCalls } = makeSurfaces({ toolbarVisible: false, tocOpen: true, proofreadingOn: true });
+        const start: FakeState = { toolbarVisible: false, toc: { open: true, decision: "auto" }, proofreadingOn: true };
+        const { state, host } = makeSurfaces(start);
         setFocusSurfaces(host);
         setFocusMode(false);
-        expect(state).toEqual({ toolbarVisible: false, tocOpen: true, proofreadingOn: true });
+        expect(state).toEqual(start);
         expect(isFocusMode()).toBe(false);
-        // The workbench half must not fire either: an unbalanced Zen toggle
-        // would flip VS Code's chrome with nothing on our side to match it.
-        expect(zenCalls()).toBe(0);
-    });
-
-    it("a redundant enter should not double-toggle the workbench chrome", () => {
-        const { host, zenCalls } = makeSurfaces({ toolbarVisible: true, tocOpen: true, proofreadingOn: true });
-        setFocusSurfaces(host);
-        setFocusMode(true);
-        setFocusMode(true);
-        expect(zenCalls()).toBe(1);
-        setFocusMode(false);
-        expect(zenCalls()).toBe(2);
     });
 
     it("a surface already collapsed should not be written on entry", () => {
@@ -128,47 +124,105 @@ describe("focus mode", () => {
         // surface that was already where focus wants it is how a toggle-based
         // host (the TOC's own `toggle()`) gets flipped the wrong way.
         const writes: string[] = [];
-        const state = { toolbarVisible: false, tocOpen: false, proofreadingOn: true };
+        const state: FakeState = { toolbarVisible: false, toc: { open: false, decision: "hidden" }, proofreadingOn: true };
         setFocusSurfaces({
             toolbarVisible: () => state.toolbarVisible,
             setToolbarVisible: (v) => { writes.push(`toolbar=${v}`); state.toolbarVisible = v; },
-            tocOpen: () => state.tocOpen,
-            setTocOpen: (v) => { writes.push(`toc=${v}`); state.tocOpen = v; },
+            tocState: () => state.toc,
+            setTocState: (v) => { writes.push(`toc=${v.decision}`); state.toc = v; },
             proofreadingOn: () => state.proofreadingOn,
             setProofreadingOn: (v) => { writes.push(`proofread=${v}`); state.proofreadingOn = v; },
-            toggleWorkbenchZen: () => {},
         });
         setFocusMode(true);
         expect(writes).toEqual(["proofread=false"]);
     });
 
-    it("an inbound proofread config change during focus should stay silenced and be restored on exit", () => {
-        // The mask is live state, so a settings write is the one thing that can
-        // un-silence a focused document. The user's new value must survive to
-        // the exit, and the document must stay quiet until then.
-        const { state, host } = makeSurfaces({ toolbarVisible: true, tocOpen: true, proofreadingOn: false });
+    it("a closed TOC left on auto should still be parked on hidden, so a doc change cannot open it mid-focus", () => {
+        const { state, host } = makeSurfaces({ toolbarVisible: false, toc: { open: false, decision: "auto" }, proofreadingOn: false });
         setFocusSurfaces(host);
         setFocusMode(true);
-        expect(state.proofreadingOn).toBe(false);
-
-        // The user turns proofreading ON in settings while focused.
-        state.proofreadingOn = true;
-        reconcileProofreadingUnderFocus(true);
-        expect(state.proofreadingOn, "still silenced while focused").toBe(false);
-
+        expect(state.toc).toEqual(TOC_COLLAPSED);
         setFocusMode(false);
-        expect(state.proofreadingOn, "the setting the user chose is what returns").toBe(true);
+        expect(state.toc).toEqual({ open: false, decision: "auto" });
     });
 
-    it("a config change outside focus should not be captured as a snapshot", () => {
-        const { state, host } = makeSurfaces({ toolbarVisible: true, tocOpen: true, proofreadingOn: true });
-        setFocusSurfaces(host);
-        reconcileProofreadingUnderFocus(false);
-        expect(state.proofreadingOn).toBe(true);
+    describe("inbound settings echoes during focus", () => {
+        it("a proofread config echo should keep the live gate and be what the exit restores", () => {
+            // The mask is live state, so a settings write is the one thing that
+            // can un-silence a focused document. The user's new value must
+            // survive to the exit, and the document must stay quiet until then.
+            const { state, host } = makeSurfaces({ toolbarVisible: true, toc: { open: true, decision: "shown" }, proofreadingOn: false });
+            setFocusSurfaces(host);
+            setFocusMode(true);
+            expect(state.proofreadingOn).toBe(false);
+
+            // The user turns proofreading ON in settings while focused.
+            const masked = maskProofreadConfigUnderFocus({ proofreadingEnabled: true, spelling: true });
+            expect(masked, "the live gate is what reaches the plugin").toEqual({ proofreadingEnabled: false, spelling: true });
+
+            setFocusMode(false);
+            expect(state.proofreadingOn, "the setting the user chose is what returns").toBe(true);
+        });
+
+        it("a toolbar config echo should not re-show a toolbar focus hid", () => {
+            // `visible` rides along on EVERY toolbar write, a layout drag
+            // included, so the echo would otherwise re-show the bar the moment
+            // anything about it was edited.
+            const { state, host } = makeSurfaces({ toolbarVisible: true, toc: { open: false, decision: "hidden" }, proofreadingOn: false });
+            setFocusSurfaces(host);
+            setFocusMode(true);
+            expect(state.toolbarVisible).toBe(false);
+
+            const masked = maskToolbarConfigUnderFocus({ visible: true, order: ["format"] });
+            expect(masked).toEqual({ visible: false, order: ["format"] });
+
+            setFocusMode(false);
+            expect(state.toolbarVisible).toBe(true);
+        });
+
+        it("a toolbar echo saying hidden should be what the exit restores", () => {
+            const { state, host } = makeSurfaces({ toolbarVisible: true, toc: TOC_COLLAPSED, proofreadingOn: false });
+            setFocusSurfaces(host);
+            setFocusMode(true);
+            maskToolbarConfigUnderFocus({ visible: false });
+            setFocusMode(false);
+            expect(state.toolbarVisible, "the user hid it in settings while focused").toBe(false);
+        });
+
+        it("a surface the user re-showed by hand during focus should keep the live state through an echo", () => {
+            // The mask replays the LIVE value, not the collapsed one, so a
+            // gesture made mid-focus is never fought by its own echo.
+            const { state, host } = makeSurfaces({ toolbarVisible: true, toc: TOC_COLLAPSED, proofreadingOn: true });
+            setFocusSurfaces(host);
+            setFocusMode(true);
+            state.toolbarVisible = true; // the expand tab
+            state.proofreadingOn = true; // the Checks menu
+            expect(maskToolbarConfigUnderFocus({ visible: true })).toEqual({ visible: true });
+            expect(maskProofreadConfigUnderFocus({ proofreadingEnabled: true })).toEqual({ proofreadingEnabled: true });
+        });
+
+        it("a TOC visibility echo should be absorbed and be what the exit restores", () => {
+            const { state, host } = makeSurfaces({ toolbarVisible: false, toc: { open: false, decision: "auto" }, proofreadingOn: false });
+            setFocusSurfaces(host);
+            setFocusMode(true);
+            expect(absorbTocVisibilityUnderFocus("shown"), "the caller must not apply it").toBe(true);
+            expect(state.toc, "the panel stays collapsed").toEqual(TOC_COLLAPSED);
+            setFocusMode(false);
+            expect(state.toc).toEqual({ open: true, decision: "shown" });
+        });
+
+        it("outside focus every echo should pass through untouched", () => {
+            const { state, host } = makeSurfaces({ toolbarVisible: true, toc: { open: true, decision: "shown" }, proofreadingOn: true });
+            setFocusSurfaces(host);
+            expect(maskProofreadConfigUnderFocus({ proofreadingEnabled: false })).toEqual({ proofreadingEnabled: false });
+            expect(maskToolbarConfigUnderFocus({ visible: false })).toEqual({ visible: false });
+            expect(absorbTocVisibilityUnderFocus("hidden")).toBe(false);
+            expect(state.proofreadingOn).toBe(true);
+        });
     });
 
     it("subscribers should see each transition once, and the body class should mirror it", () => {
-        const { host } = makeSurfaces({ toolbarVisible: true, tocOpen: true, proofreadingOn: true });
+        const { host } = makeSurfaces({ toolbarVisible: true, toc: { open: true, decision: "shown" }, proofreadingOn: true });
         setFocusSurfaces(host);
         const seen: boolean[] = [];
         const unsubscribe = subscribeFocusMode((f) => seen.push(f));

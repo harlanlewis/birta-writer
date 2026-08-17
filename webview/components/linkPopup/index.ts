@@ -33,6 +33,7 @@ import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { trackEditorReflow } from "@/ui/editorReflow";
 import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
+import { isReadOnly, subscribeReadOnly } from "@/readOnly";
 import { notionDisplayTarget } from "../../../shared/notionIds";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -780,9 +781,12 @@ export function setupLinkPopup(
         popup.insertBefore(resolvedHint, body);
         // Reference links are openable but not editable (editing would convert
         // them to inline links and destroy the reference form). Read-only links
-        // (reference / same-page wiki) also can't be unlinked.
-        btnEdit.style.display = link.readOnly ? "none" : "";
-        btnRemove.style.display = link.readOnly ? "none" : "";
+        // (reference / same-page wiki) also can't be unlinked. The document
+        // mode locks the same three verbs: a reader gets Open and Copy, and
+        // never a pencil that would open fields the transaction filter refuses.
+        const locked = link.readOnly || isReadOnly();
+        btnEdit.style.display = locked ? "none" : "";
+        btnRemove.style.display = locked ? "none" : "";
         btnEmbed.style.display = embedEligible(link) ? "" : "none";
         btnOpen.style.display = ""; // reset from any prior insert open
         // Copy is available for any link with an href, read-only ones included.
@@ -858,6 +862,13 @@ export function setupLinkPopup(
         );
         popup.style.top = `${placed.top + window.scrollY}px`;
         popup.style.left = `${placed.left + window.scrollX}px`;
+        // Re-run on every scroll by the reflow tracker. The engine's clamps
+        // keep the popup reachable while its link is PARTLY off screen; a
+        // link scrolled wholly out would leave the popup pinned to a viewport
+        // edge over unrelated text (the embed palette had the same bug). Hide
+        // rather than close: an edit session in progress keeps its fields and
+        // focus, and the popup paints again when the link scrolls back.
+        popup.classList.toggle("lp-root--offscreen", !placed.anchorInView);
     }
 
     /**
@@ -1137,6 +1148,7 @@ export function setupLinkPopup(
     // ── Edit button: toggle edit mode ─────────────────────────────
 
     bindActivate(btnEdit, () => {
+        if (isReadOnly()) { return; }
         setEditMode(!isEditMode);
     });
 
@@ -1326,7 +1338,7 @@ export function setupLinkPopup(
      * a recognized provider URL whose link already spans its whole paragraph.
      */
     function embedEligible(link: LinkInfo): boolean {
-        if (link.readOnly || link.wiki) { return false; }
+        if (link.readOnly || link.wiki || isReadOnly()) { return false; }
         if (!(window.__i18n?.embedsEnabled ?? true)) { return false; }
         const match = recognizeProvider(link.href);
         // Offering a card for a provider switched off in the roster would be a
@@ -1484,6 +1496,13 @@ export function setupLinkPopup(
         e.stopPropagation();
         hidePopup();
         getView()?.focus();
+    });
+
+    // A mode flip while the popup is up closes it: an edit session that
+    // outlives the lock would keep fields open the filter now refuses, and
+    // the verbs it shows were decided at open time.
+    subscribeReadOnly(() => {
+        if (popup.style.display !== "none") { hidePopup(); }
     });
 
     // Expose the insert/edit entry point for the toolbar, Cmd/Ctrl+K, and the
