@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
 import { makeFakeTextDocument, resetTextDocumentMocks } from "../../__mocks__/vscode";
 import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
+import type { SuggestionProviders } from "../suggestionProviders";
 import { DOCUMENT_EXTENSIONS } from "../../shared/documentExtensions";
 
 const makeContext = () =>
@@ -57,6 +58,12 @@ function watcherListeners(): {
 
 const findFiles = vscode.workspace.findFiles as unknown as ReturnType<typeof vi.fn>;
 
+/** The provider's suggestion collaborator (suggestionProviders.ts), which
+ * owns both caches; the watcher's invalidate reaches them through it. */
+function suggestionsOf(provider: MarkdownEditorProvider): SuggestionProviders {
+    return (provider as unknown as { _suggestions: SuggestionProviders })._suggestions;
+}
+
 /** Drive the real link-target-suggestion handler and return the posted paths. */
 async function askLinkTargets(
     provider: MarkdownEditorProvider,
@@ -65,14 +72,8 @@ async function askLinkTargets(
     query: string,
 ): Promise<string> {
     panel.webview.postMessage.mockClear();
-    await (provider as unknown as {
-        _handleGetLinkTargetSuggestions: (
-            d: vscode.TextDocument,
-            p: unknown,
-            id: string,
-            q: string,
-        ) => Promise<void>;
-    })._handleGetLinkTargetSuggestions(doc, panel, "1", query);
+    await suggestionsOf(provider).getLinkTargetSuggestions(
+        doc, panel as unknown as vscode.WebviewPanel, "1", query);
     return JSON.stringify(panel.webview.postMessage.mock.calls.at(-1)?.[0] ?? {});
 }
 
@@ -83,13 +84,7 @@ async function askFmSuggestions(
     doc: vscode.TextDocument,
     key: string,
 ): Promise<void> {
-    await (provider as unknown as {
-        _handleRequestFmSuggestions: (
-            d: vscode.TextDocument,
-            p: unknown,
-            k: string,
-        ) => Promise<void>;
-    })._handleRequestFmSuggestions(doc, panel, key);
+    await suggestionsOf(provider).requestFmSuggestions(doc, panel as unknown as vscode.WebviewPanel, key);
 }
 
 describe("workspace index caches invalidate on file create/delete (MAR-208)", () => {
@@ -144,10 +139,10 @@ describe("workspace index caches invalidate on file create/delete (MAR-208)", ()
         // change its answer, so an image or config file landing must not cost it.
         findFiles.mockResolvedValue([]);
         const provider = new MarkdownEditorProvider(makeContext());
-        const cacheSlot = (): unknown =>
-            (provider as unknown as { _fmScanCache: unknown })._fmScanCache;
+        const slot = suggestionsOf(provider) as unknown as { _fmScanCache: unknown };
+        const cacheSlot = (): unknown => slot._fmScanCache;
 
-        (provider as unknown as { _fmScanCache: unknown })._fmScanCache = {
+        slot._fmScanCache = {
             perFile: new Map(),
             expires: Date.now() + 30_000,
         };
@@ -168,10 +163,10 @@ describe("workspace index caches invalidate on file create/delete (MAR-208)", ()
         // window (MAR-350).
         findFiles.mockResolvedValue([]);
         const provider = new MarkdownEditorProvider(makeContext());
-        const cacheSlot = (): unknown =>
-            (provider as unknown as { _fmScanCache: unknown })._fmScanCache;
+        const slot = suggestionsOf(provider) as unknown as { _fmScanCache: unknown };
+        const cacheSlot = (): unknown => slot._fmScanCache;
         const seedCache = (): void => {
-            (provider as unknown as { _fmScanCache: unknown })._fmScanCache = {
+            slot._fmScanCache = {
                 perFile: new Map(),
                 expires: Date.now() + 30_000,
             };

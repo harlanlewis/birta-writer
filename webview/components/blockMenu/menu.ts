@@ -93,6 +93,7 @@ import {
     getBlockWidth,
     inheritDuplicatedAnchors,
     setBlockWidth,
+    setLinkCardDisplay,
     tableAnchorBase,
     tableWidthAnchor,
 } from "../../blockWidth";
@@ -109,13 +110,12 @@ import { setListNumberingAt } from "../../plugins/listNumbering";
 import { isOrderedNumbering, type OrderedNumbering } from "../../utils/orderedMarkers";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
-    chooseLinkCardDisplay,
     linkCardAnchorAt,
     linkCardDisplayFor,
     repaintLinkCards,
     soleLinkHref,
 } from "../../linkCards";
-import { recognizeProvider, embedProviderOn, providerFor } from "../../utils/embedProviders";
+import { providerCardGateOpen, recognizeProvider } from "../../utils/embedProviders";
 import {
     canConvert,
     canConvertRange,
@@ -931,10 +931,10 @@ function conversionLossNote(
 
 /**
  * Whether the embed plugin already cards the paragraph at `pos` as a
- * PROVIDER card (a bare autolink a provider recognizes, embeds on, that
- * provider on, and reachable without network when it needs it): the same
- * gates the plugin applies (plugins/embed.ts collectEmbeds), asked here so
- * the link-card row never offers to card a link that is already a card.
+ * PROVIDER card: a bare autolink a provider recognizes, with the provider
+ * gate open (`providerCardGateOpen`, the same three gates the plugin's
+ * collect pass reads), asked here so the link-card row never offers to card
+ * a link that is already a card.
  */
 function isProviderCard(view: EditorView, pos: number): boolean {
     const node = view.state.doc.nodeAt(pos);
@@ -942,14 +942,8 @@ function isProviderCard(view: EditorView, pos: number): boolean {
     if (!node || href === null || node.textContent !== href) {
         return false;
     }
-    if (!(window.__i18n?.embedsEnabled ?? true)) {
-        return false;
-    }
     const match = recognizeProvider(href);
-    if (!match || !embedProviderOn(match.kind)) {
-        return false;
-    }
-    return (window.__i18n?.network ?? false) || !providerFor(match.kind).needsNetwork;
+    return match !== null && providerCardGateOpen(match);
 }
 
 // Only one gutter menu is open at a time; opening (or clicking the same
@@ -1613,7 +1607,7 @@ export function openBlockMenu(
         // Link card (MAR-185): a lone web link on its own line can be shown
         // as an OG card or as the plain link, per link. Presentation state
         // beside the document (blockWidth.ts), never a byte in it, so like
-        // the width row it is mutates: false and outside undo history. The
+        // the width row it is `mutates: false` and outside undo history. The
         // row is offered whenever the master switch is on: with it off, no
         // card can fetch and the choice would be a dead switch. A provider
         // link the embed plugin cards keeps its provider card; this row is
@@ -1628,7 +1622,7 @@ export function openBlockMenu(
                 icon: asCard ? IconTextInline : IconEmbedCard,
                 mutates: false,
                 action: () => {
-                    chooseLinkCardDisplay(cardAnchor, asCard ? "text" : "card");
+                    setLinkCardDisplay(cardAnchor, asCard ? "text" : "card");
                     repaintLinkCards(view);
                 },
             });

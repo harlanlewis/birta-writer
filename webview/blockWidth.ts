@@ -144,6 +144,27 @@ function bagMap<T>(stateKey: string, validate: (value: unknown) => value is T) {
         entries(): [string, T][] {
             return [...load().entries()];
         },
+        /** How many anchors carry a value: the "is there anything to look
+         * for" question, answered without allocating the entries. */
+        size(): number {
+            return load().size;
+        },
+        /** Whether ANY occurrence of `base` (`base`, `base#2`, ...) carries a
+         * value: the cheap pre-check before resolving an occurrence anchor,
+         * which costs a document walk on a cache miss. */
+        hasBase(base: string): boolean {
+            const map = load();
+            if (map.has(base)) {
+                return true;
+            }
+            const prefix = `${base}#`;
+            for (const key of map.keys()) {
+                if (key.startsWith(prefix)) {
+                    return true;
+                }
+            }
+            return false;
+        },
         subscribe(listener: Listener): () => void {
             listeners.add(listener);
             return () => {
@@ -249,14 +270,19 @@ export function setLinkCardDisplay(anchor: string, display: LinkCardDisplay | nu
     linkCardDisplays.set(anchor, display);
 }
 
-export function renameLinkCardDisplayAnchor(oldAnchor: string, newAnchor: string): void {
-    linkCardDisplays.rename(oldAnchor, newAnchor);
-}
-
 /** Whether any link carries a per-link choice: with the default off, this
  * is what decides whether the card pass has anything to look for at all. */
 export function hasLinkCardDisplays(): boolean {
-    return linkCardDisplays.entries().length > 0;
+    return linkCardDisplays.size() > 0;
+}
+
+/** Whether some occurrence of the link with this base anchor carries a
+ * choice, so the occurrence anchor (a document walk on a cache miss) is only
+ * ever resolved for a link that has one. No rename path: an href edit
+ * changes the anchor and the choice reverts to the default, the same
+ * documented degradation as an embed's width. */
+export function linkCardDisplayExistsFor(base: string): boolean {
+    return linkCardDisplays.hasBase(base);
 }
 
 // ─── Block identity ─────────────────────────────────────────────────────────
@@ -422,6 +448,7 @@ export function inheritDuplicatedAnchors(opts: {
 
     const widthWrites: [string, BlockWidthMode | null][] = [];
     const wrapWrites: [string, boolean | null][] = [];
+    const cardWrites: [string, LinkCardDisplay | null][] = [];
     for (const [baseOf, byBase] of anchorIndex(after)) {
         for (const positions of byBase.values()) {
             // A base held by exactly one block cannot have been renumbered,
@@ -437,6 +464,7 @@ export function inheritDuplicatedAnchors(opts: {
                 }
                 widthWrites.push([to, from === null ? null : getBlockWidth(from)]);
                 wrapWrites.push([to, from === null ? null : getBlockWrap(from)]);
+                cardWrites.push([to, from === null ? null : getLinkCardDisplay(from)]);
             }
         }
     }
@@ -445,6 +473,9 @@ export function inheritDuplicatedAnchors(opts: {
     }
     for (const [anchor, wrap] of wrapWrites) {
         setBlockWrap(anchor, wrap);
+    }
+    for (const [anchor, display] of cardWrites) {
+        setLinkCardDisplay(anchor, display);
     }
 }
 

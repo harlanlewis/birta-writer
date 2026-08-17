@@ -67,6 +67,12 @@ function openMarker(): HTMLElement | null {
     return document.querySelector<HTMLElement>(".heading-fold-marker--menu-open");
 }
 
+/** The block a marker's gutter belongs to (gutterBlockPos's rule): the
+ * widget sits at blockPos + 1, read off the marker's parent. */
+function markerBlockPosOf(v: EditorView, marker: HTMLElement): number {
+    return v.posAtDOM(marker.parentElement!, 0) - 1;
+}
+
 /** Document position of the first node of `typeName` (descendants order). */
 function posOf(v: EditorView, typeName: string, nth = 0): number {
     let found = -1;
@@ -283,17 +289,22 @@ describe("openBlockMenuAtCaret", () => {
         expect(headers).not.toContain("Table");
     });
 
-    it("a selected marker-less block (HR) should return false without opening anything", async () => {
-        // Arrange: HR is a leaf atom with no gutter marker (nodeSize 1 — no
-        // content position for the in-block widget to ride on)
+    it("a node-selected rule should open the RULE's menu from its leaf gutter", async () => {
+        // Arrange: a rule is a leaf atom (nodeSize 1, no content position),
+        // so its gutter is the block's next sibling rather than a child
+        // (foldGutter's leaf placement); the resolver must look there.
         const editor = await makeEditor("---\n\ntext");
         const v = view(editor);
         const hrPos = posOf(v, "hr");
         v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, hrPos)));
 
-        // Act + Assert
-        expect(openBlockMenuAtCaret(v)).toBe(false);
-        expect(menu()).toBeNull();
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert: anchored to the rule's own marker, next to the rule
+        expect(opened).toBe(true);
+        expect(openMarker()!.dataset["pill"]).toBe("Horizontal Rule");
+        expect(openMarker()!.closest(".heading-fold-gutter--leaf")).not.toBeNull();
     });
 
     it("a multi-block selection should open the menu for its HEAD block", async () => {
@@ -356,11 +367,12 @@ describe("openBlockMenuAtCaret", () => {
         expect(openMarker()!.dataset["pill"]).toBe("H2");
     });
 
-    it("a gap cursor between two marker-less leaves should return false without opening anything", async () => {
+    it("a gap cursor between two rules should open the menu of the rule it touches", async () => {
         // Arrange: a gap position is only valid where neither neighbour is a
         // textblock (prosemirror-gapcursor's rule), so in this schema it sits
-        // beside hrs, which carry no marker: the depth-0 branch reads
-        // nodeAfter (the second hr), finds no marker, and declines.
+        // beside rules. A gap cursor's head equals its anchor, so the depth-0
+        // branch reads it as forward and takes the block BEFORE it: the first
+        // rule, whose leaf gutter is its next sibling.
         const editor = await makeEditor("---\n\n---");
         const v = view(editor);
         const $gap = v.state.doc.resolve(posOf(v, "hr", 1));
@@ -369,13 +381,15 @@ describe("openBlockMenuAtCaret", () => {
         expect(v.state.selection).toBeInstanceOf(GapCursor);
 
         // Act + Assert
-        expect(openBlockMenuAtCaret(v)).toBe(false);
-        expect(menu()).toBeNull();
+        expect(openBlockMenuAtCaret(v)).toBe(true);
+        expect(openMarker()!.dataset["pill"]).toBe("Horizontal Rule");
+        expect(markerBlockPosOf(v, openMarker()!)).toBe(posOf(v, "hr", 0));
     });
 
-    it("a gap cursor at the document's END (nothing after it) should fall back to the block before and decline when it has no marker", async () => {
+    it("a gap cursor at the document's END (nothing after it) should fall back to the block before it", async () => {
         // Arrange: the branch where nodeAfter is null and nodeBefore is the
-        // trailing hr; the resolver must not throw on the missing neighbour.
+        // trailing rule; the resolver must not throw on the missing
+        // neighbour, and opens the rule's menu.
         const editor = await makeEditor("Only\n\n---");
         const v = view(editor);
         const $gap = v.state.doc.resolve(v.state.doc.content.size);
@@ -383,8 +397,8 @@ describe("openBlockMenuAtCaret", () => {
         v.dispatch(v.state.tr.setSelection(new GapCursor($gap)));
 
         // Act + Assert
-        expect(openBlockMenuAtCaret(v)).toBe(false);
-        expect(menu()).toBeNull();
+        expect(openBlockMenuAtCaret(v)).toBe(true);
+        expect(markerBlockPosOf(v, openMarker()!)).toBe(posOf(v, "hr"));
     });
 
     it("a BACKWARD block-range selection headed at a list should fall back to its FIRST item's marker", async () => {

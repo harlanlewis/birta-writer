@@ -16,17 +16,18 @@
  *  - The block menu offers "Show as Card" / "Show as Link" for a lone link
  *    and the choice repaints; the source markdown is byte-identical after.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { getMarkdown } from "@milkdown/utils";
 import { TextSelection } from "../pm";
 import type { DecorationSet } from "../pm";
 import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
-import { computeEmbedDecorations, embedPlugin, regateEmbeds } from "../plugins/embed";
+import { computeEmbedDecorations, embedKeymapPlugin, embedPlugin, regateEmbeds } from "../plugins/embed";
+import { NodeSelection } from "../pm";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { renderEmbedCard } from "../utils/embedCard";
 import { closeBlockMenu, setBlockMenuContext } from "../components/blockMenu";
-import { chooseLinkCardDisplay, linkCardAnchor, linkCardSite, soleLinkHref } from "../linkCards";
-import { setLinkCardDisplay } from "../blockWidth";
+import { linkCardAnchor, linkCardSite, soleLinkHref } from "../linkCards";
+import { inheritDuplicatedAnchors, getLinkCardDisplay, setLinkCardDisplay } from "../blockWidth";
 import { _resetLinkCardMetaForTests, handleLinkCardResult, queueLinkCardResolution, subscribeLinkCardMeta } from "../linkCardMeta";
 import { mockVscodeApi } from "./setup";
 
@@ -108,12 +109,28 @@ describe("the gate", () => {
         const editor = await makeCorpusEditor(`# T\n\n${PAGE}\n\n${OTHER}\n`);
         const view = editorView(editor);
         // Default off, PAGE chosen as a card: only PAGE cards.
-        chooseLinkCardDisplay(linkCardAnchor(PAGE), "card");
+        setLinkCardDisplay(linkCardAnchor(PAGE), "card");
         expect(widgetKeys(computeEmbedDecorations(view.state))).toEqual([`embed:linkCard:${PAGE}:0`]);
         // Default on, PAGE chosen as text: only OTHER cards.
         i18n({ linkCardsEnabled: true });
-        chooseLinkCardDisplay(linkCardAnchor(PAGE), "text");
+        setLinkCardDisplay(linkCardAnchor(PAGE), "text");
         expect(widgetKeys(computeEmbedDecorations(view.state))).toEqual([`embed:linkCard:${OTHER}:0`]);
+    });
+
+    it("a provider link whose provider is switched off should stay plain by default, and card only on the reader's own choice", async () => {
+        i18n({ linkCardsEnabled: true, embedProviders: { youtube: false } });
+        const editor = await makeCorpusEditor(`# T\n\n${YT}\n\n${PAGE}\n`);
+        const view = editorView(editor);
+        // "Leave YouTube links plain" must not become an OG card that fetches
+        // youtube.com anyway: the default skips a recognized provider link.
+        expect(widgetKeys(computeEmbedDecorations(view.state))).toEqual([`embed:linkCard:${PAGE}:0`]);
+        // The reader's explicit choice still wins.
+        setLinkCardDisplay(linkCardAnchor(YT), "card");
+        expect(widgetKeys(computeEmbedDecorations(view.state))).toEqual([
+            `embed:linkCard:${YT}:0`,
+            `embed:linkCard:${PAGE}:0`,
+        ]);
+        setLinkCardDisplay(linkCardAnchor(YT), null);
     });
 
     it("a provider link should keep its provider card and never become a link card", async () => {
@@ -214,6 +231,65 @@ describe("the block menu row", () => {
         const marker = document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker")[1]!;
         marker.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
         const labels = Array.from(document.querySelectorAll<HTMLElement>(".block-menu-item-label")).map((el) => el.textContent);
+        // The menu opened (its ordinary rows are there); only the card row is absent.
+        expect(labels).toContain("Duplicate");
         expect(labels).not.toContain("Show as Card");
+    });
+
+    it("duplicating a lone link should carry its per-link choice to the copy without stealing the original's", async () => {
+        const editor = await makeCorpusEditor(`# T\n\n${PAGE}\n`);
+        const view = editorView(editor);
+        const from = view.state.doc.child(0).nodeSize;
+        const node = view.state.doc.nodeAt(from)!;
+        setLinkCardDisplay(linkCardAnchor(PAGE), "card");
+        // Duplicate upward: the copy lands ABOVE and becomes occurrence #1,
+        // the original occurrence #2. The store's carry keeps the original's
+        // choice with the original (`inheritDuplicatedAnchors`).
+        const before = view.state.doc;
+        view.dispatch(view.state.tr.insert(from, node));
+        inheritDuplicatedAnchors({ before, after: view.state.doc, sourceFrom: from, insertAt: from, size: node.nodeSize });
+        expect(getLinkCardDisplay(linkCardAnchor(PAGE))).toBe("card");
+        expect(getLinkCardDisplay(`${linkCardAnchor(PAGE)}#2`)).toBe("card");
+        setLinkCardDisplay(`${linkCardAnchor(PAGE)}#2`, null);
+    });
+});
+
+describe("the palette on a labelled link card", () => {
+    // The palette is a lazy chunk; under a loaded suite its import can land
+    // after a fixed pause, so wait for the input rather than for time.
+    const flush = () => vi.waitFor(() => {
+        if (!document.querySelector(".embed-palette__url")) { throw new Error("palette not open yet"); }
+    });
+
+    afterEach(async () => {
+        (await import("../components/embedPalette")).hideEmbedPalette();
+    });
+
+    it("editing the URL should keep the label and change only where it points; Delete should delete the paragraph", async () => {
+        i18n({ linkCardsEnabled: true });
+        const editor = await makeCorpusEditor(`# T\n\n[an article](${PAGE})\n\nAfter\n`, [embedPlugin, embedKeymapPlugin]);
+        const view = editorView(editor);
+        regateEmbeds(view);
+        const from = view.state.doc.child(0).nodeSize;
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, from)));
+        expect(view.someProp("handleKeyDown", (f) => f(view, new KeyboardEvent("keydown", { key: "Enter" })))).toBe(true);
+        await flush();
+
+        const input = document.querySelector<HTMLInputElement>(".embed-palette__url")!;
+        expect(input.value).toBe(PAGE);
+        input.value = OTHER;
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(editor.action(getMarkdown())).toContain(`[an article](${OTHER})`);
+        expect(editor.action(getMarkdown())).not.toContain(PAGE);
+
+        // Re-open on the rewritten card and delete it.
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, from)));
+        view.someProp("handleKeyDown", (f) => f(view, new KeyboardEvent("keydown", { key: "Enter" })));
+        await flush();
+        const del = Array.from(document.querySelectorAll<HTMLButtonElement>(".embed-palette__btn"))
+            .find((b) => b.classList.contains("embed-palette__btn--danger"))!;
+        del.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(editor.action(getMarkdown())).not.toContain("an article");
+        expect(editor.action(getMarkdown())).toContain("After");
     });
 });

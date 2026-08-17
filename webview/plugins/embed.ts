@@ -48,7 +48,7 @@ import type { Command, EditorState, EditorView, Node as ProseNode } from "../pm"
 import { Decoration, DecorationSet, keymap, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
-import { embedProviderOn, providerFor, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
+import { providerCardGateOpen, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
 // messaging is in the eager bundle already; referencing it here adds nothing.
 import { notifyOpenUrl } from "../messaging";
 // The metadata store is eager (messageHandlers routes replies through it);
@@ -56,13 +56,13 @@ import { notifyOpenUrl } from "../messaging";
 import { queueEmbedMetaResolution } from "../embedMeta";
 import { queueLinkCardResolution } from "../linkCardMeta";
 import {
-    chooseLinkCardDisplay,
     linkCardAnchorAt,
     linkCardWanted,
     linkCardsPossible,
     registerLinkCardRepaint,
     soleLinkHref,
 } from "../linkCards";
+import { setLinkCardDisplay } from "../blockWidth";
 import { queueEmbedCardResolution } from "../embedConnector";
 // The component-owned delete primitive (deleteRange + fold meta), via the
 // blockMenu facade — deep imports are guarded by blockMenuFacade.test.ts.
@@ -112,18 +112,8 @@ function loadEmbedCard(): Promise<typeof import("../utils/embedCard")> {
  * text != href and fails here; prose with a URL mid-sentence has childCount > 1).
  */
 function bareLinkHref(node: ProseNode): string | null {
-    if (node.type.name !== "paragraph" || node.childCount !== 1) {
-        return null;
-    }
-    const child = node.firstChild;
-    if (!child || !child.isText || !child.text) {
-        return null;
-    }
-    const links = child.marks.filter((m) => m.type.name === "link");
-    if (links.length !== 1) {
-        return null;
-    }
-    return links[0].attrs["href"] === child.text ? child.text : null;
+    const href = soleLinkHref(node);
+    return href !== null && href === node.textContent ? href : null;
 }
 
 /**
@@ -337,7 +327,6 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
     if (!providers && !linkCards) {
         return [];
     }
-    const network = networkOn();
     const embeds: CachedEmbed[] = [];
     const occurrences = new Map<string, number>();
     const push = (match: CardMatch, href: string, pos: number, node: ProseNode): void => {
@@ -352,18 +341,22 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
             return;
         }
         // Provider cards first, on a BARE autolink only (a labelled provider
-        // link is a text link by the reader's own hand): the network switch
-        // gates the providers whose card would fetch, and the roster gates
-        // which providers the user wants at all, which the master switch
-        // cannot express.
+        // link is a text link by the reader's own hand); the gate is the
+        // provider table's own (providerCardGateOpen: the feature key, the
+        // network switch for the providers whose card would fetch, and the
+        // roster, which the master switch cannot express).
         const match = providers && bareLinkHref(node) !== null ? recognizeProviderCached(href) : null;
-        if (match && (network || !providerFor(match.kind).needsNetwork) && embedProviderOn(match.kind)) {
+        if (match && providerCardGateOpen(match)) {
             push(match, href, pos, node);
             return;
         }
         // Then a link card, for a lone link no provider card took, when the
-        // reader wants one for this link or by default (linkCards.ts).
-        if (linkCards && linkCardWanted(state.doc, pos, href)) {
+        // reader wants one for this link or by default (linkCards.ts). A link
+        // a provider recognizes but whose provider card is switched off is
+        // left plain by the default and cards only on the reader's own
+        // choice: "leave YouTube links plain" must not become an OG card
+        // that fetches youtube.com anyway.
+        if (linkCards && linkCardWanted(state.doc, pos, href, match !== null)) {
             push({ kind: "linkCard", id: href }, href, pos, node);
         }
     });
@@ -376,8 +369,13 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
  * about the document changes.
  */
 function showLinkAsText(view: EditorView, from: number, href: string): void {
-    chooseLinkCardDisplay(linkCardAnchorAt(view.state.doc, from, href), "text");
+    setLinkCardDisplay(linkCardAnchorAt(view.state.doc, from, href), "text");
     regateEmbeds(view);
+    // The card is gone and the link is text again: a caret in it, not a
+    // node selection over it (convertEmbedToTextLink's landing).
+    if (view.state.selection instanceof NodeSelection && view.state.selection.from === from) {
+        view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(from + 1), 1)));
+    }
     view.focus();
 }
 

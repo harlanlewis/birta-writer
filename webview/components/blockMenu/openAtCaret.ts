@@ -18,7 +18,7 @@
  */
 import type { EditorView } from "../../pm";
 import { CellSelection, NodeSelection } from "../../pm";
-import { isListNode } from "../../plugins/headingFold";
+import { blockMarkerElements, isListNode } from "../../plugins/headingFold";
 import { openBlockMenu } from "./menu";
 
 /** The block position a marker's gutter widget belongs to (the widget sits
@@ -109,7 +109,9 @@ export function openBlockMenuAtCaret(view: EditorView): boolean {
         }
         // Ownership check via position round-trip (never "first marker in
         // subtree"): a container's DOM also holds its children's markers.
-        for (const marker of dom.querySelectorAll<HTMLElement>(".heading-fold-marker")) {
+        // blockMarkerElements, not a bare querySelectorAll: a leaf atom's
+        // gutter (a rule, an mdx island) is its next sibling, not its child.
+        for (const marker of blockMarkerElements(dom)) {
             if (markerBlockPos(view, marker) === pos) {
                 openBlockMenu(
                     view,
