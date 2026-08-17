@@ -108,9 +108,12 @@ import { isOrderedNumbering, type OrderedNumbering } from "../../utils/orderedMa
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
     canConvert,
+    canConvertRange,
     contentEffectOf,
     conversionKindAt,
     convertAt,
+    convertRange,
+    coveredBlockPositions,
     type ConversionKind,
     type FingerprintKey,
 } from "../../blockCapabilities";
@@ -976,6 +979,23 @@ export function openBlockMenu(
         ? view.state.doc.resolve(blockPos).before(view.state.doc.resolve(blockPos).depth)
         : blockPos;
     const currentKind = conversionKindAt(view, conversionPos);
+    // A menu opened on a block inside a multi-block cover (a block-range
+    // selection, or a text selection spanning blocks) turns the WHOLE run:
+    // the rows are the intersection of every covered block's legal targets
+    // and one pick converts them all (convertRange). Only a top-level
+    // conversion block joins a run; a nested handle keeps its own scope.
+    const cover = selectionCoverRange(view);
+    const coveredRun =
+        cover !== null &&
+        cover.from <= conversionPos &&
+        conversionPos < cover.to &&
+        view.state.doc.resolve(conversionPos).depth === 0 &&
+        coveredBlockPositions(view.state.doc, cover).length > 1
+            ? cover
+            : null;
+    const runKinds = coveredRun
+        ? coveredBlockPositions(view.state.doc, coveredRun).map((pos) => conversionKindAt(view, pos))
+        : [];
 
     const menu = document.createElement("div");
     menu.className = "block-menu";
@@ -1183,6 +1203,11 @@ export function openBlockMenu(
             /** False for read-only rows (copies) — they must not move the
              * user's caret/selection. Defaults true. */
             mutates?: boolean;
+            /** True for a mutating row that acts on the SELECTION rather
+             * than the anchor block (a run conversion): the caret is not
+             * pre-placed, so the selection history bookmarks, and undo
+             * restores, is the run itself. */
+            actsOnSelection?: boolean;
             action: () => void;
         },
     ): HTMLElement => {
@@ -1269,7 +1294,7 @@ export function openBlockMenu(
                 // actions: history snapshots the selection before the
                 // transaction, so undo/redo restore (and scroll) here — not
                 // to wherever the caret happened to sit (see selectInto).
-                if (opts.mutates !== false) {
+                if (opts.mutates !== false && !opts.actsOnSelection) {
                     selectInto(view, blockPos);
                 }
                 opts.action();
@@ -1360,14 +1385,31 @@ export function openBlockMenu(
         tableRow(t("Delete Row"), ["table", "delete", "remove", "row"], IconTrash2, "tableDeleteRow", true);
         tableRow(t("Delete Column"), ["table", "delete", "remove", "column"], IconTrash2, "tableDeleteColumn", true);
     }
-    if (currentKind !== null) {
-        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canConvert(view, conversionPos, kind));
+    // The Turn-into rows: over the covered run when there is one, else over
+    // the anchor block. One loop, because the two differ only in what the
+    // source kinds are and which converter runs.
+    const sourceKinds: (ConversionKind | null)[] = coveredRun ? runKinds : [currentKind];
+    if (sourceKinds.some((kind) => kind !== null)) {
+        const offered = TURN_INTO_CHOICES.filter(({ kind }) => coveredRun
+            ? canConvertRange(view, coveredRun, kind)
+            : canConvert(view, conversionPos, kind));
         for (const choice of offered) {
-            const active = choice.kind === currentKind;
+            // The row is "current" only when EVERY source block already is
+            // that kind; a mixed run has no current row, and its pick still
+            // converts the blocks that differ (the rest join as they are).
+            const active = sourceKinds.every((kind) => kind === choice.kind);
             // A degrading pick says what it costs, in the slot that would
             // otherwise repeat the markdown for a block type the user is
-            // already looking at. The current-type row costs nothing.
-            const loss = active ? null : conversionLossNote(currentKind, choice.kind);
+            // already looking at, over every source kind that differs. The
+            // current-type row costs nothing.
+            const loss = active
+                ? null
+                : [...new Set(sourceKinds)]
+                    .map((kind) => (kind === null || kind === choice.kind
+                        ? null
+                        : conversionLossNote(kind, choice.kind)))
+                    .filter((note): note is string => note !== null)
+                    .join(", ") || null;
             specs.push({
                 label: choice.label,
                 keywords: choice.keywords,
@@ -1380,8 +1422,14 @@ export function openBlockMenu(
                     ...(loss !== null
                         ? { hint: loss, hintIsNote: true }
                         : choice.hint !== undefined && { hint: choice.hint }),
+                    ...(coveredRun !== null && { actsOnSelection: true }),
                     action: () => {
-                        if (!active) {
+                        if (active) {
+                            return;
+                        }
+                        if (coveredRun) {
+                            convertRange(view, coveredRun, choice.kind, getEditor);
+                        } else {
                             convertAt(view, conversionPos, choice.kind, getEditor);
                         }
                     },
@@ -1773,7 +1821,12 @@ export function openBlockMenu(
             }
             const turnInto = specs.filter((spec) => spec.section === "turnInto");
             if (turnInto.length > 0) {
-                addHeader(isItem ? t("Turn list into") : t("Turn into"));
+                // The count is the same phrase the drag pill uses for a run
+                // ("3 blocks"), so the two say the same thing about the
+                // same selection.
+                addHeader(coveredRun
+                    ? `${t("Turn")} ${runKinds.length} ${t("blocks into")}`
+                    : isItem ? t("Turn list into") : t("Turn into"));
                 for (const spec of turnInto) {
                     spec.build();
                 }

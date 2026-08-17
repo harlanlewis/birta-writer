@@ -179,6 +179,30 @@ describe("fidelity: source-authored splits are never auto-merged", () => {
         expect(markdown(editor)).toContain("* bingo");
     });
 
+    it("a marker-less list landing between a `-` list and a `*` list should not bridge the author's split", async () => {
+        const editor = await makeEditor("- a\n\nsep\n\n* b\n");
+        const v = view(editor);
+        expect(topLevelTypes(v)).toEqual(["bullet_list", "paragraph", "bullet_list"]);
+        // Turn the separator into a list with no marker of its own (what a
+        // conversion produces): both boundaries are edit-created and
+        // neither pair conflicts on its own, but joining both would put `b`
+        // in the `-` list, which is exactly the split the source spelled.
+        let from = -1;
+        let to = -1;
+        v.state.doc.forEach((child: ProseNode, offset: number) => {
+            if (child.type.name === "paragraph") {
+                from = offset;
+                to = offset + child.nodeSize;
+            }
+        });
+        const { bullet_list: list, list_item: item } = v.state.schema.nodes;
+        const wrapped = list!.createChecked(null, item!.createChecked(null, v.state.doc.nodeAt(from)!));
+        v.dispatch(v.state.tr.replaceWith(from, to, wrapped));
+
+        expect(topLevelTypes(v)).toEqual(["bullet_list", "bullet_list"]);
+        expect(markdown(editor)).toBe("- a\n- sep\n\n* b\n");
+    });
+
     it("an addToHistory:false rewrite should never trigger a join", async () => {
         // External sync applies file changes with addToHistory:false — the
         // resulting doc is the FILE's state, not a user edit to interpret.
