@@ -13,7 +13,9 @@
  *                exercising the embed recognizer walk that titled links never
  *                reach (bareLinkHref requires text === href)
  *   html-heavy — raw HTML atoms, block and inline, exercising the html
- *                NodeView's per-atom mount path (MAR-367)
+ *                NodeView's per-atom mount path; `realistic` carries a smaller
+ *                seed of the same branches, so the launch gate sees it too
+ *                (MAR-367)
  *
  * The three PROSE fixtures (tiny/medium/large, and xlarge below, which is built
  * from the same sections) deliberately trip the style check — see
@@ -184,10 +186,10 @@ const htmlHeavy = (() => {
     // the button are there for the focusable sweep, which finds nothing in a
     // fixture of bare `<div>`s and would then be measured doing nothing.
     //
-    // NOT seeded into a gated fixture on purpose. Inflating medium/large/
-    // realistic shifts a baseline the launch gate compares against and spends CI
-    // time on every future PR, which is a call about what the gate should cost
-    // rather than a detail to slip in here (MAR-367).
+    // This fixture is ungated and isolates the path; `realistic` carries a
+    // smaller seed of the same two branches so the GATE can see it (MAR-367).
+    // Keep the two in step: a branch this fixture starts exercising is one the
+    // gate is still blind to until `rawHtml` carries it too.
     let out = "# HTML-heavy document\n\nRaw HTML the way a working file carries it: pasted callouts, inline markup, embedded anchors.\n\n";
     for (let i = 1; i <= 40; i++) {
         out += `## HTML section ${i}\n\n`;
@@ -206,9 +208,15 @@ const htmlHeavy = (() => {
 // ── realistic ───────────────────────────────────────────────────────────────
 // A working-file construct MIX the homogeneous fixtures can't produce: 7-row
 // tables, HTML-labeled mermaid (subgraphs, stateDiagram, styled nodes),
-// 900-char single-line paragraphs, style-seeded prose. A real document's cost
-// cliff is usually an interaction between constructs. All five diagrams are
-// valid — the invalid-diagram path is pinned by e2e/corpus and mermaidRender.
+// 900-char single-line paragraphs, raw html atoms, style-seeded prose. A real
+// document's cost cliff is usually an interaction between constructs. All five
+// diagrams are valid — the invalid-diagram path is pinned by e2e/corpus and
+// mermaidRender.
+//
+// This is the one gated fixture that carries raw HTML, so `checks.mjs` asserts
+// its atoms actually MOUNT. Source bytes cannot answer that: markdown the
+// parser declines to treat as html mounts no NodeView and the gate pays for
+// coverage it does not have.
 
 const REALISTIC_DIAGRAMS = [
     `\`\`\`mermaid
@@ -285,9 +293,20 @@ function wideTable(i) {
     return out;
 }
 
+/**
+ * Raw HTML the way a pasted-from-elsewhere section carries it: one block atom
+ * that owns its block (the `isSoleBlockAtom` branch, with a focusable inside
+ * for the sweep) and one inline pair sharing a paragraph with real text (the
+ * branch that is NOT sole-block). Two atoms, not html-heavy's four, because
+ * this seeds a GATED fixture.
+ */
+function rawHtml(i) {
+    return `<div class="note tone-${i}">\n  <strong>Context ${i}</strong>\n  <a href="https://example.com/${i}">the source thread</a>\n</div>\n\nCarried over from the thread, ${i} was raised <b>before</b> the review and <span class="tag">tagged</span> mid-sentence.\n`;
+}
+
 function realisticSection(i) {
     const flavors = [
-        `${longLine(i)}\n\n${stylePara(i)}\n`,
+        `${longLine(i)}\n\n${rawHtml(i)}\n${stylePara(i)}\n`,
         `${wideTable(i)}\n${stylePara(i)}\n`,
         `> A quoted claim for section ${i} that spans\n> two source lines.\n\n- [ ] Open item ${i}\n- [x] Closed item ${i}\n- A bullet with a [link](https://example.com/s/${i}) and \`inline code\`\n\n${stylePara(i)}\n`,
     ];

@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
 import { makeFakeTextDocument, resetTextDocumentMocks } from "../../__mocks__/vscode";
 import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
+import { DOCUMENT_EXTENSIONS } from "../../shared/documentExtensions";
 
 const makeContext = () =>
     ({
@@ -191,10 +192,14 @@ describe("workspace index caches invalidate on file create/delete (MAR-208)", ()
         expect(cacheSlot(), "an unscanned extension must not clear it").toBeDefined();
     });
 
-    it("the frontmatter scan should collect both markdown extensions", async () => {
+    it("the frontmatter scan should collect every extension this editor opens", async () => {
         // Pins the GLOB half. Asserting the argument is the only way to see it:
         // the scan's answer over a mocked-empty workspace is the same whichever
         // glob it passed, so an observable-only test cannot tell them apart.
+        //
+        // Built from the shared list rather than spelled out, so adding a
+        // format cannot leave this asserting the old set. The literal spelling
+        // was what went stale when `.markdown` joined the scan.
         findFiles.mockResolvedValue([]);
         const provider = new MarkdownEditorProvider(makeContext());
         const panel = makePanel();
@@ -203,7 +208,10 @@ describe("workspace index caches invalidate on file create/delete (MAR-208)", ()
         await askFmSuggestions(provider, panel, doc, "tags");
 
         const globs = findFiles.mock.calls.map(([glob]) => glob);
-        expect(globs, JSON.stringify(globs)).toContain("**/*.{md,mdx}");
+        expect(globs, JSON.stringify(globs))
+            .toContain(`**/*.{${DOCUMENT_EXTENSIONS.join(",")}}`);
+        // And the list is not empty, or the expectation above is vacuous.
+        expect(DOCUMENT_EXTENSIONS.length, "extensions enumerated").toBeGreaterThanOrEqual(3);
     });
 
     it("the watcher and its listeners should be disposed with the extension", async () => {

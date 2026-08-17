@@ -33,6 +33,7 @@ import { setLogTableSel, syncExternalContent, flushPendingEdit, acknowledgeFlush
 import { regateCalcCues, regateNoteMarkers, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { setReadOnly } from "./readOnly";
+import { reconcileProofreadingUnderFocus } from "./focusMode";
 import { applyLintResults } from "./plugins/proofread";
 import { withScrollAnchor } from "./utils/scrollAnchor";
 import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
@@ -494,6 +495,11 @@ export function createMessageHandlers(
             const view = getEditorView();
             if (view) {
                 setProofreadConfig(view, msg.config);
+                // Focus mode masks this same field in the live config, so an
+                // inbound write is the one thing that can un-silence a focused
+                // document. Re-apply the mask and take the incoming value as
+                // what the exit should restore (MAR-72).
+                reconcileProofreadingUnderFocus(msg.config.proofreadingEnabled);
             }
         },
         notesConfig(msg) {

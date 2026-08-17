@@ -338,6 +338,12 @@ export type ToExtensionMessage =
     // the extension persists it to `toolbar.visible`, which round-trips back
     // as a `toolbarConfig` message.
     | { type: "setToolbarVisible"; visible: boolean }
+    // Focus mode hands the workbench chrome to VS Code's own Zen Mode (MAR-72).
+    // A webview cannot run a workbench command, and the extension deliberately
+    // forwards this one without tracking it: Zen Mode is a toggle that owns its
+    // own restore, so a second opinion about the prior workbench state is how
+    // the two disagree.
+    | { type: "toggleWorkbenchZen" }
     // TOC dock-side flip from the panel header button; the extension persists it
     // to `tocPosition`, which round-trips back as a `setTocPosition` message.
     | { type: "setTocPosition"; position: TocPosition }

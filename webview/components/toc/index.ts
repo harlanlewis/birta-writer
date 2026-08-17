@@ -75,6 +75,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     setWidth: (width: number) => void;
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
+    /**
+     * Show or hide the panel WITHOUT persisting `tocVisibility`. Focus mode's
+     * half of the pair (MAR-72): it restores the prior state on exit, so a
+     * write here would make a temporary view into a preference change.
+     */
+    applyVisible: (visible: boolean) => void;
     isRight: () => boolean;
     /** Apply a birta.notes.customMarkers change to the Notes tab (rescan if shown). */
     setNotesMarkers: (markers: string[]) => void;
@@ -1596,6 +1602,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     return {
         panel,
         toggle,
+        applyVisible: (visible: boolean) => {
+            if (visible !== (isOpen || flyoutOpen)) { applyVisiblePreference(visible); }
+        },
         refresh,
         refreshContent,
         setPosition,

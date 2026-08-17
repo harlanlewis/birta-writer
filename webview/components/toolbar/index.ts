@@ -104,6 +104,8 @@ export function initToolbar(
     toggleProofread: (key: ProofreadOptionKey) => void;
     /** Whether the bar is currently shown (drives the slash toggle's label). */
     isVisible: () => boolean;
+    /** Show or hide the bar for this session, leaving `toolbar.visible` alone. */
+    applyToolbarVisible: (visible: boolean) => void;
     /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
     openLinkPrompt: () => void;
 } {
@@ -402,11 +404,14 @@ export function initToolbar(
         setBtnActive(codePicker.trigger, active.code !== null);
 
         // Format (text hierarchy) and the container menu rows: each picker
-        // fills the row for the exact member the caret is in.
+        // fills the row for the exact member the caret is in, and greys out
+        // where the schema will not hold that family at all. Quote takes no
+        // applicability: it WRAPS, so it reaches past a table cell and quotes
+        // the whole table rather than doing nothing.
         formatPicker.setActive(active.formatApplicable, active.headingLevel);
-        listPicker.setActive(active.list);
+        listPicker.setActive(active.list, active.listApplicable);
         quotePicker.setActive(active.quote);
-        codePicker.setActive(active.code);
+        codePicker.setActive(active.code, active.codeApplicable);
     };
 
     return {
@@ -437,6 +442,7 @@ export function initToolbar(
         stepFontSize: typography.stepFontSize,
         toggleProofread: checks.toggleProofread,
         isVisible: layout.isVisible,
+        applyToolbarVisible: layout.applyToolbarVisible,
         openLinkPrompt,
     };
 }

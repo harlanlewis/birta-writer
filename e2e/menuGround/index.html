@@ -60,7 +60,7 @@
       if (msg.type === "ready") {
         window.postMessage({
           type: "init",
-          content: "# Title\n\nSome text.\n\n```js\nconst a = 1;\n```\n",
+          content: "# Title\n\nSome text.\n\n```js\nconst a = 1;\n```\n\n- [ ] a task\n",
           syncVersion: 1,
         }, "*");
       }

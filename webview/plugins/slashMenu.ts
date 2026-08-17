@@ -39,6 +39,7 @@ import {
     type SlashMenuState,
 } from "../components/slashMenu/registry";
 import { setPendingRange } from "./pendingRange";
+import { canPlaceCommandBlock } from "../blockPlacement";
 
 /**
  * A slash construct ending at the caret: "/" at block start or after
@@ -80,57 +81,18 @@ export function opensSlashMenu(tr: Transaction): boolean {
 }
 
 /**
- * Registry item ids hidden for the caret's current ancestors. The menu's
- * vocabulary is "insert/turn into", but the list/quote actions are TOGGLES —
- * picking "Bullet List" while already in one would REMOVE it. Hiding the
- * same-type item keeps every visible row an insertion. (Cross-type rows
- * stay: "Ordered List" inside a bullet list genuinely converts.)
- * Exported for tests.
+ * Registry item ids hidden for the caret's current ancestors, for the one
+ * reason a legality probe cannot give: the list and quote rows are TOGGLES,
+ * so picking "Bullet List" while already in one would REMOVE it. Hiding the
+ * same-type row keeps every visible row an insertion. (Cross-type rows stay:
+ * "Ordered List" inside a bullet list genuinely converts.)
+ *
+ * Structural legality is NOT decided here. Every row whose command places a
+ * block node is filtered by `canPlaceCommandBlock` (webview/blockPlacement.ts)
+ * against the live schema, so a row that would silently no-op after the pick
+ * has already consumed the "/query" text never renders, and a new registry row
+ * inherits the rule the day it lands. Exported for tests.
  */
-/**
- * Block-conversion items that cannot apply inside a table cell: the cell
- * schema only allows paragraph content, so setBlockType/wrap commands
- * silently no-op — AFTER the pick has consumed the "/query" text. Table
- * and divider technically "work" by inserting after the whole table,
- * which reads as an accident from inside a cell; the inline insertions
- * (image, link, math, footnote) genuinely apply and stay offered.
- */
-/**
- * Every callout registry id — the always-browsable base row plus the five
- * search-only per-type rows. Their one remaining context rule is the
- * table-cell gate below (cells are paragraph-only); inside callouts they
- * stay available and NEST (see contextHiddenItemIds).
- */
-const CALLOUT_ITEM_IDS = [
-    "callout",
-    "callout-note",
-    "callout-tip",
-    "callout-important",
-    "callout-warning",
-    "callout-caution",
-] as const;
-
-const HIDDEN_IN_TABLE_CELL = [
-    "paragraph",
-    "heading1",
-    "heading2",
-    "heading3",
-    "heading4",
-    "heading5",
-    "heading6",
-    "bulletList",
-    "orderedList",
-    "taskList",
-    "blockquote",
-    ...CALLOUT_ITEM_IDS,
-    "divider",
-    "codeBlock",
-    "mermaid",
-    "mathBlock",
-    "calcBlock",
-    "table",
-] as const;
-
 export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
     const hidden = new Set<string>();
     // Only the INNERMOST list ancestor has a say. The list rows act on the list
@@ -177,15 +139,20 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
             // (No per-item task check here: the list-level flavor above
             // covers task lists, and in a MIXED list the Task List row is a
             // real conversion of the caret's own list, not a no-op.)
-            case "table_cell":
-            case "table_header":
-                for (const id of HIDDEN_IN_TABLE_CELL) {
-                    hidden.add(id);
-                }
-                break;
         }
     }
     return hidden;
+}
+
+/**
+ * The rows to show at the caret: the registry, minus the toggle rows above,
+ * minus every row whose block the schema will not accept here.
+ */
+export function visibleSlashItems($from: ResolvedPos): SlashMenuItem[] {
+    const hidden = contextHiddenItemIds($from);
+    return SLASH_MENU_ITEMS.filter(
+        (item) => !hidden.has(item.id) && canPlaceCommandBlock($from, item.commandId),
+    );
 }
 
 export interface SlashMenuHost {
@@ -347,12 +314,12 @@ class SlashMenuController {
         this.lastQuery = match.query;
         // Block-level context can't change while the query is typed within
         // the same block, so the visible item set is fixed per open.
-        const hidden = contextHiddenItemIds(this.view.state.selection.$from);
+        const items = visibleSlashItems(this.view.state.selection.$from);
         // Snapshot the toggle state once per open — it can't change while the
         // query is typed, so dynamic labels resolve against this fixed state.
         const state = _host?.getState?.();
         this.menu = createSlashMenu({
-            items: SLASH_MENU_ITEMS.filter((it) => !hidden.has(it.id)),
+            items,
             labelFor: state
                 ? (item) => item.dynamicLabel?.(state) ?? item.label
                 : undefined,

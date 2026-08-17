@@ -29,6 +29,7 @@ export {
     indentBlockAt,
     indentSelection,
     indentTargetFor,
+    LOSS_NOTES,
     moveBlockAt,
     moveBlockTo,
     moveRangeAt,
@@ -62,7 +63,6 @@ export { commitMarqueeSelection, wireMarquee } from "./marquee";
 export { openBlockMenuAtCaret } from "./openAtCaret";
 
 export {
-    canTurnInto,
     containerToList,
     retypeContainer,
     retypeList,

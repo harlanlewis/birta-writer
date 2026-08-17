@@ -125,6 +125,43 @@ describe("toolbar reflects caret state", () => {
         expect(topbar.querySelectorAll('[data-item-id="format"] .tb-fmt-item--on').length).toBe(0);
     });
 
+    /**
+     * A cell's content is `paragraph` and the cell is isolating, so a list or
+     * a fence picked there consumes the click and changes nothing (MAR-115).
+     * Quote is the exception in the other direction: it wraps, so it reaches
+     * past the cell and quotes the whole table.
+     */
+    it("a caret in a table cell should grey the List and Code pickers but not Quote", async () => {
+        const { editor, topbar, tb } = await setup("| a | b |\n| - | - |\n| c | d |");
+        caretInText(editor, "c");
+        tb.onSelectionChange(view(editor));
+        const disabled = (item: string): boolean =>
+            q(topbar, `[data-item-id="${item}"] .tb-fmt-wrap`)
+                .classList.contains("tb-fmt-wrap--disabled");
+        expect(disabled("listMenu")).toBe(true);
+        expect(disabled("codeBlock")).toBe(true);
+        expect(disabled("quote")).toBe(false);
+    });
+
+    it("a caret in a list should keep the List picker live and fill its row", async () => {
+        const { editor, topbar, tb } = await setup("- an item");
+        caretInText(editor, "an item");
+        tb.onSelectionChange(view(editor));
+        expect(q(topbar, '[data-item-id="listMenu"] .tb-fmt-wrap')
+            .classList.contains("tb-fmt-wrap--disabled")).toBe(false);
+        expect(topbar.querySelectorAll('[data-item-id="listMenu"] .tb-list-item--on').length).toBe(1);
+    });
+
+    it("a caret in a fence should keep the Code picker live — it names the fence", async () => {
+        // The probe refuses a fence inside a fence; the picker still has to
+        // report which kind of block the caret is in.
+        const { editor, topbar, tb } = await setup("```mermaid\ngraph TD\n```");
+        caretInText(editor, "graph");
+        tb.onSelectionChange(view(editor));
+        expect(q(topbar, '[data-item-id="codeBlock"] .tb-fmt-wrap')
+            .classList.contains("tb-fmt-wrap--disabled")).toBe(false);
+    });
+
     it("a selected image should light the Image button and grey the P/H control", async () => {
         const { editor, topbar, tb } = await setup("![alt](https://example.com/x.png)");
         const v = view(editor);

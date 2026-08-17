@@ -40,7 +40,9 @@ import {
 import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, notifyToggleWorkbenchZen, onMessage } from "./messaging";
+import { setFocusSurfaces } from "./focusMode";
+import { getProofreadConfig, setProofreadConfig } from "./plugins";
 import { bankOpenHtmlPanel } from "./components/htmlView";
 import { bankOpenBlockSourcePanel } from "./components/blockSource";
 import { mark, measure } from "./perf";
@@ -738,6 +740,31 @@ setSlashMenuHost({
         tocRight: toc.isRight(),
         toolbarVisible: topbarTb?.isVisible() ?? false,
     }),
+});
+
+// Focus mode composes the toggles above rather than owning chrome (MAR-72).
+// Both halves of each pair go through the surface's OWN api, so focus is
+// exactly the gesture the user could have performed by hand.
+//
+// Proofreading is the one that must not persist: `setProofreadConfig` masks the
+// live plugin config, where the toolbar's Checks menu would also call
+// `notifySetProofreadOption` and write the setting. Silencing the document for
+// the length of a focus session is not a preference change.
+setFocusSurfaces({
+    toolbarVisible: () => topbarTb?.isVisible() ?? false,
+    setToolbarVisible: (visible) => topbarTb?.applyToolbarVisible(visible),
+    tocOpen: () => toc.isOpen(),
+    setTocOpen: (open) => toc.applyVisible(open),
+    proofreadingOn: () => {
+        const view = getEditorView();
+        return view ? getProofreadConfig(view).proofreadingEnabled : false;
+    },
+    setProofreadingOn: (on) => {
+        const view = getEditorView();
+        if (!view) { return; }
+        setProofreadConfig(view, { ...getProofreadConfig(view), proofreadingEnabled: on });
+    },
+    toggleWorkbenchZen: notifyToggleWorkbenchZen,
 });
 
 if (topbar) {

@@ -12,7 +12,19 @@
 
 - A quiet dot appears on the settings gear when a release you have not looked at contains a security fix or a breaking change. Opening the settings menu clears it. It is never a popup, a notification, a count, or a tab that opens itself, and it stays dark for everything else: releases are nightly, so a dot that lit for every one of them would be lit almost every day and would stop meaning anything. Nothing appears on a fresh install. `birta.whatsNew.indicator` turns it off for good.
 
+- Focus mode: one toggle down to just the content. The Toggle Focus Mode command hides the editor toolbar and the table of contents, silences proofreading, and puts VS Code's own Zen Mode around it, so the activity bar, side bar, status bar and tabs go too. Toggling it again restores exactly what was there, including a toolbar you had already hidden and a check you had already turned off. Nothing it changes is written to your settings, so a window that closes mid-session leaves your configuration as you left it. There is no default keybinding, because Zen Mode already owns one; pick your own in Keyboard Shortcuts.
+
+- A `:::name` directive or a Notion aside can be turned into something else. Their gutter menus now carry a Turn-into section offering a quote, a callout, a list, prose or a code fence, which they never had. A directive's title travels across as the first line of the result rather than being dropped.
+
+- A conversion that loses something says so before you pick it. A Turn-into row that will drop a task list's checkmarks, or a callout's kind and fold state, now carries a quiet note naming what goes.
+
 ### Fixed
+
+- Picking Code Block, Mermaid, Math Block or Calculation Block on a list line turns that line into the block. It used to do nothing at all: the typed `/code` disappeared and no block arrived, because a list item can only hold a paragraph first and the command failed with nothing to show for it. The line now lifts out of the list, the way picking a heading already did.
+
+- The toolbar's Lists and Code menus grey out inside a table cell, where neither can go, instead of offering picks that quietly do nothing. In the other direction, the slash menu inside a cell now offers Blockquote and the callouts, which it used to hide even though they work and wrap the whole table.
+
+- Opening a `.mdx` file renders it, instead of leaving it in the raw text editor while a `.md` file beside it renders. `[[wikilink]]` completion offers MDX pages too, so an MDX page can be reached by name. Front matter suggestions now also read `.markdown` files, which were never scanned.
 
 - The review sidebar's By-type / In-order choice survives a reload. It was being written to a setting that does not exist, so it was discarded every time, silently.
 

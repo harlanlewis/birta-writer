@@ -164,6 +164,7 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     // no document byte, and gating it while read-only would be a lock with no
     // key on the palette side.
     toggleReadOnly: "reads",
+    toggleFocusMode: "reads",
     hideToolbar: "reads",
     showToolbar: "reads",
     customizeToolbar: "reads",

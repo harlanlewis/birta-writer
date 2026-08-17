@@ -9,10 +9,6 @@
  *   2. A golden derived matrix over a fixture containing every source kind —
  *      a capability edit that flips any cell shows up as a reviewable diff
  *      (the slashToolbarParity.test.ts drift-guard idea).
- *   3. The fidelity gate — `canConvert` must agree with the legacy
- *      hand-written `canTurnInto` for every (block, kind) pair including
- *      the diagonal. Proves the refactor preserved behavior; delete it
- *      together with `canTurnInto` once the registry has bedded in.
  *
  * Drives the REAL Milkdown editor (real parser, real schema, the production
  * serialization config), like blockMenu.test.ts.
@@ -30,7 +26,6 @@ import {
     contentEffectOf,
     conversionKindAt,
 } from "../blockCapabilities";
-import { canTurnInto } from "../components/blockMenu";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 import { mdxBlockSchema, mdxInlineSchema } from "../format/mdx";
 
@@ -116,6 +111,10 @@ const FIXTURE = [
     "prose with a footnote[^1]",
     "",
     "[^1]: the definition",
+    "",
+    "<aside>",
+    "notion body",
+    "</aside>",
     "",
 ].join("\n");
 
@@ -203,7 +202,11 @@ describe("derived conversion matrix", () => {
         // The golden table — the shipped Turn-into matrix. A capability or
         // derivation-rule edit that flips any cell must show up here as a
         // reviewable diff.
-        const EVERY_KIND = [...ALL_KINDS];
+        // The two container spellings are sources only, so they never appear
+        // in anyone else's row — including each other's.
+        const EVERY_KIND = ALL_KINDS.filter(
+            (kind) => kind !== "directive" && kind !== "notionCallout",
+        );
         // Quote/callout → list needs all-paragraph content (rule 5's
         // instance predicate); a quote holding a nested list loses exactly
         // the three list targets.
@@ -227,9 +230,13 @@ describe("derived conversion matrix", () => {
             { block: "paragraph", kind: null, convertsTo: NOTHING }, // image-only (MAR-79)
             { block: "paragraph", kind: null, convertsTo: NOTHING }, // html-only
             { block: "table", kind: null, convertsTo: NOTHING },
-            { block: "container_directive", kind: null, convertsTo: NOTHING }, // MAR-115
+            // A directive is a callout in another spelling: the wrapper rules
+            // give it every conversion a callout has, plus its own identity
+            // row. Its content is one paragraph, so the list targets derive.
+            { block: "container_directive", kind: "directive", convertsTo: [...EVERY_KIND, "directive"] },
             { block: "paragraph", kind: "paragraph", convertsTo: EVERY_KIND },
             { block: "footnote_definition", kind: null, convertsTo: NOTHING },
+            { block: "notion_callout", kind: "notionCallout", convertsTo: [...EVERY_KIND, "notionCallout"] },
         ]);
     });
 
@@ -247,25 +254,5 @@ describe("derived conversion matrix", () => {
             }
         });
         expect(missing).toEqual([]);
-    });
-});
-
-describe("fidelity gate: canConvert vs the legacy canTurnInto", () => {
-    it("every (block, kind) pair including the diagonal should agree with the legacy predicate", async () => {
-        const editor = await makeEditor(FIXTURE);
-        const v = view(editor);
-        const disagreements: string[] = [];
-        v.state.doc.forEach((node, offset) => {
-            for (const target of ALL_KINDS) {
-                const derived = canConvert(v, offset, target);
-                const legacy = canTurnInto(v, offset, target);
-                if (derived !== legacy) {
-                    disagreements.push(
-                        `${node.type.name}@${offset} -> ${target}: derived=${derived} legacy=${legacy}`,
-                    );
-                }
-            }
-        });
-        expect(disagreements).toEqual([]);
     });
 });

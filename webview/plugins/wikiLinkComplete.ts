@@ -19,6 +19,7 @@
 import { PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { LinkTargetSuggestionItem } from "../../shared/messages";
+import { DOCUMENT_EXT_REGEX, INDEX_FILE_REGEX } from "../../shared/documentExtensions";
 import {
     createSuggestMenuFromRows,
     requestLinkTargetSuggestions,
@@ -29,22 +30,22 @@ import { wikiLinkId } from "./wikiLinks";
 /** Unclosed wikilink construct ending at the caret. */
 export const PARTIAL_WIKI_REGEX = /\[\[([^\[\]]*)$/;
 
-const MD_EXT_REGEX = /\.(md|markdown)$/i;
-const INDEX_FILE_REGEX = /^_?index\.(md|markdown)$/i;
-
 /**
  * The Obsidian-style bare name a workspace file is wiki-linkable as:
- * filename minus the markdown extension; for a bundle index file, the parent
- * directory's name. Null for non-markdown files (not offered).
+ * filename minus the document extension; for a bundle index file, the parent
+ * directory's name. Null for files this editor does not open (not offered).
+ *
+ * The extensions come from the shared list, so a `.mdx` page is linkable by
+ * the same `[[name]]` its `.md` neighbour is.
  */
 export function wikiNameOf(rootRelative: string): string | null {
-    if (!MD_EXT_REGEX.test(rootRelative)) { return null; }
+    if (!DOCUMENT_EXT_REGEX.test(rootRelative)) { return null; }
     const segs = rootRelative.replace(/^\//, "").split("/");
     const base = segs[segs.length - 1];
     if (INDEX_FILE_REGEX.test(base)) {
         return segs.length >= 2 ? segs[segs.length - 2] : null;
     }
-    return base.replace(MD_EXT_REGEX, "");
+    return base.replace(DOCUMENT_EXT_REGEX, "");
 }
 
 /**
@@ -75,7 +76,7 @@ export function rankWikiNames(
             rows.push({ text: name, title: paths[0], sortKey: name.toLowerCase() });
         } else {
             for (const p of paths) {
-                const pathForm = p.replace(/^\//, "").replace(MD_EXT_REGEX, "");
+                const pathForm = p.replace(/^\//, "").replace(DOCUMENT_EXT_REGEX, "");
                 rows.push({ text: pathForm, title: p, sortKey: name.toLowerCase() });
             }
         }

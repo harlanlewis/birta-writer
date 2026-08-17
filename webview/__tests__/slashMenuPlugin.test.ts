@@ -15,6 +15,7 @@ import {
     opensSlashMenu,
     setSlashMenuHost,
     slashMenuPlugin,
+    visibleSlashItems,
 } from "../plugins/slashMenu";
 import { runEditorCommand } from "../editorCommands";
 import { SLASH_MENU_DOM_ID, slashRowDomId } from "../components/slashMenu";
@@ -509,12 +510,18 @@ describe("context-aware item filtering (toggles hidden where they would remove)"
         expect(labels).toContain("Blockquote");
     });
 
-    it("inside a table cell only the inline insertions should show", async () => {
-        // Cells only allow paragraph content: block conversions would
-        // silently no-op after eating the "/query" text, and table/divider
-        // insert after the whole table — accidental from inside a cell.
+    it("inside a table cell only what a cell can hold should show", async () => {
+        // A cell's content is `paragraph` and the cell is isolating, so every
+        // retype would silently no-op after eating the "/query" text, and
+        // table/divider would insert after the whole table — accidental from
+        // inside a cell. Paragraph stands because that is what a cell holds;
+        // Blockquote and Callout stand because they WRAP, and wrapping from
+        // inside a cell quotes the whole table (quoteAnyBlock.test.ts).
         const labels = await openIn("| a | b |\n| - | - |\n| c | d |\n");
-        expect(labels).toEqual(["Image", "Inline Math", "Link", "Footnote"]);
+        expect(labels).toEqual([
+            "Paragraph", "Image", "Blockquote", "Callout",
+            "Inline Math", "Link", "Footnote",
+        ]);
     });
 });
 
@@ -612,11 +619,19 @@ describe("contextHiddenItemIds — nesting policy", () => {
         expect(hidden.has("taskList")).toBe(false);
     });
 
-    it("a table cell should still hide every block-level row (no table in table)", async () => {
+    it("a table cell should hide every row that retypes or inserts a block", async () => {
+        // contextHiddenItemIds owns the toggle rule alone; structural
+        // legality is the placement probe's, so the cell rule is visible on
+        // visibleSlashItems rather than here.
         const $from = await fromInside("| a |\n| --- |\n| cell text |", "cell text");
-        const hidden = contextHiddenItemIds($from);
-        for (const id of ["table", "codeBlock", "callout", "heading1", "divider"]) {
-            expect(hidden.has(id), `${id} should be hidden in a table cell`).toBe(true);
+        expect(contextHiddenItemIds($from).size).toBe(0);
+        const shown = new Set(visibleSlashItems($from).map((item) => item.id));
+        for (const id of ["table", "codeBlock", "heading1", "divider", "bulletList"]) {
+            expect(shown.has(id), `${id} should be hidden in a table cell`).toBe(false);
+        }
+        // The wrap rows reach past the cell and act on the whole table.
+        for (const id of ["callout", "blockquote"]) {
+            expect(shown.has(id), `${id} should stay offered in a table cell`).toBe(true);
         }
     });
 });
