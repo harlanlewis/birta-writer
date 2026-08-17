@@ -94,7 +94,7 @@ export async function promptBlockHandlesMode(): Promise<void> {
 
 /**
  * Sync workbench.editorAssociations based on defaultMode:
- * - "markdown" → inject "*.md"/"*.markdown": "default" so the text editor opens directly without triggering the custom editor
+ * - "markdown" → inject "default" for every document glob derived from DOCUMENT_EXTENSIONS so the text editor opens directly without triggering the custom editor
  * - "preview"  → remove ONLY the "default" entries this function wrote; the tab watcher in activate() supplies the WYSIWYG default under package.json's priority:option
  *
  * This function may remove only what it wrote — the "default" spelling above.

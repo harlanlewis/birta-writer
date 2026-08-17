@@ -130,6 +130,17 @@ describe("the unread dot's host half", () => {
         expect(local.update).not.toHaveBeenCalled();
     });
 
+    it("an unstamped 0.0.0 local build should neither light nor stamp, even on first run", async () => {
+        // The memento can be shared with a Marketplace install; a 0.0.0 stamp
+        // would make that install see every historical Security release as
+        // unseen on its next activation.
+        const { context, update } = makeContext({ version: "0.0.0", lastSeen: undefined, name: "changelog.md" });
+        expect(await computeUnread(context)).toBe(false);
+        expect(update).not.toHaveBeenCalled();
+        await markSeen(context);
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it("markSeen should degrade rather than throw when the host has no globalState", async () => {
         const context = {
             extensionUri: vscode.Uri.file("/ext"),

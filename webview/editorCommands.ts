@@ -85,7 +85,7 @@ import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
 import { notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
-import { canRetypeInPlace } from "@/blockPlacement";
+import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
 
 export type GetEditor = () => Editor | null;
@@ -237,9 +237,9 @@ function clearFormatting(getEditor: GetEditor): void {
  * Mirrors Notion/Obsidian, where picking a block type on a list line turns
  * that line into the block and drops it from the list.
  *
- * The lift is CONDITIONAL on the schema refusing the retype in place
- * (`canRetypeInPlace`, the same walk the conversion surfaces use to decide
- * whether to offer the row). An item's second paragraph, or a paragraph
+ * The lift is CONDITIONAL on the schema refusing the retype in place for any
+ * block the selection covers (`canRetypeSelectionInPlace`, the same walk the
+ * conversion surfaces use to decide whether to offer the row). An item's second paragraph, or a paragraph
  * quoted inside the item, can become a fence right there; lifting those too
  * would pull the whole item out of the list, and promote its following
  * siblings, for a change the schema was happy to make in place.
@@ -257,7 +257,7 @@ function liftOutOfLists(view: EditorView, typeName: string): void {
     while (
         guard-- > 0
         && isInNode(view, "list_item")
-        && !canRetypeInPlace(view.state.selection.$from, typeName)
+        && !canRetypeSelectionInPlace(view.state.selection, typeName)
     ) {
         if (!liftListItem(liType)(view.state, view.dispatch)) { break; }
     }

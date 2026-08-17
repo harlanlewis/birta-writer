@@ -393,7 +393,7 @@ describe("Turn-into from a directive or a Notion callout", () => {
         const editor = await makeEditor("<aside>\n⚠️ Careful now\n</aside>");
         view(editor);
         pickRow(openMenuOn(markers()[0]!), "Callout");
-        expect(markdown(editor).trim()).toMatch(/^> \[!WARNING\]\n/);
+        expect(markdown(editor).trim()).toBe("> [!WARNING]\n> Careful now");
     });
 
     it("a directive's title should survive the trip to a blockquote, which has no attr for it", async () => {

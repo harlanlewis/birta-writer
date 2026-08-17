@@ -20,7 +20,10 @@
  *   2. Whether the schema admits that node there — `canPlaceBlock`, a walk
  *      out from the caret's own block. No node-type list, no per-surface
  *      blocklist: the walk reads `content` expressions and `isolating`, so a
- *      new node type is covered on the day its schema lands.
+ *      new node type is covered on the day its schema lands. One answer is
+ *      policy rather than schema and is marked as such at the site: a retype
+ *      inside a verbatim block (`spec.code`) is refused although the schema
+ *      would allow it, because fence bytes are not prose.
  *
  * Why the three reaches differ, which is the whole content of the module:
  *
@@ -307,4 +310,35 @@ export function canRetypeInPlace($pos: ResolvedPos, typeName: string): boolean {
     const parent = $pos.node(start - 1);
     const index = $pos.index(start - 1);
     return parent.canReplaceWith(index, index + 1, type);
+}
+
+/**
+ * `canRetypeInPlace` over every textblock a selection covers. A retype
+ * command applies to the whole range, so the lift has to be decided for the
+ * whole range too: a selection running from an item's second paragraph into
+ * the next item's first would otherwise retype the first block in place and
+ * silently skip the second, whose parent pins it to a paragraph. One block
+ * that cannot be retyped where it stands means the range lifts.
+ */
+export function canRetypeSelectionInPlace(
+    selection: { readonly from: number; readonly to: number; readonly $from: ResolvedPos },
+    typeName: string,
+): boolean {
+    const doc = selection.$from.doc;
+    let every = true;
+    let seen = 0;
+    doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+        if (!every) {
+            return false;
+        }
+        if (node.isTextblock) {
+            seen++;
+            if (!canRetypeInPlace(doc.resolve(pos + 1), typeName)) {
+                every = false;
+            }
+            return false;
+        }
+        return true;
+    });
+    return seen === 0 ? canRetypeInPlace(selection.$from, typeName) : every;
 }

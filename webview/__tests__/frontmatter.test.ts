@@ -1489,11 +1489,41 @@ describe("frontmatter panel under read-only", () => {
         setReadOnly(false);
     });
 
-    it("deleting a row while read-only should leave the row, post nothing, and NOT resurface after unlocking", () => {
+    it("the panel's write controls should be disabled while read-only, born disabled, and re-enabled after", () => {
+        renderFrontmatterPanel(FM);
+        const controls = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".fm-delete-btn, .fm-add-btn"));
+        expect(controls().length).toBeGreaterThanOrEqual(4);
+        expect(controls().every((b) => !b.disabled)).toBe(true);
+
+        setReadOnly(true);
+        expect(controls().every((b) => b.disabled)).toBe(true);
+        // A re-render while locked keeps them disabled.
+        renderFrontmatterPanel(FM);
+        expect(controls().every((b) => b.disabled)).toBe(true);
+        // The empty state's Add metadata button too (its gate ships off, so
+        // the on-state is a premise here).
+        window.__i18n = { frontmatterAddButton: true } as unknown as typeof window.__i18n;
+        try {
+            renderFrontmatterPanel(undefined);
+            expect(document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.disabled).toBe(true);
+
+            setReadOnly(false);
+            expect(document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.disabled).toBe(false);
+        } finally {
+            window.__i18n = undefined;
+        }
+    });
+
+    it("a delete reaching the model while read-only should leave the row, post nothing, and NOT resurface after unlocking", () => {
         renderFrontmatterPanel(FM);
         setReadOnly(true);
 
-        document.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+        // The button is disabled under the lock (above); drive the handler
+        // anyway, as a click from a control that missed the disable would, to
+        // hold the MODEL-level refusal on its own.
+        const btn = document.querySelector<HTMLButtonElement>(".fm-delete-btn")!;
+        btn.disabled = false;
+        btn.click();
 
         expect(panelRows()).toHaveLength(3);
         expect(panelRows()[0]!.querySelector(".fm-key")!.textContent).toBe("title");

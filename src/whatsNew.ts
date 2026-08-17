@@ -28,10 +28,20 @@ import { readBirtaSetting } from "./config";
  */
 const LAST_SEEN_KEY = "birta.whatsNew.lastSeenVersion.v1";
 
-/** The installed build, or undefined if the host does not report one. */
+/**
+ * The installed build, or undefined if the host does not report one.
+ *
+ * `0.0.0` counts as no version: it is the unstamped local build (`package.json`
+ * stays at `0.0.0`; CI stamps a CalVer only at release). A local build must
+ * neither light the dot nor STAMP, because the memento is per install and can
+ * be shared with a Marketplace copy; a first run that stamped `0.0.0` would
+ * make the next real activation see every historical Security release as
+ * unseen.
+ */
 function installedVersion(context: vscode.ExtensionContext): string | undefined {
     const version: unknown = context.extension?.packageJSON?.version;
-    return typeof version === "string" && version.length > 0 ? version : undefined;
+    if (typeof version !== "string" || version.length === 0 || version === "0.0.0") { return undefined; }
+    return version;
 }
 
 function lastSeen(context: vscode.ExtensionContext): string | undefined {

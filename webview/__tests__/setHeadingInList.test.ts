@@ -115,6 +115,27 @@ describe("heading commands inside a list", () => {
         expect(md(again)).toContain("- first\n\n  ## second");
     });
 
+    it("a selection from an item's second paragraph into the next item should lift the whole range", async () => {
+        // The lift is decided for the RANGE: `second` could retype where it
+        // stands, but `other` is a first paragraph and cannot, so gating on
+        // the caret's own block alone would retype one and silently skip the
+        // other. Both must end up headings.
+        const editor = await makeEditor("- first\n\n  second\n\n- other\n\n- third");
+        const v = view(editor);
+        let p1 = -1;
+        let p2 = -1;
+        v.state.doc.descendants((n, p) => {
+            if (n.isText && n.text === "second") { p1 = p + 1; }
+            if (n.isText && n.text === "other") { p2 = p + 1; }
+        });
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, p1, p2)));
+        runEditorCommand("setHeading2", () => editor);
+        const out = md(editor);
+        expect(out).toContain("## second");
+        expect(out).toContain("## other");
+        expect(out).toContain("- third");
+    });
+
     it("a retype on a paragraph quoted INSIDE an item should stay in the quote and the item", async () => {
         // A blockquote is `block+`, so the paragraph inside it can be retyped
         // where it is; the item above it is not touched.

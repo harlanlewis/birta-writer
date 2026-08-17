@@ -14,7 +14,7 @@
  *   (c) ancestor walk — every ancestor directory of the document up to the
  *       workspace root as a candidate site root (Hugo/Jekyll/Astro content
  *       dirs), nearest first
- *   (d) suffix inference — each base tried as-is, then with each document
+ *   (d) suffix inference: each base tried as-is, then with each document
  *       suffix (DOCUMENT_EXTENSIONS, plain spellings first), then as an
  *       `index` or `_index` file (trailing-slash links prefer index files)
  *   (e) fallback — suffix match over the cached workspace file index

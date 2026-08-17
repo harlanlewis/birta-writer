@@ -133,8 +133,8 @@ export const footnoteNumberingPlugin = $prose(
  * the ProseMirror `html` node is inline while `footnote_definition` is
  * `block+`, node creation throws and the whole definition is dropped
  * (`Cannot create node for footnote_definition`). The bytes survive on disk
- * only because round-trip protection refuses the lossy save; the user sees an
- * empty spot where their note was. Same wrap, one parent further, running
+ * only because round-trip protection restores what the serializer could not
+ * reproduce; the user sees an empty spot where their note was. Same wrap, one parent further, running
  * after the stock transformer because this preset registers after commonmark.
  */
 export const footnoteHtmlBlockRemark = $remark(

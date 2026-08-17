@@ -44,6 +44,10 @@ const SOURCES = walkFiles(path.join(root, "src"), [".ts"], ["__tests__", "test"]
  * dictionary paths use. Multi-line calls are covered because `\s*` spans
  * newlines.
  *
+ * `registerGateToggle(command, settingKey, …)` in extension.ts writes its second
+ * argument, so that call shape is scanned as a fourth spelling: the command id
+ * is skipped and the setting key captured.
+ *
  * WHAT THIS CANNOT SEE, stated so nobody reads a green run as more than it is:
  * a key passed as a variable (`setProofreadOption` reads its path out of a
  * table) or built by a template literal (`toolbar.items.${id}`). Those sites
@@ -51,6 +55,7 @@ const SOURCES = walkFiles(path.join(root, "src"), [".ts"], ["__tests__", "test"]
  * item ids are each held to the manifest by their own tests.
  */
 const WRITE_CALL = /(?:update(?:SettingRespectingScope|UserSetting)|getBirtaConfiguration\(\)\s*\.update)\(\s*"([^"]+)"/g;
+const GATE_TOGGLE_CALL = /registerGateToggle\(\s*"[^"]+"\s*,\s*"([^"]+)"/g;
 
 describe("settings the extension writes", () => {
     const found: Array<{ file: string; key: string }> = [];
@@ -59,11 +64,16 @@ describe("settings the extension writes", () => {
         for (const m of text.matchAll(WRITE_CALL)) {
             found.push({ file: rel, key: m[1] });
         }
+        for (const m of text.matchAll(GATE_TOGGLE_CALL)) {
+            found.push({ file: rel, key: m[1] });
+        }
     }
 
     it("should scan the whole extension tree, not a list of files", () => {
         expect(SOURCES.length).toBeGreaterThan(10);
         expect(new Set(found.map((f) => f.file)).size, "files with a write site").toBeGreaterThanOrEqual(3);
+        // The gate-toggle spelling has to be reached too, or it is a comment.
+        expect(found.some((f) => f.key === "calc.autoInsert"), "registerGateToggle keys are scanned").toBe(true);
     });
 
     it("should find write sites at all, or this guard is asserting over nothing", () => {

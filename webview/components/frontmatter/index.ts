@@ -298,15 +298,30 @@ function restoreCommittedFm(): void {
     renderFmContent(lastCommittedFm);
 }
 
-// The raw YAML/TOML editor is a real <textarea>, which no contenteditable
-// island reaches; it follows the mode through its own `readOnly` flag. One
-// module-level subscription serves every textarea the panel ever builds, so a
-// re-render cannot leak a subscription per instance.
-subscribeReadOnly((readOnly) => {
+/** The panel's controls whose whole purpose is a write. */
+const FM_MUTATING_CONTROLS = ".fm-delete-btn, .fm-add-btn, .fm-add-metadata-btn, .fm-chip-remove";
+
+/**
+ * Make the panel's chrome follow the mode. The raw YAML/TOML editor is a real
+ * <textarea>, which no contenteditable island reaches, so it follows through
+ * its own `readOnly` flag; the delete, add and chip-remove buttons are
+ * disabled so a locked panel does not offer a click that recordFmCommit will
+ * only refuse (and so a refused click cannot leave a ghost row or focus a
+ * detached table). Called after every render and on every mode change.
+ */
+function syncFmChromeForMode(): void {
+    const readOnly = isReadOnly();
     document.querySelectorAll<HTMLTextAreaElement>(".fm-raw-editor").forEach((el) => {
         el.readOnly = readOnly;
     });
-});
+    document.querySelectorAll<HTMLButtonElement>(`#frontmatter-panel :is(${FM_MUTATING_CONTROLS})`).forEach((el) => {
+        el.disabled = readOnly;
+    });
+}
+
+// One module-level subscription serves every element the panel ever builds,
+// so a re-render cannot leak a subscription per instance.
+subscribeReadOnly(() => syncFmChromeForMode());
 
 /** After an undo/redo re-render, park focus where repeated chords keep working. */
 function focusAfterFmHistory(): void {
@@ -418,7 +433,7 @@ function bindFmCell(
 ): void {
     // Rich `true` rather than plaintext-only (this panel has always allowed
     // it), and registered as a read-only island so a locked document's panel
-    // cannot be typed into — its commit is refused at notifyFrontmatterUpdate
+    // cannot be typed into — its commit is refused at recordFmCommit
     // either way, and a cell that accepts text it then discards is the worse
     // half of that promise (MAR-53).
     markEditableIsland(td, false);
@@ -789,6 +804,7 @@ function rebuildFmTable(tbody: HTMLElement, panel: HTMLElement): void {
     for (const entry of currentFmEntries) {
         tbody.appendChild(createFmRow(entry, tbody, panel));
     }
+    syncFmChromeForMode();
 }
 
 /** Adds a new row. */
@@ -830,8 +846,8 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
     textarea.id = FM_CONTENT_ID;
     textarea.value = committed;
     textarea.spellcheck = false;
-    // Follows the mode from birth; the module-level subscription above moves it
-    // on a toggle. `readOnly` keeps selection, scrolling and copy.
+    // Follows the mode from birth (syncFmChromeForMode re-applies it after the
+    // render and on a toggle). `readOnly` keeps selection, scrolling and copy.
     textarea.readOnly = isReadOnly();
     textarea.setAttribute('aria-label', isToml ? t('Edit metadata as TOML') : t('Edit metadata as YAML'));
     textarea.rows = Math.max(committed.split('\n').length, 2);
@@ -956,6 +972,7 @@ function renderEmptyMetadataState(): void {
     }
     // The panel supplies the toolbar clearance, same as the populated state.
     if (editorEl) { editorEl.style.paddingTop = '16px'; }
+    syncFmChromeForMode();
 }
 
 /**
@@ -1070,6 +1087,7 @@ function renderFmContent(frontmatter: string): void {
         editorEl?.parentNode?.insertBefore(panel, editorEl);
     }
     if (editorEl) { editorEl.style.paddingTop = '16px'; }
+    syncFmChromeForMode();
 }
 
 /**
