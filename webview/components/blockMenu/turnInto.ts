@@ -33,8 +33,9 @@
  * A RUN of covered blocks (blockCapabilities `convertRange`) reuses every
  * mechanism above per block and adds two of its own: the run's markdown goes
  * into ONE fence (turnRangeIntoCodeBlock), and adjacent same-type wrappers
- * or lists the run just produced are joined into one (joinAdjacentBlocksIn),
- * so "these three paragraphs, as a quote" is one quote and not three.
+ * the run just produced are joined into one (joinAdjacentWrappersIn), so
+ * "these three paragraphs, as a quote" is one quote and not three. Lists
+ * need no such step: the auto-join plugin joins them as each block converts.
  *
  * "Container" here is any of the four `block+` wrappers: a blockquote, a GFM
  * callout, and the two other spellings of a callout (`:::name` directives and
@@ -51,7 +52,6 @@ import { convertListTreeAt } from "../../editing/listConvert";
 import { wrapBlocksIn } from "../../editing/wrapBlocks";
 import { canJoin } from "../../pm";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
-import { isListNode, listMarkerOf, listMarkersConflict } from "../../editing/listMerge";
 import type { ConversionKind } from "../../blockCapabilities";
 import { attrsFromMarker, calloutKind, type CalloutKind } from "../../plugins/callouts";
 
@@ -155,43 +155,36 @@ function fenceSource(view: EditorView, range: { from: number; to: number }, sour
 }
 
 /**
- * Joins adjacent top-level siblings of type `typeName` inside `range` into
+ * Joins adjacent top-level WRAPPERS of type `typeName` inside `range` into
  * one node, in a single transaction: the second half of a run conversion,
  * after each covered block has become the target on its own. Two quotes born
- * of one gesture are one quote (what wrapping the same selection from the
- * toolbar produces), and two lists born of one gesture would be split for
- * good by the serializer's alternating bullet (the auto-join plugin's
- * argument, plugins/list.ts). The one boundary it will not cross is a
- * list-marker disagreement (`listMarkersConflict`, editing/listMerge.ts): a
- * split the author spelled stays theirs.
+ * of one gesture are one quote, which is what wrapping the same selection
+ * from the toolbar produces. Lists are not this function's business: the
+ * auto-join plugin (plugins/list.ts) already joins every list adjacency an
+ * edit creates, marker rule included, as each block converts.
  */
-export function joinAdjacentBlocksIn(
+export function joinAdjacentWrappersIn(
     view: EditorView,
     range: { from: number; to: number },
     typeName: string,
 ): boolean {
     const doc = view.state.doc;
     const boundaries: number[] = [];
-    // The node a join group started with: a join keeps ITS attrs, so its
-    // marker is the one every later candidate has to agree with, or a
-    // marker-less list in the middle would bridge two the author split.
-    let head: ProseNode | null = null;
+    let previous: ProseNode | null = null;
     doc.forEach((node, offset) => {
         if (offset < range.from || offset >= range.to) {
-            head = null;
+            previous = null;
             return;
         }
         if (
-            head !== null &&
-            head.type.name === typeName &&
+            previous !== null &&
+            previous.type.name === typeName &&
             node.type.name === typeName &&
-            !(isListNode(node) && listMarkersConflict(listMarkerOf(head), listMarkerOf(node))) &&
             canJoin(doc, offset)
         ) {
             boundaries.push(offset);
-            return;
         }
-        head = node;
+        previous = node;
     });
     if (boundaries.length === 0) {
         return false;

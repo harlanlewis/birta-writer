@@ -36,7 +36,7 @@ import type { GetEditor } from "./editorCommands";
 // bodies, matching the contentGuard ↔ headingFold precedent.
 import {
     containerToList,
-    joinAdjacentBlocksIn,
+    joinAdjacentWrappersIn,
     retypeContainer,
     retypeList,
     turnIntoCodeBlock,
@@ -47,6 +47,7 @@ import {
     wrapProseIn,
 } from "./components/blockMenu";
 import { BlockRangeSelection } from "./plugins/blockRange";
+import { TextSelection } from "./pm";
 // Runtime-only cycle (contentGuard → headingFold → this module →
 // contentGuard); both are only called inside convertAt's and convertRange's
 // bodies.
@@ -672,6 +673,15 @@ function changedTopLevelSpan(
  * prosemirror-history's own grouping would need every step to touch the
  * previous one's range, and a covered block that is already the target
  * kind breaks that chain; the replay owes it nothing.
+ *
+ * The replay is not inert: every `appendTransaction` plugin runs again over
+ * it, against the state BEFORE the gesture rather than the state each live
+ * step saw. A plugin whose verdict depends on the old document (the list
+ * auto-join's fidelity gate) can therefore answer differently on the replay
+ * than it did live, and the live result must not lean on such a verdict.
+ * The one known case, a marker-less list absorbing an authored one, is
+ * closed at the join itself (`joinListBoundary` carries the marker up), and
+ * pinned by the marker-split tests in convertRange.test.ts.
  */
 export function convertRange(
     view: EditorView,
@@ -705,11 +715,10 @@ export function convertRange(
     // widened to any neighbour a conversion or an appended plugin
     // transaction (the list auto-join) pulled it into. Every block outside
     // this span is the same node it was, by identity.
-    const shape = capabilityOfKind(target).shape;
-    if (shape === "wrapper" || shape === "list") {
+    if (capabilityOfKind(target).shape === "wrapper") {
         const span = changedTopLevelSpan(stateBefore.doc, view.state.doc);
         if (span) {
-            changed = joinAdjacentBlocksIn(view, { from: span.afterFrom, to: span.afterTo }, TYPE_BY_KIND[target]) || changed;
+            changed = joinAdjacentWrappersIn(view, { from: span.afterFrom, to: span.afterTo }, TYPE_BY_KIND[target]) || changed;
         }
     }
     const span = changed ? changedTopLevelSpan(stateBefore.doc, view.state.doc) : null;
@@ -717,18 +726,27 @@ export function convertRange(
         return false;
     }
 
-    // 2. Read the result back, rewind, and apply it as ONE transaction.
+    // 2. Read the result back, rewind, and apply it as ONE transaction. The
+    // result stays selected the way the run was: as a block range, or as a
+    // text selection spanning it, so the next chord acts on what was just
+    // converted rather than on a caret parked at its end.
     const result = view.state.doc.slice(span.afterFrom, span.afterTo);
     view.updateState(stateBefore);
     let tr = stateBefore.tr.replaceWith(span.beforeFrom, span.beforeTo, result.content);
+    const resultTo = span.beforeFrom + result.content.size;
     if (keepRunSelected) {
-        const selection = BlockRangeSelection.tryCreate(
-            tr.doc, span.beforeFrom, span.beforeFrom + result.content.size);
+        const selection = BlockRangeSelection.tryCreate(tr.doc, span.beforeFrom, resultTo);
         if (selection) {
             tr = tr.setSelection(selection);
         }
+    } else if (stateBefore.selection instanceof TextSelection && !stateBefore.selection.empty) {
+        tr = tr.setSelection(TextSelection.between(
+            tr.doc.resolve(span.beforeFrom), tr.doc.resolve(resultTo)));
     }
-    view.dispatch(tagContentGuard(tr, { kind: "convert", effect: rangeContentEffect(sources, target) }));
+    view.dispatch(
+        tagContentGuard(tr, { kind: "convert", effect: rangeContentEffect(sources, target) })
+            .scrollIntoView(),
+    );
     view.focus();
     return true;
 }
