@@ -19,12 +19,12 @@
  *     offered for two surfaces with different strings.
  *
  * This file is in the repo's guard tradition (`noColorLiterals`,
- * `thirdPartyNotices`, the `changelog-guard` hook): when prose guidance is
+ * `thirdPartyNotices`, the `prose-guard` hook): when prose guidance is
  * violated repeatedly, the rule becomes code. It is a test rather than a hook
  * on purpose — it runs in CI's `unit-test` job, so it blocks a PR rather than
  * only nudging whoever happens to have the hook installed.
  *
- * Punctuation note: the `changelog-guard` hook forbids em dashes in this file,
+ * Punctuation note: the `prose-guard` hook forbids em dashes in `CHANGELOG.md`,
  * and real UI strings contain them, so a verbatim quotation is impossible by
  * construction. Matching therefore normalizes dashes and quotes on BOTH sides.
  * That is a deliberate hole: it means this check cannot catch a
@@ -95,7 +95,7 @@ function sourceText(): string {
 }
 
 /**
- * Fold the punctuation the changelog-guard hook forces apart, so a quotation
+ * Fold the punctuation the prose-guard hook forces apart, so a quotation
  * that had to be written with a comma still matches a source string using an
  * em dash. See the header: this is why the check cannot be byte-exact.
  */

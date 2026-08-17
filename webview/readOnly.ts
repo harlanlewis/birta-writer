@@ -32,6 +32,11 @@
  * fails to compile until it is classified, and `readOnly.test.ts` asserts the
  * partition's size against the shared command list rather than trusting it.
  *
+ * All three layers reach only what ProseMirror owns. A surface that is neither
+ * contenteditable nor a transaction sits outside every one of them and has to
+ * ask `isReadOnly()` at its own sender; the fullscreen code editor's
+ * `<textarea>` is the instance in the tree (`components/codeBlock/lightbox.ts`).
+ *
  * What the mode deliberately does NOT block: anything that leaves the document
  * alone. Selection, copy, find, folding, the TOC, link navigation, block width
  * and every other presentation preference, and inbound external changes — the
