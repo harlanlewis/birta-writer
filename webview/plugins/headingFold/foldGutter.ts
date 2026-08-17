@@ -14,11 +14,13 @@ import {
     IconChevronDown,
     IconChevronRight,
     IconCode,
+    IconFileCode,
     IconFootnote,
     IconImage,
     IconList,
     IconListOrdered,
     IconMath,
+    IconMinus,
     IconNetwork,
     IconPilcrow,
     IconQuote,
@@ -28,7 +30,7 @@ import {
 import { applyTooltip, hideTooltip } from "../../ui/tooltip";
 import { createFoldEllipsis } from "../../ui/foldEllipsis";
 import { t } from "../../i18n";
-import { isTextBearingParagraph } from "../../blockCapabilities";
+import { isTextBearingParagraph } from "./foldModel";
 // Menu opening and marker-drag arming are late-bound handles the block menu
 // component registers at load (plugins/blockHandles.ts) — the plugin layer
 // never imports component modules; the handles resolve at interaction time.
@@ -55,7 +57,8 @@ function gutterBlockPos(view: EditorView, gutter: HTMLElement): number | null {
         return null;
     }
     try {
-        // The widget sits at blockPos + 1 (just inside the block).
+        // The widget sits at blockPos + 1: just inside the block, or, for a
+        // leaf atom (nodeSize 1), just after it — the same arithmetic.
         return view.posAtDOM(gutter, 0) - 1;
     } catch {
         return null;
@@ -257,7 +260,7 @@ export function createHeadingFoldGutter(
     // setext untouched. It sits to the RIGHT of the fold chevron (distinct
     // click targets), so the two never overlap. "H2" is the same identity
     // the slash menu's heading rows show in their icon slot.
-    const badge = `H${Math.min(Math.max(level, 1), 6)}`;
+    const { badge } = headingGutterSpec(level, collapsed, foldable);
     const marker = createMarkerButton(view, gutter, badge, "heading-fold-marker", (el) => {
         el.textContent = badge;
         el.dataset["pill"] = badge;
@@ -279,6 +282,35 @@ export interface GutterFoldInfo {
     collapsed: boolean;
 }
 
+/** The widget-key / fingerprint suffix a fold state contributes. */
+export function foldKeyPart(fold: GutterFoldInfo | null): string {
+    if (!fold) {
+        return "";
+    }
+    return `${fold.collapsed ? "c" : "o"}${fold.foldable ? "f" : "l"}`;
+}
+
+/**
+ * A heading gutter's identity, derived ONCE from the heading's level and
+ * fold state. `key` is both the widget key the decoration pass reuses DOM
+ * under and the part the structural fingerprint carries for the heading, so
+ * "reuse this widget" and "rebuild the set" can never disagree about which
+ * headings changed; `badge` is the marker's text, its drag-pill name, and
+ * the text badge a NESTED heading's marker shows (nestedChildSpec). One
+ * derivation for every string that names a heading in the gutter.
+ */
+export interface HeadingGutterSpec {
+    key: string;
+    badge: string;
+}
+
+export function headingGutterSpec(level: number, collapsed: boolean, foldable: boolean): HeadingGutterSpec {
+    return {
+        key: `h${level}${foldKeyPart({ collapsed, foldable })}`,
+        badge: `H${Math.min(Math.max(level, 1), 6)}`,
+    };
+}
+
 /**
  * The non-heading twin of the heading gutter: the block's slash-menu icon
  * (pilcrow, list flavor, quote, code, image, …), invisible until its block
@@ -286,16 +318,36 @@ export interface GutterFoldInfo {
  * with — so every top-level block's conversions and actions are as reachable
  * as a heading's. Foldable blocks (callouts with a body) get the same fold
  * chevron headings carry, left of the marker (MAR-110).
+ *
+ * `leafAnchor` marks the gutter of a LEAF ATOM (hr, mdx block — isLeafBlock):
+ * its widget rides blockPos + 1 like every other block's, which for a
+ * nodeSize-1 node is the position AFTER it, so the gutter is the block's next
+ * DOM sibling rather than its child. The position round-trip (gutterBlockPos)
+ * is unchanged; only the CSS differs — the leaf gutter anchors onto the
+ * preceding host (`.block-gutter-host--leaf`, CSS anchor positioning) and
+ * reveals on that sibling's hover (MAR-350). The value is the pair's anchor
+ * name (leafAnchorName), which the host carries as its inline `anchor-name`
+ * and the gutter as its `position-anchor`: a name shared by every leaf would
+ * anchor every leaf gutter in a containing block onto the last leaf host in
+ * it (an absolutely positioned box is laid out after all of them), so two
+ * rules in one document stacked both markers on the second.
+ *
+ * `--collapsed` on the gutter mirrors the host's collapsed fold state so
+ * the resident-chevron rule reads the gutter alone (no wrapper class list).
  */
 export function createBlockGutter(
     view: EditorView,
     spec: MarkerSpec,
     nestedDepth?: number,
     fold?: GutterFoldInfo,
+    leafAnchor?: string,
 ): HTMLElement {
     const gutter = document.createElement("span");
-    gutter.className = `heading-fold-gutter heading-fold-gutter--block${fold?.foldable ? " heading-fold-gutter--foldable" : ""}`;
+    gutter.className = `heading-fold-gutter heading-fold-gutter--block${fold?.foldable ? " heading-fold-gutter--foldable" : ""}${fold?.collapsed ? " heading-fold-gutter--collapsed" : ""}${leafAnchor ? " heading-fold-gutter--leaf" : ""}`;
     gutter.contentEditable = "false";
+    if (leafAnchor) {
+        gutter.style.setProperty("position-anchor", leafAnchor);
+    }
     if (nestedDepth !== undefined) {
         // Container children: the CSS positions the marker clear of every
         // ancestor container's border bar, one inset step per nesting level.
@@ -323,6 +375,9 @@ export function createBlockGutter(
                 el.innerHTML = spec.icon;
             }
             el.dataset["pill"] = spec.label;
+            // The spec key, for the geometry net (e2e) to name what it
+            // measured; the pill is a translated label.
+            el.dataset["key"] = spec.key;
         },
     );
 
@@ -334,16 +389,30 @@ export function createBlockGutter(
 }
 
 /**
+ * The anchor name pairing a leaf host with its sibling gutter (both stamped
+ * by the decoration pass: the host's node decoration carries it as an inline
+ * `anchor-name`, the widget as `position-anchor`). Position-keyed: unique
+ * within a build, and a rebuild renames every pair together. Between
+ * rebuilds decorations are mapped, not renamed, which keeps a pair
+ * consistent even as its position moves; the leaf widget's key carries the
+ * name so its DOM is never reused against a renamed host.
+ */
+export function leafAnchorName(pos: number): string {
+    return `--leaf-gutter-${pos}`;
+}
+
+/**
  * The gutter glyph for a non-heading top-level block, or null for blocks that
  * get no marker. Glyphs mirror the markdown source, dimmed (the design
  * principle the heading hashes established): `-`/`1.`/`[ ]` lists, `>` quote,
- * `[!]` callout, ``` code, `![]` standalone image, `<>` raw HTML.
+ * `[!]` callout, ``` code, `![]` standalone image, `<>` raw HTML, `---` rule.
  *
- * Deliberately absent: leaf atoms — `---` (hr) and orphaned
- * link_definitions — which have no content position for the in-block widget
- * to ride on (nodeSize 1); they'd need an overlay-based handle. Tables DO
- * get a marker (grab/menu/drag) alongside their own grips/insert bars —
- * the two serve different jobs (block-level vs cell-level).
+ * Leaf atoms (hr, mdx block) get a marker too: their widget lands after the
+ * node and is anchored back onto it by CSS (createBlockGutter's `leaf`).
+ * Deliberately absent: orphaned link_definitions — most are stripped by the
+ * remark transform, and a survivor is data rather than a unit to move.
+ * Tables DO get a marker (grab/menu/drag) alongside their own grips/insert
+ * bars — the two serve different jobs (block-level vs cell-level).
  */
 /** A gutter marker's rendering: the same icon its slash-menu row uses (or
  * a text badge — nested headings show H1-H6 like the slash menu's heading
@@ -396,9 +465,44 @@ export function blockMarkerSpec(node: any): MarkerSpec | null {
             // The menu gives kind-less blocks an actions-only menu (no Turn
             // into that would mangle a table); grab/menu/drag all apply.
             return { key: "table", icon: IconTable, label: t("Table") };
+        case "hr":
+            return { key: "hr", icon: IconMinus, label: t("Horizontal Rule") };
+        case "mdx_block":
+            // The opaque MDX island (format/mdx): actions only, like a table.
+            return { key: "mdx", icon: IconFileCode, label: t("MDX") };
         default:
             return null;
     }
+}
+
+/**
+ * Whether a block is a leaf atom (nodeSize 1: hr, mdx block): it has no
+ * content position, so its gutter widget sits after it and is CSS-anchored
+ * back onto it. Answered by the schema, never by a name list, so a new leaf
+ * block type gets the leaf treatment the day it gets a MarkerSpec.
+ */
+export function isLeafBlock(node: any): boolean {
+    return Boolean(node.isLeaf);
+}
+
+/**
+ * The gutter marker buttons a block's DOM owns. Every block but a leaf holds
+ * its gutter inside its own DOM; a leaf atom's gutter is its next sibling
+ * (createBlockGutter's `leafAnchor`), so a caller that finds markers by walking
+ * `view.nodeDOM(pos)` must look one sibling over. Used by the selection-cover
+ * pass (plugin.ts); the ownership round-trip (gutterBlockPos, and
+ * openAtCaret's markerBlockPos) is the same for both placements.
+ */
+export function blockMarkerElements(dom: HTMLElement): HTMLElement[] {
+    const inside = Array.from(dom.querySelectorAll<HTMLElement>(".heading-fold-marker"));
+    if (!dom.classList.contains("block-gutter-host--leaf")) {
+        return inside;
+    }
+    const gutter = dom.nextElementSibling;
+    if (gutter instanceof HTMLElement && gutter.classList.contains("heading-fold-gutter--leaf")) {
+        inside.push(...gutter.querySelectorAll<HTMLElement>(".heading-fold-marker"));
+    }
+    return inside;
 }
 
 /** The marker for a block NESTED inside a container OR a list item: its
@@ -409,8 +513,10 @@ export function blockMarkerSpec(node: any): MarkerSpec | null {
  * position coverage guard (gutterCoverage.test.ts). */
 export function nestedChildSpec(node: any): MarkerSpec | null {
     if (isHeadingNode(node)) {
-        const level = Math.min(Math.max(getHeadingLevel(node), 1), 6);
-        return { key: `h${level}`, icon: "", label: t("Heading"), text: `H${level}` };
+        // A nested heading owns no fold section, so its identity is the
+        // level alone; the badge is the one the top-level gutter shows.
+        const { badge } = headingGutterSpec(getHeadingLevel(node), false, false);
+        return { key: badge.toLowerCase(), icon: "", label: t("Heading"), text: badge };
     }
     const spec = blockMarkerSpec(node);
     return spec?.key === "P" ? null : spec;

@@ -474,25 +474,23 @@ export function readBoundaries(plans: readonly BoundaryPlan[]): DropBoundary[] {
 
 /**
  * A measurer for callers that re-measure REPEATEDLY during one interaction —
- * every auto-scroll frame, every pointer move. It re-plans only when
- * `view.state` changes and otherwise re-reads rects alone.
+ * every auto-scroll frame, every pointer move. Three tiers, each reused for
+ * as long as its input holds:
  *
- * Why it exists: planning is the expensive half and a scroll changes no state,
- * so re-planning per frame was pure waste — and waste that scales with the
- * document. Median auto-scroll frame time on a synthetic prose document
- * (headless Chromium, 2026-07-30), before → after this split:
+ *   - the PLAN (the document walk, a `nodeDOM` per position) is reused while
+ *     `view.state` is identical, because a scroll changes no state;
+ *   - the RECT PASS (one `getBoundingClientRect` per boundary) is reused
+ *     while the editor root's own box is unchanged in height, left and
+ *     width, and merely SHIFTED by the root's vertical displacement — which
+ *     is exactly what a scroll does to every rect at once, so an auto-scroll
+ *     frame costs one rect read on the root instead of one per boundary;
+ *   - anything else re-reads: content that reflows (an image or diagram
+ *     finishing its render, a resize) changes the root's height or width.
  *
- *     3k blocks   16.7 ms → 16.7 ms     (already free; unchanged)
- *     6k blocks   49.5 ms → 16.7 ms
- *     9k blocks   93.7 ms → 16.7 ms
- *    15k blocks    197 ms → 16.7 ms     (5 fps → 60 fps; 8× the travel)
- *
- * A steady 60 fps at every size, with the whole remaining cost being the
- * rect pass — which is why this stops at caching and does NOT go on to
- * binary-search the boundary list for the one near the pointer. Reading
- * 15,000 rects fits in a frame; the tree walk did not. The one-time plan is
- * still O(document) and shows up as a single long first frame (~250 ms at 15k
- * blocks) when a drag starts on a document that size.
+ * Both caches scale with the document, and each frame of a drag used to pay
+ * the whole tier below it. The plan is still O(document) once per drag
+ * start; measure it with an instrumented headless page rather than trusting
+ * a figure written here.
  *
  * `kind` filters at plan time, which also skips those entries' rect reads.
  * That is equivalent to filtering the result: only top-level entries feed
@@ -500,14 +498,14 @@ export function readBoundaries(plans: readonly BoundaryPlan[]): DropBoundary[] {
  * keeping `block` keeps every contributor, while keeping `item` drops the
  * doc-end slot that would have consumed it.
  *
- * State identity is ALMOST the whole invalidation story — every redraw
+ * State identity is ALMOST the whole plan-invalidation story — every redraw
  * ProseMirror performs runs through `updateState`, so a decoration or plugin
  * change brings a new state with it. The exception is a NodeView that swaps
  * its own root element without a transaction: the plan would then hold a
  * detached node, which measures as a zero rect and silently drops that
- * boundary for the rest of the drag. So a connectivity sweep runs alongside
- * the rect pass — an `isConnected` read per entry, immaterial next to the
- * rects it accompanies — and re-plans if any element has been swapped out.
+ * boundary for the rest of the drag. So a connectivity sweep runs on every
+ * measure — an `isConnected` read per entry, no layout — and re-plans (and
+ * re-reads) if any element has been swapped out.
  */
 export function createBoundaryMeasurer(kind?: "block" | "item"): {
     measure(view: EditorView): DropBoundary[];
@@ -515,11 +513,15 @@ export function createBoundaryMeasurer(kind?: "block" | "item"): {
 } {
     let plannedFor: EditorState | null = null;
     let plans: BoundaryPlan[] = [];
+    // The last rect pass and the editor root's box it was read under.
+    let read: DropBoundary[] | null = null;
+    let readRoot: { top: number; height: number; left: number; width: number } | null = null;
 
     const plan = (view: EditorView): void => {
         plannedFor = view.state;
         const all = planBoundaries(view);
         plans = kind ? all.filter((p) => p.kind === kind) : all;
+        read = null;
     };
 
     /** Whether every element the plan points at is still in the document. */
@@ -534,11 +536,23 @@ export function createBoundaryMeasurer(kind?: "block" | "item"): {
             if (plannedFor !== view.state || !planIsLive()) {
                 plan(view);
             }
-            return readBoundaries(plans);
+            const root = view.dom.getBoundingClientRect();
+            if (
+                read && readRoot &&
+                root.height === readRoot.height && root.left === readRoot.left && root.width === readRoot.width
+            ) {
+                const dy = root.top - readRoot.top;
+                return dy === 0 ? read : read.map((b) => ({ ...b, y: b.y + dy }));
+            }
+            read = readBoundaries(plans);
+            readRoot = { top: root.top, height: root.height, left: root.left, width: root.width };
+            return read;
         },
         reset(): void {
             plannedFor = null;
             plans = [];
+            read = null;
+            readRoot = null;
         },
     };
 }

@@ -7,7 +7,7 @@
 import { IconSettings, IconChevronDown } from "@/ui/icons";
 import { t, productName } from "@/i18n";
 import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifyWhatsNewSeen } from "@/messaging";
-import { openShortcutsHelp } from "../shortcutsHelp";
+import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
 import { createMenuTrigger, makeSep } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
@@ -79,7 +79,7 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
             hideToolbar: () => setToolbarVisible(false),
             // Show (the in-editor cheatsheet overlay) above Edit (the native
             // UI) — table order in TOOLBAR_MENU_COMMANDS.
-            openShortcutsHelp: () => openShortcutsHelp(),
+            openShortcutsHelp: () => { void openShortcutsHelpLazy(); },
             openKeyboardShortcuts: () => notifyOpenKeybindings(),
             openExtensionSettings: () => notifyOpenSettings(),
             // Hands the release-history URL to the host, which opens it in the

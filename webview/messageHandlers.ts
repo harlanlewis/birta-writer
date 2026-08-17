@@ -48,6 +48,7 @@ import {
 } from "./imageUpload";
 import { handleUnfurlResult } from "./unfurl";
 import { handleEmbedMetaResult } from "./embedMeta";
+import { handleLinkCardResult } from "./linkCardMeta";
 import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
@@ -386,6 +387,10 @@ export function createMessageHandlers(
             // captions fill in. Render-only — never touches the document.
             handleEmbedMetaResult(msg.id, msg.title);
         },
+        linkCardResult(msg) {
+            // Link-card metadata reply: same shape, keyed by URL. Render-only.
+            handleLinkCardResult(msg.id, msg.card);
+        },
         embedCardResult(msg) {
             // Connector card reply: settle the store; subscribed cards fill in
             // their status chip and detail line. Render-only, and there is no
@@ -432,7 +437,7 @@ export function createMessageHandlers(
             if (window.__i18n) {
                 window.__i18n[msg.gate] = msg.enabled;
             }
-            if (msg.gate === "embedsEnabled") {
+            if (msg.gate === "embedsEnabled" || msg.gate === "linkCardsEnabled") {
                 regateEmbedsIfPossible();
             }
             if (msg.gate === "calcEnabled") {

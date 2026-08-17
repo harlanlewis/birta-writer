@@ -30,6 +30,13 @@
  *   - code block → anything: NOT offered (needs a per-block re-parse; the
  *     source-peek work, MAR-20, is the natural home for that).
  *
+ * A RUN of covered blocks (blockCapabilities `convertRange`) reuses every
+ * mechanism above per block and adds two of its own: the run's markdown goes
+ * into ONE fence (turnRangeIntoCodeBlock), and adjacent same-type wrappers
+ * the run just produced are joined into one (joinAdjacentWrappersIn), so
+ * "these three paragraphs, as a quote" is one quote and not three. Lists
+ * need no such step: the auto-join plugin joins them as each block converts.
+ *
  * "Container" here is any of the four `block+` wrappers: a blockquote, a GFM
  * callout, and the two other spellings of a callout (`:::name` directives and
  * Notion `<aside>` blocks). The last two are sources only — see
@@ -43,6 +50,7 @@ import { TextSelection } from "../../pm";
 import { setHeadingLevelAt } from "../../editing/blockOps";
 import { convertListTreeAt } from "../../editing/listConvert";
 import { wrapBlocksIn } from "../../editing/wrapBlocks";
+import { canJoin } from "../../pm";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import type { ConversionKind } from "../../blockCapabilities";
 import { attrsFromMarker, calloutKind, type CalloutKind } from "../../plugins/callouts";
@@ -68,9 +76,8 @@ export function blockMarkdownAt(
     pos: number,
     getEditor: GetEditor,
 ): string | null {
-    const editor = getEditor();
     let node = view.state.doc.nodeAt(pos);
-    if (!editor || !node) {
+    if (!node) {
         return null;
     }
     if (node.type.name === "list_item") {
@@ -83,10 +90,32 @@ export function blockMarkdownAt(
             : parent.attrs;
         node = parent.type.createChecked(attrs, Fragment.from(node));
     }
+    return fragmentMarkdown(view, Fragment.from(node), getEditor);
+}
+
+/** Serializes the whole top-level blocks in `range` (depth-0 boundaries) to
+ * their markdown source, blank-line separated as the file spells them. */
+export function rangeMarkdown(
+    view: EditorView,
+    range: { from: number; to: number },
+    getEditor: GetEditor,
+): string | null {
+    const slice = view.state.doc.slice(range.from, range.to);
+    if (slice.openStart !== 0 || slice.openEnd !== 0 || slice.content.childCount === 0) {
+        return null;
+    }
+    return fragmentMarkdown(view, slice.content, getEditor);
+}
+
+function fragmentMarkdown(view: EditorView, content: Fragment, getEditor: GetEditor): string | null {
+    const editor = getEditor();
+    if (!editor) {
+        return null;
+    }
     let markdown: string | null = null;
     editor.action((ctx) => {
         const serializer = ctx.get(serializerCtx);
-        const doc = view.state.schema.topNodeType.create(null, Fragment.from(node));
+        const doc = view.state.schema.topNodeType.create(null, content);
         markdown = serializer(doc).replace(/\n+$/, "");
     });
     return markdown;
@@ -95,16 +124,78 @@ export function blockMarkdownAt(
 /** any → code block: the literal markdown source goes inside the fence. */
 export function turnIntoCodeBlock(view: EditorView, pos: number, getEditor: GetEditor): boolean {
     const node = view.state.doc.nodeAt(pos);
-    const source = blockMarkdownAt(view, pos, getEditor);
+    if (!node) {
+        return false;
+    }
+    return fenceSource(view, { from: pos, to: pos + node.nodeSize }, blockMarkdownAt(view, pos, getEditor));
+}
+
+/** A run of blocks → ONE code block holding the run's markdown source, so a
+ * paragraph and the list under it fence together the way the file spells
+ * them, rather than as two fences that would re-parse as one. */
+export function turnRangeIntoCodeBlock(
+    view: EditorView,
+    range: { from: number; to: number },
+    getEditor: GetEditor,
+): boolean {
+    return fenceSource(view, range, rangeMarkdown(view, range, getEditor));
+}
+
+function fenceSource(view: EditorView, range: { from: number; to: number }, source: string | null): boolean {
     const codeType = view.state.schema.nodes["code_block"];
-    if (!node || source === null || !codeType) {
+    if (source === null || !codeType) {
         return false;
     }
     const code = codeType.createChecked(
         null,
         source ? view.state.schema.text(source) : undefined,
     );
-    view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, code));
+    view.dispatch(view.state.tr.replaceWith(range.from, range.to, code));
+    return true;
+}
+
+/**
+ * Joins adjacent top-level WRAPPERS of type `typeName` inside `range` into
+ * one node, in a single transaction: the second half of a run conversion,
+ * after each covered block has become the target on its own. Two quotes born
+ * of one gesture are one quote, which is what wrapping the same selection
+ * from the toolbar produces. Lists are not this function's business: the
+ * auto-join plugin (plugins/list.ts) already joins every list adjacency an
+ * edit creates, marker rule included, as each block converts.
+ */
+export function joinAdjacentWrappersIn(
+    view: EditorView,
+    range: { from: number; to: number },
+    typeName: string,
+): boolean {
+    const doc = view.state.doc;
+    const boundaries: number[] = [];
+    let previous: ProseNode | null = null;
+    doc.forEach((node, offset) => {
+        if (offset < range.from || offset >= range.to) {
+            previous = null;
+            return;
+        }
+        if (
+            previous !== null &&
+            previous.type.name === typeName &&
+            node.type.name === typeName &&
+            canJoin(doc, offset)
+        ) {
+            boundaries.push(offset);
+        }
+        previous = node;
+    });
+    if (boundaries.length === 0) {
+        return false;
+    }
+    // Descending: a join removes tokens at its boundary, which only shifts
+    // positions ABOVE it, so the lower boundaries stay valid.
+    let tr = view.state.tr;
+    for (const boundary of boundaries.reverse()) {
+        tr = tr.join(boundary);
+    }
+    view.dispatch(tr);
     return true;
 }
 

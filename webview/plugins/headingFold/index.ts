@@ -46,6 +46,7 @@ export {
     isContainerNode,
     isHiddenTargetPos,
     isListNode,
+    isTextBearingParagraph,
     selectionCoverRange,
     setHeadingLevelAt,
 } from "./foldModel";
@@ -57,7 +58,9 @@ export {
 } from "./foldAnchors";
 
 export {
+    blockMarkerElements,
     blockMarkerSpec,
+    isLeafBlock,
     nestedChildSpec,
     wireMarkerButtonProtocol,
     type MarkerSpec,

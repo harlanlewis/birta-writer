@@ -19,7 +19,7 @@
  * one exception a policy may not decide for itself: a marker change is a
  * boundary no surface may cross without being asked.
  */
-import type { EditorState, EditorView, Node as ProseNode } from "../pm";
+import type { EditorState, EditorView, Node as ProseNode, Transaction } from "../pm";
 import { canJoin } from "../pm";
 import { flashRange } from "./rangeIndicator";
 
@@ -174,6 +174,29 @@ export function caretMergeBoundary(state: EditorState): number | null {
 }
 
 /**
+ * Join the two lists meeting at `pos` in `tr`, keeping the one marker the
+ * pair has to defend. `tr.join` keeps the UPPER node's attrs, so a marker-less
+ * list (an editor-made one: a paragraph just turned into a list) absorbing an
+ * authored `- a` would erase the `-` the file spelled, and the serializer
+ * would then print the joined list with the default bullet: a marker the
+ * author typed, lost by a join that was supposed to conserve. When the upper
+ * list has no marker and the lower has one, the lower's travels up. Every
+ * list join goes through here so that holds for all of them.
+ */
+export function joinListBoundary(tr: Transaction, pos: number): Transaction {
+    const $pos = tr.doc.resolve(pos);
+    const upper = $pos.nodeBefore;
+    const lower = $pos.nodeAfter;
+    const carried = upper && lower && listMarkerOf(upper) === null ? listMarkerOf(lower) : null;
+    const listPos = upper ? pos - upper.nodeSize : pos;
+    tr.join(pos);
+    if (carried !== null && upper) {
+        tr.setNodeMarkup(listPos, null, { ...upper.attrs, marker: carried });
+    }
+    return tr;
+}
+
+/**
  * Join the two lists meeting at `boundary` as one undo step, re-verifying
  * the boundary against the CURRENT doc (menu/advisory callers computed it
  * against an earlier state). Flashes the merged list — the join's only other
@@ -186,7 +209,7 @@ export function mergeListsAt(view: EditorView, boundary: number): boolean {
     }
     const mergedFrom = boundary - (doc.resolve(boundary).nodeBefore?.nodeSize ?? 0);
     const mergedTo = boundary + (doc.resolve(boundary).nodeAfter?.nodeSize ?? 0);
-    view.dispatch(view.state.tr.join(boundary).scrollIntoView());
+    view.dispatch(joinListBoundary(view.state.tr, boundary).scrollIntoView());
     view.focus();
     // The join removed the two adjoining tokens, so the merged list ends 2
     // positions earlier than the old pair's span.

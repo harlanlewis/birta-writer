@@ -367,6 +367,13 @@ export function activate(context: vscode.ExtensionContext) {
         "Birta: URL embeds off — provider links stay plain links",
     );
     registerGateToggle(
+        "birta.toggleLinkCards",
+        "linkCards.enabled",
+        "linkCardsEnabled",
+        "Birta: link cards on — a link alone on its line shows its page's title and description (display only; needs network features on)",
+        "Birta: link cards off — links stay plain links unless chosen per link",
+    );
+    registerGateToggle(
         "birta.toggleLineNumbers",
         "lineNumbers",
         "lineNumbers",
@@ -520,6 +527,16 @@ export function activate(context: vscode.ExtensionContext) {
                     type: "featureGateChanged",
                     gate: "pasteUnfurl",
                     enabled: readBirtaSetting("pasteUnfurlEnabled"),
+                });
+            }
+            if (e.affectsConfiguration("birta.linkCards.enabled")) {
+                // The webview re-runs the link-card decoration pass on
+                // receipt, so cards appear or fall back to plain links in the
+                // open editors without a reopen.
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "linkCardsEnabled",
+                    enabled: readBirtaSetting("linkCardsEnabled"),
                 });
             }
             if (e.affectsConfiguration("birta.pasteUnfurl.autoApply")) {

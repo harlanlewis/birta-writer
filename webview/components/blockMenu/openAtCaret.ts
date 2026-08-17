@@ -17,8 +17,8 @@
  * the gutter back in mid-typing.
  */
 import type { EditorView } from "../../pm";
-import { CellSelection } from "../../pm";
-import { isListNode } from "../../plugins/headingFold";
+import { CellSelection, NodeSelection } from "../../pm";
+import { blockMarkerElements, isListNode } from "../../plugins/headingFold";
 import { openBlockMenu } from "./menu";
 
 /** The block position a marker's gutter widget belongs to (the widget sits
@@ -74,6 +74,14 @@ export function openBlockMenuAtCaret(view: EditorView): boolean {
     // paragraphs render no marker: the container is their handle), a nested
     // heading/code block anchors to its own badge.
     const candidates: number[] = [];
+    // A node selection names its block outright, so it is the innermost
+    // candidate. The ancestor walk below cannot reach it: $head sits AFTER
+    // the selected node, so for a code block or table nested inside a
+    // callout, $head's chain starts at the callout and the menu would open
+    // on the container rather than the block the user selected.
+    if (selection instanceof NodeSelection) {
+        candidates.push(selection.from);
+    }
     for (let depth = $head.depth; depth >= 1; depth--) {
         candidates.push($head.before(depth));
     }
@@ -101,7 +109,9 @@ export function openBlockMenuAtCaret(view: EditorView): boolean {
         }
         // Ownership check via position round-trip (never "first marker in
         // subtree"): a container's DOM also holds its children's markers.
-        for (const marker of dom.querySelectorAll<HTMLElement>(".heading-fold-marker")) {
+        // blockMarkerElements, not a bare querySelectorAll: a leaf atom's
+        // gutter (a rule, an mdx island) is its next sibling, not its child.
+        for (const marker of blockMarkerElements(dom)) {
             if (markerBlockPos(view, marker) === pos) {
                 openBlockMenu(
                     view,

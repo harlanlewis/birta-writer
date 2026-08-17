@@ -480,8 +480,11 @@ describe("listMarkerOf", () => {
         // The two types print from disjoint alphabets, so a Turn-into has no
         // marker to carry across the type change and drops it. Asserted on the
         // ATTR rather than through `listMarkerOf`, because the point is that
-        // the bad value is never written, not merely never read.
-        const editor = await makeEditor("1. a\n\n- b\n");
+        // the bad value is never written, not merely never read. A paragraph
+        // keeps the converted list apart from `- b`: adjacent, the auto-join
+        // would fold them and carry `-` up (joinListBoundary), which is that
+        // join's contract and not this converter's.
+        const editor = await makeEditor("1. a\n\napart\n\n- b\n");
         const v = view(editor);
         expect(v.state.doc.child(0).attrs["marker"]).toBe(".");
 

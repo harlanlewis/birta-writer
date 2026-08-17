@@ -703,6 +703,37 @@ export function foldEscapeSelection(tr: Transaction, node: any, pos: number): Se
         : Selection.near(tr.doc.resolve(pos), -1);
 }
 
+/**
+ * True when a paragraph carries actual text content — at least one inline
+ * child that is neither an image nor an html atom, ignoring whitespace-only
+ * text. Image-only and HTML-only paragraphs are visual blocks, not prose
+ * (MAR-79), so they get an actions-only menu. Lives in this leaf, beside the
+ * rest of the block taxonomy, because the gutter builder reads it too and
+ * the capability registry importing this barrel is what closes the cycle
+ * the other direction would open (MAR-93).
+ */
+export function isTextBearingParagraph(node: ProseMirrorNode): boolean {
+    if (node.childCount === 0) {
+        return true; // a blank line the user is about to type on
+    }
+    let sawAtom = false;
+    let sawContent = false;
+    node.forEach((child) => {
+        const name = child.type.name;
+        if (name === "image" || name === "html") {
+            sawAtom = true;
+            return;
+        }
+        if (child.isText && !child.text?.trim()) {
+            return;
+        }
+        sawContent = true;
+    });
+    // Whitespace-only paragraphs (no atoms at all) are still prose — only a
+    // paragraph whose real content is images/html is a visual block.
+    return sawContent || !sawAtom;
+}
+
 /** True for the two list container types (items are the draggable units).
  * Exported: the single source of the grabbable-structure taxonomy (the drag
  * boundary walker consumes it too). */

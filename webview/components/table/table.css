@@ -14,6 +14,11 @@
  * every global table style (border-collapse, display:block, overflow-x, …). */
 .mw-table {
     position: relative;
+    /* Gutter contract (style.css .heading-fold-gutter): the block marker
+       seats on the first row's text, below the table's 1px border and the
+       cell's 6px padding-top (both px chrome, style.css `td, th`), so the
+       offset is px too. */
+    --gutter-top: 7.5px;
 }
 
 .mw-table-overlay {

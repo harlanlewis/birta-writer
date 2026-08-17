@@ -11,7 +11,7 @@ import type { EditorView } from "../pm";
 import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { foldedHiddenRanges, headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
-import { setStickyContent, headingStickyPlugin, stickyHeadingFoldable } from "../plugins/headingSticky";
+import { setStickyContent, headingStickyPlugin, stickyAncestors, stickyHeadingFoldable } from "../plugins/headingSticky";
 import { setBlockMenuContext, closeBlockMenu } from "../components/blockMenu";
 
 let editors: Editor[] = [];
@@ -360,5 +360,71 @@ describe("sticky heading rescan scheduling", () => {
         await Promise.resolve();
 
         expect(raf.pending()).toBeGreaterThan(0);
+    });
+});
+
+describe("sticky heading ancestor trail (MAR-31)", () => {
+    /** The visible headings of a doc, document order, as the plugin sees them. */
+    function headingsOf(editorView: EditorView): HTMLElement[] {
+        return Array.from(editorView.dom.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"));
+    }
+
+    it("stickyAncestors should walk back one level at a time, root first, skipping siblings and cousins", async () => {
+        const editor = await makeEditor([
+            "# Root", "", "## Other branch", "", "### Cousin", "", "## Parent", "", "### Sibling", "", "### Current", "", "#### Child",
+        ].join("\n"));
+        const headings = headingsOf(view(editor));
+        const current = headings.findIndex((h) => h.textContent?.includes("Current"));
+        expect(current).toBeGreaterThan(0);
+        expect(stickyAncestors(headings, current).map((c) => c.text)).toEqual(["Root", "Parent"]);
+        // A top-level heading has no trail; a heading whose ancestors are
+        // absent (an H3 with no H2 above) still climbs to what exists.
+        expect(stickyAncestors(headings, 0)).toEqual([]);
+        expect(stickyAncestors(headings, headings.length - 1).map((c) => c.text)).toEqual(["Root", "Parent", "Current"]);
+        expect(stickyAncestors(headings, -1)).toEqual([]);
+    });
+
+    it("the sticky should render the trail above the title, and no trail for a top-level heading", async () => {
+        const editor = await makeEditor(["# Root", "", "## Parent", "", "### Current", "", "Body."].join("\n"));
+        const editorView = view(editor);
+        const headings = headingsOf(editorView);
+        const currentPos = editorView.posAtDOM(headings[2]!, 0) - 1;
+        const sticky = document.createElement("div");
+        document.body.appendChild(sticky);
+        setStickyContent(sticky, editorView, headings[2]!, currentPos, false, false, stickyAncestors(headings, 2));
+        const crumbs = Array.from(sticky.querySelectorAll<HTMLButtonElement>(".heading-sticky-crumb")).map((b) => b.textContent);
+        expect(crumbs).toEqual(["Root", "Parent"]);
+        // Trail first, then the title row holding the gutter and the label.
+        expect(sticky.firstElementChild?.className).toBe("heading-sticky-trail");
+        expect(sticky.querySelector(".heading-sticky-row .heading-sticky-gutter")).not.toBeNull();
+        expect(sticky.querySelector(".heading-sticky-row .heading-sticky-text")?.textContent).toBe("Current");
+
+        setStickyContent(sticky, editorView, headings[0]!, 0, false, false, stickyAncestors(headings, 0));
+        expect(sticky.querySelector(".heading-sticky-trail")).toBeNull();
+        expect(sticky.querySelector(".heading-sticky-text")?.textContent).toBe("Root");
+    });
+
+    it("clicking a crumb should scroll its heading into view and place the caret at its start", async () => {
+        const editor = await makeEditor(["# Root", "", "## Parent", "", "### Current", "", "Body."].join("\n"));
+        const editorView = view(editor);
+        const headings = headingsOf(editorView);
+        const currentPos = editorView.posAtDOM(headings[2]!, 0) - 1;
+        const parentPos = editorView.posAtDOM(headings[1]!, 0) - 1;
+        editorView.dispatch(editorView.state.tr.setSelection(
+            TextSelection.create(editorView.state.doc, currentPos + 1)));
+        const sticky = document.createElement("div");
+        document.body.appendChild(sticky);
+        setStickyContent(sticky, editorView, headings[2]!, currentPos, false, false, stickyAncestors(headings, 2));
+        const scrollTo = vi.fn();
+        vi.stubGlobal("scrollTo", scrollTo);
+
+        const parentCrumb = sticky.querySelectorAll<HTMLButtonElement>(".heading-sticky-crumb")[1]!;
+        const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        parentCrumb.dispatchEvent(down);
+        expect(down.defaultPrevented).toBe(true);
+        parentCrumb.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+        expect(scrollTo).toHaveBeenCalled();
+        expect(editorView.state.selection.from).toBe(parentPos + 1);
     });
 });

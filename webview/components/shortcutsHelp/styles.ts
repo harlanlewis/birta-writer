@@ -1,3 +1,37 @@
+/**
+ * components/shortcutsHelp/styles.ts
+ *
+ * The shortcuts overlay's CSS, injected on first open instead of shipping in
+ * the eager stylesheet.
+ *
+ * Why a template string and not a `.css` file: esbuild collects every
+ * stylesheet reachable from the webview entry into the single render-blocking
+ * `webview.css`, including ones reached only through a dynamic `import()`, so
+ * a `shortcutsHelp.css` would ride the launch path for everyone while the
+ * overlay itself is a rarely-launched cheatsheet (the same reasoning as
+ * `lineNumbers/styles.ts`, and why KaTeX's stylesheet is a separate entry in
+ * `esbuild.mjs`). A `<style>` element rather than a lazily-linked stylesheet,
+ * because a `<link>` loads asynchronously and would paint the first open
+ * unstyled; inline text applies synchronously and the webview CSP already
+ * allows `'unsafe-inline'` for styles.
+ *
+ * Idempotence is read off the DOM rather than a module flag, so the guard can
+ * never disagree with reality.
+ *
+ * The rules are written flat rather than nested: this text is parsed by
+ * jsdom's CSS parser every time a test opens the overlay, and that parser
+ * rejects native nesting with a logged "Could not parse CSS stylesheet" per
+ * open. Nesting stays the preferred form in `.css` files, which jsdom never
+ * reads.
+ *
+ * `noColorLiterals.test.ts` and `chromeTokens.test.ts` both reach this string:
+ * they extract CSS authored in `.ts` as well as `.css`.
+ */
+
+/** `id` of the injected element, and the idempotence key. */
+const STYLE_ID = "shortcuts-help-styles";
+
+export const SHORTCUTS_HELP_CSS = `
 /* ── Shortcuts Help — right-docked reference card (find-bar idiom) ──
  *
  * Layout system: every shortcut row is a two-column grid
@@ -43,25 +77,25 @@
     transform: translateY(-4px);
     transition: opacity 0.1s ease, transform 0.1s ease;
     pointer-events: none;
+}
 
-    &.shortcuts-help--visible {
-        opacity: 1;
-        transform: translateY(0);
-        pointer-events: auto;
-    }
+.shortcuts-help.shortcuts-help--visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
 
-    &:focus {
-        outline: 1px solid var(--vscode-focusBorder);
-        outline-offset: -1px;
-    }
+.shortcuts-help:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
-    /* macOS chords are compact symbol runs (⌘⇧↑) — tighten the column.
-       112px is deliberate: wide enough for the widest alternative pair
-       (⌃⇧⌘→ ⌃⇧⌘← needs ≥111px to hold one line); pair-grouping keeps the
-       4-chip move set wrapping as a 2×2 stack. */
-    &.shortcuts-help--mac {
-        --shortcuts-keycol: 112px;
-    }
+/* macOS chords are compact symbol runs (⌘⇧↑) — tighten the column.
+   112px is deliberate: wide enough for the widest alternative pair
+   (⌃⇧⌘→ ⌃⇧⌘← needs ≥111px to hold one line); pair-grouping keeps the
+   4-chip move set wrapping as a 2×2 stack. */
+.shortcuts-help.shortcuts-help--mac {
+    --shortcuts-keycol: 112px;
 }
 
 /* The scrollable middle. Bottom padding keeps the last row clear of the fixed
@@ -91,11 +125,11 @@
     display: flex;
     align-items: center;
     opacity: 0.8;
+}
 
-    & svg {
-        width: 16px;
-        height: 16px;
-    }
+.shortcuts-help__header-icon svg {
+    width: 16px;
+    height: 16px;
 }
 
 .shortcuts-help__title {
@@ -185,11 +219,11 @@
     padding: 10px 0 12px;
     background: var(--ui-card-bg);
     border-top: 1px solid var(--vscode-editorWidget-border);
+}
 
-    & .shortcuts-help__note {
-        flex: 1;
-        margin-top: 0;
-    }
+.shortcuts-help__footer .shortcuts-help__note {
+    flex: 1;
+    margin-top: 0;
 }
 
 /* Icon-only close button — pure .ui-btn/.ui-btn--icon primitive; only the
@@ -204,4 +238,19 @@
 .shortcuts-help__customize {
     flex: 0 0 auto;
     padding: 3px 12px;
+}
+`;
+
+/** Install the overlay's rules once; a hash lookup on every later call. */
+export function ensureShortcutsHelpStyles(): void {
+    if (typeof document === "undefined" || !document.head) {
+        return;
+    }
+    if (document.getElementById(STYLE_ID)) {
+        return;
+    }
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = SHORTCUTS_HELP_CSS;
+    document.head.appendChild(style);
 }

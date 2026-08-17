@@ -179,6 +179,47 @@ describe("fidelity: source-authored splits are never auto-merged", () => {
         expect(markdown(editor)).toContain("* bingo");
     });
 
+    it("a marker-less list landing between a `-` list and a `*` list should not bridge the author's split", async () => {
+        const editor = await makeEditor("- a\n\nsep\n\n* b\n");
+        const v = view(editor);
+        expect(topLevelTypes(v)).toEqual(["bullet_list", "paragraph", "bullet_list"]);
+        // Turn the separator into a list with no marker of its own (what a
+        // conversion produces): both boundaries are edit-created and
+        // neither pair conflicts on its own, but joining both would put `b`
+        // in the `-` list, which is exactly the split the source spelled.
+        let from = -1;
+        let to = -1;
+        v.state.doc.forEach((child: ProseNode, offset: number) => {
+            if (child.type.name === "paragraph") {
+                from = offset;
+                to = offset + child.nodeSize;
+            }
+        });
+        const { bullet_list: list, list_item: item } = v.state.schema.nodes;
+        const wrapped = list!.createChecked(null, item!.createChecked(null, v.state.doc.nodeAt(from)!));
+        v.dispatch(v.state.tr.replaceWith(from, to, wrapped));
+
+        expect(topLevelTypes(v)).toEqual(["bullet_list", "bullet_list"]);
+        expect(markdown(editor)).toBe("- a\n- sep\n\n* b\n");
+    });
+
+    it("a marker-less list absorbing an authored `*` list should keep spelling `*`", async () => {
+        // `tr.join` keeps the UPPER node's attrs. The editor-made list above
+        // has no marker; the file's `* b` does, and after the join the one
+        // list must still print it, or the join rewrote a line the user never
+        // touched.
+        const editor = await makeEditor("sep\n\n* b\n");
+        const v = view(editor);
+        const { bullet_list: list, list_item: item } = v.state.schema.nodes;
+        const para = v.state.doc.child(0);
+        const wrapped = list!.createChecked(null, item!.createChecked(null, para));
+        v.dispatch(v.state.tr.replaceWith(0, para.nodeSize, wrapped));
+
+        expect(topLevelTypes(v)).toEqual(["bullet_list"]);
+        expect(v.state.doc.child(0).attrs["marker"]).toBe("*");
+        expect(markdown(editor)).toBe("* sep\n* b\n");
+    });
+
     it("an addToHistory:false rewrite should never trigger a join", async () => {
         // External sync applies file changes with addToHistory:false — the
         // resulting doc is the FILE's state, not a user edit to interpret.

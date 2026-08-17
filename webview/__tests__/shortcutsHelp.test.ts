@@ -1,7 +1,9 @@
 /**
  * shortcutsHelp component tests: lazy one-time DOM build, section content,
  * platform-correct kbd rendering, escape-layer hygiene on every close path,
- * the Edit Keyboard Shortcuts messaging call, and focus handoff.
+ * the Edit Keyboard Shortcuts messaging call, focus handoff, the lazy chunk
+ * and injected stylesheet (the module must stay off the eager graph), and the
+ * canary tying every printed chord to a live keymap binding.
  *
  * The module keeps singleton state (panel element, visibility, layer
  * handle) and i18n caches `isMac` at module load, so every test imports a
@@ -20,13 +22,17 @@ interface Harness {
     editorDom: HTMLElement;
 }
 
-/** Fresh module graph + a focusable fake .ProseMirror host. */
-async function loadHarness(isMac: boolean): Promise<Harness> {
+/**
+ * Fresh module graph + a focusable fake .ProseMirror host. `isMac: undefined`
+ * ships an `__i18n` with no platform hint at all.
+ */
+async function loadHarness(isMac: boolean | undefined): Promise<Harness> {
     vi.resetModules();
     document.body.innerHTML = "";
-    (window as unknown as { __i18n: { translations: Record<string, string>; isMac: boolean } }).__i18n = {
+    document.getElementById(STYLE_ID)?.remove();
+    (window as unknown as { __i18n: { translations: Record<string, string>; isMac?: boolean } }).__i18n = {
         translations: {},
-        isMac,
+        ...(isMac === undefined ? {} : { isMac }),
     };
     const editorDom = document.createElement("div");
     editorDom.className = "ProseMirror";
@@ -36,6 +42,10 @@ async function loadHarness(isMac: boolean): Promise<Harness> {
     const { closeTopmostLayer } = await import("../ui/escapeLayers");
     return { openShortcutsHelp, closeTopmostLayer, editorDom };
 }
+
+/** The injected stylesheet's id (components/shortcutsHelp/styles.ts). */
+const STYLE_ID = "shortcuts-help-styles";
+const styleTags = () => document.querySelectorAll(`style#${STYLE_ID}`);
 
 const panels = () => document.querySelectorAll<HTMLElement>(".shortcuts-help");
 const panel = () => document.querySelector<HTMLElement>(".shortcuts-help");
@@ -278,5 +288,176 @@ describe("shortcutsHelp — focus and the customize action", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openKeybindings" });
         expect(isOpen()).toBe(false);
         expect(h.closeTopmostLayer()).toBe(false);
+    });
+});
+
+describe("shortcutsHelp — lazy chunk and injected styles", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("importing the module should inject no stylesheet; the first open should inject exactly one, and reopening never a second", async () => {
+        const h = await loadHarness(true);
+        expect(styleTags().length).toBe(0);
+        h.openShortcutsHelp();
+        expect(styleTags().length).toBe(1);
+        expect(styleTags()[0]!.textContent).toContain(".shortcuts-help");
+        h.openShortcutsHelp(); // toggle closed
+        h.openShortcutsHelp(); // reopen
+        expect(styleTags().length).toBe(1);
+    });
+
+    it("the overlay and its styles should stay off the webview entry's eager import graph, reached only through the loader", async () => {
+        const { eagerModulesOf } = await import("./helpers/eagerGraph");
+        const eager = new Set(eagerModulesOf());
+        // The walk reached the neighbourhood: the seam is eager, the overlay is not.
+        expect(eager.has("components/shortcutsHelp/loader.ts")).toBe(true);
+        expect(eager.has("components/shortcutsHelp/index.ts")).toBe(false);
+        expect(eager.has("components/shortcutsHelp/styles.ts")).toBe(false);
+    });
+
+    it("the loader should toggle the same singleton overlay the direct entry does", async () => {
+        await loadHarness(true);
+        const { openShortcutsHelpLazy } = await import("../components/shortcutsHelp/loader");
+        await openShortcutsHelpLazy();
+        expect(isOpen()).toBe(true);
+        expect(panels().length).toBe(1);
+        await openShortcutsHelpLazy(); // the toggle closes it
+        expect(isOpen()).toBe(false);
+        expect(panels().length).toBe(1);
+    });
+});
+
+describe("shortcutsHelp — every printed chord is a live keymap binding", () => {
+    it("each chord the cheatsheet prints should be bound by some typing-level keymap file", async () => {
+        // The chord-literal scan (noHardcodedKeybindings.test.ts) pins WHICH
+        // literals this file may contain; it cannot say whether each one is
+        // still bound anywhere. A binding removed from its plugin with the
+        // row left in place would print a key that no longer does anything,
+        // and this is the only place the two tables are compared.
+        const { KEYMAP_CHORDS, LABEL_CHORDS } = await import("../../shared/__tests__/keymapChords");
+        const printed = LABEL_CHORDS["webview/components/shortcutsHelp/index.ts"]!;
+        const bound = new Set(Object.values(KEYMAP_CHORDS).flatMap((chords) => Object.keys(chords)));
+        expect(printed.length).toBeGreaterThan(0);
+        const orphans = printed.filter((chord) => !bound.has(chord));
+        expect(orphans, "printed chords with no keymap binding").toEqual([]);
+    });
+
+    it("the rendered panel should print exactly the chords the fixture records for it (no row added or dropped without the table following)", async () => {
+        // The set of chords rendered on BOTH platforms, mapped back to their
+        // ProseMirror spelling, must equal the fixture's list: a row added
+        // here without listing its chord, or a chord listed here with its
+        // row gone, fails.
+        const { LABEL_CHORDS } = await import("../../shared/__tests__/keymapChords");
+        const printed = [...LABEL_CHORDS["webview/components/shortcutsHelp/index.ts"]!].sort();
+        const rendered = new Set<string>();
+        for (const isMac of [true, false]) {
+            const h = await loadHarness(isMac);
+            h.openShortcutsHelp();
+            for (const k of panel()!.querySelectorAll("kbd")) {
+                const chord = chordOf(k.textContent!, isMac);
+                if (chord) rendered.add(chord);
+            }
+        }
+        expect([...rendered].sort()).toEqual(printed);
+    });
+});
+
+/**
+ * Invert the panel's display form back to the ProseMirror chord spelling
+ * (the KEY_DISPLAY glyph pass plus kbd()'s own rendering); null for the
+ * plain-key rows (Esc, Tab, arrows) that are not chords.
+ */
+function chordOf(display: string, isMac: boolean): string | null {
+    const glyphs: [string, string][] = [["↑", "ArrowUp"], ["↓", "ArrowDown"], ["←", "ArrowLeft"], ["→", "ArrowRight"]];
+    let parts: string[];
+    if (isMac) {
+        // Symbol runs: ⌃ ⇧ ⌘ ⌥ prefixes, then the key.
+        const mods: [string, string][] = [["⌃", "Ctrl"], ["⇧", "Shift"], ["⌘", "Mod"], ["⌥", "Alt"]];
+        parts = [];
+        let rest = display;
+        for (;;) {
+            const m = mods.find(([g]) => rest.startsWith(g));
+            if (!m) break;
+            parts.push(m[1]);
+            rest = rest.slice(m[0].length);
+        }
+        if (parts.length === 0) return null;
+        // The macOS smart-select chord spells Ctrl…Cmd, not Ctrl…Mod.
+        if (parts[0] === "Ctrl") parts = parts.map((p) => (p === "Mod" ? "Cmd" : p));
+        parts.push(rest);
+    } else {
+        parts = display.split("+");
+        if (parts.length < 2) return null;
+        parts = parts.map((p) => (p === "Ctrl" ? "Mod" : p));
+    }
+    const key = parts.pop()!;
+    const named = glyphs.find(([g]) => g === key)?.[1] ?? (key.length === 1 ? key.toLowerCase() : key);
+    return [...parts, named].join("-");
+}
+
+describe("shortcutsHelp — one platform source", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("with no platform hint in __i18n, the panel should follow kbd()'s dialect rather than navigator.platform", async () => {
+        // Arrange: a Mac-looking navigator, but an __i18n that carries no
+        // isMac, which is the case kbd() renders as Windows/Linux.
+        const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+        Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+        try {
+            const h = await loadHarness(undefined);
+            h.openShortcutsHelp();
+
+            // Assert: no macOS column, no macOS chord anywhere; the printed
+            // smart-select row is the Shift+Alt one kbd() can spell.
+            expect(panel()!.classList.contains("shortcuts-help--mac")).toBe(false);
+            const chips = [...panel()!.querySelectorAll("kbd")].map((k) => k.textContent!);
+            expect(chips.some((c) => c.includes("⌘") || c.includes("⌃"))).toBe(false);
+            expect(chips).toContain("Shift+Alt+→");
+        } finally {
+            if (platform) {
+                Object.defineProperty(navigator, "platform", platform);
+            } else {
+                delete (navigator as unknown as Record<string, unknown>)["platform"];
+            }
+        }
+    });
+});
+
+describe("shortcutsHelp — where focus lands after an outside click", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("an outside mousedown into a text-entry surface should NOT pull focus back to the editor", async () => {
+        const h = await loadHarness(true);
+        const input = document.createElement("input");
+        document.body.appendChild(input);
+        h.openShortcutsHelp();
+        expect(document.activeElement).toBe(panel());
+
+        // Act: the browser's default action will focus the input; the
+        // overlay must not route focus through the editor first.
+        input.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        expect(isOpen()).toBe(false);
+        expect(document.activeElement).not.toBe(h.editorDom);
+    });
+
+    it("an outside mousedown on a chrome button should still hand focus to the editor", async () => {
+        // Chrome buttons preventDefault their mousedown to keep the editor
+        // focused (ui/dom.ts), so the editor is where focus has to go.
+        const h = await loadHarness(true);
+        const btn = document.createElement("button");
+        btn.className = "ui-btn";
+        document.body.appendChild(btn);
+        h.openShortcutsHelp();
+
+        btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        expect(isOpen()).toBe(false);
+        expect(document.activeElement).toBe(h.editorDom);
     });
 });

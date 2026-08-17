@@ -52,6 +52,32 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(badge));
     check("badge carries the heading level (H1)", badge.label === "H1", `label=${badge.label}`);
 
+    // The mirror's badge and chevron are sized against the CONTENT em like
+    // the in-flow gutter's (MAR-93); the sticky mounts on <body>, outside
+    // #editor, so it has to opt into that em itself. Parity is checked at
+    // 200% content scale, where a mirror still reading the em's initial value
+    // would sit at half the in-flow size.
+    const scaledParity = await page.evaluate(() => {
+        document.documentElement.style.setProperty("--content-font-scale", "2");
+        const font = (el) => (el ? parseFloat(getComputedStyle(el).fontSize) : null);
+        const width = (el) => (el ? el.getBoundingClientRect().width : null);
+        const inFlow = document.querySelector(".ProseMirror > .heading-fold-heading .heading-fold-marker");
+        const inFlowToggle = document.querySelector(".ProseMirror > .heading-fold-heading .heading-fold-toggle");
+        const mirror = document.querySelector(".heading-sticky-marker");
+        const mirrorToggle = document.querySelector(".heading-sticky-toggle");
+        const out = {
+            badge: font(inFlow), mirrorBadge: font(mirror),
+            toggle: width(inFlowToggle), mirrorToggle: width(mirrorToggle),
+        };
+        document.documentElement.style.removeProperty("--content-font-scale");
+        return out;
+    });
+    check("at 200% the sticky badge and chevron match the in-flow gutter's size",
+        scaledParity.badge !== null && scaledParity.badge > 20 &&
+            Math.abs(scaledParity.badge - scaledParity.mirrorBadge) < 0.6 &&
+            Math.abs(scaledParity.toggle - scaledParity.mirrorToggle) < 0.6,
+        JSON.stringify(scaledParity));
+
     const markerBox = await page.$eval(".heading-sticky-marker", (el) => {
         const r = el.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };

@@ -10,6 +10,13 @@
        control column. Explicit — do NOT rely on the gutter plugin's
        .block-gutter-host for this. */
     position: relative;
+    /* Gutter contract (style.css .heading-fold-gutter): the block marker
+       seats on the floating chrome row (.code-float-row: 6px margin above a
+       22px pill, px-fixed), which is what the reader sees as the block's
+       first line; the column steps left by the border so the icon lines up
+       with the bare blocks. */
+    --gutter-top: calc(0.18 * var(--content-em) + 5.5px);
+    --gutter-left: calc(var(--gutter-column) - 1px);
 }
 
 /* The floating chrome row (language pill + fold ellipsis) at the canvas's

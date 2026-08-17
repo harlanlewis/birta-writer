@@ -159,6 +159,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.toggleLinkCards",
+                "title": "%command.toggleLinkCards.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.toggleChecklistSink",
                 "title": "%command.toggleChecklistSink.title%",
                 "category": "Birta Writer"
@@ -2320,6 +2325,13 @@
                     "default": false,
                     "scope": "application",
                     "markdownDescription": "%config.pasteUnfurl.autoApply.description%"
+                },
+                "birta.linkCards.enabled": {
+                    "order": 105.25,
+                    "type": "boolean",
+                    "default": false,
+                    "scope": "application",
+                    "markdownDescription": "%config.linkCards.enabled.description%"
                 },
                 "birta.embeds.enabled": {
                     "order": 105.3,

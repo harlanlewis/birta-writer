@@ -12,6 +12,7 @@ import { $prose } from "@milkdown/utils";
 import {
     isListNode,
     isSameTypeListBoundary,
+    joinListBoundary,
     listBoundaryMarkersConflict,
     listMarkerOf,
     listMarkersConflict,
@@ -1102,13 +1103,19 @@ export const listAutoJoinPlugin = $prose(() => {
             });
             if (fresh.length === 0) return null;
 
-            // Descending order: a join removes tokens at its boundary, which
-            // only shifts positions ABOVE it — lower boundaries stay valid.
+            // Ascending order, each boundary mapped through the joins above
+            // it and its marker pair re-read as it stands THEN. A join keeps
+            // the upper list's marker, so once `- a` has absorbed a marker-
+            // less list, the boundary below is `-` against whatever follows;
+            // read pairwise on the original doc, a marker-less list in the
+            // middle bridges a `-` list to a `*` list and the split the
+            // author spelled is gone.
             const tr = newState.tr;
             let joined = false;
-            for (const b of fresh.sort((x, y) => y - x)) {
-                if (canJoin(tr.doc, b)) {
-                    tr.join(b);
+            for (const b of fresh.sort((x, y) => x - y)) {
+                const pos = tr.mapping.map(b);
+                if (canJoin(tr.doc, pos) && !listBoundaryMarkersConflict(tr.doc, pos)) {
+                    joinListBoundary(tr, pos);
                     joined = true;
                 }
             }

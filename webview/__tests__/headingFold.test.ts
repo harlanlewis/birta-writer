@@ -18,6 +18,11 @@ import { setHeadingLevelAt } from "../plugins/headingFold";
 // through the marker button the plugin renders. The plugin registration wires
 // the gutter widget; clicking its marker opens the menu on <body>.
 import { headingFoldPlugin } from "../plugins/headingFold";
+// The gutter's block menu is late-bound: components/blockMenu registers the
+// open/close/drag implementations into plugins/blockHandles when it loads
+// (webview/index.ts imports it for the product). Import it here for the
+// same reason, rather than relying on some other module reaching it.
+import "../components/blockMenu";
 
 let editors: Editor[] = [];
 

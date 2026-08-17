@@ -29,24 +29,29 @@
  */
 import type { EditorView } from "./pm";
 import type { Node as ProseNode } from "./pm";
-import { getHeadingLevel, setHeadingLevelAt } from "./plugins/headingFold";
+import { getHeadingLevel, isTextBearingParagraph, setHeadingLevelAt } from "./plugins/headingFold";
 import type { GetEditor } from "./editorCommands";
 // Runtime-only cycle (turnInto imports this module's kind probes back for
 // its legacy predicate); both sides touch the other only inside function
 // bodies, matching the contentGuard ↔ headingFold precedent.
 import {
     containerToList,
+    joinAdjacentWrappersIn,
     retypeContainer,
     retypeList,
     turnIntoCodeBlock,
+    turnRangeIntoCodeBlock,
     unwrapContainerTo,
     unwrapListTo,
     wrapListIn,
     wrapProseIn,
 } from "./components/blockMenu";
+import { BlockRangeSelection } from "./plugins/blockRange";
+import { TextSelection } from "./pm";
 // Runtime-only cycle (contentGuard → headingFold → this module →
-// contentGuard); auditConversion is only called inside convertAt's body.
-import { auditConversion } from "./plugins/contentGuard";
+// contentGuard); both are only called inside convertAt's and convertRange's
+// bodies.
+import { auditConversion, tagContentGuard } from "./plugins/contentGuard";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────
 
@@ -147,34 +152,6 @@ export const INLINE: BlockCapability =
     { shape: "inline", content: "none", kind: null, source: false, target: false };
 
 // ── Instance classifiers (the `kind` field's function arm) ─────────────────
-
-/**
- * True when a paragraph carries actual text content — at least one inline
- * child that is neither an image nor an html atom, ignoring whitespace-only
- * text. Image-only and HTML-only paragraphs are visual blocks, not prose
- * (MAR-79), so they get an actions-only menu.
- */
-export function isTextBearingParagraph(node: ProseNode): boolean {
-    if (node.childCount === 0) {
-        return true; // a blank line the user is about to type on
-    }
-    let sawAtom = false;
-    let sawContent = false;
-    node.forEach((child) => {
-        const name = child.type.name;
-        if (name === "image" || name === "html") {
-            sawAtom = true;
-            return;
-        }
-        if (child.isText && !child.text?.trim()) {
-            return;
-        }
-        sawContent = true;
-    });
-    // Whitespace-only paragraphs (no atoms at all) are still prose — only a
-    // paragraph whose real content is images/html is a visual block.
-    return sawContent || !sawAtom;
-}
 
 /** A bullet list whose items carry `checked` renders (and serializes) as a
  * task list — the single probe shared by the menu and the gutter glyphs. */
@@ -543,4 +520,205 @@ export function convertAt(
         view.focus();
     }
     return changed;
+}
+
+
+// ── A run of blocks ─────────────────────────────────────────────────────────
+
+/** The positions of the whole top-level blocks `range` covers, in document
+ * order: the unit a block-range selection or a fold-expanded cover names
+ * (`selectionCoverRange`). Depth-0 boundaries only; anything else is empty. */
+export function coveredBlockPositions(doc: ProseNode, range: { from: number; to: number }): number[] {
+    const positions: number[] = [];
+    doc.forEach((_node, offset) => {
+        if (offset >= range.from && offset < range.to) {
+            positions.push(offset);
+        }
+    });
+    return positions;
+}
+
+/**
+ * Whether EVERY block in the run may become `target`: the intersection of
+ * the covered blocks' legal targets, never apply-where-legal ("Structure
+ * travels whole", docs/DESIGN_PRINCIPLES.md). A block with no conversion
+ * kind at all (a table, a rule, an image paragraph) empties the intersection,
+ * so a run that includes one offers no Turn-into rows rather than converting
+ * around it. False for a run of fewer than two blocks: that is `canConvert`.
+ */
+export function canConvertRange(
+    view: EditorView,
+    range: { from: number; to: number },
+    target: ConversionKind,
+): boolean {
+    const positions = coveredBlockPositions(view.state.doc, range);
+    return positions.length > 1 && positions.every((pos) => canConvert(view, pos, target));
+}
+
+/** The one content effect a run conversion declares: the union of every
+ * covered pair's drops and adds, or the fence's flatten when that is the
+ * target (it subsumes every marker drop, since the markers become text). */
+function rangeContentEffect(sources: readonly ConversionKind[], target: ConversionKind): ContentEffect {
+    const drops = new Set<FingerprintKey>();
+    const adds = new Set<FingerprintKey>();
+    for (const source of sources) {
+        const effect = contentEffectOf(source, target);
+        if (effect === "conserving-modulo-marks") {
+            return effect;
+        }
+        if (effect !== null && effect !== "conserving") {
+            effect.drops?.forEach((key) => drops.add(key));
+            effect.adds?.forEach((key) => adds.add(key));
+        }
+    }
+    if (drops.size === 0 && adds.size === 0) {
+        return "conserving";
+    }
+    return {
+        ...(drops.size > 0 && { drops: [...drops] }),
+        ...(adds.size > 0 && { adds: [...adds] }),
+    };
+}
+
+/**
+ * The span over which two documents differ, at top-level block granularity:
+ * the leading and trailing children they share (node identity first, then
+ * structural equality) are excluded, and what is left is the edit. Null when
+ * they are the same document.
+ */
+function changedTopLevelSpan(
+    before: ProseNode,
+    after: ProseNode,
+): { beforeFrom: number; beforeTo: number; afterFrom: number; afterTo: number } | null {
+    let prefix = 0;
+    while (
+        prefix < before.childCount && prefix < after.childCount &&
+        before.child(prefix).eq(after.child(prefix))
+    ) {
+        prefix++;
+    }
+    let suffix = 0;
+    while (
+        suffix < before.childCount - prefix && suffix < after.childCount - prefix &&
+        before.child(before.childCount - 1 - suffix).eq(after.child(after.childCount - 1 - suffix))
+    ) {
+        suffix++;
+    }
+    if (prefix === before.childCount && prefix === after.childCount) {
+        return null;
+    }
+    const startOf = (doc: ProseNode, index: number): number => {
+        let pos = 0;
+        for (let i = 0; i < index; i++) {
+            pos += doc.child(i).nodeSize;
+        }
+        return pos;
+    };
+    return {
+        beforeFrom: startOf(before, prefix),
+        beforeTo: startOf(before, before.childCount - suffix),
+        afterFrom: startOf(after, prefix),
+        afterTo: startOf(after, after.childCount - suffix),
+    };
+}
+
+/**
+ * Convert every block in the run to `target`, as one transaction and one
+ * undo step. Each block converts by its own registry rule (`convertAt`,
+ * walking the run bottom-up so the positions above stay valid), and then the
+ * run is consolidated the way one gesture over the same selection would have
+ * left it: adjacent same-type wrappers or lists the conversion produced join
+ * into one, and a code-fence target fences the run's markdown as one block
+ * (both in components/blockMenu/turnInto.ts). A block already of the target
+ * kind converts to nothing and still joins. Refuses (returns false, no
+ * dispatch) unless `canConvertRange` holds, or when nothing would change.
+ *
+ * One transaction is achieved by REPLAY, not by hoping history groups the
+ * pieces: the per-block converters dispatch to the view themselves (some by
+ * replaying toolbar commands), so the run is converted live, the span the
+ * document differs over read back (`changedTopLevelSpan`, which also
+ * catches a neighbour the list auto-join pulled the run into), the view
+ * rewound to the state before the gesture, and that span applied as a
+ * single replace. That transaction carries
+ * the content guard's convert tag with the union of the pairs' declared
+ * effects (MAR-108), so the guard sees the whole gesture as one contract.
+ * prosemirror-history's own grouping would need every step to touch the
+ * previous one's range, and a covered block that is already the target
+ * kind breaks that chain; the replay owes it nothing.
+ *
+ * The replay is not inert: every `appendTransaction` plugin runs again over
+ * it, against the state BEFORE the gesture rather than the state each live
+ * step saw. A plugin whose verdict depends on the old document (the list
+ * auto-join's fidelity gate) can therefore answer differently on the replay
+ * than it did live, and the live result must not lean on such a verdict.
+ * The one known case, a marker-less list absorbing an authored one, is
+ * closed at the join itself (`joinListBoundary` carries the marker up), and
+ * pinned by the marker-split tests in convertRange.test.ts.
+ */
+export function convertRange(
+    view: EditorView,
+    range: { from: number; to: number },
+    target: ConversionKind,
+    getEditor: GetEditor,
+): boolean {
+    if (!canConvertRange(view, range, target)) {
+        return false;
+    }
+    const stateBefore = view.state;
+    const positions = coveredBlockPositions(stateBefore.doc, range);
+    const sources = positions
+        .map((pos) => conversionKindAt(view, pos))
+        .filter((kind): kind is ConversionKind => kind !== null);
+    const keepRunSelected = stateBefore.selection instanceof BlockRangeSelection;
+
+    // 1. Convert live, block by block, bottom-up.
+    let changed = false;
+    if (target === "codeBlock") {
+        changed = turnRangeIntoCodeBlock(view, range, getEditor);
+    } else {
+        for (const pos of [...positions].reverse()) {
+            if (conversionKindAt(view, pos) === target) {
+                continue;
+            }
+            changed = convertAt(view, pos, target, getEditor) || changed;
+        }
+    }
+    // Where the document differs now, at top-level granularity: the run,
+    // widened to any neighbour a conversion or an appended plugin
+    // transaction (the list auto-join) pulled it into. Every block outside
+    // this span is the same node it was, by identity.
+    if (capabilityOfKind(target).shape === "wrapper") {
+        const span = changedTopLevelSpan(stateBefore.doc, view.state.doc);
+        if (span) {
+            changed = joinAdjacentWrappersIn(view, { from: span.afterFrom, to: span.afterTo }, TYPE_BY_KIND[target]) || changed;
+        }
+    }
+    const span = changed ? changedTopLevelSpan(stateBefore.doc, view.state.doc) : null;
+    if (!span) {
+        return false;
+    }
+
+    // 2. Read the result back, rewind, and apply it as ONE transaction. The
+    // result stays selected the way the run was: as a block range, or as a
+    // text selection spanning it, so the next chord acts on what was just
+    // converted rather than on a caret parked at its end.
+    const result = view.state.doc.slice(span.afterFrom, span.afterTo);
+    view.updateState(stateBefore);
+    let tr = stateBefore.tr.replaceWith(span.beforeFrom, span.beforeTo, result.content);
+    const resultTo = span.beforeFrom + result.content.size;
+    if (keepRunSelected) {
+        const selection = BlockRangeSelection.tryCreate(tr.doc, span.beforeFrom, resultTo);
+        if (selection) {
+            tr = tr.setSelection(selection);
+        }
+    } else if (stateBefore.selection instanceof TextSelection && !stateBefore.selection.empty) {
+        tr = tr.setSelection(TextSelection.between(
+            tr.doc.resolve(span.beforeFrom), tr.doc.resolve(resultTo)));
+    }
+    view.dispatch(
+        tagContentGuard(tr, { kind: "convert", effect: rangeContentEffect(sources, target) })
+            .scrollIntoView(),
+    );
+    view.focus();
+    return true;
 }

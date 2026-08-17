@@ -70,14 +70,17 @@ export {
  * (blockCapabilities' `contentEffect`) are new and the conversion matrix is
  * wide, so the guard soaks for a release to measure the false-positive rate
  * before it is allowed to block — a guard that vetoes legitimate edits burns
- * the same trust budget as the bugs it prevents. Note that TODAY nothing
- * tags `kind: "convert"`: every conversion runs through the gesture-scoped,
- * inherently warn-only `auditConversion` below (several paths are
- * multi-dispatch, so a per-transaction filter can't see their net effect).
- * Flipping `convert` here is therefore necessary but NOT sufficient to make
- * conversions veto — each conversion path must first become single-dispatch
- * and tag its transaction, at which point the (currently unreached) convert
- * branch in filterTransaction takes over.
+ * the same trust budget as the bugs it prevents. Two conversion paths
+ * exist. A single-block conversion runs through the gesture-scoped,
+ * inherently warn-only `auditConversion` below (several converters are
+ * multi-dispatch, so a per-transaction filter cannot see their net effect).
+ * A run conversion (blockCapabilities `convertRange`) replays its result as
+ * ONE tagged transaction, so it reaches the convert branch in
+ * filterTransaction; its per-block steps were audited live first, so a real
+ * violation in a run reports twice, once per block and once for the whole.
+ * Flipping `convert` here to veto is therefore sufficient for runs and
+ * necessary but not sufficient for single blocks, whose converters must
+ * first become single-dispatch and tag their transaction.
  *
  * Native drops VETO: the in-document move contract is exact, and the
  * folded-target rule guards content from vanishing into display:none.
@@ -546,11 +549,10 @@ export const contentGuardPlugin = $prose(
                         fingerprintDoc(tr.doc),
                     );
                     if (tag.kind === "convert") {
-                        // Currently unreached: nothing tags kind "convert"
-                        // yet — every conversion is multi-dispatch and runs
-                        // through the gesture-scoped auditConversion instead.
-                        // Kept deliberately as the landing pad for the future
-                        // single-dispatch conversion tagging (see the
+                        // Reached by run conversions (convertRange), which
+                        // replay as one tagged transaction; single-block
+                        // conversions are multi-dispatch and go through the
+                        // gesture-scoped auditConversion instead (see the
                         // GUARD_MODE doc above).
                         violation = checkConversion(
                             state.doc,

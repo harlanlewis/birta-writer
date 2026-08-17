@@ -22,6 +22,16 @@
  * text (a bare autolink), AND recognizeProvider(href) matches. That excludes
  * `[label](url)` (text != href) and URLs mixed into prose.
  *
+ * LINK CARDS (MAR-185) ride the same plugin as a second card kind: a lone web
+ * link (bare OR labelled) that no provider claims renders as a quiet card of
+ * the page's Open Graph title, description and site, when the reader chose
+ * that for the link or as their default (webview/linkCards.ts holds the
+ * gate). Same decoration, same reveal-on-caret, same selection and keyboard
+ * model, same palette; what differs is the card body (renderLinkCard) and
+ * where its metadata comes from (linkCardMeta.ts, via the extension's page
+ * fetch). They are gated separately from provider embeds: `birta.linkCards.
+ * enabled` ships off and does not care about `birta.embeds.enabled`.
+ *
  * Reveal-on-caret: the link stays a live mark in the doc, so when the selection
  * enters an embedded paragraph the card is dropped and the raw link shows,
  * editable; it re-renders when the caret leaves. "Get back to the raw URL" is
@@ -38,12 +48,21 @@ import type { Command, EditorState, EditorView, Node as ProseNode } from "../pm"
 import { Decoration, DecorationSet, keymap, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
-import { embedProviderOn, providerFor, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
+import { providerCardGateOpen, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
 // messaging is in the eager bundle already; referencing it here adds nothing.
 import { notifyOpenUrl } from "../messaging";
 // The metadata store is eager (messageHandlers routes replies through it);
 // importing it here adds nothing to the launch bundle.
 import { queueEmbedMetaResolution } from "../embedMeta";
+import { queueLinkCardResolution } from "../linkCardMeta";
+import {
+    linkCardAnchorAt,
+    linkCardWanted,
+    linkCardsPossible,
+    registerLinkCardRepaint,
+    soleLinkHref,
+} from "../linkCards";
+import { setLinkCardDisplay } from "../blockWidth";
 import { queueEmbedCardResolution } from "../embedConnector";
 // The component-owned delete primitive (deleteRange + fold meta), via the
 // blockMenu facade — deep imports are guarded by blockMenuFacade.test.ts.
@@ -93,18 +112,18 @@ function loadEmbedCard(): Promise<typeof import("../utils/embedCard")> {
  * text != href and fails here; prose with a URL mid-sentence has childCount > 1).
  */
 function bareLinkHref(node: ProseNode): string | null {
-    if (node.type.name !== "paragraph" || node.childCount !== 1) {
-        return null;
-    }
-    const child = node.firstChild;
-    if (!child || !child.isText || !child.text) {
-        return null;
-    }
-    const links = child.marks.filter((m) => m.type.name === "link");
-    if (links.length !== 1) {
-        return null;
-    }
-    return links[0].attrs["href"] === child.text ? child.text : null;
+    const href = soleLinkHref(node);
+    return href !== null && href === node.textContent ? href : null;
+}
+
+/**
+ * What a card stands for: a recognized provider match, or a link card, whose
+ * id is the href itself. Widget keys, ordinals and the palette carry either.
+ */
+export type CardMatch = EmbedMatch | { kind: "linkCard"; id: string };
+
+export function isLinkCard(match: CardMatch): match is { kind: "linkCard"; id: string } {
+    return match.kind === "linkCard";
 }
 
 /**
@@ -125,7 +144,7 @@ const embedAnchorBase = registerAnchorKind("paragraph", (node) => {
  * off the render frame; a failed import degrades to the inline URL fallback
  * below — never an empty host.
  */
-function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, getPos: () => number | undefined) => HTMLElement {
+function embedWidget(match: CardMatch, sourceUrl: string): (view: EditorView, getPos: () => number | undefined) => HTMLElement {
     return (view, getPos) => {
         const host = document.createElement("div");
         // bc-host on the full-width host (not just the centered card): the
@@ -145,7 +164,8 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, g
             if (pos === undefined || view.isDestroyed) { return undefined; }
             const from = pos - 1;
             const node = view.state.doc.nodeAt(from);
-            return node && bareLinkHref(node) !== null ? from : undefined;
+            // A sole link covers both card kinds (a bare autolink is one).
+            return node && soleLinkHref(node) !== null ? from : undefined;
         };
         const widthAnchor = (): string =>
             anchorAt(view.state.doc, liveFrom(), embedAnchorBase) ?? embedWidthAnchor(sourceUrl);
@@ -169,7 +189,7 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, g
             }
             const from = pos - 1;
             const node = view.state.doc.nodeAt(from);
-            if (!node || bareLinkHref(node) === null) {
+            if (!node || soleLinkHref(node) === null) {
                 return;
             }
             const sel = view.state.selection;
@@ -208,6 +228,13 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, g
             removePreview: () => {
                 const from = liveFrom();
                 if (from === undefined) { return; }
+                if (isLinkCard(match)) {
+                    // A link card is a CHOICE about a link, so "show as text
+                    // link" records the choice and leaves the bytes alone (a
+                    // labelled link would otherwise lose its label).
+                    showLinkAsText(view, from, match.id);
+                    return;
+                }
                 withPalette((m) => m.convertEmbedToTextLink(view, from), true);
             },
         };
@@ -270,7 +297,7 @@ function recognizeProviderCached(url: string): EmbedMatch | null {
 interface CachedEmbed {
     from: number;
     to: number;
-    match: EmbedMatch;
+    match: CardMatch;
     href: string;
     /**
      * Occurrence index among embeds sharing this `kind:id`, in doc order. Part
@@ -295,38 +322,64 @@ interface CachedEmbed {
  * selection either).
  */
 export function collectEmbeds(state: EditorState): CachedEmbed[] {
-    if (!embedsFeatureOn()) {
+    const providers = embedsFeatureOn();
+    const linkCards = linkCardsPossible();
+    if (!providers && !linkCards) {
         return [];
     }
-    const network = networkOn();
     const embeds: CachedEmbed[] = [];
     const occurrences = new Map<string, number>();
-    state.doc.forEach((node, pos) => {
-        const href = bareLinkHref(node);
-        if (!href) {
-            return;
-        }
-        const match = recognizeProviderCached(href);
-        if (!match) {
-            return;
-        }
-        // The network switch gates requests: providers whose card would fetch
-        // (thumbnail/player) wait for it; no-network cards render regardless.
-        if (!network && providerFor(match.kind).needsNetwork) {
-            return;
-        }
-        // …and the roster gates which providers the user wants at all, which
-        // the master switch cannot express: a provider switched off leaves its
-        // links plain even when both consent gates are open.
-        if (!embedProviderOn(match.kind)) {
-            return;
-        }
+    const push = (match: CardMatch, href: string, pos: number, node: ProseNode): void => {
         const identity = `${match.kind}:${match.id}`;
         const ordinal = occurrences.get(identity) ?? 0;
         occurrences.set(identity, ordinal + 1);
         embeds.push({ from: pos, to: pos + node.nodeSize, match, href, ordinal });
+    };
+    state.doc.forEach((node, pos) => {
+        const href = soleLinkHref(node);
+        if (!href) {
+            return;
+        }
+        // Provider cards first, on a BARE autolink only (a labelled provider
+        // link is a text link by the reader's own hand); the gate is the
+        // provider table's own (providerCardGateOpen: the feature key, the
+        // network switch for the providers whose card would fetch, and the
+        // roster, which the master switch cannot express).
+        // Recognized independently of the feature key: a provider link is
+        // a provider link whether or not embeds are on, and the link-card
+        // default must not re-card it (below) just because they are off.
+        const recognized = bareLinkHref(node) !== null ? recognizeProviderCached(href) : null;
+        if (providers && recognized && providerCardGateOpen(recognized)) {
+            push(recognized, href, pos, node);
+            return;
+        }
+        // Then a link card, for a lone link no provider card took, when the
+        // reader wants one for this link or by default (linkCards.ts). A link
+        // a provider recognizes but whose provider card is switched off (the
+        // roster, or the embeds feature key) is left plain by the default and
+        // cards only on the reader's own choice: "leave YouTube links plain"
+        // must not become an OG card that fetches youtube.com anyway.
+        if (linkCards && linkCardWanted(state.doc, pos, href, recognized !== null)) {
+            push({ kind: "linkCard", id: href }, href, pos, node);
+        }
     });
     return embeds;
+}
+
+/**
+ * Record "show this link as text" for the sole-link paragraph at `from` and
+ * repaint. The card's own control and the palette both land here; nothing
+ * about the document changes.
+ */
+function showLinkAsText(view: EditorView, from: number, href: string): void {
+    setLinkCardDisplay(linkCardAnchorAt(view.state.doc, from, href), "text");
+    regateEmbeds(view);
+    // The card is gone and the link is text again: a caret in it, not a
+    // node selection over it (convertEmbedToTextLink's landing).
+    if (view.state.selection instanceof NodeSelection && view.state.selection.from === from) {
+        view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(from + 1), 1)));
+    }
+    view.focus();
 }
 
 /**
@@ -446,7 +499,7 @@ export const embedPlugin = $prose(() =>
             // pass still runs for the no-network cards (one idle top-level
             // scan; network providers are skipped inside the compute).
             let idle: { cancel: () => void } | null = null;
-            if (embedsFeatureOn()) {
+            if (embedsFeatureOn() || linkCardsPossible()) {
                 idle = requestIdle(() => {
                     if (!view.isDestroyed) {
                         view.dispatch(view.state.tr.setMeta(embedPluginKey, { type: "arm" } satisfies EmbedMeta));
@@ -474,14 +527,17 @@ export const embedPlugin = $prose(() =>
                         metaIdle?.cancel();
                         metaIdle = requestIdle(() => {
                             metaIdle = null;
-                            queueEmbedMetaResolution(embeds);
+                            queueEmbedMetaResolution(providerEmbeds(embeds));
+                            queueLinkCardResolution(embeds
+                                .filter((e) => isLinkCard(e.match))
+                                .map((e) => e.href));
                             // Connector cards ride the same idle pass, for the
                             // same reason: a credentialed fetch is decoration
                             // and must never sit in front of interactivity.
                             // The queue itself skips every provider whose
                             // service is not connected, so this costs nothing
                             // until the user connects one.
-                            queueEmbedCardResolution(embeds);
+                            queueEmbedCardResolution(providerEmbeds(embeds));
                         }, FIRST_PASS_IDLE_TIMEOUT_MS);
                     } else if (embeds !== lastEmbeds) {
                         lastEmbeds = embeds;
@@ -515,6 +571,11 @@ export function regateEmbeds(view: EditorView): void {
     view.dispatch(view.state.tr.setMeta(embedPluginKey, { type: "arm" } satisfies EmbedMeta));
 }
 
+// The block menu's per-link "Show as Card / Link" row repaints through the
+// linkCards leaf rather than importing this plugin (which imports the menu's
+// delete primitive); the same regate serves both card kinds.
+registerLinkCardRepaint(regateEmbeds);
+
 // ─── Selection + keyboard model (MAR-187) ───────────────────────────────────
 //
 // The card paragraph's text is hidden, so the browser's native caret motion
@@ -523,6 +584,19 @@ export function regateEmbeds(view: EditorView): void {
 // below makes the card a first-class stop: arrows select it (a NodeSelection
 // on the paragraph, the codeBlockBackspace precedent), Backspace selects
 // before it deletes, Enter opens the palette.
+
+/** The provider-matched embeds only, typed for the provider stores. */
+function providerEmbeds(
+    embeds: readonly CachedEmbed[],
+): Array<{ match: EmbedMatch; href: string }> {
+    const out: Array<{ match: EmbedMatch; href: string }> = [];
+    for (const embed of embeds) {
+        if (!isLinkCard(embed.match)) {
+            out.push({ match: embed.match, href: embed.href });
+        }
+    }
+    return out;
+}
 
 /** The cached embeds of a state, [] before the arm or with the feature off. */
 function embedsIn(state: EditorState): readonly CachedEmbed[] {
@@ -658,12 +732,14 @@ function syncPalette(view: EditorView, focusUrl = false): void {
     // when the lock lands closes on the same update.
     const selected = isReadOnly() ? null : selectedEmbedIn(view.state);
     if (selected) {
+        const link = isLinkCard(selected.match) ? selected.match.id : null;
         withPalette((m) => m.showEmbedPalette(view, {
             from: selected.from,
             to: selected.to,
             href: selected.href,
             kind: selected.match.kind,
             id: selected.match.id,
+            ...(link !== null && { asTextLink: () => showLinkAsText(view, selected.from, link) }),
         }, focusUrl), true);
     } else {
         withPalette((m) => m.hideEmbedPalette(), false);

@@ -187,7 +187,7 @@ The point of staying in WYSIWYG is that you never _need_ the raw text editor. Th
 
 ### Block handles that never touch content
 
-Every block has a gutter handle: click it for the block menu (turn into, duplicate, move, delete), drag it to move the block. A handle click selects or opens a menu, and never edits the block, including task-list checkboxes. The handle is a safe, predictable grip you can reach for without worrying it'll change what you're pointing at.
+Every block has a gutter handle, a horizontal rule and an MDX island included: click it for the block menu (turn into, duplicate, move, delete), drag it to move the block. A handle click selects or opens a menu, and never edits the block, including task-list checkboxes. The handle is a safe, predictable grip you can reach for without worrying it'll change what you're pointing at. Select a run of blocks and open the menu on any of them, and Turn into offers only what every block in the run can become, converting the whole run in one step and one undo.
 
 ### Lettered and roman numbered lists, without writing them into your file
 
@@ -242,7 +242,7 @@ Reorganizing a long document is the one edit that's genuinely painful in raw Mar
 
 Nothing leaves your machine unless you turn it on. Every feature that could touch the network sits behind a single master switch, `birta.network.enabled`, which ships off. With it off the editor makes no outbound request at all. The info cards still render offline: GitHub, Linear, and a Google editing link each build their card purely from the URL text in your document and request nothing.
 
-The private default is the default, not a setting you have to remember to find. Turn the switch on and exactly two features become live. Each is narrow, legible, opt-in, and self-limited, and each carries its own switch: `birta.pasteUnfurl.enabled` and `birta.embeds.enabled`.
+The private default is the default, not a setting you have to remember to find. Turn the switch on and exactly two features become live, `birta.pasteUnfurl.enabled` and `birta.embeds.enabled`; a third, `birta.linkCards.enabled`, sits beneath the same switch and ships off on its own. Each is narrow, legible, opt-in, and self-limited, and each carries its own switch.
 
 ### Paste-unfurl
 
@@ -252,13 +252,17 @@ Paste-unfurl contacts only the host of a bare URL you paste (with nothing select
 
 A card contacts only the named provider of a bare link on its own line: a YouTube thumbnail at render, and a title lookup at that provider's own oEmbed endpoint, so the card can name what it embeds. The player is created only when you click, whether that's YouTube in privacy mode (`youtube-nocookie.com`), a Loom or Vimeo video (Vimeo's always loads with its `dnt=1` do-not-track flag), a live Figma frame, a published Google document through Google's own embed endpoints, a Miro board's login-free live view, or a CodePen, CodeSandbox or StackBlitz playground in that provider's own embedded editor. Each provider's exact hosts are pinned in one shared table that also generates the webview's content-security-policy. Never a wildcard, never an aggregation service.
 
+### Link cards
+
+A web link that sits alone on its own line can show as a quiet card of the page's own title, description and site, read from that page's Open Graph metadata. It contacts only the host the link names, and where that redirects the host it points to, through the same guarded fetch as paste-unfurl, and fetches no image. It ships off even under the master switch, because unlike an embed card no provider table bounds which hosts it can reach: any page a document links can be asked. You can turn it on for every lone link, or choose per link from the block menu, in either direction; the file keeps the plain link whatever you choose, and the choice lives with the workspace, not in the document.
+
 A GitHub link asks `api.github.com` about the repository, issue or pull request it names, so the card can show a title, a state, and whether a pull request merged. That read is anonymous: a public repository's title is world-readable, and requiring an account to display it would ask for more than the card spends. The request is rebuilt from the id in your link rather than from the link text, goes only to GitHub's own API host, is not followed across a redirect, and nothing fetched is written into your file.
 
 Connecting your GitHub account is an upgrade on top of that, not the price of entry, and it is a separate decision from the switch above. It buys two things: private repositories, and a rate limit that is yours rather than shared with everything else on your IP address. The picker offers the narrow tier first and it is the recommended one, because it asks GitHub for no permissions at all beyond reading public information. The wider tier exists only for private repositories, and it says plainly in the row what it costs: GitHub grants no read-only access to a private repository, so that tier also permits writes. Birta only ever reads. The credential is held by VS Code's own GitHub sign-in, never by a settings file and never by the webview, which is the least trusted surface here because it renders your document's own content. Disconnecting deletes it, and a connection is something Birta records for itself, never a sign-in it inherits from another extension.
 
 ### You're asked in place, and the choice is yours alone
 
-You don't have to hunt for the setting first. Whichever of the two you just triggered offers a quiet, dismissable prompt right where you're working, and you decide there. Flipping the switch takes effect immediately in every open editor, with nothing to reload.
+You don't have to hunt for the setting first. Whichever of paste-unfurl and embeds you just triggered offers a quiet, dismissable prompt right where you're working, and you decide there. Flipping the switch takes effect immediately in every open editor, with nothing to reload.
 
 The decision is _yours alone_. The network settings are user-level only (VS Code `application` scope), so a repository's checked-in `.vscode/settings.json` can never switch them on for you. A test pins that, and fails the build if a consent setting ever loses that scope.
 

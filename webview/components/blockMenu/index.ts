@@ -64,9 +64,11 @@ export { openBlockMenuAtCaret } from "./openAtCaret";
 
 export {
     containerToList,
+    joinAdjacentWrappersIn,
     retypeContainer,
     retypeList,
     turnIntoCodeBlock,
+    turnRangeIntoCodeBlock,
     unwrapContainerTo,
     unwrapListTo,
     wrapListIn,

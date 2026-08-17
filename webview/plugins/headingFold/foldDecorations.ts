@@ -13,9 +13,13 @@ import { isOrderedNumbering, orderedMarkerText } from "../../utils/orderedMarker
 import {
     blockMarkerSpec,
     createBlockGutter,
+    leafAnchorName,
     createHeadingEllipsis,
     createHeadingFoldGutter,
     createStubEllipsis,
+    foldKeyPart,
+    headingGutterSpec,
+    isLeafBlock,
     itemMarkerSpec,
     nestedChildSpec,
     type GutterFoldInfo,
@@ -67,17 +71,22 @@ function emitNestedChildGutter(
     const spec = nestedChildSpec(child);
     if (spec !== null) {
         const foldKey = foldKeyPart(fold);
+        const leaf = isLeafBlock(child) ? leafAnchorName(childPos) : undefined;
         parts?.push(`c${depth}${spec.key}${foldKey}`);
         decorations?.push(
             Decoration.node(childPos, childPos + child.nodeSize, {
-                class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${fold?.collapsed ? " collapsed" : ""}`,
+                class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${leaf ? " block-gutter-host--leaf" : ""}${fold?.collapsed ? " collapsed" : ""}`,
+                ...(leaf ? { style: `anchor-name: ${leaf}` } : {}),
             }),
         );
         decorations?.push(
             Decoration.widget(
                 childPos + 1,
-                (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined),
-                { key: `g:${spec.key}:n${depth}${foldKey}`, side: -1 },
+                (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined, leaf),
+                // A leaf widget's key carries its anchor name (position-
+                // keyed), so a rebuild that renames the host never reuses a
+                // gutter still pointing at the old name.
+                { key: `g:${spec.key}:n${depth}${foldKey}${leaf ? `:${leaf}` : ""}`, side: -1 },
             ),
         );
     } else {
@@ -177,14 +186,6 @@ function emitFirstLineFold(node: any, pos: number, decorations: Decoration[]): v
             { key: `e:i:${hiddenCount}`, side: 1 },
         ),
     );
-}
-
-/** The widget-key / fingerprint suffix a fold state contributes. */
-function foldKeyPart(fold: GutterFoldInfo | null): string {
-    if (!fold) {
-        return "";
-    }
-    return `${fold.collapsed ? "c" : "o"}${fold.foldable ? "f" : "l"}`;
 }
 
 /**
@@ -382,7 +383,7 @@ export function structureFingerprint(
         if (isHeadingNode(node)) {
             const collapsed = enabled && folded.has(offset);
             const foldable = enabled && Boolean(ranges.get(offset));
-            parts.push(`h${getHeadingLevel(node)}${collapsed ? "c" : ""}${foldable ? "f" : ""}`);
+            parts.push(headingGutterSpec(getHeadingLevel(node), collapsed, foldable).key);
         } else if (isListNode(node)) {
             parts.push("L");
             emitItemGutters(node, offset, null, parts, foldCtx);
@@ -430,22 +431,31 @@ export function buildHeadingFoldDecorations(
             const spec = blockMarkerSpec(node);
             const fold = blockFoldInfo(node, offset, foldCtx, false);
             if (spec !== null) {
+                // A leaf atom (hr, mdx block) has no content position: its
+                // widget at offset + 1 lands AFTER the node, as the block's
+                // next sibling, and the --leaf classes plus a per-pair
+                // anchor name let the CSS anchor it back onto the host
+                // (createBlockGutter's `leafAnchor`).
+                const leaf = isLeafBlock(node) ? leafAnchorName(offset) : undefined;
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
                         // "collapsed" drives the callout NodeView's hidden
                         // body (components/callout/callout.css) — fold state
                         // reaches the NodeView as a decoration class, never
                         // as node state (the doc stays untouched).
-                        class: `block-gutter-host${fold?.collapsed ? " collapsed" : ""}`,
+                        class: `block-gutter-host${leaf ? " block-gutter-host--leaf" : ""}${fold?.collapsed ? " collapsed" : ""}`,
+                        ...(leaf ? { style: `anchor-name: ${leaf}` } : {}),
                     }),
                 );
                 decorations.push(
                     Decoration.widget(
                         offset + 1,
-                        (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined),
+                        (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined, leaf),
                         // Stable, position-free key: same-glyph widgets reuse
-                        // their DOM across rebuilds (matching is ordinal).
-                        { key: `g:${spec.key}${foldKeyPart(fold)}`, side: -1 },
+                        // their DOM across rebuilds (matching is ordinal). A
+                        // leaf widget is the exception: its key carries the
+                        // pair's anchor name, so it is rebuilt with its host.
+                        { key: `g:${spec.key}${foldKeyPart(fold)}${leaf ? `:${leaf}` : ""}`, side: -1 },
                     ),
                 );
             }
@@ -473,10 +483,8 @@ export function buildHeadingFoldDecorations(
             Decoration.widget(
                 offset + 1,
                 (view) => createHeadingFoldGutter(view, level, collapsed, foldable),
-                {
-                    key: `h:${level}:${collapsed ? "c" : "o"}:${foldable ? "f" : "l"}`,
-                    side: -1,
-                },
+                // The same identity the fingerprint carries for this heading.
+                { key: headingGutterSpec(level, collapsed, foldable).key, side: -1 },
             ),
         );
 

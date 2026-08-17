@@ -171,6 +171,18 @@ export interface BirtaConfig extends ProofreadConfig {
      */
     pasteUnfurlEnabled: boolean;
     /**
+     * Link cards by default (birta.linkCards.enabled): a web link that sits
+     * alone on its own line renders as a quiet card (title, description,
+     * site) read from the page's Open Graph metadata. Render-only: the file
+     * keeps the plain link. Gated by `networkEnabled && linkCardsEnabled` for
+     * the default; a single link can be shown as a card, or as a link, from
+     * its block menu, and that per-link choice is presentation state beside
+     * the document (webview/blockWidth.ts), never bytes in it. Ships OFF: an
+     * OG card fetches an arbitrary page, so it is opt-in even beneath the
+     * master switch.
+     */
+    linkCardsEnabled: boolean;
+    /**
      * Apply a fetched title without asking (birta.pasteUnfurl.autoApply).
      *
      * Default OFF, which is the consent rule from docs/DESIGN_PRINCIPLES.md —
@@ -336,6 +348,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     logseq: "logseq",
     networkEnabled: "network.enabled",
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
+    linkCardsEnabled: "linkCards.enabled",
     pasteUnfurlAutoApply: "pasteUnfurl.autoApply",
     calcEnabled: "calc.enabled",
     calcBlocksEnabled: "calc.blocks.enabled",
@@ -442,6 +455,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // offers the opt-in; only `networkEnabled && pasteUnfurlEnabled` fetches the
     // page title. Leaving this on keeps the master the single off-by-default.
     pasteUnfurlEnabled: true,
+    // Link cards ship OFF even beneath the master switch: the card fetches an
+    // arbitrary page (rung 1 of docs/NETWORK_POSTURE.md), and unlike embeds
+    // there is no provider recognizer bounding which hosts it reaches.
+    linkCardsEnabled: false,
     // …and, like calc, it is ADVISORY by default: the fetched title is offered
     // at the link and the document is untouched until accepted. A network reply
     // silently rewriting text seconds after the paste — and dirtying the file

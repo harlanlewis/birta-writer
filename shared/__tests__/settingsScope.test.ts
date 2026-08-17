@@ -31,6 +31,7 @@ const CONSENT_KEYS = [
     "birta.network.enabled",
     "birta.pasteUnfurl.enabled",
     "birta.pasteUnfurl.autoApply",
+    "birta.linkCards.enabled",
     "birta.embeds.enabled",
     ...EMBED_KINDS.map((kind) => `birta.${embedProviderSettingKey(kind)}`),
 ];

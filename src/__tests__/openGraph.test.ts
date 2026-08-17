@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+    extractOgDescription,
     extractOgTitle,
     sanitizeTitle,
     decodeHtmlEntities,
@@ -124,5 +125,29 @@ describe("sanitizeTitle", () => {
         const out = sanitizeTitle(long);
         expect(out).not.toBeNull();
         expect(out!.length).toBe(300);
+    });
+});
+
+describe("extractOgDescription", () => {
+    it("an og:description should be used when present", () => {
+        const html = `<head>
+            <meta property="og:description" content="The OG description">
+            <meta name="description" content="The plain description">
+        </head>`;
+        expect(extractOgDescription(html)).toBe("The OG description");
+    });
+
+    it("a missing og:description should fall back to the description meta", () => {
+        expect(extractOgDescription(`<head><meta name="description" content="Plain &amp; simple"></head>`))
+            .toBe("Plain & simple");
+    });
+
+    it("an og:description that sanitizes to empty should fall through", () => {
+        const html = `<head><meta property="og:description" content="   "><meta name="description" content="Kept"></head>`;
+        expect(extractOgDescription(html)).toBe("Kept");
+    });
+
+    it("neither meta should yield null", () => {
+        expect(extractOgDescription(`<head><title>Just a title</title></head>`)).toBeNull();
     });
 });

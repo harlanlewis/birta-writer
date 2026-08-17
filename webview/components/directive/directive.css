@@ -29,6 +29,10 @@
         --directive-accent: var(--vscode-charts-red);
     }
 
+    /* Gutter contract (style.css .heading-fold-gutter): the block marker
+       aligns with the HEADER line. Declared beside the header padding. */
+    --gutter-top: calc(0.11 * var(--content-em));
+
     .directive-header {
         display: flex;
         align-items: baseline;

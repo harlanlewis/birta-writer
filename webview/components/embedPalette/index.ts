@@ -33,14 +33,18 @@ import { IconCopy, IconExternalLink, IconTextInline, IconTrash2 } from "@/ui/ico
 import { deleteBlockRange } from "@/editing/blockOps";
 import { readableUrl } from "@/utils/embedCard";
 import type { EmbedKind } from "@/utils/embedProviders";
+import { soleLinkHref } from "@/linkCards";
 
 /** The selected embed the palette is editing, as the plugin reports it. */
 export interface EmbedPaletteTarget {
     from: number;
     to: number;
     href: string;
-    kind: EmbedKind;
+    kind: EmbedKind | "linkCard";
     id: string;
+    /** For a link card: "show as text link" records the reader's choice for
+     * the link instead of rewriting it (a labelled link keeps its label). */
+    asTextLink?: () => void;
 }
 
 let root: HTMLDivElement | null = null;
@@ -71,15 +75,19 @@ function liveView(): EditorView | null {
  * is a floating singleton and the doc may have changed under it. Returns the
  * paragraph node when it still starts at `from` with the expected bare link.
  */
-function verifyTarget(view: EditorView): { from: number; to: number } | null {
+function verifyTarget(view: EditorView): { from: number; to: number; labelled: boolean } | null {
     if (!current) { return null; }
     const node = view.state.doc.nodeAt(current.from);
     if (!node || node.type.name !== "paragraph") { return null; }
-    if (node.textContent !== current.href) { return null; }
-    return { from: current.from, to: current.from + node.nodeSize };
+    // A provider card is a bare autolink (text is the href); a link card may
+    // be labelled, so it verifies by the sole link's href instead.
+    const href = soleLinkHref(node);
+    if (href !== current.href) { return null; }
+    if (current.kind !== "linkCard" && node.textContent !== current.href) { return null; }
+    return { from: current.from, to: current.from + node.nodeSize, labelled: node.textContent !== current.href };
 }
 
-/** One-transaction rewrite of the bare-link paragraph's content. */
+/** One-transaction rewrite of the link paragraph's content. */
 function rewriteLink(view: EditorView, text: string, href: string, opts: { reselect: boolean }): void {
     const bounds = verifyTarget(view);
     if (!bounds) { return; }
@@ -104,9 +112,13 @@ function applyUrlEdit(): void {
         urlInput.value = current.href;
         return;
     }
-    // text === href keeps the paragraph a bare link: still a card if the new
-    // URL is a recognized provider, an honest plain link if it isn't.
-    rewriteLink(view, value, value, { reselect: true });
+    // A bare link stays bare (text === href: still a card if the new URL is
+    // a recognized provider, an honest plain link if it isn't); a labelled
+    // link card keeps its label and changes only where it points.
+    const bounds = verifyTarget(view);
+    if (!bounds) { return; }
+    const label = bounds.labelled ? view.state.doc.nodeAt(bounds.from)?.textContent ?? value : value;
+    rewriteLink(view, label, value, { reselect: true });
 }
 
 function build(): void {
@@ -165,6 +177,11 @@ function build(): void {
     const btnAsLink = makeButton(IconTextInline, t("Show as text link"), () => {
         const view = liveView();
         if (!view || !current) { return; }
+        if (current.asTextLink) {
+            current.asTextLink();
+            hideEmbedPalette();
+            return;
+        }
         rewriteLink(view, readableUrl(current.href, 60), current.href, { reselect: false });
         view.focus();
     });
