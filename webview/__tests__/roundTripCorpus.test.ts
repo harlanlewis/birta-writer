@@ -154,10 +154,10 @@ const INVARIANT_C_KNOWN_FAILURES: Record<string, string> = {};
  * of where a fixture's prose sits: a file with a long non-subject preamble
  * spent all twelve edits inside the preamble and never reached its own subject,
  * so the gate read as coverage while testing nothing the fixture was written
- * for (MAR-237 hit it while adding
- * fixtures with realistic preambles — `reference-heavy-with-preamble.md` has 36
- * targets and its first 12 are all preamble). A stride costs exactly the same
- * twelve edits and cannot be defeated by document layout.
+ * for (MAR-237 hit it while adding fixtures with realistic preambles;
+ * `reference-heavy-with-preamble.md` has 36 targets and its first 12 are all
+ * preamble). A stride costs exactly the same twelve edits and cannot be
+ * defeated by document layout.
  */
 function stridedSample<T>(items: readonly T[], budget: number): T[] {
     if (items.length <= budget) {

@@ -5,7 +5,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 ## Tracker
 
 - Linear team `MAR`.
-- No board guide. Derive the queue from Linear at the start of every session: the groomed union of `Todo`, `In Progress` and `Backlog`, ordered by the doctrine below. A stored ordering is a cache, and a stale one reads exactly like a considered one.
+- Derive the queue from Linear at the start of every session: the groomed union of `Todo`, `In Progress` and `Backlog`, ordered by the doctrine below. A stored ordering is a cache, and a stale one reads exactly like a considered one.
 - Maintainer-only kinds: none.
 
 ## Findings
