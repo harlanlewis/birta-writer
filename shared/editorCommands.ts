@@ -36,6 +36,21 @@ export interface EditorCommandMeta {
     readonly menuGroup?: "layout" | "shortcuts" | "settings";
 }
 
+/**
+ * Adding an entry here obliges three `Record<EditorCommandId, …>` tables to
+ * grow with it, each of which fails to compile until it does:
+ *
+ *   - `editorCommands` (webview/editorCommands.ts) — what the command DOES
+ *   - `COMMAND_EFFECTS` (webview/readOnly.ts) — whether it changes the document
+ *   - `COMMAND_BLOCK_REACH` (webview/blockPlacement.ts) — which blocks it can
+ *     reach from the caret, so every surface offering it agrees
+ *
+ * Listed because the compiler reports them one at a time, several files from
+ * here, and each reads as a surprise rather than as a step. Answering all three
+ * is the point: each is a question about the command that a surface would
+ * otherwise guess at, and the guesses are what diverged (MAR-111, MAR-115).
+ * A command that does none of the three is still classified, as `none`.
+ */
 export const EDITOR_COMMANDS = [
     { id: "toggleBold", title: "Bold", palette: true, sections: [] },
     { id: "toggleItalic", title: "Italic", palette: true, sections: [] },

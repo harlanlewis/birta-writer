@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { computeReplaceRange } from "../shared/textEdit";
-import { DOCUMENT_EXTENSIONS, documentExtRegex } from "../shared/documentExtensions";
+import { DOCUMENT_EXTENSIONS, DOCUMENT_EXT_REGEX } from "../shared/documentExtensions";
 import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap, sourceLineCount } from "../shared/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
@@ -62,7 +62,7 @@ const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  * file, and the click lands nowhere. `package.json`'s selector is the
  * authority; `editorSelectorParity.test.ts` reads both and fails on a drift.
  */
-const WYSIWYG_EXT_REGEX = documentExtRegex();
+const WYSIWYG_EXT_REGEX = DOCUMENT_EXT_REGEX;
 
 /**
  * The extensions the front-matter suggestion scan reads, as ONE fact, and the

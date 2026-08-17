@@ -19,7 +19,7 @@
 import { PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { LinkTargetSuggestionItem } from "../../shared/messages";
-import { documentExtRegex, indexFileRegex } from "../../shared/documentExtensions";
+import { DOCUMENT_EXT_REGEX, INDEX_FILE_REGEX } from "../../shared/documentExtensions";
 import {
     createSuggestMenuFromRows,
     requestLinkTargetSuggestions,
@@ -39,14 +39,13 @@ export const PARTIAL_WIKI_REGEX = /\[\[([^\[\]]*)$/;
  * the same `[[name]]` its `.md` neighbour is.
  */
 export function wikiNameOf(rootRelative: string): string | null {
-    const extRegex = documentExtRegex();
-    if (!extRegex.test(rootRelative)) { return null; }
+    if (!DOCUMENT_EXT_REGEX.test(rootRelative)) { return null; }
     const segs = rootRelative.replace(/^\//, "").split("/");
     const base = segs[segs.length - 1];
-    if (indexFileRegex().test(base)) {
+    if (INDEX_FILE_REGEX.test(base)) {
         return segs.length >= 2 ? segs[segs.length - 2] : null;
     }
-    return base.replace(extRegex, "");
+    return base.replace(DOCUMENT_EXT_REGEX, "");
 }
 
 /**
@@ -77,7 +76,7 @@ export function rankWikiNames(
             rows.push({ text: name, title: paths[0], sortKey: name.toLowerCase() });
         } else {
             for (const p of paths) {
-                const pathForm = p.replace(/^\//, "").replace(documentExtRegex(), "");
+                const pathForm = p.replace(/^\//, "").replace(DOCUMENT_EXT_REGEX, "");
                 rows.push({ text: pathForm, title: p, sortKey: name.toLowerCase() });
             }
         }

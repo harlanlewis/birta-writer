@@ -8,7 +8,7 @@
  * Environment-neutral by design — no Node or DOM APIs.
  */
 import type { LinkTargetSuggestionItem } from "./messages";
-import { documentExtRegex } from "./documentExtensions";
+import { DOCUMENT_EXT_REGEX } from "./documentExtensions";
 
 /**
  * File extensions this editor opens, ranked before other files, from the
@@ -16,7 +16,7 @@ import { documentExtRegex } from "./documentExtensions";
  * editor exactly as `.md` does, so ranking it with the plain files it is not
  * would bury the target the author is most likely reaching for.
  */
-const MARKDOWN_EXT_REGEX = documentExtRegex();
+const MARKDOWN_EXT_REGEX = DOCUMENT_EXT_REGEX;
 
 /** URL scheme prefix (http:, https:, mailto:, vscode:, ...). */
 const SCHEME_REGEX = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;

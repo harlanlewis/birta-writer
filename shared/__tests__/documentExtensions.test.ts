@@ -12,8 +12,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
     DOCUMENT_EXTENSIONS,
-    documentExtRegex,
-    indexFileRegex,
+    DOCUMENT_EXT_REGEX,
+    INDEX_FILE_REGEX,
     isDocumentPath,
 } from "../documentExtensions";
 
@@ -48,19 +48,32 @@ describe("document extensions", () => {
     it("the extension list and the regex should never disagree", () => {
         // The regex is BUILT from the list, so this pins the construction
         // rather than a duplicate spelling of it.
-        const re = documentExtRegex();
         for (const ext of DOCUMENT_EXTENSIONS) {
-            expect(re.test(`x.${ext}`), ext).toBe(true);
+            expect(DOCUMENT_EXT_REGEX.test(`x.${ext}`), ext).toBe(true);
         }
-        expect(re.global, "no `g` flag, or lastIndex would leak between callers").toBe(false);
-        expect(documentExtRegex()).not.toBe(documentExtRegex());
+    });
+
+    it("the shared regexes should carry no `g` flag, which is what makes sharing them safe", () => {
+        // These are module constants reused across calls, and `wikiNameOf`
+        // runs them over every workspace suggestion on every keystroke. A `g`
+        // flag would give each one a `lastIndex` that survives between
+        // callers, so the same input would start matching and not matching by
+        // turns. This is the property the sharing rests on.
+        for (const re of [DOCUMENT_EXT_REGEX, INDEX_FILE_REGEX]) {
+            expect(re.global, `${re.source} must not be global`).toBe(false);
+            expect(re.sticky, `${re.source} must not be sticky`).toBe(false);
+        }
+        // Repeated calls agree, which is the observable form of the above.
+        for (let i = 0; i < 3; i++) {
+            expect(DOCUMENT_EXT_REGEX.test("a/b/page.md"), `call ${i}`).toBe(true);
+        }
     });
 
     it("an index file should be recognized in every format, with or without the underscore", () => {
         for (const ext of DOCUMENT_EXTENSIONS) {
-            expect(indexFileRegex().test(`index.${ext}`), ext).toBe(true);
-            expect(indexFileRegex().test(`_index.${ext}`), `_${ext}`).toBe(true);
-            expect(indexFileRegex().test(`notindex.${ext}`), `not ${ext}`).toBe(false);
+            expect(INDEX_FILE_REGEX.test(`index.${ext}`), ext).toBe(true);
+            expect(INDEX_FILE_REGEX.test(`_index.${ext}`), `_${ext}`).toBe(true);
+            expect(INDEX_FILE_REGEX.test(`notindex.${ext}`), `not ${ext}`).toBe(false);
         }
     });
 

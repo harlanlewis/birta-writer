@@ -5,8 +5,9 @@
  * custom editor's `contributes.customEditors` selector listed `*.mdx` and the
  * provider's own routing matched it, so every static check said MDX was
  * supported. The listener that swaps an opened text tab to the rendered editor
- * tested a separately written `/\.(md|markdown)$/i`, so a `.mdx` opened from
- * the explorer sat in the raw text editor while a `.md` beside it rendered.
+ * tested its own separately written pattern, which knew only the two older
+ * extensions, so a `.mdx` opened from the explorer sat in the raw text editor
+ * while a `.md` beside it rendered.
  *
  * Nothing but a real Extension Host can answer this: the swap is a
  * `window.tabGroups.onDidChangeTabs` reaction, and what it produces is a tab of

@@ -18,24 +18,26 @@
 /** Extensions the custom editor opens, without their leading dot. */
 export const DOCUMENT_EXTENSIONS = ["md", "markdown", "mdx"] as const;
 
+const ALTERNATION = DOCUMENT_EXTENSIONS.join("|");
+
 /**
  * Matches a path this editor opens. Built from the list rather than written
  * out, so the two can never disagree.
  *
- * A fresh RegExp per call, because a shared literal with the `g` flag would
- * carry `lastIndex` between callers; this one has no `g`, and the cost of
- * constructing it is nothing next to the file work every caller is doing.
+ * Shared rather than constructed per call, and safe to share only because
+ * neither pattern carries `g`: `lastIndex` is what makes a shared RegExp
+ * stateful, and without `g` there is none to carry. `documentExtensions.test.ts`
+ * asserts that, so the sharing cannot quietly stop being safe.
+ *
+ * It is shared because the callers are loops, not file work: `wikiNameOf` runs
+ * over every workspace suggestion on every keystroke of a wikilink query.
  */
-export function documentExtRegex(): RegExp {
-    return new RegExp(`\\.(${DOCUMENT_EXTENSIONS.join("|")})$`, "i");
-}
+export const DOCUMENT_EXT_REGEX = new RegExp(`\\.(${ALTERNATION})$`, "i");
+
+/** Matches a bundle index file (`index.md`, `_index.mdx`) in any of the formats. */
+export const INDEX_FILE_REGEX = new RegExp(`^_?index\\.(${ALTERNATION})$`, "i");
 
 /** True when `path` is a file the custom editor opens. */
 export function isDocumentPath(path: string): boolean {
-    return documentExtRegex().test(path);
-}
-
-/** Matches a bundle index file (`index.md`, `_index.mdx`) in any of the formats. */
-export function indexFileRegex(): RegExp {
-    return new RegExp(`^_?index\\.(${DOCUMENT_EXTENSIONS.join("|")})$`, "i");
+    return DOCUMENT_EXT_REGEX.test(path);
 }
