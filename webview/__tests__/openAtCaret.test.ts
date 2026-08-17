@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView } from "../pm";
-import { NodeSelection, TextSelection } from "../pm";
+import { GapCursor, NodeSelection, TextSelection, isGapCursorPosition } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { BlockRangeSelection } from "../plugins/blockRange";
@@ -243,6 +243,46 @@ describe("openBlockMenuAtCaret", () => {
         expect(headers).not.toContain("Table");
     });
 
+    it("a node-selected code block inside a callout should open the CODE BLOCK's menu, not the callout's", async () => {
+        // Arrange: a NodeSelection's $head sits after the selected node, so
+        // its ancestor chain begins at the callout; the selected block itself
+        // has to be seeded as the innermost candidate.
+        const editor = await makeEditor("> [!NOTE]\n> ```js\n> code\n> ```");
+        const v = view(editor);
+        const codePos = posOf(v, "code_block");
+        expect(v.state.doc.resolve(codePos).depth, "fixture: the code block is nested").toBe(1);
+        v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, codePos)));
+
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert: anchored to the code block's own marker, inside the callout
+        expect(opened).toBe(true);
+        const marker = openMarker()!;
+        expect(marker.closest("pre"), "the anchor is the code block's marker").not.toBeNull();
+        expect(marker.dataset["pill"]).not.toBe("Callout");
+    });
+
+    it("a node-selected table inside a callout should open the TABLE's menu without a Table section", async () => {
+        // Arrange: the same nesting, for the table shape; selected from the
+        // outside there is no caret cell to carry (the depth-0 rule).
+        const editor = await makeEditor("> [!NOTE]\n> | a | b |\n> | - | - |\n> | c | d |");
+        const v = view(editor);
+        const tablePos = posOf(v, "table");
+        expect(v.state.doc.resolve(tablePos).depth, "fixture: the table is nested").toBe(1);
+        v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, tablePos)));
+
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert
+        expect(opened).toBe(true);
+        expect(openMarker()!.dataset["pill"]).toBe("Table");
+        const headers = Array.from(menu()!.querySelectorAll(".block-menu-header"))
+            .map((el) => el.textContent);
+        expect(headers).not.toContain("Table");
+    });
+
     it("a selected marker-less block (HR) should return false without opening anything", async () => {
         // Arrange: HR is a leaf atom with no gutter marker (nodeSize 1 — no
         // content position for the in-block widget to ride on)
@@ -292,6 +332,59 @@ describe("openBlockMenuAtCaret", () => {
         // selection), matching gutter unit semantics.
         expect(opened).toBe(true);
         expect(openMarker()!.closest("li")!.textContent).toBe("two");
+    });
+
+    it("a BACKWARD block-range selection should open the menu for its HEAD block, the range's FIRST block", async () => {
+        // Arrange: anchor at the end, head at the START of the heading, with
+        // a paragraph on either side of the head, so the direction rule is
+        // what decides: backward reads the block AFTER the head (the heading),
+        // never the paragraph before it that a forward range would take.
+        const editor = await makeEditor("Zero\n\n## Title\n\nOmega");
+        const v = view(editor);
+        const headingPos = posOf(v, "heading");
+        const range = BlockRangeSelection.tryCreate(v.state.doc, v.state.doc.content.size, headingPos);
+        expect(range).not.toBeNull();
+        expect(range!.head).toBe(headingPos);
+        expect(range!.$head.nodeBefore?.type.name).toBe("paragraph");
+        v.dispatch(v.state.tr.setSelection(range!));
+
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert
+        expect(opened).toBe(true);
+        expect(openMarker()!.dataset["pill"]).toBe("H2");
+    });
+
+    it("a gap cursor between two marker-less leaves should return false without opening anything", async () => {
+        // Arrange: a gap position is only valid where neither neighbour is a
+        // textblock (prosemirror-gapcursor's rule), so in this schema it sits
+        // beside hrs, which carry no marker: the depth-0 branch reads
+        // nodeAfter (the second hr), finds no marker, and declines.
+        const editor = await makeEditor("---\n\n---");
+        const v = view(editor);
+        const $gap = v.state.doc.resolve(posOf(v, "hr", 1));
+        expect(isGapCursorPosition($gap), "fixture: a valid gap position").toBe(true);
+        v.dispatch(v.state.tr.setSelection(new GapCursor($gap)));
+        expect(v.state.selection).toBeInstanceOf(GapCursor);
+
+        // Act + Assert
+        expect(openBlockMenuAtCaret(v)).toBe(false);
+        expect(menu()).toBeNull();
+    });
+
+    it("a gap cursor at the document's END (nothing after it) should fall back to the block before and decline when it has no marker", async () => {
+        // Arrange: the branch where nodeAfter is null and nodeBefore is the
+        // trailing hr; the resolver must not throw on the missing neighbour.
+        const editor = await makeEditor("Only\n\n---");
+        const v = view(editor);
+        const $gap = v.state.doc.resolve(v.state.doc.content.size);
+        expect(isGapCursorPosition($gap), "fixture: a valid gap position").toBe(true);
+        v.dispatch(v.state.tr.setSelection(new GapCursor($gap)));
+
+        // Act + Assert
+        expect(openBlockMenuAtCaret(v)).toBe(false);
+        expect(menu()).toBeNull();
     });
 
     it("a BACKWARD block-range selection headed at a list should fall back to its FIRST item's marker", async () => {

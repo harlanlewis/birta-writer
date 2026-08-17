@@ -157,15 +157,20 @@ export const foldAllCommand: Command = (state, dispatch) => {
     if (!pluginState?.enabled) {
         return false;
     }
-    if (allFoldablePositions(state.doc).length === 0) {
+    const positions = allFoldablePositions(state.doc);
+    if (positions.length === 0) {
         return false;
     }
     if (dispatch) {
-        dispatch(
-            state.tr
-                .setMeta(foldPluginKey, { type: "foldAll" } satisfies FoldMeta)
-                .setMeta("addToHistory", false),
-        );
+        const tr = state.tr
+            .setMeta(foldPluginKey, { type: "foldAll" } satisfies FoldMeta)
+            .setMeta("addToHistory", false);
+        // The same ejection every other fold dispatch performs. The plugin's
+        // caret guard only moves an EMPTY selection out of hidden content, so
+        // a text selection spanning two sections would otherwise keep one end
+        // inside display:none after fold-all.
+        ejectSelectionFromFolds(tr, state, positions);
+        dispatch(tr);
     }
     return true;
 };
@@ -262,15 +267,26 @@ function dispatchFoldMany(
         .setMeta(foldPluginKey, { type: "setMany", positions, folded } satisfies FoldMeta)
         .setMeta("addToHistory", false);
     if (folded) {
-        for (const pos of positions) {
-            const range = foldHiddenRange(state.doc, pos);
-            if (range && state.selection.from < range.to && state.selection.to > range.from) {
-                tr.setSelection(foldEscapeSelection(tr, state.doc.nodeAt(pos), pos));
-                break;
-            }
-        }
+        ejectSelectionFromFolds(tr, state, positions);
     }
     dispatch(tr);
+}
+
+/**
+ * Move the selection out of hidden content when any of `positions` is about
+ * to hide part of it: the first such foldable in `positions` order decides
+ * the landing spot (its heading text, or the position just before it), so
+ * callers pass outermost first, or document order, and the caret lands on
+ * the visible edge nearest the outline rather than deep in a nested fold.
+ */
+function ejectSelectionFromFolds(tr: Transaction, state: EditorState, positions: number[]): void {
+    for (const pos of positions) {
+        const range = foldHiddenRange(state.doc, pos);
+        if (range && state.selection.from < range.to && state.selection.to > range.from) {
+            tr.setSelection(foldEscapeSelection(tr, state.doc.nodeAt(pos), pos));
+            return;
+        }
+    }
 }
 
 // ─── Backspace/Delete at a fold boundary: reveal, never edit hidden content ─

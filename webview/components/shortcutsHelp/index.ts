@@ -21,17 +21,18 @@
  * the sticky "Edit Keyboard Shortcuts" footer opens the native Keyboard
  * Shortcuts UI, the one place effective bindings are always accurate.
  *
- * Launch cost is zero: this module is in the eager import graph
- * (webview/index.ts wires it into the command host), so the overlay DOM is
- * built lazily on the first open, never at module load.
+ * Launch cost is zero: this module is OFF the eager import graph. The
+ * command host and the settings menu reach it through `./loader` (a cached
+ * dynamic import), its CSS lives in `./styles` and is injected on the first
+ * open, and the DOM is built then too, never at module load.
  *
  * Escape layering: while open the overlay registers on the
  * ui/escapeLayers.ts stack; EVERY close path (Esc, the ✕ button, an outside
  * click, re-invoking the command) unregisters, so a dead entry never
  * swallows a later Escape.
  */
-import "./shortcutsHelp.css";
 import { t, kbd } from "@/i18n";
+import { ensureShortcutsHelpStyles } from "./styles";
 import { createButton } from "@/ui/dom";
 import { IconKeyboard, IconX } from "@/ui/icons";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
@@ -66,6 +67,18 @@ function keys(chord: string): string {
     return out;
 }
 
+/**
+ * Whether kbd() is rendering macOS chords. The panel's two platform choices
+ * (the compact key column, and which smart-select chord row is printed) must
+ * agree with the glyphs kbd() produces, so they are read off kbd() itself
+ * rather than from a second platform probe: with `__i18n` absent, a
+ * `navigator.platform` fallback here would print macOS chords through a
+ * Windows-dialect kbd(), and the mixed row would be wrong on both platforms.
+ */
+function kbdIsMac(): boolean {
+    return kbd("Mod") === "⌘";
+}
+
 // ── Module state (the overlay is a singleton, built once) ────────────────
 let panel: HTMLDivElement | null = null;
 let visible = false;
@@ -74,7 +87,25 @@ let layerOff: (() => void) | null = null;
 /** Outside-click detach handle (null while hidden). */
 let outsideOff: (() => void) | null = null;
 
-function close(): void {
+/**
+ * Whether a mousedown on `target` moves focus there by the browser's default
+ * action: a text-entry surface (an input, textarea, select, or a
+ * contenteditable region, the editor's own included). Chrome buttons and TOC
+ * items are deliberately NOT in this set: they preventDefault their mousedown
+ * to keep the editor focused (ui/dom.ts bindActivate), which is exactly what
+ * the refocus in close() provides them.
+ */
+function takesFocusOnMousedown(target: EventTarget | null): boolean {
+    return target instanceof Element
+        && target.closest("input, textarea, select, [contenteditable]") !== null;
+}
+
+/**
+ * Close the overlay. `via` is the outside mousedown that dismissed it, when
+ * that is the close path; every other path (Escape, the close button, the
+ * toggle, the customize action) passes nothing.
+ */
+function close(via?: MouseEvent): void {
     if (!visible) {
         return;
     }
@@ -87,7 +118,13 @@ function close(): void {
     panel?.classList.remove("shortcuts-help--visible");
     outsideOff?.();
     outsideOff = null;
-    // Hand focus back to the editor (the find bar's close convention).
+    // Hand focus back to the editor (the find bar's close convention), unless
+    // the closing click is itself a focus intent: a mousedown into a
+    // text-entry surface takes focus by default the moment this handler
+    // returns, and refocusing the editor first only bounces focus through it.
+    if (via && takesFocusOnMousedown(via.target)) {
+        return;
+    }
     document.querySelector<HTMLElement>(".ProseMirror")?.focus();
 }
 
@@ -106,7 +143,7 @@ export function openShortcutsHelp(): void {
     panel.classList.add("shortcuts-help--visible");
     layerOff ??= registerEscapeLayer(close);
     // Outside click closes (capture phase, so stopped mousedowns still count).
-    outsideOff = onOutsideClick([panel], close);
+    outsideOff = onOutsideClick([panel], (e) => close(e));
     // Focus lands inside so Esc/Tab work immediately; arrows scroll the list.
     panel.focus();
 }
@@ -114,7 +151,8 @@ export function openShortcutsHelp(): void {
 // ── DOM (lazy, one-time) ─────────────────────────────────────────────────
 
 function buildPanel(): HTMLDivElement {
-    const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
+    ensureShortcutsHelpStyles();
+    const isMac = kbdIsMac();
     const el = document.createElement("div");
     el.className = "shortcuts-help";
     // macOS chords are compact symbol runs (⌘⇧↑); Windows/Linux chords are
