@@ -133,6 +133,13 @@ describe("the gate", () => {
         setLinkCardDisplay(linkCardAnchor(YT), null);
     });
 
+    it("with embeds off, a provider link should stay plain by default rather than become an OG card", async () => {
+        i18n({ linkCardsEnabled: true, embedsEnabled: false });
+        const editor = await makeCorpusEditor(`# T\n\n${YT}\n\n${PAGE}\n`);
+        const view = editorView(editor);
+        expect(widgetKeys(computeEmbedDecorations(view.state))).toEqual([`embed:linkCard:${PAGE}:0`]);
+    });
+
     it("a provider link should keep its provider card and never become a link card", async () => {
         i18n({ linkCardsEnabled: true });
         const editor = await makeCorpusEditor(`# T\n\n${YT}\n\n${PAGE}\n`);

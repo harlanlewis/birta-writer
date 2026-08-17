@@ -11,7 +11,7 @@
  * entries dedupe, a null reply or the reply backstop is CACHED as failed, so
  * a dead page is asked once), render-only (a resolved card reaches
  * subscribers by callback and never the document), and bounded (overflow
- * starts a fresh generation).
+ * sheds the settled entries and keeps the pending ones).
  */
 import type { LinkCardMeta } from "../shared/messages";
 import { notifyResolveLinkCard } from "./messaging";
@@ -41,6 +41,17 @@ export function _resetLinkCardMetaForTests(): void {
     requestCounter = 0;
 }
 
+/** The bound: a session that renders many distinct pages sheds the answered
+ * and failed entries and keeps the pending ones, whose waiters and request
+ * ids are still owed a settle. */
+function evictSettled(): void {
+    for (const [href, entry] of entries) {
+        if (entry.state !== "pending") {
+            entries.delete(href);
+        }
+    }
+}
+
 function settle(href: string, card: LinkCardMeta | null): void {
     const entry = entries.get(href);
     if (!entry || entry.state !== "pending") {
@@ -66,7 +77,7 @@ export function queueLinkCardResolution(hrefs: Iterable<string>): void {
             continue;
         }
         if (!existing && entries.size >= CACHE_LIMIT) {
-            _resetLinkCardMetaForTests();
+            evictSettled();
         }
         const entry: Entry = existing ?? {
             state: "pending", card: null, waiters: [], timer: null, asked: false,

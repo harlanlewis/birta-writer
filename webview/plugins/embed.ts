@@ -345,18 +345,21 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         // provider table's own (providerCardGateOpen: the feature key, the
         // network switch for the providers whose card would fetch, and the
         // roster, which the master switch cannot express).
-        const match = providers && bareLinkHref(node) !== null ? recognizeProviderCached(href) : null;
-        if (match && providerCardGateOpen(match)) {
-            push(match, href, pos, node);
+        // Recognized independently of the feature key: a provider link is
+        // a provider link whether or not embeds are on, and the link-card
+        // default must not re-card it (below) just because they are off.
+        const recognized = bareLinkHref(node) !== null ? recognizeProviderCached(href) : null;
+        if (providers && recognized && providerCardGateOpen(recognized)) {
+            push(recognized, href, pos, node);
             return;
         }
         // Then a link card, for a lone link no provider card took, when the
         // reader wants one for this link or by default (linkCards.ts). A link
-        // a provider recognizes but whose provider card is switched off is
-        // left plain by the default and cards only on the reader's own
-        // choice: "leave YouTube links plain" must not become an OG card
-        // that fetches youtube.com anyway.
-        if (linkCards && linkCardWanted(state.doc, pos, href, match !== null)) {
+        // a provider recognizes but whose provider card is switched off (the
+        // roster, or the embeds feature key) is left plain by the default and
+        // cards only on the reader's own choice: "leave YouTube links plain"
+        // must not become an OG card that fetches youtube.com anyway.
+        if (linkCards && linkCardWanted(state.doc, pos, href, recognized !== null)) {
             push({ kind: "linkCard", id: href }, href, pos, node);
         }
     });
