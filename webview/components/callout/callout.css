@@ -43,6 +43,11 @@
         --callout-accent: var(--vscode-descriptionForeground);
     }
 
+    /* Gutter contract (style.css .heading-fold-gutter): the block marker
+       aligns with the TITLE line, which sits closer to the border box than
+       a padded body does. Declared beside the title padding it mirrors. */
+    --gutter-top: calc(0.11 * var(--content-em));
+
     .callout-title {
         display: flex;
         align-items: center;

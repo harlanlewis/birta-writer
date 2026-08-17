@@ -155,4 +155,17 @@ describe("selection cover — incremental marker surfacing", () => {
             .map((m) => m.closest("p")?.textContent);
         expect(covered).toEqual(["paragraph 2", "paragraph 3", "paragraph 4", "paragraph 5"]);
     });
+
+    it("a covered container should hold a nested leaf's sibling marker quiet like every other child's", async () => {
+        // A rule inside a quote: its gutter is the quote's direct child (a
+        // leaf atom's widget is its host's next sibling), so "inside a
+        // --child host" is false for it and only the gutter's own --nested
+        // class says it belongs to a nested block (MAR-92).
+        const view = await makeEditor("> quoted\n>\n> ---\n>\n> more\n\nafter");
+        selectBlocks(view, 0, 1);
+        const covered = Array.from(view.dom.querySelectorAll<HTMLElement>(".heading-fold-marker--covered"))
+            .map((m) => m.dataset["key"]);
+        expect(covered).toEqual(["quote", "P"]);
+        expect(view.dom.querySelector(".heading-fold-gutter--leaf .heading-fold-marker--covered")).toBeNull();
+    });
 });

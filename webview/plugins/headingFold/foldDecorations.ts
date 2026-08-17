@@ -13,6 +13,7 @@ import { isOrderedNumbering, orderedMarkerText } from "../../utils/orderedMarker
 import {
     blockMarkerSpec,
     createBlockGutter,
+    leafAnchorName,
     createHeadingEllipsis,
     createHeadingFoldGutter,
     createStubEllipsis,
@@ -70,18 +71,22 @@ function emitNestedChildGutter(
     const spec = nestedChildSpec(child);
     if (spec !== null) {
         const foldKey = foldKeyPart(fold);
-        const leaf = isLeafBlock(child);
+        const leaf = isLeafBlock(child) ? leafAnchorName(childPos) : undefined;
         parts?.push(`c${depth}${spec.key}${foldKey}`);
         decorations?.push(
             Decoration.node(childPos, childPos + child.nodeSize, {
                 class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${leaf ? " block-gutter-host--leaf" : ""}${fold?.collapsed ? " collapsed" : ""}`,
+                ...(leaf ? { style: `anchor-name: ${leaf}` } : {}),
             }),
         );
         decorations?.push(
             Decoration.widget(
                 childPos + 1,
                 (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined, leaf),
-                { key: `g:${spec.key}:n${depth}${foldKey}`, side: -1 },
+                // A leaf widget's key carries its anchor name (position-
+                // keyed), so a rebuild that renames the host never reuses a
+                // gutter still pointing at the old name.
+                { key: `g:${spec.key}:n${depth}${foldKey}${leaf ? `:${leaf}` : ""}`, side: -1 },
             ),
         );
     } else {
@@ -428,9 +433,10 @@ export function buildHeadingFoldDecorations(
             if (spec !== null) {
                 // A leaf atom (hr, mdx block) has no content position: its
                 // widget at offset + 1 lands AFTER the node, as the block's
-                // next sibling, and the --leaf classes let the CSS anchor
-                // it back onto the host (createBlockGutter's `leaf`).
-                const leaf = isLeafBlock(node);
+                // next sibling, and the --leaf classes plus a per-pair
+                // anchor name let the CSS anchor it back onto the host
+                // (createBlockGutter's `leafAnchor`).
+                const leaf = isLeafBlock(node) ? leafAnchorName(offset) : undefined;
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
                         // "collapsed" drives the callout NodeView's hidden
@@ -438,6 +444,7 @@ export function buildHeadingFoldDecorations(
                         // reaches the NodeView as a decoration class, never
                         // as node state (the doc stays untouched).
                         class: `block-gutter-host${leaf ? " block-gutter-host--leaf" : ""}${fold?.collapsed ? " collapsed" : ""}`,
+                        ...(leaf ? { style: `anchor-name: ${leaf}` } : {}),
                     }),
                 );
                 decorations.push(
@@ -445,8 +452,10 @@ export function buildHeadingFoldDecorations(
                         offset + 1,
                         (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined, leaf),
                         // Stable, position-free key: same-glyph widgets reuse
-                        // their DOM across rebuilds (matching is ordinal).
-                        { key: `g:${spec.key}${foldKeyPart(fold)}`, side: -1 },
+                        // their DOM across rebuilds (matching is ordinal). A
+                        // leaf widget is the exception: its key carries the
+                        // pair's anchor name, so it is rebuilt with its host.
+                        { key: `g:${spec.key}${foldKeyPart(fold)}${leaf ? `:${leaf}` : ""}`, side: -1 },
                     ),
                 );
             }

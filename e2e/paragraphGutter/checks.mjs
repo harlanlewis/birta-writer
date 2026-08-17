@@ -6,8 +6,21 @@
  *     it to the headings' full-contrast treatment,
  *   - clicking it opens the same P/H1–H6 menu, and picking H2 promotes the
  *     paragraph (serialized as `## …`),
- *   - list/quote paragraphs get no marker (top-level only).
+ *   - list/quote paragraphs get no marker (top-level only),
+ *   - the gutter geometry contract (MAR-92): every MarkerSpec key this suite
+ *     owns in e2e/gutterKeys.json is rendered by the fixture, reveals on its
+ *     block's hover, and sits in its block's own left gutter, at 100% and
+ *     200% content font scale.
  */
+import { readFileSync } from "node:fs";
+
+/** MarkerSpec keys this suite measures (gutterContract.test.ts holds the
+ * registry to this list). A key listed here and absent from the fixture, or
+ * present but not revealing / not on its block, fails below. */
+const OWNED_KEYS = Object.entries(JSON.parse(readFileSync(new URL("../gutterKeys.json", import.meta.url), "utf8")))
+    .filter(([key, suite]) => !key.startsWith("_") && suite === "paragraphGutter")
+    .map(([key]) => key);
+
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
@@ -134,6 +147,7 @@ export async function run({ page, check, baseUrl }) {
             "Table", "Callout", "Callout", "Directive",
             "Callout", "Callout", "Blockquote", "Code Block", "Code Block", "Table",
             "Blockquote", "Heading", "Heading", "Heading", "Blockquote",
+            "Numbered item", "Math Block", "Callout", "List item", "List item",
         // Nested headings carry an H1-H6 text badge instead of an SVG icon.
         ]) && markers.every((m) => m.svg || m.pill === "Heading"),
         `markers=${JSON.stringify(markers)}`);
@@ -234,29 +248,77 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(0, 0);
     await page.waitForTimeout(120);
 
-    // NodeView blocks nest the gutter below wrapper chrome — hovering the
-    // block BODY must still reveal the marker (descendant reveal variant).
-    for (const [sel, name] of [
-        [".ProseMirror .mw-table", "table"],
-        [".ProseMirror .footnote-def", "footnote"],
-        [".ProseMirror .callout:not(.collapsed)", "callout"],
-        [".ProseMirror .callout.collapsed", "FOLDED callout"],
-        [".ProseMirror .container-directive", "directive"],
-    ]) {
-        const pt = await page.$eval(sel, (el) => {
+    // The gutter contract's net (MAR-92): every top-level host in the
+    // fixture, plus the first item of every top-level list, keyed by the
+    // marker's MarkerSpec key. Hovering the block's first line must reveal
+    // ITS marker (a NodeView wrapper nests the gutter below its chrome, so
+    // this is the descendant reveal), and the marker must sit in the block's
+    // own left gutter: right of nothing, left of the block, inside its
+    // vertical extent. The folded callout is a host of its own (collapsed
+    // state must not lose the handle). Every key this suite owns must be
+    // seen, so a block type with a MarkerSpec and no fixture line fails.
+    const sweepHost = async (handle) => {
+        const pt = await handle.evaluate((el) => {
             el.scrollIntoView({ block: "center" });
             const r = el.getBoundingClientRect();
-            return { x: r.x + r.width / 2, y: r.y + Math.min(12, r.height / 2) };
+            return { x: r.x + Math.min(40, r.width / 2), y: r.y + Math.min(12, r.height / 2) };
         });
         await page.mouse.move(pt.x, pt.y);
         await page.waitForTimeout(150);
-        const revealed = await page.$eval(sel, (el) => {
-            const m = el.querySelector(".heading-fold-marker");
-            return m ? Number(getComputedStyle(m).opacity) : -1;
+        return handle.evaluate((el) => {
+            const m = el.classList.contains("block-gutter-host--leaf")
+                ? el.nextElementSibling?.querySelector(".heading-fold-marker--block")
+                : el.querySelector(".heading-fold-marker--block");
+            if (!m) return { key: null };
+            const hostRect = el.getBoundingClientRect();
+            const rect = m.getBoundingClientRect();
+            return {
+                key: m.dataset.key,
+                collapsed: el.classList.contains("collapsed"),
+                opacity: Number(getComputedStyle(m).opacity),
+                leftOfBlock: rect.right <= hostRect.left + 2,
+                withinBlockY: rect.top >= hostRect.top - 4 && rect.bottom <= hostRect.bottom + 4,
+            };
         });
-        check(`${name} marker reveals when hovering the block body`,
-            revealed > 0.3, `opacity=${revealed}`);
+    };
+    const sweep = [];
+    for (const handle of await page.$$(".ProseMirror > .block-gutter-host, .ProseMirror > :is(ul, ol) > li.block-gutter-host--item:first-child")) {
+        sweep.push(await sweepHost(handle));
     }
+    const seenKeys = new Set(sweep.map((s) => s.key).filter(Boolean));
+    check("gutter contract: every owned MarkerSpec key is rendered by the fixture",
+        OWNED_KEYS.every((k) => seenKeys.has(k)),
+        `missing=${JSON.stringify(OWNED_KEYS.filter((k) => !seenKeys.has(k)))} seen=${JSON.stringify([...seenKeys])}`);
+    check("gutter contract: the sweep reached the fixture's blocks",
+        sweep.length >= 18 && sweep.every((s) => s.key !== null), `n=${sweep.length}`);
+    for (const key of OWNED_KEYS) {
+        const rows = sweep.filter((s) => s.key === key);
+        check(`${key}: marker reveals when hovering the block, and sits in the block's left gutter`,
+            rows.length > 0 && rows.every((r) => r.opacity > 0.3 && r.leftOfBlock && r.withinBlockY),
+            JSON.stringify(rows));
+    }
+
+    // A callout that holds a LIST: hovering the callout's title reveals the
+    // callout's marker only — an item's gutter is inside a nested host and
+    // stays quiet, like every other child's.
+    const listedTitle = await page.evaluate(() => {
+        const c = [...document.querySelectorAll(".ProseMirror > .callout")].find((el) => el.textContent.includes("Listed"));
+        c.scrollIntoView({ block: "center" });
+        const r = c.querySelector(".callout-title").getBoundingClientRect();
+        return { x: r.x + 40, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(listedTitle.x, listedTitle.y);
+    await page.waitForTimeout(150);
+    const listedReveal = await page.evaluate(() => {
+        const c = [...document.querySelectorAll(".ProseMirror > .callout")].find((el) => el.textContent.includes("Listed"));
+        return {
+            own: Number(getComputedStyle(c.querySelector(":scope > .callout-body > .heading-fold-gutter .heading-fold-marker")).opacity),
+            items: [...c.querySelectorAll("li .heading-fold-marker")].map((m) => Number(getComputedStyle(m).opacity)),
+        };
+    });
+    check("hovering a callout's title leaves its list items' markers quiet",
+        listedReveal.own > 0.5 && listedReveal.items.length === 2 && listedReveal.items.every((o) => o === 0),
+        JSON.stringify(listedReveal));
     // Restore the viewport the earlier checks were measured against.
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.mouse.move(0, 0);
@@ -381,6 +443,45 @@ export async function run({ page, check, baseUrl }) {
         check(`every nested marker clears its ancestor containers' border bars at ${scale * 100}% (≥2px)`,
             nestedGeometry.length === 9 && nestedGeometry.every((g) => g.clearance >= 2),
             JSON.stringify(nestedGeometry.filter((g) => g.clearance < 2)));
+        // The contract sweep's geometry half, at this scale: every owned key's
+        // top-level marker stays inside its own block's box (the hover half
+        // above is scale-independent). Same scroll-through as measureNested,
+        // for the same windowing reason.
+        const contractGeometry = await page.evaluate(async () => {
+            const settle = async () => {
+                await new Promise((r) => setTimeout(r, 120));
+                await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            };
+            const byOffset = new Map();
+            const collect = () => {
+                for (const el of document.querySelectorAll(".ProseMirror > .block-gutter-host, .ProseMirror > :is(ul, ol) > li.block-gutter-host--item:first-child")) {
+                    const m = el.querySelector(".heading-fold-marker--block");
+                    if (!m) continue;
+                    const offsetKey = Math.round(el.getBoundingClientRect().top + window.scrollY);
+                    if (byOffset.has(offsetKey)) continue;
+                    const hostRect = el.getBoundingClientRect();
+                    const rect = m.getBoundingClientRect();
+                    byOffset.set(offsetKey, {
+                        key: m.dataset.key,
+                        leftOfBlock: rect.right <= hostRect.left + 2,
+                        withinBlockY: rect.top >= hostRect.top - 4 && rect.bottom <= hostRect.bottom + 4,
+                    });
+                }
+            };
+            const step = Math.round(window.innerHeight * 0.75);
+            for (let y = 0; y <= document.documentElement.scrollHeight; y += step) {
+                window.scrollTo({ top: y, behavior: "instant" });
+                await settle();
+                collect();
+            }
+            window.scrollTo({ top: 0, behavior: "instant" });
+            await settle();
+            return [...byOffset.values()];
+        });
+        const seenAtScale = new Set(contractGeometry.map((g) => g.key));
+        check(`gutter contract at ${scale * 100}%: every owned key's marker sits in its block's left gutter`,
+            OWNED_KEYS.every((k) => seenAtScale.has(k)) && contractGeometry.every((g) => g.leftOfBlock && g.withinBlockY),
+            JSON.stringify({ missing: OWNED_KEYS.filter((k) => !seenAtScale.has(k)), off: contractGeometry.filter((g) => !(g.leftOfBlock && g.withinBlockY)) }));
         // The glyphs themselves track the content em (MAR-93): the block
         // icon is one em square, the H badge and the fold chevron box keep
         // their ratio to it, so at 200% every marker is twice the size rather
@@ -485,7 +586,9 @@ export async function run({ page, check, baseUrl }) {
     // starts ~21px left of a bullet's, and an unadjusted shared offset once
     // pushed its marker 21px out of column.
     const itemMarkers = await page.evaluate(() =>
-        [...document.querySelectorAll(".ProseMirror li")].flatMap((li) => {
+        // Top-level lists: a list inside a container steps its column one
+        // inset further out per accent bar (MAR-89, the nested sweep above).
+        [...document.querySelectorAll(".ProseMirror > :is(ul, ol) li")].flatMap((li) => {
             const m = li.querySelector(":scope > .heading-fold-gutter > .heading-fold-marker");
             const c = li.querySelector(":scope > p, :scope > div");
             if (!m || !c) return [];
@@ -497,30 +600,6 @@ export async function run({ page, check, baseUrl }) {
     check("every item marker sits in the gutter within the tuned band",
         itemMarkers.length >= 2 && itemMarkers.every(({ gap }) => gap >= 18 && gap <= 40),
         `gaps=${JSON.stringify(itemMarkers)}`);
-
-    // Each glyph marker must sit in the LEFT GUTTER of its own block — the
-    // in-NodeView anchoring (code block) is the fragile part. Hover the block
-    // first so the marker is revealed where geometry is measured.
-    for (const [sel, name] of [
-        // Per-item markers (MAR-86): the list's marker belongs to its ITEM.
-        [".ProseMirror > ul li", "list item"],
-        [".ProseMirror > blockquote", "quote"],
-        [".ProseMirror > .code-block-wrapper, .ProseMirror > pre", "code"],
-    ]) {
-        const geom = await page.$eval(sel, (host) => {
-            const m = host.querySelector(".heading-fold-marker--block");
-            if (!m) return null;
-            const hostRect = host.getBoundingClientRect();
-            const rect = m.getBoundingClientRect();
-            return {
-                leftOfBlock: rect.right <= hostRect.left + 2,
-                withinBlockY: rect.top >= hostRect.top - 4 && rect.bottom <= hostRect.bottom + 4,
-            };
-        }).catch(() => null);
-        check(`${name} marker sits in its block's left gutter`,
-            geom !== null && geom.leftOfBlock && geom.withinBlockY,
-            JSON.stringify(geom));
-    }
 
     // Hover the list: its marker reveals at resting contrast.
     const listBox = await page.$eval(".ProseMirror > ul", (el) => {

@@ -319,24 +319,35 @@ export function headingGutterSpec(level: number, collapsed: boolean, foldable: b
  * as a heading's. Foldable blocks (callouts with a body) get the same fold
  * chevron headings carry, left of the marker (MAR-110).
  *
- * `leaf` marks the gutter of a LEAF ATOM (hr, mdx block — isLeafBlock): its
- * widget rides blockPos + 1 like every other block's, which for a nodeSize-1
- * node is the position AFTER it, so the gutter is the block's next DOM
- * sibling rather than its child. The position round-trip (gutterBlockPos) is
- * unchanged; only the CSS differs — the leaf gutter anchors onto the
+ * `leafAnchor` marks the gutter of a LEAF ATOM (hr, mdx block — isLeafBlock):
+ * its widget rides blockPos + 1 like every other block's, which for a
+ * nodeSize-1 node is the position AFTER it, so the gutter is the block's next
+ * DOM sibling rather than its child. The position round-trip (gutterBlockPos)
+ * is unchanged; only the CSS differs — the leaf gutter anchors onto the
  * preceding host (`.block-gutter-host--leaf`, CSS anchor positioning) and
- * reveals on that sibling's hover (MAR-350).
+ * reveals on that sibling's hover (MAR-350). The value is the pair's anchor
+ * name (leafAnchorName), which the host carries as its inline `anchor-name`
+ * and the gutter as its `position-anchor`: a name shared by every leaf would
+ * anchor every leaf gutter in a containing block onto the last leaf host in
+ * it (an absolutely positioned box is laid out after all of them), so two
+ * rules in one document stacked both markers on the second.
+ *
+ * `--collapsed` on the gutter mirrors the host's collapsed fold state so
+ * the resident-chevron rule reads the gutter alone (no wrapper class list).
  */
 export function createBlockGutter(
     view: EditorView,
     spec: MarkerSpec,
     nestedDepth?: number,
     fold?: GutterFoldInfo,
-    leaf = false,
+    leafAnchor?: string,
 ): HTMLElement {
     const gutter = document.createElement("span");
-    gutter.className = `heading-fold-gutter heading-fold-gutter--block${fold?.foldable ? " heading-fold-gutter--foldable" : ""}${leaf ? " heading-fold-gutter--leaf" : ""}`;
+    gutter.className = `heading-fold-gutter heading-fold-gutter--block${fold?.foldable ? " heading-fold-gutter--foldable" : ""}${fold?.collapsed ? " heading-fold-gutter--collapsed" : ""}${leafAnchor ? " heading-fold-gutter--leaf" : ""}`;
     gutter.contentEditable = "false";
+    if (leafAnchor) {
+        gutter.style.setProperty("position-anchor", leafAnchor);
+    }
     if (nestedDepth !== undefined) {
         // Container children: the CSS positions the marker clear of every
         // ancestor container's border bar, one inset step per nesting level.
@@ -364,6 +375,9 @@ export function createBlockGutter(
                 el.innerHTML = spec.icon;
             }
             el.dataset["pill"] = spec.label;
+            // The spec key, for the geometry net (e2e) to name what it
+            // measured; the pill is a translated label.
+            el.dataset["key"] = spec.key;
         },
     );
 
@@ -372,6 +386,19 @@ export function createBlockGutter(
     }
     gutter.appendChild(marker);
     return gutter;
+}
+
+/**
+ * The anchor name pairing a leaf host with its sibling gutter (both stamped
+ * by the decoration pass: the host's node decoration carries it as an inline
+ * `anchor-name`, the widget as `position-anchor`). Position-keyed: unique
+ * within a build, and a rebuild renames every pair together. Between
+ * rebuilds decorations are mapped, not renamed, which keeps a pair
+ * consistent even as its position moves; the leaf widget's key carries the
+ * name so its DOM is never reused against a renamed host.
+ */
+export function leafAnchorName(pos: number): string {
+    return `--leaf-gutter-${pos}`;
 }
 
 /**
@@ -461,7 +488,7 @@ export function isLeafBlock(node: any): boolean {
 /**
  * The gutter marker buttons a block's DOM owns. Every block but a leaf holds
  * its gutter inside its own DOM; a leaf atom's gutter is its next sibling
- * (createBlockGutter's `leaf`), so a caller that finds markers by walking
+ * (createBlockGutter's `leafAnchor`), so a caller that finds markers by walking
  * `view.nodeDOM(pos)` must look one sibling over. Used by the selection-cover
  * pass (plugin.ts); the ownership round-trip (gutterBlockPos, and
  * openAtCaret's markerBlockPos) is the same for both placements.
