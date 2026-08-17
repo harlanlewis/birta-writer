@@ -5,7 +5,7 @@
 # `pnpm test 2>&1 | tail -8` exits with tail's code — a red gate reads
 # green, and the failure detail is thrown away with it. MAR-141 carried
 # this as prose ("Never pipe a gate through tail") and one session broke
-# it twice anyway, so the rule is code now, in the repo's changelog-guard
+# it twice anyway, so the rule is code now, in the repo's prose-guard
 # tradition: the prose is not the control.
 #
 # Two shapes of the same masking are blocked, because the code the caller
