@@ -147,6 +147,15 @@
     color: var(--ui-menu-ink-dim);
 }
 
+/* The same slot carrying prose instead of literal markdown: what a degrading
+   Turn-into pick costs. The monospace is what says "syntax you could have
+   typed", so a note that is not syntax must not wear it — one slot, two
+   registers a reader can tell apart at a glance. */
+.block-menu-item-hint--note {
+    font-family: inherit;
+    font-style: italic;
+}
+
 /* Keyboard highlight while focus sits in the search input (the virtual
    aria-activedescendant row). Ground, ink and the focus ring come from
    .ui-menu-row--selected, composed alongside this class; the ring is what

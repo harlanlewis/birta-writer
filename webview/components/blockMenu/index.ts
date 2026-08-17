@@ -29,6 +29,7 @@ export {
     indentBlockAt,
     indentSelection,
     indentTargetFor,
+    LOSS_NOTES,
     moveBlockAt,
     moveBlockTo,
     moveRangeAt,

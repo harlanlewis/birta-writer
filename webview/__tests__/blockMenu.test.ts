@@ -29,8 +29,9 @@ import {
     outdentSelection,
     outlineRangeAt,
     headingAnchorSlug,
+    LOSS_NOTES,
 } from "../components/blockMenu";
-import { conversionKindAt } from "../blockCapabilities";
+import { ALL_KINDS, contentEffectOf, conversionKindAt } from "../blockCapabilities";
 import { createImageView } from "../components/imageView";
 import { NodeSelection, TextSelection } from "../pm";
 import { mockVscodeApi } from "./setup";
@@ -311,6 +312,94 @@ describe("Turn into — non-prose sources", () => {
             "Move Up", "Move Down",
             "Fold All", "Unfold All", "Delete",
         ]);
+    });
+});
+
+/**
+ * A degrading conversion says what it costs, in the row's hint slot (MAR-115).
+ * Advisory only: the pick still applies on one click, and undo is the safety
+ * mechanism (docs/DESIGN_PRINCIPLES, "annotation is advisory and quiet").
+ */
+describe("Turn-into rows announce what a pick drops", () => {
+    /** The hint text on a Turn-into row, and whether it reads as prose. */
+    function hintOn(menu: HTMLElement, label: string): { text: string; note: boolean } | null {
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === label);
+        const hint = row?.querySelector<HTMLElement>(".block-menu-item-hint");
+        if (!hint) { return null; }
+        return {
+            text: hint.textContent ?? "",
+            note: hint.classList.contains("block-menu-item-hint--note"),
+        };
+    }
+
+    it("a task list should warn that Bullet List drops its checkmarks", async () => {
+        const editor = await makeEditor("- [ ] one\n- [x] two");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Bullet List")).toEqual({ text: "checkmarks dropped", note: true });
+    });
+
+    it("a callout should warn that Blockquote drops its marker", async () => {
+        const editor = await makeEditor("> [!NOTE]\n> body");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Blockquote")).toEqual({ text: "callout marker dropped", note: true });
+    });
+
+    it("a fence target should warn that formatting arrives as text", async () => {
+        const editor = await makeEditor("some **bold** prose");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Code Block")).toEqual({ text: "formatting becomes text", note: true });
+    });
+
+    it("a conserving pick should keep the markdown hint instead", async () => {
+        const editor = await makeEditor("plain prose");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        // Paragraph to Heading 1 conserves, so the slot still teaches "#",
+        // in the monospace register that means "syntax you could type".
+        expect(hintOn(menu, "Heading 1")).toEqual({ text: "#", note: false });
+    });
+
+    it("the current-type row should never warn about itself", async () => {
+        const editor = await makeEditor("- [ ] one");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Task List")).toEqual({ text: "[ ]", note: false });
+    });
+
+    it("every key the registry can drop should have words for it", async () => {
+        // The registry declares WHAT drops; the menu owns the words. A key
+        // with no entry would silently show no warning at all, so the sweep
+        // enumerates every legal pair on a fixture holding every source kind
+        // and asserts both the wording coverage and its own size.
+        const editor = await makeEditor([
+            "plain text", "", "## Title", "", "- bullet", "", "1. ordered", "",
+            "- [ ] task", "", "> quote", "", "> [!NOTE]", "> callout body", "",
+        ].join("\n"));
+        const v = view(editor);
+        const dropped = new Set<string>();
+        let pairs = 0;
+        v.state.doc.forEach((_node, offset) => {
+            const source = conversionKindAt(v, offset);
+            if (source === null) { return; }
+            for (const target of ALL_KINDS) {
+                const effect = contentEffectOf(source, target);
+                if (effect === null || typeof effect === "string") { continue; }
+                pairs++;
+                for (const key of effect.drops ?? []) { dropped.add(key); }
+            }
+        });
+        expect(pairs).toBeGreaterThanOrEqual(20);
+        expect([...dropped].sort()).toEqual(["callout:marker", "task:state"]);
+        const unworded = [...dropped].filter((key) => LOSS_NOTES[key] === undefined);
+        expect(
+            unworded,
+            `dropped fingerprint key(s) with no wording in LOSS_NOTES ` +
+                `(webview/components/blockMenu/menu.ts): ${unworded.join(", ")}`,
+        ).toEqual([]);
     });
 });
 

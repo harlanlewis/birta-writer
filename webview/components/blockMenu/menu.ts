@@ -107,6 +107,7 @@ import { isOrderedNumbering, type OrderedNumbering } from "../../utils/orderedMa
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
     canConvert,
+    contentEffectOf,
     conversionKindAt,
     convertAt,
     type ConversionKind,
@@ -862,6 +863,43 @@ const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as Conve
     },
 );
 
+/**
+ * What a degrading conversion costs, one fingerprint key at a time. The
+ * registry declares WHAT a pair drops (blockCapabilities' ContentEffect);
+ * the words for it are this menu's, because this is the surface that says
+ * them. Every key the registry can drop must appear here, which
+ * blockMenu.test.ts sweeps rather than trusts.
+ */
+export const LOSS_NOTES: Record<string, string> = {
+    "task:state": t("checkmarks dropped"),
+    "callout:marker": t("callout marker dropped"),
+};
+
+/**
+ * The quiet note a Turn-into row carries when the pick is not conserving, or
+ * null when nothing is lost. Advisory only, per docs/DESIGN_PRINCIPLES: the
+ * row still applies on one click and undo is the safety mechanism, so this
+ * tells the user what just happened rather than asking them to confirm it.
+ */
+function conversionLossNote(
+    source: ConversionKind,
+    target: ConversionKind,
+): string | null {
+    const effect = contentEffectOf(source, target);
+    if (effect === null || effect === "conserving") {
+        return null;
+    }
+    if (effect === "conserving-modulo-marks") {
+        // A fence holds uninterpreted text, so bold and links arrive as the
+        // markdown that spells them.
+        return t("formatting becomes text");
+    }
+    const notes = (effect.drops ?? [])
+        .map((key) => LOSS_NOTES[key])
+        .filter((note): note is string => note !== undefined);
+    return notes.length > 0 ? notes.join(", ") : null;
+}
+
 // Only one gutter menu is open at a time; opening (or clicking the same
 // marker again) closes the previous one.
 let closeActiveBlockMenu: (() => void) | null = null;
@@ -1122,6 +1160,10 @@ export function openBlockMenu(
             icon?: string;
             badge?: string;
             hint?: string;
+            /** The hint is prose about this pick, not markdown the user could
+             * have typed. Drops the monospace so the two registers stay
+             * legible as different things. */
+            hintIsNote?: boolean;
             /** False for read-only rows (copies) — they must not move the
              * user's caret/selection. Defaults true. */
             mutates?: boolean;
@@ -1185,7 +1227,9 @@ export function openBlockMenu(
         row.append(slot, text);
         if (opts.hint) {
             const hint = document.createElement("span");
-            hint.className = "block-menu-item-hint";
+            hint.className = opts.hintIsNote
+                ? "block-menu-item-hint block-menu-item-hint--note"
+                : "block-menu-item-hint";
             hint.textContent = opts.hint;
             row.appendChild(hint);
         }
@@ -1304,6 +1348,10 @@ export function openBlockMenu(
         const offered = TURN_INTO_CHOICES.filter(({ kind }) => canConvert(view, conversionPos, kind));
         for (const choice of offered) {
             const active = choice.kind === currentKind;
+            // A degrading pick says what it costs, in the slot that would
+            // otherwise repeat the markdown for a block type the user is
+            // already looking at. The current-type row costs nothing.
+            const loss = active ? null : conversionLossNote(currentKind, choice.kind);
             specs.push({
                 label: choice.label,
                 keywords: choice.keywords,
@@ -1313,7 +1361,9 @@ export function openBlockMenu(
                     active,
                     icon: choice.icon,
                     ...(choice.badge !== undefined && { badge: choice.badge }),
-                    ...(choice.hint !== undefined && { hint: choice.hint }),
+                    ...(loss !== null
+                        ? { hint: loss, hintIsNote: true }
+                        : choice.hint !== undefined && { hint: choice.hint }),
                     action: () => {
                         if (!active) {
                             convertAt(view, conversionPos, choice.kind, getEditor);
