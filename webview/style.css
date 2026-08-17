@@ -1127,7 +1127,13 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             background: transparent;
             color: inherit;
             font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 0.95rem;
+            /* Sized against the CONTENT em (not rem, which is the UI font
+               size and never moves with the content): the badge keeps its
+               proportion to the text it labels when the user scales the
+               content font. Nine tenths of an em is the size it had at the
+               default UI and content sizes; the sticky heading's mirror badge
+               carries the same ratio. */
+            font-size: calc(0.9 * var(--content-em));
             line-height: 1;
             opacity: 0.7;
             cursor: pointer;
@@ -1191,8 +1197,13 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 18px;
-            height: 18px;
+            /* Chevron box and glyph track the content em like the badge
+               (the same ratios as the sticky mirror's toggle). flex-shrink 0:
+               the gutter's fixed width would otherwise squeeze the box down
+               to its glyph once the scaled badge outgrows the row. */
+            flex-shrink: 0;
+            width: calc(1.2857 * var(--content-em));
+            height: calc(1.2857 * var(--content-em));
             padding: 0;
             border: 0;
             border-radius: var(--ui-radius-m);
@@ -1205,8 +1216,8 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
         }
 
         .heading-fold-toggle svg {
-            width: 14px;
-            height: 14px;
+            width: var(--content-em);
+            height: var(--content-em);
         }
 
         .heading-fold-toggle:hover {
@@ -1653,6 +1664,11 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
        in explicitly so a stuck heading matches the heading it mirrors instead of
        switching to the chrome/UI font. */
     font-family: var(--content-font-family, var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif));
+    /* Same opt-in for the content em: --content-em is registered on #editor,
+       so out here it would read its 14px initial value and the mirror's
+       badge and chevron would stop tracking the content scale the in-flow
+       gutter follows. */
+    --content-em: calc(var(--vscode-editor-font-size, 14px) * var(--content-font-scale, 1));
     font-weight: 600;
     line-height: 1.3;
     pointer-events: auto;
@@ -1780,8 +1796,10 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    /* Mirrors .heading-fold-toggle: content-em box and glyph, never squeezed. */
+    flex-shrink: 0;
+    width: calc(1.2857 * var(--content-em));
+    height: calc(1.2857 * var(--content-em));
     padding: 0;
     border: 0;
     border-radius: var(--ui-radius-m);
@@ -1813,8 +1831,8 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
 }
 
 .heading-sticky-toggle svg {
-    width: 14px;
-    height: 14px;
+    width: var(--content-em);
+    height: var(--content-em);
 }
 
 .heading-sticky-toggle:hover {
@@ -1835,9 +1853,10 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
     border-radius: var(--ui-radius-m);
     background: transparent;
     color: inherit;
-    /* Monospace literal hashes, matching the in-document gutter marker. */
+    /* Monospace literal hashes, matching the in-document gutter marker —
+       and its content-em size, so the mirror's badge scales with it. */
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 0.95rem;
+    font-size: calc(0.9 * var(--content-em));
     font-weight: inherit;
     line-height: 1;
     /* Exact parity with the in-flow .heading-fold-marker rest opacity. */
@@ -2791,11 +2810,12 @@ body.block-marqueeing .milkdown .editor {
 
 /* Block handles now carry the same SVG icons as their slash-menu rows
    (headings keep their H1–H6 text badge). Size the icon to the glyph box
-   so hit targets and hover chrome are unchanged. */
+   so hit targets and hover chrome are unchanged — one content em, so it
+   scales with the text it sits beside (the H badge and chevron do too). */
 .milkdown .editor .heading-fold-marker--block svg {
     display: block;
-    width: 14px;
-    height: 14px;
+    width: var(--content-em);
+    height: var(--content-em);
 }
 
 /* A code block in PREVIEW mode (mermaid diagram / math render) collapses
