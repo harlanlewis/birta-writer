@@ -37,6 +37,7 @@ import type { Node as MdastNode } from "@milkdown/transformer";
 import { markdownFormat } from "../markdown";
 import type { FormatModule } from "../types";
 import { createMdxBlockView, createMdxInlineView } from "./views";
+import { extractJsxStructure, parseJsxStructure, type JsxStructure } from "./attributes";
 
 export const mdxBlockId = "mdx_block";
 export const mdxInlineId = "mdx_inline";
@@ -65,8 +66,14 @@ const rawToMarkdown = (node: { value?: string }): string => node.value ?? "";
  * Slicing the ORIGINAL SOURCE by position (rather than re-stringifying the
  * structured node) is what makes preservation byte-perfect: attribute quoting,
  * whitespace, JSX children — everything comes back exactly as typed. The cost
- * is that a non-allowlisted island is opaque (its nested markdown is not
- * editable), which is this slice's contract.
+ * is that an island is opaque (its nested markdown is not editable), which is
+ * this slice's contract.
+ *
+ * A `mdxJsxFlowElement` additionally keeps its parsed attribute structure
+ * (attributes.ts) beside the slice, with island-relative source ranges, so
+ * the block view can offer a form over its string attributes and write an
+ * edit back as a splice into the same bytes. The structure is a passenger:
+ * serialization reads only `value`.
  */
 type PositionedNode = MdastNode & {
     position?: { start?: { offset?: number }; end?: { offset?: number } };
@@ -112,6 +119,7 @@ function remarkMdxRawify(this: any) {
                     type: flow ? "mdxRawBlock" : "mdxRawInline",
                     kind,
                     value: source.slice(start, end),
+                    jsx: kind === "mdxJsxFlowElement" ? extractJsxStructure(node) : null,
                 } as unknown as MdastNode);
                 return "skip";
             },
@@ -122,9 +130,14 @@ function remarkMdxRawify(this: any) {
 /** Parse-time rawify + the raw nodes' verbatim serializer registration. */
 export const remarkMdxRawifyPlugin = $remark("remarkMdxRawify", () => remarkMdxRawify);
 
-type RawMdastNode = MdastNode & { value?: string; kind?: string };
+type RawMdastNode = MdastNode & { value?: string; kind?: string; jsx?: JsxStructure | null };
 
-/** Flow-level mdx island: opaque atom block, source bytes in `value`. */
+/**
+ * Flow-level mdx island: opaque atom block, source bytes in `value`. `jsx`
+ * is the JSX flow element's parsed attribute structure (attributes.ts), or
+ * null for the other kinds and for anything whose structure is unknown; it
+ * rides the DOM as `data-jsx` JSON so a copied island keeps its form.
+ */
 export const mdxBlockSchema = $nodeSchema(mdxBlockId, () => ({
     group: "block",
     atom: true,
@@ -133,6 +146,7 @@ export const mdxBlockSchema = $nodeSchema(mdxBlockId, () => ({
     attrs: {
         value: { default: "" },
         kind: { default: "mdxJsxFlowElement" },
+        jsx: { default: null },
     },
     parseDOM: [
         {
@@ -141,14 +155,22 @@ export const mdxBlockSchema = $nodeSchema(mdxBlockId, () => ({
             getAttrs: (dom: HTMLElement) => ({
                 value: dom.textContent ?? "",
                 kind: dom.getAttribute("data-kind") ?? "mdxJsxFlowElement",
+                jsx: parseJsxStructure(dom.getAttribute("data-jsx")),
             }),
         },
     ],
-    toDOM: (node) => [
-        "div",
-        { "data-type": mdxBlockId, "data-kind": node.attrs["kind"] as string },
-        node.attrs["value"] as string,
-    ],
+    toDOM: (node) => {
+        const jsx = node.attrs["jsx"] as JsxStructure | null;
+        return [
+            "div",
+            {
+                "data-type": mdxBlockId,
+                "data-kind": node.attrs["kind"] as string,
+                ...(jsx ? { "data-jsx": JSON.stringify(jsx) } : {}),
+            },
+            node.attrs["value"] as string,
+        ];
+    },
     parseMarkdown: {
         match: (node) => node.type === "mdxRawBlock",
         runner: (state, node, type) => {
@@ -156,6 +178,7 @@ export const mdxBlockSchema = $nodeSchema(mdxBlockId, () => ({
             state.addNode(type, {
                 value: raw.value ?? "",
                 kind: raw.kind ?? "mdxJsxFlowElement",
+                jsx: raw.jsx ?? null,
             });
         },
     },
@@ -234,7 +257,7 @@ export const mdxFormat: FormatModule = {
     configureSerialization: markdownFormat.configureSerialization,
     nodeViews: [
         ...markdownFormat.nodeViews,
-        [mdxBlockId, (node) => createMdxBlockView(node as { attrs: Record<string, unknown> })],
+        [mdxBlockId, (node, view, getPos) => createMdxBlockView(node, view, getPos)],
         [mdxInlineId, (node) => createMdxInlineView(node as { attrs: Record<string, unknown> })],
     ],
     formatProfile: markdownFormat.formatProfile,

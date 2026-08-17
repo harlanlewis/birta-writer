@@ -34,7 +34,7 @@ const NO_MARKER_ALLOWLIST: Record<string, string> = {
     "table_cell": "table interior",
     "table_header": "table interior",
     "footnote_reference": "inline atom despite isBlock quirks in some presets",
-    "mdx_block": "leaf atom like hr — no content position for the in-block widget; a gutter marker is the descriptor-editor follow-up's job (MAR-42)",
+    "mdx_block": "leaf atom like hr (nodeSize 1) — the block widget rides offset+1, which for an atom is the position AFTER it, so a MarkerSpec alone would paint the marker outside the block; it needs the same overlay handle hr does (MAR-19 leftovers), and gets one with hr",
 };
 
 let editors: Editor[] = [];
