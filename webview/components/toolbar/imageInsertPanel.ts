@@ -103,7 +103,14 @@ export function showImageInsertPanel(
     srcInput.placeholder = t("Image URL https://...");
     urlSection.appendChild(srcInput);
     panel.appendChild(urlSection);
-    const detachSrcComplete = attachImgPathComplete(srcInput);
+    // The completer listens in the capture phase and stops propagation on
+    // Enter and Escape, so nothing behind it on this input ever hears them:
+    // confirm and cancel have to travel through its callbacks.
+    const detachSrcComplete = attachImgPathComplete(
+        srcInput,
+        () => confirm(),
+        () => { if (!closeTopmostLayer()) { cleanup(); } },
+    );
     // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
     const detachPanelUndoFns = [attachInputUndo(altInput), attachInputUndo(srcInput)];
 

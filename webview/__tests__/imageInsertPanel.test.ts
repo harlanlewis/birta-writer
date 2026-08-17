@@ -48,6 +48,25 @@ describe("image insert panel escape layers", () => {
         expect(closeTopmostLayer()).toBe(false);
     });
 
+    it("Escape and Enter in the URL field should reach the dialog past the path completer", () => {
+        // The completer's capture listener stops propagation on both keys, so
+        // the dialog hands it callbacks rather than listening behind it.
+        const onConfirm = vi.fn();
+        showImageInsertPanel(onConfirm);
+        const src = () => document.querySelector(".img-insert-panel input[placeholder^='Image URL']") as HTMLInputElement;
+        src().value = "https://example.com/a.png";
+        key(src(), { key: "Enter" });
+        expect(onConfirm).toHaveBeenCalledWith("", "https://example.com/a.png");
+        expect(panel()).toBeNull();
+
+        showImageInsertPanel(vi.fn());
+        key(src(), { key: "Escape", shiftKey: true });
+        expect(panel()).not.toBeNull();
+        key(src(), { key: "Escape" });
+        expect(panel()).toBeNull();
+        expect(closeTopmostLayer()).toBe(false);
+    });
+
     it("the enlarge lightbox should take the first Escape and the panel the next", async () => {
         showImageInsertPanel(vi.fn(), undefined, () =>
             Promise.resolve([{ relPath: "a.png", webviewUri: "vscode-resource://a.png", name: "a.png" }]));

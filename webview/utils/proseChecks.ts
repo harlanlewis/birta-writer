@@ -211,7 +211,7 @@ export function findNonAsciiPunct(text: string): StyleMatch[] {
 // vocabulary is the whole scope: an absolute claim about a correctness bug
 // ("no longer corrupts the file") reproduces or it does not, so it stays; an
 // absolute claim about a cost cannot be checked, because a cost is a
-// distribution and only ever shrinks. Flagging absolute language outright hits
+// distribution that gets smaller, never impossible. Flagging absolute language outright hits
 // most of a real changelog; scoped like this it hits the real thing. Ported
 // from the maintainer's prose-guard hook so the editor and the commit gate
 // agree on what a claim has to carry.

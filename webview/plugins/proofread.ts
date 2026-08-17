@@ -259,7 +259,7 @@ export function styleAdvice(category: string): string {
         case "ruleOfThree": return t("Three stacked adjectives read as cadence, not content - one precise word does more.");
         case "emDash": return t("An em dash renders inconsistently outside the editor - a spaced hyphen is safe everywhere.");
         case "nonAsciiPunct": return t("Curly quotes and ellipses can garble in code, terminals, and diffs - ASCII stays portable.");
-        case "absolutePerf": return t("A cost only ever shrinks, so \"no longer stalls\" cannot be checked - give the before and after figures, or say what still costs.");
+        case "absolutePerf": return t("A cost gets smaller, it does not vanish, so \"no longer stalls\" cannot be checked - give the before and after figures, or say what still costs.");
         case "repeated": return t("The same word appears twice in a row — delete one.");
         default: return "";
     }

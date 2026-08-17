@@ -215,7 +215,12 @@ function isJsxStructure(x: unknown): x is JsxStructure {
             (r["kind"] === "string" || r["kind"] === "boolean" || r["kind"] === "expression" || r["kind"] === "spread") &&
             (r["value"] === null || typeof r["value"] === "string") &&
             typeof r["start"] === "number" &&
-            typeof r["end"] === "number"
+            typeof r["end"] === "number" &&
+            // Offsets are island-relative and forward; a negative or inverted
+            // pair on pasted `data-jsx` would make `slice` count from the end
+            // and could pass the quote guard by accident.
+            r["start"] >= 0 &&
+            r["end"] >= r["start"]
         );
     });
 }

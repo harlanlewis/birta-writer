@@ -22,6 +22,8 @@
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { isReadOnly, lockWithDocument } from "@/readOnly";
+import { attachInputUndo } from "@/utils/inputUndo";
+import { isBareEscape } from "@/ui/escapeLayers";
 import { spliceAttributeValue, type JsxAttribute, type JsxStructure } from "./attributes";
 
 /** `id` of the injected style element — also the idempotence key. */
@@ -216,15 +218,19 @@ function buildAttributeRows(
             input.setAttribute("aria-label", t("Attribute value"));
             input.dataset["attr"] = attr.name ?? "";
             lockWithDocument(input);
+            // Local undo/redo: VS Code intercepts Cmd+Z before a native input
+            // sees it, and a document undo would leave the typed text in the
+            // field for the next blur to re-commit over it.
+            attachInputUndo(input);
             // Commit on change (blur or Enter). Enter is also caught so the
-            // value lands without leaving the field; Escape puts the file's
-            // value back.
+            // value lands without leaving the field; a bare Escape puts the
+            // file's value back (a modified Escape is the workbench's).
             input.addEventListener("change", () => commit(index, input.value));
             input.addEventListener("keydown", (e) => {
                 if (e.key === "Enter") {
                     e.preventDefault();
                     commit(index, input.value);
-                } else if (e.key === "Escape") {
+                } else if (isBareEscape(e)) {
                     e.preventDefault();
                     input.value = committed(index);
                     input.blur();

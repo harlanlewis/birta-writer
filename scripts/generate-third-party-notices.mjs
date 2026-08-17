@@ -204,12 +204,6 @@ export const EMBEDDED_COMPONENTS = {
             "cytoscape's published dist inlines a Promises/A+ thenable and a bezier-easing " +
             "generator under their authors' own MIT notices, carried only in source comments.",
     },
-    // A second license inside an ISC package: the ColorBrewer color schemes
-    // are Apache-2.0 (Cynthia Brewer, Mark Harrower, Penn State). The package's
-    // LICENSE carries the notice after its own ISC grant, so the appendix
-    // already reproduces it; the entry makes the second license visible where
-    // the summary counts declared licenses, and the shipped file adds the full
-    // Apache text so a copy of the License accompanies the schemes.
     // A second license inside an ISC package, discharged by the parent: d3-geo's
     // LICENSE carries Charles Karney's MIT notice (GeographicLib's geodesic
     // code) after its own ISC grant, and the appendix reproduces that file
@@ -227,6 +221,12 @@ export const EMBEDDED_COMPONENTS = {
             "d3-geo's geodesic routines are ported from GeographicLib under Charles Karney's " +
             "MIT notice, which the package's LICENSE states after its ISC grant.",
     },
+    // A second license inside an ISC package: the ColorBrewer color schemes
+    // are Apache-2.0 (Cynthia Brewer, Mark Harrower, Penn State). The package's
+    // LICENSE carries the notice after its own ISC grant, so the appendix
+    // already reproduces it; the entry makes the second license visible where
+    // the summary counts declared licenses, and the shipped file adds the full
+    // Apache text so a copy of the License accompanies the schemes.
     "d3-scale-chromatic": {
         component: "the ColorBrewer color schemes",
         spdx: "Apache-2.0",
