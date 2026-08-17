@@ -18,6 +18,16 @@
 
 - A conversion that loses something says so before you pick it. A Turn-into row that will drop a task list's checkmarks, or a callout's kind and fold state, now carries a quiet note naming what goes.
 
+- A style check for the absolute speed claim: `no longer stalls`, `zero latency`, `always faster` and their kin get the same dotted underline the other checks use, with the note that a cost is a distribution and the sentence cannot be checked as written. It is scoped to performance vocabulary, so `no longer corrupts the file` is left alone, and a paragraph that already carries a before and an after figure is left alone too. It is a Prose row in the Checks menu, on by default like the others, and `birta.styleCheck.absolutePerf` turns it off.
+
+### Changed
+
+- Expand Selection climbs the structure inside a block, one level at a time. From text in a nested list item it now reaches the item, then the list it sits in, then the item that sits in, and only then the whole top-level list and the document; a list inside a quote offers the same rungs; table cells and rows are not rungs. Shrink Selection retraces an expand run exactly, so a three-block range grown to the whole document comes back as three blocks rather than one, and a run from a caret walks back to that caret; any other selection change or edit ends the run and Shrink falls back to stepping down from wherever the selection is.
+
+- A PlantUML document whose diagrams are laid out by the engine itself (sequence, activity, mindmap, Gantt, JSON, YAML, WBS, timing and the like) does not download and start the Graphviz engine to render them; the first diagram that needs Graphviz layout (class, state, component, deployment, use case, object, ERD, DOT, ArchiMate) loads it, once, and a document that also carries a Graphviz fence still shares that one instance. A Graphviz-backed diagram pays one extra parse on its first render while the engine arrives.
+
+- Numeric table columns line up: digits in table cells now render as tabular lining figures, so the same digit is the same width in every row. Kerning, common and contextual ligatures and optical sizing are asserted for the whole document, and CJK punctuation at the start of a line trims on engines that support it. None of these re-break a line as you type, and rendering is identical between editing and read-only.
+
 ### Fixed
 
 - Dragging from the page margin to select a run of blocks works at a fixed content width. It only ever armed inside the editor column's own thin padding band, which at the default width is narrower than the gutter chrome sharing it, so on most documents the gesture did nothing; the margin either side of the column now starts it.
@@ -37,6 +47,10 @@
 - A footnote definition holding a block of raw HTML shows up in the editor. The whole definition, note text included, vanished from view when its body carried an HTML block, because the parser could not build the node and dropped it; the file kept the bytes because a save restores what the round trip could not reproduce, so what was lost was the editing, not the data. It now renders like any other footnote and round-trips.
 
 - A `:::` directive whose last block is a table or a block of raw HTML now closes, and renders as the note or warning you wrote. The closing fence was being absorbed into the table as an extra row, or into the HTML as another line of it, so the whole directive silently stayed open and the fence showed up as document content. Your file was never damaged by this and saving was always safe; what was lost was the rendering.
+
+- The AI vocabulary check stops flagging "underscore" and "showcase" used as nouns (the `_` character, a file called showcase.md); the verb forms ("underscores the", "showcasing") are still flagged. Measured over the fidelity corpus, those two nouns were nearly every hit the check produced on human prose.
+
+- The bundled attribution appendix (`licenses/THIRD_PARTY_LICENSES.md`) now records the licenses that live inside packages rather than on their manifests: the KaTeX fonts inlined into the math stylesheet are SIL Open Font License 1.1 and ship with their notice and the license text; cytoscape's two embedded MIT snippets, the ColorBrewer schemes inside d3-scale-chromatic (Apache-2.0) and GeographicLib inside d3-geo (MIT) are named on their packages' entries. Anyone auditing the VSIX for its licenses was told MIT or ISC and nothing else for those four.
 
 ---
 
