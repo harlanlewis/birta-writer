@@ -5,8 +5,8 @@
  * Swept over every provider rather than sampled, because the bug this guards
  * is per-row: a provider whose gate is missing looks identical to one whose
  * gate works until you try that provider specifically. The sweep asserts its
- * own coverage and names what it could not reach — a sweep that enumerated
- * nothing passes, and this repo has shipped that (MAR-141).
+ * own coverage and names what it could not reach: a sweep that enumerated
+ * nothing passes (AGENTS.md, "Choosing what to assert").
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { TextSelection } from "../pm";
