@@ -490,7 +490,9 @@ export async function run({ page, check, baseUrl }) {
     // actually takes first: lock a document they are reading.
     const toggleSel = '[data-item-id="readOnly"] button';
     const hasToggle = await page.$(toggleSel);
-    check("the toolbar carries an Edit / Read-only toggle", hasToggle !== null);
+    // The item ships hidden; the harness places it, so this measures the
+    // wiring of a toggle a user has chosen to show, not the default bar.
+    check("the toolbar carries the Edit / Read-only toggle when its item is placed", hasToggle !== null);
 
     // Clicked in-page rather than through page.mouse. The bar overflows into a
     // menu at narrow widths and this harness viewport is one of them, so a
