@@ -50,6 +50,8 @@
 
 - Fold All with a selection spanning two sections no longer leaves part of the selection hidden inside a fold.
 
+- Hovering a callout's title no longer reveals the gutter markers of the list items inside it; only the callout's own marker shows, as it does for every other container.
+
 - With a run of blocks selected, a covered block that scrolls into view now surfaces its gutter marker like the others; a block whose gutter chrome was built after the selection was made kept its marker hidden.
 
 - Closing the keyboard shortcuts panel by clicking into a text field elsewhere leaves the focus where you clicked, instead of bouncing it back into the editor.

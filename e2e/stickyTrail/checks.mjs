@@ -56,6 +56,15 @@ export async function run({ page, check, baseUrl }) {
     check("the badge stays level with the title row, not the trail",
         markerMid > s.titleRect.top - 2 && markerMid < s.titleRect.bottom + 2,
         JSON.stringify({ markerMid, title: s.titleRect }));
+    // The bar's backdrop covers the gutter column beside the TRAIL row too:
+    // a point in that column, level with the trail, hits the bar (its
+    // pseudo-element backdrop reports the bar), not a document element
+    // scrolling under it.
+    const underTrail = await page.evaluate(({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return el ? (el.closest(".heading-sticky-title") ? "sticky" : el.className || el.tagName) : "none";
+    }, { x: s.stickyRect.left - 40, y: s.trailRect.top + 2 });
+    check("the gutter column beside the trail is masked by the bar", underTrail === "sticky", underTrail);
     check("the sticky reserves its full painted height",
         Math.abs(parseFloat(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--editor-sticky-heading-height"))) - s.stickyRect.height) < 2,
         await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--editor-sticky-heading-height")));

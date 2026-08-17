@@ -1797,15 +1797,16 @@ body.toc-open .heading-sticky-trail {
 
 .heading-sticky-gutter {
     position: absolute;
-    left: -10px;
+    left: calc(-1 * var(--sticky-gutter-gap));
     top: 0;
     transform: translateX(-100%);
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
     gap: 4px;
-    /* Matches the in-document gutter — wide enough for `######` + the chevron. */
-    width: 66px;
+    /* Matches the in-document gutter's column: wide enough for the level
+       badge and the chevron. */
+    width: var(--sticky-gutter-width);
     height: 1.3em;
     color: var(--vscode-descriptionForeground);
     line-height: 1;
@@ -1841,10 +1842,25 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
     opacity: 0;
 }
 
-.heading-sticky-gutter::before {
+/* The opaque backdrop under the gutter column, painted by the BAR rather
+   than the gutter: it spans the bar's whole height (the ancestor trail row
+   included, which the gutter, level with the title row, does not) plus half
+   an em above and below, so nothing scrolls visibly through the column
+   beside the trail while the badge and chevron rest over it. Its width and
+   offset are the gutter's (`left` and `width` below, and their narrow
+   twins), kept in one custom property each so the two cannot drift. */
+.heading-sticky-title {
+    --sticky-gutter-gap: 10px;
+    --sticky-gutter-width: 66px;
+}
+
+.heading-sticky-title::before {
     content: "";
     position: absolute;
-    inset: -1em 0;
+    top: -0.5em;
+    bottom: -0.5em;
+    left: calc(-1 * (var(--sticky-gutter-gap) + var(--sticky-gutter-width)));
+    width: calc(var(--sticky-gutter-gap) + var(--sticky-gutter-width));
     z-index: -1;
     background: var(--vscode-editor-background);
 }
@@ -1946,9 +1962,9 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
 }
 
 @media (max-width: 720px) {
-    .heading-sticky-gutter {
-        left: -6px;
-        width: 56px;
+    .heading-sticky-title {
+        --sticky-gutter-gap: 6px;
+        --sticky-gutter-width: 56px;
     }
 }
 

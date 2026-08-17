@@ -30,7 +30,7 @@ import {
 import { applyTooltip, hideTooltip } from "../../ui/tooltip";
 import { createFoldEllipsis } from "../../ui/foldEllipsis";
 import { t } from "../../i18n";
-import { isTextBearingParagraph } from "../../blockCapabilities";
+import { isTextBearingParagraph } from "./foldModel";
 // Menu opening and marker-drag arming are late-bound handles the block menu
 // component registers at load (plugins/blockHandles.ts) — the plugin layer
 // never imports component modules; the handles resolve at interaction time.

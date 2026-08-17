@@ -29,7 +29,7 @@
  */
 import type { EditorView } from "./pm";
 import type { Node as ProseNode } from "./pm";
-import { getHeadingLevel, setHeadingLevelAt } from "./plugins/headingFold";
+import { getHeadingLevel, isTextBearingParagraph, setHeadingLevelAt } from "./plugins/headingFold";
 import type { GetEditor } from "./editorCommands";
 // Runtime-only cycle (turnInto imports this module's kind probes back for
 // its legacy predicate); both sides touch the other only inside function
@@ -152,34 +152,6 @@ export const INLINE: BlockCapability =
     { shape: "inline", content: "none", kind: null, source: false, target: false };
 
 // ── Instance classifiers (the `kind` field's function arm) ─────────────────
-
-/**
- * True when a paragraph carries actual text content — at least one inline
- * child that is neither an image nor an html atom, ignoring whitespace-only
- * text. Image-only and HTML-only paragraphs are visual blocks, not prose
- * (MAR-79), so they get an actions-only menu.
- */
-export function isTextBearingParagraph(node: ProseNode): boolean {
-    if (node.childCount === 0) {
-        return true; // a blank line the user is about to type on
-    }
-    let sawAtom = false;
-    let sawContent = false;
-    node.forEach((child) => {
-        const name = child.type.name;
-        if (name === "image" || name === "html") {
-            sawAtom = true;
-            return;
-        }
-        if (child.isText && !child.text?.trim()) {
-            return;
-        }
-        sawContent = true;
-    });
-    // Whitespace-only paragraphs (no atoms at all) are still prose — only a
-    // paragraph whose real content is images/html is a visual block.
-    return sawContent || !sawAtom;
-}
 
 /** A bullet list whose items carry `checked` renders (and serializes) as a
  * task list — the single probe shared by the menu and the gutter glyphs. */
