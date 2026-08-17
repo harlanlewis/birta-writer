@@ -363,6 +363,44 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.click(clearPt.x, clearPt.y);
     await page.waitForTimeout(80);
 
+    // ── 5d. Marquee from the BODY margin, in fixed-width mode. This harness
+    // runs the editor at full width, where `#editor` spans the window and
+    // every margin pixel is inside it. A real document has a content-width
+    // setting, `#editor` is a centred column, and most of the margin is the
+    // body: a listener on the container alone armed the marquee only in the
+    // column's own padding band, and the feature read as absent. ──
+    await page.evaluate(() => document.documentElement.style.setProperty("--editor-max-width", "60ch"));
+    await page.waitForTimeout(100);
+    const fixedGeo = await page.evaluate(() => {
+        const first = document.querySelector(".ProseMirror > *:first-child").getBoundingClientRect();
+        const third = document.querySelector(".ProseMirror > *:nth-child(3)").getBoundingClientRect();
+        const editor = document.getElementById("editor").getBoundingClientRect();
+        return { top: first.top, bottom: third.bottom, editorLeft: editor.left };
+    });
+    check("fixed width: the editor column has a body margin to its left",
+        fixedGeo.editorLeft > 60, `#editor left=${fixedGeo.editorLeft}`);
+    const bodyX = Math.max(8, fixedGeo.editorLeft - 40);
+    const bodyHit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName, [bodyX, fixedGeo.top + 2]);
+    check("fixed width: the margin start point is the body, not the container", bodyHit === "BODY", String(bodyHit));
+    await page.mouse.move(bodyX, fixedGeo.top + 2);
+    await page.mouse.down();
+    await page.mouse.move(bodyX + 6, fixedGeo.top + 12);
+    await page.mouse.move(bodyX + 10, fixedGeo.bottom - 4, { steps: 6 });
+    await page.waitForTimeout(80);
+    const bodyMarquee = await page.evaluate(() => ({
+        rect: !!document.querySelector(".block-marquee") &&
+            getComputedStyle(document.querySelector(".block-marquee")).display !== "none",
+    }));
+    check("fixed width: a drag from the body margin draws the marquee", bodyMarquee.rect, JSON.stringify(bodyMarquee));
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    const bodyCovered = await page.evaluate(() =>
+        document.querySelectorAll(".heading-fold-marker--covered").length);
+    check("fixed width: release selects the covered blocks", bodyCovered >= 2, `${bodyCovered} covered`);
+    await page.evaluate(() => document.documentElement.style.removeProperty("--editor-max-width"));
+    await page.mouse.click(clearPt.x, clearPt.y);
+    await page.waitForTimeout(80);
+
     // ── 6. Typing while the menu is open FILTERS it (the search input is
     // default-focused — the Notion pattern), and Escape closes it with
     // focus returned to the editor; the document is never touched. ──

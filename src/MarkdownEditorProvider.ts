@@ -1461,13 +1461,6 @@ export class MarkdownEditorProvider
                     case "setTocPosition":
                         updateSettingRespectingScope("tocPosition", message.position);
                         break;
-                    case "toggleWorkbenchZen":
-                        // Focus mode's workbench half (MAR-72). Forwarded, not
-                        // tracked: Zen Mode restores the chrome it hid, and
-                        // holding our own idea of the prior workbench state is
-                        // how the two come to disagree.
-                        void vscode.commands.executeCommand("workbench.action.toggleZenMode");
-                        break;
                     case "setNetworkEnabled":
                         // Just-in-time opt-in (MAR-179): the user accepted an
                         // "Enable" affordance. Consent keys are application-

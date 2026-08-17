@@ -27,6 +27,7 @@ import { BlockRangeSelection } from "../../plugins/blockRange";
 import { selectionCoverRange } from "../../plugins/headingFold";
 import { scrollVelocityFor } from "./drag";
 import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
+import { isReadOnly } from "../../readOnly";
 
 const MARQUEE_THRESHOLD = 4;
 
@@ -130,19 +131,26 @@ export function commitMarqueeSelection(
  */
 export function wireMarquee(view: EditorView): () => void {
     const onMouseDown = (event: MouseEvent): void => {
-        if (event.button !== 0) {
+        // The marquee's product is a block range to move or delete, and its
+        // tint is the read-only mode's block highlight; neither for a reader.
+        if (event.button !== 0 || isReadOnly()) {
             return;
         }
-        // Only true container-margin pointer-downs arm a marquee: anything
-        // INSIDE ProseMirror's content (gutter chrome, NodeView panels,
-        // synthetic events bubbling from buttons with clientX=0) belongs to
-        // its own handler. The PM root itself still qualifies — its padding
+        // Only true margin pointer-downs arm a marquee: anything INSIDE
+        // ProseMirror's content (gutter chrome, NodeView panels, synthetic
+        // events bubbling from buttons with clientX=0) belongs to its own
+        // handler, and so does every piece of chrome outside the editor (the
+        // toolbar, the TOC panel, a popup), which is why the test is on the
+        // TARGET and not on containment. What qualifies is the page's own
+        // ground: the body and root element (the margins in fixed-width mode,
+        // where `#editor` is a centred column and most of the margin is
+        // outside it), the container, and the PM root itself, whose padding
         // is margin space.
-        if (
-            event.target instanceof Element &&
-            event.target !== view.dom &&
-            view.dom.contains(event.target)
-        ) {
+        const target = event.target;
+        const isGround = target === document.body || target === document.documentElement;
+        const inHost = target instanceof Element && host.contains(target)
+            && (target === view.dom || !view.dom.contains(target));
+        if (!isGround && !inHost) {
             return;
         }
         const bounds = contentBounds(view);
@@ -299,14 +307,20 @@ export function wireMarquee(view: EditorView): () => void {
         window.addEventListener("blur", onBlur);
     };
 
-    // The visual margins belong to the editor's CONTAINER (#editor) — the
-    // ProseMirror element starts at the content column, so margin clicks
-    // never reach view.dom. Capture phase: this must win against
-    // ProseMirror's own mousedown handling for margin clicks (and ONLY
-    // margin clicks — content-column pointer-downs fall through untouched).
+    // The visual margins are mostly OUTSIDE the editor's container: in
+    // fixed-width mode `#editor` is a centred column with its own small
+    // padding band, and the space either side of it is the body. So the
+    // listener sits on the document and the target test above decides;
+    // listening on the container alone armed the marquee only in that
+    // padding band, which at the default width is a strip narrower than the
+    // gutter chrome that shares it, and the feature read as absent (the
+    // harness that pinned it ran the editor at full width, where the two
+    // coincide). Capture phase: this must win against ProseMirror's own
+    // mousedown handling for margin clicks (and ONLY margin clicks —
+    // content-column pointer-downs fall through untouched).
     const host = view.dom.closest("#editor") ?? view.dom.parentElement ?? view.dom;
-    host.addEventListener("mousedown", onMouseDown as EventListener, true);
+    document.addEventListener("mousedown", onMouseDown as EventListener, true);
     return () => {
-        host.removeEventListener("mousedown", onMouseDown as EventListener, true);
+        document.removeEventListener("mousedown", onMouseDown as EventListener, true);
     };
 }

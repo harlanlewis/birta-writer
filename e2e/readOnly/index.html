@@ -43,7 +43,9 @@
     translations: {},
     isMac: true,
     readOnly: READ_ONLY,
-    toolbar: { placements: {}, order: [] },
+    // The Edit / Read-only toggle ships hidden; this is the layout of a user
+    // who has shown it, so the toggle's own wiring can be driven below.
+    toolbar: { placements: { readOnly: "right" }, order: [] },
     frontmatterAddButton: true,
   };
   window.__posted = [];
@@ -75,6 +77,12 @@
     "",
     "> [!note] A callout title",
     "> callout body",
+    "",
+    // A data URI, so the fixture never 404s (the suite counts page errors);
+    // sized so the picture, not its caption field, is what a click lands on.
+    "![An image](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABQCAIAAAARP+ljAAAAj0lEQVR42u3RQREAAAzCMOQjGxN77VIJTarXxQLAAizAAizAAizAgAVYgAVYgAVYgAELsAALsAALsAALMGABFmABFmABFmDAAizAAizAAizAgAVYgAVYgAVYgAUYsAALsAALsAALMGABFmABFmABFmDAAizAAizAAizAAgxYgAVYgAVYgAUYsAALsAALsK4aFh20osIjcrkAAAAASUVORK5CYII=)",
+    "",
+    "<div class=\"raw\">raw html block</div>",
     "",
     "## Second section",
     "",

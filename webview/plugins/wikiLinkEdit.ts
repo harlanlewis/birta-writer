@@ -31,6 +31,7 @@ import { Decoration, DecorationSet } from "../pm";
 import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { wikiLinkId } from "./wikiLinks";
+import { isReadOnly } from "../readOnly";
 
 /** The wikilink the caret sits inside, as {pos, end}, or null. */
 export function wikiAroundSelection(state: EditorState): { pos: number; end: number } | null {
@@ -48,7 +49,8 @@ export function wikiAroundSelection(state: EditorState): { pos: number; end: num
 
 /** Reveal-decoration for the wikilink the caret is inside (pure derivation). */
 export function revealDecorations(state: EditorState): DecorationSet {
-    const range = wikiAroundSelection(state);
+    // A reader never sees the source: the reveal exists to edit it.
+    const range = isReadOnly() ? null : wikiAroundSelection(state);
     if (!range) {
         return DecorationSet.empty;
     }
@@ -182,7 +184,7 @@ export const wikiLinkEditPlugin = $prose(
                     _event: MouseEvent,
                     direct: boolean,
                 ): boolean {
-                    if (!direct || node.type.name !== wikiLinkId) {
+                    if (!direct || node.type.name !== wikiLinkId || isReadOnly()) {
                         return false;
                     }
                     // Clicking the resolved chip: caret inside at the end (the

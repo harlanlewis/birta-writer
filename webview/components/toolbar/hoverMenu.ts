@@ -112,7 +112,11 @@ export function wireHoverMenu(
     // doesn't flash menus. Already-open (from an adjacent switch) opens at once.
     const scheduleOpen = (): void => {
         cancelHide();
+        // A disabled trigger (read-only dims every mutating item's buttons)
+        // opens nothing: the menu would offer rows the trigger already says
+        // are unavailable, and its rows are disabled with it.
         if (isOpen() || openTimer !== null) { return; }
+        if (button instanceof HTMLButtonElement && button.disabled) { return; }
         openTimer = setTimeout(() => { openTimer = null; open(); }, openDelay);
     };
 

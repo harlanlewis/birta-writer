@@ -2094,8 +2094,8 @@
                         "left",
                         "right"
                     ],
-                    "default": "right",
-                    "description": "Edit / Read-only toggle (lock edits for this document): pick a toolbar zone or hide it."
+                    "default": "hidden",
+                    "description": "Edit / Read-only toggle (lock edits for this document): pick a toolbar zone or hide it. Ships hidden; the Toggle Read-only command is always available."
                 },
                 "birta.toolbar.items.viewSource": {
                     "order": 48,

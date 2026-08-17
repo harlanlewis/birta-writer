@@ -65,6 +65,7 @@ import { hideLintPopup, showFindingsPopup, type PopupFinding } from "../proofrea
 import { findingsAt } from "./proofread";
 import { requestIdle } from "../utils/idle";
 import { t } from "../i18n";
+import { isReadOnly } from "../readOnly";
 import "./calcStale.css";
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -276,7 +277,12 @@ export function removeCueAnswer(view: EditorView, from: number, to: number): voi
 
 function cueFinding(view: EditorView, from: number, to: number, cue: CalcCueSpec["cue"]): PopupFinding {
     const buttons: PopupFinding["buttons"] = [];
-    if (cue.kind === "stale" && cue.newValue !== null) {
+    // Read-only offers no rewrite (the proofread popup's rule, MAR-53): the
+    // cue and its explanation stand, and Ignore is session state, but Update
+    // and Remove answer are edits the transaction filter has already refused.
+    if (isReadOnly()) {
+        // nothing
+    } else if (cue.kind === "stale" && cue.newValue !== null) {
         const newValue = cue.newValue;
         buttons.push({ label: t("Update"), run: () => updateCueResult(view, from, to, newValue) });
     } else {

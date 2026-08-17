@@ -45,6 +45,7 @@ import {
 import { buildHeadingFoldDecorations, structureFingerprint } from "./foldDecorations";
 import { requestIdle } from "../../utils/idle";
 import { observeVisibleWindow } from "../visibleRange";
+import { isReadOnly } from "../../readOnly";
 
 /**
  * MAR-189: whether we can defer the affordance decoration build off the mount
@@ -473,7 +474,9 @@ export const headingFoldPlugin = $prose(() =>
                 if (document.body.classList.contains("block-dragging")) {
                     return;
                 }
-                const cover = selectionCoverRange(view);
+                // Read-only shows no block-range tint and reveals no covered
+                // markers: both advertise a move that the mode refuses.
+                const cover = isReadOnly() ? null : selectionCoverRange(view);
                 const key = cover ? `${cover.from}:${cover.to}` : "";
                 if (key === coverKey && coveredMarkers.every((m) => m.isConnected)) {
                     return;
