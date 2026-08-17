@@ -66,4 +66,18 @@ export async function run({ page, check, baseUrl }) {
     await caretInCell("dd");
     await send("tableAlignColumnLeft");
     check("explicit left → |---|:---|", (await separatorBecomes("|---|:---|")) === "|---|:---|");
+
+    // ── 5. Typography polish (MAR-52) reaches the rendered document ──
+    // Computed values, not the stylesheet: a reset or a cascade change that
+    // swallowed the declarations would show here.
+    const numeric = await page.$eval(".ProseMirror table td", (td) => getComputedStyle(td).fontVariantNumeric);
+    check("table cells render tabular lining figures",
+        numeric === "lining-nums tabular-nums" || numeric === "tabular-nums lining-nums", numeric);
+    const body = await page.$eval("#editor", (el) => {
+        const cs = getComputedStyle(el);
+        return { ligatures: cs.fontVariantLigatures, trim: cs.textSpacingTrim, kerning: cs.fontKerning };
+    });
+    check("body ligatures are common+contextual", body.ligatures === "common-ligatures contextual", body.ligatures);
+    check("body CJK punctuation trims at line start", body.trim === "trim-start", body.trim);
+    check("body kerning asserted", body.kerning === "normal", body.kerning);
 }
