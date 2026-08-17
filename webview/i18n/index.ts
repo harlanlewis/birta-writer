@@ -30,6 +30,8 @@ declare global {
             pasteUnfurl?: boolean;
             /** Apply a fetched title without asking, instead of offering it (birta.pasteUnfurl.autoApply). */
             pasteUnfurlAutoApply?: boolean;
+            /** Link cards by default: a lone web link renders as an OG card (birta.linkCards.enabled). Also gated by `network`. */
+            linkCardsEnabled?: boolean;
             /** Inline (unfenced) calc gate: the `=`/`=>` suggestions in prose (birta.calc.enabled). */
             calcEnabled?: boolean;
             /** Fenced ```calc block ledger gate (birta.calc.blocks.enabled); independent of `calcEnabled`. */

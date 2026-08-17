@@ -225,6 +225,40 @@ export function listNumberingEntries(): [string, OrderedNumbering][] {
     return numberings.entries();
 }
 
+/**
+ * Link-card DISPLAY (`linkCardDisplay` bag key): a per-link choice to show a
+ * lone web link as an OG card or as the plain link, overriding the
+ * `birta.linkCards.enabled` default either way. The fourth member of the
+ * preference class, and the same argument holds: the card is a view of the
+ * link, so which view a reader chose belongs beside the document, never in
+ * it. Absence means "follow the default"; both explicit values are stored so
+ * a later flip of the default leaves every deliberate choice standing.
+ */
+export type LinkCardDisplay = "card" | "text";
+
+const linkCardDisplays = bagMap<LinkCardDisplay>(
+    "linkCardDisplay",
+    (value): value is LinkCardDisplay => value === "card" || value === "text",
+);
+
+export function getLinkCardDisplay(anchor: string): LinkCardDisplay | null {
+    return linkCardDisplays.get(anchor);
+}
+
+export function setLinkCardDisplay(anchor: string, display: LinkCardDisplay | null): void {
+    linkCardDisplays.set(anchor, display);
+}
+
+export function renameLinkCardDisplayAnchor(oldAnchor: string, newAnchor: string): void {
+    linkCardDisplays.rename(oldAnchor, newAnchor);
+}
+
+/** Whether any link carries a per-link choice: with the default off, this
+ * is what decides whether the card pass has anything to look for at all. */
+export function hasLinkCardDisplays(): boolean {
+    return linkCardDisplays.entries().length > 0;
+}
+
 // ─── Block identity ─────────────────────────────────────────────────────────
 
 /**

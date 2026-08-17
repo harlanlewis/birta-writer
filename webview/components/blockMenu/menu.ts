@@ -76,6 +76,7 @@ import {
     IconChevronRight,
     IconChevronUp,
     IconCopy,
+    IconEmbedCard,
     IconExpandHorizontal,
     IconExternalLink,
     IconFileText,
@@ -84,6 +85,7 @@ import {
     IconMaximize2,
     IconPencil,
     IconPlus,
+    IconTextInline,
     IconTrash2,
 } from "../../ui/icons";
 import {
@@ -106,6 +108,14 @@ import { blockMarkdownAt, selectInto } from "./turnInto";
 import { setListNumberingAt } from "../../plugins/listNumbering";
 import { isOrderedNumbering, type OrderedNumbering } from "../../utils/orderedMarkers";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
+import {
+    chooseLinkCardDisplay,
+    linkCardAnchorAt,
+    linkCardDisplayFor,
+    repaintLinkCards,
+    soleLinkHref,
+} from "../../linkCards";
+import { recognizeProvider, embedProviderOn, providerFor } from "../../utils/embedProviders";
 import {
     canConvert,
     canConvertRange,
@@ -919,6 +929,29 @@ function conversionLossNote(
     return notes.length > 0 ? notes.join(", ") : null;
 }
 
+/**
+ * Whether the embed plugin already cards the paragraph at `pos` as a
+ * PROVIDER card (a bare autolink a provider recognizes, embeds on, that
+ * provider on, and reachable without network when it needs it): the same
+ * gates the plugin applies (plugins/embed.ts collectEmbeds), asked here so
+ * the link-card row never offers to card a link that is already a card.
+ */
+function isProviderCard(view: EditorView, pos: number): boolean {
+    const node = view.state.doc.nodeAt(pos);
+    const href = node ? soleLinkHref(node) : null;
+    if (!node || href === null || node.textContent !== href) {
+        return false;
+    }
+    if (!(window.__i18n?.embedsEnabled ?? true)) {
+        return false;
+    }
+    const match = recognizeProvider(href);
+    if (!match || !embedProviderOn(match.kind)) {
+        return false;
+    }
+    return (window.__i18n?.network ?? false) || !providerFor(match.kind).needsNetwork;
+}
+
 // Only one gutter menu is open at a time; opening (or clicking the same
 // marker again) closes the previous one.
 let closeActiveBlockMenu: (() => void) | null = null;
@@ -1575,6 +1608,31 @@ export function openBlockMenu(
             mutates: false,
             action: () => setBlockWidth(widthAnchor, isFullWidth ? null : "full"),
         });
+    }
+    if (anchorNode && view.state.doc.resolve(blockPos).depth === 0) {
+        // Link card (MAR-185): a lone web link on its own line can be shown
+        // as an OG card or as the plain link, per link. Presentation state
+        // beside the document (blockWidth.ts), never a byte in it, so like
+        // the width row it is mutates: false and outside undo history. The
+        // row is offered whenever the master switch is on: with it off, no
+        // card can fetch and the choice would be a dead switch. A provider
+        // link the embed plugin cards keeps its provider card; this row is
+        // for the links no provider claims.
+        const href = soleLinkHref(anchorNode);
+        const network = window.__i18n?.network ?? false;
+        if (href !== null && network && !isProviderCard(view, blockPos)) {
+            const cardAnchor = linkCardAnchorAt(view.state.doc, blockPos, href);
+            const asCard = linkCardDisplayFor(cardAnchor) === "card";
+            action(asCard ? t("Show as Link") : t("Show as Card"),
+                ["card", "link", "preview", "unfurl", "title", "description"], {
+                icon: asCard ? IconTextInline : IconEmbedCard,
+                mutates: false,
+                action: () => {
+                    chooseLinkCardDisplay(cardAnchor, asCard ? "text" : "card");
+                    repaintLinkCards(view);
+                },
+            });
+        }
     }
     if (anchorNode?.type.name === "callout") {
         // T1 write path (MAR-110): a deliberate, undoable document edit that

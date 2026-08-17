@@ -207,6 +207,16 @@ export function notifyResolveEmbedMeta(id: string, url: string): void {
 }
 
 /**
+ * Link-card metadata (rung 1, render-only): ask the page a lone link names
+ * for its Open Graph title and description. The reply arrives as a
+ * `linkCardResult` correlated by `id`; it only ever fills a card and is never
+ * written to the document.
+ */
+export function notifyResolveLinkCard(id: string, url: string): void {
+    vscode.postMessage({ type: "resolveLinkCard", id, url });
+}
+
+/**
  * Connector card resolution (rung 2, MAR-198): ask the extension to fetch the
  * card fields a URL alone cannot know, using the credential the user connected.
  * The reply arrives as an `embedCardResult` correlated by `id`, carrying

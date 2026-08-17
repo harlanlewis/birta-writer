@@ -149,3 +149,19 @@ export function extractOgTitle(html: string): string | null {
     const bare = extractTitleTag(html);
     return bare !== null ? sanitizeTitle(bare) : null;
 }
+
+/**
+ * The page's one-line description for a link card: `og:description` →
+ * `<meta name="description">` → null, sanitized the same way as the title
+ * (one plain line, length-capped). An `og:description` present but
+ * sanitizing to empty falls through, as the title does.
+ */
+export function extractOgDescription(html: string): string | null {
+    const og = extractMetaContent(html, "og:description");
+    const ogDescription = og !== null ? sanitizeTitle(og) : null;
+    if (ogDescription) {
+        return ogDescription;
+    }
+    const plain = extractMetaContent(html, "description");
+    return plain !== null ? sanitizeTitle(plain) : null;
+}

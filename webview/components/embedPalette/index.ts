@@ -39,8 +39,11 @@ export interface EmbedPaletteTarget {
     from: number;
     to: number;
     href: string;
-    kind: EmbedKind;
+    kind: EmbedKind | "linkCard";
     id: string;
+    /** For a link card: "show as text link" records the reader's choice for
+     * the link instead of rewriting it (a labelled link keeps its label). */
+    asTextLink?: () => void;
 }
 
 let root: HTMLDivElement | null = null;
@@ -165,6 +168,11 @@ function build(): void {
     const btnAsLink = makeButton(IconTextInline, t("Show as text link"), () => {
         const view = liveView();
         if (!view || !current) { return; }
+        if (current.asTextLink) {
+            current.asTextLink();
+            hideEmbedPalette();
+            return;
+        }
         rewriteLink(view, readableUrl(current.href, 60), current.href, { reselect: false });
         view.focus();
     });

@@ -453,3 +453,119 @@ describe("MarkdownEditorProvider paste-unfurl", () => {
         expect((await waitForUnfurlReply(panel)).title).toBeNull();
     });
 });
+
+type LinkCardReply = {
+    type: "linkCardResult";
+    id: string;
+    url: string;
+    card: { title: string | null; description: string | null } | null;
+};
+
+async function waitForLinkCardReply(panel: ReturnType<typeof makePanel>): Promise<LinkCardReply> {
+    return vi.waitFor(() => {
+        const calls = panel.webview.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "linkCardResult");
+        const reply = calls[calls.length - 1] as LinkCardReply | undefined;
+        if (!reply) { throw new Error("no linkCardResult posted yet"); }
+        return reply;
+    });
+}
+
+describe("MarkdownEditorProvider link cards (MAR-185)", () => {
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        resetTextDocumentMocks();
+        _resetErrorSinkForTests();
+        mockNetworkEnabled(true);
+        _setDnsLookupForTests(async () => [{ address: "93.184.216.34" }]);
+        errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        _setDnsLookupForTests(undefined);
+        errorSpy.mockRestore();
+    });
+
+    it("a page with OG metadata should post its title and description, once per URL per session", async () => {
+        const { handler, panel } = await setup();
+        const fetchSpy = vi.fn(async () =>
+            new Response(
+                `<head><meta property="og:title" content="An Article"><meta name="description" content="What it says."></head>`,
+                { status: 200, headers: { "content-type": "text/html" } },
+            ));
+        vi.stubGlobal("fetch", fetchSpy);
+
+        await handler({ type: "resolveLinkCard", id: "c1", url: "https://example.com/article" });
+        const first = await waitForLinkCardReply(panel);
+        expect(first).toEqual({
+            type: "linkCardResult", id: "c1", url: "https://example.com/article",
+            card: { title: "An Article", description: "What it says." },
+        });
+
+        // Same URL again: answered from the session cache, no second fetch.
+        await handler({ type: "resolveLinkCard", id: "c2", url: "https://example.com/article" });
+        await vi.waitFor(() => {
+            const replies = panel.webview.postMessage.mock.calls
+                .map((c) => c[0] as { type: string; id?: string })
+                .filter((m) => m.type === "linkCardResult");
+            if (replies.length < 2) { throw new Error("second reply not yet posted"); }
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("a page with neither title nor description should post a null card", async () => {
+        const { handler, panel } = await setup();
+        vi.stubGlobal("fetch", vi.fn(async () =>
+            new Response("<head><meta charset=\"utf-8\"></head>", { status: 200, headers: { "content-type": "text/html" } })));
+
+        await handler({ type: "resolveLinkCard", id: "c3", url: "https://example.com/blank" });
+
+        expect((await waitForLinkCardReply(panel)).card).toBeNull();
+    });
+
+    it("with the master network switch OFF it should post a null card WITHOUT calling fetch", async () => {
+        mockNetworkEnabled(false);
+        const { handler, panel } = await setup();
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        await handler({ type: "resolveLinkCard", id: "c4", url: "https://example.com/article" });
+
+        expect((await waitForLinkCardReply(panel)).card).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("the paste-unfurl feature key OFF should not stop a link card: the two are gated apart", async () => {
+        (vscode.workspace.getConfiguration as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+            get: vi.fn((key: string, defaultValue?: unknown) => {
+                if (key === "network.enabled") { return true; }
+                if (key === "pasteUnfurl.enabled") { return false; }
+                return defaultValue;
+            }),
+            inspect: vi.fn(() => undefined),
+        });
+        const { handler, panel } = await setup();
+        vi.stubGlobal("fetch", vi.fn(async () =>
+            new Response("<head><title>Titled</title></head>", { status: 200, headers: { "content-type": "text/html" } })));
+
+        await handler({ type: "resolveLinkCard", id: "c5", url: "https://example.com/article" });
+
+        expect((await waitForLinkCardReply(panel)).card).toEqual({ title: "Titled", description: null });
+    });
+
+    it("a private-address URL should post a null card WITHOUT calling fetch (SSRF, the shared guard)", async () => {
+        const { handler, panel } = await setup();
+        _setDnsLookupForTests(async () => [{ address: "10.0.0.5" }]);
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        await handler({ type: "resolveLinkCard", id: "c6", url: "https://intranet.example/secret" });
+
+        expect((await waitForLinkCardReply(panel)).card).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+});

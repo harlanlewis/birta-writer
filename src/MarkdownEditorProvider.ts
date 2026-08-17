@@ -30,7 +30,8 @@ import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { detectLogseq } from "./utils/logseqDetect";
 import { scanHeadings } from "../shared/headingScan";
-import { extractOgTitle } from "./utils/openGraph";
+import { extractOgDescription, extractOgTitle } from "./utils/openGraph";
+import type { LinkCardMeta } from "../shared/messages";
 import { isPubliclyRoutableUrl } from "./utils/urlGuard";
 import { readCappedText } from "./utils/cappedRead";
 import { fetchEmbedTitle } from "./utils/embedMetaFetcher";
@@ -1324,6 +1325,16 @@ export class MarkdownEditorProvider
                             this._handleResolveImagePath(document, panel, uriKey, message.id, message.relPath);
                         }
                         break;
+                    case "resolveLinkCard":
+                        // Link card (render-only): the page's title and
+                        // description for a link the user chose to show as a
+                        // card. Always replies; a null card leaves the link
+                        // a link.
+                        if (message.id && message.url) {
+                            this._handleResolveLinkCard(panel, message.id, message.url)
+                                .catch((err) => reportError("resolveLinkCard", err));
+                        }
+                        break;
                     case "unfurlUrl":
                         // Paste-unfurl: the webview already inserted `[url](url)`;
                         // fetch the page title (extension-side, past the webview's
@@ -2335,6 +2346,40 @@ export class MarkdownEditorProvider
     }
 
     /**
+     * Link-card metadata (MAR-185): the page's own title and description for
+     * a link the user chose to show as a card, and ALWAYS a reply (null card
+     * on any failure or gate). Same fetch, same guards and the same
+     * "nothing is written" rule as paste-unfurl; what differs is the gate.
+     * The webview only asks for links the user chose (the `linkCards`
+     * default, or a per-link choice held as presentation state beside the
+     * document), and that per-link choice is not visible from here, so the
+     * extension re-checks the master switch alone: with it off, no page is
+     * fetched whatever the webview asks. Cached for the session by URL, so a
+     * card that re-renders (caret in and out, a reload of the same panel)
+     * asks its host once.
+     */
+    private async _handleResolveLinkCard(
+        panel: vscode.WebviewPanel,
+        id: string,
+        url: string,
+    ): Promise<void> {
+        let card: LinkCardMeta | null = this._linkCardCache.get(url) ?? null;
+        if (card === null) {
+            const networkOn = this._networkWriteInFlight ?? readBirtaSetting("networkEnabled");
+            const meta = networkOn ? await this._fetchPageMeta(url) : null;
+            card = meta && (meta.title !== null || meta.description !== null) ? meta : null;
+            if (card !== null) {
+                this._linkCardCache.set(url, card);
+            }
+        }
+        postToWebview(panel.webview, { type: "linkCardResult", id, url, card });
+    }
+
+    /** Session cache for link-card metadata, keyed by URL. Never written to
+     * disk (docs/NETWORK_POSTURE.md invariant 15). */
+    private readonly _linkCardCache = new Map<string, LinkCardMeta>();
+
+    /**
      * Embed-card metadata: resolve and ALWAYS reply (null title on failure).
      * The fetch itself — recognition, endpoint pinning, gates, cache — lives
      * in utils/embedMetaFetcher.ts; the in-flight opt-in value is passed
@@ -2375,12 +2420,12 @@ export class MarkdownEditorProvider
      * failure degrades silently to the bare link and logs via the console-only
      * error sink (never a toast).
      *
-     * This is the extension's ONLY outbound network request. It is gated by
-     * `birta.network.enabled` (the master switch) AND `birta.pasteUnfurl.enabled`,
-     * restricted to http(s) on every redirect hop, SSRF-guarded (urlGuard: no
-     * localhost/private/link-local/metadata hosts, re-checked per hop),
-     * time-bounded by an AbortController, and size-bounded by reading at most
-     * UNFURL_MAX_BYTES.
+     * The page fetch itself (`_fetchPageMeta`, shared with link cards) is
+     * gated by `birta.network.enabled` (the master switch) AND, here, by
+     * `birta.pasteUnfurl.enabled`; it is restricted to http(s) on every
+     * redirect hop, SSRF-guarded (urlGuard: no localhost/private/link-local/
+     * metadata hosts, re-checked per hop), time-bounded by an AbortController,
+     * and size-bounded by reading at most UNFURL_MAX_BYTES.
      *
      * Defense in depth (MAR-179): the webview's own gates are the primary
      * control (it never posts `unfurlUrl` when either setting is off); BOTH
@@ -2398,6 +2443,16 @@ export class MarkdownEditorProvider
         if (!networkOn || !readBirtaSetting("pasteUnfurlEnabled")) {
             return null;
         }
+        return (await this._fetchPageMeta(url))?.title ?? null;
+    }
+
+    /**
+     * The fetch behind paste-unfurl and link cards: `url`'s page, read for
+     * its Open Graph title and description. Every guard above holds here;
+     * the caller owns the feature gate and this owns the request. Returns
+     * null on ANY failure, never throws.
+     */
+    private async _fetchPageMeta(url: string): Promise<LinkCardMeta | null> {
         let parsed: URL;
         try {
             parsed = new URL(url);
@@ -2451,7 +2506,7 @@ export class MarkdownEditorProvider
                     return null;
                 }
                 const html = await readCappedText(res, UNFURL_MAX_BYTES, "</head>");
-                return extractOgTitle(html);
+                return { title: extractOgTitle(html), description: extractOgDescription(html) };
             }
             return null; // redirect chain too long
         } catch (e) {

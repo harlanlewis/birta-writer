@@ -128,6 +128,14 @@ export type FontPreset = "editor" | "sans" | "serif" | "mono";
 export type FontStacks = { sans: string; serif: string; mono: string };
 
 /**
+ * What a link card shows: the page's own Open Graph title and description,
+ * each already sanitized to one plain line (src/utils/openGraph.ts) and each
+ * absent when the page did not carry it. The site is derived from the URL
+ * in the webview and is not part of the fetched payload.
+ */
+export type LinkCardMeta = { title: string | null; description: string | null };
+
+/**
  * Per-check style-check options (all nested under the `styleCheck` master).
  * Each maps to a `birta.styleCheck.<key>` boolean setting and to one
  * row in the toolbar's style-check dropdown.
@@ -266,6 +274,14 @@ export type ToExtensionMessage =
     // `embedMetaResult` (null title on any failure/gate). Nothing fetched here
     // is ever written to the document; it decorates the card's caption.
     | { type: "resolveEmbedMeta"; id: string; url: string }
+    // Link-card metadata (rung 1, render-only): ask the page a link names,
+    // and no other host, for its Open Graph title and description, so a link
+    // sitting alone on its own line can render as a quiet card. The webview
+    // posts this only for a link the user chose to show as a card (the
+    // linkCards default or a per-link choice); the extension re-gates on the
+    // master switch and ALWAYS replies with `linkCardResult` (null on any
+    // failure/gate). Nothing fetched here is ever written to the document.
+    | { type: "resolveLinkCard"; id: string; url: string }
     // Embed-card CONNECTOR resolution (rung 2, render-only; MAR-198): ask the
     // provider's own API, with the credential the user connected, for the card
     // fields a URL alone cannot know. Same discipline as resolveEmbedMeta and
@@ -474,6 +490,11 @@ export type ToWebviewMessage =
     // echoes the request target; `id` correlates. Render-only — the webview
     // caches it for card captions and never touches the document with it.
     | { type: "embedMetaResult"; id: string; url: string; title: string | null }
+    // Reply to `resolveLinkCard`: the page's sanitized title and description
+    // (either may be null; `card` itself is null when nothing usable came
+    // back, or a gate was off). Render-only, cached in the webview for the
+    // session, and never written into the document.
+    | { type: "linkCardResult"; id: string; url: string; card: LinkCardMeta | null }
     // Reply to `resolveEmbedCard`: sanitized card fields, or the named state
     // that says why there are none. `result` is null when the URL has no
     // authenticated rung at all (unrecognized, no connector, a shape the API
@@ -509,7 +530,7 @@ export type ToWebviewMessage =
     // Live update for the boolean feature gates that read from __i18n at use
     // time (not at plugin composition): a settings-UI edit, palette toggle
     // command, or another webview's menu switch reaches every open editor.
-    | { type: "featureGateChanged"; gate: "calcEnabled" | "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl" | "pasteUnfurlAutoApply" | "embedsEnabled" | "frontmatterAddButton"; enabled: boolean }
+    | { type: "featureGateChanged"; gate: "calcEnabled" | "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl" | "pasteUnfurlAutoApply" | "embedsEnabled" | "linkCardsEnabled" | "frontmatterAddButton"; enabled: boolean }
     // Live update for the per-provider embed roster. A map rather than a
     // featureGateChanged boolean because the whole roster arrives at once:
     // VS Code reports "birta.embeds.providers" changed without saying which

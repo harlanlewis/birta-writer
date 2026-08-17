@@ -2,7 +2,7 @@
 
 Status: a record of live behavior and directed work, not exploration.
 
-This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds, the GitHub connector), and the directed design ahead of it (the rest of MAR-198's connector roster).
+This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds, link cards, the GitHub connector), and the directed design ahead of it (the rest of MAR-198's connector roster).
 
 All of it is checkable. Where it describes shipped behavior it is a fact about the tree. Where it describes work MAR-198 has not reached, it is directed but unbuilt, and says so.
 
@@ -16,15 +16,17 @@ Every network capability sits on one rung. The rungs are ordered by what leaves 
 |---|---|---|---|
 | 0. Nothing | No outbound request at all | Shipped, and the default. `birta.network.enabled` ships `false`; with it off the editor makes no outbound request | Everything, out of the box |
 | 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document; What's New (`birta.editor.openWhatsNew`) |
-| 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards |
+| 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards; link cards |
 | 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Shipped for GitHub (MAR-198); every other provider directed, not built | GitHub repository, issue and pull-request cards; Jira, Asana and Figma still to come |
 | 3. Your document content | The document itself | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232), any cloud or sync surface |
 
-### Rung 1 today: two features, and only one of them writes to the file
+### Rung 1 today: three features, and only one of them writes to the file
 
 Paste-unfurl contacts the host of the bare URL you pasted, and no other host, to read that page's title. It writes. The fetched title arrives as an offer at the link, and nothing changes in the file until the user accepts it; `birta.pasteUnfurl.autoApply` ships `false`, so acceptance is explicit.
 
 URL embed cards contact the recognized provider's own pinned hosts, and ask that provider's own oEmbed endpoint for the title shown on the card's caption. They never write: a card is a rendering of the plain link already in the file. The metadata request is made extension-side, cached in memory for the session, and its URL is rebuilt from validated parts rather than taken from the document (invariant 6). The GitHub card asks `api.github.com` about the repository, issue or pull request its URL names; that read is anonymous unless the user has connected the service, and carries only the id the recognizer extracted.
+
+Link cards contact the host of a web link that sits alone on its own line, and no other host, to read that page's Open Graph title and description, and show them as a quiet card in place of the link. They never write, and they fetch no image. The request goes through the same extension-side fetch as paste-unfurl, with the same guards (http(s) only on every hop, no private or link-local host, bounded in time and bytes), and is cached in memory for the session. This is the one rung-1 feature that ships off beneath the master switch (`birta.linkCards.enabled`), because unlike an embed card there is no provider recognizer bounding which hosts it can reach: any page a document links can be asked. A reader can also choose it per link from the block menu, in either direction, and that choice is presentation state beside the document, never bytes in it.
 
 `shared/embedProviders.ts` enumerates the hosts an embed card can reach, and the same table generates the webview's content-security-policy grants.
 
@@ -92,7 +94,7 @@ These come from shipped work (MAR-179, MAR-199) and from MAR-198's directed desi
 
 ### Consent
 
-1. Layered, and the outermost layer ships off: master network switch, then capability toggle (embeds, unfurl), then per-provider, then per-service connect. Only the master ships off. `birta.pasteUnfurl.enabled` and `birta.embeds.enabled` both ship on, beneath it, so turning the master on makes both live at once and each is then turned off individually. The default-quiet guarantee rests on the master alone. A master gates its children and never overwrites them, so re-enabling restores prior child choices. That is the proofreading-switch contract.
+1. Layered, and the outermost layer ships off: master network switch, then capability toggle (embeds, unfurl, link cards), then per-provider, then per-service connect. Only the master ships off, with one capability that also does: `birta.pasteUnfurl.enabled` and `birta.embeds.enabled` both ship on, beneath it, so turning the master on makes both live at once and each is then turned off individually, while `birta.linkCards.enabled` ships off because its fetch is not bounded to a provider's hosts. The default-quiet guarantee rests on the master alone. A master gates its children and never overwrites them, so re-enabling restores prior child choices. That is the proofreading-switch contract.
 2. Consent belongs to the user, not the repo. Every consent key is `"scope": "application"`, so a workspace `settings.json` cannot flip it. Shipped and enforced (MAR-199), and pinned by `shared/__tests__/settingsScope.test.ts`.
 3. Disabled costs nothing: no scan, no lazy chunk loaded, no resolver call. A feature the user turned off is not merely inert, it is absent.
 

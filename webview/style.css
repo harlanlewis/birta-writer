@@ -3068,6 +3068,41 @@ body.block-marqueeing .milkdown .editor {
     white-space: nowrap;
 }
 
+/* Link card (MAR-185): the info-card row for a page no provider claims. Site
+   above the title, the page's description beneath, clamped to two lines so a
+   long OG description stays a card and not a paragraph. Two corner controls
+   (open, show as text link) sit where the info card keeps its one. */
+.embed-card--link {
+    padding-right: 76px;
+
+    & .embed-card__external {
+        right: 40px;
+    }
+
+    & .embed-card__aslink {
+        position: absolute;
+        top: 50%;
+        right: 8px;
+        transform: translateY(-50%);
+    }
+}
+
+.embed-card__site {
+    font-size: var(--ui-fs-xs);
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+}
+
+.embed-card__description {
+    font-size: var(--ui-fs-m);
+    color: var(--vscode-descriptionForeground);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+}
+
 /* Connector chrome (MAR-198). The status chip states the one fact the URL
    could not know; the connect affordance is what a locked card offers instead.
    Both sit to the right of the text block and shrink last, so a long title

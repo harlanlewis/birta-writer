@@ -32,6 +32,9 @@ import {
 } from "./embedProviders";
 import { notifyOpenUrl } from "../messaging";
 import { subscribeEmbedMeta } from "../embedMeta";
+import { subscribeLinkCardMeta } from "../linkCardMeta";
+import { linkCardSite } from "../linkCards";
+import type { CardMatch } from "../plugins/embed";
 import {
     connectorDismissed,
     dismissConnector,
@@ -667,13 +670,79 @@ export interface EmbedCardActions {
  * host-supplied actions above — explicit user verbs, never side effects.
  */
 export function renderEmbedCard(
-    match: EmbedMatch,
+    match: CardMatch,
     sourceUrl?: string,
     actions?: EmbedCardActions,
     widthAnchor?: string,
 ): HTMLElement {
+    if (match.kind === "linkCard") {
+        return renderLinkCard(match.id, actions);
+    }
     const provider = providerFor(match.kind);
     return provider.playerUrl
         ? renderPlayerCard(provider, match.id, sourceUrl, actions, widthAnchor)
         : renderInfoCard(provider, match.id, sourceUrl);
+}
+
+/**
+ * A link card (MAR-185): the info-card anatomy for a page no provider
+ * claims. Site on top, the page's title, its description beneath, all read
+ * from the page's own Open Graph metadata through the extension's fetch
+ * (linkCardMeta.ts); until it lands, or when the page carried none, the
+ * title slot shows the readable URL, so the card is never blank and never
+ * a lie about what the link is. No image: the card fetches text and only
+ * text (docs/NETWORK_POSTURE.md). The corner controls are the shared
+ * column: open externally, and "show as text link", which for a link card
+ * records a per-link choice rather than rewriting the link.
+ */
+function renderLinkCard(href: string, actions?: EmbedCardActions): HTMLElement {
+    const card = document.createElement("div");
+    card.className = "embed-card embed-card--info embed-card--link bc-host";
+    card.dataset["embedKind"] = "linkCard";
+    card.setAttribute("contenteditable", "false");
+
+    const text = document.createElement("span");
+    text.className = "embed-card__text";
+    const site = document.createElement("span");
+    site.className = "embed-card__detail embed-card__site";
+    site.textContent = linkCardSite(href);
+    const title = document.createElement("span");
+    title.className = "embed-card__title";
+    title.textContent = readableUrl(href, 80);
+    const description = document.createElement("span");
+    description.className = "embed-card__description";
+    text.appendChild(site);
+    text.appendChild(title);
+    card.appendChild(text);
+
+    subscribeLinkCardMeta(href, (meta) => {
+        if (!meta) {
+            return;
+        }
+        if (meta.title) {
+            title.textContent = meta.title;
+        }
+        if (meta.description) {
+            description.textContent = meta.description;
+            if (!description.parentNode) {
+                text.appendChild(description);
+            }
+        }
+    });
+
+    card.appendChild(makeBlockControlButton({
+        className: "embed-card__external",
+        icon: IconExternalLink,
+        label: t("Open link"),
+        onClick: () => notifyOpenUrl(href),
+    }).button);
+    if (actions) {
+        card.appendChild(makeBlockControlButton({
+            className: "embed-card__aslink",
+            icon: IconTextInline,
+            label: t("Show as text link"),
+            onClick: actions.removePreview,
+        }).button);
+    }
+    return card;
 }
