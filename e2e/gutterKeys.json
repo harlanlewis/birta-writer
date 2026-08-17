@@ -1,0 +1,19 @@
+{
+  "_comment": "Every gutter MarkerSpec key (webview/plugins/headingFold/foldGutter.ts) and the e2e suite whose fixture renders a block of that kind, hovers it, and measures its marker against its own box in the production bundle. gutterContract.test.ts fails when a key in the source is missing here (or an entry here has no key); the named suite fails when a listed key is absent from its fixture or its marker does not reveal or sits outside its block. Add the key here AND to the suite's fixture when a block type gets a MarkerSpec.",
+  "P": "paragraphGutter",
+  "img": "paragraphGutter",
+  "html": "paragraphGutter",
+  "quote": "paragraphGutter",
+  "callout": "paragraphGutter",
+  "directive": "paragraphGutter",
+  "code": "paragraphGutter",
+  "mermaid": "paragraphGutter",
+  "math": "paragraphGutter",
+  "fn": "paragraphGutter",
+  "table": "paragraphGutter",
+  "ul": "paragraphGutter",
+  "ol": "paragraphGutter",
+  "task": "paragraphGutter",
+  "hr": "leafGutter",
+  "mdx": "leafGutter"
+}

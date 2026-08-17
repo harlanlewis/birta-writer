@@ -24,6 +24,11 @@
     align-items: flex-start;
     padding: 4px 6px;
     border-left: 2px solid var(--vscode-panel-border);
+    /* Gutter contract (style.css .heading-fold-gutter): the marker seats on
+       the definition's first line, below the padding above; the column
+       steps left by the border so the icon lines up with the bare blocks. */
+    --gutter-top: calc(0.39 * var(--content-em));
+    --gutter-left: calc(var(--gutter-column) - 2px);
     background-color: var(--vscode-textBlockQuote-background);
     border-radius: 0 var(--ui-radius-m) var(--ui-radius-m) 0;
 }

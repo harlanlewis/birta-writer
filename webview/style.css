@@ -372,6 +372,37 @@ body {
        heading level and every following block type; resist per-pair
        overrides here (they broke the deterministic-gap model). */
     --content-heading-after: 0.45em;
+
+    /* ── Gutter geometry tokens (the contract rule is .heading-fold-gutter) ──
+       --gutter-column: the marker column, as the gutter box's right edge
+       relative to its host's left edge; every gutter that declares no
+       --gutter-left of its own sits here. --gutter-container-inset: how far a
+       nested gutter steps into the margin per enclosing container (its
+       border bar plus 1em padding, the widest wrapper inset), shared by the
+       --nested rule, the nested-leaf rule and the list-item container-depth
+       rules so all three columns agree at every content font scale. */
+    --gutter-column: -10px;
+    --gutter-container-inset: calc(3px + var(--content-em));
+}
+
+@media (max-width: 720px) {
+    #editor {
+        --gutter-column: -6px;
+    }
+}
+
+/* Gutter contract reset. Custom properties inherit, so without this a plain
+   block nested in a padded wrapper (an image paragraph in a callout, a list
+   item in a quote) would seat its gutter on the wrapper's calibration. Every
+   host resets all three; `initial` on an unregistered property is the
+   guaranteed-invalid value, so the contract rule falls through to its
+   defaults. Top level and :where() keep it at ZERO specificity, so a
+   wrapper's own declaration (`.mw-table { --gutter-top }`, one class) wins
+   without an ordering dependency. */
+:where(.block-gutter-host) {
+    --gutter-top: initial;
+    --gutter-left: initial;
+    --gutter-height: initial;
 }
 
 /* Browser-native scroll-into-view (initial focus, find-in-page, …) must not
@@ -905,7 +936,7 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
     }
 
     /* Mirror the narrower gutter: content at 60px, and a 6px gutter gap to match
-       the heading badges (`.heading-fold-gutter { left: -6px }`). The panel's
+       the heading badges (`--gutter-column: -6px` on #editor). The panel's
        padding-left recomputes from these vars via the base calc. */
     .frontmatter-panel {
         --editor-content-left-padding: 60px;
@@ -1042,6 +1073,13 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             margin: 0;
             padding: var(--content-heading-before) 0 var(--content-heading-after);
             scroll-margin-top: calc(var(--editor-topbar-height, 40px) + 8px);
+            /* Gutter contract (see .heading-fold-gutter): the box cancels the
+               heading's own padding-top and matches its line-height, so the
+               badge and chevron center on the first text line. Nested
+               headings (a --block gutter under a callout or quote) read the
+               same two values, so there is one heading calibration. */
+            --gutter-top: var(--content-heading-before);
+            --gutter-height: 1.3em;
         }
 
         /* No rule under the title: a heading's own size and weight already mark
@@ -1074,25 +1112,42 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             font-size: 1em;
         }
 
+        /* THE gutter geometry contract (MAR-92). This is the one rule that
+           positions a gutter box; it never names a block type. A block whose
+           first line sits below its border-box top (padded quote, titled
+           callout, code chrome row, heading padding-top) declares, beside the
+           padding it mirrors, in its own stylesheet:
+             --gutter-top     the box's offset from the host's border-box top
+             --gutter-left    the box's right edge relative to the host's left
+                              edge (default: the shared marker column; a
+                              bordered wrapper subtracts its own border so the
+                              icon column stays straight)
+             --gutter-height  the box height (default: a body line)
+           Every gutter host resets all three (the top-level
+           `:where(.block-gutter-host)` rule, "gutter contract reset"), so a
+           wrapper's values reach exactly the gutters inside its own DOM — a
+           wrapper nested in another wrapper, and a plain block nested in a
+           wrapper, each read their own — and there is no per-wrapper
+           positioning rule left to tie with. Nested (--nested), list-item and
+           leaf (--leaf) gutters override left/top further down the file, on
+           classes of the gutter itself, at a strictly higher specificity than
+           this rule. e2e/paragraphGutter (100% and 200%) and e2e/leafGutter
+           are the calibration net; gutterContract.test.ts holds every
+           MarkerSpec key to one of them. */
         .heading-fold-gutter {
             position: absolute;
-            left: -10px;
-            /* Cancels the heading's own padding-top so the 1.3em box (matching
-               the heading line-height) centers the badge/chevron on the first
-               text line. Must track --content-heading-before — the hardcoded
-               1em this shipped with sat every badge 0.3em low (the top-level
-               twin of the nested-heading overshoot fixed in MAR-158). */
-            top: var(--content-heading-before);
+            left: var(--gutter-left, var(--gutter-column));
+            top: var(--gutter-top, 0px);
             transform: translateX(-100%);
             display: inline-flex;
             align-items: center;
             justify-content: flex-end;
             gap: 4px;
-            /* Wide enough for the deepest marker (`######` + the fold chevron).
-               The box is right-aligned against the text, so the extra room
-               extends leftward into the margin. */
+            /* Wide enough for the deepest marker (a badge plus the fold
+               chevron). The box is right-aligned against the text, so the
+               extra room extends leftward into the margin. */
             width: 66px;
-            height: 1.3em;
+            height: var(--gutter-height, 1.5em);
             color: var(--vscode-descriptionForeground);
             font-weight: 600;
             line-height: 1;
@@ -1153,16 +1208,15 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
            the heading hash markers; interacting with the marker itself
            (hover / open menu / keyboard focus) brings it to the markers' full
            hover treatment — every block's menu is as reachable as a heading's
-           without adding ambient noise. */
-        .heading-fold-gutter--block {
-            top: 0;
-            height: 1.5em;
-        }
+           without adding ambient noise. Their geometry is the contract rule
+           above with its defaults: a body line, seated on the host's top. */
 
         /* Positioning anchor for every glyph-bearing block: the decoration
-           pass stamps .block-gutter-host on exactly the top-level blocks
-           that get a marker (blockMarkerGlyph is the single source of which
-           blocks those are — no CSS host list to keep in sync). */
+           pass stamps .block-gutter-host on exactly the blocks that get a
+           marker (blockMarkerSpec is the single source of which blocks those
+           are — no CSS host list to keep in sync). The contract's reset on
+           the same class lives at TOP LEVEL (search "gutter contract reset"),
+           where it can be zero-specificity. */
         .block-gutter-host {
             position: relative;
         }
@@ -1272,8 +1326,8 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
         }
 
         @media (max-width: 720px) {
+            /* The column itself moves via --gutter-column (#editor). */
             .heading-fold-gutter {
-                left: -6px;
                 width: 56px;
                 gap: 2px;
             }
@@ -1332,6 +1386,10 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             background: var(--vscode-textBlockQuote-background);
             margin: 0 0 var(--content-flow-gap);
             padding: 0.5em 1em;
+            /* Gutter contract: the marker seats on the first line, below the
+               padding-top above, in the CONTENT em so it holds when the user
+               scales the content font. */
+            --gutter-top: calc(0.5 * var(--content-em) + 0.5px);
             color: var(--vscode-editor-foreground);
             opacity: 0.85;
 
@@ -2255,37 +2313,36 @@ body.toolbar-hidden::before {
     }
 }
 
-/* Block marker hover. Hovering a top-level block reveals its glyph marker at
-   the heading markers' resting contrast; the widget may sit nested inside a
-   NodeView (the code block's contentDOM), but it always belongs to the
-   hovered top-level block. Historical note: a bare `> :hover` subject failed
-   here only because the e2e harnesses lacked a doctype — the WHATWG quirks-
-   mode "active and hover quirk" makes a lone :hover compound never match.
-   The harnesses now carry <!doctype html>; the explicit :is(host list) is
-   kept for scoping (only glyph-bearing top-level blocks reveal markers). */
-/* :where() keeps the innermost-hover machinery at ZERO specificity so this
-   reveal rule stays at 5 class-level — the marker's own state rules (also
-   5, placed later) must still win their tie. */
-.milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--block .heading-fold-marker--block,
-/* NodeView blocks nest the gutter below wrapper chrome (code: inside pre;
-   footnote: inside -content; table: inside the table element), so the
-   direct-child reveal above never fires for them — descendant variant.
-   The trailing :where(:not(...)) keeps it to the container's OWN marker:
-   without it, hovering a callout's title would pop every nested child's
-   marker at once (they reveal on THEIR hover via the direct-child rule). */
-.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table, .callout, .container-directive):where(.block-gutter-host):where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-marker--block:where(:not(.block-gutter-host--child .heading-fold-marker--block)) {
-    opacity: 0.7;
-}
-
-/* Child hosts (nested wrapper blocks): hovering the CHILD reveals its own
-   marker — the rule above deliberately can't reach it (the exclusion keeps
-   a hovered container from popping every nested marker at once). "Its own
-   marker" is the gutter whose depth class matches the hovered host's (the
-   decoration pass stamps both) — a bare descendant selector can't tell the
-   hovered host's gutter from its children's, and the old double-child cap
-   left everything at depth ≥ 2 with an invisible but active button. Depth
-   classes cap at 6; a d6 host hovered around d7+ children may co-reveal
-   them — beyond any real document. */
+/* Block marker hover. Hovering a block reveals its OWN glyph marker at the
+   heading markers' resting contrast, and nothing else's. Three rules cover
+   every DOM shape a marker can have without naming a block type (the gutter
+   contract, MAR-92): a new NodeView block reveals the day it gets a
+   MarkerSpec, wherever its wrapper puts the widget.
+     1. Direct child: the host's own gutter is its first child (paragraph,
+        quote, heading, list item — the item at any list depth, since a list
+        item carries no depth class).
+     2. Descendant: a NodeView wrapper nests the gutter below its chrome
+        (code: inside pre; footnote: inside -content; table: inside the
+        table; callout, directive: inside the body). Any marker under the
+        hovered host qualifies EXCEPT one that belongs to a nested host —
+        inside a second .block-gutter-host, or a nested leaf's sibling
+        gutter (--nested), whose own host is beside it rather than above it.
+        Without that exclusion, hovering a callout's title would pop every
+        nested child's marker at once.
+     3. Depth match: a hovered CHILD host (nested wrapper) is itself inside a
+        host, so rule 2 cannot tell its marker from its children's; the
+        decoration pass stamps the same depth class on host and gutter, and
+        the hovered host reveals the gutter of its own depth. Depth classes
+        cap at 6; a d6 host hovered around d7+ children may co-reveal them —
+        beyond any real document.
+   :where() keeps the innermost-hover machinery (`:hover` with no deeper
+   host hovered) at ZERO specificity so every reveal rule stays at 4 or 5
+   class-level and the marker's own state rules (5, placed later) win their
+   tie. Historical note: a bare `> :hover` subject failed here only because
+   the e2e harnesses lacked a doctype — the WHATWG quirks-mode "active and
+   hover quirk" makes a lone :hover compound never match. */
+.milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--block:where(:not(.heading-fold-gutter--leaf)) .heading-fold-marker--block,
+.milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-marker--block:where(:not(:is(.block-gutter-host .block-gutter-host, .heading-fold-gutter--nested) *)),
 .milkdown .editor .block-gutter-host--d1:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d1 .heading-fold-marker--block,
 .milkdown .editor .block-gutter-host--d2:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d2 .heading-fold-marker--block,
 .milkdown .editor .block-gutter-host--d3:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d3 .heading-fold-marker--block,
@@ -2295,7 +2352,7 @@ body.toolbar-hidden::before {
     opacity: 0.7;
 }
 
-/* The marker's own state must win over the block-hover rule above — equal
+/* The marker's own state must win over the block-hover rules above — equal
    specificity, placed after. A leaf atom's gutter (hr, mdx block) is its
    host's next sibling rather than a descendant, so the state rules — this
    one, dragging, quiet-while-typing — name it beside the host; :is() keeps
@@ -2308,43 +2365,24 @@ body.toolbar-hidden::before {
     background: var(--vscode-toolbar-hoverBackground);
 }
 
-/* Fold chevrons on foldable non-heading blocks (callouts, MAR-110): the
-   same reveal grammar as headings — hovering the block (with no deeper
-   host hovered) surfaces its own chevron, hovering the gutter keeps it,
-   and a COLLAPSED block's chevron is always resident (it is state, not
-   chrome — the keystroke-quiet rule never applies to it). */
-.milkdown .editor .callout:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .callout-body > .heading-fold-gutter--foldable .heading-fold-toggle,
+/* Fold chevrons on foldable non-heading blocks (callouts MAR-110; list
+   items, tables, code blocks MAR-125; quotes, directives, footnotes
+   MAR-116): the same three-rule grammar as the marker reveal above, on the
+   same gutter — hovering the block (with no deeper host hovered) surfaces
+   its own chevron, hovering the gutter keeps it, and a COLLAPSED block's
+   chevron is always resident (it is state, not chrome — the keystroke-quiet
+   rule never applies to it; the gutter builder stamps --collapsed on the
+   gutter, so no wrapper's collapsed class is named here either). */
+.milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--foldable:where(:not(.heading-fold-gutter--leaf)) .heading-fold-toggle,
+.milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--foldable:where(:not(:is(.block-gutter-host .block-gutter-host, .heading-fold-gutter--nested) *)) .heading-fold-toggle,
+.milkdown .editor .block-gutter-host--d1:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d1.heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .block-gutter-host--d2:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d2.heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .block-gutter-host--d3:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d3.heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .block-gutter-host--d4:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d4.heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .block-gutter-host--d5:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d5.heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .block-gutter-host--d6:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d6.heading-fold-gutter--foldable .heading-fold-toggle,
 .milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--foldable:hover .heading-fold-toggle,
-.milkdown .editor .callout.collapsed > .callout-body > .heading-fold-gutter--foldable .heading-fold-toggle {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-/* The same grammar for the MAR-125 foldables. List items: hovering the item
-   (its subtree included) with no DEEPER host hovered surfaces the innermost
-   chevron only — the marker-reveal rule's quiet-gutter contract. Tables and
-   code blocks host their gutter inside their own chrome (tbody / pre), so a
-   plain descendant match is safe (neither can nest another of its kind). */
-.milkdown .editor li.block-gutter-host--item:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .mw-table:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .code-block-wrapper:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor li.block-gutter-host--item.collapsed > .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .mw-table.collapsed .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .code-block-wrapper.collapsed .heading-fold-gutter--foldable .heading-fold-toggle {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-/* And for the MAR-116 foldables. Blockquotes host their gutter directly
-   (no NodeView); the container directive and the footnote definition host
-   theirs inside their own body, beside the chrome row that survives the
-   fold. Each takes the callout's quiet-gutter guard, since all three nest. */
-.milkdown .editor blockquote:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .container-directive:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .directive-body > .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .footnote-def:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .footnote-def-content > .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor blockquote.collapsed > .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .container-directive.collapsed > .directive-body > .heading-fold-gutter--foldable .heading-fold-toggle,
-.milkdown .editor .footnote-def.collapsed > .footnote-def-content > .heading-fold-gutter--foldable .heading-fold-toggle {
+.milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--collapsed .heading-fold-toggle {
     opacity: 1;
     pointer-events: auto;
 }
@@ -2634,94 +2672,30 @@ body.block-marqueeing .milkdown .editor {
     opacity: 1;
 }
 
-/* Per-item gutters (MAR-86): the item's marker sits clear of the native
-   bullet/number, further into the margin than the -10px block default.
-   (Prefixed to outrank the nested base rule's specificity.) */
-.milkdown .editor .block-gutter-host--item > .heading-fold-gutter--block {
-    left: -34px;
-}
-
-/* Container blocks pad their content, but the gutter anchors to the host's
-   BORDER box (top: 0) — the icon rode 5-8px above the first line. Values
-   compensate each wrapper's padding-top, expressed against the CONTENT em
-   (--content-em, an absolute length registered at #editor) so the marker
-   stays on the first line when the user scales the content font — the
-   paddings they mirror are em-based, so a px constant drifts off the line
-   at 150-200%. These descendant selectors also reach a wrapper nested
-   inside a container (its gutter still sits inside its own body, so the
-   same calibration is the right one); the leak onto plain-DOM nested
-   children (heading/quote, whose gutter is a direct child) is neutralized
-   by the --child rules below. */
-.milkdown .editor blockquote .heading-fold-gutter--block {
-    top: calc(0.5 * var(--content-em) + 0.5px); /* quote padding-top 0.5em */
-}
-.milkdown .editor .mw-table .heading-fold-gutter--block {
-    top: 7.5px; /* px chrome: 1px cell border + 6px cell padding */
-}
-/* Header-bearing wrappers (callout title bar, directive header, code
-   toolbar): the icon aligns with the HEADER line, which sits closer to the
-   border box than a padded body does. */
-.milkdown .editor .callout .heading-fold-gutter--block {
-    top: calc(0.11 * var(--content-em));
-}
-.milkdown .editor .container-directive .heading-fold-gutter--block {
-    top: calc(0.11 * var(--content-em));
-}
-.milkdown .editor .code-block-wrapper .heading-fold-gutter--block {
-    /* The +5.5px re-seats the icon on the floating chrome row (px-fixed at
-       top 6px + 22px pill), which replaced the header bar (2026-07-28). */
-    top: calc(0.18 * var(--content-em) + 5.5px);
-    left: -11px;
-}
-.milkdown .editor .footnote-def .heading-fold-gutter--block {
-    top: calc(0.39 * var(--content-em));
-    left: -12px;
-}
+/* Gutter placement beyond the contract's defaults. The per-wrapper first-line
+   calibrations (a padded quote, a titled callout, the code chrome row, the
+   table's cell padding, the footnote's marker line, a heading's padding-top)
+   are NOT here: each wrapper declares --gutter-top / --gutter-left beside
+   the padding it mirrors, in its own stylesheet, and the contract rule
+   (.heading-fold-gutter) reads them. Nested wrappers keep their own values
+   at any depth for free — a table in a callout reads the table's, not the
+   callout's — because the nearer declaration wins inheritance, and every
+   host resets the three properties (top-level "gutter contract reset"), so
+   a plain block inside a wrapper is never seated on the wrapper's line.
+   What remains below is the geometry that belongs to the GUTTER's own
+   classes rather than to any wrapper: nested and list-item columns, and the
+   leaf atom's anchor placement. Each is at least one class more specific
+   than the contract rule, so none of them ties with it. */
 
 /* Blocks NESTED inside containers (callout/quote/directive children).
    HORIZONTAL: the decoration pass stamps --nested (+ a depth custom
    property) on every child gutter, wherever the wrapper's DOM anchors it,
-   and the marker steps one container-inset (border bar + 1em padding, the
-   largest wrapper inset) further into the margin per nesting level — so
-   its right edge clears EVERY ancestor's border bar at any content font
-   scale instead of straddling the parent's (depth 1 at the default 14px
-   resolves to the former -26px column). */
+   and the marker steps one container inset further into the margin per
+   nesting level — so its right edge clears EVERY ancestor's border bar at
+   any content font scale instead of straddling the parent's. VERTICAL is
+   the wrapper's own --gutter-top, read through the contract rule. */
 .milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--nested {
-    left: calc(-9px - var(--nested-gutter-depth, 1) * (3px + var(--content-em)));
-}
-/* VERTICAL: only plain-DOM children (headings, blockquotes) anchor their
-   gutter as a direct child and match this rule — NodeView wrappers
-   (callout, directive, code, table) nest theirs inside their body and keep
-   the per-wrapper calibrations above at any depth. `top: 0` resets those
-   same wrapper descendant rules leaking onto plain children; the
-   per-flavor rules below then re-apply each child's own first-line
-   offset. */
-.milkdown .editor .block-gutter-host--child > .heading-fold-gutter--block {
-    top: 0;
-}
-/* Nested headings: the same first-line compensation the top-level
-   .heading-fold-gutter rule provides — the offset cancels the heading's own
-   padding-top, which is --content-heading-before (0.7em), NOT 1em: the
-   hardcoded 1em this rule shipped with overshot every nested heading's
-   badge by 0.3em of its font-size (~8px on an h1, scaling with zoom —
-   MAR-158). The 1.3em height matches the line-height so the centered badge
-   sits on the text line (the flat top: 0 above left it a full
-   padding-height too high). */
-.milkdown .editor :is(h1, h2, h3, h4, h5, h6).block-gutter-host--child > .heading-fold-gutter--block {
-    top: var(--content-heading-before);
-    height: 1.3em;
-}
-/* Nested blockquotes: the same padded-body calibration as top level. */
-.milkdown .editor blockquote.block-gutter-host--child > .heading-fold-gutter--block {
-    top: calc(0.5 * var(--content-em) + 0.5px);
-}
-/* A table nested in a callout/directive: the container rules above win the
-   cascade tie against the :is(blockquote, .mw-table) rule (equal
-   specificity, later declaration), which seated the table's marker on the
-   header calibration ~6px high. The --child host class breaks the tie in
-   the table's favor. */
-.milkdown .editor .mw-table.block-gutter-host--child .heading-fold-gutter--block {
-    top: 7.5px;
+    left: calc(-9px - var(--nested-gutter-depth, 1) * var(--gutter-container-inset));
 }
 
 /* Leaf atoms (hr, mdx block — MAR-350). A nodeSize-1 block has no content
@@ -2729,20 +2703,18 @@ body.block-marqueeing .milkdown .editor {
    DOM sibling, not its child. Everything the child gutters get from being
    inside the host — the containing block, the hover reveal, the fold-hidden
    display:none — the leaf gutter gets from CSS anchor positioning and the
-   adjacent-sibling combinator instead. `anchor-name` repeats on every leaf
-   host; anchor resolution picks the LAST one before the positioned element
-   in tree order, which is exactly the widget's own host. The box spans the
-   host's full height so `align-items: center` seats the marker on the rule's
-   line; the mdx block re-seats it on its label (format/mdx/views.ts). */
-.milkdown .editor .block-gutter-host--leaf {
-    anchor-name: --leaf-gutter-host;
-}
-/* --block is restated so this outranks the per-wrapper calibrations above
-   (`blockquote .heading-fold-gutter--block` and kin, one element heavier),
-   which reach a leaf gutter nested inside a wrapper by descent and would
-   otherwise seat it on the wrapper's first line. */
+   adjacent-sibling combinator instead. The decoration pass names each
+   host/gutter pair (inline `anchor-name` on the host, `position-anchor` on
+   the gutter, foldDecorations.ts): a shared name would resolve every leaf
+   gutter in a containing block onto the LAST leaf host laid out before it,
+   which for an absolutely positioned gutter is the last leaf host in the
+   whole block, so two rules in one document stacked both markers on the
+   second. The box spans the host's full height so `align-items: center`
+   seats the marker on the rule's line; the mdx block re-seats it on its
+   label (format/mdx/views.ts). Two gutter classes: outranks the contract
+   rule (one), and the wrapper --gutter-top a nested leaf gutter would
+   otherwise inherit from the container it sits in never reaches it. */
 .milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--leaf {
-    position-anchor: --leaf-gutter-host;
     top: anchor(top);
     left: calc(anchor(left) - 10px);
     height: anchor-size(height);
@@ -2750,7 +2722,7 @@ body.block-marqueeing .milkdown .editor {
 /* Nested leaf: the same per-depth inset step the --nested rule above gives
    child gutters, from the anchor's edge rather than the host's. */
 .milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--leaf.heading-fold-gutter--nested {
-    left: calc(anchor(left) - 9px - var(--nested-gutter-depth, 1) * (3px + var(--content-em)));
+    left: calc(anchor(left) - 9px - var(--nested-gutter-depth, 1) * var(--gutter-container-inset));
 }
 /* Without anchor positioning the gutter would fall back to the base rule's
    offsets against whatever ancestor is positioned — a stray marker far from
@@ -2776,21 +2748,25 @@ body.block-marqueeing .milkdown .editor {
     display: none;
 }
 
-/* Per-flavor nudges: the -34px base puts every marker in one column, but
-   the PERCEIVED gap is icon → the item's ::marker ink, and that ink
-   differs — an ordered "1." is ~13px wide, a bullet dot ~6px, a task
-   checkbox starts at the li edge. Offsets tuned so the icon sits ~11px
-   from each flavor's ink instead of a constant distance from the box. */
+/* Per-item gutters (MAR-86): the item's marker sits clear of the native
+   bullet/number, further into the margin than the block column, and the
+   PERCEIVED gap is icon → the item's ::marker ink, which differs per flavor
+   — an ordered "1." is ~13px wide, a bullet dot ~6px, a task checkbox starts
+   at the li edge. Offsets tuned so the icon sits ~11px from each flavor's
+   ink instead of a constant distance from the box. The rules select the
+   item's OWN gutter (its direct child) and step past a leaf gutter, which is
+   also a direct child of the item when a rule sits inside it, but belongs to
+   the rule and keeps its anchor placement. */
 /* --item-container-depth (0 unless the list is nested inside a callout/quote/
-   directive) steps the near-ink base offset one container-inset further into
-   the margin per enclosing accent bar — the SAME `3px + --content-em` step
-   container children use — so a list's grabbers clear every ancestor's colored
-   bar instead of straddling it (MAR-89), while top-level lists (depth 0) keep
-   their MAR-86 near-ink placement untouched. */
-.milkdown .editor ul > li.block-gutter-host--item:not([data-item-type="task"]) > .heading-fold-gutter--block {
-    left: calc(-28px - var(--item-container-depth, 0) * (3px + var(--content-em)));
+   directive) steps the near-ink base offset one container inset further into
+   the margin per enclosing accent bar — the SAME step container children use
+   — so a list's grabbers clear every ancestor's colored bar instead of
+   straddling it (MAR-89), while top-level lists (depth 0) keep their MAR-86
+   near-ink placement untouched. */
+.milkdown .editor ul > li.block-gutter-host--item:not([data-item-type="task"]) > .heading-fold-gutter--block:where(:not(.heading-fold-gutter--leaf)) {
+    left: calc(-28px - var(--item-container-depth, 0) * var(--gutter-container-inset));
 }
-.milkdown .editor ol > li.block-gutter-host--item > .heading-fold-gutter--block {
+.milkdown .editor ol > li.block-gutter-host--item > .heading-fold-gutter--block:where(:not(.heading-fold-gutter--leaf)) {
     /* Base ≈ -36px at the default 14px content em, but em-anchored so it tracks
        the content font scale — at 150–200% the old px constant sat under the
        ink. Each digit past the first widens the right-aligned ::marker ink
@@ -2798,16 +2774,15 @@ body.block-marqueeing .milkdown .editor {
        whole grabber column clear of it, keeping every item's icon aligned. */
     left: calc(
         (-2.571 - (var(--ol-digits, 1) - 1) * 0.6) * var(--content-em)
-        - var(--item-container-depth, 0) * (3px + var(--content-em))
+        - var(--item-container-depth, 0) * var(--gutter-container-inset)
     );
 }
 /* Task items render their checkbox inside the li box, which starts ~21px
    further left than a bullet/ordered li at the same depth — the shared
    base offset would push their marker that much deeper into the gutter. */
-.milkdown .editor li[data-item-type="task"].block-gutter-host--item > .heading-fold-gutter--block {
-    left: calc(-15px - var(--item-container-depth, 0) * (3px + var(--content-em)));
+.milkdown .editor li[data-item-type="task"].block-gutter-host--item > .heading-fold-gutter--block:where(:not(.heading-fold-gutter--leaf)) {
+    left: calc(-15px - var(--item-container-depth, 0) * var(--gutter-container-inset));
 }
-
 /* Block handles now carry the same SVG icons as their slash-menu rows
    (headings keep their H1–H6 text badge). Size the icon to the glyph box
    so hit targets and hover chrome are unchanged — one content em, so it

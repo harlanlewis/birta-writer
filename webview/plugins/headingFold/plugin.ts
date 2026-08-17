@@ -504,9 +504,12 @@ export const headingFoldPlugin = $prose(() =>
                     // container's own marker is the "this moves" cue,
                     // and child markers now drag their own block, not
                     // the cover. A leaf atom's marker is its next
-                    // sibling, which blockMarkerElements knows.
+                    // sibling, which blockMarkerElements knows; a NESTED
+                    // leaf's sits beside its --child host rather than
+                    // inside it, so the child test also reads the gutter's
+                    // own --nested class.
                     for (const markerEl of blockMarkerElements(dom)) {
-                        if (markerEl.closest(".block-gutter-host--child")) {
+                        if (markerEl.closest(".block-gutter-host--child, .heading-fold-gutter--nested")) {
                             continue;
                         }
                         markerEl.classList.add("heading-fold-marker--covered");
