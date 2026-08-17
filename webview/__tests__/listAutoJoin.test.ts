@@ -203,6 +203,23 @@ describe("fidelity: source-authored splits are never auto-merged", () => {
         expect(markdown(editor)).toBe("- a\n- sep\n\n* b\n");
     });
 
+    it("a marker-less list absorbing an authored `*` list should keep spelling `*`", async () => {
+        // `tr.join` keeps the UPPER node's attrs. The editor-made list above
+        // has no marker; the file's `* b` does, and after the join the one
+        // list must still print it, or the join rewrote a line the user never
+        // touched.
+        const editor = await makeEditor("sep\n\n* b\n");
+        const v = view(editor);
+        const { bullet_list: list, list_item: item } = v.state.schema.nodes;
+        const para = v.state.doc.child(0);
+        const wrapped = list!.createChecked(null, item!.createChecked(null, para));
+        v.dispatch(v.state.tr.replaceWith(0, para.nodeSize, wrapped));
+
+        expect(topLevelTypes(v)).toEqual(["bullet_list"]);
+        expect(v.state.doc.child(0).attrs["marker"]).toBe("*");
+        expect(markdown(editor)).toBe("* sep\n* b\n");
+    });
+
     it("an addToHistory:false rewrite should never trigger a join", async () => {
         // External sync applies file changes with addToHistory:false — the
         // resulting doc is the FILE's state, not a user edit to interpret.

@@ -12,6 +12,7 @@ import { $prose } from "@milkdown/utils";
 import {
     isListNode,
     isSameTypeListBoundary,
+    joinListBoundary,
     listBoundaryMarkersConflict,
     listMarkerOf,
     listMarkersConflict,
@@ -1114,7 +1115,7 @@ export const listAutoJoinPlugin = $prose(() => {
             for (const b of fresh.sort((x, y) => x - y)) {
                 const pos = tr.mapping.map(b);
                 if (canJoin(tr.doc, pos) && !listBoundaryMarkersConflict(tr.doc, pos)) {
-                    tr.join(pos);
+                    joinListBoundary(tr, pos);
                     joined = true;
                 }
             }

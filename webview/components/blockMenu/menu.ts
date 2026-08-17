@@ -1404,11 +1404,11 @@ export function openBlockMenu(
             // current-type row costs nothing.
             const loss = active
                 ? null
-                : [...new Set(sourceKinds)]
+                : [...new Set(sourceKinds
                     .map((kind) => (kind === null || kind === choice.kind
                         ? null
                         : conversionLossNote(kind, choice.kind)))
-                    .filter((note): note is string => note !== null)
+                    .filter((note): note is string => note !== null))]
                     .join(", ") || null;
             specs.push({
                 label: choice.label,

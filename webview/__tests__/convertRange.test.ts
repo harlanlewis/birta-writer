@@ -278,14 +278,40 @@ describe("convertRange results", () => {
         expect(markdown(editor)).toBe("- a\n- middle\n\n* b");
     });
 
-    it("a run whose blocks are all already the target should refuse to join across a marker split", async () => {
+    it("a run whose blocks are all already the target should change nothing and refuse", async () => {
         const editor = await makeEditor(["- a", "", "+ b"].join("\n"));
         const v = view(editor);
         selectAll(v);
-        // Both blocks are bullet lists: nothing to convert, and the `-`/`+`
-        // split the author spelled is theirs to keep.
+        // Both blocks are bullet lists: no block converts, so there is no
+        // edit to replay, and the pair is left exactly as the file spelled it.
         expect(convertRange(v, wholeDoc(v), "bulletList", getEditor)).toBe(false);
         expect(topLevelTypes(v)).toEqual(["bullet_list", "bullet_list"]);
+    });
+
+    it("a paragraph above a `-` list above a `*` list → Bullet List should keep the `-` and the split", async () => {
+        // The paragraph's new list has no marker; it joins the `-` list below
+        // it, and the joined list must still SPELL `-`, or the replay hands
+        // the auto-join a marker-less list beside `* b` and the author's split
+        // is bridged on the second pass.
+        const editor = await makeEditor(["intro", "", "- a", "", "* b"].join("\n"));
+        const v = view(editor);
+        selectAll(v);
+        expect(convertRange(v, wholeDoc(v), "bulletList", getEditor)).toBe(true);
+        expect(markdown(editor)).toBe("- intro\n- a\n\n* b");
+        expect(undo(v.state, v.dispatch)).toBe(true);
+        expect(markdown(editor)).toBe("intro\n\n- a\n\n* b");
+    });
+
+    it("a text selection spanning the run should end up spanning the result", async () => {
+        const editor = await makeEditor(["one", "", "two", "", "three"].join("\n"));
+        const v = view(editor);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 2, v.state.doc.content.size - 2)));
+        expect(convertRange(v, wholeDoc(v), "h2", getEditor)).toBe(true);
+        const sel = v.state.selection;
+        expect(sel).toBeInstanceOf(TextSelection);
+        expect(sel.empty).toBe(false);
+        expect(sel.from).toBeLessThanOrEqual(1);
+        expect(sel.to).toBeGreaterThanOrEqual(v.state.doc.content.size - 1);
     });
 
     it("a run converted to a list beside an existing list should join it once, and undo once", async () => {
@@ -350,6 +376,9 @@ describe("the block menu over a covered run", () => {
         // Both source kinds degrade into prose, and the note says so for each.
         expect(paragraph!.hint).toContain(LOSS_NOTES["task:state"]);
         expect(paragraph!.hint).toContain(LOSS_NOTES["callout:marker"]);
+        // A note every source shares appears once, not once per block.
+        const code = rows.find((row) => row.label === "Code Block");
+        expect(code?.hint).toBe("formatting becomes text");
     });
 
     it("clicking a covered block's gutter marker should open the run's menu, not the block's", async () => {
