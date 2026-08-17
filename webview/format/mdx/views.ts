@@ -122,6 +122,16 @@ export const MDX_NODE_CSS = `
     vertical-align: baseline;
 }
 
+/* The block's gutter marker (plugins/headingFold): a leaf atom's gutter is
+   its next sibling, anchored onto the block and spanning its full height by
+   default (right for the rule's centered line). Re-seat it on the label
+   line: 1px border, then the label's half-line inside the padding. Prefixed
+   to outrank the leaf rule in style.css (one class heavier). */
+.milkdown .editor .mdx-block.block-gutter-host--leaf + .heading-fold-gutter--leaf {
+    top: calc(anchor(top) + 1px + 0.3 * var(--content-em));
+    height: 1.5em;
+}
+
 /* Selection state rides the same accent every selected atom uses. */
 .ProseMirror-selectednode.mdx-block,
 .ProseMirror-selectednode.mdx-inline-chip {

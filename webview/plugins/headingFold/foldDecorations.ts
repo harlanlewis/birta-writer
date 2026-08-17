@@ -16,6 +16,7 @@ import {
     createHeadingEllipsis,
     createHeadingFoldGutter,
     createStubEllipsis,
+    isLeafBlock,
     itemMarkerSpec,
     nestedChildSpec,
     type GutterFoldInfo,
@@ -67,16 +68,17 @@ function emitNestedChildGutter(
     const spec = nestedChildSpec(child);
     if (spec !== null) {
         const foldKey = foldKeyPart(fold);
+        const leaf = isLeafBlock(child);
         parts?.push(`c${depth}${spec.key}${foldKey}`);
         decorations?.push(
             Decoration.node(childPos, childPos + child.nodeSize, {
-                class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${fold?.collapsed ? " collapsed" : ""}`,
+                class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${leaf ? " block-gutter-host--leaf" : ""}${fold?.collapsed ? " collapsed" : ""}`,
             }),
         );
         decorations?.push(
             Decoration.widget(
                 childPos + 1,
-                (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined),
+                (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined, leaf),
                 { key: `g:${spec.key}:n${depth}${foldKey}`, side: -1 },
             ),
         );
@@ -430,19 +432,24 @@ export function buildHeadingFoldDecorations(
             const spec = blockMarkerSpec(node);
             const fold = blockFoldInfo(node, offset, foldCtx, false);
             if (spec !== null) {
+                // A leaf atom (hr, mdx block) has no content position: its
+                // widget at offset + 1 lands AFTER the node, as the block's
+                // next sibling, and the --leaf classes let the CSS anchor
+                // it back onto the host (createBlockGutter's `leaf`).
+                const leaf = isLeafBlock(node);
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
                         // "collapsed" drives the callout NodeView's hidden
                         // body (components/callout/callout.css) — fold state
                         // reaches the NodeView as a decoration class, never
                         // as node state (the doc stays untouched).
-                        class: `block-gutter-host${fold?.collapsed ? " collapsed" : ""}`,
+                        class: `block-gutter-host${leaf ? " block-gutter-host--leaf" : ""}${fold?.collapsed ? " collapsed" : ""}`,
                     }),
                 );
                 decorations.push(
                     Decoration.widget(
                         offset + 1,
-                        (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined),
+                        (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined, leaf),
                         // Stable, position-free key: same-glyph widgets reuse
                         // their DOM across rebuilds (matching is ordinal).
                         { key: `g:${spec.key}${foldKeyPart(fold)}`, side: -1 },

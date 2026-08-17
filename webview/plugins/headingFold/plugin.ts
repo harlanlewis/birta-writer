@@ -43,6 +43,7 @@ import {
     seedSyntaxFolds,
 } from "./foldAnchors";
 import { buildHeadingFoldDecorations, structureFingerprint } from "./foldDecorations";
+import { blockMarkerElements } from "./foldGutter";
 import { requestIdle } from "../../utils/idle";
 import { observeVisibleWindow } from "../visibleRange";
 import { isReadOnly } from "../../readOnly";
@@ -507,8 +508,9 @@ export const headingFoldPlugin = $prose(() =>
                         // Container CHILDREN stay quiet though: the
                         // container's own marker is the "this moves" cue,
                         // and child markers now drag their own block, not
-                        // the cover.
-                        for (const markerEl of dom.querySelectorAll<HTMLElement>(".heading-fold-marker")) {
+                        // the cover. A leaf atom's marker is its next
+                        // sibling, which blockMarkerElements knows.
+                        for (const markerEl of blockMarkerElements(dom)) {
                             if (markerEl.closest(".block-gutter-host--child")) {
                                 continue;
                             }

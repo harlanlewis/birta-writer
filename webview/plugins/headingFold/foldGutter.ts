@@ -14,11 +14,13 @@ import {
     IconChevronDown,
     IconChevronRight,
     IconCode,
+    IconFileCode,
     IconFootnote,
     IconImage,
     IconList,
     IconListOrdered,
     IconMath,
+    IconMinus,
     IconNetwork,
     IconPilcrow,
     IconQuote,
@@ -55,7 +57,8 @@ function gutterBlockPos(view: EditorView, gutter: HTMLElement): number | null {
         return null;
     }
     try {
-        // The widget sits at blockPos + 1 (just inside the block).
+        // The widget sits at blockPos + 1: just inside the block, or, for a
+        // leaf atom (nodeSize 1), just after it — the same arithmetic.
         return view.posAtDOM(gutter, 0) - 1;
     } catch {
         return null;
@@ -286,15 +289,24 @@ export interface GutterFoldInfo {
  * with — so every top-level block's conversions and actions are as reachable
  * as a heading's. Foldable blocks (callouts with a body) get the same fold
  * chevron headings carry, left of the marker (MAR-110).
+ *
+ * `leaf` marks the gutter of a LEAF ATOM (hr, mdx block — isLeafBlock): its
+ * widget rides blockPos + 1 like every other block's, which for a nodeSize-1
+ * node is the position AFTER it, so the gutter is the block's next DOM
+ * sibling rather than its child. The position round-trip (gutterBlockPos) is
+ * unchanged; only the CSS differs — the leaf gutter anchors onto the
+ * preceding host (`.block-gutter-host--leaf`, CSS anchor positioning) and
+ * reveals on that sibling's hover (MAR-350).
  */
 export function createBlockGutter(
     view: EditorView,
     spec: MarkerSpec,
     nestedDepth?: number,
     fold?: GutterFoldInfo,
+    leaf = false,
 ): HTMLElement {
     const gutter = document.createElement("span");
-    gutter.className = `heading-fold-gutter heading-fold-gutter--block${fold?.foldable ? " heading-fold-gutter--foldable" : ""}`;
+    gutter.className = `heading-fold-gutter heading-fold-gutter--block${fold?.foldable ? " heading-fold-gutter--foldable" : ""}${leaf ? " heading-fold-gutter--leaf" : ""}`;
     gutter.contentEditable = "false";
     if (nestedDepth !== undefined) {
         // Container children: the CSS positions the marker clear of every
@@ -337,13 +349,14 @@ export function createBlockGutter(
  * The gutter glyph for a non-heading top-level block, or null for blocks that
  * get no marker. Glyphs mirror the markdown source, dimmed (the design
  * principle the heading hashes established): `-`/`1.`/`[ ]` lists, `>` quote,
- * `[!]` callout, ``` code, `![]` standalone image, `<>` raw HTML.
+ * `[!]` callout, ``` code, `![]` standalone image, `<>` raw HTML, `---` rule.
  *
- * Deliberately absent: leaf atoms — `---` (hr) and orphaned
- * link_definitions — which have no content position for the in-block widget
- * to ride on (nodeSize 1); they'd need an overlay-based handle. Tables DO
- * get a marker (grab/menu/drag) alongside their own grips/insert bars —
- * the two serve different jobs (block-level vs cell-level).
+ * Leaf atoms (hr, mdx block) get a marker too: their widget lands after the
+ * node and is anchored back onto it by CSS (createBlockGutter's `leaf`).
+ * Deliberately absent: orphaned link_definitions — most are stripped by the
+ * remark transform, and a survivor is data rather than a unit to move.
+ * Tables DO get a marker (grab/menu/drag) alongside their own grips/insert
+ * bars — the two serve different jobs (block-level vs cell-level).
  */
 /** A gutter marker's rendering: the same icon its slash-menu row uses (or
  * a text badge — nested headings show H1-H6 like the slash menu's heading
@@ -396,9 +409,44 @@ export function blockMarkerSpec(node: any): MarkerSpec | null {
             // The menu gives kind-less blocks an actions-only menu (no Turn
             // into that would mangle a table); grab/menu/drag all apply.
             return { key: "table", icon: IconTable, label: t("Table") };
+        case "hr":
+            return { key: "hr", icon: IconMinus, label: t("Horizontal Rule") };
+        case "mdx_block":
+            // The opaque MDX island (format/mdx): actions only, like a table.
+            return { key: "mdx", icon: IconFileCode, label: t("MDX") };
         default:
             return null;
     }
+}
+
+/**
+ * Whether a block is a leaf atom (nodeSize 1: hr, mdx block): it has no
+ * content position, so its gutter widget sits after it and is CSS-anchored
+ * back onto it. Answered by the schema, never by a name list, so a new leaf
+ * block type gets the leaf treatment the day it gets a MarkerSpec.
+ */
+export function isLeafBlock(node: any): boolean {
+    return Boolean(node.isLeaf);
+}
+
+/**
+ * The gutter marker buttons a block's DOM owns. Every block but a leaf holds
+ * its gutter inside its own DOM; a leaf atom's gutter is its next sibling
+ * (createBlockGutter's `leaf`), so a caller that finds markers by walking
+ * `view.nodeDOM(pos)` must look one sibling over. Used by the selection-cover
+ * pass (plugin.ts); the ownership round-trip (gutterBlockPos, and
+ * openAtCaret's markerBlockPos) is the same for both placements.
+ */
+export function blockMarkerElements(dom: HTMLElement): HTMLElement[] {
+    const inside = Array.from(dom.querySelectorAll<HTMLElement>(".heading-fold-marker"));
+    if (!dom.classList.contains("block-gutter-host--leaf")) {
+        return inside;
+    }
+    const gutter = dom.nextElementSibling;
+    if (gutter instanceof HTMLElement && gutter.classList.contains("heading-fold-gutter--leaf")) {
+        inside.push(...gutter.querySelectorAll<HTMLElement>(".heading-fold-marker"));
+    }
+    return inside;
 }
 
 /** The marker for a block NESTED inside a container OR a list item: its
