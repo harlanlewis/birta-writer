@@ -227,32 +227,35 @@ function clearFormatting(getEditor: GetEditor): void {
 }
 
 /**
- * Set the current block's heading level. A heading cannot live inside a list
- * item — the schema's `list_item` content is `paragraph block*`, so its required
- * first child must be a paragraph — so `wrapInHeading` silently no-ops on a list
- * line. When the caret is inside one or more lists we first lift the block all
- * the way out (promoting it to a top-level block, splitting the surrounding
- * list) and only then apply the heading. This mirrors Notion/Obsidian: choosing
- * a heading on a list line turns that line into a heading and drops it from the
- * list. Paragraph (turnIntoText) is deliberately NOT lifted — a list item's
- * content is already a paragraph, so "P" is a no-op there and list membership
- * stays a separate concern owned by the Lists control.
+ * Promote the caret's line out of every list wrapping it, splitting those
+ * lists around it. A `list_item`'s content is `paragraph block*`, so its
+ * required first child must be a paragraph: any command that RETYPES that
+ * line (a heading, a code fence) silently no-ops on a list line without this.
+ * Mirrors Notion/Obsidian, where picking a block type on a list line turns
+ * that line into the block and drops it from the list.
+ *
+ * Not used by the list rows themselves (they convert between flavors) nor by
+ * Paragraph, whose target a list item's first child already is.
  */
+function liftOutOfLists(view: EditorView): void {
+    const liType = view.state.schema.nodes["list_item"];
+    if (!liType) { return; }
+    // liftListItem climbs one list level per call, so nested lists need
+    // repeats. Bound the loop by the caret's initial depth (+slack) so it
+    // can never spin — and stop early if a lift makes no progress.
+    let guard = view.state.selection.$from.depth + 1;
+    while (guard-- > 0 && isInNode(view, "list_item")) {
+        if (!liftListItem(liType)(view.state, view.dispatch)) { break; }
+    }
+}
+
+/** Set the current block's heading level, lifting a list line out first. */
 function setHeading(getEditor: GetEditor, level: number): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
         const view = getView(ctx);
-        const liType = view.state.schema.nodes["list_item"];
-        // liftListItem climbs one list level per call, so nested lists need
-        // repeats. Bound the loop by the caret's initial depth (+slack) so it
-        // can never spin — and stop early if a lift makes no progress.
-        if (liType) {
-            let guard = view.state.selection.$from.depth + 1;
-            while (guard-- > 0 && isInNode(view, "list_item")) {
-                if (!liftListItem(liType)(view.state, view.dispatch)) { break; }
-            }
-        }
+        liftOutOfLists(view);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ctx.get(commandsCtx).call(wrapInHeadingCommand.key as any, level);
         view.focus();
@@ -689,9 +692,22 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleOrderedList: (getEditor) => toggleList(getEditor, "orderedList"),
     toggleTaskList: (getEditor) => toggleList(getEditor, "taskList"),
     toggleBlockquote: (getEditor) => toggleBlockquote(getEditor),
-    // Optional string arg = fence language ("mermaid" from the slash menu)
-    insertCodeBlock: (getEditor, args) =>
-        callCmd(getEditor, createCodeBlockCommand, typeof args === "string" ? args : undefined),
+    // Optional string arg = fence language ("mermaid" from the slash menu).
+    // Retypes the caret's line, so a list line lifts out of its list first —
+    // the same reason setHeading does it, and the same result: the line
+    // becomes the block and leaves the list.
+    insertCodeBlock: (getEditor, args) => {
+        const editor = getEditor();
+        if (!editor) { return; }
+        editor.action((ctx) => {
+            liftOutOfLists(getView(ctx));
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ctx.get(commandsCtx).call(
+                createCodeBlockCommand.key as any,
+                typeof args === "string" ? args : undefined,
+            );
+        });
+    },
     insertHorizontalRule: (getEditor) => callCmd(getEditor, insertHorizontalRuleCommand),
     insertTable: (getEditor) => callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
     insertLink: () => host.openLinkPrompt?.(),

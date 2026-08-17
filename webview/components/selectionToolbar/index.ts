@@ -1203,11 +1203,18 @@ export function setupSelectionToolbar(
             !$from.sameParent($to) ||
             (selection.from <= $from.start() && selection.to >= $to.end());
 
+        // Reflect which inline marks/constructs are already applied on the
+        // selection — the same derivation the top toolbar uses, so the two
+        // surfaces can never disagree. Toggling a hidden button is harmless.
+        const active = computeToolbarActiveState(view.state);
+
         // Text mode: each inline button honors its per-item visibility setting
         // (birta.floatingToolbar.items.*). The format dropdown is additionally
-        // hidden inside a table cell (meaningless there) and on a substring
-        // selection (block op on a phrase — see wholeBlock above).
-        const showFormat = !inTable && visible.has("format") && wholeBlock;
+        // hidden where the caret's block cannot become a heading at all
+        // (`formatApplicable`, the same probe that greys the top toolbar's
+        // format control — a table cell holds a paragraph and nothing else)
+        // and on a substring selection (block op on a phrase — see wholeBlock).
+        const showFormat = active.formatApplicable && visible.has("format") && wholeBlock;
         const showBold = visible.has("bold");
         const showItalic = visible.has("italic");
         const showStrike = visible.has("strikethrough");
@@ -1253,10 +1260,6 @@ export function setupSelectionToolbar(
         hideAllTable();
         hideBlockButtons();
 
-        // Reflect which inline marks/constructs are already applied on the
-        // selection — the same derivation the top toolbar uses, so the two
-        // surfaces can never disagree. Toggling a hidden button is harmless.
-        const active = computeToolbarActiveState(view.state);
         setActive(boldBtn, active.marks.bold);
         setActive(italicBtn, active.marks.italic);
         setActive(strikeBtn, active.marks.strikethrough);

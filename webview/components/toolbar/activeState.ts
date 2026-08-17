@@ -12,6 +12,7 @@
  */
 import type { EditorState } from "../../pm";
 import { NodeSelection } from "../../pm";
+import { canPlaceCommandBlock } from "../../blockPlacement";
 
 export type ListKind = "bullet" | "ordered" | "task";
 /** "blockquote" for a plain quote, otherwise the callout kind (note/tip/…). */
@@ -153,7 +154,6 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
     let quote: QuoteKind | null = null;
     let code: CodeKind | null = null;
     let inTable = false;
-    let inCodeBlock = false;
     let inMathSource = false;
     let inWikiSource = false;
     let inFootnoteDef = false;
@@ -167,7 +167,6 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
         if (name === "table" || name === "table_cell" || name === "table_header") {
             inTable = true;
         } else if (name === "code_block") {
-            inCodeBlock = true;
             code = codeKindFromLanguage(attrs["language"]);
             headingLevel = -1;
         } else if (name === "heading" && headingLevel === 0) {
@@ -207,12 +206,19 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
             link: anyMarkActive(state, MARK_NAMES.link),
         },
         headingLevel,
-        // A selected atom/image or a caret inside math source isn't a
-        // heading-capable textblock, so the format control greys to "—" there
-        // too (the table-cell / code-block treatment).
+        // Whether the caret's block can BECOME a heading, asked of the schema
+        // rather than of a list of container names (webview/blockPlacement.ts):
+        // a table cell holds a paragraph and nothing else, a fence holds
+        // uninterpreted text, and both answers fall out of the node specs.
+        // The two guards left are judgements the schema cannot make. A caret
+        // inside a revealed inline source (math, a wikilink) sits in prose the
+        // probe would happily retype, but the user is editing a formula or a
+        // link and retyping the paragraph around it is a surprise. A selected
+        // atom is not a textblock at all.
         formatApplicable:
-            !inTable && !inCodeBlock && !inMathSource && !inWikiSource &&
-            (selectedNode === null || selectedNode.isTextblock),
+            !inMathSource && !inWikiSource &&
+            (selectedNode === null || selectedNode.isTextblock) &&
+            canPlaceCommandBlock($from, "setHeading1"),
         list,
         quote,
         code,
