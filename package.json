@@ -539,6 +539,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.toggleFocusMode",
+                "title": "%command.editor.toggleFocusMode.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.swapTocSide",
                 "title": "%command.editor.swapTocSide.title%",
                 "category": "Birta Writer"
@@ -1213,6 +1218,10 @@
                 },
                 {
                     "command": "birta.editor.toggleReadOnly",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.toggleFocusMode",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

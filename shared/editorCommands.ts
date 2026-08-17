@@ -202,6 +202,12 @@ export const EDITOR_COMMANDS = [
     // re-seeds every open document. No default chord — the editor's own chords
     // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
     { id: "toggleReadOnly", title: "Toggle Read-only", palette: true, sections: [] },
+    // Focus mode (MAR-72). One toggle down to the content: our toolbar and TOC
+    // hidden, proofreading silenced, and the workbench chrome handed to VS
+    // Code's own Zen Mode. A single entry for the same reason as the rows
+    // above, and no default chord: Cmd+K Z is Zen Mode's, and taking a second
+    // chord for the thing that drives it would be two gestures for one idea.
+    { id: "toggleFocusMode", title: "Toggle Focus Mode", palette: true, sections: [] },
     { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [] },
     // MAR-294: once focus is inside the review sidebar its keyboard model is
     // complete (Escape returns to the editor from every region), but no gesture
