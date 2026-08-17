@@ -100,6 +100,7 @@
   "config.styleCheck.ruleOfThree.description": "Style check (AI tell): flag three stacked adjectives (fast, cheap, and reliable).",
   "config.styleCheck.emDash.description": "Style check: flag em/en dash glyphs (prefer a spaced ASCII hyphen).",
   "config.styleCheck.nonAsciiPunct.description": "Style check: flag curly quotes, the ellipsis glyph, and invisible spaces (normalize to ASCII).",
+  "config.styleCheck.absolutePerf.description": "Style check: flag an absolute claim about a performance cost (no longer stalls, zero latency, always faster). A cost is a distribution, so the claim cannot be checked as written; a paragraph that already carries a before and an after figure is left alone.",
   "config.spellCheck.enabled.description": "Spelling: check English spelling with Harper (offline, on-device). Findings show as dotted underlines; click one for suggestions. Code, URLs, and identifiers are skipped. (Requires the Proofreading master switch to be on.)",
   "config.grammarCheck.enabled.description": "Grammar: surface Harper's non-spelling findings (repetition, word choice, grammar) as dotted underlines. Shares the offline Harper engine with spelling. (Requires the Proofreading master switch to be on.)",
   "config.spellCheck.userWords.description": "Your personal dictionary: words the spell check treats as correct. Managed via 'Add to dictionary' in the editor's suggestion popup.",

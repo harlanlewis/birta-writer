@@ -21,6 +21,7 @@ import {
     findRuleOfThree,
     findEmDash,
     findNonAsciiPunct,
+    findAbsolutePerfClaims,
 } from "./proseChecks";
 
 /** Categories backed by a phrase list (compiled to one alternation regex each). */
@@ -40,7 +41,8 @@ export type StructuralCategory =
     | "negativeParallelism"
     | "ruleOfThree"
     | "emDash"
-    | "nonAsciiPunct";
+    | "nonAsciiPunct"
+    | "absolutePerf";
 
 export type StyleCategory = PhraseCategory | StructuralCategory;
 
@@ -320,6 +322,7 @@ const STRUCTURAL_CHECKS: Record<
     ruleOfThree: findRuleOfThree,
     emDash: findEmDash,
     nonAsciiPunct: findNonAsciiPunct,
+    absolutePerf: findAbsolutePerfClaims,
 };
 
 /**

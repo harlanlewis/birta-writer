@@ -79,13 +79,13 @@ export function getProofreadConfig(config: BirtaConfig = readBirtaConfig()): Pro
     const {
         proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
         wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
-        longSentences, ruleOfThree, emDash, nonAsciiPunct, styleExceptions,
+        longSentences, ruleOfThree, emDash, nonAsciiPunct, absolutePerf, styleExceptions,
         spellCheck, grammarCheck, userWords,
     } = config;
     return {
         proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
         wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
-        longSentences, ruleOfThree, emDash, nonAsciiPunct, styleExceptions,
+        longSentences, ruleOfThree, emDash, nonAsciiPunct, absolutePerf, styleExceptions,
         spellCheck, grammarCheck, userWords,
     };
 }
@@ -204,6 +204,7 @@ const PROOFREAD_SETTING: Record<ProofreadOptionKey, string> = {
     ruleOfThree: "styleCheck.ruleOfThree",
     emDash: "styleCheck.emDash",
     nonAsciiPunct: "styleCheck.nonAsciiPunct",
+    absolutePerf: "styleCheck.absolutePerf",
 };
 
 /** Persist one proofread toggle (checks menu → settings write-back). */

@@ -11,7 +11,7 @@ import type { StyleCategory } from "../utils/styleMatcher";
 const CATEGORIES: StyleCategory[] = [
     "fillers", "redundancies", "cliches", "wordiness", "aiVocabulary", "aiArtifacts",
     "repeated", "passive", "longSentences", "negativeParallelism", "ruleOfThree",
-    "emDash", "nonAsciiPunct",
+    "emDash", "nonAsciiPunct", "absolutePerf",
 ];
 
 describe("styleAdvice", () => {

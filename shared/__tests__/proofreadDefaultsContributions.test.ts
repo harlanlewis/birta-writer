@@ -36,6 +36,7 @@ const FIELD_TO_SETTING: Record<keyof ProofreadConfig, string> = {
     ruleOfThree: "styleCheck.ruleOfThree",
     emDash: "styleCheck.emDash",
     nonAsciiPunct: "styleCheck.nonAsciiPunct",
+    absolutePerf: "styleCheck.absolutePerf",
     styleExceptions: "styleCheck.exceptions",
     spellCheck: "spellCheck.enabled",
     grammarCheck: "grammarCheck.enabled",

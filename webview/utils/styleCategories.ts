@@ -39,6 +39,7 @@ export const STYLE_CATEGORIES: readonly StyleCategoryDef[] = [
     { category: "longSentences", label: "Long sentences", section: "Prose" },
     { category: "emDash", label: "Em dash", section: "Prose" },
     { category: "nonAsciiPunct", label: "Curly punctuation", section: "Prose" },
+    { category: "absolutePerf", label: "Absolute speed claim", section: "Prose" },
     { category: "repeated", label: "Repeated words", section: null },
 ];
 

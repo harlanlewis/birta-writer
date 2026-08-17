@@ -206,3 +206,39 @@ export function findNonAsciiPunct(text: string): StyleMatch[] {
     }
     return matches;
 }
+
+// An absolute word, then within a clause a performance word. The performance
+// vocabulary is the whole scope: an absolute claim about a correctness bug
+// ("no longer corrupts the file") reproduces or it does not, so it stays; an
+// absolute claim about a cost cannot be checked, because a cost is a
+// distribution and only ever shrinks. Flagging absolute language outright hits
+// most of a real changelog; scoped like this it hits the real thing. Ported
+// from the maintainer's prose-guard hook so the editor and the commit gate
+// agree on what a claim has to carry.
+const ABSOLUTE_PERF = /\b(?:no longer|never|always|eliminated|completely|entirely|instantly|zero)\b[^.]{0,40}?\b(?:stalls?|stutters?|lags?|laggy|freezes?|froze|frozen|jank\w*|slow\w*|faster|hangs?|sluggish|responsive\w*|latency)\b/gi;
+
+// A figure in prose: a digit run that does not continue a word or a version
+// segment. Two of them in one block are read as a before and an after.
+const FIGURE = /(?:^|[^A-Za-z0-9.])[0-9][0-9.,]*/g;
+
+/**
+ * Absolute performance claim: "no longer stalls", "zero latency", "always
+ * faster". Advisory: the claim is unfalsifiable as written, and the fix is to
+ * carry the measurement, so a block that already holds two figures (a before
+ * and an after) is not flagged at all. The carve-out is per block, the unit a
+ * changelog entry occupies, rather than per sentence, because the numbers
+ * usually follow the claim in a second sentence.
+ */
+export function findAbsolutePerfClaims(text: string): StyleMatch[] {
+    const matches: StyleMatch[] = [];
+    ABSOLUTE_PERF.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = ABSOLUTE_PERF.exec(text)) !== null) {
+        matches.push({ start: m.index, end: m.index + m[0].length, category: "absolutePerf" });
+    }
+    if (matches.length === 0) { return matches; }
+    FIGURE.lastIndex = 0;
+    let figures = 0;
+    while (figures < 2 && FIGURE.exec(text) !== null) { figures++; }
+    return figures >= 2 ? [] : matches;
+}
