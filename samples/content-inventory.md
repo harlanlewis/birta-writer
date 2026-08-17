@@ -777,6 +777,102 @@ Upstream delegates both to Java-only image libraries. JCCKIT does not render at 
 @endditaa
 ```
 
+### Diagrams (Graphviz)
+
+Fenced [Graphviz](https://graphviz.org) diagrams draw from DOT source, through the same preview as Mermaid and PlantUML and with the same zoom, pan and fullscreen controls. Rendering is offline on the WebAssembly engine that already shipped for PlantUML, so no graph source leaves the machine. DOT was reachable before only as `@startdot` inside a `plantuml` fence; a plain Graphviz fence was an ordinary code block.
+
+```dot
+digraph Pipeline {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  edge [arrowhead=vee];
+
+  parse  [label="Parse"];
+  render [label="Render"];
+  save   [label="Save"];
+
+  parse -> render [label="mdast"];
+  render -> save;
+}
+```
+
+#### All three fence spellings
+
+`dot` is the canonical language and the one the code block language picker inserts, matching the grammar name its highlighting comes from. `graphviz` and `gv` are aliases. Each opens a diagram, and each round-trips in the spelling it was written in rather than being rewritten to the canonical one.
+
+```graphviz
+digraph Aliased {
+  a -> b -> c;
+}
+```
+
+An undirected graph uses `graph` and `--` edges:
+
+```gv
+graph Undirected {
+  x -- y;
+  y -- z;
+  z -- x;
+}
+```
+
+#### Subgraphs and clusters
+
+Nested braces, a `cluster_` prefix for a name that draws its box, and edges crossing between them.
+
+```dot
+digraph Clusters {
+  subgraph cluster_read {
+    label = "Read";
+    style = rounded;
+    open -> parse;
+  }
+  subgraph cluster_write {
+    label = "Write";
+    style = rounded;
+    serialize -> flush;
+  }
+  parse -> serialize [label="edit"];
+}
+```
+
+#### The layout engine is the graph's to choose
+
+Layout defaults to `dot`, the hierarchical engine every other Graphviz tool defaults to. A graph that names a different one in a `layout` attribute gets it: `neato`, `fdp`, `sfdp`, `circo`, `twopi`, `osage` and `patchwork` all lay out here. The attribute is ordinary DOT, so the same source lays out the same way in any Graphviz.
+
+```dot
+graph Circular {
+  layout = circo;
+  node [shape=circle];
+  a -- b -- c -- d -- a;
+  a -- c;
+}
+```
+
+#### A graph keeps its own colours
+
+Mermaid switches to a dark palette under a dark editor theme and PlantUML is re-skinned per element, but DOT has no equivalent preamble: recolouring a graph would mean rewriting attributes inside the source you wrote. So a Graphviz diagram renders on its own palette and the pane paints a light canvas under it, the way `@startjson` already does. The colours below are the ones this graph asked for, whatever theme the editor is in.
+
+```dot
+digraph Palette {
+  node [shape=box, style=filled, fontcolor="#1a1a1a"];
+  ok   [label="Pass", fillcolor="#cfe8cf"];
+  warn [label="Check", fillcolor="#f6e7b8"];
+  bad  [label="Fail", fillcolor="#f0c9c9"];
+  ok -> warn -> bad;
+}
+```
+
+#### Invalid DOT settles on an error card
+
+The rest of the document stays alive, and the unrenderable source still round-trips untouched. Graphviz is strict where PlantUML is lenient, so a syntax error is enough: the engine's own message names the line it gave up on.
+
+```dot
+digraph Broken {
+  a -> ;
+}
+```
+
 ### Calc
 
 Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator-) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
