@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.817.0] - 2026, August 17
+
 ### Added
 
 - A read-only mode, so the editor can be used as a reader without a stray keystroke changing the file. There is a Toggle Read-only command, `birta.readOnly` sets the default for every document (off, editable), and an Edit / Read-only toolbar toggle is available beside Edit Raw Markdown for anyone who sets `birta.toolbar.items.readOnly` to a zone; it ships hidden. The toggle holds for the document's session in this editor: switching to the raw editor and back, or reloading the window, re-reads the setting. Reading keeps working in full: scrolling, selection and copy, find, folding, the table of contents, link popups and navigation, a code block's Copy button, zoom and fullscreen, and diagram previews. What goes inert is every way a document can change, including the ones that are not typing: the formatting buttons dim and their menus stay shut, the slash menu and input rules stop firing, paste and drop decline, and the metadata panel and callout titles stop accepting edits. The editing chrome leaves with it rather than sitting there dead: no block grab handles in the gutter, hovered or not, no selection ring around a clicked image, embed or callout, no block-range wash from a margin drag; a table shows no row and column grips or insert bars; a link's popup keeps Open and Copy and drops Edit, Unlink and Show as embed; an embed's edit palette and its Edit and Show as text link buttons stay away; an image's caption, title and path fields do not take typing; a code block's language name is a label rather than a menu; a callout's kind icon does not open its picker; clicking a raw HTML block or an inline formula does not open its source; a task checkbox does not flip; and a stale calculation's cue offers no Update. Folding is unchanged, because it is reading. Rendering is otherwise identical between the modes, so nothing shifts when you toggle. Edit Raw Markdown still opens the file for editing, because that intent is explicit.
