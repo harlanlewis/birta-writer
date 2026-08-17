@@ -206,4 +206,74 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
             await revertAndClose(uri);
         }
     });
+
+    it("a user CAN reach two editors on one dirty file, and closing either loses the edit (MAR-368)", async function () {
+        // The discard above needed a state the product never builds: both
+        // switch paths close the source BEFORE opening the destination, so
+        // neither leaves two editors on one document. This asks whether a user
+        // can build it anyway, because if they can the discard is a data-loss
+        // bug rather than a note on a rejected prototype.
+        //
+        // The gesture is Open With → Text Editor from the explorer, on a file
+        // already open and dirty in the WYSIWYG editor: the one route that
+        // reaches two editors without going through either switch command.
+        this.timeout(90_000);
+
+        const uri = await writeFixture("modeswitch-reach.md", "# Reachable\n\nBody.\n");
+        const doc = await vscode.workspace.openTextDocument(uri);
+        try {
+            await vscode.commands.executeCommand(
+                "vscode.openWith", uri, "birta.editor",
+                { viewColumn: vscode.ViewColumn.Active, preview: false },
+            );
+            await wait(3000);
+
+            // Dirty it while only the WYSIWYG editor holds it.
+            const edit = new vscode.WorkspaceEdit();
+            edit.insert(uri, new vscode.Position(doc.lineCount - 1, 0), "Typed in WYSIWYG.\n");
+            assert.ok(await vscode.workspace.applyEdit(edit), "the document was dirtied");
+            await wait(500);
+            assert.ok(doc.isDirty, "dirty with only the custom editor open");
+
+            // The user's gesture: Open With → Text Editor, alongside.
+            await vscode.commands.executeCommand(
+                "vscode.openWith", uri, "default",
+                { viewColumn: vscode.ViewColumn.Active, preview: false },
+            );
+            await wait(1500);
+
+            const both = tabsFor(uri);
+            const reachedTwoEditors = both.text.length === 1 && both.custom.length === 1;
+
+            let survivedClosingCustom: boolean | null = null;
+            if (reachedTwoEditors) {
+                const customTab = tabsFor(uri).custom[0]!;
+                await vscode.window.tabGroups.close(customTab);
+                await wait(800);
+                survivedClosingCustom = doc.getText().includes("Typed in WYSIWYG.");
+            }
+
+            const probe = { reachedTwoEditors, survivedClosingCustom, stillDirty: doc.isDirty };
+            console.log("MAR-59 reachability probe:", JSON.stringify(probe));
+
+            // The answer is yes, a user can reach it, so this is a data-loss
+            // bug and not a note on a rejected prototype: MAR-368.
+            assert.strictEqual(
+                reachedTwoEditors, true,
+                `Open With no longer reaches two editors, so MAR-368 may be moot; probe: ${JSON.stringify(probe)}`,
+            );
+
+            // KNOWN BAD, pinned rather than skipped (MAR-368). The edit SHOULD
+            // survive; today it does not. Asserting the loss is what makes the
+            // fix visible: the day the edit survives, this line goes red and
+            // whoever fixed it has to come back and turn it into the guarantee.
+            assert.strictEqual(
+                survivedClosingCustom, false,
+                "the edit SURVIVED — MAR-368 appears fixed, so invert this assertion and close the ticket",
+            );
+        } finally {
+            await vscode.commands.executeCommand("workbench.action.files.revert").then(undefined, () => undefined);
+            await revertAndClose(uri);
+        }
+    });
 });

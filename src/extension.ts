@@ -7,6 +7,7 @@ import { normalizePlantUmlThemeMode } from "../shared/plantuml";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { scanHeadings } from "../shared/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
+import { isDocumentPath } from "../shared/documentExtensions";
 import { normalizeCopyFormat, normalizePasteFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, type BirtaApi } from "./agentBridge";
@@ -168,7 +169,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!(tab.input instanceof vscode.TabInputText)) { continue; }
                 const uri = (tab.input as vscode.TabInputText).uri;
                 if (uri.scheme !== "file") { continue; }
-                if (!/\.(md|markdown)$/i.test(uri.fsPath)) { continue; }
+                if (!isDocumentPath(uri.fsPath)) { continue; }
 
                 const uriStr = uri.toString();
                 if (MarkdownEditorProvider.suppressAutoSwitch.has(uriStr)) { continue; }

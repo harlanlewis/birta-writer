@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { computeReplaceRange } from "../shared/textEdit";
+import { DOCUMENT_EXTENSIONS, documentExtRegex } from "../shared/documentExtensions";
 import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap, sourceLineCount } from "../shared/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
@@ -61,18 +62,21 @@ const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  * file, and the click lands nowhere. `package.json`'s selector is the
  * authority; `editorSelectorParity.test.ts` reads both and fails on a drift.
  */
-const WYSIWYG_EXT_REGEX = /\.(md|markdown|mdx)$/i;
+const WYSIWYG_EXT_REGEX = documentExtRegex();
 
 /**
- * The extensions the front-matter suggestion scan reads, as ONE fact.
+ * The extensions the front-matter suggestion scan reads, as ONE fact, and the
+ * same fact the editor uses to decide what it opens: a file this editor opens
+ * can carry front matter, and there is no third answer.
  *
  * The glob below and the watcher predicate have to agree: the scan is cached
  * for a TTL window and only a create or delete of a file it reads can change
  * its answer, so a file type the glob collects but the watcher ignores goes
  * stale for the whole window. `.mdx` walked into exactly that, because it does
- * not end with `.md` (MAR-350).
+ * not end with `.md` (MAR-350). Both derive from the list below, so widening
+ * it can never reach one half without the other.
  */
-const FM_SCAN_EXTENSIONS = ["md", "mdx"] as const;
+const FM_SCAN_EXTENSIONS = DOCUMENT_EXTENSIONS;
 const FM_SCAN_GLOB = `**/*.{${FM_SCAN_EXTENSIONS.join(",")}}`;
 
 /** Does the front-matter scan read this path? */
