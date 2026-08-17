@@ -15,6 +15,7 @@ import "./directive.css";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
+import { isBareEscape } from "@/ui/escapeLayers";
 import { markEditableIsland } from "@/readOnly";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
@@ -104,7 +105,7 @@ export function createDirectiveView(
         if (e.key === "Enter") {
             e.preventDefault();
             title.blur(); // blur commits
-        } else if (e.key === "Escape") {
+        } else if (isBareEscape(e)) {
             e.preventDefault();
             title.textContent = (node.attrs["title"] as string) ?? ""; // revert
             title.blur();

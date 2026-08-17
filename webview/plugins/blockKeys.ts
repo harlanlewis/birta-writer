@@ -45,7 +45,7 @@ import type { Node as PMNode } from "../pm";
 import { Plugin, Selection, TextSelection, type EditorState, type Transaction } from "../pm";
 import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
-import { closeTopmostLayer } from "../ui/escapeLayers";
+import { closeTopmostLayer, isBareEscape } from "../ui/escapeLayers";
 import {
     deleteBlockRange,
     duplicateBlockRange,
@@ -553,11 +553,7 @@ const blockKeymap = keydownHandler({
  * still propagates, since the workbench owns Escape when we don't use it.
  */
 export function handleBlockKeydown(view: EditorView, event: KeyboardEvent): boolean {
-    if (
-        event.key === "Escape" &&
-        !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
-        closeTopmostLayer()
-    ) {
+    if (isBareEscape(event) && closeTopmostLayer()) {
         event.stopPropagation();
         return true;
     }

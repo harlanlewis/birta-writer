@@ -73,10 +73,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "htmlView's idiom; the OPENING chord is the contributed birta.editor.editBlockSource keybinding",
         "webview/plugins/headingEmptyDelete.ts":
             "bails out when modifiers are held — typing-level Backspace handling, not a chord",
-        "webview/plugins/blockKeys.ts":
-            "bails out when modifiers are held — plain-Escape guard before the transient-surface layer check, not a chord",
-        "webview/proofread/popup.ts":
-            "bails out when modifiers are held — plain-Escape guard so the findings popup ignores modifier-Escape (Shift+Esc pops the layer stack), not a chord",
+        "webview/ui/escapeLayers.ts":
+            "bails out when modifiers are held — isBareEscape, the one plain-Escape guard every transient and input-owned surface calls (blockKeys, the findings popup, the image dialog, titles, front matter), so none of them acts on modifier-Escape; not a chord",
         "webview/plugins/mathInlineEdit.ts":
             "bails out when modifiers are held — typing-level arrow/Backspace boundary handling at a formula's edge, not a chord",
         "webview/plugins/wikiLinkEdit.ts":

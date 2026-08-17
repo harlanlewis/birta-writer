@@ -9,7 +9,7 @@
  * hand, so the popup itself imports neither the engine nor the plugin.
  */
 import type { EditorView } from "../pm";
-import { closeTopmostLayer, registerEscapeLayer } from "../ui/escapeLayers";
+import { closeTopmostLayer, isBareEscape, registerEscapeLayer } from "../ui/escapeLayers";
 import { computeAnchoredPosition, viewportSize } from "../ui/anchoredPlacement";
 import { onOutsideClick } from "../ui/outsideClick";
 import "./proofread.css";
@@ -110,7 +110,7 @@ export function showFindingsPopup(view: EditorView, anchorPos: number, findings:
         // Only a bare Escape closes a layer; modifier-Escape (Shift+Esc pops
         // the escape-layer stack, etc.) must fall through untouched — no
         // surface acts on modifier-Escape (matches blockKeys' guard).
-        if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (isBareEscape(e)) {
             // Consume (the old bare hide let the key fall through to the
             // block-selection keymap, closing the popup AND selecting the
             // block) and route through the Escape-layer stack, so a surface

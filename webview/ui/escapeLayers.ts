@@ -21,6 +21,16 @@
  * Escape later.
  */
 
+/**
+ * A plain Escape, no modifier. No surface acts on modifier-Escape: Shift+Esc
+ * and friends belong to the workbench, so a handler that closes on any
+ * `key === "Escape"` steals a chord it was never offered. Every Escape
+ * handler on a transient or input-owned surface guards with this.
+ */
+export function isBareEscape(e: KeyboardEvent): boolean {
+    return e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
+
 /** One open surface. Object identity distinguishes duplicate close fns. */
 interface EscapeLayer {
     close: () => void;
