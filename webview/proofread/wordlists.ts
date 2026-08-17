@@ -1098,10 +1098,15 @@ export const AI_VOCABULARY: readonly string[] = [
     "a testament to",
     "tapestry",
     "rich tapestry",
-    "underscore",
-    "underscores",
-    "underscoring",
-    "showcase",
+    // Verb forms only: as a noun ("the underscore", "underscores as
+    // delimiters") the word is ordinary in any technical document, and so is
+    // "showcase" as a noun or a title. The strike marks the verb the tell lives in.
+    "~~underscore~~ the",
+    "~~underscores~~ the",
+    "~~underscored~~ the",
+    "~~underscoring~~ the",
+    "~~underscores~~ how",
+    "~~underscores~~ its",
     "showcases",
     "showcasing",
     "realm",

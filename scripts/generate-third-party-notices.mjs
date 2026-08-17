@@ -158,7 +158,10 @@ export const LICENSE_ELECTIONS = {
  * the parent's license covers everything inside it.
  *
  * Adding an entry is a claim that someone looked. Removing a dependency without
- * removing its entry is caught by `thirdPartyNotices.test.ts`.
+ * removing its entry is caught by `thirdPartyNotices.test.ts`. Finding the next
+ * one is `pnpm notices:audit` (scripts/audit-embedded-components.mjs), which
+ * sweeps the bundled packages for the shapes that carry embedded code and
+ * prints candidates for a human to judge; run it on a dependency add or bump.
  */
 export const EMBEDDED_COMPONENTS = {
     "@hpcc-js/wasm-graphviz": {
@@ -170,6 +173,68 @@ export const EMBEDDED_COMPONENTS = {
         note:
             "Compiled Graphviz, inlined as WebAssembly. The package declares Apache-2.0 " +
             "for its own wrapper and ships no Graphviz notice of its own.",
+    },
+    // The font files, not the code: `esbuild.mjs` inlines every KaTeX WOFF2 as
+    // a data URL into katex.css, and each font's own name table says SIL OFL
+    // 1.1 with Design Science and Khan Academy as copyright holders and the
+    // KaTeX_* names reserved. The package's MIT LICENSE covers KaTeX the
+    // program. OFL asks that each copy carry the copyright notice and the
+    // license text, which is what the shipped file is.
+    katex: {
+        component: "the KaTeX fonts",
+        spdx: "OFL-1.1",
+        homepage: "https://katex.org",
+        licenseFile: "katex-fonts-OFL-1.1.txt",
+        note:
+            "The KaTeX_* WOFF2 fonts inlined into katex.css are SIL Open Font License 1.1 " +
+            "(copyright Design Science, Inc. and Khan Academy, Reserved Font Names KaTeX_*); " +
+            "the package's MIT license covers the KaTeX code, not the font files.",
+    },
+    // Same license family as the parent, so this is about the notice, not the
+    // terms: cytoscape's dist inlines two MIT snippets by other authors whose
+    // copyright lines live only in `/*! */` comments, which minification strips
+    // from our bundle. MIT wants the notice in every copy; the shipped file
+    // carries both, and cytoscape's own LICENSE does not.
+    cytoscape: {
+        component: "two MIT snippets (thenable by Ralf S. Engelschall, bezier-easing by Gaetan Renaudeau)",
+        spdx: "MIT",
+        homepage: "https://github.com/rse/thenable and https://github.com/gre/bezier-easing",
+        licenseFile: "cytoscape-embedded-MIT.txt",
+        note:
+            "cytoscape's published dist inlines a Promises/A+ thenable and a bezier-easing " +
+            "generator under their authors' own MIT notices, carried only in source comments.",
+    },
+    // A second license inside an ISC package, discharged by the parent: d3-geo's
+    // LICENSE carries Charles Karney's MIT notice (GeographicLib's geodesic
+    // code) after its own ISC grant, and the appendix reproduces that file
+    // whole, so nothing extra ships. The entry exists so the summary, which
+    // counts declared licenses, does not read the package as ISC and nothing
+    // else; `noticeInParentLicense` is what the guard checks the reproduced
+    // text for.
+    "d3-geo": {
+        component: "GeographicLib geodesic code",
+        spdx: "MIT",
+        homepage: "https://geographiclib.sourceforge.io",
+        licenseFile: null,
+        noticeInParentLicense: "Copyright 2008-2012 Charles Karney",
+        note:
+            "d3-geo's geodesic routines are ported from GeographicLib under Charles Karney's " +
+            "MIT notice, which the package's LICENSE states after its ISC grant.",
+    },
+    // A second license inside an ISC package: the ColorBrewer color schemes
+    // are Apache-2.0 (Cynthia Brewer, Mark Harrower, Penn State). The package's
+    // LICENSE carries the notice after its own ISC grant, so the appendix
+    // already reproduces it; the entry makes the second license visible where
+    // the summary counts declared licenses, and the shipped file adds the full
+    // Apache text so a copy of the License accompanies the schemes.
+    "d3-scale-chromatic": {
+        component: "the ColorBrewer color schemes",
+        spdx: "Apache-2.0",
+        homepage: "https://colorbrewer2.org",
+        licenseFile: "colorbrewer-Apache-2.0.txt",
+        note:
+            "The ColorBrewer color schemes are Apache-2.0 (copyright Cynthia Brewer, Mark Harrower, " +
+            "and The Pennsylvania State University), stated in the package's LICENSE after its ISC grant.",
     },
 };
 
@@ -451,6 +516,13 @@ function collect() {
     return { packages, problems };
 }
 
+/** Where an embedded component's license text lives, as a sentence. */
+function embeddedLicenseWhere(e) {
+    return e.licenseFile
+        ? `License text: [\`licenses/${e.licenseFile}\`](${e.licenseFile}).`
+        : "Its notice is carried in the package's own license text, reproduced below.";
+}
+
 function render(packages) {
     const byLicense = new Map();
     for (const p of packages) byLicense.set(p.spdx, (byLicense.get(p.spdx) ?? 0) + 1);
@@ -531,7 +603,7 @@ function render(packages) {
         for (const [name, e] of embeddedEntries) {
             out.push(
                 `- **${e.component}** (\`${e.spdx}\`), embedded in \`${name}\`. ${e.note} ` +
-                `Source: ${e.homepage}. License text: [\`licenses/${e.licenseFile}\`](${e.licenseFile}).`,
+                `Source: ${e.homepage}. ${embeddedLicenseWhere(e)}`,
             );
         }
         out.push("");
@@ -552,9 +624,8 @@ function render(packages) {
             // conclude the line above is the whole story.
             out.push(
                 `- **Embeds ${embedded.component} (${embedded.spdx})** — ${embedded.note} ` +
-                `Source: ${embedded.homepage}. Its license text ships at ` +
-                `\`licenses/${embedded.licenseFile}\`, and the narrative notice is in ` +
-                `[\`THIRD_PARTY_NOTICES.md\`](../THIRD_PARTY_NOTICES.md).`,
+                `Source: ${embedded.homepage}. ${embeddedLicenseWhere(embedded)} ` +
+                `The narrative notice is in [\`THIRD_PARTY_NOTICES.md\`](../THIRD_PARTY_NOTICES.md).`,
             );
         }
         out.push("");

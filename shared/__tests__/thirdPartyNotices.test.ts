@@ -98,28 +98,61 @@ describe("third-party attribution appendix", () => {
         }
     });
 
-    it("every embedded component should ship the license text it points at", () => {
+    it("every embedded component should ship the license text it points at, or name the notice its parent carries", () => {
         for (const [name, e] of Object.entries(EMBEDDED_COMPONENTS) as [string, {
-            licenseFile: string; component: string; spdx: string;
+            licenseFile: string | null; noticeInParentLicense?: string; component: string; spdx: string;
         }][]) {
-            const file = path.join(repoRoot, "licenses", e.licenseFile);
-            const text = readFileSync(file, "utf8");
-            // A stub or a fetch that silently returned an error page would
-            // satisfy "the file exists" but discharge nothing.
-            expect(text.length, `${name}: ${e.licenseFile} is too short to be a license`)
-                .toBeGreaterThan(1000);
+            if (e.licenseFile) {
+                const file = path.join(repoRoot, "licenses", e.licenseFile);
+                const text = readFileSync(file, "utf8");
+                // A stub or a fetch that silently returned an error page would
+                // satisfy "the file exists" but discharge nothing.
+                expect(text.length, `${name}: ${e.licenseFile} is too short to be a license`)
+                    .toBeGreaterThan(1000);
+                continue;
+            }
+            // No shipped file means the parent's own LICENSE carries the
+            // component's notice and the appendix reproduces it. Check the
+            // reproduced text, not the claim: a package that drops the notice
+            // in a bump leaves this entry pointing at nothing.
+            expect(e.noticeInParentLicense, `${name}: no licenseFile and no noticeInParentLicense`).toBeTruthy();
+            const entry = appendix.slice(appendix.indexOf(`### ${name}@`));
+            const block = entry.slice(0, entry.indexOf("\n### ", 1) < 0 ? undefined : entry.indexOf("\n### ", 1));
+            expect(block, `${name}'s reproduced license no longer carries "${e.noticeInParentLicense}"`)
+                .toContain(e.noticeInParentLicense!);
         }
     });
 
     it("an embedded component's license should NOT be silently added to the allowed set", () => {
         // The allowlist answers "may this package's own license be bundled".
-        // EPL and friends are deliberately outside it; an embedded component is
+        // EPL and OFL are deliberately outside it; an embedded component is
         // discharged by its notice and shipped text instead. If one ever lands
         // in ALLOWED_LICENSES, that decision was made somewhere it is not
         // visible, and the header's reasoning has been quietly overridden.
+        // An embedded component under a license some package DECLARES for
+        // itself (cytoscape's MIT snippets, ColorBrewer's Apache-2.0) is not
+        // that case: the set already had to answer for that license.
+        const declared = new Set(
+            [...appendix.matchAll(/^- License: (.+)$/gm)].map((m) => m[1].trim()),
+        );
         for (const [name, e] of Object.entries(EMBEDDED_COMPONENTS) as [string, { spdx: string }][]) {
+            if (declared.has(e.spdx)) continue;
             expect(ALLOWED_LICENSES.has(e.spdx), `${e.spdx} (embedded in ${name}) is in ALLOWED_LICENSES`)
                 .toBe(false);
+        }
+    });
+
+    it("the appendix should name every embedded component on its package's own entry", () => {
+        // The per-package line is what a reader checking one package sees; the
+        // section at the top is what a reader counting licenses sees. Both
+        // must carry the component, or one of the two readers is told the
+        // parent's license is the whole story.
+        for (const [name, e] of Object.entries(EMBEDDED_COMPONENTS) as [string, {
+            component: string; spdx: string;
+        }][]) {
+            const entry = appendix.slice(appendix.indexOf(`### ${name}@`));
+            const head = entry.slice(0, entry.indexOf("<details>"));
+            expect(head, `${name}'s entry does not name ${e.component}`).toContain(`Embeds ${e.component} (${e.spdx})`);
         }
     });
 

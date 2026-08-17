@@ -699,8 +699,13 @@ export class MarkdownEditorProvider
      * 2. the focused group's active tab — keybindings match per editor group
      *    (`activeCustomEditorId` is group-scoped), and with split editors two
      *    panels are simultaneously "active" in their groups, so
-     *    `_activePanel` (last view-state change) may name the wrong split;
-     * 3. `_activePanel` as the fallback.
+     *    `_activePanel` (whichever of them reported active most recently) may
+     *    name the wrong split;
+     * 3. `_activePanel`, which is LIVE rather than sticky: the panel that is
+     *    active in its group right now, or null once it deactivates (see the
+     *    field's declaration). So a command from a raw editor with no Birta
+     *    panel active anywhere is dropped, and one issued while a Birta panel
+     *    is active in another group reaches that panel.
      */
     public postEditorCommand(command: EditorCommandId, documentUriStr?: string, args?: unknown): void {
         const msg: ToWebviewMessage = { type: "editorCommand", command, args };
@@ -820,8 +825,11 @@ export class MarkdownEditorProvider
             // Drop cached counts; hide the readout if this was the active editor
             // (its status bar figures no longer describe anything) (MAR-29).
             this._wordCounts.delete(uriKey);
-            if (this._activePanel === webviewPanel) { this._wordCountView?.hide(); }
-            if (this._activePanel === webviewPanel) { this._activePanel = null; this._activeDocument = null; }
+            if (this._activePanel === webviewPanel) {
+                this._wordCountView?.hide();
+                this._activePanel = null;
+                this._activeDocument = null;
+            }
             this._pinnedDocuments.delete(uriKey);
             this._imageUriMaps.delete(uriKey);
             this._initializedPanels.delete(uriKey);

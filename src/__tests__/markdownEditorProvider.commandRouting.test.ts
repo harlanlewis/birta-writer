@@ -1,10 +1,11 @@
 /**
  * postEditorCommand routing: keybinding/palette invocations carry no target
  * document, and with split editors two panels are simultaneously "active" in
- * their groups — `_activePanel` (last view-state change) may name the wrong
- * split. The router must prefer, in order: the explicitly named document,
- * the focused group's active tab (where the keybinding's group-scoped
- * when-clause actually matched), then `_activePanel`.
+ * their groups — `_activePanel` (whichever reported active most recently) may
+ * name the wrong split. The router must prefer, in order: the explicitly
+ * named document, the focused group's active tab (where the keybinding's
+ * group-scoped when-clause actually matched), then `_activePanel`, which is
+ * live: it names a panel only while that panel is active in its group.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
@@ -114,6 +115,28 @@ describe("MarkdownEditorProvider postEditorCommand routing", () => {
         provider.postEditorCommand("findNext");
 
         expect(editorCommandCalls(panelA)).toHaveLength(0);
+        expect(editorCommandCalls(panelB)).toHaveLength(1);
+    });
+
+    it("a deactivated panel should stop being the fallback until it reports active again (MAR-153)", async () => {
+        // `_activePanel` is live, not sticky. The word-count readout and the
+        // agent bridge both read it as "the Birta editor showing right now",
+        // and command routing shares the field, so a palette command issued
+        // while no Birta panel is active goes nowhere rather than to the last
+        // panel that happened to be active.
+        const { provider, panelA, panelB } = await setupTwoPanels();
+        const viewStateB = panelB.onDidChangeViewState.mock.calls[0]![0] as (
+            e: { webviewPanel: { active: boolean } },
+        ) => void;
+        vscode.window.tabGroups.activeTabGroup.activeTab = { input: {} };
+
+        viewStateB({ webviewPanel: { ...panelB, active: false } });
+        provider.postEditorCommand("openFind");
+        expect(editorCommandCalls(panelA)).toHaveLength(0);
+        expect(editorCommandCalls(panelB)).toHaveLength(0);
+
+        viewStateB({ webviewPanel: panelB });
+        provider.postEditorCommand("openFind");
         expect(editorCommandCalls(panelB)).toHaveLength(1);
     });
 });

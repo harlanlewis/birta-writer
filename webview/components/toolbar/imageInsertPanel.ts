@@ -8,6 +8,7 @@ import { t } from "@/i18n";
 import { attachImgPathComplete } from "../imageView/imgPathComplete";
 import { attachInputUndo } from "@/utils/inputUndo";
 import { onOutsideClick } from "@/ui/outsideClick";
+import { closeTopmostLayer, isBareEscape, registerEscapeLayer } from "@/ui/escapeLayers";
 
 /**
  * Image insert panel: a centered floating panel (no backdrop) with three modes: Browse Project / URL / Upload local
@@ -102,7 +103,14 @@ export function showImageInsertPanel(
     srcInput.placeholder = t("Image URL https://...");
     urlSection.appendChild(srcInput);
     panel.appendChild(urlSection);
-    const detachSrcComplete = attachImgPathComplete(srcInput);
+    // The completer listens in the capture phase and stops propagation on
+    // Enter and Escape, so nothing behind it on this input ever hears them:
+    // confirm and cancel have to travel through its callbacks.
+    const detachSrcComplete = attachImgPathComplete(
+        srcInput,
+        () => confirm(),
+        () => { if (!closeTopmostLayer()) { cleanup(); } },
+    );
     // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
     const detachPanelUndoFns = [attachInputUndo(altInput), attachInputUndo(srcInput)];
 
@@ -207,11 +215,26 @@ export function showImageInsertPanel(
         lb.appendChild(lbClose);
         document.body.appendChild(lb);
 
+        // The lightbox is a layer above the panel (itself a layer), so one
+        // Escape closes the lightbox and the next closes the panel. Focus
+        // stays in the panel while it is up, so the key is heard by the
+        // panel's own handler through the stack; the capture listener covers
+        // focus having wandered to the body.
         const closeLb = (): void => {
+            escapeOffLb();
+            document.removeEventListener("keydown", onLbKey, true);
             if (document.body.contains(lb)) {
                 document.body.removeChild(lb);
             }
         };
+        const escapeOffLb = registerEscapeLayer(closeLb);
+        function onLbKey(e: KeyboardEvent): void {
+            if (isBareEscape(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeTopmostLayer();
+            }
+        }
         lb.addEventListener("mousedown", (e) => {
             if (e.target === lb) {
                 closeLb();
@@ -221,12 +244,7 @@ export function showImageInsertPanel(
             e.preventDefault();
             closeLb();
         });
-        document.addEventListener("keydown", function onKey(e) {
-            if (e.key === "Escape") {
-                closeLb();
-                document.removeEventListener("keydown", onKey);
-            }
-        });
+        document.addEventListener("keydown", onLbKey, true);
     }
 
     // ── Render the image grid ──────────────────────────
@@ -419,10 +437,24 @@ export function showImageInsertPanel(
         }
         outsideOff?.();
         outsideOff = null;
+        escapeOff();
     }
 
     /** Outside-click detach handle (null until the deferred attach below). */
     let outsideOff: (() => void) | null = null;
+    // The panel is a transient surface: an editor-focused Escape closes it
+    // through the layer stack (ui/escapeLayers.ts), and so does one pressed
+    // on any of its buttons or the image grid, which no input handler sees.
+    // Routed through the stack rather than straight to cleanup so a lightbox
+    // opened above the panel takes the first Escape.
+    const escapeOff = registerEscapeLayer(cleanup);
+    panel.addEventListener("keydown", (e) => {
+        if (isBareEscape(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!closeTopmostLayer()) { cleanup(); }
+        }
+    });
 
     // Tab switching
     tabProject.addEventListener("mousedown", (e) => {
@@ -457,10 +489,10 @@ export function showImageInsertPanel(
                 e.stopPropagation();
                 e.preventDefault();
                 confirm();
-            } else if (e.key === "Escape") {
+            } else if (isBareEscape(e)) {
                 e.stopPropagation();
                 e.preventDefault();
-                cleanup();
+                if (!closeTopmostLayer()) { cleanup(); }
             }
         });
     });

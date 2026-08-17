@@ -43,6 +43,7 @@ const CONFIG: ProofreadConfig = {
     ruleOfThree: false,
     emDash: false,
     nonAsciiPunct: false,
+    absolutePerf: false,
     styleExceptions: [],
     spellCheck: false,
     grammarCheck: false,
@@ -217,6 +218,16 @@ describe("computeDecorations finding specs", () => {
         const [spec] = specsOf("it’s", { ...CONFIG, nonAsciiPunct: true });
         expect(spec.style.category).toBe("nonAsciiPunct");
         expect(spec.style.suggestion).toBe("'");
+    });
+
+    it("an absolute speed claim should render as an advisory flag with no auto-fix", () => {
+        const text = "Typing no longer stutters on a long document.";
+        const [spec] = specsOf(text, { ...CONFIG, absolutePerf: true });
+        expect(spec.style.category).toBe("absolutePerf");
+        expect(spec.style.suggestion).toBeNull();
+        expect(spec.class).toContain("pf-style-hit--flag");
+        // The category is individually switchable, and off costs nothing.
+        expect(specsOf(text)).toEqual([]);
     });
 });
 

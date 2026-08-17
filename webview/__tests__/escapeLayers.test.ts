@@ -4,7 +4,7 @@
  * close path calling its own unregister while closeTopmostLayer runs.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { registerEscapeLayer, closeTopmostLayer } from "../ui/escapeLayers";
+import { registerEscapeLayer, closeTopmostLayer, isBareEscape } from "../ui/escapeLayers";
 
 describe("escapeLayers", () => {
     beforeEach(() => {
@@ -72,5 +72,19 @@ describe("escapeLayers", () => {
         expect(below).not.toHaveBeenCalled();   // and no extra layer closed
         expect(closeTopmostLayer()).toBe(true);
         expect(below).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("isBareEscape", () => {
+    const ev = (init: KeyboardEventInit) => new KeyboardEvent("keydown", init);
+    it("a plain Escape should be bare", () => {
+        expect(isBareEscape(ev({ key: "Escape" }))).toBe(true);
+    });
+    it("any modifier should make it not bare, and another key never is", () => {
+        expect(isBareEscape(ev({ key: "Escape", shiftKey: true }))).toBe(false);
+        expect(isBareEscape(ev({ key: "Escape", metaKey: true }))).toBe(false);
+        expect(isBareEscape(ev({ key: "Escape", ctrlKey: true }))).toBe(false);
+        expect(isBareEscape(ev({ key: "Escape", altKey: true }))).toBe(false);
+        expect(isBareEscape(ev({ key: "Enter" }))).toBe(false);
     });
 });

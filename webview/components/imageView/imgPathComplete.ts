@@ -11,6 +11,7 @@
  */
 import { notifyGetPathSuggestions, notifyResolveImagePath } from "@/messaging";
 import { onOutsideClick } from "@/ui/outsideClick";
+import { isBareEscape } from "@/ui/escapeLayers";
 import {
     createSuggestMenuFromRows,
     trackSuggestMenuAnchor,
@@ -230,7 +231,7 @@ export function attachImgPathComplete(
             return;
         }
 
-        if (e.key === "Escape") {
+        if (isBareEscape(e)) {
             e.preventDefault();
             e.stopPropagation();
             // Close unconditionally: even with no dropdown up this invalidates

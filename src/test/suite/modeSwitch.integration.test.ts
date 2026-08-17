@@ -1,6 +1,7 @@
 /**
  * Why the mode switch closes the source tab BEFORE opening the destination,
- * and keeps its save prompt (MAR-59).
+ * and keeps its save prompt (MAR-59), and why two editors on one dirty file
+ * are not a data-loss bug (MAR-368).
  *
  * Switching a dirty document between the WYSIWYG editor and Raw Markdown shows
  * VS Code's native Save / Don't Save / Cancel prompt, because the switch closes
@@ -10,12 +11,26 @@
  * source. Both editors are backed by one document, so there should be no
  * content to lose.
  *
- * The answer is no, and the reason is not the one the ticket expected. The
- * tabs behave perfectly: no prompt, no cancel, exactly one tab left. But
- * closing the source DISCARDS the unsaved edit. It is not in the document
- * afterwards and it never reached disk, so the trade is not "prompt versus no
- * prompt", it is "prompt versus silently losing the user's words". The shipped
- * order is the correct one.
+ * The answer is no. VS Code skips the prompt only when the SAME editor input
+ * is still open in another group (`doHandleCloseConfirmation` in
+ * `editorGroupView.ts` matches the exact input, and a text editor never
+ * matches a custom editor on the same file), so closing either half of a
+ * text-plus-WYSIWYG pair prompts exactly as a lone tab does. Destination-first
+ * buys nothing, and the shipped order is the correct one.
+ *
+ * READ THE PROBE OUTPUT WITH THIS IN MIND: in this host the prompt never
+ * appears and the document comes back clean. That is the harness, not the
+ * product. Under `extensionTestsLocationURI`, `FileDialogService.showSaveConfirm`
+ * logs "refused to show save confirmation dialog in tests" and returns
+ * DONT_SAVE (`skipDialogs()` in `abstractFileDialogService.ts`), and Don't
+ * Save reverts the shared text model, which is what empties the edit out of
+ * BOTH editors. Verified by running this file under `--log trace` and reading
+ * the renderer log: one such line per close, each a few hundred milliseconds
+ * before the probe that reports the edit gone. So "the edit did not survive"
+ * here is the answer an interactive user gives by clicking Don't Save, and a
+ * silent loss cannot be observed from inside this harness at all. Assert the
+ * things this host CAN witness: which tab states are reachable, that the two
+ * editors share one document, and that Birta itself never wrote to disk.
  *
  * This has to run in a real Extension Host: it is a question about VS Code's
  * tab and save machinery, which neither a unit test nor the headless-Chromium
@@ -31,6 +46,20 @@ import * as assert from "assert";
 import * as vscode from "vscode";
 
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Poll `pred` every 100 ms for up to `capMs`. The host's auto-answered
+ * Don't Save reverts the model on its own schedule; a fixed wait read
+ * "survived" on a slow host and reported the wrong thing.
+ */
+async function until(pred: () => boolean, capMs = 5000): Promise<boolean> {
+    const deadline = Date.now() + capMs;
+    while (Date.now() < deadline) {
+        if (pred()) { return true; }
+        await wait(100);
+    }
+    return pred();
+}
 
 function workspaceUri(): vscode.Uri {
     const folders = vscode.workspace.workspaceFolders;
@@ -156,14 +185,12 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
 
             // 3. The question. Read the disk before and after, because "the
             //    document stopped being dirty" has two completely different
-            //    causes and the ticket's answer turns on which: a silent SAVE
-            //    (the edit is on disk, and the user was never asked) or a
-            //    REVERT (the edit is gone, which would make this approach worse
-            //    than the prompt it replaces). Dirty state alone cannot tell
-            //    them apart.
+            //    causes: a SAVE (the edit is on disk) or a REVERT (the edit is
+            //    gone). Dirty state alone cannot tell them apart, and only the
+            //    second is what this host's auto-answered Don't Save produces.
             const diskBefore = await readFile(uri);
             const closed = await vscode.window.tabGroups.close(fresh!);
-            await wait(800);
+            await until(() => !doc.getText().includes("An unsaved line."));
             const diskAfter = await readFile(uri);
 
             const after = tabsFor(uri);
@@ -179,27 +206,30 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
             };
             console.log("MAR-59 lossless switch probe:", JSON.stringify(probe));
 
-            // The tab half of the ticket works exactly as hoped.
+            // The tab half behaves: the source closes and one tab remains.
             assert.strictEqual(closed, true, `close() was not refused; probe: ${JSON.stringify(probe)}`);
             assert.strictEqual(after.text.length, 0, `the source text tab is gone; probe: ${JSON.stringify(probe)}`);
             assert.strictEqual(after.custom.length, 1, `exactly one tab remains; probe: ${JSON.stringify(probe)}`);
 
-            // And the content half is why the approach is dead. Closing the
-            // source DISCARDS the unsaved edit: it is not in the document and
-            // it never reached disk. No prompt, one tab, and the user's words
-            // are gone, which is strictly worse than the Save / Don't Save /
-            // Cancel the switch shows today.
+            // The content half is the prompt, answered for us. VS Code asked
+            // to save the dirty text tab even though the WYSIWYG editor still
+            // held the document, this host answered Don't Save, and the revert
+            // emptied the shared model. An interactive user sees the same
+            // Save / Don't Save / Cancel the switch shows today, so the
+            // reversed order buys nothing.
             //
-            // Asserted rather than merely logged so this stays checked. If a
-            // future VS Code preserves the edit here, THIS is the assertion
-            // that goes red, and MAR-59 is worth reopening on that day.
+            // If the edit ever SURVIVES here, VS Code has stopped prompting for
+            // a text-plus-custom pair, and MAR-59's lossless switch is worth
+            // asking again on that day; this is the assertion that goes red.
             assert.strictEqual(
                 probe.docKeepsEdit, false,
-                `the edit survived, so the lossless switch may now be possible; probe: ${JSON.stringify(probe)}`,
+                `the edit survived the close without a prompt, so the lossless switch may now be possible; probe: ${JSON.stringify(probe)}`,
             );
+            // And Birta never wrote the file on its own: the answer was Don't
+            // Save, so the bytes on disk are the bytes from before.
             assert.strictEqual(
                 probe.diskHasEditAfter, false,
-                `the edit reached disk, so this was a silent save rather than a discard; probe: ${JSON.stringify(probe)}`,
+                `the edit reached disk without a save gesture; probe: ${JSON.stringify(probe)}`,
             );
         } finally {
             await vscode.commands.executeCommand("workbench.action.files.revert").then(undefined, () => undefined);
@@ -207,16 +237,20 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
         }
     });
 
-    it("a user CAN reach two editors on one dirty file, and closing either loses the edit (MAR-368)", async function () {
-        // The discard above needed a state the product never builds: both
-        // switch paths close the source BEFORE opening the destination, so
+    it("a user CAN reach two editors on one dirty file, and closing one is a prompt the host answers, not a silent loss (MAR-368)", async function () {
+        // Both switch paths close the source BEFORE opening the destination, so
         // neither leaves two editors on one document. This asks whether a user
-        // can build it anyway, because if they can the discard is a data-loss
-        // bug rather than a note on a rejected prototype.
+        // can build that state anyway, and what happens to the edit when they
+        // close one half of it.
         //
-        // The gesture is Open With → Text Editor from the explorer, on a file
+        // The gesture is Open With, Text Editor, from the explorer, on a file
         // already open and dirty in the WYSIWYG editor: the one route that
         // reaches two editors without going through either switch command.
+        //
+        // What it must NOT be read as: a silent discard. The edit disappears
+        // here because this host answers VS Code's save prompt with Don't Save
+        // (see the file header); MAR-368 was filed on that reading and closed
+        // once the trace log showed the prompt being requested and refused.
         this.timeout(90_000);
 
         const uri = await writeFixture("modeswitch-reach.md", "# Reachable\n\nBody.\n");
@@ -234,8 +268,9 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
             assert.ok(await vscode.workspace.applyEdit(edit), "the document was dirtied");
             await wait(500);
             assert.ok(doc.isDirty, "dirty with only the custom editor open");
+            assert.ok(doc.getText().includes("Typed in WYSIWYG."), "the edit is in the document before the second open");
 
-            // The user's gesture: Open With → Text Editor, alongside.
+            // The user's gesture: Open With, Text Editor, alongside.
             await vscode.commands.executeCommand(
                 "vscode.openWith", uri, "default",
                 { viewColumn: vscode.ViewColumn.Active, preview: false },
@@ -244,33 +279,46 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
 
             const both = tabsFor(uri);
             const reachedTwoEditors = both.text.length === 1 && both.custom.length === 1;
-
-            let survivedClosingCustom: boolean | null = null;
-            if (reachedTwoEditors) {
-                const customTab = tabsFor(uri).custom[0]!;
-                await vscode.window.tabGroups.close(customTab);
-                await wait(800);
-                survivedClosingCustom = doc.getText().includes("Typed in WYSIWYG.");
-            }
-
-            const probe = { reachedTwoEditors, survivedClosingCustom, stillDirty: doc.isDirty };
-            console.log("MAR-59 reachability probe:", JSON.stringify(probe));
-
-            // The answer is yes, a user can reach it, so this is a data-loss
-            // bug and not a note on a rejected prototype: MAR-368.
             assert.strictEqual(
                 reachedTwoEditors, true,
-                `Open With no longer reaches two editors, so MAR-368 may be moot; probe: ${JSON.stringify(probe)}`,
+                `Open With no longer reaches two editors; tabs: text=${both.text.length} custom=${both.custom.length}`,
             );
+            assert.ok(doc.isDirty, "still dirty with both editors open: the open itself loses nothing");
 
-            // KNOWN BAD, pinned rather than skipped (MAR-368). The edit SHOULD
-            // survive; today it does not. Asserting the loss is what makes the
-            // fix visible: the day the edit survives, this line goes red and
-            // whoever fixed it has to come back and turn it into the guarantee.
+            // Close the WYSIWYG half. VS Code prompts for the dirty document
+            // (the raw tab is a different editor input, so it does not count
+            // as "still open elsewhere"); this host answers Don't Save.
+            const diskBefore = await readFile(uri);
+            const customTab = tabsFor(uri).custom[0]!;
+            const closed = await vscode.window.tabGroups.close(customTab);
+            await until(() => !doc.getText().includes("Typed in WYSIWYG."));
+            const diskAfter = await readFile(uri);
+            const after = tabsFor(uri);
+
+            const probe = {
+                closeReturned: closed,
+                textTabsLeft: after.text.length,
+                customTabsLeft: after.custom.length,
+                stillDirty: doc.isDirty,
+                docKeepsEdit: doc.getText().includes("Typed in WYSIWYG."),
+                diskHasEditAfter: diskAfter.includes("Typed in WYSIWYG."),
+                diskUnchanged: diskBefore === diskAfter,
+            };
+            console.log("MAR-368 reachability probe:", JSON.stringify(probe));
+
+            assert.strictEqual(closed, true, `close() was not refused; probe: ${JSON.stringify(probe)}`);
+            assert.strictEqual(after.custom.length, 0, `the WYSIWYG tab is gone; probe: ${JSON.stringify(probe)}`);
+            assert.strictEqual(after.text.length, 1, `the raw tab is still open; probe: ${JSON.stringify(probe)}`);
+            // Don't Save reverted the shared model out from under the raw tab
+            // too, which is what the answer means. If the edit SURVIVES, VS Code
+            // has stopped prompting for a text-plus-custom pair: re-read the
+            // header, and re-ask MAR-59 rather than re-filing MAR-368.
             assert.strictEqual(
-                survivedClosingCustom, false,
-                "the edit SURVIVED — MAR-368 appears fixed, so invert this assertion and close the ticket",
+                probe.docKeepsEdit, false,
+                `the edit survived the close without a prompt; probe: ${JSON.stringify(probe)}`,
             );
+            // Birta never writes on its own: the bytes on disk are untouched.
+            assert.strictEqual(probe.diskUnchanged, true, `disk changed across a Don't Save close; probe: ${JSON.stringify(probe)}`);
         } finally {
             await vscode.commands.executeCommand("workbench.action.files.revert").then(undefined, () => undefined);
             await revertAndClose(uri);

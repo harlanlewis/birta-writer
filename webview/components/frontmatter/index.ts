@@ -19,6 +19,7 @@
 
 import { IconChevronDown, IconChevronUp, IconPlus, IconTrash2, IconX } from "../../ui/icons";
 import { t } from "../../i18n";
+import { isBareEscape } from "../../ui/escapeLayers";
 import { isReadOnly, markEditableIsland, subscribeReadOnly } from "../../readOnly";
 import { createButton } from "../../ui/dom";
 import { attachInputUndo, undoChordOf } from "../../utils/inputUndo";
@@ -494,7 +495,7 @@ function bindFmCell(
             // Enter commits in place (focus stays, so Cmd+Z keeps working)
             e.preventDefault();
             commitCell();
-        } else if (e.key === 'Escape') {
+        } else if (isBareEscape(e)) {
             e.preventDefault();
             td.textContent = td.dataset['orig'] ?? '';
             td.blur();
@@ -643,7 +644,7 @@ function createFmChip(
                 e.preventDefault();
                 suggest!.moveHighlight(e.key === 'ArrowDown' ? 1 : -1);
             }
-        } else if (e.key === 'Escape') {
+        } else if (isBareEscape(e)) {
             e.preventDefault();
             if (menuOpen) {
                 // Close the dropdown only; keep editing the chip text.
@@ -869,7 +870,7 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
     textarea.addEventListener('keydown', (e) => {
         if (e.isComposing) { return; }
         e.stopPropagation(); // keep editor-level shortcuts out of the textarea
-        if (e.key === 'Escape') {
+        if (isBareEscape(e)) {
             e.preventDefault();
             textarea.value = committed;
             setInvalid(null);

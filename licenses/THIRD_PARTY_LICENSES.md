@@ -57,6 +57,10 @@ manifest does not state. They are listed separately because the summary table
 counts declared licenses, and would otherwise not show these at all.
 
 - **Graphviz** (`EPL-1.0`), embedded in `@hpcc-js/wasm-graphviz`. Compiled Graphviz, inlined as WebAssembly. The package declares Apache-2.0 for its own wrapper and ships no Graphviz notice of its own. Source: https://graphviz.org. License text: [`licenses/graphviz-EPL-1.0.txt`](graphviz-EPL-1.0.txt).
+- **the KaTeX fonts** (`OFL-1.1`), embedded in `katex`. The KaTeX_* WOFF2 fonts inlined into katex.css are SIL Open Font License 1.1 (copyright Design Science, Inc. and Khan Academy, Reserved Font Names KaTeX_*); the package's MIT license covers the KaTeX code, not the font files. Source: https://katex.org. License text: [`licenses/katex-fonts-OFL-1.1.txt`](katex-fonts-OFL-1.1.txt).
+- **two MIT snippets (thenable by Ralf S. Engelschall, bezier-easing by Gaetan Renaudeau)** (`MIT`), embedded in `cytoscape`. cytoscape's published dist inlines a Promises/A+ thenable and a bezier-easing generator under their authors' own MIT notices, carried only in source comments. Source: https://github.com/rse/thenable and https://github.com/gre/bezier-easing. License text: [`licenses/cytoscape-embedded-MIT.txt`](cytoscape-embedded-MIT.txt).
+- **GeographicLib geodesic code** (`MIT`), embedded in `d3-geo`. d3-geo's geodesic routines are ported from GeographicLib under Charles Karney's MIT notice, which the package's LICENSE states after its ISC grant. Source: https://geographiclib.sourceforge.io. Its notice is carried in the package's own license text, reproduced below.
+- **the ColorBrewer color schemes** (`Apache-2.0`), embedded in `d3-scale-chromatic`. The ColorBrewer color schemes are Apache-2.0 (copyright Cynthia Brewer, Mark Harrower, and The Pennsylvania State University), stated in the package's LICENSE after its ISC grant. Source: https://colorbrewer2.org. License text: [`licenses/colorbrewer-Apache-2.0.txt`](colorbrewer-Apache-2.0.txt).
 
 ## Packages
 
@@ -133,7 +137,7 @@ SOFTWARE.
 
 - License: Apache-2.0
 - Source: https://hpcc-systems.github.io/hpcc-js-wasm/
-- **Embeds Graphviz (EPL-1.0)** — Compiled Graphviz, inlined as WebAssembly. The package declares Apache-2.0 for its own wrapper and ships no Graphviz notice of its own. Source: https://graphviz.org. Its license text ships at `licenses/graphviz-EPL-1.0.txt`, and the narrative notice is in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
+- **Embeds Graphviz (EPL-1.0)** — Compiled Graphviz, inlined as WebAssembly. The package declares Apache-2.0 for its own wrapper and ships no Graphviz notice of its own. Source: https://graphviz.org. License text: [`licenses/graphviz-EPL-1.0.txt`](graphviz-EPL-1.0.txt). The narrative notice is in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 <details><summary>License text</summary>
 
@@ -1170,6 +1174,7 @@ SOFTWARE.
 - License: MIT
 - Source: http://js.cytoscape.org
 - Copyright (c) 2016-2026, The Cytoscape Consortium.
+- **Embeds two MIT snippets (thenable by Ralf S. Engelschall, bezier-easing by Gaetan Renaudeau) (MIT)** — cytoscape's published dist inlines a Promises/A+ thenable and a bezier-easing generator under their authors' own MIT notices, carried only in source comments. Source: https://github.com/rse/thenable and https://github.com/gre/bezier-easing. License text: [`licenses/cytoscape-embedded-MIT.txt`](cytoscape-embedded-MIT.txt). The narrative notice is in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 <details><summary>License text</summary>
 
@@ -1672,6 +1677,7 @@ THIS SOFTWARE.
 - License: ISC
 - Source: https://d3js.org/d3-geo/
 - Copyright 2010-2024 Mike Bostock
+- **Embeds GeographicLib geodesic code (MIT)** — d3-geo's geodesic routines are ported from GeographicLib under Charles Karney's MIT notice, which the package's LICENSE states after its ISC grant. Source: https://geographiclib.sourceforge.io. Its notice is carried in the package's own license text, reproduced below. The narrative notice is in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 <details><summary>License text</summary>
 
@@ -1941,6 +1947,7 @@ THIS SOFTWARE.
 - License: ISC
 - Source: https://d3js.org/d3-scale-chromatic/
 - Copyright 2010-2024 Mike Bostock
+- **Embeds the ColorBrewer color schemes (Apache-2.0)** — The ColorBrewer color schemes are Apache-2.0 (copyright Cynthia Brewer, Mark Harrower, and The Pennsylvania State University), stated in the package's LICENSE after its ISC grant. Source: https://colorbrewer2.org. License text: [`licenses/colorbrewer-Apache-2.0.txt`](colorbrewer-Apache-2.0.txt). The narrative notice is in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 <details><summary>License text</summary>
 
@@ -3309,6 +3316,7 @@ SOFTWARE.
 - License: MIT
 - Source: https://katex.org
 - Copyright (c) 2013-2020 Khan Academy and other contributors
+- **Embeds the KaTeX fonts (OFL-1.1)** — The KaTeX_* WOFF2 fonts inlined into katex.css are SIL Open Font License 1.1 (copyright Design Science, Inc. and Khan Academy, Reserved Font Names KaTeX_*); the package's MIT license covers the KaTeX code, not the font files. Source: https://katex.org. License text: [`licenses/katex-fonts-OFL-1.1.txt`](katex-fonts-OFL-1.1.txt). The narrative notice is in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 <details><summary>License text</summary>
 

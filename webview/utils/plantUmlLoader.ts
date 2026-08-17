@@ -21,20 +21,36 @@
  *    back with `__wbg_set_wasm` — which is precisely what the generated entry
  *    would have done.
  *
- * 2. **Graphviz is not optional.** Nine of PlantUML's diagram families (class,
- *    state, component, deployment, use case, object, ERD, DOT, ArchiMate —
- *    class diagrams above all) are laid out by Graphviz, which the engine
- *    reaches through a `globalThis.__graphviz_anywhere_render` bridge. Without
- *    it those diagrams fail with "graphviz render failed" while sequence and
- *    activity diagrams still work, which would read as a random half-broken
- *    feature. We bridge to `@hpcc-js/wasm-graphviz` (Apache-2.0, the
- *    long-established Graphviz WASM build) rather than the upstream package's
- *    own young optional peer, and the bridge is installed before the first
- *    `convert()` can run.
+ * 2. **Graphviz is not optional, but it is lazy.** Nine of PlantUML's diagram
+ *    families (class, state, component, deployment, use case, object, ERD,
+ *    DOT, ArchiMate — class diagrams above all) are laid out by Graphviz,
+ *    which the engine reaches through a `globalThis.__graphviz_anywhere_render`
+ *    bridge. Without it those diagrams fail with "graphviz render failed"
+ *    while sequence and activity diagrams still work, which would read as a
+ *    random half-broken feature. We bridge to `@hpcc-js/wasm-graphviz`
+ *    (Apache-2.0, the long-established Graphviz WASM build) rather than the
+ *    upstream package's own young optional peer, and the bridge is installed
+ *    before the first `convert()` can run.
  *
- *    That engine now comes from `utils/graphvizLoader.ts`, which ```graphviz
+ *    The Graphviz engine itself is NOT loaded up front: a sequence-only
+ *    document never calls the bridge, so it must never pay for that engine
+ *    (MAR-369). Which family a source belongs to is decided deep inside the
+ *    engine and is not something a sniff can predict (`title hi` alone is a
+ *    class diagram; `A -up-> B` is a sequence), so instead of guessing, the
+ *    bridge is installed as a thunk and the engine is fetched on demand: a
+ *    `convert()` that reaches the bridge before Graphviz is here fails fast,
+ *    the loader awaits `loadGraphviz()`, and the SAME source is converted
+ *    again. `convert()` is a pure function of its source, and a bridge that
+ *    throws is a path the compiled engine already survives (it is exactly
+ *    what "no bridge installed" looked like), so the retry is safe. The
+ *    failure mode of every branch is "loaded" or "rendered", never
+ *    "graphviz render failed" for a family that needed it.
+ *
+ *    That engine comes from `utils/graphvizLoader.ts`, which ```graphviz
  *    blocks use directly (MAR-330). Sharing the loader is what keeps a document
- *    holding both from instantiating the same WASM module twice.
+ *    holding both from instantiating the same WASM module twice, and its
+ *    `peekGraphviz()` is how the synchronous bridge finds an engine that is
+ *    already here without starting a load.
  *
  * PROVENANCE, and what "update the engine" means here (checked 2026-08-08).
  * The npm package we depend on is a frozen snapshot, and updating it is not a
@@ -80,12 +96,16 @@
  * `birta.network.enabled` being off (docs/NETWORK_POSTURE.md, rung 0).
  */
 
-import { loadGraphviz } from "./graphvizLoader";
+import { loadGraphviz, peekGraphviz } from "./graphvizLoader";
 
 /** The subset of the engine we use: PlantUML source in, SVG markup out. */
 export type PlantUmlEngine = {
-    /** Render PlantUML source to SVG markup. Throws on invalid input. */
-    convert(source: string): string;
+    /**
+     * Render PlantUML source to SVG markup. Rejects on invalid input. Async
+     * because a source that turns out to need Graphviz layout loads that
+     * engine here, on first need, rather than every document paying for it.
+     */
+    convert(source: string): Promise<string>;
     /** The bundled engine version, tracking the upstream PlantUML release. */
     version(): string;
 };
@@ -97,19 +117,42 @@ const GRAPHVIZ_BRIDGE_KEY = "__graphviz_anywhere_render";
 
 let enginePromise: Promise<PlantUmlEngine> | null = null;
 
+/**
+ * Set by the bridge when the compiled engine asked for Graphviz layout and no
+ * engine was loaded yet. `convert()` clears it before a render and reads it
+ * after; the calls are synchronous, so nothing can interleave. It is what
+ * tells a "needs Graphviz" failure apart from a genuinely invalid diagram
+ * without parsing the engine's error text.
+ */
+let graphvizMissed = false;
+
+/**
+ * The bridge itself is synchronous, called from inside the compiled engine
+ * mid-render, so it can only use an engine that is already here. When there is
+ * none it records the miss and throws; the throw surfaces from `convert()` as
+ * the engine's own layout error and the loader takes it from there.
+ *
+ * The loader's `layout(dot, format, engine)` takes its arguments in a
+ * different order from the bridge's (dot, engine, format), which is the other
+ * reason this wrapper exists.
+ */
+const bridge: GraphvizBridge = (dot, engine, format) => {
+    const graphviz = peekGraphviz();
+    if (!graphviz) {
+        graphvizMissed = true;
+        throw new Error("Graphviz engine not loaded yet");
+    }
+    return graphviz.layout(dot, format, engine);
+};
+
 async function instantiate(): Promise<PlantUmlEngine> {
-    const [glue, wasm, graphviz] = await Promise.all([
+    const [glue, wasm] = await Promise.all([
         import("@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.js"),
         import("@kookyleo/plantuml-little-web/dist/wasm/plantuml_little_web_bg.wasm"),
-        loadGraphviz(),
     ]);
 
     // Install the Graphviz bridge BEFORE instantiating, so no convert() can
-    // observe a half-wired engine. The loader's `layout(dot, format, engine)`
-    // takes its arguments in a different order from the bridge's
-    // (dot, engine, format), which is the whole reason this wrapper exists.
-    const bridge: GraphvizBridge = (dot, engine, format) =>
-        graphviz.layout(dot, format, engine);
+    // observe a half-wired engine.
     (globalThis as Record<string, unknown>)[GRAPHVIZ_BRIDGE_KEY] = bridge;
 
     // Cast: the BufferSource overload is the one that applies (we pass bytes,
@@ -120,7 +163,30 @@ async function instantiate(): Promise<PlantUmlEngine> {
     })) as WebAssembly.WebAssemblyInstantiatedSource;
     glue.__wbg_set_wasm(instance.exports);
 
-    return { convert: glue.convert, version: glue.version };
+    const convert = async (source: string): Promise<string> => {
+        if (!peekGraphviz()) {
+            // First attempt without Graphviz. Most families never reach the
+            // bridge and return here; one that does fails fast and tells us.
+            // The flag, not the outcome, decides: whatever the engine made of
+            // a bridge that threw, a render that asked for layout and got none
+            // is not the render to hand back.
+            graphvizMissed = false;
+            let attempt: { ok: true; svg: string } | { ok: false; err: unknown };
+            try {
+                attempt = { ok: true, svg: glue.convert(source) };
+            } catch (err) {
+                attempt = { ok: false, err };
+            }
+            if (!graphvizMissed) {
+                if (attempt.ok) return attempt.svg;
+                throw attempt.err;
+            }
+            await loadGraphviz();
+        }
+        return glue.convert(source);
+    };
+
+    return { convert, version: glue.version };
 }
 
 /**
@@ -142,5 +208,6 @@ export function loadPlantUml(): Promise<PlantUmlEngine> {
 /** Test seam: forget the cached engine so a suite can re-exercise the load. */
 export function resetPlantUmlEngineForTests(): void {
     enginePromise = null;
+    graphvizMissed = false;
     delete (globalThis as Record<string, unknown>)[GRAPHVIZ_BRIDGE_KEY];
 }

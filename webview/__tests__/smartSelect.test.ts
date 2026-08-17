@@ -1,8 +1,11 @@
 /**
  * Tests for smart select (MAR-98): the expand ladder (caret → word → mark
- * span → block text → block range → everything) and its deterministic
- * shrink retrace — no plugin state, the chain is re-derived from the
- * current selection anchored at the head-side interior position.
+ * span → block text → enclosing structure inside the block → block range →
+ * everything) and its shrink retrace, which is re-derived from the current
+ * selection anchored at the head-side interior position, with the expand
+ * memo (MAR-105) on top when the plugin is in the state. Most suites here
+ * call the commands directly WITHOUT the plugin, so they exercise the
+ * re-derivation; the memo suite registers it.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
@@ -10,15 +13,15 @@ import { NodeSelection, TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin, headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/headingFold";
-import { expandSelection, shrinkSelection } from "../plugins/smartSelect";
+import { expandSelection, shrinkSelection, smartSelectKeymapPlugin } from "../plugins/smartSelect";
 import { BlockRangeSelection } from "../plugins/blockRange";
 
 let editors: Editor[] = [];
 
-async function makeEditor(markdown: string): Promise<EditorView> {
+async function makeEditor(markdown: string, withMemo = false): Promise<EditorView> {
     const root = document.createElement("div");
     document.body.appendChild(root);
-    const editor = await Editor.make()
+    const base = Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, root);
             ctx.set(defaultValueCtx, markdown);
@@ -26,8 +29,8 @@ async function makeEditor(markdown: string): Promise<EditorView> {
         })
         .use(pureCommonmark)
         .use(gfmFidelity)
-        .use(headingFoldPlugin)
-        .create();
+        .use(headingFoldPlugin);
+    const editor = await (withMemo ? base.use(smartSelectKeymapPlugin) : base).create();
     editors.push(editor);
     return editor.action((ctx) => ctx.get(editorViewCtx));
 }
@@ -343,5 +346,145 @@ describe("shrinkSelection over a collapsed heading", () => {
         expect(sel).toBeInstanceOf(TextSelection);
         expect(selectedText(view)).toBe("Heading");
         expect(sel.to).toBeLessThanOrEqual(9);
+    });
+});
+
+describe("expand and shrink through nested structure (MAR-105)", () => {
+    it("block text inside a nested list item should expand to the enclosing item, then the top-level list", async () => {
+        const view = await makeEditor("- one\n  - two words\n- three\n\nAfter");
+        caretAt(view, "two words", 1);
+        expand(view); // word
+        expect(selectedText(view)).toBe("two");
+        expand(view); // block text
+        expect(selectedText(view)).toBe("two words");
+        // The nested item and the nested list have the same text extent as
+        // the paragraph, so neither is a rung; the enclosing top-level ITEM
+        // ("one" plus its sublist) is the first strictly-containing structure.
+        expect(expand(view)).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        expect(selectedText(view)).toBe("one two words");
+        // Then the top-level list as a block range, then everything.
+        expect(expand(view)).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        expect(selectedText(view)).toBe("one two words three");
+        expect(expand(view)).toBe(true);
+        expect(view.state.selection.from).toBe(0);
+        expect(view.state.selection.to).toBe(view.state.doc.content.size);
+    });
+
+    it("a nested list inside a blockquote should offer the item and the list as rungs", async () => {
+        const view = await makeEditor("> intro\n>\n> - alpha\n>   - beta gamma\n> - delta");
+        caretAt(view, "beta gamma", 0);
+        expand(view); // word
+        expand(view); // block text "beta gamma"
+        expect(expand(view)).toBe(true); // top-level item inside the quote's list
+        expect(selectedText(view)).toBe("alpha beta gamma");
+        expect(expand(view)).toBe(true); // the list inside the quote
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        expect(selectedText(view)).toBe("alpha beta gamma delta");
+        expect(expand(view)).toBe(true); // the blockquote block range
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        expect(selectedText(view)).toBe("intro alpha beta gamma delta");
+    });
+
+    it("a table cell should not be a rung: block text goes straight to the table's block range", async () => {
+        const view = await makeEditor("| a | b |\n| - | - |\n| cell one | cell two |");
+        caretAt(view, "cell one", 0);
+        expand(view); // word
+        expand(view); // block text
+        expect(selectedText(view)).toBe("cell one");
+        expect(expand(view)).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+    });
+
+    it("shrinking a top-level list's text should step to the head's item, then its block text", async () => {
+        const view = await makeEditor("- one\n  - two words\n- three\n\nAfter");
+        // The list unit → the list's text (re-derived, no memo).
+        const list = view.state.doc.firstChild!;
+        const unit = BlockRangeSelection.tryCreate(view.state.doc, 0, list.nodeSize)!;
+        view.dispatch(view.state.tr.setSelection(unit));
+        expect(shrink(view)).toBe(true); // its text
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        expect(selectedText(view)).toBe("one two words three");
+        // Head sits at the end, in "three": the largest structure strictly
+        // inside around it is that item, whose text is one paragraph.
+        expect(shrink(view)).toBe(true);
+        expect(selectedText(view)).toBe("three");
+    });
+
+    it("shrinking a nested item's text should step down through the structure it contains", async () => {
+        const view = await makeEditor("- one\n  - two words\n- three");
+        caretAt(view, "two words", 1);
+        expand(view); // word
+        expand(view); // block text
+        expand(view); // top-level item text "one two words"
+        expect(selectedText(view)).toBe("one two words");
+        // No memo without the plugin: re-derived. Head is at the end, in
+        // "two words"; the largest structure strictly inside is the nested
+        // list (its text equals the nested item's and the paragraph's, and
+        // the shallowest of them wins).
+        expect(shrink(view)).toBe(true);
+        expect(selectedText(view)).toBe("two words");
+        expect(shrink(view)).toBe(true); // → word at the head-side probe
+        expect(selectedText(view)).toBe("words");
+    });
+});
+
+describe("expand memo (MAR-105)", () => {
+    it("everything reached from a multi-block range should shrink back to that range", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma", true);
+        const two = BlockRangeSelection.tryCreate(view.state.doc, 0, 12)!; // Alpha + Beta
+        view.dispatch(view.state.tr.setSelection(two));
+        expect(selectedText(view)).toBe("Alpha Beta");
+        expect(expand(view)).toBe(true);
+        expect(view.state.selection.to).toBe(view.state.doc.content.size);
+        expect(shrink(view)).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        expect(selectedText(view)).toBe("Alpha Beta");
+        // And below the memo, re-derivation takes over: one unit at the head.
+        expect(shrink(view)).toBe(true);
+        expect(selectedText(view)).toBe("Beta");
+    });
+
+    it("a full expand run should retrace exactly, rung by rung", async () => {
+        const view = await makeEditor("Alpha\n\nStart **bold words**", true);
+        const text = "Start bold words";
+        caretAt(view, text, text.indexOf("bold") + 1);
+        const seen: string[] = [];
+        while (expand(view)) seen.push(selectedText(view));
+        expect(seen).toEqual(["bold", "bold words", text, text, "Alpha " + text]);
+        const back: string[] = [];
+        while (shrink(view)) back.push(selectedText(view));
+        // Down to the word, then the memo's last entry restores the caret
+        // the run began from (an empty selection), and shrink stops there.
+        expect(back).toEqual([text, text, "bold words", "bold", ""]);
+        expect(view.state.selection.empty).toBe(true);
+    });
+
+    it("any other selection change should drop the memo and shrink should re-derive", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma", true);
+        const two = BlockRangeSelection.tryCreate(view.state.doc, 0, 12)!;
+        view.dispatch(view.state.tr.setSelection(two));
+        expand(view); // everything, memo holds the two-block origin
+        // A foreign selection change: click into Gamma, then select all again by hand.
+        caretAt(view, "Gamma", 1);
+        const all = BlockRangeSelection.tryCreate(view.state.doc, 0, view.state.doc.content.size)!;
+        view.dispatch(view.state.tr.setSelection(all));
+        expect(shrink(view)).toBe(true);
+        expect(selectedText(view)).toBe("Gamma"); // re-derived head-side unit, not "Alpha Beta"
+    });
+
+    it("a document change should drop the memo", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma", true);
+        const two = BlockRangeSelection.tryCreate(view.state.doc, 0, 12)!;
+        view.dispatch(view.state.tr.setSelection(two));
+        expand(view); // everything
+        // Type over the selection: the memo's positions no longer exist.
+        view.dispatch(view.state.tr.insertText("x", 1, 2));
+        const all = BlockRangeSelection.tryCreate(view.state.doc, 0, view.state.doc.content.size)!;
+        view.dispatch(view.state.tr.setSelection(all));
+        expect(shrink(view)).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        expect(selectedText(view)).not.toBe("xlpha Beta");
     });
 });

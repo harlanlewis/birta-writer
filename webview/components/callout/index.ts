@@ -25,7 +25,7 @@ import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { isReadOnly, markEditableIsland } from "@/readOnly";
-import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { isBareEscape, registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
     CALLOUT_KINDS,
@@ -274,7 +274,7 @@ export function createCalloutView(
                 e.preventDefault();
                 const delta = e.key === "ArrowDown" ? 1 : -1;
                 items[(at + delta + items.length) % items.length]?.focus();
-            } else if (e.key === "Escape") {
+            } else if (isBareEscape(e)) {
                 e.preventDefault();
                 e.stopPropagation();
                 closeMenu(true);
@@ -314,7 +314,7 @@ export function createCalloutView(
         if (e.key === "Enter") {
             e.preventDefault();
             titleSpan.blur(); // blur commits
-        } else if (e.key === "Escape") {
+        } else if (isBareEscape(e)) {
             e.preventDefault();
             titleSpan.textContent = calloutLabel(node); // revert, then leave
             titleSpan.blur();

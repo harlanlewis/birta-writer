@@ -13,7 +13,58 @@
  *
  * jsdom cannot stand in for any of it: no layout for the pane, and the engine
  * never runs there.
+ *
+ * It also pins that the Graphviz engine is loaded only when a diagram needs it
+ * (MAR-369): a document holding only a sequence diagram (`sequenceOnly.html`)
+ * must not request the Graphviz chunk at all, while this page's class diagram
+ * must. Chunk names are content-hashed, so the engine's chunk is recognised by
+ * its bytes rather than its name.
  */
+import { readFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+
+/**
+ * The bundle chunks the current page has requested, by file name. Chunks
+ * arrive through dynamic `import()`, so one that was never imported never
+ * shows up here, cached or not.
+ */
+async function loadedChunks(page) {
+    return page.evaluate(() =>
+        performance.getEntriesByType("resource")
+            .map((e) => e.name)
+            .filter((n) => n.includes("/dist/chunks/"))
+            .map((n) => n.slice(n.lastIndexOf("/") + 1)),
+    );
+}
+
+/**
+ * Whether a chunk carries the Graphviz engine. `patchwork` is one of the
+ * layout engines `@hpcc-js/wasm-graphviz` declares by name, and a string
+ * literal survives minification, so it identifies the chunk in a dev and a
+ * production build alike (the source-path comment only survives the former).
+ */
+async function carriesGraphviz(chunkName) {
+    const text = await readFile(join(repoRoot, "dist", "chunks", chunkName), "utf8");
+    return /wasm-graphviz|"patchwork"/.test(text);
+}
+
+async function settledPanes(page, count) {
+    await page.waitForFunction(
+        (n) => document.querySelectorAll(".puml-preview").length === n,
+        count,
+        { timeout: 30000 },
+    );
+    await page.waitForFunction(
+        () =>
+            [...document.querySelectorAll(".puml-preview")].every(
+                (p) => p.querySelector(".puml-svg-container > svg") || p.querySelector(".puml-error-msg"),
+            ),
+        { timeout: 60000 },
+    );
+}
 
 /**
  * Every settled PlantUML pane: rendered SVG or error card.
@@ -38,24 +89,39 @@ async function paneStates(page) {
 }
 
 export async function run({ page, check, baseUrl }) {
+    // ── A sequence-only document never loads the Graphviz engine ──
+    // Visited FIRST, on a fresh page, so nothing this suite does later can
+    // have primed the chunk. Sequence diagrams are laid out by the PlantUML
+    // engine itself and never call the Graphviz bridge, so the engine chunk
+    // must not be requested: it is loaded on first need, not on first render.
+    await page.goto(`${baseUrl}/sequenceOnly.html`);
+    await settledPanes(page, 1);
+    const seqOnly = await paneStates(page);
+    check("sequence-only document renders its diagram",
+        seqOnly[0]?.hasSvg === true && seqOnly[0]?.diagramType === "SEQUENCE", JSON.stringify(seqOnly));
+    const seqChunks = await loadedChunks(page);
+    const seqGraphviz = [];
+    for (const name of seqChunks) if (await carriesGraphviz(name)) seqGraphviz.push(name);
+    check("sequence-only document does not load the Graphviz engine chunk",
+        seqChunks.length > 0 && seqGraphviz.length === 0, JSON.stringify({ seqChunks, seqGraphviz }));
+
     await page.goto(`${baseUrl}/index.html`);
 
     // Four fenced diagrams, all auto-previewing at mount. The engine is a ~3 MB
     // lazy chunk plus a Graphviz load, so this is the slow wait in the suite.
-    await page.waitForFunction(
-        () => document.querySelectorAll(".puml-preview").length === 4,
-        { timeout: 30000 },
-    );
-    await page.waitForFunction(
-        () =>
-            [...document.querySelectorAll(".puml-preview")].every(
-                (p) => p.querySelector(".puml-svg-container > svg") || p.querySelector(".puml-error-msg"),
-            ),
-        { timeout: 60000 },
-    );
+    await settledPanes(page, 4);
 
     const states = await paneStates(page);
     check("all four PlantUML panes settle", states.length === 4, JSON.stringify(states.length));
+
+    // The class diagram below is the other half of MAR-369: the same marker
+    // that found nothing on the sequence-only page must find the engine here,
+    // or the check above passed vacuously against a renamed or missing chunk.
+    const classChunks = await loadedChunks(page);
+    const classGraphviz = [];
+    for (const name of classChunks) if (await carriesGraphviz(name)) classGraphviz.push(name);
+    check("a document with a class diagram loads the Graphviz engine chunk",
+        classGraphviz.length > 0, JSON.stringify({ classChunks }));
 
     // ── 1. Sequence: the engine's own layout, no Graphviz ──
     check("sequence diagram renders", states[0]?.hasSvg === true, JSON.stringify(states[0]));

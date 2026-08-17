@@ -339,6 +339,17 @@ body {
     font-size: calc(var(--vscode-editor-font-size, 14px) * var(--content-font-scale, 1));
     line-height: 1.6;
     --content-em: 1em;
+    /* Typography that costs no reflow while typing (MAR-52). These are the
+       browser defaults asserted against a reset, plus one CJK kerning rule
+       that is a static per-glyph substitution (a no-op on engines without
+       it). Anything that re-breaks lines as the user types (`hyphens`,
+       `text-wrap: pretty`/`balance`) is deliberately absent, and nothing
+       here differs between editing and read-only, so the layout never
+       shifts on a mode toggle. */
+    font-kerning: normal;
+    font-variant-ligatures: common-ligatures contextual;
+    font-optical-sizing: auto;
+    text-spacing-trim: trim-start;
 
     /* ── Vertical rhythm ──────────────────────────────────────────────
        One spacing scale for the whole content column, so block spacing is
@@ -1530,6 +1541,10 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
                 min-width: 60px;
                 overflow-wrap: var(--tbl-ow, break-word); /* controlled dynamically by messageHandlers.applyTableWrap */
                 word-break: keep-all; /* avoid breaking in the middle of CJK characters */
+                /* Digits share a width and a baseline in a cell, so a numeric
+                   column lines up (MAR-52). A glyph substitution, no reflow
+                   beyond the keystroke that typed the digit. */
+                font-variant-numeric: tabular-nums lining-nums;
 
                 /* No bottom spacing on paragraphs inside cells; force a line height so empty table rows stay consistent */
                 > p {
