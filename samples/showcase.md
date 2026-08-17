@@ -80,6 +80,14 @@ Bob --> Alice : hi
 @enduml
 ```
 
+```dot
+digraph Pipeline {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  Write -> Preview -> Save;
+}
+```
+
 ## Math
 
 Inline $E = mc^2$, and block:
