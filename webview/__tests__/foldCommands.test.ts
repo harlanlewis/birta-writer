@@ -22,6 +22,7 @@ import {
     foldAllCommand,
     foldAtCaret,
     foldPluginKey,
+    foldedHiddenRanges,
     headingFoldPlugin,
     unfoldAllCommand,
     unfoldAtCaret,
@@ -491,5 +492,133 @@ describe("unfoldAllCommand", () => {
         const { applied, dispatches } = run(v, unfoldAllCommand);
         expect(applied).toBe(false);
         expect(dispatches).toBe(0);
+    });
+});
+
+/** Every currently hidden range, read off the same model the decorations use. */
+function hiddenRanges(v: EditorView): { from: number; to: number }[] {
+    return foldedHiddenRanges(v.state).map(({ from, to }) => ({ from, to }));
+}
+
+/** True when no part of the selection sits inside a hidden range. */
+function selectionIsVisible(v: EditorView): boolean {
+    const { from, to } = v.state.selection;
+    return hiddenRanges(v).every((r) => to <= r.from || from >= r.to);
+}
+
+describe("selection rescue on fold (MAR-119)", () => {
+    it("a text selection anchored in the body with its head on the heading line should be ejected onto the heading", async () => {
+        // Arrange: anchor deep in "alpha body", head at the start of A's
+        // text — a backward selection whose head already sits on the line
+        // that stays visible, but whose anchor is about to be hidden.
+        const editor = await makeEditor(OUTLINE);
+        const v = view(editor);
+        const [hA] = headingPositions(v);
+        const bodyPos = hA! + v.state.doc.nodeAt(hA!)!.nodeSize + 3;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, bodyPos, hA! + 1)));
+        expect(v.state.selection.empty).toBe(false);
+
+        // Act
+        const { applied } = run(v, foldAtCaret);
+
+        // Assert: A folded, and nothing of the selection is left inside the
+        // hidden body (a stranded anchor would extend into display:none).
+        expect(applied).toBe(true);
+        expect(folded(v).has(hA!)).toBe(true);
+        expect(hiddenRanges(v).length).toBeGreaterThan(0);
+        expect(selectionIsVisible(v)).toBe(true);
+    });
+
+    it("a text selection anchored in the body with its head in the NEXT section should still be ejected", async () => {
+        // Arrange: anchor in "alpha body", head in "top body" — a forward
+        // selection spanning A's boundary; the probe resolves at head-1,
+        // inside Top, so Top folds and the anchor's side has to be checked
+        // against Top's hidden range too.
+        const editor = await makeEditor(OUTLINE);
+        const v = view(editor);
+        const [hA, hTop] = headingPositions(v);
+        const alphaPos = hA! + v.state.doc.nodeAt(hA!)!.nodeSize + 3;
+        const topBodyPos = hTop! + v.state.doc.nodeAt(hTop!)!.nodeSize + 3;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, alphaPos, topBodyPos)));
+
+        // Act
+        const { applied } = run(v, foldAtCaret);
+
+        // Assert
+        expect(applied).toBe(true);
+        expect(folded(v).has(hTop!)).toBe(true);
+        expect(selectionIsVisible(v)).toBe(true);
+    });
+
+    it("fold-all with a selection spanning two sections should leave the selection entirely visible", async () => {
+        // Arrange: from inside "alpha body" to inside "inner body" — the
+        // selection crosses A's and Top's bodies (Inner's too, nested).
+        const editor = await makeEditor(OUTLINE);
+        const v = view(editor);
+        const [hA] = headingPositions(v);
+        const alphaPos = hA! + v.state.doc.nodeAt(hA!)!.nodeSize + 3;
+        v.dispatch(v.state.tr.setSelection(
+            TextSelection.create(v.state.doc, alphaPos, v.state.doc.content.size - 2),
+        ));
+
+        // Act
+        const { applied } = run(v, foldAllCommand);
+
+        // Assert: every heading folded, and no part of the selection hidden
+        expect(applied).toBe(true);
+        expect(hiddenRanges(v).length).toBe(3);
+        expect(selectionIsVisible(v)).toBe(true);
+    });
+});
+
+describe("a folded heading whose body was deleted (MAR-119)", () => {
+    /** Fold `## A`, then delete its whole body, leaving a bodyless folded entry. */
+    async function bodylessFoldedA(): Promise<{ v: EditorView; hA: number }> {
+        const editor = await makeEditor("## A\n\nalpha body\n\n## B\n\nbeta body");
+        const v = view(editor);
+        const [hA, hB] = headingPositions(v);
+        setCaret(v, hA! + 1);
+        expect(run(v, foldAtCaret).applied).toBe(true);
+        expect(folded(v).has(hA!)).toBe(true);
+        // Delete everything between A's heading and B's heading (the body).
+        const bodyFrom = hA! + v.state.doc.nodeAt(hA!)!.nodeSize;
+        v.dispatch(v.state.tr.delete(bodyFrom, hB!));
+        return { v, hA: hA! };
+    }
+
+    it("should hide nothing once the body is gone", async () => {
+        // Arrange
+        const { v, hA } = await bodylessFoldedA();
+
+        // Assert: the entry may linger in the folded set, but it owns no
+        // range, so nothing is hidden and the outline reads as fully open.
+        expect(v.state.doc.nodeAt(hA)?.type.name).toBe("heading");
+        expect(hiddenRanges(v)).toEqual([]);
+    });
+
+    it("the unfold chord on that heading should decline (nothing to reveal) rather than dispatch", async () => {
+        // Arrange
+        const { v, hA } = await bodylessFoldedA();
+        setCaret(v, hA + 1);
+
+        // Act + Assert: the command resolves foldables by their ranges, and a
+        // bodyless heading has none, so it is unreachable from the chord.
+        const { applied, dispatches } = run(v, unfoldAtCaret);
+        expect(applied).toBe(false);
+        expect(dispatches).toBe(0);
+    });
+
+    it("unfold-all should clear the lingering entry", async () => {
+        // Arrange
+        const { v } = await bodylessFoldedA();
+        const lingering = folded(v).size;
+
+        // Act
+        const { applied } = run(v, unfoldAllCommand);
+
+        // Assert: whether or not the plugin pruned the entry on the delete,
+        // the outline ends with an empty folded set.
+        expect(applied).toBe(lingering > 0);
+        expect(folded(v).size).toBe(0);
     });
 });
