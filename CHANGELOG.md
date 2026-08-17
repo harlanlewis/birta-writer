@@ -4,10 +4,6 @@
 
 ## [Unreleased]
 
----
-
-## [2026.817.0] - 2026, August 17
-
 ### Added
 
 - Turn a run of blocks into something else at once. Select several blocks (Escape then Shift+Down, a drag in the margin, or a text selection that spans them) and open the block menu on any of them, by Cmd+. or its gutter handle: the Turn into header counts the blocks in the run, the rows are only what every selected block can become, and one pick converts them all in one step and one undo. Three paragraphs become one bullet list or one quote; a paragraph, a list and a quote become one list; Code Block fences the run's markdown as one block. A run holding a table or a rule offers no conversions, rather than converting around it. A row is marked current only when every block already is that kind, and its note names everything the pick would drop across the run.
@@ -17,6 +13,30 @@
 - The stuck heading at the top of the pane carries the sections it sits inside. Scroll into a nested section and its ancestors appear as a small trail above the title, root first (H1 › H2 above a stuck H3); click a crumb to jump to that heading. The trail is one line and shortens as the pane narrows, a top-level section shows none, and it steps aside while the docked table of contents is open, which shows the same ancestry.
 
 - A horizontal rule and an MDX component block have a gutter handle like every other block: hover the rule for its marker, click for the block menu (Duplicate, Move, Delete), drag it to move it, and Cmd+. reaches it from a node selection or a gap cursor beside it. Both had no handle at all before, because a rule has no inside for the marker to sit in.
+
+### Changed
+
+- Gutter badges, block icons and fold chevrons scale with the content font size, so at a larger content scale they grow with the text instead of staying at their fixed size; the pinned heading's mirror does the same. The badge follows the content font now rather than the UI font, so a small `editor.fontSize` draws it a little smaller than before.
+
+### Fixed
+
+- Two adjacent lists no longer lose the marker the author spelled. A list the editor made (a paragraph just turned into a bullet) landing between a `-` list and a `*` list joined all three into one, and a marker-less list joining an authored `* b` list kept the default bullet, so `*` became `-` on a line you never touched. The join now stops at a marker change and carries the authored marker.
+
+- Cmd+. on a code block or table selected inside a callout opens that block's own menu; it opened the callout's. Cmd+. on a selected rule opens the rule's.
+
+- Fold All with a selection spanning two sections no longer leaves part of the selection hidden inside a fold.
+
+- Hovering a callout's title no longer reveals the gutter markers of the list items inside it; only the callout's own marker shows, as it does for every other container.
+
+- With a run of blocks selected, a covered block that scrolls into view now surfaces its gutter marker like the others; a block whose gutter chrome was built after the selection was made kept its marker hidden.
+
+- Closing the keyboard shortcuts panel by clicking into a text field elsewhere leaves the focus where you clicked, instead of bouncing it back into the editor.
+
+---
+
+## [2026.817.0] - 2026, August 17
+
+### Added
 
 - A read-only mode, so the editor can be used as a reader without a stray keystroke changing the file. There is a Toggle Read-only command, `birta.readOnly` sets the default for every document (off, editable), and an Edit / Read-only toolbar toggle is available beside Edit Raw Markdown for anyone who sets `birta.toolbar.items.readOnly` to a zone; it ships hidden. The toggle holds for the document's session in this editor: switching to the raw editor and back, or reloading the window, re-reads the setting. Reading keeps working in full: scrolling, selection and copy, find, folding, the table of contents, link popups and navigation, a code block's Copy button, zoom and fullscreen, and diagram previews. What goes inert is every way a document can change, including the ones that are not typing: the formatting buttons dim and their menus stay shut, the slash menu and input rules stop firing, paste and drop decline, and the metadata panel and callout titles stop accepting edits. The editing chrome leaves with it rather than sitting there dead: no block grab handles in the gutter, hovered or not, no selection ring around a clicked image, embed or callout, no block-range wash from a margin drag; a table shows no row and column grips or insert bars; a link's popup keeps Open and Copy and drops Edit, Unlink and Show as embed; an embed's edit palette and its Edit and Show as text link buttons stay away; an image's caption, title and path fields do not take typing; a code block's language name is a label rather than a menu; a callout's kind icon does not open its picker; clicking a raw HTML block or an inline formula does not open its source; a task checkbox does not flip; and a stale calculation's cue offers no Update. Folding is unchanged, because it is reading. Rendering is otherwise identical between the modes, so nothing shifts when you toggle. Edit Raw Markdown still opens the file for editing, because that intent is explicit.
 
@@ -38,8 +58,6 @@
 
 ### Changed
 
-- Gutter badges, block icons and fold chevrons scale with the content font size, so at a larger content scale they grow with the text instead of staying at their fixed size; the pinned heading's mirror does the same. The badge follows the content font now rather than the UI font, so a small `editor.fontSize` draws it a little smaller than before.
-
 - Expand Selection climbs the structure inside a block, one level at a time. From text in a nested list item it now reaches the item, then the list it sits in, then the item that sits in, and only then the whole top-level list and the document; a list inside a quote offers the same rungs; table cells and rows are not rungs. Shrink Selection retraces an expand run exactly, so a three-block range grown to the whole document comes back as three blocks rather than one, and a run from a caret walks back to that caret; any other selection change or edit ends the run and Shrink falls back to stepping down from wherever the selection is.
 
 - A PlantUML document whose diagrams are laid out by the engine itself (sequence, activity, mindmap, Gantt, JSON, YAML, WBS, timing and the like) does not load and start the Graphviz engine to render them; the first diagram that needs Graphviz layout (class, state, component, deployment, use case, object, ERD, DOT, ArchiMate) loads it, once, and a document that also carries a Graphviz fence still shares that one instance. A Graphviz-backed diagram pays one extra parse on its first render while the engine arrives.
@@ -47,18 +65,6 @@
 - Numeric table columns line up: digits in table cells now render as tabular lining figures, so the same digit is the same width in every row. Kerning, common and contextual ligatures and optical sizing are asserted for the whole document, and CJK punctuation at the start of a line trims on engines that support it. None of these re-break a line as you type, and rendering is identical between editing and read-only.
 
 ### Fixed
-
-- Two adjacent lists no longer lose the marker the author spelled. A list the editor made (a paragraph just turned into a bullet) landing between a `-` list and a `*` list joined all three into one, and a marker-less list joining an authored `* b` list kept the default bullet, so `*` became `-` on a line you never touched. The join now stops at a marker change and carries the authored marker.
-
-- Cmd+. on a code block or table selected inside a callout opens that block's own menu; it opened the callout's. Cmd+. on a selected rule opens the rule's.
-
-- Fold All with a selection spanning two sections no longer leaves part of the selection hidden inside a fold.
-
-- Hovering a callout's title no longer reveals the gutter markers of the list items inside it; only the callout's own marker shows, as it does for every other container.
-
-- With a run of blocks selected, a covered block that scrolls into view now surfaces its gutter marker like the others; a block whose gutter chrome was built after the selection was made kept its marker hidden.
-
-- Closing the keyboard shortcuts panel by clicking into a text field elsewhere leaves the focus where you clicked, instead of bouncing it back into the editor.
 
 - Dragging from the page margin to select a run of blocks works at a fixed content width. It only ever armed inside the editor column's own thin padding band, which at the default width is narrower than the gutter chrome sharing it, so on most documents the gesture did nothing; the margin either side of the column now starts it.
 
