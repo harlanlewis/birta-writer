@@ -371,3 +371,22 @@ export function providerFor(kind: EmbedKind): EmbedProvider {
  * per-URL memoization use the embed plugin's cache (MAR-215) on top of this.
  */
 export const recognizeProvider: (url: string) => EmbedMatch | null = recognizeEmbed;
+
+/**
+ * Whether a recognized provider match renders as a provider card right now:
+ * the embed feature key, the master network switch for the providers whose
+ * card would fetch (a no-network card renders offline), and the per-provider
+ * roster. THE one answer to "does this URL get its provider card", asked by
+ * the embed plugin's collect pass and by the block menu's link-card row (so
+ * the row never offers to card a link that already is one); two readings of
+ * the same three gates would drift.
+ */
+export function providerCardGateOpen(match: EmbedMatch): boolean {
+    if (!(window.__i18n?.embedsEnabled ?? true)) {
+        return false;
+    }
+    if (!(window.__i18n?.network ?? false) && providerFor(match.kind).needsNetwork) {
+        return false;
+    }
+    return embedProviderOn(match.kind);
+}

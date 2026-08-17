@@ -2354,9 +2354,11 @@ export class MarkdownEditorProvider
      * default, or a per-link choice held as presentation state beside the
      * document), and that per-link choice is not visible from here, so the
      * extension re-checks the master switch alone: with it off, no page is
-     * fetched whatever the webview asks. Cached for the session by URL, so a
-     * card that re-renders (caret in and out, a reload of the same panel)
-     * asks its host once.
+     * fetched whatever the webview asks. A page that answered is cached for
+     * the session by URL, so a card that re-renders (caret in and out, a
+     * reload of the same panel) asks its host once; a page that answered
+     * nothing is not, and the webview's own store is what keeps it from
+     * being asked again within a panel's life.
      */
     private async _handleResolveLinkCard(
         panel: vscode.WebviewPanel,
