@@ -19,7 +19,6 @@ import {
     edgeScrollVelocity,
     scrollVelocityFor,
 } from "../components/blockMenu";
-import { planBoundaries, readBoundaries } from "../components/blockMenu/drag";
 
 const VIEWPORT = 900;
 const TOPBAR = 40;
@@ -180,7 +179,7 @@ describe("createBoundaryMeasurer", () => {
         expect(scrolled.map((b) => b.y)).toEqual(first.map((b) => b.y - 30));
         expect(scrolled.map((b) => b.pos)).toEqual(first.map((b) => b.pos));
         // And the shifted answer matches what a fresh read would say.
-        expect(scrolled.map((b) => b.y)).toEqual(readBoundaries(planBoundaries(view)).map((b) => b.y));
+        expect(scrolled.map((b) => b.y)).toEqual(createBoundaryMeasurer().measure(view).map((b) => b.y));
     });
 
     it("content that reflows (the root's box changes) should re-read rects", () => {
@@ -192,7 +191,7 @@ describe("createBoundaryMeasurer", () => {
         reflow(80); // every block taller: the root grows, block bottoms move
         const after = measurer.measure(view);
         expect(blockRects.mock.calls.length).toBeGreaterThan(rectCalls);
-        expect(after.map((b) => b.y)).toEqual(readBoundaries(planBoundaries(view)).map((b) => b.y));
+        expect(after.map((b) => b.y)).toEqual(createBoundaryMeasurer().measure(view).map((b) => b.y));
     });
 
     it("a new state should re-plan", () => {
