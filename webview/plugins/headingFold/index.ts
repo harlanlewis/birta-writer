@@ -57,7 +57,9 @@ export {
 } from "./foldAnchors";
 
 export {
+    blockMarkerElements,
     blockMarkerSpec,
+    isLeafBlock,
     nestedChildSpec,
     wireMarkerButtonProtocol,
     type MarkerSpec,

@@ -2218,10 +2218,13 @@ body.toolbar-hidden::before {
 }
 
 /* The marker's own state must win over the block-hover rule above — equal
-   specificity, placed after. */
-.milkdown .editor .block-gutter-host .heading-fold-marker--block:hover,
-.milkdown .editor .block-gutter-host .heading-fold-marker--block:focus-visible,
-.milkdown .editor .block-gutter-host .heading-fold-marker--block.heading-fold-marker--menu-open {
+   specificity, placed after. A leaf atom's gutter (hr, mdx block) is its
+   host's next sibling rather than a descendant, so the state rules — this
+   one, dragging, quiet-while-typing — name it beside the host; :is() keeps
+   the specificity at the single class it replaces. */
+.milkdown .editor :is(.block-gutter-host, .heading-fold-gutter--leaf) .heading-fold-marker--block:hover,
+.milkdown .editor :is(.block-gutter-host, .heading-fold-gutter--leaf) .heading-fold-marker--block:focus-visible,
+.milkdown .editor :is(.block-gutter-host, .heading-fold-gutter--leaf) .heading-fold-marker--block.heading-fold-marker--menu-open {
     opacity: 1;
     color: var(--vscode-foreground);
     background: var(--vscode-toolbar-hoverBackground);
@@ -2371,7 +2374,7 @@ body.block-dragging * {
 
 /* The dragged marker keeps full contrast even when the pointer leaves its
    block (same specificity family as the hover rules above). */
-.milkdown .editor .block-gutter-host .heading-fold-marker--block.heading-fold-marker--dragging {
+.milkdown .editor :is(.block-gutter-host, .heading-fold-gutter--leaf) .heading-fold-marker--block.heading-fold-marker--dragging {
     opacity: 1;
     color: var(--vscode-foreground);
 }
@@ -2390,7 +2393,7 @@ body.block-dragging .milkdown .editor {
    multi-block selection. The handles-rest-always mode is exempt: its handles
    are at-rest chrome (like the heading badges, which never quiet), not hover
    reveals. */
-body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-host .heading-fold-marker--block:not(.heading-fold-marker--menu-open):not(:focus-visible):not(.heading-fold-marker--dragging):not(.heading-fold-marker--covered) {
+body.handles-quiet:not(.handles-rest-always) .milkdown .editor :is(.block-gutter-host, .heading-fold-gutter--leaf) .heading-fold-marker--block:not(.heading-fold-marker--menu-open):not(:focus-visible):not(.heading-fold-marker--dragging):not(.heading-fold-marker--covered) {
     opacity: 0;
 }
 
@@ -2641,6 +2644,58 @@ body.block-marqueeing .milkdown .editor {
    the table's favor. */
 .milkdown .editor .mw-table.block-gutter-host--child .heading-fold-gutter--block {
     top: 7.5px;
+}
+
+/* Leaf atoms (hr, mdx block — MAR-350). A nodeSize-1 block has no content
+   position, so its gutter widget lands AFTER the node and is the host's next
+   DOM sibling, not its child. Everything the child gutters get from being
+   inside the host — the containing block, the hover reveal, the fold-hidden
+   display:none — the leaf gutter gets from CSS anchor positioning and the
+   adjacent-sibling combinator instead. `anchor-name` repeats on every leaf
+   host; anchor resolution picks the LAST one before the positioned element
+   in tree order, which is exactly the widget's own host. The box spans the
+   host's full height so `align-items: center` seats the marker on the rule's
+   line; the mdx block re-seats it on its label (format/mdx/views.ts). */
+.milkdown .editor .block-gutter-host--leaf {
+    anchor-name: --leaf-gutter-host;
+}
+/* --block is restated so this outranks the per-wrapper calibrations above
+   (`blockquote .heading-fold-gutter--block` and kin, one element heavier),
+   which reach a leaf gutter nested inside a wrapper by descent and would
+   otherwise seat it on the wrapper's first line. */
+.milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--leaf {
+    position-anchor: --leaf-gutter-host;
+    top: anchor(top);
+    left: calc(anchor(left) - 10px);
+    height: anchor-size(height);
+}
+/* Nested leaf: the same per-depth inset step the --nested rule above gives
+   child gutters, from the anchor's edge rather than the host's. */
+.milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--leaf.heading-fold-gutter--nested {
+    left: calc(anchor(left) - 9px - var(--nested-gutter-depth, 1) * (3px + var(--content-em)));
+}
+/* Without anchor positioning the gutter would fall back to the base rule's
+   offsets against whatever ancestor is positioned — a stray marker far from
+   its rule. The engines.vscode floor has it; a fork on an older Chromium
+   simply gets no leaf handle rather than a wrong one. */
+@supports not (anchor-name: --probe) {
+    .milkdown .editor .heading-fold-gutter--leaf {
+        display: none;
+    }
+}
+/* Reveal: hovering the host (its next sibling is its gutter) or the gutter
+   itself. Held at 4 class-level (above the 3 of the resting opacity: 0,
+   below the 5 of the marker's own hover/focus/menu-open/dragging rules and
+   the quiet-while-typing rule, all of which name the leaf gutter alongside
+   the host) so every marker state outranks the reveal. */
+.milkdown .editor :where(.block-gutter-host--leaf:hover) + .heading-fold-gutter--leaf .heading-fold-marker--block,
+.milkdown .editor :where(.heading-fold-gutter--leaf:hover) .heading-fold-marker--block {
+    opacity: 0.7;
+}
+/* A folded-away leaf hides its gutter with it: the host's display:none
+   cannot reach a sibling. */
+.milkdown .editor .heading-fold-hidden + .heading-fold-gutter--leaf {
+    display: none;
 }
 
 /* Per-flavor nudges: the -34px base puts every marker in one column, but

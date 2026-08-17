@@ -13,7 +13,7 @@ import type { EditorView } from "../pm";
 import * as path from "path";
 import * as fs from "fs";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { blockMarkerSpec, nestedChildSpec, headingFoldPlugin } from "../plugins/headingFold";
+import { blockMarkerElements, blockMarkerSpec, nestedChildSpec, headingFoldPlugin } from "../plugins/headingFold";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -23,8 +23,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
  */
 const NO_MARKER_ALLOWLIST: Record<string, string> = {
     "doc": "the document itself",
-    "hr": "leaf atom (nodeSize 1) — no content position for the in-block widget; needs an overlay handle (tracked with MAR-19's leftovers)",
-    "link_definition": "leaf atom like hr; orphaned definitions only — most are stripped by the remark transform",
+    "link_definition": "leaf atom; orphaned definitions only — most are stripped by the remark transform, and a survivor is data rather than a unit to move",
     "bullet_list": "per-ITEM markers (emitItemGutters) — the items are the units, not the list",
     "ordered_list": "per-ITEM markers — same",
     "list_item": "covered by emitItemGutters (itemMarkerSpec), not blockMarkerSpec",
@@ -34,7 +33,6 @@ const NO_MARKER_ALLOWLIST: Record<string, string> = {
     "table_cell": "table interior",
     "table_header": "table interior",
     "footnote_reference": "inline atom despite isBlock quirks in some presets",
-    "mdx_block": "leaf atom like hr (nodeSize 1) — the block widget rides offset+1, which for an atom is the position AFTER it, so a MarkerSpec alone would paint the marker outside the block; it needs the same overlay handle hr does (MAR-19 leftovers), and gets one with hr",
 };
 
 let editors: Editor[] = [];
@@ -100,7 +98,7 @@ describe("every block type has a grabber", () => {
             "wiki_link": "inline atom",
             "image_ref": "inline atom (![alt][ref] chip)",
             "link_definition": "allowlisted leaf atom (see NO_MARKER_ALLOWLIST)",
-            "mdx_block": "allowlisted leaf atom (see NO_MARKER_ALLOWLIST)",
+            "mdx_block": "covered: blockMarkerSpec case (leaf atom — its gutter is the block's next sibling, MAR-350)",
             "mdx_inline": "inline atom (opaque mdx island, MAR-42)",
         };
         // Walk ALL of webview/ (not just plugins/) so a node schema defined
@@ -160,7 +158,6 @@ describe("every block type has a grabber", () => {
 const NESTED_NO_MARKER_ALLOWLIST: Record<string, string> = {
     "doc": "the document itself — never a nested child",
     "paragraph": "text paragraph is the container's/item's own prose — its marker is the handle (nestedChildSpec returns null for P); image/HTML paragraphs still get a marker via blockMarkerSpec",
-    "hr": "leaf atom (nodeSize 1) — needs an overlay handle (MAR-19 leftovers)",
     "link_definition": "leaf atom; orphaned definitions only",
     "bullet_list": "routed to emitItemGutters before nestedChildSpec — per-item markers",
     "ordered_list": "per-item markers — same",
@@ -225,6 +222,9 @@ describe("every block type has a grabber at every nesting position", () => {
         { name: "heading", inner: ["# Heading"], pill: "Heading", topPill: "H1" },
         { name: "table", inner: ["| a | b |", "| - | - |", "| 1 | 2 |"], pill: "Table" },
         { name: "callout", inner: ["> [!NOTE]", "> body"], pill: "Callout" },
+        // The horizontal rule (a leaf atom, MAR-350) is covered by its own
+        // tests below: `---` directly under a callout title line is a
+        // setext underline, so this template cannot express it.
     ];
 
     async function makeFolding(md: string): Promise<Editor> {
@@ -290,6 +290,53 @@ describe("every block type has a grabber at every nesting position", () => {
             expect(gutter.style.getPropertyValue("--item-container-depth")).toBe("1");
         }
         await editor.destroy();
+    });
+
+    // Leaf atoms (MAR-350): the widget at blockPos + 1 is the position AFTER
+    // a nodeSize-1 node, so the gutter is the host's next sibling. The
+    // --leaf classes on both are what the CSS anchors and reveals by; the
+    // position round-trip is the same one every marker uses.
+    it("a horizontal rule's gutter is its next sibling, both stamped --leaf, and resolves to the rule's position", async () => {
+        const editor = await makeFolding("para\n\n---\n\nafter");
+        const view = editor.action((ctx) => ctx.get(editorViewCtx) as EditorView);
+        const hr = document.querySelector<HTMLElement>(".ProseMirror > hr");
+        expect(hr?.classList.contains("block-gutter-host")).toBe(true);
+        expect(hr?.classList.contains("block-gutter-host--leaf")).toBe(true);
+        const gutter = hr?.nextElementSibling as HTMLElement | null;
+        expect(gutter?.classList.contains("heading-fold-gutter--leaf")).toBe(true);
+        expect(gutter?.querySelector<HTMLElement>(".heading-fold-marker")?.dataset["pill"]).toBe("Horizontal Rule");
+        // gutterBlockPos's rule: widget at blockPos + 1.
+        let hrPos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.type.name === "hr") hrPos = offset;
+        });
+        expect(hrPos).toBeGreaterThan(0);
+        expect(view.posAtDOM(gutter!, 0) - 1).toBe(hrPos);
+        // The DOM-walking consumers (selection cover) find a leaf's marker
+        // through blockMarkerElements, which looks one sibling over; a
+        // paragraph's marker is found inside its own DOM by the same call.
+        expect(blockMarkerElements(hr!).map((m) => m.dataset["pill"])).toEqual(["Horizontal Rule"]);
+        const p = document.querySelector<HTMLElement>(".ProseMirror > p")!;
+        expect(blockMarkerElements(p).map((m) => m.dataset["pill"])).toEqual(["Paragraph"]);
+    });
+
+    it("a rule nested in a callout or a list item gets a --leaf --nested gutter as its sibling", async () => {
+        for (const [md, where] of [
+            ["> [!NOTE]\n> before\n>\n> ---\n>\n> after", ".ProseMirror .callout hr"],
+            ["- item\n\n  ---\n\n  after", ".ProseMirror li hr"],
+        ] as const) {
+            const editor = await makeFolding(md);
+            const hr = document.querySelector<HTMLElement>(where);
+            expect(hr?.classList.contains("block-gutter-host--leaf"), md).toBe(true);
+            expect(hr?.classList.contains("block-gutter-host--child"), md).toBe(true);
+            const gutter = hr?.nextElementSibling as HTMLElement | null;
+            expect(gutter?.classList.contains("heading-fold-gutter--leaf"), md).toBe(true);
+            expect(gutter?.classList.contains("heading-fold-gutter--nested"), md).toBe(true);
+            expect(gutter?.querySelector<HTMLElement>(".heading-fold-marker")?.dataset["pill"], md).toBe("Horizontal Rule");
+            await editor.destroy();
+            editors.pop();
+            document.body.innerHTML = "";
+        }
     });
 
     it("a top-level list leaves its item markers at the near-ink depth (0) (MAR-89)", async () => {
