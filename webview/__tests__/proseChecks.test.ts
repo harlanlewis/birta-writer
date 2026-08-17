@@ -6,6 +6,7 @@ import {
     findRuleOfThree,
     findEmDash,
     findNonAsciiPunct,
+    findAbsolutePerfClaims,
 } from "../utils/proseChecks";
 
 function flagged(text: string, fn: (t: string) => { start: number; end: number }[]): string[] {
@@ -141,5 +142,46 @@ describe("findNonAsciiPunct", () => {
 
     it("leaves dashes to findEmDash", () => {
         expect(findNonAsciiPunct("a—b")).toHaveLength(0);
+    });
+});
+
+describe("findAbsolutePerfClaims", () => {
+    it("an absolute word followed by a performance word should flag the claim span", () => {
+        expect(flagged("Typing in a long document no longer stutters on save.", findAbsolutePerfClaims))
+            .toEqual(["no longer stutters"]);
+        expect(flagged("The outline opens with zero latency now.", findAbsolutePerfClaims))
+            .toEqual(["zero latency"]);
+    });
+
+    it("an absolute claim about correctness should not be flagged", () => {
+        // Same grammar, opposite verifiability: this one reproduces or it does not.
+        expect(findAbsolutePerfClaims("Saving no longer corrupts the file.")).toEqual([]);
+        expect(findAbsolutePerfClaims("The tab never loses your edits.")).toEqual([]);
+    });
+
+    it("the two halves should not span a sentence boundary", () => {
+        expect(findAbsolutePerfClaims("It never fails. The old build was slow.")).toEqual([]);
+    });
+
+    it("a block carrying two figures (a before and an after) should not be flagged", () => {
+        const carried = "Selecting a block no longer stalls: about 170 ms on a 300 KB file, now under 5 ms.";
+        expect(findAbsolutePerfClaims(carried)).toEqual([]);
+    });
+
+    it("one figure is not a before and after, so the claim should still be flagged", () => {
+        expect(flagged("Selecting a block no longer stalls on a 300 KB file.", findAbsolutePerfClaims))
+            .toEqual(["no longer stalls"]);
+    });
+
+    it("a digit run inside a word or a version segment should not count as a figure", () => {
+        // "v1.2.3" is one figure to the reader; "utf8" is none.
+        expect(flagged("Since v1.2.3 utf8 files no longer freeze the editor.", findAbsolutePerfClaims))
+            .toEqual(["no longer freeze"]);
+    });
+
+    it("the category should be absolutePerf and matching case-insensitive", () => {
+        const hits = findAbsolutePerfClaims("Zero jank when scrolling.");
+        expect(hits).toHaveLength(1);
+        expect(hits[0].category).toBe("absolutePerf");
     });
 });

@@ -343,6 +343,18 @@ describe("new categories through compileStyleMatcher", () => {
         expect(text.slice(hits[0].start, hits[0].end)).toBe("delve");
     });
 
+    it("AI vocabulary should flag the verb 'underscores the' and leave the noun alone", () => {
+        // Over the fidelity corpus every hit on these two words was the noun (the
+        // "_" character, a file called showcase.md), so the entries name the verb.
+        const matcher = compileStyleMatcher(LISTS, { aiVocabulary: true });
+        const verb = "This underscores the need for care.";
+        const hits = matcher(verb);
+        expect(hits.map((h) => verb.slice(h.start, h.end))).toEqual(["underscores"]);
+        expect(matcher("Wrap the name in an underscore, and two underscores make it strong.")).toHaveLength(0);
+        expect(matcher("Open the showcase document.")).toHaveLength(0);
+        expect(matcher("It showcases every feature.").map((h) => h.category)).toEqual(["aiVocabulary"]);
+    });
+
     it("a wordiness phrase is flagged when enabled", () => {
         const matcher = compileStyleMatcher(LISTS, { wordiness: true });
         const hits = matcher("There is a problem here.");

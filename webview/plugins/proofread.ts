@@ -120,6 +120,7 @@ export const DEFAULT_CONFIG: ProofreadConfig = {
     ruleOfThree: true,
     emDash: true,
     nonAsciiPunct: true,
+    absolutePerf: true,
     styleExceptions: [],
     spellCheck: true,
     grammarCheck: true,
@@ -151,6 +152,7 @@ function enabledMap(c: ProofreadConfig): Partial<Record<StyleCategory, boolean>>
         ruleOfThree: c.ruleOfThree,
         emDash: c.emDash,
         nonAsciiPunct: c.nonAsciiPunct,
+        absolutePerf: c.absolutePerf,
     };
 }
 
@@ -162,6 +164,7 @@ function enabledMap(c: ProofreadConfig): Partial<Record<StyleCategory, boolean>>
  */
 const FLAG_CATEGORIES = new Set<StyleCategory>([
     "passive", "longSentences", "negativeParallelism", "ruleOfThree", "emDash", "nonAsciiPunct",
+    "absolutePerf",
 ]);
 
 function initialConfig(): ProofreadConfig {
@@ -222,6 +225,7 @@ function styleHitTitle(category: string): string {
         case "ruleOfThree": return t("Rule of three - one precise word does more");
         case "emDash": return t("Em dash - a spaced hyphen is safer everywhere");
         case "nonAsciiPunct": return t("Curly punctuation - ASCII is more portable");
+        case "absolutePerf": return t("Absolute speed claim - carry the before and after");
         case "repeated": return t("Repeated word - delete one");
         default: return "";
     }
@@ -255,6 +259,7 @@ export function styleAdvice(category: string): string {
         case "ruleOfThree": return t("Three stacked adjectives read as cadence, not content - one precise word does more.");
         case "emDash": return t("An em dash renders inconsistently outside the editor - a spaced hyphen is safe everywhere.");
         case "nonAsciiPunct": return t("Curly quotes and ellipses can garble in code, terminals, and diffs - ASCII stays portable.");
+        case "absolutePerf": return t("A cost only ever shrinks, so \"no longer stalls\" cannot be checked - give the before and after figures, or say what still costs.");
         case "repeated": return t("The same word appears twice in a row — delete one.");
         default: return "";
     }
@@ -292,8 +297,8 @@ function styleSuggestion(category: StyleCategory, flagged: string): string | nul
             return ASCII_NORMALIZATION[flagged] ?? "";
         default:
             // emDash is resolved in computeDecorations (needs the neighbouring
-            // chars); longSentences/passive/ruleOfThree/negativeParallelism are
-            // judgment calls with no auto-fix.
+            // chars); longSentences/passive/ruleOfThree/negativeParallelism/
+            // absolutePerf are judgment calls with no auto-fix.
             return null;
     }
 }

@@ -152,7 +152,8 @@ export type ProofreadOptionKey =
     | "negativeParallelism"
     | "ruleOfThree"
     | "emDash"
-    | "nonAsciiPunct";
+    | "nonAsciiPunct"
+    | "absolutePerf";
 
 /** Proofread (style check + spell check) configuration snapshot */
 export type ProofreadConfig = {
@@ -189,6 +190,8 @@ export type ProofreadConfig = {
     emDash: boolean;
     /** Curly quotes, ellipsis glyph, and invisible spaces (normalize to ASCII) */
     nonAsciiPunct: boolean;
+    /** Absolute claim about a performance cost ("no longer stalls") with no before and after */
+    absolutePerf: boolean;
     /** Phrases the style check must never flag (user's escape valve) */
     styleExceptions: string[];
     /** Spelling switch (Harper "Spelling" findings; bundled English dictionary) */
