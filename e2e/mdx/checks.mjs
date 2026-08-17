@@ -5,7 +5,9 @@
  * (roundTripCorpusMdx.test.ts). What only a browser can cover is what jsdom
  * has no machinery for: the lazy chunk actually resolving over the network,
  * the NodeViews actually rendering and their injected stylesheet actually
- * applying, and a markdown document actually paying nothing for any of it.
+ * applying, a real click and real keystrokes reaching the attribute form
+ * inside an atom NodeView (a prop-level test cannot see who wins an event),
+ * and a markdown document actually paying nothing for any of it.
  *
  * The documents are the committed fixtures, read from disk rather than
  * restated here, so a fixture that stops parsing fails this suite too.
@@ -175,6 +177,67 @@ export async function run({ page, check, baseUrl }) {
             JSON.stringify(lost.slice(0, 2)),
         );
     }
+
+    // ── 3b. An attribute edit through the form reaches the host as a splice ─
+    // The double-quoted Chart is the target; the single-quoted twin right
+    // beside it is the control, and so is every other byte of the file: the
+    // update the host receives must be the previous update with exactly one
+    // literal rewritten.
+    const chartHost = mdx.page.locator(".mdx-block", {
+        has: mdx.page.locator(".mdx-block-source", { hasText: 'color="#fcb32c"' }),
+    });
+    const colorInput = chartHost.locator('input[data-attr="color"]');
+    check("the double-quoted Chart island offers a form input for `color`", (await colorInput.count()) === 1);
+    check(
+        "the Chart's `data={metrics}` attribute is shown as code, not an input",
+        (await chartHost.locator("code.mdx-attr-code").count()) === 1 &&
+            (await chartHost.locator("input").count()) === 1,
+    );
+    const calloutInputs = await mdx.page
+        .locator(".mdx-block", { has: mdx.page.locator(".mdx-block-source", { hasText: "<Callout" }) })
+        .locator("input")
+        .evaluateAll((els) => els.map((el) => [el.dataset.attr, el.value]));
+    check(
+        "the Callout island offers an input per string attribute, prefilled with the decoded value",
+        JSON.stringify(calloutInputs) === JSON.stringify([["type", "warning"], ["title", "Heads up"]]),
+        JSON.stringify(calloutInputs),
+    );
+    const beforeAttrEdit = serialized;
+    await colorInput.click();
+    await colorInput.fill("#00aa00");
+    await mdx.page.keyboard.press("Enter");
+    await mdx.page.waitForTimeout(700);
+    await mdx.page.waitForTimeout(700);
+    const afterAttrEdit = await mdx.page.evaluate(() => {
+        const updates = window.__posted.filter((m) => m.type === "update");
+        return updates.length ? updates[updates.length - 1].content : null;
+    });
+    check(
+        "the attribute edit reached the host as exactly one literal rewritten",
+        typeof beforeAttrEdit === "string" &&
+            afterAttrEdit === beforeAttrEdit.replace('color="#fcb32c"', 'color="#00aa00"'),
+        JSON.stringify((afterAttrEdit ?? "").split("\n").filter((l) => l.includes("<Chart"))),
+    );
+    check(
+        "the single-quoted twin kept its own quoting",
+        (afterAttrEdit ?? "").includes("<Chart data={metrics} color='#227788' />"),
+    );
+    const formState = await mdx.page.evaluate(() => {
+        const input = document.activeElement;
+        const host = input?.closest(".mdx-block");
+        return {
+            focusedIsInput: input instanceof HTMLInputElement && input.dataset.attr === "color",
+            value: input instanceof HTMLInputElement ? input.value : null,
+            source: host?.querySelector(".mdx-block-source")?.textContent ?? null,
+        };
+    });
+    check(
+        "Enter commits without leaving the field, and the source pane shows the new bytes",
+        formState.focusedIsInput &&
+            formState.value === "#00aa00" &&
+            formState.source === '<Chart data={metrics} color="#00aa00" />',
+        JSON.stringify(formState),
+    );
 
     check("the .mdx page logged no errors", mdx.errors.length === 0, mdx.errors.slice(0, 2).join(" | "));
     await mdx.ctx.close();
