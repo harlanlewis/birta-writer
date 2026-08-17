@@ -47,6 +47,20 @@ import * as vscode from "vscode";
 
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Poll `pred` every 100 ms for up to `capMs`. The host's auto-answered
+ * Don't Save reverts the model on its own schedule; a fixed wait read
+ * "survived" on a slow host and reported the wrong thing.
+ */
+async function until(pred: () => boolean, capMs = 5000): Promise<boolean> {
+    const deadline = Date.now() + capMs;
+    while (Date.now() < deadline) {
+        if (pred()) { return true; }
+        await wait(100);
+    }
+    return pred();
+}
+
 function workspaceUri(): vscode.Uri {
     const folders = vscode.workspace.workspaceFolders;
     assert.ok(folders && folders.length > 0, "a workspace folder is open");
@@ -176,7 +190,7 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
             //    second is what this host's auto-answered Don't Save produces.
             const diskBefore = await readFile(uri);
             const closed = await vscode.window.tabGroups.close(fresh!);
-            await wait(800);
+            await until(() => !doc.getText().includes("An unsaved line."));
             const diskAfter = await readFile(uri);
 
             const after = tabsFor(uri);
@@ -277,7 +291,7 @@ describe("Birta integration: lossless mode switch (MAR-59)", () => {
             const diskBefore = await readFile(uri);
             const customTab = tabsFor(uri).custom[0]!;
             const closed = await vscode.window.tabGroups.close(customTab);
-            await wait(800);
+            await until(() => !doc.getText().includes("Typed in WYSIWYG."));
             const diskAfter = await readFile(uri);
             const after = tabsFor(uri);
 
