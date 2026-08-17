@@ -11,7 +11,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, foldRevealKeymapPlugin } from "../plugins/headingFold";
+import { foldPluginKey, headingFoldPlugin, foldRevealKeymapPlugin } from "../plugins/headingFold";
 
 let editors: Editor[] = [];
 
@@ -123,6 +123,24 @@ describe("selection cover — incremental marker surfacing", () => {
         const offsets = blockOffsets(view);
         view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, offsets[2]! + 1)));
         expect(coveredCount(view)).toBe(0);
+    });
+
+    it("a covered block whose marker appears with a wider chrome window should surface it", async () => {
+        const view = await makeEditor(EIGHT);
+        const offsets = blockOffsets(view);
+        // Chrome only for blocks 0..2 (MAR-215 windowing), then a cover over
+        // blocks 1..6: the off-window blocks have no marker to surface yet.
+        const narrow = { from: offsets[0]!, to: offsets[3]! };
+        view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: "window", window: narrow }));
+        selectBlocks(view, 1, 6);
+        const before = coveredCount(view);
+        expect(before).toBeGreaterThan(0);
+        expect(before).toBeLessThan(6);
+        // The window widens to the whole document (a scroll would): the
+        // rebuild gives every block a marker, and the held cover picks up
+        // the ones it could not read before — with the same selection.
+        view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: "window", window: null }));
+        expect(coveredCount(view)).toBe(6);
     });
 
     it("a doc change under a live cover should re-read the cover against the new doc", async () => {

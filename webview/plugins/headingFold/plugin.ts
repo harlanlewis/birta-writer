@@ -471,12 +471,14 @@ export const headingFoldPlugin = $prose(() =>
             // a selection change touches only the blocks that entered or
             // left the cover — a marquee or Shift+Arrow changes the cover on
             // every event, and reading every covered block each time scaled
-            // with the selection. Two things invalidate the held entries
-            // wholesale: a doc change (the offsets are doc positions, and
-            // the decoration pass rebuilds the markers anyway) and a new
-            // decoration set (a rebuild swaps or adds widget DOM — a block
-            // that scrolls into the chrome window gets its marker only then,
-            // so its entry must be re-read to surface it).
+            // with the selection. A doc change invalidates the held entries
+            // wholesale (the offsets are doc positions). A new decoration
+            // set invalidates only the entries it could have changed: a
+            // rebuild keeps same-key widget DOM, so a block whose markers
+            // are all still connected is left alone, and a block that held
+            // none (off the chrome window until now) or whose marker was
+            // swapped is re-read — that is how a covered block scrolling
+            // into the window surfaces its marker.
             let coveredByBlock = new Map<number, HTMLElement[]>();
             let coverDoc: unknown = null;
             let coverDecorations: unknown = null;
@@ -526,10 +528,18 @@ export const headingFoldPlugin = $prose(() =>
                 const key = cover ? `${cover.from}:${cover.to}` : "";
                 const { doc } = view.state;
                 const decorations = foldPluginKey.getState(view.state)?.decorations ?? null;
-                if (doc !== coverDoc || decorations !== coverDecorations) {
+                if (doc !== coverDoc) {
                     clearCover();
                     coverDoc = doc;
+                }
+                if (decorations !== coverDecorations) {
                     coverDecorations = decorations;
+                    for (const [offset, markers] of coveredByBlock) {
+                        if (markers.length === 0 || markers.some((m) => !m.isConnected)) {
+                            uncover(markers);
+                            coveredByBlock.delete(offset);
+                        }
+                    }
                 }
                 if (key !== coverKey) {
                     coverKey = key;
