@@ -466,8 +466,55 @@ export const headingFoldPlugin = $prose(() =>
             // resting contrast — "drag any of these and they all move".
             // Classes go on the MARKER (widget DOM — invisible to PM's
             // observer); mutating the block elements would redraw them.
-            let coveredMarkers: HTMLElement[] = [];
+            //
+            // Incremental: the covered markers are held PER BLOCK OFFSET, so
+            // a selection change touches only the blocks that entered or
+            // left the cover — a marquee or Shift+Arrow changes the cover on
+            // every event, and reading every covered block each time scaled
+            // with the selection. A doc change invalidates the held entries
+            // wholesale (the offsets are doc positions). A new decoration
+            // set invalidates only the entries it could have changed: a
+            // rebuild keeps same-key widget DOM, so a block whose markers
+            // are all still connected is left alone, and a block that held
+            // none (off the chrome window until now) or whose marker was
+            // swapped is re-read — that is how a covered block scrolling
+            // into the window surfaces its marker.
+            let coveredByBlock = new Map<number, HTMLElement[]>();
+            let coverDoc: unknown = null;
+            let coverDecorations: unknown = null;
             let coverKey = "";
+            const uncover = (markers: HTMLElement[]): void => {
+                markers.forEach((m) => m.classList.remove("heading-fold-marker--covered"));
+            };
+            const clearCover = (): void => {
+                for (const markers of coveredByBlock.values()) {
+                    uncover(markers);
+                }
+                coveredByBlock = new Map();
+            };
+            /** Surface (and hold) the markers of the top-level block at `offset`. */
+            const coverBlock = (offset: number): void => {
+                const markers: HTMLElement[] = [];
+                const dom = view.nodeDOM(offset);
+                if (dom instanceof HTMLElement) {
+                    // querySelectorAll: a covered LIST carries one marker
+                    // per item — every one must surface, not just the
+                    // first, or "all of these move together" undersells.
+                    // Container CHILDREN stay quiet though: the
+                    // container's own marker is the "this moves" cue,
+                    // and child markers now drag their own block, not
+                    // the cover. A leaf atom's marker is its next
+                    // sibling, which blockMarkerElements knows.
+                    for (const markerEl of blockMarkerElements(dom)) {
+                        if (markerEl.closest(".block-gutter-host--child")) {
+                            continue;
+                        }
+                        markerEl.classList.add("heading-fold-marker--covered");
+                        markers.push(markerEl);
+                    }
+                }
+                coveredByBlock.set(offset, markers);
+            };
             const syncSelectionCover = (): void => {
                 // A drag in flight owns the singleton indicator (drag-mode
                 // veil); an external-sync transaction mid-drag must not
@@ -479,44 +526,49 @@ export const headingFoldPlugin = $prose(() =>
                 // markers: both advertise a move that the mode refuses.
                 const cover = isReadOnly() ? null : selectionCoverRange(view);
                 const key = cover ? `${cover.from}:${cover.to}` : "";
-                if (key === coverKey && coveredMarkers.every((m) => m.isConnected)) {
-                    return;
+                const { doc } = view.state;
+                const decorations = foldPluginKey.getState(view.state)?.decorations ?? null;
+                if (doc !== coverDoc) {
+                    clearCover();
+                    coverDoc = doc;
                 }
-                coverKey = key;
-                coveredMarkers.forEach((m) => m.classList.remove("heading-fold-marker--covered"));
-                coveredMarkers = [];
-                // One visual language for "these blocks are included": the
-                // same veil the drag uses dims the covered range live while
-                // the multi-block selection exists (MAR-85).
-                if (cover) {
-                    showRangeVeil(view, cover, "select");
-                } else {
-                    hideRangeVeil();
+                if (decorations !== coverDecorations) {
+                    coverDecorations = decorations;
+                    for (const [offset, markers] of coveredByBlock) {
+                        if (markers.length === 0 || markers.some((m) => !m.isConnected)) {
+                            uncover(markers);
+                            coveredByBlock.delete(offset);
+                        }
+                    }
+                }
+                if (key !== coverKey) {
+                    coverKey = key;
+                    // One visual language for "these blocks are included":
+                    // the same veil the drag uses dims the covered range live
+                    // while the multi-block selection exists (MAR-85).
+                    if (cover) {
+                        showRangeVeil(view, cover, "select");
+                    } else {
+                        hideRangeVeil();
+                    }
                 }
                 if (!cover) {
+                    if (coveredByBlock.size > 0) {
+                        clearCover();
+                    }
                     return;
                 }
-                view.state.doc.forEach((node: any, offset: number) => {
+                // Blocks that left the cover.
+                for (const [offset, markers] of coveredByBlock) {
                     if (offset < cover.from || offset >= cover.to) {
-                        return;
+                        uncover(markers);
+                        coveredByBlock.delete(offset);
                     }
-                    const dom = view.nodeDOM(offset);
-                    if (dom instanceof HTMLElement) {
-                        // querySelectorAll: a covered LIST carries one marker
-                        // per item — every one must surface, not just the
-                        // first, or "all of these move together" undersells.
-                        // Container CHILDREN stay quiet though: the
-                        // container's own marker is the "this moves" cue,
-                        // and child markers now drag their own block, not
-                        // the cover. A leaf atom's marker is its next
-                        // sibling, which blockMarkerElements knows.
-                        for (const markerEl of blockMarkerElements(dom)) {
-                            if (markerEl.closest(".block-gutter-host--child")) {
-                                continue;
-                            }
-                            markerEl.classList.add("heading-fold-marker--covered");
-                            coveredMarkers.push(markerEl);
-                        }
+                }
+                // Blocks that entered it; the held ones cost no DOM read.
+                doc.forEach((_node: unknown, offset: number) => {
+                    if (offset >= cover.from && offset < cover.to && !coveredByBlock.has(offset)) {
+                        coverBlock(offset);
                     }
                 });
             };

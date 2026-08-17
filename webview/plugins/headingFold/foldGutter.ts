@@ -260,7 +260,7 @@ export function createHeadingFoldGutter(
     // setext untouched. It sits to the RIGHT of the fold chevron (distinct
     // click targets), so the two never overlap. "H2" is the same identity
     // the slash menu's heading rows show in their icon slot.
-    const badge = `H${Math.min(Math.max(level, 1), 6)}`;
+    const { badge } = headingGutterSpec(level, collapsed, foldable);
     const marker = createMarkerButton(view, gutter, badge, "heading-fold-marker", (el) => {
         el.textContent = badge;
         el.dataset["pill"] = badge;
@@ -280,6 +280,35 @@ export function createHeadingFoldGutter(
 export interface GutterFoldInfo {
     foldable: boolean;
     collapsed: boolean;
+}
+
+/** The widget-key / fingerprint suffix a fold state contributes. */
+export function foldKeyPart(fold: GutterFoldInfo | null): string {
+    if (!fold) {
+        return "";
+    }
+    return `${fold.collapsed ? "c" : "o"}${fold.foldable ? "f" : "l"}`;
+}
+
+/**
+ * A heading gutter's identity, derived ONCE from the heading's level and
+ * fold state. `key` is both the widget key the decoration pass reuses DOM
+ * under and the part the structural fingerprint carries for the heading, so
+ * "reuse this widget" and "rebuild the set" can never disagree about which
+ * headings changed; `badge` is the marker's text, its drag-pill name, and
+ * the text badge a NESTED heading's marker shows (nestedChildSpec). One
+ * derivation for every string that names a heading in the gutter.
+ */
+export interface HeadingGutterSpec {
+    key: string;
+    badge: string;
+}
+
+export function headingGutterSpec(level: number, collapsed: boolean, foldable: boolean): HeadingGutterSpec {
+    return {
+        key: `h${level}${foldKeyPart({ collapsed, foldable })}`,
+        badge: `H${Math.min(Math.max(level, 1), 6)}`,
+    };
 }
 
 /**
@@ -457,8 +486,10 @@ export function blockMarkerElements(dom: HTMLElement): HTMLElement[] {
  * position coverage guard (gutterCoverage.test.ts). */
 export function nestedChildSpec(node: any): MarkerSpec | null {
     if (isHeadingNode(node)) {
-        const level = Math.min(Math.max(getHeadingLevel(node), 1), 6);
-        return { key: `h${level}`, icon: "", label: t("Heading"), text: `H${level}` };
+        // A nested heading owns no fold section, so its identity is the
+        // level alone; the badge is the one the top-level gutter shows.
+        const { badge } = headingGutterSpec(getHeadingLevel(node), false, false);
+        return { key: badge.toLowerCase(), icon: "", label: t("Heading"), text: badge };
     }
     const spec = blockMarkerSpec(node);
     return spec?.key === "P" ? null : spec;

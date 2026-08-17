@@ -16,6 +16,8 @@ import {
     createHeadingEllipsis,
     createHeadingFoldGutter,
     createStubEllipsis,
+    foldKeyPart,
+    headingGutterSpec,
     isLeafBlock,
     itemMarkerSpec,
     nestedChildSpec,
@@ -179,14 +181,6 @@ function emitFirstLineFold(node: any, pos: number, decorations: Decoration[]): v
             { key: `e:i:${hiddenCount}`, side: 1 },
         ),
     );
-}
-
-/** The widget-key / fingerprint suffix a fold state contributes. */
-function foldKeyPart(fold: GutterFoldInfo | null): string {
-    if (!fold) {
-        return "";
-    }
-    return `${fold.collapsed ? "c" : "o"}${fold.foldable ? "f" : "l"}`;
 }
 
 /**
@@ -384,7 +378,7 @@ export function structureFingerprint(
         if (isHeadingNode(node)) {
             const collapsed = enabled && folded.has(offset);
             const foldable = enabled && Boolean(ranges.get(offset));
-            parts.push(`h${getHeadingLevel(node)}${collapsed ? "c" : ""}${foldable ? "f" : ""}`);
+            parts.push(headingGutterSpec(getHeadingLevel(node), collapsed, foldable).key);
         } else if (isListNode(node)) {
             parts.push("L");
             emitItemGutters(node, offset, null, parts, foldCtx);
@@ -480,10 +474,8 @@ export function buildHeadingFoldDecorations(
             Decoration.widget(
                 offset + 1,
                 (view) => createHeadingFoldGutter(view, level, collapsed, foldable),
-                {
-                    key: `h:${level}:${collapsed ? "c" : "o"}:${foldable ? "f" : "l"}`,
-                    side: -1,
-                },
+                // The same identity the fingerprint carries for this heading.
+                { key: headingGutterSpec(level, collapsed, foldable).key, side: -1 },
             ),
         );
 

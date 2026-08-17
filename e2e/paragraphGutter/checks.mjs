@@ -381,6 +381,43 @@ export async function run({ page, check, baseUrl }) {
         check(`every nested marker clears its ancestor containers' border bars at ${scale * 100}% (≥2px)`,
             nestedGeometry.length === 9 && nestedGeometry.every((g) => g.clearance >= 2),
             JSON.stringify(nestedGeometry.filter((g) => g.clearance < 2)));
+        // The glyphs themselves track the content em (MAR-93): the block
+        // icon is one em square, the H badge and the fold chevron box keep
+        // their ratio to it, so at 200% every marker is twice the size rather
+        // than the rem-fixed size it used to keep. Read against the em the
+        // editor actually computes, not a constant, so a different default
+        // font size cannot fail this for the wrong reason.
+        const glyphs = await page.evaluate(() => {
+            const em = parseFloat(getComputedStyle(document.getElementById("editor")).fontSize);
+            const icon = document.querySelector(".ProseMirror > p .heading-fold-marker--paragraph svg");
+            const badge = document.querySelector(".ProseMirror > .heading-fold-heading .heading-fold-marker");
+            const toggle = document.querySelector(".ProseMirror > .heading-fold-heading .heading-fold-toggle");
+            const w = (el) => (el ? el.getBoundingClientRect().width : null);
+            // The scaled row outgrows the gutter's fixed width at 200%; the
+            // gutter is end-packed, so the overflow must spill LEFT into the
+            // margin, never right over the heading text.
+            const heading = badge?.closest(".heading-fold-heading");
+            const textLeft = heading ? heading.getBoundingClientRect().left : null;
+            return {
+                em,
+                icon: w(icon),
+                badgeFont: badge ? parseFloat(getComputedStyle(badge).fontSize) : null,
+                badgeRight: badge ? badge.getBoundingClientRect().right : null,
+                textLeft,
+                toggle: w(toggle),
+                toggleSvg: w(toggle?.querySelector("svg")),
+            };
+        });
+        const near = (a, b) => a !== null && Math.abs(a - b) <= 0.6;
+        check(`block icon is one content em square at ${scale * 100}%`,
+            near(glyphs.icon, glyphs.em), JSON.stringify(glyphs));
+        check(`heading badge font tracks the content em at ${scale * 100}%`,
+            near(glyphs.badgeFont, 0.9 * glyphs.em), JSON.stringify(glyphs));
+        check(`fold chevron box and glyph track the content em at ${scale * 100}%`,
+            near(glyphs.toggle, 1.2857 * glyphs.em) && near(glyphs.toggleSvg, glyphs.em), JSON.stringify(glyphs));
+        check(`the scaled heading badge stays left of the heading text at ${scale * 100}%`,
+            glyphs.badgeRight !== null && glyphs.textLeft !== null && glyphs.badgeRight <= glyphs.textLeft,
+            JSON.stringify(glyphs));
     }
     await page.evaluate(() => {
         document.documentElement.style.removeProperty("--content-font-scale");
