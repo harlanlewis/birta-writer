@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- e2e harness (MAR-31): the sticky heading's ancestor trail. A nested
+     outline (H1 > H2 > H3) tall enough that scrolling into the H3 section
+     stacks its ancestors above the stuck title. The outline panel starts
+     hidden (tocVisibility) so the trail is on screen; a check opens the
+     docked panel and asserts the trail steps aside. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+    --vscode-icon-foreground: #cccccc;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocVisibility: "hidden" };
+  window.__posted = [];
+  const filler = (name, n) => Array.from({ length: n }, (_, i) => `${name} filler ${i + 1}.\n`).join("\n");
+  const DOC = [
+    "# Root chapter with a fairly long title that will need to ellipsise on a narrow pane", "", filler("root", 6),
+    "## Aside branch", "", filler("aside", 6),
+    "## Parent section", "", filler("parent", 6),
+    "### Current subsection", "", filler("current", 40),
+    "# Second chapter", "", filler("second", 30),
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

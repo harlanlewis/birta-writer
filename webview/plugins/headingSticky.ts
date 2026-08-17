@@ -92,7 +92,45 @@ function dispatchStickyActiveChange(headingPos: number | null): void {
     );
 }
 
-/** Exported for tests: the sticky's DOM contract (gutter, handle, label). */
+/** One crumb of the ancestor trail: a heading above the stuck one, one
+ * level up at a time. */
+export interface StickyAncestor {
+    heading: HTMLElement;
+    text: string;
+}
+
+/**
+ * The stuck heading's ancestors, root first: walking back through the
+ * visible headings, each heading whose level is smaller than every level
+ * seen so far is the parent of the section the reader is in. A heading of
+ * the same or a deeper level is a sibling or a cousin and is skipped. Pure,
+ * so the trail is a function of the visible heading list and the active
+ * index alone. Exported for tests.
+ */
+export function stickyAncestors(headings: readonly HTMLElement[], activeIndex: number): StickyAncestor[] {
+    const trail: StickyAncestor[] = [];
+    let level = activeIndex >= 0 && activeIndex < headings.length
+        ? getHeadingLevel(headings[activeIndex]!)
+        : 0;
+    for (let i = activeIndex - 1; i >= 0 && level > 1; i--) {
+        const heading = headings[i]!;
+        const candidate = getHeadingLevel(heading);
+        if (candidate < level) {
+            level = candidate;
+            trail.push({ heading, text: getHeadingText(heading) });
+        }
+    }
+    return trail.reverse();
+}
+
+/** The trail's identity, for the "rebuild only when something changed"
+ * comparison in updateSticky: the same headings in the same order with the
+ * same text is the same trail. */
+function trailKey(trail: readonly StickyAncestor[]): string {
+    return trail.map((crumb) => `${getHeadingLevel(crumb.heading)}:${crumb.text}`).join("\u0000");
+}
+
+/** Exported for tests: the sticky's DOM contract (trail, gutter, handle, label). */
 export function setStickyContent(
     sticky: HTMLElement,
     view: EditorView,
@@ -100,11 +138,66 @@ export function setStickyContent(
     headingPos: number,
     collapsed: boolean,
     foldable: boolean,
+    ancestors: readonly StickyAncestor[] = [],
 ): void {
     const level = getHeadingLevel(heading);
     const text = getHeadingText(heading);
     sticky.className = "heading-sticky-title";
     sticky.innerHTML = "";
+
+    // The ancestor trail (MAR-31): the sections the stuck heading sits in,
+    // root first, above the title in chrome type. Each crumb is a real
+    // button that scrolls its heading under the topbar and drops the caret
+    // at its start; the current heading is the title row below, which
+    // already is one. Hidden while the docked outline is open (style.css:
+    // the outline shows the same ancestry, highlighted), and absent for a
+    // top-level heading, so the bar is one row exactly as before then.
+    if (ancestors.length > 0) {
+        const trail = document.createElement("nav");
+        trail.className = "heading-sticky-trail";
+        trail.setAttribute("aria-label", t("Section path"));
+        ancestors.forEach((crumb, index) => {
+            if (index > 0) {
+                const separator = document.createElement("span");
+                separator.className = "heading-sticky-crumb-sep";
+                separator.setAttribute("aria-hidden", "true");
+                separator.textContent = "\u203a";
+                trail.appendChild(separator);
+            }
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "heading-sticky-crumb";
+            button.textContent = crumb.text;
+            // The clipped tail comes back on hover, the label's own rule.
+            applyTooltip(button, crumb.text, { placement: "above", truncatedOnly: true });
+            button.addEventListener("mousedown", (event) => {
+                event.preventDefault();
+            });
+            button.addEventListener("click", (event) => {
+                event.preventDefault();
+                // Resolve at click time: the crumb's heading is a live DOM
+                // node the view still renders, so its position is current.
+                const pos = findHeadingPos(view, crumb.heading);
+                if (pos === null) {
+                    return;
+                }
+                hideTooltip();
+                scrollElementBelowTopbar(crumb.heading, 8, "auto");
+                view.dispatch(view.state.tr.setSelection(
+                    TextSelection.near(view.state.doc.resolve(Math.min(pos + 1, view.state.doc.content.size))),
+                ));
+                view.focus();
+            });
+            trail.appendChild(button);
+        });
+        sticky.appendChild(trail);
+    }
+
+    // The title row: the gutter (chevron, badge) hangs off it, so the row is
+    // the gutter's containing block and stays aligned with the title when a
+    // trail sits above.
+    const row = document.createElement("div");
+    row.className = "heading-sticky-row";
 
     const gutter = document.createElement("span");
     gutter.className = "heading-sticky-gutter";
@@ -229,7 +322,8 @@ export function setStickyContent(
         });
     });
 
-    sticky.append(gutter, label);
+    row.append(gutter, label);
+    sticky.appendChild(row);
 }
 
 function syncStickyTypography(sticky: HTMLElement, heading: HTMLElement): void {
@@ -368,16 +462,20 @@ export const headingStickyPlugin = $prose(() =>
                 sticky.style.left = `${rect.left}px`;
                 sticky.style.width = `${rect.width}px`;
 
+                const ancestors = stickyAncestors(headings, activeIndex);
+                const trail = trailKey(ancestors);
                 if (
                     heading !== activeHeading ||
                     sticky.dataset["headingText"] !== text ||
-                    sticky.dataset["collapsed"] !== String(collapsed)
+                    sticky.dataset["collapsed"] !== String(collapsed) ||
+                    sticky.dataset["trail"] !== trail
                 ) {
                     activeHeading = heading;
                     sticky.dataset["headingText"] = text;
                     sticky.dataset["collapsed"] = String(collapsed);
+                    sticky.dataset["trail"] = trail;
                     syncStickyTypography(sticky, heading);
-                    setStickyContent(sticky, view, heading, headingPos, collapsed, foldable);
+                    setStickyContent(sticky, view, heading, headingPos, collapsed, foldable, ancestors);
                 }
 
                 const nextHeading = headings[activeIndex + 1] ?? null;
