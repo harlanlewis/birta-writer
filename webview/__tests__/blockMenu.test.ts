@@ -29,8 +29,9 @@ import {
     outdentSelection,
     outlineRangeAt,
     headingAnchorSlug,
+    LOSS_NOTES,
 } from "../components/blockMenu";
-import { conversionKindAt } from "../blockCapabilities";
+import { ALL_KINDS, contentEffectOf, conversionKindAt } from "../blockCapabilities";
 import { createImageView } from "../components/imageView";
 import { NodeSelection, TextSelection } from "../pm";
 import { mockVscodeApi } from "./setup";
@@ -311,6 +312,170 @@ describe("Turn into — non-prose sources", () => {
             "Move Up", "Move Down",
             "Fold All", "Unfold All", "Delete",
         ]);
+    });
+});
+
+/**
+ * The two other spellings of a callout — a `:::name` directive and a Notion
+ * `<aside>` — are conversion SOURCES (MAR-115). They had no Turn-into section
+ * at all, which read as a decision and was an omission: they are `block+`
+ * wrappers like a quote, so every wrapper conversion applies to them for
+ * free. Nothing converts INTO them, so no other block's menu grows.
+ */
+describe("Turn-into from a directive or a Notion callout", () => {
+    function labels(menu: HTMLElement): string[] {
+        return Array.from(menu.querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent ?? "");
+    }
+
+    it("a directive's menu should offer the wrapper conversions and name itself", async () => {
+        const editor = await makeEditor(":::note\nHeads up\n:::");
+        view(editor);
+        const shown = labels(openMenuOn(markers()[0]!));
+        expect(shown).toContain("Directive"); // the filled current row
+        expect(shown).toContain("Blockquote");
+        expect(shown).toContain("Callout");
+        expect(shown).toContain("Bullet List");
+        expect(shown).toContain("Code Block");
+    });
+
+    it("no other block's menu should offer Directive or Notion Callout", async () => {
+        const editor = await makeEditor("plain prose");
+        view(editor);
+        const shown = labels(openMenuOn(markers()[0]!));
+        expect(shown).not.toContain("Directive");
+        expect(shown).not.toContain("Notion Callout");
+    });
+
+    it("a directive should become a blockquote, keeping its body", async () => {
+        const editor = await makeEditor(":::note\nHeads up\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Blockquote");
+        expect(markdown(editor).trim()).toBe("> Heads up");
+    });
+
+    it("a directive's title should survive the trip to a callout", async () => {
+        const editor = await makeEditor(":::note Read this\nHeads up\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        // The title lands as prose rather than in the marker: a marker line
+        // carries a type, a case and a fold flag a directive has no way to
+        // supply, so the body is the answer that cannot be subtly wrong.
+        expect(markdown(editor).trim()).toBe("> [!NOTE]\n> Read this\n>\n> Heads up");
+    });
+
+    it("a directive's title should survive the trip to a blockquote, which has no attr for it", async () => {
+        const editor = await makeEditor(":::note Read this\nHeads up\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Blockquote");
+        expect(markdown(editor).trim()).toBe("> Read this\n>\n> Heads up");
+    });
+
+    it("a Notion callout should become a bullet list", async () => {
+        const editor = await makeEditor("<aside>\nnotion body\n</aside>");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(labels(menu)).toContain("Notion Callout");
+        pickRow(menu, "Bullet List");
+        expect(markdown(editor).trim()).toBe("- notion body");
+    });
+
+    it("a converted directive should warn that its name is dropped", async () => {
+        const editor = await makeEditor(":::warning\nbody\n:::");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Blockquote");
+        expect(row?.querySelector(".block-menu-item-hint")?.textContent)
+            .toBe("directive name dropped");
+    });
+});
+
+/**
+ * A degrading conversion says what it costs, in the row's hint slot (MAR-115).
+ * Advisory only: the pick still applies on one click, and undo is the safety
+ * mechanism (docs/DESIGN_PRINCIPLES, "annotation is advisory and quiet").
+ */
+describe("Turn-into rows announce what a pick drops", () => {
+    /** The hint text on a Turn-into row, and whether it reads as prose. */
+    function hintOn(menu: HTMLElement, label: string): { text: string; note: boolean } | null {
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === label);
+        const hint = row?.querySelector<HTMLElement>(".block-menu-item-hint");
+        if (!hint) { return null; }
+        return {
+            text: hint.textContent ?? "",
+            note: hint.classList.contains("block-menu-item-hint--note"),
+        };
+    }
+
+    it("a task list should warn that Bullet List drops its checkmarks", async () => {
+        const editor = await makeEditor("- [ ] one\n- [x] two");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Bullet List")).toEqual({ text: "checkmarks dropped", note: true });
+    });
+
+    it("a callout should warn that Blockquote drops its marker", async () => {
+        const editor = await makeEditor("> [!NOTE]\n> body");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Blockquote")).toEqual({ text: "callout marker dropped", note: true });
+    });
+
+    it("a fence target should warn that formatting arrives as text", async () => {
+        const editor = await makeEditor("some **bold** prose");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Code Block")).toEqual({ text: "formatting becomes text", note: true });
+    });
+
+    it("a conserving pick should keep the markdown hint instead", async () => {
+        const editor = await makeEditor("plain prose");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        // Paragraph to Heading 1 conserves, so the slot still teaches "#",
+        // in the monospace register that means "syntax you could type".
+        expect(hintOn(menu, "Heading 1")).toEqual({ text: "#", note: false });
+    });
+
+    it("the current-type row should never warn about itself", async () => {
+        const editor = await makeEditor("- [ ] one");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(hintOn(menu, "Task List")).toEqual({ text: "[ ]", note: false });
+    });
+
+    it("every key the registry can drop should have words for it", async () => {
+        // The registry declares WHAT drops; the menu owns the words. A key
+        // with no entry would silently show no warning at all, so the sweep
+        // enumerates every legal pair on a fixture holding every source kind
+        // and asserts both the wording coverage and its own size.
+        const editor = await makeEditor([
+            "plain text", "", "## Title", "", "- bullet", "", "1. ordered", "",
+            "- [ ] task", "", "> quote", "", "> [!NOTE]", "> callout body", "",
+        ].join("\n"));
+        const v = view(editor);
+        const dropped = new Set<string>();
+        let pairs = 0;
+        v.state.doc.forEach((_node, offset) => {
+            const source = conversionKindAt(v, offset);
+            if (source === null) { return; }
+            for (const target of ALL_KINDS) {
+                const effect = contentEffectOf(source, target);
+                if (effect === null || typeof effect === "string") { continue; }
+                pairs++;
+                for (const key of effect.drops ?? []) { dropped.add(key); }
+            }
+        });
+        expect(pairs).toBeGreaterThanOrEqual(20);
+        expect([...dropped].sort()).toEqual(["callout:marker", "task:state"]);
+        const unworded = [...dropped].filter((key) => LOSS_NOTES[key] === undefined);
+        expect(
+            unworded,
+            `dropped fingerprint key(s) with no wording in LOSS_NOTES ` +
+                `(webview/components/blockMenu/menu.ts): ${unworded.join(", ")}`,
+        ).toEqual([]);
     });
 });
 

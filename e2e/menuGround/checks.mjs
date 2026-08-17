@@ -157,4 +157,61 @@ export async function run({ page, check, baseUrl }) {
     } else {
         check("the block menu's gutter marker is reachable", false, "no marker found to open the menu");
     }
+
+    // ── 6. The degrading-conversion note shares the hint slot with literal
+    // markdown, so the two registers have to be distinguishable AND the prose
+    // one has to fit. Only a browser can answer either: jsdom resolves no
+    // font and lays out no row, and a note wide enough to squash the label it
+    // annotates is a layout failure a class-name assertion cannot see. ──
+    await page.waitForTimeout(150);
+    await page.hover(".milkdown .ProseMirror li");
+    await page.waitForTimeout(150);
+    // Markers are gutter siblings of the whole document, so "the first one in
+    // the DOM" is the heading's. Take the one beside the list item instead.
+    const taskMarkerIndex = await page.evaluate(() => {
+        const item = document.querySelector(".milkdown .ProseMirror li");
+        if (!item) { return -1; }
+        const mid = item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2;
+        const markers = [...document.querySelectorAll(".heading-fold-marker--block, .block-gutter-marker")];
+        let best = -1;
+        let bestGap = Infinity;
+        markers.forEach((el, i) => {
+            const box = el.getBoundingClientRect();
+            const gap = Math.abs(box.top + box.height / 2 - mid);
+            if (gap < bestGap) { bestGap = gap; best = i; }
+        });
+        return best;
+    });
+    const taskMarker = taskMarkerIndex < 0
+        ? null
+        : (await page.$$(".heading-fold-marker--block, .block-gutter-marker"))[taskMarkerIndex];
+    if (taskMarker) {
+        await taskMarker.click();
+        await page.waitForSelector(".block-menu", { state: "visible", timeout: 5000 });
+        const note = await page.$eval(".block-menu-item-hint--note", (el) => {
+            const s = getComputedStyle(el);
+            const row = el.closest(".block-menu-item");
+            const label = row.querySelector(".block-menu-item-label");
+            return {
+                text: el.textContent,
+                font: s.fontFamily,
+                style: s.fontStyle,
+                overflow: el.getBoundingClientRect().right - row.getBoundingClientRect().right,
+                labelWidth: label.getBoundingClientRect().width,
+                labelScroll: label.scrollWidth,
+            };
+        });
+        check("a degrading pick names what it drops", note.text === "checkmarks dropped", note.text);
+        check("the note is not wearing the monospace that means markdown syntax",
+            !/mono/i.test(note.font), note.font);
+        check("the note reads as an aside", note.style === "italic", note.style);
+        check("the note fits inside its row", note.overflow <= 1,
+            `${note.overflow.toFixed(1)}px past the row's right edge`);
+        check("the note does not squash the label it annotates",
+            note.labelScroll <= Math.ceil(note.labelWidth) + 1,
+            `${note.labelScroll} > ${note.labelWidth}`);
+        await page.keyboard.press("Escape");
+    } else {
+        check("the task list's gutter marker is reachable", false, "no marker found to open the menu");
+    }
 }
