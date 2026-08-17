@@ -7,9 +7,10 @@
  * The ramp is exercised through `scrollVelocityFor` rather than the drag
  * session, which needs real layout (e2e/blockDrag, e2e/imageDrop). The
  * measurer's PAYOFF is a frame-time number that only a browser can produce;
- * what is pinned here is the invariant that produces it, so a revert to
- * re-planning every frame fails a test instead of quietly costing 12× the
- * frame time on a long document.
+ * what is pinned here are the invariants that produce it — the plan reused
+ * across a state-identical measure, the rects reused across a scroll — so a
+ * revert to re-planning or re-reading every frame fails a test instead of
+ * quietly scaling the frame time with the document.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorState, EditorView } from "../pm";
@@ -18,6 +19,7 @@ import {
     edgeScrollVelocity,
     scrollVelocityFor,
 } from "../components/blockMenu";
+import { planBoundaries, readBoundaries } from "../components/blockMenu/drag";
 
 const VIEWPORT = 900;
 const TOPBAR = 40;
@@ -98,19 +100,35 @@ describe("createBoundaryMeasurer", () => {
     /**
      * A view stub over a two-paragraph document. `nodeDOM` is the expensive
      * per-position lookup the plan exists to avoid repeating, so counting its
-     * calls is the direct test of whether a plan was reused.
+     * calls is the direct test of whether a plan was reused; the blocks' rect
+     * reads are counted the same way for the rect tier. The editor root's box
+     * is the rect tier's sentinel — `scrollBy` shifts it, `reflow` resizes it.
      */
-    function stubView(): { view: EditorView; nodeDOM: ReturnType<typeof vi.fn>; retire: () => void } {
+    function stubView(): {
+        view: EditorView;
+        nodeDOM: ReturnType<typeof vi.fn>;
+        blockRects: ReturnType<typeof vi.fn>;
+        retire: () => void;
+        scrollBy: (dy: number) => void;
+        reflow: (blockHeight: number) => void;
+    } {
         const doc = document.createElement("div");
         document.body.appendChild(doc);
+        let scrollTop = 0;
+        let blockHeight = 40;
+        const blockRects = vi.fn((i: number) => ({
+            top: i * 100 - scrollTop, bottom: i * 100 + blockHeight - scrollTop,
+            left: 0, width: 500, height: blockHeight,
+        }) as DOMRect);
         const blocks = [0, 1].map((i) => {
             const el = document.createElement("p");
             el.textContent = `block ${i}`;
-            el.getBoundingClientRect = () =>
-                ({ top: i * 100, bottom: i * 100 + 40, left: 0, width: 500, height: 40 }) as DOMRect;
+            el.getBoundingClientRect = () => blockRects(i);
             doc.appendChild(el);
             return el;
         });
+        doc.getBoundingClientRect = () =>
+            ({ top: -scrollTop, bottom: 100 + blockHeight - scrollTop, left: 0, width: 500, height: 100 + blockHeight }) as DOMRect;
         const nodeDOM = vi.fn((pos: number) => blocks[pos === 0 ? 0 : 1] ?? null);
         const state = {
             doc: {
@@ -122,24 +140,59 @@ describe("createBoundaryMeasurer", () => {
                 nodeAt: () => null,
             },
         } as unknown as EditorState;
-        const view = { state, nodeDOM } as unknown as EditorView;
-        return { view, nodeDOM, retire: () => blocks[0]?.remove() };
+        const view = { state, nodeDOM, dom: doc } as unknown as EditorView;
+        return {
+            view, nodeDOM, blockRects,
+            retire: () => blocks[0]?.remove(),
+            scrollBy: (dy) => { scrollTop += dy; },
+            reflow: (height) => { blockHeight = height; },
+        };
     }
 
     afterEach(() => {
         document.body.innerHTML = "";
     });
 
-    it("a second measure on the same state should re-read rects without re-planning", () => {
-        const { view, nodeDOM } = stubView();
+    it("a second measure on the same state should reuse the plan and the rects", () => {
+        const { view, nodeDOM, blockRects } = stubView();
         const measurer = createBoundaryMeasurer();
         const first = measurer.measure(view);
         const plannedCalls = nodeDOM.mock.calls.length;
+        const rectCalls = blockRects.mock.calls.length;
         expect(plannedCalls).toBeGreaterThan(0);
+        expect(rectCalls).toBeGreaterThan(0);
 
         const second = measurer.measure(view);
         expect(nodeDOM.mock.calls.length).toBe(plannedCalls); // no re-plan
+        expect(blockRects.mock.calls.length).toBe(rectCalls); // no re-read
         expect(second).toEqual(first);
+    });
+
+    it("a scroll should shift the cached boundaries by the root's displacement without re-reading rects", () => {
+        const { view, blockRects, scrollBy } = stubView();
+        const measurer = createBoundaryMeasurer();
+        const first = measurer.measure(view);
+        const rectCalls = blockRects.mock.calls.length;
+
+        scrollBy(30);
+        const scrolled = measurer.measure(view);
+        expect(blockRects.mock.calls.length).toBe(rectCalls); // one root rect, no per-block reads
+        expect(scrolled.map((b) => b.y)).toEqual(first.map((b) => b.y - 30));
+        expect(scrolled.map((b) => b.pos)).toEqual(first.map((b) => b.pos));
+        // And the shifted answer matches what a fresh read would say.
+        expect(scrolled.map((b) => b.y)).toEqual(readBoundaries(planBoundaries(view)).map((b) => b.y));
+    });
+
+    it("content that reflows (the root's box changes) should re-read rects", () => {
+        const { view, blockRects, reflow } = stubView();
+        const measurer = createBoundaryMeasurer();
+        measurer.measure(view);
+        const rectCalls = blockRects.mock.calls.length;
+
+        reflow(80); // every block taller: the root grows, block bottoms move
+        const after = measurer.measure(view);
+        expect(blockRects.mock.calls.length).toBeGreaterThan(rectCalls);
+        expect(after.map((b) => b.y)).toEqual(readBoundaries(planBoundaries(view)).map((b) => b.y));
     });
 
     it("a new state should re-plan", () => {
