@@ -85,6 +85,7 @@ import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
 import { notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
+import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
 
 export type GetEditor = () => Editor | null;
@@ -228,24 +229,36 @@ function clearFormatting(getEditor: GetEditor): void {
 }
 
 /**
- * Promote the caret's line out of every list wrapping it, splitting those
- * lists around it. A `list_item`'s content is `paragraph block*`, so its
- * required first child must be a paragraph: any command that RETYPES that
- * line (a heading, a code fence) silently no-ops on a list line without this.
+ * Promote the caret's line out of the lists wrapping it, splitting those
+ * lists around it, until the retype to `typeName` can happen where the line
+ * stands. A `list_item`'s content is `paragraph block*`, so its required
+ * first child must be a paragraph: any command that RETYPES that line (a
+ * heading, a code fence) silently no-ops on a list line without this.
  * Mirrors Notion/Obsidian, where picking a block type on a list line turns
  * that line into the block and drops it from the list.
+ *
+ * The lift is CONDITIONAL on the schema refusing the retype in place for any
+ * block the selection covers (`canRetypeSelectionInPlace`, the same walk the
+ * conversion surfaces use to decide whether to offer the row). An item's second paragraph, or a paragraph
+ * quoted inside the item, can become a fence right there; lifting those too
+ * would pull the whole item out of the list, and promote its following
+ * siblings, for a change the schema was happy to make in place.
  *
  * Not used by the list rows themselves (they convert between flavors) nor by
  * Paragraph, whose target a list item's first child already is.
  */
-function liftOutOfLists(view: EditorView): void {
+function liftOutOfLists(view: EditorView, typeName: string): void {
     const liType = view.state.schema.nodes["list_item"];
     if (!liType) { return; }
     // liftListItem climbs one list level per call, so nested lists need
     // repeats. Bound the loop by the caret's initial depth (+slack) so it
     // can never spin — and stop early if a lift makes no progress.
     let guard = view.state.selection.$from.depth + 1;
-    while (guard-- > 0 && isInNode(view, "list_item")) {
+    while (
+        guard-- > 0
+        && isInNode(view, "list_item")
+        && !canRetypeSelectionInPlace(view.state.selection, typeName)
+    ) {
         if (!liftListItem(liType)(view.state, view.dispatch)) { break; }
     }
 }
@@ -256,7 +269,7 @@ function setHeading(getEditor: GetEditor, level: number): void {
     if (!editor) { return; }
     editor.action((ctx) => {
         const view = getView(ctx);
-        liftOutOfLists(view);
+        liftOutOfLists(view, "heading");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ctx.get(commandsCtx).call(wrapInHeadingCommand.key as any, level);
         view.focus();
@@ -701,7 +714,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
         const editor = getEditor();
         if (!editor) { return; }
         editor.action((ctx) => {
-            liftOutOfLists(getView(ctx));
+            liftOutOfLists(getView(ctx), "code_block");
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ctx.get(commandsCtx).call(
                 createCodeBlockCommand.key as any,

@@ -35,20 +35,41 @@ export type PlantUmlPane = DiagramPane;
 const FALLBACK_SIZE = { width: 800, height: 600 };
 
 /**
- * The diagram's natural size, from the root `<svg>`'s `width`/`height`, falling
- * back to its `viewBox` and finally to a fixed size. Attribute-first because
- * PlantUML always emits both and they are the authoritative pixel size;
- * `viewBox` is the safety net for a diagram type that omits them.
+ * CSS absolute-length units to CSS pixels. Graphviz stamps its root `<svg>` in
+ * points (`width="62pt"`), and a point is 96/72 of a pixel, so reading the
+ * number alone paints every DOT graph at three quarters of its size and caps
+ * "fit to view" at that. Unitless and `px` are pixels already.
+ */
+const UNIT_TO_PX: Record<string, number> = {
+    px: 1,
+    pt: 96 / 72,
+    pc: 16,
+    in: 96,
+    cm: 96 / 2.54,
+    mm: 96 / 25.4,
+};
+
+/**
+ * The diagram's natural size in CSS pixels, from the root `<svg>`'s
+ * `width`/`height`, falling back to its `viewBox` and finally to a fixed size.
+ * Attribute-first because PlantUML and Graphviz always emit both and they are
+ * the authoritative size; `viewBox` is the safety net for a diagram type that
+ * omits them.
  */
 export function readSvgNaturalSize(svg: string): { width: number; height: number } {
     const open = svg.match(/<svg\b[^>]*>/i)?.[0];
     if (!open) return FALLBACK_SIZE;
 
     const attr = (name: string): number => {
-        const raw = open.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, "i"))?.[1];
-        const n = raw ? parseFloat(raw) : NaN;
-        // A percentage is relative to the container, not a natural size.
-        return Number.isFinite(n) && n > 0 && !raw?.includes("%") ? n : NaN;
+        const raw = open.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, "i"))?.[1]?.trim();
+        if (!raw) return NaN;
+        const m = raw.match(/^([0-9.]+)\s*([a-z]*)$/i);
+        // A percentage (or any relative unit) is about the container, not a
+        // natural size, so it falls through to the viewBox.
+        if (!m) return NaN;
+        const scale = m[2] ? UNIT_TO_PX[m[2].toLowerCase()] : 1;
+        const n = parseFloat(m[1]) * (scale ?? NaN);
+        return Number.isFinite(n) && n > 0 ? n : NaN;
     };
 
     const width = attr("width");

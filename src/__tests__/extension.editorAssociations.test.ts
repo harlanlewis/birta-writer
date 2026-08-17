@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
 
 import { syncEditorAssociation } from "../extension";
+import { DOCUMENT_EXTENSIONS } from "../../shared/documentExtensions";
 
 function mockWorkbenchConfig(associations: Record<string, string> | undefined) {
     const update = vi.fn();
@@ -67,23 +68,26 @@ describe("syncEditorAssociation", () => {
         );
     });
 
-    it("markdown mode should write 'default' for both markdown globs", () => {
+    it("markdown mode should write 'default' for every document glob, derived from the shared list", () => {
         const { update } = mockWorkbenchConfig(undefined);
 
         syncEditorAssociation("markdown");
 
+        // One glob per DOCUMENT_EXTENSIONS entry: a format the editor opens
+        // but never associated would swap only when opened by hand.
+        const expected = Object.fromEntries(DOCUMENT_EXTENSIONS.map((ext) => [`*.${ext}`, "default"]));
+        expect(Object.keys(expected).length).toBeGreaterThanOrEqual(3);
         expect(update).toHaveBeenCalledWith(
             "editorAssociations",
-            { "*.md": "default", "*.markdown": "default" },
+            expected,
             vscode.ConfigurationTarget.Global,
         );
     });
 
     it("markdown mode with the entries already in place should not write at all", () => {
-        const { update } = mockWorkbenchConfig({
-            "*.md": "default",
-            "*.markdown": "default",
-        });
+        const { update } = mockWorkbenchConfig(
+            Object.fromEntries(DOCUMENT_EXTENSIONS.map((ext) => [`*.${ext}`, "default"])),
+        );
 
         syncEditorAssociation("markdown");
 

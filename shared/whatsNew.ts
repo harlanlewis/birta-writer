@@ -12,7 +12,10 @@
  * `docs/RELEASING.md` sets the taxonomy: "Security leads because the reader is
  * scanning it to decide whether to act, which is the same reason Breaking
  * changes lead." That is exactly the test a dot has to pass, so the bar is
- * `Security` or a breaking change (`Removed` / `Deprecated`) and nothing else.
+ * a `Security`, `Removed` or `Deprecated` SECTION and nothing else. A breaking
+ * change flagged inline inside `Changed`, which is how AGENTS.md says to write
+ * one, is invisible to this parser; the bar is the section headings, and the
+ * user-facing description says so rather than promising "breaking changes".
  *
  * Two cheaper signals were measured against the shipped CHANGELOG and rejected,
  * because both fire on most releases and would reproduce the fatigue failure:

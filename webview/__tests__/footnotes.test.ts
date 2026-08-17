@@ -406,3 +406,56 @@ describe("footnote NodeViews (real editor stack)", () => {
         expect(md).toContain("[^1]: Original. Edited.");
     });
 });
+
+/**
+ * A raw HTML block inside a footnote definition. Milkdown's own html
+ * transformer wraps a block `html` into a paragraph only under root, quote and
+ * list item; under a definition it stayed bare, the schema could not build it,
+ * and the WHOLE definition vanished from the editor (plugins/footnotes.ts,
+ * footnoteHtmlBlockRemark). Held here as a round trip: the definition is in
+ * the document and its bytes come back.
+ */
+describe("a footnote definition holding a raw HTML block", () => {
+    const FOOTNOTE_HTML = [
+        "Text with a note[^1].",
+        "",
+        "[^1]: a",
+        "",
+        "    <div>",
+        "    hi",
+        "    </div>",
+        "",
+    ].join("\n");
+
+    it("should parse into a definition that holds the html rather than vanish", async () => {
+        const { doc, destroy } = await makeDoc(FOOTNOTE_HTML);
+        const hit = findDefinitionByLabel(doc, "1");
+        expect(hit, "the definition survives the parse").not.toBeNull();
+        let htmlNodes = 0;
+        hit!.node.descendants((n) => {
+            if (n.type.name === "html") { htmlNodes++; }
+            return true;
+        });
+        expect(htmlNodes).toBeGreaterThan(0);
+        await destroy();
+    });
+
+    it("should round-trip its bytes", async () => {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        const editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, FOOTNOTE_HTML);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .create();
+        const md = editor.action(getMarkdown());
+        expect(md).toContain("[^1]: a");
+        expect(md).toContain("<div>");
+        expect(md).toContain("</div>");
+        await editor.destroy();
+    });
+});

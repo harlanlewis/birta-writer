@@ -213,10 +213,12 @@ const htmlHeavy = (() => {
 // diagrams are valid — the invalid-diagram path is pinned by e2e/corpus and
 // mermaidRender.
 //
-// This is the one gated fixture that carries raw HTML, so `checks.mjs` asserts
-// its atoms actually MOUNT. Source bytes cannot answer that: markdown the
-// parser declines to treat as html mounts no NodeView and the gate pays for
-// coverage it does not have.
+// This is the one gated fixture that carries raw HTML, so
+// `webview/__tests__/perfFixtureConstructs.test.ts` asserts, through the real
+// parser, that both html branches (a block atom that owns its block, an inline
+// pair sharing a paragraph) parse into `html` nodes here. Source bytes cannot
+// answer that: markdown the parser declines to treat as html mounts no
+// NodeView and the gate pays for coverage it does not have.
 
 const REALISTIC_DIAGRAMS = [
     `\`\`\`mermaid

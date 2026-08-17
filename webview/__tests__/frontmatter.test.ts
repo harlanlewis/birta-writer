@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
+import { setReadOnly } from "../readOnly";
 import {
     isFlatFrontmatter,
     parseFrontmatter,
@@ -1466,5 +1467,113 @@ describe("frontmatter panel ghost row cleanup", () => {
 
         expect(panelRows()).toHaveLength(4);
         expect(panelRows()[3]!.querySelector(".fm-key")!.textContent).toBe("layout");
+    });
+});
+
+/**
+ * Read-only reaches the panel's MODEL, not only the message it sends. This
+ * panel is the one document write that never becomes a ProseMirror
+ * transaction, so the editor's filter cannot see it; refusing only the send
+ * would leave the panel showing a deletion the file never received, and the
+ * next legitimate commit after unlocking would ship it silently.
+ */
+describe("frontmatter panel under read-only", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+        setReadOnly(false);
+    });
+
+    afterEach(() => {
+        setReadOnly(false);
+    });
+
+    it("the panel's write controls should be disabled while read-only, born disabled, and re-enabled after", () => {
+        renderFrontmatterPanel(FM);
+        const controls = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".fm-delete-btn, .fm-add-btn"));
+        expect(controls().length).toBeGreaterThanOrEqual(4);
+        expect(controls().every((b) => !b.disabled)).toBe(true);
+
+        setReadOnly(true);
+        expect(controls().every((b) => b.disabled)).toBe(true);
+        // A re-render while locked keeps them disabled.
+        renderFrontmatterPanel(FM);
+        expect(controls().every((b) => b.disabled)).toBe(true);
+        // The empty state's Add metadata button too (its gate ships off, so
+        // the on-state is a premise here).
+        window.__i18n = { frontmatterAddButton: true } as unknown as typeof window.__i18n;
+        try {
+            renderFrontmatterPanel(undefined);
+            expect(document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.disabled).toBe(true);
+
+            setReadOnly(false);
+            expect(document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.disabled).toBe(false);
+        } finally {
+            window.__i18n = undefined;
+        }
+    });
+
+    it("a delete reaching the model while read-only should leave the row, post nothing, and NOT resurface after unlocking", () => {
+        renderFrontmatterPanel(FM);
+        setReadOnly(true);
+
+        // The button is disabled under the lock (above); drive the handler
+        // anyway, as a click from a control that missed the disable would, to
+        // hold the MODEL-level refusal on its own.
+        const btn = document.querySelector<HTMLButtonElement>(".fm-delete-btn")!;
+        btn.disabled = false;
+        btn.click();
+
+        expect(panelRows()).toHaveLength(3);
+        expect(panelRows()[0]!.querySelector(".fm-key")!.textContent).toBe("title");
+        expect(postedFrontmatters()).toEqual([]);
+
+        // THE DEFERRED-WRITE CHECK. Unlock and make an unrelated edit: the
+        // commit must carry the file's own three fields, not a two-field
+        // model left behind by the refused delete.
+        setReadOnly(false);
+        const draftValue = panelRows()[2]!.querySelector<HTMLElement>(".fm-val")!;
+        draftValue.textContent = "false";
+        draftValue.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([
+            '---\ntitle: "Hello"\ndate: 2026-01-01\ndraft: false\n---\n',
+        ]);
+    });
+
+    it("the raw editor should be readOnly while the mode is on and a blur commit should be refused", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        const ta = document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!;
+        expect(ta.readOnly).toBe(false);
+
+        setReadOnly(true);
+        expect(ta.readOnly).toBe(true);
+        ta.value = "author:\n  name: Mallory";
+        ta.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([]);
+        // The panel is back to what the file holds, not what was typed.
+        expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.value)
+            .toBe("author:\n  name: Jane\n  email: jane@example.com");
+
+        setReadOnly(false);
+        expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.readOnly).toBe(false);
+    });
+
+    it("a raw editor built while read-only should be born readOnly", () => {
+        setReadOnly(true);
+        renderFrontmatterPanel(FM_NESTED);
+        expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.readOnly).toBe(true);
+    });
+
+    it("the panel's undo chord should do nothing while read-only", () => {
+        renderFrontmatterPanel(FM);
+        document.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+        expect(panelRows()).toHaveLength(2);
+        vi.clearAllMocks();
+
+        setReadOnly(true);
+        dispatchChord(document.getElementById("frontmatter-panel")!);
+        expect(panelRows()).toHaveLength(2);
+        expect(postedFrontmatters()).toEqual([]);
     });
 });

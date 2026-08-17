@@ -8,7 +8,8 @@
  * helper would have passed throughout.
  */
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { walkFiles } from "./cjkScanner";
 import { join } from "node:path";
 import {
     DOCUMENT_EXTENSIONS,
@@ -19,18 +20,11 @@ import {
 
 const REPO_ROOT = join(__dirname, "..", "..");
 
-/** Every `.ts` file under the given roots, tests and fixtures excluded. */
+/** Every source file under the given roots, tests and fixtures excluded. */
 function sourceFiles(roots: string[]): string[] {
-    const out: string[] = [];
-    const walk = (dir: string): void => {
-        for (const entry of readdirSync(dir)) {
-            if (entry === "node_modules" || entry === "dist" || entry === "__tests__") { continue; }
-            const full = join(dir, entry);
-            if (statSync(full).isDirectory()) { walk(full); } else if (entry.endsWith(".ts")) { out.push(full); }
-        }
-    };
-    for (const root of roots) { walk(join(REPO_ROOT, root)); }
-    return out;
+    return roots.flatMap((root) =>
+        walkFiles(join(REPO_ROOT, root), [".ts", ".mjs"], ["node_modules", "dist", "__tests__", "fixtures"]),
+    );
 }
 
 describe("document extensions", () => {
@@ -82,17 +76,34 @@ describe("document extensions", () => {
         // .mdx file opened from the explorer stayed in the raw text editor and
         // `[[a-page]]` offered .md targets only. A new copy here is that bug
         // being written again.
-        const files = sourceFiles(["src", "webview", "shared", "packages"]);
+        const files = sourceFiles(["src", "webview", "shared", "packages", "e2e", "scripts"]);
         expect(files.length, "source files scanned").toBeGreaterThan(100);
 
-        // Matches a hand-written alternation of two or more of our extensions,
-        // e.g. `(md|markdown)` or `(md|markdown|mdx)`, however it is anchored.
-        const handWritten = /\((?:md|markdown|mdx)(?:\|(?:md|markdown|mdx))+\)/;
+        // Three spellings of the same copy. A regex alternation
+        // `(md|markdown|mdx)`; a quoted list `["*.md", "*.markdown"]` or
+        // `[".md", ".mdx"]` (two adjacent quoted entries suffice); and a brace
+        // glob `{md,markdown}`. Each is a list a caller re-derived for itself.
+        const EXT = "(?:md|markdown|mdx)";
+        const Q = "[\"'\`]";
+        const forms: Array<{ name: string; re: RegExp }> = [
+            { name: "regex alternation", re: new RegExp(`\\(${EXT}(?:\\|${EXT})+\\)`) },
+            { name: "quoted list", re: new RegExp(`${Q}\\*?\\.${EXT}${Q}\\s*,\\s*${Q}\\*?\\.${EXT}${Q}`) },
+            { name: "brace glob", re: new RegExp(`\\{${EXT}(?:,${EXT})+\\}`) },
+        ];
+        // The forms have to be able to fire, or a green run proves nothing.
+        expect(forms[0]!.re.test("/\\.(md|markdown)$/")).toBe(true);
+        expect(forms[1]!.re.test('["*.md", "*.markdown"]')).toBe(true);
+        expect(forms[1]!.re.test("['.md', '.mdx']")).toBe(true);
+        expect(forms[2]!.re.test("**/*.{md,markdown,mdx}")).toBe(true);
+
         const offenders: string[] = [];
         for (const file of files) {
             if (file.endsWith("documentExtensions.ts")) { continue; }
-            if (handWritten.test(readFileSync(file, "utf8"))) {
-                offenders.push(file.slice(REPO_ROOT.length + 1));
+            const text = readFileSync(file, "utf8");
+            for (const { name, re } of forms) {
+                if (re.test(text)) {
+                    offenders.push(`${file.slice(REPO_ROOT.length + 1)} (${name})`);
+                }
             }
         }
         expect(offenders, "import from shared/documentExtensions instead").toEqual([]);

@@ -14,7 +14,7 @@
 import { InputRule } from "@/pm";
 import { TextSelection } from "@/pm";
 import { Plugin } from "@/pm";
-import { $command, $inputRule, $prose } from "@milkdown/utils";
+import { $command, $inputRule, $prose, $remark } from "@milkdown/utils";
 import {
     computeDisplayIndex,
     findDefinitionByLabel,
@@ -123,4 +123,34 @@ export const footnoteNumberingPlugin = $prose(
                 };
             },
         }),
+);
+
+/**
+ * A raw HTML block inside a footnote definition would otherwise VANISH from the
+ * editor, definition and all. Milkdown's `remarkHtmlTransformer` wraps a block
+ * `html` node into `paragraph > html` only under `root`, `blockquote` and
+ * `listItem`; under `footnoteDefinition` it stays a bare `html`, and because
+ * the ProseMirror `html` node is inline while `footnote_definition` is
+ * `block+`, node creation throws and the whole definition is dropped
+ * (`Cannot create node for footnote_definition`). The bytes survive on disk
+ * only because round-trip protection restores what the serializer could not
+ * reproduce; the user sees an empty spot where their note was. Same wrap, one parent further, running
+ * after the stock transformer because this preset registers after commonmark.
+ */
+export const footnoteHtmlBlockRemark = $remark(
+    "footnoteDefinitionHtmlBlocks",
+    () => () => (tree: unknown) => {
+        type MdastNode = { type: string; value?: string; children?: MdastNode[] };
+        const walk = (node: MdastNode): void => {
+            if (!node.children) return;
+            if (node.type === "footnoteDefinition") {
+                node.children = node.children.map((child) => {
+                    if (child.type !== "html") return child;
+                    return { type: "paragraph", children: [child] };
+                });
+            }
+            node.children.forEach(walk);
+        };
+        walk(tree as MdastNode);
+    },
 );
