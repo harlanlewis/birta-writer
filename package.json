@@ -2506,7 +2506,8 @@
         "perf:typing": "node e2e/perf-typing.mjs",
         "perf:typing:ab": "node e2e/perf-ab.mjs --typing",
         "notices": "node esbuild.mjs --production --metafile && node scripts/generate-third-party-notices.mjs",
-        "notices:check": "node esbuild.mjs --production --metafile && node scripts/generate-third-party-notices.mjs --check"
+        "notices:check": "node esbuild.mjs --production --metafile && node scripts/generate-third-party-notices.mjs --check",
+        "notices:audit": "node esbuild.mjs --production --metafile && node scripts/audit-embedded-components.mjs"
     },
     "devDependencies": {
         "@types/jsdom": "^21.1.7",
