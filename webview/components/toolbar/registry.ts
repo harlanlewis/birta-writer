@@ -6,6 +6,7 @@
  * runtime dependencies); this module is DOM-free and unit-tested.
  */
 import type { ToolbarConfig, ToolbarPlacement, ToolbarZone } from "../../../shared/messages";
+import type { EditorCommandId } from "../../../shared/editorCommands";
 
 /**
  * Every toolbar item id, in canonical order. Items render in this order within
@@ -80,10 +81,12 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     footnote: "hidden",
     // Clear Formatting ships hidden: reachable via the command palette and slash menu.
     clearFormatting: "hidden",
-    // Edit / Read-only, beside Edit Raw Markdown: the two controls answer the
-    // same question ("how am I working with this file right now") and belong
-    // next to each other.
-    readOnly: "right",
+    // Edit / Read-only ships hidden: the Toggle Read-only command and
+    // `birta.readOnly` cover it, and a lock on the bar of every document is a
+    // control most readers never reach for. Shown, it sits beside Edit Raw
+    // Markdown, because the two answer the same question ("how am I working
+    // with this file right now").
+    readOnly: "hidden",
     viewSource: "right",
     find: "right",
     styleCheck: "right",
@@ -128,6 +131,42 @@ export const ITEM_MUTATES: Record<ToolbarItemId, boolean> = {
     styleCheck: false,
     fontPreset: false,
     settings: false,
+};
+
+/**
+ * The editor commands each toolbar item runs, in the shared command
+ * vocabulary (`shared/editorCommands.ts`). This is what keeps `ITEM_MUTATES`
+ * honest: it and `COMMAND_EFFECTS` (webview/readOnly.ts) are two tables that
+ * classify the same gestures, and nothing about their shape stops one from
+ * saying "mutates" where the other says "reads". `toolbarRegistry.test.ts`
+ * asserts that an item mutates exactly when one of its commands does. Items
+ * that reach the document without a command (the image panel's own insert,
+ * the link prompt) name the command the palette runs for the same gesture.
+ * A renamed command fails to compile here; a reclassified one fails the test.
+ */
+export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = {
+    format: ["setParagraph", "setHeading1", "setHeading2", "setHeading3", "setHeading4", "setHeading5", "setHeading6"],
+    bold: ["toggleBold"],
+    italic: ["toggleItalic"],
+    strikethrough: ["toggleStrikethrough"],
+    highlight: ["toggleHighlight"],
+    inlineCode: ["toggleInlineCode"],
+    link: ["insertLink"],
+    listMenu: ["toggleBulletList", "toggleOrderedList", "toggleTaskList"],
+    quote: ["toggleBlockquote", "toggleCallout"],
+    codeBlock: ["insertCodeBlock"],
+    horizontalRule: ["insertHorizontalRule"],
+    table: ["insertTable"],
+    image: ["insertImage"],
+    math: ["insertMath"],
+    footnote: ["insertFootnote"],
+    clearFormatting: ["clearFormatting"],
+    readOnly: ["toggleReadOnly"],
+    viewSource: ["editRawMarkdown"],
+    find: ["openFind"],
+    styleCheck: ["toggleSpellCheck", "toggleGrammarCheck", "toggleStyleCheck", "toggleNoteHighlights"],
+    fontPreset: ["fontEditor", "fontSans", "fontSerif", "fontMono", "increaseFontSize", "decreaseFontSize"],
+    settings: ["openExtensionSettings", "customizeToolbar", "hideToolbar", "openKeyboardShortcuts", "openWhatsNew"],
 };
 
 // "center" is intentionally NOT valid: the zone was removed, and persisted

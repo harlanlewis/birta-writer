@@ -131,6 +131,17 @@ export interface AnchoredPosition {
      * to the opposite edge (the bug recorded at blockMenu/menu.ts:1176-1181).
      */
     maxHeight: number;
+    /**
+     * Whether any of the anchor is inside the usable band. False when it has
+     * scrolled entirely under the fixed chrome or below the viewport. The
+     * clamps above are for an anchor that is PARTLY out (they keep the popup
+     * reachable while its target is still on screen); for one that is wholly
+     * out they would pin the popup to a viewport edge with nothing under it,
+     * so a caller that follows scroll hides on `false` and repositions on
+     * `true`. Measured against the same band as the space, so an anchor under
+     * the topbar counts as out.
+     */
+    anchorInView: boolean;
 }
 
 /**
@@ -174,6 +185,7 @@ export function computeAnchoredPosition(
             MIN_POPUP_HEIGHT,
             above ? spaceAbove - gap : viewport.height - margin - belowTop,
         ),
+        anchorInView: anchor.bottom > safeTop && anchor.top < viewport.height,
     };
 }
 

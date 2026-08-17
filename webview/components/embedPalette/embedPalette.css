@@ -18,6 +18,13 @@
     display: flex;
 }
 
+/* The card it belongs to has scrolled wholly out of the viewport; the palette
+   keeps its box (and any focus inside it) and simply does not paint until the
+   card is back. Set by the positioning pass, which runs on every scroll. */
+.embed-palette--offscreen {
+    visibility: hidden;
+}
+
 .embed-palette__url {
     width: 280px;
     max-width: 50vw;

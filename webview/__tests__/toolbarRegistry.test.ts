@@ -2,9 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
     computeZones,
     DEFAULT_PLACEMENTS,
+    ITEM_COMMANDS,
+    ITEM_MUTATES,
     TOOLBAR_ITEM_IDS,
 } from "../components/toolbar/registry";
 import type { ToolbarConfig, ToolbarPlacements } from "../../shared/messages";
+import { commandMutates } from "../readOnly";
 
 /** Build a config from a placements map (order defaults to empty). */
 function cfg(placements: ToolbarPlacements, order: string[] = []): ToolbarConfig {
@@ -30,9 +33,11 @@ describe("computeZones", () => {
             "table",
             "image",
         ]);
-        // readOnly leads the right zone, beside viewSource: the two answer the
-        // same question about how you are working with this file (MAR-53).
-        expect(zones.right).toEqual(["readOnly", "viewSource", "find", "styleCheck", "fontPreset", "settings"]);
+        expect(zones.right).toEqual(["viewSource", "find", "styleCheck", "fontPreset", "settings"]);
+        // readOnly ships hidden (MAR-53): the Toggle Read-only command and
+        // `birta.readOnly` cover it. Shown, it sits beside viewSource, the
+        // two answering the same question about how you are working with
+        // this file.
         expect(zones.hidden).toEqual([
             "strikethrough",
             "highlight",
@@ -41,6 +46,7 @@ describe("computeZones", () => {
             "math",
             "footnote",
             "clearFormatting",
+            "readOnly",
         ]);
     });
 
@@ -208,5 +214,22 @@ describe("computeZones", () => {
         // Assert
         expect(zones.left).toEqual([]);
         expect(zones.right).toEqual([]);
+    });
+});
+
+describe("ITEM_MUTATES against the command classification (MAR-53)", () => {
+    it("every item should mutate exactly when one of the commands it runs mutates", () => {
+        // Two tables classify the same gestures: the toolbar's per-item flag,
+        // which dims the control, and the command gate, which refuses the
+        // action. Nothing structural ties them, so this is the tie. Asserted
+        // over every id, and the count is asserted so an empty sweep cannot
+        // pass.
+        expect(TOOLBAR_ITEM_IDS.length).toBeGreaterThan(0);
+        const disagreements = TOOLBAR_ITEM_IDS.filter((id) => {
+            const commands = ITEM_COMMANDS[id];
+            expect(commands.length, `${id} runs no command`).toBeGreaterThan(0);
+            return ITEM_MUTATES[id] !== commands.some(commandMutates);
+        });
+        expect(disagreements).toEqual([]);
     });
 });

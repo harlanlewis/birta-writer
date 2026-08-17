@@ -66,6 +66,7 @@ import {
     type BlockControlsColumn,
 } from "@/ui/blockControls";
 import { copyTextToClipboard } from "@/ui/clipboard";
+import { isReadOnly } from "@/readOnly";
 import { IconCheck, IconCode, IconCopy, IconEye } from "@/ui/icons";
 import { kbd, t } from "@/i18n";
 
@@ -427,7 +428,9 @@ export function createHtmlView(
     };
 
     const open = (): void => {
-        if (panel || !view || !getPos) {
+        // One gate for every way in: the click, the control-column button,
+        // Mod-Enter, and the block menu's custom event.
+        if (panel || !view || !getPos || isReadOnly()) {
             return;
         }
         const pos = livePos();

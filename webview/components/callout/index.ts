@@ -24,7 +24,7 @@ import "./callout.css";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
-import { markEditableIsland } from "@/readOnly";
+import { isReadOnly, markEditableIsland } from "@/readOnly";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
@@ -294,7 +294,9 @@ export function createCalloutView(
         (menu.querySelector(".active") as HTMLButtonElement | null ?? menuItems()[0])?.focus();
     };
     kindButton.addEventListener("mousedown", (e) => e.preventDefault());
-    kindButton.addEventListener("click", () => openMenu());
+    // The kind is a node attr, so the picker only writes; read-only leaves
+    // the icon as the label it also is.
+    kindButton.addEventListener("click", () => { if (!isReadOnly()) { openMenu(); } });
     kindButton.addEventListener("keydown", (e) => {
         if (e.key === "ArrowDown" && !menu) {
             e.preventDefault();

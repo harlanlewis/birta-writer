@@ -10,6 +10,7 @@
  * `overflow: hidden` can't clip it; `destroy()` is therefore mandatory.
  */
 import { IconChevronDown } from "@/ui/icons";
+import { isReadOnly } from "@/readOnly";
 import { t } from "@/i18n";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
 import { attachInputUndo } from "@/utils/inputUndo";
@@ -245,6 +246,9 @@ export function createLangPicker(
     triggerBtn.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        // Read-only keeps the label (the language is information) and
+        // refuses the menu: every row is a setNodeMarkup the filter drops.
+        if (isReadOnly()) { return; }
         isOpen ? close() : open();
     });
 

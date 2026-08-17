@@ -40,8 +40,9 @@ import {
 import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, notifyToggleWorkbenchZen, onMessage } from "./messaging";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { setFocusSurfaces } from "./focusMode";
+import { isReadOnly } from "./readOnly";
 import { getProofreadConfig, setProofreadConfig } from "./plugins";
 import { bankOpenHtmlPanel } from "./components/htmlView";
 import { bankOpenBlockSourcePanel } from "./components/blockSource";
@@ -753,8 +754,8 @@ setSlashMenuHost({
 setFocusSurfaces({
     toolbarVisible: () => topbarTb?.isVisible() ?? false,
     setToolbarVisible: (visible) => topbarTb?.applyToolbarVisible(visible),
-    tocOpen: () => toc.isOpen(),
-    setTocOpen: (open) => toc.applyVisible(open),
+    tocState: () => toc.focusState(),
+    setTocState: (state) => toc.setFocusState(state),
     proofreadingOn: () => {
         const view = getEditorView();
         return view ? getProofreadConfig(view).proofreadingEnabled : false;
@@ -764,7 +765,6 @@ setFocusSurfaces({
         if (!view) { return; }
         setProofreadConfig(view, { ...getProofreadConfig(view), proofreadingEnabled: on });
     },
-    toggleWorkbenchZen: notifyToggleWorkbenchZen,
 });
 
 if (topbar) {
@@ -933,6 +933,11 @@ eventManager.onDocument(
         // handler runs in the bubble phase and can't stop us here (this
         // listener is capture phase), so the exclusion lives in the hit-test.
         if (!isTaskCheckboxClick(target, taskItem, (e as MouseEvent).clientX)) {
+            return;
+        }
+        // The flip is a doc change the transaction filter drops; refusing it
+        // here keeps the box from reading as a control that ignores clicks.
+        if (isReadOnly()) {
             return;
         }
         const view = getEditorView();
