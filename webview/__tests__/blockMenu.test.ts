@@ -316,6 +316,82 @@ describe("Turn into — non-prose sources", () => {
 });
 
 /**
+ * The two other spellings of a callout — a `:::name` directive and a Notion
+ * `<aside>` — are conversion SOURCES (MAR-115). They had no Turn-into section
+ * at all, which read as a decision and was an omission: they are `block+`
+ * wrappers like a quote, so every wrapper conversion applies to them for
+ * free. Nothing converts INTO them, so no other block's menu grows.
+ */
+describe("Turn-into from a directive or a Notion callout", () => {
+    function labels(menu: HTMLElement): string[] {
+        return Array.from(menu.querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent ?? "");
+    }
+
+    it("a directive's menu should offer the wrapper conversions and name itself", async () => {
+        const editor = await makeEditor(":::note\nHeads up\n:::");
+        view(editor);
+        const shown = labels(openMenuOn(markers()[0]!));
+        expect(shown).toContain("Directive"); // the filled current row
+        expect(shown).toContain("Blockquote");
+        expect(shown).toContain("Callout");
+        expect(shown).toContain("Bullet List");
+        expect(shown).toContain("Code Block");
+    });
+
+    it("no other block's menu should offer Directive or Notion Callout", async () => {
+        const editor = await makeEditor("plain prose");
+        view(editor);
+        const shown = labels(openMenuOn(markers()[0]!));
+        expect(shown).not.toContain("Directive");
+        expect(shown).not.toContain("Notion Callout");
+    });
+
+    it("a directive should become a blockquote, keeping its body", async () => {
+        const editor = await makeEditor(":::note\nHeads up\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Blockquote");
+        expect(markdown(editor).trim()).toBe("> Heads up");
+    });
+
+    it("a directive's title should survive the trip to a callout", async () => {
+        const editor = await makeEditor(":::note Read this\nHeads up\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        // The title lands as prose rather than in the marker: a marker line
+        // carries a type, a case and a fold flag a directive has no way to
+        // supply, so the body is the answer that cannot be subtly wrong.
+        expect(markdown(editor).trim()).toBe("> [!NOTE]\n> Read this\n>\n> Heads up");
+    });
+
+    it("a directive's title should survive the trip to a blockquote, which has no attr for it", async () => {
+        const editor = await makeEditor(":::note Read this\nHeads up\n:::");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Blockquote");
+        expect(markdown(editor).trim()).toBe("> Read this\n>\n> Heads up");
+    });
+
+    it("a Notion callout should become a bullet list", async () => {
+        const editor = await makeEditor("<aside>\nnotion body\n</aside>");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(labels(menu)).toContain("Notion Callout");
+        pickRow(menu, "Bullet List");
+        expect(markdown(editor).trim()).toBe("- notion body");
+    });
+
+    it("a converted directive should warn that its name is dropped", async () => {
+        const editor = await makeEditor(":::warning\nbody\n:::");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Blockquote");
+        expect(row?.querySelector(".block-menu-item-hint")?.textContent)
+            .toBe("directive name dropped");
+    });
+});
+
+/**
  * A degrading conversion says what it costs, in the row's hint slot (MAR-115).
  * Advisory only: the pick still applies on one click, and undo is the safety
  * mechanism (docs/DESIGN_PRINCIPLES, "annotation is advisory and quiet").

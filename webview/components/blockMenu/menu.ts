@@ -65,6 +65,7 @@ import { onOutsideClick } from "../../ui/outsideClick";
 import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
+    IconAlertCircle,
     IconAlignCenter,
     IconAlignLeft,
     IconAlignRight,
@@ -823,7 +824,13 @@ function copyHeadingLink(view: EditorView, pos: number): void {
 // Turn-into rows reuse the slash registry's art wholesale — label, icon,
 // SVG-or-badge slot, and the right-aligned literal-markdown hint — so the two
 // menus present every block type identically (single source, zero drift).
-const SLASH_ID_BY_KIND: Record<ConversionKind, string> = {
+//
+// A kind with no slash row names itself instead. Those are the two container
+// spellings the editor can convert AWAY from but never inserts (see
+// blockCapabilities): nothing in the slash menu creates a `:::name` directive
+// or a Notion `<aside>`, so there is no row to borrow. Each shows in exactly
+// one place, as the filled current-type row on its own block's menu.
+const SLASH_ID_BY_KIND: Record<ConversionKind, string | { label: string; icon: string }> = {
     paragraph: "paragraph",
     h1: "heading1",
     h2: "heading2",
@@ -837,6 +844,8 @@ const SLASH_ID_BY_KIND: Record<ConversionKind, string> = {
     blockquote: "blockquote",
     callout: "callout",
     codeBlock: "codeBlock",
+    directive: { label: t("Directive"), icon: IconAlertCircle },
+    notionCallout: { label: t("Notion Callout"), icon: IconAlertCircle },
 };
 
 interface TurnIntoRow {
@@ -850,7 +859,11 @@ interface TurnIntoRow {
 
 const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as ConversionKind[]).map(
     (kind) => {
-        const item = SLASH_MENU_ITEMS.find((entry) => entry.id === SLASH_ID_BY_KIND[kind]);
+        const art = SLASH_ID_BY_KIND[kind]!;
+        if (typeof art !== "string") {
+            return { kind, label: art.label, keywords: [art.label.toLowerCase()], icon: art.icon };
+        }
+        const item = SLASH_MENU_ITEMS.find((entry) => entry.id === art);
         return {
             kind,
             label: item?.label ?? kind,
@@ -873,6 +886,8 @@ const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as Conve
 export const LOSS_NOTES: Record<string, string> = {
     "task:state": t("checkmarks dropped"),
     "callout:marker": t("callout marker dropped"),
+    "directive:name": t("directive name dropped"),
+    "notion:icon": t("callout icon dropped"),
 };
 
 /**

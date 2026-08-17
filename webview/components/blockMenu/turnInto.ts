@@ -17,18 +17,23 @@
  *     a heading target, each item's leading paragraph becomes a heading —
  *     unwrapListTo.
  *   - list → quote/callout: wrap the whole list — wrapListIn.
- *   - quote ↔ callout: retype in place (same content shape; callout attrs
- *     all default) — retypeContainer.
- *   - quote/callout → P/H: unwrap the wrapper, then make the first unwrapped
+ *   - container ↔ container: retype in place (same content shape; a title
+ *     travels) — retypeContainer.
+ *   - container → P/H: unwrap the wrapper, then make the first unwrapped
  *     block the picked kind, however many layers deep it was —
  *     unwrapContainerTo.
- *   - quote/callout → list: each direct paragraph child becomes an item
+ *   - container → list: each direct paragraph child becomes an item
  *     (bails, no-op, when the content isn't all paragraphs) — containerToList.
  *   - anything → code block: the block's literal markdown source goes inside
  *     the fence (serializer-faithful, lossless in the markdown sense) —
  *     turnIntoCodeBlock.
  *   - code block → anything: NOT offered (needs a per-block re-parse; the
  *     source-peek work, MAR-20, is the natural home for that).
+ *
+ * "Container" here is any of the four `block+` wrappers: a blockquote, a GFM
+ * callout, and the two other spellings of a callout (`:::name` directives and
+ * Notion `<aside>` blocks). The last two are sources only — see
+ * blockCapabilities — so they never appear as a `target`.
  */
 import { serializerCtx } from "@milkdown/core";
 import type { EditorView } from "../../pm";
@@ -39,7 +44,7 @@ import { setHeadingLevelAt } from "../../editing/blockOps";
 import { convertListTreeAt } from "../../editing/listConvert";
 import { wrapBlocksIn } from "../../editing/wrapBlocks";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
-import { conversionKindAt, type ConversionKind } from "../../blockCapabilities";
+import type { ConversionKind } from "../../blockCapabilities";
 
 /**
  * Places the caret just inside the block at `pos`. Two jobs: the selection-
@@ -221,10 +226,10 @@ export function unwrapContainerTo(view: EditorView, pos: number, level: number):
         if (name === "bullet_list" || name === "ordered_list") {
             return unwrapListTo(view, pos, level) || changed;
         }
-        if (name !== "blockquote" && name !== "callout") {
+        if (!isBlockContainer(name)) {
             break; // a table, a fence: nothing prose-shaped to retype
         }
-        const content = withCalloutTitle(view, node, node.content);
+        const content = withContainerTitle(view, node, node.content);
         view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, content));
         changed = true;
     }
@@ -232,12 +237,28 @@ export function unwrapContainerTo(view: EditorView, pos: number, level: number):
 }
 
 /**
- * A titled callout's title is user-typed prose — no conversion may drop it.
- * Returns `content` with the title prepended as a leading paragraph when the
- * node is a callout carrying one.
+ * The `block+` wrappers a conversion can unwrap or retype in place: a GFM
+ * callout, a plain quote, and the two other spellings of a callout
+ * (`:::name …:::`, `<aside>…</aside>`). They share every mechanism here
+ * because they share a content shape; what tells them apart is the marker
+ * each carries, which is what the conversion's declared drop names.
  */
-function withCalloutTitle(view: EditorView, node: ProseNode, content: Fragment): Fragment {
-    const title = node.type.name === "callout" ? String(node.attrs["title"] ?? "").trim() : "";
+function isBlockContainer(name: string): boolean {
+    return name === "blockquote" || name === "callout"
+        || name === "container_directive" || name === "notion_callout";
+}
+
+/**
+ * A titled container's title is user-typed prose — no conversion may drop it.
+ * Returns `content` with the title prepended as a leading paragraph when the
+ * node carries one. A directive's title is the text after its open fence
+ * (`:::note Heads up`); a Notion callout has none.
+ */
+function withContainerTitle(view: EditorView, node: ProseNode, content: Fragment): Fragment {
+    const name = node.type.name;
+    const title = name === "callout" || name === "container_directive"
+        ? String(node.attrs["title"] ?? "").trim()
+        : "";
     const paragraph = view.state.schema.nodes["paragraph"];
     if (!title || !paragraph) {
         return content;
@@ -256,7 +277,7 @@ export function containerToList(view: EditorView, pos: number, target: Conversio
     }
     const items: ProseNode[] = [];
     let bail = false;
-    withCalloutTitle(view, node, node.content).forEach((child) => {
+    withContainerTitle(view, node, node.content).forEach((child) => {
         if (child.type.name !== "paragraph") {
             bail = true;
             return;
@@ -272,61 +293,33 @@ export function containerToList(view: EditorView, pos: number, target: Conversio
     return true;
 }
 
-/** container ↔ container (quote ↔ callout): retype in place — same content
- * shape, and every callout attr has a default. A titled callout's title is
- * prepended as prose on the way OUT (a blockquote can't carry it). */
+/**
+ * container ↔ container (quote ↔ callout, and the directive / Notion
+ * spellings on the way out): retype in place — same content shape, and every
+ * callout attr has a default.
+ *
+ * A title is user-typed prose, so it never evaporates: it leads the new
+ * container as its own paragraph. That holds for a callout target too, even
+ * though a callout has a `title` attr — the attr is not the source of truth,
+ * the marker line is, and re-spelling a marker means carrying its type, case,
+ * fold flag and raw bytes across a syntax that has none of them. Prose in the
+ * body is the answer that cannot be subtly wrong.
+ */
 export function retypeContainer(view: EditorView, pos: number, target: ConversionKind): boolean {
     const node = view.state.doc.nodeAt(pos);
     const nodeType = view.state.schema.nodes[target === "callout" ? "callout" : "blockquote"];
     if (!node || !nodeType) {
         return false;
     }
-    if (target === "blockquote") {
-        const content = withCalloutTitle(view, node, node.content);
-        if (content !== node.content) {
-            const quote = nodeType.createChecked(null, content);
-            view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, quote));
-            return true;
-        }
-    }
-    view.dispatch(view.state.tr.setNodeMarkup(pos, nodeType, null));
-    return true;
-}
-
-// ── Legacy predicate (fidelity-gate oracle) ─────────────────────────────────
-
-const LIST_KINDS: readonly ConversionKind[] = ["bulletList", "orderedList", "taskList"];
-
-/**
- * @deprecated The original hand-written pair matrix, superseded by
- * `canConvert` in webview/blockCapabilities.ts. Kept VERBATIM as the oracle
- * for the fidelity gate in webview/__tests__/blockCapabilities.test.ts,
- * which asserts the derived predicate agrees with it cell for cell. Delete
- * both together once the capability registry has bedded in.
- */
-export function canTurnInto(view: EditorView, pos: number, target: ConversionKind): boolean {
-    const source = conversionKindAt(view, pos);
-    if (source === null) {
-        return false;
-    }
-    if (source === target) {
-        return true; // the filled current row (a no-op pick)
-    }
-    if (source === "codeBlock") {
-        return false;
-    }
-    if (target === "codeBlock") {
+    const content = withContainerTitle(view, node, node.content);
+    if (content !== node.content) {
+        view.dispatch(view.state.tr.replaceWith(
+            pos,
+            pos + node.nodeSize,
+            nodeType.createChecked(null, content),
+        ));
         return true;
     }
-    if ((source === "blockquote" || source === "callout") && LIST_KINDS.includes(target)) {
-        const node = view.state.doc.nodeAt(pos)!;
-        let allParagraphs = node.childCount > 0;
-        node.forEach((child) => {
-            if (child.type.name !== "paragraph") {
-                allParagraphs = false;
-            }
-        });
-        return allParagraphs;
-    }
+    view.dispatch(view.state.tr.setNodeMarkup(pos, nodeType, null));
     return true;
 }

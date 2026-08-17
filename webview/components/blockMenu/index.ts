@@ -63,7 +63,6 @@ export { commitMarqueeSelection, wireMarquee } from "./marquee";
 export { openBlockMenuAtCaret } from "./openAtCaret";
 
 export {
-    canTurnInto,
     containerToList,
     retypeContainer,
     retypeList,

@@ -50,18 +50,31 @@ import { auditConversion } from "./plugins/contentGuard";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────
 
-/** The convertible top-level kinds — the Turn-into UI vocabulary. */
+/**
+ * The convertible top-level kinds — the Turn-into UI vocabulary.
+ *
+ * `directive` and `notionCallout` are the two container syntaxes that are
+ * structurally callouts and are spelled differently (`:::note …:::` and
+ * `<aside>…</aside>`). They keep kinds of their OWN rather than normalizing
+ * into `callout`, because the menu's current row states what the block IS: a
+ * directive told it was a callout would both misname itself and lose the
+ * conversion INTO a real GFM callout, which is the migration gesture the
+ * kinds exist to offer. The mechanism is shared regardless (retypeContainer
+ * does not care which wrapper it started from).
+ */
 export type ConversionKind =
     | "paragraph"
     | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
     | "bulletList" | "orderedList" | "taskList"
-    | "blockquote" | "callout" | "codeBlock";
+    | "blockquote" | "callout" | "codeBlock"
+    | "directive" | "notionCallout";
 
 export const ALL_KINDS: readonly ConversionKind[] = [
     "paragraph",
     "h1", "h2", "h3", "h4", "h5", "h6",
     "bulletList", "orderedList", "taskList",
     "blockquote", "callout", "codeBlock",
+    "directive", "notionCallout",
 ];
 
 const HEADING_KINDS: readonly ConversionKind[] = ["h1", "h2", "h3", "h4", "h5", "h6"];
@@ -192,11 +205,13 @@ export const BLOCK_CAPABILITIES: Record<string, BlockCapability> = {
     // Block wrappers (block+ content)
     blockquote:  { shape: "wrapper",   content: "blocks",   kind: "blockquote",       source: true,  target: true },
     callout:     { shape: "wrapper",   content: "blocks",   kind: "callout",          source: true,  target: true },
-    // Deliberately conversion-less today (they get actions-only menus, as
-    // before this registry existed). Offering directive/notion-callout
-    // conversions — structurally free via the wrapper rules — is MAR-115.
-    container_directive: { shape: "wrapper", content: "blocks", kind: null,           source: false, target: false },
-    notion_callout:      { shape: "wrapper", content: "blocks", kind: null,           source: false, target: false },
+    // Callouts in another spelling. Convertible AWAY (the wrapper rules give
+    // directive ⇄ quote ⇄ callout ⇄ list for free), never a target: nothing
+    // in the editor authors these syntaxes, and making them targets would add
+    // two rows to every block's Turn-into menu for a spelling most documents
+    // never use. Flipping `target` is one word if that changes.
+    container_directive: { shape: "wrapper", content: "blocks", kind: "directive",     source: true,  target: false },
+    notion_callout:      { shape: "wrapper", content: "blocks", kind: "notionCallout", source: true,  target: false },
     // Identity-bearing (numbering, back-references): converting away needs
     // its own design (design doc §10.6).
     footnote_definition: { shape: "wrapper", content: "blocks", kind: null,           source: false, target: false },
@@ -261,6 +276,7 @@ const TYPE_BY_KIND: Record<ConversionKind, string> = {
     h4: "heading", h5: "heading", h6: "heading",
     bulletList: "bullet_list", taskList: "bullet_list", orderedList: "ordered_list",
     blockquote: "blockquote", callout: "callout", codeBlock: "code_block",
+    directive: "container_directive", notionCallout: "notion_callout",
 };
 
 function capabilityOfKind(kind: ConversionKind): BlockCapability {
@@ -335,6 +351,16 @@ function effectBetween(source: ConversionKind, target: ConversionKind): ContentE
     }
     if (target === "callout" && source !== "callout") {
         adds.push("callout:marker");
+    }
+    // The two other container spellings. A directive's `name` and a Notion
+    // callout's icon have nowhere to go in any target — including a GFM
+    // callout, which gets its own default kind rather than a guess at which
+    // directive names map onto the five GFM ones.
+    if (source === "directive" && target !== "directive") {
+        drops.push("directive:name");
+    }
+    if (source === "notionCallout" && target !== "notionCallout") {
+        drops.push("notion:icon");
     }
     if (drops.length === 0 && adds.length === 0) {
         return "conserving";
