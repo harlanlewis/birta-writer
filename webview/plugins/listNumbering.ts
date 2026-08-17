@@ -39,6 +39,7 @@ import {
 } from "../blockWidth";
 import { isOrderedNumbering, type OrderedNumbering } from "../utils/orderedMarkers";
 import { requestIdle } from "../utils/idle";
+import { subscribeReadOnly } from "../readOnly";
 
 export const listNumberingPluginKey = new PluginKey("BIRTA_LIST_NUMBERING");
 
@@ -186,9 +187,40 @@ export const listNumberingPlugin = $prose(() =>
             // Hydration waits for the mount rather than riding init: dispatching
             // during plugin construction is not allowed, and the stored bag has
             // already arrived (the init message precedes editor creation).
-            const tr = hydrateListNumbering(view.state);
-            if (tr) {
+            //
+            // The dispatch can be REFUSED: read-only's transaction filter drops
+            // every doc-changing transaction, this one included. `inUse` must
+            // then stay false, or the next doc identity change (an external
+            // sync while locked, the first edit after unlocking) reconciles a
+            // document in which no list carries the attr and deletes every
+            // stored style. Whether the dispatch landed is read off the state,
+            // not assumed, and the hydration is retried the moment the mode
+            // lifts, so a document opened locked shows its saved numbering
+            // once it is unlocked rather than never.
+            const applyHydration = (): boolean => {
+                const before = view.state.doc;
+                const tr = hydrateListNumbering(view.state);
+                if (!tr) {
+                    return true; // nothing stored for this document
+                }
                 view.dispatch(tr);
+                if (view.state.doc === before) {
+                    inUse = false; // refused; hydrateListNumbering armed it early
+                    return false;
+                }
+                return true;
+            };
+            let unsubscribeRetry: (() => void) | null = null;
+            if (!applyHydration()) {
+                unsubscribeRetry = subscribeReadOnly((readOnly) => {
+                    if (readOnly || view.isDestroyed) {
+                        return;
+                    }
+                    if (applyHydration()) {
+                        unsubscribeRetry?.();
+                        unsubscribeRetry = null;
+                    }
+                });
             }
             return {
                 // The reconcile is a write to a store BESIDE the document, so it
@@ -216,6 +248,8 @@ export const listNumberingPlugin = $prose(() =>
                     // document this view no longer shows.
                     pendingReconcile?.cancel();
                     pendingReconcile = null;
+                    unsubscribeRetry?.();
+                    unsubscribeRetry = null;
                 },
             };
         },

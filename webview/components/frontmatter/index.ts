@@ -19,7 +19,7 @@
 
 import { IconChevronDown, IconChevronUp, IconPlus, IconTrash2, IconX } from "../../ui/icons";
 import { t } from "../../i18n";
-import { markEditableIsland } from "../../readOnly";
+import { isReadOnly, markEditableIsland, subscribeReadOnly } from "../../readOnly";
 import { createButton } from "../../ui/dom";
 import { attachInputUndo, undoChordOf } from "../../utils/inputUndo";
 import { getWebviewState, notifyFrontmatterUpdate, setWebviewState } from "../../messaging";
@@ -260,14 +260,68 @@ let fmUndoStack: string[] = [];
 let fmRedoStack: string[] = [];
 let lastCommittedFm = "";
 
-/** Routes a committed raw block through the history bookkeeping, then notifies. */
+/**
+ * Routes a committed raw block through the history bookkeeping, then notifies.
+ *
+ * Under read-only the commit is refused HERE, at the panel's model, and not
+ * only at the message sender. This panel is the one document write that never
+ * becomes a ProseMirror transaction, so the editor's transaction filter cannot
+ * see it; refusing only the send would leave the panel showing a deletion or
+ * an edit the file never received, with `lastCommittedFm` advanced past it,
+ * and the next legitimate commit after unlocking would then ship the
+ * read-only-time change silently. Every mutating control (delete, add, chip
+ * removal, the raw editor's blur) funnels through this one function, so
+ * putting the panel back to its last committed state here covers all of them
+ * without an audit of the buttons.
+ */
 function recordFmCommit(raw: string): void {
     if (raw === lastCommittedFm) { return; }
+    if (isReadOnly()) {
+        restoreCommittedFm();
+        return;
+    }
     fmUndoStack.push(lastCommittedFm);
     fmRedoStack.length = 0;
     lastCommittedFm = raw;
     notifyFrontmatterUpdate(raw);
 }
+
+/** Put the panel's model and DOM back to what the file last received. */
+function restoreCommittedFm(): void {
+    if (lastCommittedFm === "") {
+        closeActiveFmSuggestMenu();
+        currentFmEntries = [];
+        currentFmRaw = "";
+        renderEmptyMetadataState();
+        return;
+    }
+    renderFmContent(lastCommittedFm);
+}
+
+/** The panel's controls whose whole purpose is a write. */
+const FM_MUTATING_CONTROLS = ".fm-delete-btn, .fm-add-btn, .fm-add-metadata-btn, .fm-chip-remove";
+
+/**
+ * Make the panel's chrome follow the mode. The raw YAML/TOML editor is a real
+ * <textarea>, which no contenteditable island reaches, so it follows through
+ * its own `readOnly` flag; the delete, add and chip-remove buttons are
+ * disabled so a locked panel does not offer a click that recordFmCommit will
+ * only refuse (and so a refused click cannot leave a ghost row or focus a
+ * detached table). Called after every render and on every mode change.
+ */
+function syncFmChromeForMode(): void {
+    const readOnly = isReadOnly();
+    document.querySelectorAll<HTMLTextAreaElement>(".fm-raw-editor").forEach((el) => {
+        el.readOnly = readOnly;
+    });
+    document.querySelectorAll<HTMLButtonElement>(`#frontmatter-panel :is(${FM_MUTATING_CONTROLS})`).forEach((el) => {
+        el.disabled = readOnly;
+    });
+}
+
+// One module-level subscription serves every element the panel ever builds,
+// so a re-render cannot leak a subscription per instance.
+subscribeReadOnly(() => syncFmChromeForMode());
 
 /** After an undo/redo re-render, park focus where repeated chords keep working. */
 function focusAfterFmHistory(): void {
@@ -279,6 +333,7 @@ function focusAfterFmHistory(): void {
 
 /** Undoes the last committed metadata change (no-op when there is none). */
 function performFmUndo(): void {
+    if (isReadOnly()) { return; }
     const prev = fmUndoStack.pop();
     if (prev === undefined) { return; }
     fmRedoStack.push(lastCommittedFm);
@@ -290,6 +345,7 @@ function performFmUndo(): void {
 
 /** Re-applies the last undone metadata change (no-op when there is none). */
 function performFmRedo(): void {
+    if (isReadOnly()) { return; }
     const next = fmRedoStack.pop();
     if (next === undefined) { return; }
     fmUndoStack.push(lastCommittedFm);
@@ -377,7 +433,7 @@ function bindFmCell(
 ): void {
     // Rich `true` rather than plaintext-only (this panel has always allowed
     // it), and registered as a read-only island so a locked document's panel
-    // cannot be typed into — its commit is refused at notifyFrontmatterUpdate
+    // cannot be typed into — its commit is refused at recordFmCommit
     // either way, and a cell that accepts text it then discards is the worse
     // half of that promise (MAR-53).
     markEditableIsland(td, false);
@@ -748,6 +804,7 @@ function rebuildFmTable(tbody: HTMLElement, panel: HTMLElement): void {
     for (const entry of currentFmEntries) {
         tbody.appendChild(createFmRow(entry, tbody, panel));
     }
+    syncFmChromeForMode();
 }
 
 /** Adds a new row. */
@@ -789,6 +846,9 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
     textarea.id = FM_CONTENT_ID;
     textarea.value = committed;
     textarea.spellcheck = false;
+    // Follows the mode from birth (syncFmChromeForMode re-applies it after the
+    // render and on a toggle). `readOnly` keeps selection, scrolling and copy.
+    textarea.readOnly = isReadOnly();
     textarea.setAttribute('aria-label', isToml ? t('Edit metadata as TOML') : t('Edit metadata as YAML'));
     textarea.rows = Math.max(committed.split('\n').length, 2);
     // Local typing undo (VS Code swallows Cmd+Z before the textarea sees it).
@@ -912,6 +972,7 @@ function renderEmptyMetadataState(): void {
     }
     // The panel supplies the toolbar clearance, same as the populated state.
     if (editorEl) { editorEl.style.paddingTop = '16px'; }
+    syncFmChromeForMode();
 }
 
 /**
@@ -1026,6 +1087,7 @@ function renderFmContent(frontmatter: string): void {
         editorEl?.parentNode?.insertBefore(panel, editorEl);
     }
     if (editorEl) { editorEl.style.paddingTop = '16px'; }
+    syncFmChromeForMode();
 }
 
 /**

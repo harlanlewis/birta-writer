@@ -37,6 +37,7 @@ import {
     sourceStyleReplacedPlugins,
 } from "./plugins/sourceStyle";
 import { tableBreakReplacedPlugins, tableBreaksPlugin } from "./plugins/tableBreaks";
+import { footnoteHtmlBlockRemark } from "./plugins/footnotes";
 import { unescapeAutolinkBackslashes, unescapeOrgCookies } from "./utils/minimalDiff";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
@@ -274,6 +275,10 @@ export const gfmFidelity = [
     taskMarkerInputRules,
     // Recognise <s>/<strike> on paste; parse-only, serialization unchanged.
     strikethroughHtmlPlugins,
+    // A raw HTML block inside a footnote definition parses into a node the
+    // schema can build, instead of dropping the whole definition
+    // (plugins/footnotes.ts). Parse-only; the html serializes as it always did.
+    footnoteHtmlBlockRemark,
 ].flat();
 
 // Replace `break` nodes with `html` nodes carrying the recorded `<br>` bytes

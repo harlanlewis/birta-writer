@@ -108,6 +108,18 @@ function hostCleanupFor(surface: FullscreenSurface): () => void {
     };
 }
 
+/**
+ * The overlay is told light OR dark, never only dark. It lives on <body>, so
+ * with a single dark class to toggle it inherits Mermaid's body-level canvas
+ * and paints a light PlantUML or Graphviz diagram on a dark sheet whenever
+ * `birta.mermaid.theme` is dark; the light class is what re-pins it
+ * (codeBlock.css).
+ */
+function syncCanvasClasses(overlay: HTMLElement, dark: boolean): void {
+    overlay.classList.toggle("diagram-canvas-dark", dark);
+    overlay.classList.toggle("diagram-canvas-light", !dark);
+}
+
 /** A control for the surface's top-right cluster. */
 function fsButton(icon: string, tip: string): HTMLButtonElement {
     return createButton({
@@ -332,7 +344,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
 
     // The canvas ground IS the diagram's paper, so it has to track the engine's
     // own light/dark decision the same way the inline pane's does.
-    surface.overlay.classList.toggle("diagram-canvas-dark", renderer.isDark());
+    syncCanvasClasses(surface.overlay, renderer.isDark());
     surface.setCanvasColor("var(--mermaid-canvas)");
 
     // ── Panes ──
@@ -408,7 +420,7 @@ export function openDiagramLightbox(ctx: LightboxContext & {
         svgHolder.innerHTML = `<div class="${px}-loading">${t("Rendering...")}</div>`;
         try {
             const { svg, width, height } = await renderer.render(code, previewPane.clientWidth || 800);
-            surface.overlay.classList.toggle("diagram-canvas-dark", renderer.isDark());
+            syncCanvasClasses(surface.overlay, renderer.isDark());
             svgHolder.innerHTML = svg;
             const svgEl = svgHolder.querySelector("svg");
             if (svgEl) {

@@ -72,10 +72,51 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(states[0]),
     );
 
+    // Graphviz stamps its root <svg> in POINTS (`width="62pt"`), and a point is
+    // 96/72 of a CSS pixel. The pane rewrites `width`/`height` to the natural
+    // size it read, so a reader of the bare number would stamp 62 and paint
+    // every graph at three quarters of itself, with fit-to-view capped there.
+    // The engine's `viewBox` keeps the point units, so it is the control here.
+    const sizing = await page.evaluate(() => {
+        const svg = document.querySelector(".gv-preview .gv-svg-container > svg");
+        const vb = (svg?.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/);
+        const vbW = vb.length === 4 ? parseFloat(vb[2]) : NaN;
+        return {
+            viewBox: svg?.getAttribute("viewBox") ?? "",
+            expectedPx: Number.isFinite(vbW) ? (vbW * 96) / 72 : null,
+            stampedPx: svg ? parseFloat(svg.getAttribute("width") ?? "") : null,
+        };
+    });
+    check(
+        "the pane stamps a pt-sized SVG at 96/72 of its viewBox width",
+        sizing.expectedPx !== null && Number.isFinite(sizing.stampedPx) && Math.abs(sizing.expectedPx - sizing.stampedPx) < 0.5,
+        JSON.stringify(sizing),
+    );
+
+    // The pane's sheet stays light whatever Mermaid's canvas setting says. The
+    // Mermaid decision is a <body> class every pane inherits, and a Graphviz
+    // SVG paints its own white page, so a pane that followed it would show a
+    // white sheet on a dark card. Flip the body class the way
+    // syncMermaidCanvasClass() does and read the computed background.
+    const canvas = await page.evaluate(() => {
+        const pane = document.querySelector(".gv-preview");
+        const before = getComputedStyle(pane).backgroundColor;
+        document.body.classList.add("mermaid-canvas-dark");
+        const under = getComputedStyle(pane).backgroundColor;
+        document.body.classList.remove("mermaid-canvas-dark");
+        return { before, under };
+    });
+    check(
+        "the Graphviz pane keeps its light sheet under a dark Mermaid canvas",
+        canvas.before === canvas.under && canvas.before !== "" && canvas.before !== "rgba(0, 0, 0, 0)",
+        JSON.stringify(canvas),
+    );
+
     // ── 2. The ```graphviz ALIAS reaches the same pane ──
-    // This is the check that fails if `graphviz` is missing from the language
-    // row's alias list: the block would render as ordinary code and there would
-    // be three panes rather than four.
+    // Every code block wrapper carries a `.gv-preview` element, so the pane
+    // COUNT cannot tell an alias miss; the graph title can. An alias that missed
+    // would leave this block an ordinary code block with no rendered <svg>, so
+    // `hasSvg` would be false and there would be no title to read.
     check(
         "the ```graphviz alias paints an SVG too",
         states[1]?.hasSvg === true && states[1]?.title === "H",

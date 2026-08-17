@@ -22,6 +22,19 @@ describe("readSvgNaturalSize", () => {
         expect(readSvgNaturalSize(svg)).toEqual({ width: 320, height: 180 });
     });
 
+    it("pt-suffixed dimensions, which is what Graphviz emits, should scale to CSS pixels", () => {
+        // 1pt = 96/72 px. Reading the bare number paints a DOT graph at three
+        // quarters of its size; the viewBox is in the same units, so it is no
+        // safety net here.
+        const svg = '<svg width="72pt" height="144pt" viewBox="0.00 0.00 72.00 144.00"></svg>';
+        expect(readSvgNaturalSize(svg)).toEqual({ width: 96, height: 192 });
+    });
+
+    it("an unknown length unit should fall back to the viewBox rather than guess", () => {
+        const svg = '<svg width="10em" height="5em" viewBox="0 0 640 480"></svg>';
+        expect(readSvgNaturalSize(svg)).toEqual({ width: 640, height: 480 });
+    });
+
     it("a percentage width should fall back to the viewBox rather than be treated as pixels", () => {
         // A container-relative width is not a natural size; using it would make
         // the CSS scale base on the container and mis-size the diagram.

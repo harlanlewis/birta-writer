@@ -98,11 +98,19 @@ export type ContentClass =
     | "none";
 
 /**
- * Fingerprint-key vocabulary for content effects. MAR-108's content guard
- * will own (and type) this vocabulary; until then keys are free-form
- * strings kept deliberately coarse.
+ * Fingerprint-key vocabulary for content effects: the closed set of things a
+ * conversion can declare it drops or adds. Closed on purpose. Two consumers
+ * hang a `Record<FingerprintKey, …>` off it (the guard's marker map in
+ * plugins/contentGuard.ts and the menu's loss notes in blockMenu/menu.ts), so
+ * a key added here without words for the user, or without the guard knowing
+ * which marker it exempts, is a compile error rather than a silent audit
+ * failure or a row with no warning.
  */
-export type FingerprintKey = string;
+export type FingerprintKey =
+    | "task:state"       // list_item `checked`
+    | "callout:marker"   // a GFM callout's `> [!KIND]` line (kind, title, fold)
+    | "directive:name"   // a `:::name` container's name
+    | "notion:icon";     // a Notion aside callout's leading icon
 
 /**
  * Declared content effect of a conversion — data only for now; MAR-108's
@@ -352,10 +360,12 @@ function effectBetween(source: ConversionKind, target: ConversionKind): ContentE
     if (target === "callout" && source !== "callout") {
         adds.push("callout:marker");
     }
-    // The two other container spellings. A directive's `name` and a Notion
-    // callout's icon have nowhere to go in any target — including a GFM
-    // callout, which gets its own default kind rather than a guess at which
-    // directive names map onto the five GFM ones.
+    // The two other container spellings. A directive's fence (its name
+    // spelling and any attributes) and a Notion callout's icon have nowhere to
+    // go in any target. A callout target does keep the KIND where the callout
+    // alias table already resolves the name or icon (`:::warning` becomes
+    // `[!WARNING]`, see turnInto's calloutAttrsFor); what drops is the fence
+    // or icon itself, which is what these keys name.
     if (source === "directive" && target !== "directive") {
         drops.push("directive:name");
     }

@@ -45,6 +45,7 @@ import { convertListTreeAt } from "../../editing/listConvert";
 import { wrapBlocksIn } from "../../editing/wrapBlocks";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import type { ConversionKind } from "../../blockCapabilities";
+import { attrsFromMarker, calloutKind, type CalloutKind } from "../../plugins/callouts";
 
 /**
  * Places the caret just inside the block at `pos`. Two jobs: the selection-
@@ -311,15 +312,44 @@ export function retypeContainer(view: EditorView, pos: number, target: Conversio
     if (!node || !nodeType) {
         return false;
     }
+    const attrs = target === "callout" ? calloutAttrsFor(node) : null;
     const content = withContainerTitle(view, node, node.content);
     if (content !== node.content) {
         view.dispatch(view.state.tr.replaceWith(
             pos,
             pos + node.nodeSize,
-            nodeType.createChecked(null, content),
+            nodeType.createChecked(attrs, content),
         ));
         return true;
     }
-    view.dispatch(view.state.tr.setNodeMarkup(pos, nodeType, null));
+    view.dispatch(view.state.tr.setNodeMarkup(pos, nodeType, attrs));
     return true;
+}
+
+/**
+ * The callout attrs a container brings with it, or null for the defaults.
+ *
+ * A directive's `name` and a Notion callout's icon are the same idea as a
+ * callout's kind, and the tree already resolves both onto `CalloutKind` (the
+ * `[!TYPE]` alias table for a directive name, `kindForIcon` for an icon), so
+ * `:::warning` becomes `[!WARNING]` rather than a `[!NOTE]` that lost the
+ * one thing the fence said. This is not a guess at a mapping: it is the same
+ * table that decides how `[!warning]` itself renders. A name the table does
+ * not know resolves to `note`, which is the default the marker would have
+ * carried anyway. The fence spelling, its attributes and the icon are still
+ * dropped, which is what the row's hint declares.
+ */
+function calloutAttrsFor(source: ProseNode): Record<string, unknown> | null {
+    let kind: CalloutKind | null = null;
+    if (source.type.name === "container_directive") {
+        const name = source.attrs["name"];
+        kind = typeof name === "string" && name ? calloutKind(name) : null;
+    } else if (source.type.name === "notion_callout") {
+        const resolved = source.attrs["kind"];
+        kind = typeof resolved === "string" ? calloutKind(resolved) : null;
+    }
+    if (kind === null || kind === "note") {
+        return null;
+    }
+    return attrsFromMarker(`[!${kind.toUpperCase()}]`, true);
 }

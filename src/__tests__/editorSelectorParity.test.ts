@@ -24,6 +24,7 @@ import * as vscode from "vscode";
 import { makeFakeTextDocument, resetTextDocumentMocks } from "../../__mocks__/vscode";
 import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
 import { rankLinkTargets } from "../../shared/linkTargetSuggest";
+import { DOCUMENT_EXTENSIONS } from "../../shared/documentExtensions";
 
 const pkg = JSON.parse(
     readFileSync(join(__dirname, "..", "..", "package.json"), "utf8"),
@@ -44,10 +45,13 @@ const claimed = (editor?.selector ?? [])
 describe("the manifest's custom-editor selector", () => {
     it("should be a real, non-empty enumeration", () => {
         expect(editor, "no birta.editor entry in contributes.customEditors").toBeDefined();
-        // Raising this is a deliberate act; lowering it means a format stopped
-        // opening. Either way the routing checks below follow automatically.
-        expect(claimed.length).toBe(3);
-        expect([...claimed].sort()).toEqual(["markdown", "md", "mdx"]);
+        // The manifest is the one copy of the list that cannot import the
+        // shared constant, so this is where the two are held together: a
+        // format added to DOCUMENT_EXTENSIONS without a selector entry never
+        // reaches the provider, and one added to the selector without the
+        // constant opens by hand but never from a link, a swap or a wikilink.
+        expect(claimed.length).toBe(DOCUMENT_EXTENSIONS.length);
+        expect([...claimed].sort()).toEqual([...DOCUMENT_EXTENSIONS].sort());
     });
 });
 
