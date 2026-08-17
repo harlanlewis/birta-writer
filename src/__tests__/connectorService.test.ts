@@ -455,8 +455,18 @@ describe("ConnectorService", () => {
             const secrets = fakeSecrets();
             (secrets.api.get as unknown as ReturnType<typeof vi.fn>)
                 .mockRejectedValue(new Error("keychain locked"));
+            // An unreadable keychain reads as "not connected", and a missing
+            // connection falls through to the ANONYMOUS read (the upgrade
+            // model), so the resolve reaches fetch. Stub it: unstubbed, this
+            // test asked api.github.com for real, with the connector's abort
+            // timeout equal to the test timeout, and went red whenever the
+            // network was slow or absent. The 404 is what makes an anonymous
+            // read of a private repo report "locked".
+            const fetchSpy = vi.fn(async () => new Response("{}", { status: 404 }));
+            vi.stubGlobal("fetch", fetchSpy);
             const service = new ConnectorService(secrets.api);
             expect(await service.resolveCard(REPO)).toEqual({ state: "locked", connector: "github" });
+            expect(fetchSpy).toHaveBeenCalledTimes(1);
         });
     });
 });
