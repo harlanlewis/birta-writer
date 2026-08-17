@@ -34,6 +34,8 @@
 
 ### Changed
 
+- Gutter badges, block icons and fold chevrons scale with the content font size, so at a larger content scale they grow with the text instead of staying at their fixed size; the pinned heading's mirror does the same. At the default size the badge is a fraction of a pixel different from before, and on a small `editor.fontSize` a little smaller than it was, because its size now follows the content rather than the UI font.
+
 - Expand Selection climbs the structure inside a block, one level at a time. From text in a nested list item it now reaches the item, then the list it sits in, then the item that sits in, and only then the whole top-level list and the document; a list inside a quote offers the same rungs; table cells and rows are not rungs. Shrink Selection retraces an expand run exactly, so a three-block range grown to the whole document comes back as three blocks rather than one, and a run from a caret walks back to that caret; any other selection change or edit ends the run and Shrink falls back to stepping down from wherever the selection is.
 
 - A PlantUML document whose diagrams are laid out by the engine itself (sequence, activity, mindmap, Gantt, JSON, YAML, WBS, timing and the like) does not load and start the Graphviz engine to render them; the first diagram that needs Graphviz layout (class, state, component, deployment, use case, object, ERD, DOT, ArchiMate) loads it, once, and a document that also carries a Graphviz fence still shares that one instance. A Graphviz-backed diagram pays one extra parse on its first render while the engine arrives.
@@ -47,6 +49,8 @@
 - Cmd+. on a code block or table selected inside a callout opens that block's own menu; it opened the callout's. Cmd+. on a selected rule opens the rule's.
 
 - Fold All with a selection spanning two sections no longer leaves part of the selection hidden inside a fold.
+
+- With a run of blocks selected, a covered block that scrolls into view now surfaces its gutter marker like the others; a block whose gutter chrome was built after the selection was made kept its marker hidden.
 
 - Closing the keyboard shortcuts panel by clicking into a text field elsewhere leaves the focus where you clicked, instead of bouncing it back into the editor.
 
