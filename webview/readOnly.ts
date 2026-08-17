@@ -34,8 +34,14 @@
  *
  * All three layers reach only what ProseMirror owns. A surface that is neither
  * contenteditable nor a transaction sits outside every one of them and has to
- * ask `isReadOnly()` at its own sender; the fullscreen code editor's
- * `<textarea>` is the instance in the tree (`components/codeBlock/lightbox.ts`).
+ * ask `isReadOnly()` at its own sender: the fullscreen code editor's
+ * `<textarea>` (`components/codeBlock/lightbox.ts`), the link popup's edit
+ * verbs, the embed palette, the HTML block's click-to-edit, the code block's
+ * language picker, the task checkbox. The chrome those surfaces show is
+ * retired by `body.read-only` rules in `style.css` (the "Read-only chrome"
+ * section), which is the ONE place a NodeView-owned control that only writes
+ * (a table's insert bars and grips, an embed's edit verbs, an image's path
+ * pencil) is hidden; a control that also reads stays and gates in code.
  *
  * What the mode deliberately does NOT block: anything that leaves the document
  * alone. Selection, copy, find, folding, the TOC, link navigation, block width
@@ -282,6 +288,46 @@ function syncEditableIslands(): void {
     }
 }
 
+// ── Form controls that write ────────────────────────────────────────────────
+
+/**
+ * The other class of surface outside layers 1 and 2: a real `<input>` or
+ * `<textarea>` a NodeView owns (an image's caption, title and path fields),
+ * or a `<button>` whose whole job is a mutation. Their commits are refused
+ * downstream, but a field that takes typing and then drops it is the same
+ * visible half of the broken promise the islands are. Same registry
+ * discipline as the islands: the attribute is the list, the sweep needs no
+ * subscription, and a destroyed view is simply not found.
+ */
+const LOCKS_ATTR = "data-locks-with-document";
+
+type LockableControl = HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement | HTMLSelectElement;
+
+/**
+ * Register a control that must go inert while the document is read-only.
+ * Inputs and textareas become `readOnly` (still focusable, selectable and
+ * copyable, which is what a reader wants from a caption); buttons and
+ * selects become `disabled`.
+ */
+export function lockWithDocument(el: LockableControl): void {
+    el.setAttribute(LOCKS_ATTR, "");
+    applyLock(el);
+}
+
+function applyLock(el: LockableControl): void {
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        el.readOnly = _readOnly;
+    } else {
+        el.disabled = _readOnly;
+    }
+}
+
+function syncLockedControls(): void {
+    for (const el of document.querySelectorAll<LockableControl>(`[${LOCKS_ATTR}]`)) {
+        applyLock(el);
+    }
+}
+
 /**
  * Set the mode and announce it. Idempotent: setting the current value notifies
  * nobody, so a control that echoes its own change cannot loop.
@@ -296,5 +342,6 @@ export function setReadOnly(next: boolean): void {
     _readOnly = next;
     syncReadOnlyBodyClass();
     syncEditableIslands();
+    syncLockedControls();
     for (const fn of _listeners) { fn(next); }
 }

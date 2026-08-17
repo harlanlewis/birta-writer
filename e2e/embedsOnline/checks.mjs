@@ -461,6 +461,23 @@ export async function run({ page, check, baseUrl }) {
     );
 
     // ── The palette: select a card → palette; edit the URL through it ──
+    // The card selected above sits below the fold at this viewport, and a
+    // palette whose card is wholly off screen keeps its box but does not
+    // paint (it used to pin itself to the viewport's top edge over unrelated
+    // text). So first the off-screen state, then the card is brought into
+    // view and the palette must show.
+    const offscreen = await page.evaluate(() => {
+        const p = document.querySelector(".embed-palette");
+        const sel = document.querySelector(".embed-host--selected .embed-card__frame");
+        const r = sel?.getBoundingClientRect();
+        return {
+            cardOff: !!r && (r.bottom <= 0 || r.top >= window.innerHeight),
+            hidden: !!p && getComputedStyle(p).visibility === "hidden",
+        };
+    });
+    check("a palette whose card is off screen does not paint",
+        offscreen.cardOff && offscreen.hidden, JSON.stringify(offscreen));
+    await page.evaluate(() => document.querySelector(".embed-host--selected")?.scrollIntoView({ block: "center" }));
     const paletteVisible = await page
         .waitForSelector(".embed-palette--visible", { timeout: 5000 })
         .then(() => true).catch(() => false);

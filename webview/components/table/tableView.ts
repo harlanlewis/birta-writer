@@ -58,6 +58,7 @@ import { tagContentGuard } from "@/editing/blockOps";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { pinIntoView, viewportSpan } from "@/ui/anchoredPlacement";
 import { SAFE_AREA_CHANGE_EVENT } from "@/utils/headingUtils";
+import { isReadOnly } from "@/readOnly";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import {
     anchorAt,
@@ -1062,8 +1063,10 @@ class TableController {
         const dy = e.clientY - d.startY;
         if (!d.dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
             // Header row cannot be reordered — do not begin a row drag from a
-            // block that includes it.
-            if (d.kind === "row" && d.from0 === 0) {
+            // block that includes it. Read-only refuses every reorder: the
+            // overlay is hidden then, but the pointer session below is the
+            // honest gate for a drag armed by other means.
+            if ((d.kind === "row" && d.from0 === 0) || isReadOnly()) {
                 return;
             }
             d.dragging = true;

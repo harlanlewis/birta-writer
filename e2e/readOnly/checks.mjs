@@ -147,9 +147,26 @@ export async function run({ page, check, baseUrl }) {
         });
     });
 
+    // ── Layer 2 on its own ──────────────────────────────────────────────────
+    // Every gesture above is refused by `editable` (layer 1) or the command
+    // gate (layer 3) before the transaction filter ever sees it, so none of
+    // them discriminates layer 2: delete the filter and they all still pass.
+    // `__testInsertText` dispatches a real doc-changing transaction straight
+    // on the view, past both, so this is the one check the filter alone
+    // answers. The editable control for it is at the end of the sweep.
+    await assertInert(page, check, "a transaction dispatched straight on the view", async () => {
+        await page.evaluate(() =>
+            window.postMessage({ type: "__testInsertText", text: "FILTERED" }, "*"));
+    });
+
     // ── Chrome clicks ───────────────────────────────────────────────────────
+    // The checkbox is a `::before` pseudo on the task item, at its left edge
+    // (there is no <input>), so the click lands where the box is painted;
+    // `taskCheckbox` returns the point the editable control uses too.
     await assertInert(page, check, "clicking a task checkbox", async () => {
-        await clickIfPresent(page, '.ProseMirror input[type="checkbox"], .ProseMirror .task-list-item-checkbox');
+        const pt = await taskCheckbox(page);
+        check("read-only: the task checkbox is on the page to click", pt !== null);
+        if (pt) { await page.mouse.click(pt.x, pt.y); }
     });
 
     // Typing into a callout title. That span sets `contentEditable` on itself,
@@ -238,10 +255,17 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(200);
 
     // A code block's Copy button is a reading affordance and must survive.
+    // The control column attaches on first reveal, so hover the block first.
+    const codePt = await page.$eval(".code-block-wrapper", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 40, y: r.y + 20 };
+    }).catch(() => null);
+    if (codePt) { await page.mouse.move(codePt.x, codePt.y); await page.waitForTimeout(250); }
     const copyBtn = await page.$(".copy-btn");
     check("read-only: the code block keeps its Copy button", copyBtn !== null);
 
-    // Link hover popup: navigation is reading, so the popup appears.
+    // Link hover popup: navigation is reading, so the popup appears, with
+    // Open and Copy and without the verbs that would rewrite the link.
     const linkBox = await page.$eval(".ProseMirror a", (el) => {
         const r = el.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
@@ -249,13 +273,61 @@ export async function run({ page, check, baseUrl }) {
     if (linkBox) {
         await page.mouse.move(linkBox.x, linkBox.y);
         await page.waitForTimeout(600);
-        const popup = await page.$(".lp-root");
+        const popup = await page.evaluate(() => {
+            const root = document.querySelector(".lp-root");
+            if (!root || getComputedStyle(root).display === "none") { return null; }
+            const shown = (sel) => {
+                const el = root.querySelector(sel);
+                return !!el && getComputedStyle(el).display !== "none";
+            };
+            return { open: shown(".lp-btn-open"), copy: shown(".lp-btn-copy"),
+                edit: shown(".lp-btn-edit"), remove: shown(".lp-btn-remove") };
+        });
         check("read-only: the link popup still appears on hover", popup !== null);
+        check("read-only: the link popup offers Open and Copy and hides Edit and Remove",
+            !!popup && popup.open && popup.copy && !popup.edit && !popup.remove, JSON.stringify(popup));
         await page.mouse.move(5, 5);
         await page.waitForTimeout(300);
     } else {
         check("read-only: the link popup still appears on hover", false, "no link found in the fixture");
     }
+
+    // ── Editing chrome is retired, not merely inert ─────────────────────────
+    // A control that looks live and does nothing is the failure the mode's
+    // trust argument rests on avoiding, so the chrome that only writes must be
+    // off the page, hovered or not. Each is measured hovered, since most of it
+    // is invisible at rest in BOTH modes.
+    const chrome = await readOnlyChrome(page);
+    check("read-only: no block grab handle shows, even hovered",
+        chrome.handles === 0, `${chrome.handles} visible markers`);
+    check("read-only: the table shows no grips or insert bars",
+        chrome.tableOverlay === false, JSON.stringify(chrome));
+    check("read-only: the image caption and title fields are read-only inputs",
+        chrome.imageInputsReadOnly === true, JSON.stringify(chrome));
+    check("read-only: the image path chip has no pencil",
+        chrome.imagePencil === false, JSON.stringify(chrome));
+    check("read-only: the HTML block offers no Edit Source button",
+        chrome.htmlEdit === false, JSON.stringify(chrome));
+
+    // Openers that would show a menu the filter then refuses stay shut.
+    await clickIfPresent(page, ".lang-picker-btn");
+    await page.waitForTimeout(150);
+    const langOpen = await page.evaluate(() => {
+        const dd = document.querySelector(".lang-picker-dropdown");
+        return !!dd && getComputedStyle(dd).display !== "none";
+    });
+    check("read-only: the code block language picker does not open", langOpen === false);
+
+    await clickIfPresent(page, ".callout-kind");
+    await page.waitForTimeout(150);
+    const kindOpen = await page.$(".callout-menu");
+    check("read-only: the callout kind picker does not open", kindOpen === null);
+
+    await clickIfPresent(page, ".html-inline");
+    await page.waitForTimeout(150);
+    const htmlPanel = await page.$(".html-src-panel");
+    check("read-only: clicking an HTML block does not open its source", htmlPanel === null);
+    await page.click(".ProseMirror h1");
 
     // ── The fullscreen code editor ──────────────────────────────────────────
     // A code block's fullscreen surface holds a real `<textarea>`, which the
@@ -324,7 +396,13 @@ export async function run({ page, check, baseUrl }) {
             const rr = root.getBoundingClientRect();
             return `${Math.round(r.x - rr.x)},${Math.round(r.y - rr.y)},${Math.round(r.width)},${Math.round(r.height)}`;
         });
-        return { blocks, rects, text: root.innerText };
+        // Gutter chrome (the fold markers) is retired in read-only and is
+        // not document text, so it is dropped before the text is compared;
+        // `textContent` on the clone, since a detached node has no layout
+        // for `innerText` to read.
+        const clone = root.cloneNode(true);
+        for (const g of clone.querySelectorAll(".heading-fold-gutter")) { g.remove(); }
+        return { blocks, rects, text: clone.textContent };
     });
 
     // Measured on a FRESH read-only load, not on the page the gesture sweep
@@ -381,12 +459,40 @@ export async function run({ page, check, baseUrl }) {
         `changed=${editableAfter !== editableBefore} writes=${editableWrites}`,
     );
 
+    // The same three controls for the read-only checks that had no typing
+    // analogue: the direct dispatch (layer 2's discriminator), the checkbox
+    // click, and the chrome that must come BACK when the mode is off.
+    const directBefore = await docText(page);
+    await page.evaluate(() =>
+        window.postMessage({ type: "__testInsertText", text: "FILTERED" }, "*"));
+    await page.waitForTimeout(200);
+    check("control: a transaction dispatched straight on the view lands when editable",
+        (await docText(page)).includes("FILTERED"), "text did not land");
+
+    const checkboxPt = await taskCheckbox(page);
+    const checkedBefore = await taskChecked(page);
+    if (checkboxPt) { await page.mouse.click(checkboxPt.x, checkboxPt.y); }
+    await page.waitForTimeout(200);
+    const checkedAfter = await taskChecked(page);
+    check("control: the same checkbox click DOES flip the task when editable",
+        checkboxPt !== null && checkedBefore !== null && checkedBefore !== checkedAfter,
+        `${checkedBefore} -> ${checkedAfter}`);
+    void directBefore;
+
+    const editableChrome = await readOnlyChrome(page);
+    check("control: the editing chrome is on the page when editable",
+        editableChrome.handles > 0 && editableChrome.tableOverlay && editableChrome.imagePencil
+            && editableChrome.htmlEdit && editableChrome.imageInputsReadOnly === false,
+        JSON.stringify(editableChrome));
+
     // ── The toolbar toggle, driven as a real click ──────────────────────────
     // Still on the editable load, so this exercises the direction a user
     // actually takes first: lock a document they are reading.
     const toggleSel = '[data-item-id="readOnly"] button';
     const hasToggle = await page.$(toggleSel);
-    check("the toolbar carries an Edit / Read-only toggle", hasToggle !== null);
+    // The item ships hidden; the harness places it, so this measures the
+    // wiring of a toggle a user has chosen to show, not the default bar.
+    check("the toolbar carries the Edit / Read-only toggle when its item is placed", hasToggle !== null);
 
     // Clicked in-page rather than through page.mouse. The bar overflows into a
     // menu at narrow widths and this harness viewport is one of them, so a
@@ -420,8 +526,12 @@ export async function run({ page, check, baseUrl }) {
         // the very same editor that accepted one a moment ago. This is the
         // check that the `editable` predicate is re-read on toggle rather than
         // baked in at mount.
+        // The caret goes into a paragraph BEFORE the measurement: the image
+        // the controls above selected carries chrome whose text leaves the
+        // DOM on deselect, and that is not an edit.
+        await page.click(".ProseMirror p");
+        await page.waitForTimeout(100);
         await assertInert(page, check, "typing after toggling the lock on", async () => {
-            await page.click(".ProseMirror p");
             await page.keyboard.type("NOPE");
         });
 
@@ -456,6 +566,83 @@ export async function run({ page, check, baseUrl }) {
             landed ? "" : "the pending sync never posted the typed text",
         );
     }
+}
+
+/** The painted checkbox of the first task item: a point to click, or null. */
+function taskCheckbox(page) {
+    return page.$eval('li[data-item-type="task"]', (li) => {
+        const r = li.getBoundingClientRect();
+        // The box is a 14px `::before` at the item's left edge; aim at its
+        // centre, and vertically at the first text line.
+        return { x: r.x + 7, y: r.y + 10 };
+    }).catch(() => null);
+}
+
+/** The first task item's checked bit as the DOM has it, or null. */
+function taskChecked(page) {
+    return page.$eval('li[data-item-type="task"]', (li) =>
+        li.getAttribute("data-checked") === "true").catch(() => null);
+}
+
+/**
+ * The editing chrome the mode retires, measured HOVERED where it hides at
+ * rest. Each field is what a reader would see; the read-only pass asserts the
+ * chrome is gone and the editable pass asserts the same chrome is there, so a
+ * selector that has drifted fails the control rather than passing both.
+ */
+async function readOnlyChrome(page) {
+    // Hover `hoverSel`, then read `probe` in the page while it is hovered.
+    // The probe gets a `visible(el)` helper: painted, and not display/visibility
+    // hidden.
+    const hoverAndRead = async (hoverSel, probe) => {
+        const box = await page.$eval(hoverSel, (el) => {
+            const r = el.getBoundingClientRect();
+            return { x: r.x + Math.min(20, r.width / 2), y: r.y + Math.min(10, r.height / 2) };
+        }).catch(() => null);
+        if (!box) { return null; }
+        await page.mouse.move(box.x, box.y);
+        await page.waitForTimeout(250);
+        return page.evaluate((src) => {
+            const visible = (el) => {
+                if (!el) { return false; }
+                const s = getComputedStyle(el);
+                if (s.display === "none" || s.visibility === "hidden") { return false; }
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+            };
+            return new Function("visible", `return (${src})(visible);`)(visible);
+        }, probe.toString());
+    };
+    const handles = await hoverAndRead(".ProseMirror > p", (visible) =>
+        [...document.querySelectorAll(".heading-fold-marker")].filter(visible).length);
+    const tableOverlay = await hoverAndRead(".mw-table", (visible) =>
+        visible(document.querySelector(".mw-table-overlay")));
+    // The image toolbar (path chip, title) shows for a SELECTED image, so
+    // click it rather than hover; a NodeSelection is reading in both modes.
+    const imgPt = await page.$eval(".image-wrapper img.image-node", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }).catch(() => null);
+    if (imgPt) { await page.mouse.click(imgPt.x, imgPt.y); await page.waitForTimeout(250); }
+    const image = await hoverAndRead(".image-wrapper", (visible) => {
+        const w = document.querySelector(".image-wrapper");
+        const caption = w?.querySelector(".image-caption");
+        const title = w?.querySelector(".img-tb-title");
+        return {
+            inputsReadOnly: !!caption && !!title && caption.readOnly && title.readOnly,
+            pencil: visible(w?.querySelector(".img-tb-path-pencil")),
+        };
+    });
+    const htmlEdit = await hoverAndRead(".html-inline", (visible) =>
+        visible(document.querySelector(".html-edit-btn")));
+    await page.mouse.move(5, 5);
+    return {
+        handles: handles ?? -1,
+        tableOverlay: tableOverlay ?? null,
+        imageInputsReadOnly: image?.inputsReadOnly ?? null,
+        imagePencil: image?.pencil ?? null,
+        htmlEdit: htmlEdit ?? null,
+    };
 }
 
 /**

@@ -51,6 +51,7 @@ import { deleteBlockRange } from "../components/blockMenu";
 // Per-embed width preference (presentation-only, never in the markdown):
 // the widget host carries the bw-full class so the card can span the pane.
 import { anchorAt, embedWidthAnchor, getBlockWidth, registerAnchorKind } from "../blockWidth";
+import { isReadOnly } from "../readOnly";
 
 /** Upper bound on how long after first paint the first embed pass may wait. */
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
@@ -651,7 +652,11 @@ function withPalette(fn: (mod: typeof import("../components/embedPalette")) => v
 
 /** Show/hide the palette to match the selected embed (idempotent per update). */
 function syncPalette(view: EditorView, focusUrl = false): void {
-    const selected = selectedEmbedIn(view.state);
+    // The palette exists to rewrite or delete the card; a reader has the
+    // card's own column for open, width and fullscreen. The mode toggle
+    // reaches here through the read-only plugin's setProps, so a palette up
+    // when the lock lands closes on the same update.
+    const selected = isReadOnly() ? null : selectedEmbedIn(view.state);
     if (selected) {
         withPalette((m) => m.showEmbedPalette(view, {
             from: selected.from,

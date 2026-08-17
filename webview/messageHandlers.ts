@@ -33,7 +33,7 @@ import { setLogTableSel, syncExternalContent, flushPendingEdit, acknowledgeFlush
 import { regateCalcCues, regateNoteMarkers, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { setReadOnly } from "./readOnly";
-import { reconcileProofreadingUnderFocus } from "./focusMode";
+import { absorbTocVisibilityUnderFocus, maskProofreadConfigUnderFocus, maskToolbarConfigUnderFocus } from "./focusMode";
 import { applyLintResults } from "./plugins/proofread";
 import { withScrollAnchor } from "./utils/scrollAnchor";
 import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
@@ -494,12 +494,11 @@ export function createMessageHandlers(
         proofreadConfig(msg) {
             const view = getEditorView();
             if (view) {
-                setProofreadConfig(view, msg.config);
-                // Focus mode masks this same field in the live config, so an
+                // Focus mode masks the master gate in the live config, so an
                 // inbound write is the one thing that can un-silence a focused
-                // document. Re-apply the mask and take the incoming value as
-                // what the exit should restore (MAR-72).
-                reconcileProofreadingUnderFocus(msg.config.proofreadingEnabled);
+                // document. The mask keeps the live gate and takes the incoming
+                // value as what the exit restores (MAR-72).
+                setProofreadConfig(view, maskProofreadConfigUnderFocus(msg.config));
             }
         },
         notesConfig(msg) {
@@ -519,7 +518,9 @@ export function createMessageHandlers(
             setReviewGroupByType(msg.groupByType);
         },
         toolbarConfig(msg) {
-            topbarTb?.applyConfig(msg.config);
+            // Same seam as proofreadConfig: the echo carries `visible`, and
+            // focus mode hides the toolbar without writing it.
+            topbarTb?.applyConfig(maskToolbarConfigUnderFocus(msg.config));
         },
         whatsNewUnread(msg) {
             setWhatsNewUnread(msg.unread);
@@ -570,6 +571,9 @@ export function createMessageHandlers(
             setTocPosition(msg.position);
         },
         setTocVisibility(msg) {
+            // A focused editor records the echo for its exit and leaves the
+            // collapsed panel alone.
+            if (absorbTocVisibilityUnderFocus(msg.visibility)) { return; }
             setTocVisibility(msg.visibility);
         },
         setTocWidth(msg) {

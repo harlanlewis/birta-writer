@@ -92,7 +92,6 @@ export async function run({ page, check, baseUrl }) {
     check("the table of contents is open before focus", opened.tocShown, JSON.stringify(opened));
 
     // ── enter ────────────────────────────────────────────────────────────
-    const zenBefore = await postedCount(page, "toggleWorkbenchZen");
     const tocWritesBaseline = await postedCount(page, "tocVisibility");
     await toggleFocus(page);
     const inFocus = await chromeState(page);
@@ -103,9 +102,23 @@ export async function run({ page, check, baseUrl }) {
     check("focus marks the body, so CSS can reach chrome with no subscriber",
         inFocus.bodyFocus === true, JSON.stringify(inFocus));
 
-    const zenIn = await postedCount(page, "toggleWorkbenchZen");
-    check("focus asks the extension for VS Code's Zen Mode, once",
-        zenIn - zenBefore === 1, `${zenBefore} -> ${zenIn}`);
+    // The workbench is deliberately not focus mode's to touch. Zen Mode is
+    // VS Code's own toggle with its own restore, and driving it from here is
+    // how the two got out of step.
+    const zenPosts = await postedCount(page, "toggleWorkbenchZen");
+    check("focus does not touch the workbench chrome", zenPosts === 0, `${zenPosts} toggleWorkbenchZen`);
+
+    // A settings echo arriving mid-focus must not undo the mode. The extension
+    // broadcasts the whole toolbar config on ANY birta.toolbar.* write, with
+    // `visible` riding along, so an unmasked echo would re-show the toolbar
+    // the moment a layout was edited.
+    await page.evaluate(() =>
+        window.postMessage({ type: "toolbarConfig", config: { visible: true } }, "*"),
+    );
+    await page.waitForTimeout(500);
+    const afterEcho = await chromeState(page);
+    check("a toolbar settings echo during focus leaves the toolbar hidden",
+        afterEcho.toolbarShown === false, JSON.stringify(afterEcho));
 
     // The claim that makes this a mode and not a settings edit. Both counts are
     // read at this point rather than at mount, because the TOC open above is a
@@ -126,7 +139,6 @@ export async function run({ page, check, baseUrl }) {
 
     // ── exit ─────────────────────────────────────────────────────────────
     await toggleFocus(page);
-    const zenOut = await postedCount(page, "toggleWorkbenchZen");
     const after = await chromeState(page);
 
     check("a round trip restores the toolbar to what it was",
@@ -136,8 +148,6 @@ export async function run({ page, check, baseUrl }) {
     check("a round trip brings proofreading back",
         after.styleHits > 0, `${after.styleHits} .pf-style-hit`);
     check("a round trip clears the body marker", after.bodyFocus === false, JSON.stringify(after));
-    check("the workbench toggle is balanced across the round trip",
-        zenOut - zenBefore === 2, `${zenBefore} -> ${zenOut}`);
 
     // ── the round trip left no persisted trace ───────────────────────────
     const toolbarWritesEnd = await postedCount(page, "setToolbarVisible");

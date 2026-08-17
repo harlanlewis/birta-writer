@@ -153,7 +153,7 @@ A move, duplicate, table reorder, or drag that would alter or drop document cont
 
 ### A document can be locked for reading
 
-A read-only mode locks every way the document can change, so a file you opened to read cannot be altered by a stray keystroke or a mis-aimed click. Reading is untouched: scrolling, selection and copy, find, folding, the outline, link navigation and diagram previews all keep working, and the rendering is identical between the two modes, so nothing shifts when you toggle.
+A read-only mode locks every way the document can change, so a file you opened to read cannot be altered by a stray keystroke or a mis-aimed click. Reading is untouched: scrolling, selection and copy, find, folding, the outline, link navigation and diagram previews all keep working, and the rendering is identical between the two modes, so nothing shifts when you toggle. The editing chrome leaves rather than sitting there dead: no gutter handles, no selection rings, no table grips, no edit verbs in the link and embed popups, so a locked document reads as a page rather than as an editor that ignores you.
 
 The lock is structural rather than a list of disabled buttons. Every change to a document goes through one gate, so a feature added later is covered whether or not anyone remembered this mode, and the affordances follow: a control that cannot act is dimmed rather than left to look live and do nothing. Editing raw Markdown still opens the file for editing, because that intent is explicit.
 

@@ -3091,3 +3091,82 @@ body.block-marqueeing .milkdown .editor {
     font-size: var(--ui-fs-s);
     white-space: nowrap;
 }
+
+/* ── Read-only chrome (MAR-53) ────────────────────────────────────────────
+   `body.read-only` is written by webview/readOnly.ts in the same synchronous
+   step as the lock itself. Three layers keep the promise that no gesture
+   changes the document; this section is the affordance half for chrome the
+   command gate cannot reach, the NodeView-owned controls that only write.
+   A control that also reads (an image's zoom, a code block's copy, a table's
+   width toggle, the fold chevrons) stays, and gates in code where it has a
+   writing half. Rendering is otherwise identical between the modes: nothing
+   here changes a block's box, so toggling shifts no content. */
+body.read-only {
+    /* 1. Grab handles. The gutter markers open the block menu and drag the
+       block, and both are moves; a reader gets neither, hovered or not. The
+       fold chevrons (.heading-fold-toggle) are deliberately not here, and
+       the markers keep their box (visibility, not display) so a chevron that
+       sits beside one does not shift when the mode flips. */
+    .milkdown .editor .heading-fold-marker,
+    .heading-sticky-marker {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    /* 2. Block selection rings. A NodeSelection still happens (a reader
+       clicks an image to zoom it, and Cmd+C on a selected block copies it),
+       but its accent ring is the editing frame that says "this block is
+       yours to move or replace", and read-only shows no such thing. The cell
+       selection wash in a table is NOT here: it is the only paint a
+       cross-cell selection has, and copying cells is reading. */
+    .milkdown .editor .ProseMirror-selectednode {
+        outline: none;
+        --hr-line: var(--vscode-panel-border);
+    }
+    .image-wrapper--selected,
+    .embed-host--selected .embed-card__frame,
+    .embed-host--selected .embed-card--info {
+        border-color: var(--vscode-editorWidget-border);
+        box-shadow: none;
+    }
+    .milkdown .editor :is(.math-inline--selected, .wiki-link--selected) {
+        outline: none;
+        box-shadow: none;
+    }
+
+    /* 3. Controls whose only job is a write. Each has a reading sibling
+       that stays in the same column, so the column itself is untouched. */
+    .mw-table-overlay,
+    .embed-card__edit,
+    .embed-card__aslink,
+    .html-edit-btn,
+    .img-tb-path-pencil,
+    .lang-picker-btn > svg {
+        display: none;
+    }
+    /* Pickers that are also labels keep the label and lose the "click me":
+       the callout's kind icon, the code block's language name, the image's
+       file-name chip, and the task box, none of which react to hover now. */
+    .callout-kind,
+    .lang-picker-btn,
+    .img-tb-path,
+    .milkdown .editor li[data-item-type="task"]::before {
+        cursor: default;
+    }
+    .callout-kind:hover {
+        background: transparent;
+    }
+    .lang-picker-btn:hover {
+        background: var(--vscode-input-background);
+    }
+    /* Field-shaped surfaces read as text, not as a place to type, and an
+       empty one shows no placeholder inviting it. */
+    .image-caption,
+    .img-tb-title {
+        cursor: default;
+    }
+    .image-caption:placeholder-shown,
+    .img-tb-title:placeholder-shown {
+        visibility: hidden;
+    }
+}
