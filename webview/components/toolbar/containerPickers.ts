@@ -39,8 +39,13 @@ export interface ContainerPicker {
     el: HTMLElement;
     /** The trigger button, lit while the caret is inside any member of the family. */
     trigger: HTMLElement | null;
-    /** Fill the row for the member named by `current`, clearing every other row. */
-    setActive: (current: string | null) => void;
+    /**
+     * Fill the row for the member named by `current`, clearing every other
+     * row. `applicable: false` greys the whole control and makes it inert,
+     * the format picker's treatment: where the schema cannot hold this
+     * family, every row would consume the click and change nothing.
+     */
+    setActive: (current: string | null, applicable?: boolean) => void;
 }
 
 export interface FormatPicker {
@@ -216,8 +221,11 @@ export function createListMenu(getEditor: GetEditor): ContainerPicker {
     return {
         el,
         trigger: listTriggerBtn,
-        setActive: (current: string | null): void => {
-            for (const { type, setActive } of listRows) { setActive(type === current); }
+        setActive: (current: string | null, applicable = true): void => {
+            el.classList.toggle("tb-fmt-wrap--disabled", !applicable);
+            for (const { type, setActive } of listRows) {
+                setActive(applicable && type === current);
+            }
         },
     };
 }
@@ -295,8 +303,11 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
     return {
         el,
         trigger: codeTriggerBtn,
-        setActive: (current: string | null): void => {
-            for (const { key, setActive } of codeRows) { setActive(key === current); }
+        setActive: (current: string | null, applicable = true): void => {
+            el.classList.toggle("tb-fmt-wrap--disabled", !applicable);
+            for (const { key, setActive } of codeRows) {
+                setActive(applicable && key === current);
+            }
         },
     };
 }

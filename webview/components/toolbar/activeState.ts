@@ -33,6 +33,10 @@ export interface ToolbarActiveState {
     readonly headingLevel: number;
     /** false where the text type can't be changed to a heading (table cell / code block / a selected atom). */
     readonly formatApplicable: boolean;
+    /** false where a list cannot live (a table cell holds a paragraph and nothing else). */
+    readonly listApplicable: boolean;
+    /** false where a code fence cannot live, or where the caret is already in one. */
+    readonly codeApplicable: boolean;
     /** The enclosing list type, or null. */
     readonly list: ListKind | null;
     /** The enclosing quote-family container (blockquote or callout kind), or null. */
@@ -127,6 +131,8 @@ export const DETACHED_STATE: ToolbarActiveState = {
     },
     headingLevel: 0,
     formatApplicable: false,
+    listApplicable: false,
+    codeApplicable: false,
     list: null,
     quote: null,
     code: null,
@@ -219,6 +225,12 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
             !inMathSource && !inWikiSource &&
             (selectedNode === null || selectedNode.isTextblock) &&
             canPlaceCommandBlock($from, "setHeading1"),
+        // Same probe, per family. The `!== null` arms are what keeps a
+        // control that REPORTS the caret's container from greying out inside
+        // it: the Code picker names the fence the caret is in, and the probe
+        // refuses a fence inside a fence.
+        listApplicable: list !== null || canPlaceCommandBlock($from, "toggleBulletList"),
+        codeApplicable: code !== null || canPlaceCommandBlock($from, "insertCodeBlock"),
         list,
         quote,
         code,
