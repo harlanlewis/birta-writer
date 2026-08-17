@@ -1,12 +1,11 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { computeReplaceRange } from "../shared/textEdit";
-import { DOCUMENT_EXTENSIONS, DOCUMENT_EXT_REGEX } from "../shared/documentExtensions";
+import { DOCUMENT_EXT_REGEX } from "../shared/documentExtensions";
 import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap, sourceLineCount } from "../shared/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
-import { extractListValuesByKey, rankListValues } from "../shared/frontmatterSuggestions";
-import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
+import { SuggestionProviders } from "./suggestionProviders";
 import { DiskDriftController } from "./diskDrift";
 import { settlePhantomDirty } from "./phantomDirty";
 import { judgeReplacement } from "../shared/destructiveGuard";
@@ -38,11 +37,10 @@ import { fetchEmbedTitle } from "./utils/embedMetaFetcher";
 import type { ConnectorService } from "./connectors/connectorService";
 import { asConnectorId, runConnectFlow } from "./connectors/commands";
 import { slugify } from "../shared/slug";
-import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import type { ToExtensionMessage, ToWebviewMessage, TextCount, LogseqReason } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, LogseqReason } from "../shared/messages";
 import type { EditorSelectionContext } from "../shared/agentContext";
-import type { WordCountView } from "./wordCountStatus";
+import { WordCountDriver, type WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
@@ -64,28 +62,6 @@ const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  * authority; `editorSelectorParity.test.ts` reads both and fails on a drift.
  */
 const WYSIWYG_EXT_REGEX = DOCUMENT_EXT_REGEX;
-
-/**
- * The extensions the front-matter suggestion scan reads, as ONE fact, and the
- * same fact the editor uses to decide what it opens: a file this editor opens
- * can carry front matter, and there is no third answer.
- *
- * The glob below and the watcher predicate have to agree: the scan is cached
- * for a TTL window and only a create or delete of a file it reads can change
- * its answer, so a file type the glob collects but the watcher ignores goes
- * stale for the whole window. `.mdx` walked into exactly that, because it does
- * not end with `.md` (MAR-350). Both derive from the list below, so widening
- * it can never reach one half without the other.
- */
-const FM_SCAN_EXTENSIONS = DOCUMENT_EXTENSIONS;
-const FM_SCAN_GLOB = `**/*.{${FM_SCAN_EXTENSIONS.join(",")}}`;
-
-/** Does the front-matter scan read this path? */
-export function isFrontMatterScanned(fsPath: string): boolean {
-    const dot = fsPath.lastIndexOf(".");
-    return dot !== -1
-        && (FM_SCAN_EXTENSIONS as readonly string[]).includes(fsPath.slice(dot + 1).toLowerCase());
-}
 
 /** A `(3:1)` or `(3:1-3:6)` position embedded in a parser's own message. */
 const EMBEDDED_POSITION_REGEX = /\((\d+):(\d+)(?:-(\d+):(\d+))?\)/g;
@@ -333,15 +309,18 @@ export class MarkdownEditorProvider
         void this.context.workspaceState.update(MarkdownEditorProvider.VIEW_STATE_MEMENTO_KEY, all);
     }
 
-    // Workspace-wide frontmatter list-value scan, cached for a short TTL so
-    // repeated "+" menu opens stay snappy (fsPath → key → list values).
-    private _fmScanCache: { perFile: Map<string, ReadonlyMap<string, string[]>>; expires: number } | undefined;
-    private static readonly _FM_SCAN_TTL_MS = 30_000;
-
-    // Workspace file list cache for link target suggestions — avoids re-running
-    // findFiles on every debounced keystroke in a link URL input.
-    private _linkFileCache: { uris: vscode.Uri[]; expires: number } | undefined;
-    private static readonly _LINK_FILE_TTL_MS = 10_000;
+    // The three "what could this be" answers and the workspace file index
+    // they share with smart link resolution (suggestionProviders.ts). Lent
+    // the two facts only the provider knows: a document's workspace root and
+    // its image URI map, which a save reads back.
+    private readonly _suggestions = new SuggestionProviders({
+        workspaceRootFor: (document) => this._workspaceRootFor(document),
+        imageUriMapFor: (uriKey) => {
+            const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
+            this._imageUriMaps.set(uriKey, uriMap);
+            return uriMap;
+        },
+    });
     /** While switchToTextEditor is in progress, suppress onDidChangeTabs from switching the text tab back to WYSIWYG */
     public static readonly suppressAutoSwitch = new Set<string>();
 
@@ -360,16 +339,11 @@ export class MarkdownEditorProvider
     // its tab is the active custom editor with focus parked elsewhere.
     private readonly _focusedPanels = new Set<string>();
 
-    // Status bar word/character/reading-time readout (MAR-29). Injected from
-    // extension.ts so the item is created once; the provider drives it from the
-    // active panel's `wordCount` messages. Last-known counts are cached per
-    // document so re-activating a retained webview re-renders without waiting
-    // for a fresh report.
-    private _wordCountView: WordCountView | null = null;
-    private readonly _wordCounts = new Map<
-        string,
-        { doc: TextCount; selection: TextCount | null }
-    >();
+    // Status bar word/character/reading-time readout (MAR-29). The view is
+    // injected from extension.ts so the item is created once; the driver
+    // (wordCountStatus.ts) caches each document's last counts and lets only
+    // the active panel write the item.
+    private readonly _wordCount = new WordCountDriver();
 
     // Coding-agent bridge (src/agentBridge/): the document behind the active
     // panel, and the in-flight requestEditorContext correlations. Tracked
@@ -389,7 +363,7 @@ export class MarkdownEditorProvider
 
     /** Inject the status bar word-count view (called once from extension.ts). */
     public setWordCountView(view: WordCountView): void {
-        this._wordCountView = view;
+        this._wordCount.setView(view);
     }
 
     /**
@@ -415,16 +389,6 @@ export class MarkdownEditorProvider
             vscode.workspace.getWorkspaceFolder(document.uri)
             ?? vscode.workspace.workspaceFolders?.[0]
         )?.uri.fsPath;
-    }
-
-    /** Render the cached counts for `uriKey`, or hide the readout if none exist. */
-    private _renderWordCount(uriKey: string): void {
-        const counts = this._wordCounts.get(uriKey);
-        if (counts) {
-            this._wordCountView?.update(counts.doc, counts.selection);
-        } else {
-            this._wordCountView?.hide();
-        }
     }
 
     /**
@@ -779,12 +743,7 @@ export class MarkdownEditorProvider
      */
     private _watchWorkspaceIndex(): void {
         const watcher = vscode.workspace.createFileSystemWatcher("**/*");
-        const invalidate = (uri: vscode.Uri): void => {
-            this._linkFileCache = undefined;
-            if (isFrontMatterScanned(uri.fsPath)) {
-                this._fmScanCache = undefined;
-            }
-        };
+        const invalidate = (uri: vscode.Uri): void => this._suggestions.invalidateFor(uri);
         this.context.subscriptions.push(
             watcher,
             watcher.onDidCreate(invalidate),
@@ -819,15 +778,14 @@ export class MarkdownEditorProvider
         // Show cached counts if we've seen this document before, else clear any
         // stale readout from the previously active editor until the webview
         // reports (MAR-29).
-        this._renderWordCount(uriKey);
+        this._wordCount.activate(uriKey);
 
         webviewPanel.onDidDispose(() => {
             this._webviewPanels.delete(uriKey);
             // Drop cached counts; hide the readout if this was the active editor
             // (its status bar figures no longer describe anything) (MAR-29).
-            this._wordCounts.delete(uriKey);
+            this._wordCount.forget(uriKey, this._activePanel === webviewPanel);
             if (this._activePanel === webviewPanel) {
-                this._wordCountView?.hide();
                 this._activePanel = null;
                 this._activeDocument = null;
             }
@@ -881,7 +839,7 @@ export class MarkdownEditorProvider
                 if (this._activePanel === webviewPanel) {
                     this._activePanel = null;
                     this._activeDocument = null;
-                    this._wordCountView?.hide();
+                    this._wordCount.hide();
                 }
                 return;
             }
@@ -889,7 +847,7 @@ export class MarkdownEditorProvider
             this._activePanel = p;
             this._activeDocument = document;
             // Restore this document's cached counts into the status bar (MAR-29).
-            this._renderWordCount(uriKey);
+            this._wordCount.activate(uriKey);
             if (!this._initializedPanels.has(uriKey)) { return; }
             // A navigation stashed while this panel was hidden (the mode switch
             // sets one before the panel is activated) lands as it comes back.
@@ -1310,13 +1268,13 @@ export class MarkdownEditorProvider
                         break;
                     case "getPathSuggestions":
                         if (message.id && message.query !== undefined) {
-                            this._handleGetPathSuggestions(document, panel, message.id, message.query)
+                            this._suggestions.getPathSuggestions(document, panel, message.id, message.query)
                                 .catch((err) => reportError("getPathSuggestions", err));
                         }
                         break;
                     case "getLinkTargetSuggestions":
                         if (message.id && message.query !== undefined) {
-                            this._handleGetLinkTargetSuggestions(document, panel, message.id, message.query)
+                            this._suggestions.getLinkTargetSuggestions(document, panel, message.id, message.query)
                                 .catch((err) => reportError("getLinkTargetSuggestions", err));
                         }
                         break;
@@ -1398,7 +1356,7 @@ export class MarkdownEditorProvider
                     }
                     case "requestFmSuggestions":
                         if (message.key !== undefined) {
-                            this._handleRequestFmSuggestions(document, panel, message.key)
+                            this._suggestions.requestFmSuggestions(document, panel, message.key)
                                 .catch((err) => reportError("requestFmSuggestions", err));
                         }
                         break;
@@ -1589,10 +1547,7 @@ export class MarkdownEditorProvider
                         // Cache per document so re-activating a retained webview
                         // re-renders instantly; only the active panel drives the
                         // shared status bar item (MAR-29).
-                        this._wordCounts.set(uriKey, { doc: message.doc, selection: message.selection });
-                        if (this._activePanel === webviewPanel) {
-                            this._wordCountView?.update(message.doc, message.selection);
-                        }
+                        this._wordCount.report(uriKey, message.doc, message.selection, this._activePanel === webviewPanel);
                         break;
                     case "editorContextResult":
                         // Reply to a getActiveEditorContext pull (src/agentBridge/).
@@ -2108,7 +2063,7 @@ export class MarkdownEditorProvider
                     return false;
                 }
             },
-            getFileIndex: async () => (await this._getLinkFileIndex()).map((u) => u.fsPath),
+            getFileIndex: async () => (await this._suggestions.getLinkFileIndex()).map((u) => u.fsPath),
         };
 
         // A wikilink without smart resolution degrades to a plain path lookup
@@ -2585,182 +2540,6 @@ export class MarkdownEditorProvider
         }
 
         postToWebview(panel.webview, { type: 'projectImagesList', id, images });
-    }
-
-    /**
-     * Answers a requestFmSuggestions message: scans the workspace's markdown
-     * files (once per TTL window, indexing every list-valued key), then replies
-     * with the values used for `key` in files OTHER than the current document,
-     * ranked by frequency (descending) then alphabetically.
-     */
-    private async _handleRequestFmSuggestions(
-        document: vscode.TextDocument,
-        panel: vscode.WebviewPanel,
-        key: string,
-    ): Promise<void> {
-        const now = Date.now();
-        if (!this._fmScanCache || now >= this._fmScanCache.expires) {
-            // `.mdx` is in FM_SCAN_EXTENSIONS because the MDX format module is
-            // built from markdown's presets, so an MDX file's `---` block is
-            // front matter exactly as a `.md` file's is, and Astro and
-            // Starlight pages routinely carry one. Scanning only `.md` meant a
-            // workspace of MDX docs offered no suggestions at all, and its own
-            // values never appeared in a `.md` file's either (MAR-350).
-            const uris = await vscode.workspace.findFiles(FM_SCAN_GLOB, "**/node_modules/**", 500);
-            const perFile = new Map<string, ReadonlyMap<string, string[]>>();
-            await Promise.all(uris.map(async (uri) => {
-                try {
-                    const bytes = await vscode.workspace.fs.readFile(uri);
-                    perFile.set(uri.fsPath, extractListValuesByKey(Buffer.from(bytes).toString("utf8")));
-                } catch { /* unreadable file: skip it */ }
-            }));
-            this._fmScanCache = { perFile, expires: now + MarkdownEditorProvider._FM_SCAN_TTL_MS };
-        }
-        // Suggestions come from OTHER files only; the current document's own
-        // values are already visible as chips (and excluded WebView-side too).
-        const docFsPath = document.uri.fsPath;
-        const otherFiles = [...this._fmScanCache.perFile.entries()]
-            .filter(([fsPath]) => fsPath !== docFsPath)
-            .map(([, keyValues]) => keyValues);
-        const values = rankListValues(otherFiles, key);
-        postToWebview(panel.webview, { type: "fmSuggestions", key, values });
-    }
-
-    private async _handleGetPathSuggestions(
-        document: vscode.TextDocument,
-        panel: vscode.WebviewPanel,
-        id: string,
-        query: string,
-    ): Promise<void> {
-        const q = query.trim();
-        if (!q) {
-            postToWebview(panel.webview, { type: 'pathSuggestions', id, items: [] });
-            return;
-        }
-
-        const docFsPath = document.uri.fsPath;
-        const docDir = path.dirname(docFsPath);
-        const sep = path.sep;
-        const workspaceRoot = this._workspaceRootFor(document);
-
-        // Split at the last "/" into a directory part and a name prefix
-        const lastSlash = q.lastIndexOf('/');
-        const dirPart = lastSlash >= 0 ? q.slice(0, lastSlash + 1) : '';
-        const namePart = lastSlash >= 0 ? q.slice(lastSlash + 1) : q;
-
-        // Resolve dirPart to an absolute path
-        let absDir: string;
-        if (dirPart.startsWith('@/')) {
-            absDir = workspaceRoot
-                ? path.join(workspaceRoot, dirPart.slice(2))
-                : docDir;
-        } else if (dirPart === '' || dirPart.startsWith('./') || dirPart.startsWith('../')) {
-            absDir = path.resolve(docDir, dirPart || '.');
-        } else {
-            absDir = path.resolve(docDir, dirPart);
-        }
-
-        // readDirectory lists the direct children (with file types)
-        let entries: [string, vscode.FileType][];
-        try {
-            entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(absDir));
-        } catch {
-            postToWebview(panel.webview, { type: 'pathSuggestions', id, items: [] });
-            return;
-        }
-
-        const IGNORE = new Set(['node_modules', '.git', 'dist', '.DS_Store', 'out', '.vscode-test']);
-        const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.tiff', '.ico']);
-        const uriKey = document.uri.toString();
-        const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
-        this._imageUriMaps.set(uriKey, uriMap);
-        const items = entries
-            .filter(([name, type]) =>
-                !IGNORE.has(name) &&
-                name.toLowerCase().startsWith(namePart.toLowerCase()) &&
-                (type === vscode.FileType.File || type === vscode.FileType.Directory) &&
-                // Exclude files that exactly match namePart (the path is already complete, no need to suggest)
-                !(type === vscode.FileType.File && name.toLowerCase() === namePart.toLowerCase()),
-            )
-            // Directories come before files; within the same type, sort alphabetically
-            .sort(([an, at], [bn, bt]) => {
-                if (at !== bt) { return bt === vscode.FileType.Directory ? 1 : -1; }
-                return an.localeCompare(bn);
-            })
-            .slice(0, 15)
-            .map(([name, type]) => {
-                const fullPath = dirPart + name + (type === vscode.FileType.Directory ? '/' : '');
-                let webviewUri: string | undefined;
-                if (type === vscode.FileType.File) {
-                    const ext = path.extname(name).toLowerCase();
-                    if (IMAGE_EXTS.has(ext)) {
-                        const absFilePath = path.join(absDir, name);
-                        webviewUri = panel.webview.asWebviewUri(vscode.Uri.file(absFilePath)).toString();
-                        // Register the mapping so _prepareContentForSave can convert it back to a relative path on save
-                        uriMap.set(webviewUri, fullPath);
-                    }
-                }
-                return { path: fullPath, isDir: type === vscode.FileType.Directory, webviewUri };
-            });
-
-        postToWebview(panel.webview, { type: 'pathSuggestions', id, items });
-    }
-
-    /**
-     * Workspace-wide file suggestions for link URL inputs (link popup /
-     * insert-link prompt): case-insensitive substring match on the path,
-     * markdown files first. Each match is replied in BOTH document-relative
-     * and root-relative form; the WebView picks the form matching what the
-     * user typed. External queries (http/https/mailto/#) get no suggestions.
-     */
-    private async _handleGetLinkTargetSuggestions(
-        document: vscode.TextDocument,
-        panel: vscode.WebviewPanel,
-        id: string,
-        query: string,
-    ): Promise<void> {
-        const post = (items: ReturnType<typeof rankLinkTargets>) =>
-            postToWebview(panel.webview, { type: 'linkTargetSuggestions', id, items });
-
-        // An EMPTY query is allowed (the wikilink completer's bare `[[` —
-        // ranking returns everything, markdown first, capped); a non-empty
-        // query must still be a local path, never a URL/#anchor.
-        if ((query.trim() !== "" && !isLocalPathQuery(query)) || document.uri.scheme !== 'file') {
-            post([]);
-            return;
-        }
-        const workspaceRoot = this._workspaceRootFor(document);
-        if (!workspaceRoot) {
-            post([]);
-            return;
-        }
-
-        const uris = await this._getLinkFileIndex();
-
-        const candidates = buildLinkTargetItems(
-            uris.map((u) => u.fsPath),
-            document.uri.fsPath,
-            workspaceRoot,
-        );
-        post(rankLinkTargets(candidates, query));
-    }
-
-    /**
-     * Workspace file index shared by link-target autocomplete and smart link
-     * resolution: one findFiles sweep, cached briefly so a click or keystroke
-     * burst never pays it twice.
-     */
-    private async _getLinkFileIndex(): Promise<readonly vscode.Uri[]> {
-        const now = Date.now();
-        if (!this._linkFileCache || now >= this._linkFileCache.expires) {
-            const uris = await vscode.workspace.findFiles(
-                '**/*',
-                '{**/node_modules/**,**/.git/**,**/dist/**,**/releases/**}',
-                2000,
-            );
-            this._linkFileCache = { uris, expires: now + MarkdownEditorProvider._LINK_FILE_TTL_MS };
-        }
-        return this._linkFileCache.uris;
     }
 
     private _handleResolveImagePath(

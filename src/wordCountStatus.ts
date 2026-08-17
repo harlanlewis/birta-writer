@@ -82,3 +82,56 @@ export class WordCountStatusBar implements WordCountView, vscode.Disposable {
         this.item.dispose();
     }
 }
+
+/**
+ * Drives a WordCountView from the provider's panels (extracted, MAR-172): the
+ * per-document cache of the last counts each webview reported, and the rule
+ * that only the ACTIVE panel writes the shared status bar item. Re-activating
+ * a retained webview re-renders from the cache without waiting for a fresh
+ * report; a closed document's counts are dropped, and the readout hides when
+ * the panel that owned them was the active one, because its figures no
+ * longer describe anything.
+ */
+export class WordCountDriver {
+    private view: WordCountView | null = null;
+    private readonly counts = new Map<string, { doc: TextCount; selection: TextCount | null }>();
+
+    /** Inject the status bar view (called once from extension.ts). */
+    setView(view: WordCountView): void {
+        this.view = view;
+    }
+
+    /** A webview reported its counts: cache them, and show them if it is the
+     * active panel. */
+    report(uriKey: string, doc: TextCount, selection: TextCount | null, active: boolean): void {
+        this.counts.set(uriKey, { doc, selection });
+        if (active) {
+            this.view?.update(doc, selection);
+        }
+    }
+
+    /** A panel became the active one: render its cached counts, or clear the
+     * previous editor's stale readout until the webview reports. */
+    activate(uriKey: string): void {
+        const counts = this.counts.get(uriKey);
+        if (counts) {
+            this.view?.update(counts.doc, counts.selection);
+        } else {
+            this.view?.hide();
+        }
+    }
+
+    /** A panel went away: drop its counts, and hide the readout when it was
+     * the active editor. */
+    forget(uriKey: string, wasActive: boolean): void {
+        this.counts.delete(uriKey);
+        if (wasActive) {
+            this.view?.hide();
+        }
+    }
+
+    /** No active WYSIWYG editor: nothing to show. */
+    hide(): void {
+        this.view?.hide();
+    }
+}
