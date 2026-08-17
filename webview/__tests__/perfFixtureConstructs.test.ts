@@ -43,6 +43,24 @@ async function nodeTypeCounts(markdown: string): Promise<Map<string, number>> {
 /** The fixture whose job is to isolate the html NodeView's mount path. */
 const HTML_FIXTURE = "html-heavy";
 
+/** The GATED fixture that carries a smaller seed of the same branches. */
+const GATED_HTML_FIXTURE = "realistic";
+
+/** Split a fixture's html atoms by the branch `isSoleBlockAtom` takes. */
+async function htmlBranchCounts(markdown: string): Promise<{ soleBlock: number; inline: number }> {
+    const editor = await makeCorpusEditor(markdown);
+    let soleBlock = 0;
+    let inline = 0;
+    editorView(editor).state.doc.descendants((node, _pos, parent) => {
+        if (node.type.name !== "html") return true;
+        if (parent && parent.type.name === "paragraph" && parent.childCount > 1) inline++;
+        else soleBlock++;
+        return true;
+    });
+    await editor.destroy();
+    return { soleBlock, inline };
+}
+
 describe("launch-perf fixture constructs", () => {
     // Each case parses whole fixtures through the real editor, so the timeouts
     // are per-`it` rather than a raised project-wide default: the sweep below
@@ -67,16 +85,22 @@ describe("launch-perf fixture constructs", () => {
             // The two shapes take different branches: `isSoleBlockAtom` walks
             // siblings to decide whether an atom owns its whole block, so a
             // fixture of only one shape measures one side of that branch.
-            const editor = await makeCorpusEditor(FIXTURES[HTML_FIXTURE]);
-            let soleBlock = 0;
-            let inline = 0;
-            editorView(editor).state.doc.descendants((node, _pos, parent) => {
-                if (node.type.name !== "html") return true;
-                if (parent && parent.type.name === "paragraph" && parent.childCount > 1) inline++;
-                else soleBlock++;
-                return true;
-            });
-            await editor.destroy();
+            const { soleBlock, inline } = await htmlBranchCounts(FIXTURES[HTML_FIXTURE]);
+            expect(soleBlock, "block-level html atoms").toBeGreaterThan(0);
+            expect(inline, "inline html atoms sharing a paragraph").toBeGreaterThan(0);
+        },
+        30_000,
+    );
+
+    it(
+        "the gated fixture should carry both html branches too, or the gate measures neither",
+        async () => {
+            // `html-heavy` is ungated, so every assertion above is about a
+            // document `launch-perf` never runs. This is the same claim for the
+            // fixture that the gate does run: `realistic` pays CI time for its
+            // raw HTML on every PR, and it earns that only by reaching both
+            // sides of the branch the cost lives in.
+            const { soleBlock, inline } = await htmlBranchCounts(FIXTURES[GATED_HTML_FIXTURE]);
             expect(soleBlock, "block-level html atoms").toBeGreaterThan(0);
             expect(inline, "inline html atoms sharing a paragraph").toBeGreaterThan(0);
         },
@@ -88,12 +112,13 @@ describe("launch-perf fixture constructs", () => {
         async () => {
             // A sweep must assert its own coverage: this enumerates the whole
             // fixture set and names what carries the construct, so a fixture
-            // added later cannot skip the question. The gated fixtures
-            // (medium/large/realistic) carrying zero html atoms is the CURRENT,
-            // deliberate state — seeding a gated fixture shifts its baseline and
-            // spends CI time on every PR, which is a maintainer's call on what
-            // the gate should cost (MAR-367). This records that state instead of
-            // leaving it to a grep.
+            // added later cannot skip the question. Exactly two fixtures carry
+            // html, and which two is the decision, not an accident:
+            // `html-heavy` isolates the path ungated, and `realistic` seeds a
+            // smaller version so the launch gate can see it (MAR-367). The other
+            // gated fixtures stay clean, because seeding one shifts a baseline
+            // and buys coverage that `realistic` already provides. This records
+            // that state rather than leaving it to a grep.
             const names = Object.keys(FIXTURES);
             expect(names.length, "fixtures enumerated").toBeGreaterThanOrEqual(8);
 
@@ -102,7 +127,7 @@ describe("launch-perf fixture constructs", () => {
                 const counts = await nodeTypeCounts(FIXTURES[name]);
                 if ((counts.get("html") ?? 0) > 0) withHtml.push(name);
             }
-            expect(withHtml).toEqual([HTML_FIXTURE]);
+            expect(withHtml.sort()).toEqual([HTML_FIXTURE, GATED_HTML_FIXTURE].sort());
         },
         120_000,
     );
