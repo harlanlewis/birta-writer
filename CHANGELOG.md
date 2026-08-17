@@ -20,6 +20,10 @@
 
 - A style check for the absolute speed claim: `no longer stalls`, `zero latency`, `always faster` and their kin get the same dotted underline the other checks use, with the note that a cost is a distribution and the sentence cannot be checked as written. It is scoped to performance vocabulary, so `no longer corrupts the file` is left alone, and a paragraph that already carries a before and an after figure is left alone too. It is a Prose row in the Checks menu, on by default like the others, and `birta.styleCheck.absolutePerf` turns it off.
 
+- MDX: a JSX component block shows its attributes as a small form. A plain string attribute (`title="..."`) can be edited in place and is written back into the file's own bytes, keeping its original quoting and touching nothing else in the island; expression, spread and boolean attributes, and the component's children, stay read-only and are edited in the text editor. Read-only mode declines the edit like every other.
+
+- Escape closes the Insert Image dialog from anywhere in it: a tab, a thumbnail in the grid, the enlarge preview (which takes the first Escape, the dialog the next), or the editor behind it. Shift+Escape and other modified Escapes are left to the workbench there, in the front-matter panel, and in callout and directive titles.
+
 ### Changed
 
 - Expand Selection climbs the structure inside a block, one level at a time. From text in a nested list item it now reaches the item, then the list it sits in, then the item that sits in, and only then the whole top-level list and the document; a list inside a quote offers the same rungs; table cells and rows are not rungs. Shrink Selection retraces an expand run exactly, so a three-block range grown to the whole document comes back as three blocks rather than one, and a run from a caret walks back to that caret; any other selection change or edit ends the run and Shrink falls back to stepping down from wherever the selection is.
