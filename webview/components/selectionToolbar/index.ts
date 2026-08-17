@@ -1203,9 +1203,10 @@ export function setupSelectionToolbar(
             !$from.sameParent($to) ||
             (selection.from <= $from.start() && selection.to >= $to.end());
 
-        // Reflect which inline marks/constructs are already applied on the
-        // selection — the same derivation the top toolbar uses, so the two
-        // surfaces can never disagree. Toggling a hidden button is harmless.
+        // What the caret is in and what it can become, from the same
+        // derivation the top toolbar uses, so the two surfaces can never
+        // disagree. It decides visibility below and lights the buttons
+        // further down.
         const active = computeToolbarActiveState(view.state);
 
         // Text mode: each inline button honors its per-item visibility setting
@@ -1260,6 +1261,8 @@ export function setupSelectionToolbar(
         hideAllTable();
         hideBlockButtons();
 
+        // Reflect which inline marks/constructs are already applied.
+        // Toggling a hidden button is harmless.
         setActive(boldBtn, active.marks.bold);
         setActive(italicBtn, active.marks.italic);
         setActive(strikeBtn, active.marks.strikethrough);
