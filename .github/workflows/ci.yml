@@ -286,7 +286,9 @@ jobs:
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });
 
 # The e2e suite (real bundle in headless Chromium) is a LOCAL pre-push gate,
-# run with `pnpm test:e2e`, not a CI job. Its layout-geometry and input-timing
+# run with `pnpm test:e2e`, not a CI job. Two suites are the exception, and
+# they run in .github/workflows/jot.yml under WebKit rather than here: see that
+# file's header for why those two qualify and this policy still holds. Its layout-geometry and input-timing
 # assertions are calibrated to a real desktop browser and are flaky in GitHub's
 # headless Chromium (sub-pixel font metrics, keystroke/selection races) — they
 # pass locally on the same commit. A perpetually-red, non-blocking CI check is

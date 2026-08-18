@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- e2e harness page for e2e/enterCaret: Return at the end of a block, then
+     typing. The page links dist/hostPalette.css (what a non-VS-Code host
+     actually links) rather than a hand-written stub, so what this suite
+     renders is what the Jot panel renders. `hostCapabilities` is ABSENT, the
+     ordinary host shape, because the defect this suite pins is the editor's
+     and has nothing to do with capability gating. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-light"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const CONTENT = "# One\n\nSome text.\n\n## Two\n\ntext\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

@@ -56,6 +56,47 @@ function resolveCodeCli() {
     return null;
 }
 
+/**
+ * Build and install Birta Jot too, so the handoff leaves BOTH surfaces running
+ * the tree the session just finished. Jot embeds dist/webview.js, which
+ * packaging above has already produced in production form, so this only builds
+ * the Swift shell and swaps the app.
+ *
+ * Unconditional on macOS by design. Almost every change that reaches the editor
+ * reaches Jot, since it is the same bundle; a rule for deciding when to skip
+ * would be one more thing to get wrong, and a stale Jot is invisible until you
+ * summon it and find yesterday's build.
+ *
+ * Skipped rather than failed when the machine cannot do it: Jot is macOS-only,
+ * and Swift is not everywhere. The extension install is the part that must not
+ * be held up by a missing toolchain.
+ */
+function installJot() {
+    if (process.platform !== "darwin") {
+        console.log("\ninstall-local: not macOS, so Birta Jot was skipped (it is a macOS app).");
+        return;
+    }
+    if (tryCapture("swift", ["--version"]) === null) {
+        console.log(
+            "\ninstall-local: no `swift` on PATH, so Birta Jot was skipped. " +
+                "Install the Xcode Command Line Tools, then: pnpm jot:install",
+        );
+        return;
+    }
+    step("building and installing Birta Jot");
+    try {
+        run("bash", ["jot/scripts/install-app.sh", "--build"]);
+    } catch {
+        // A refusal here is usually a running copy that would not quit, which
+        // the script explains on its own. The extension is already installed by
+        // this point and that must not be reported as a failure.
+        console.log(
+            "install-local: Birta Jot was not replaced (see the message above). " +
+                "The extension install above is unaffected; re-run `pnpm jot:install` when ready.",
+        );
+    }
+}
+
 // 1. Tests must be green before anything ships to the editor.
 step("pnpm test");
 run("pnpm", ["test"]);
@@ -76,6 +117,7 @@ if (code === null) {
             `built and packaged ${VSIX}, but skipped install. Install VS Code, or ` +
             `run: code --install-extension ${VSIX} --force`,
     );
+    installJot();
     process.exit(0);
 }
 
@@ -111,7 +153,11 @@ if (copies.length === 1 && copies[0].toLowerCase() === CURRENT_ID.toLowerCase())
     process.exit(1);
 }
 
+// 5. Install Birta Jot, the macOS shell, from the same build.
+installJot();
+
 console.log(
     "\n✓ Installed. Reload to run the new build: " +
-        'Cmd+Shift+P → "Developer: Reload Window".',
+        'Cmd+Shift+P → "Developer: Reload Window".' +
+        "\n  Birta Jot needs no reload: it was replaced and relaunched if it was running.",
 );

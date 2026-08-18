@@ -66,11 +66,19 @@ export function emptyLineHintDecorations(state: EditorState): DecorationSet {
     const from = $pos.before();
     return DecorationSet.create(state.doc, [
         Decoration.node(from, from + node.nodeSize, { class: "md-empty-hint" }),
-        // `side` is free to be either, since the widget is positioned out of
-        // flow; `ignoreSelection` keeps a DOM selection landing in it from
+        // `side` MUST be negative, so the widget sorts before the caret's own
+        // position rather than after it. The block-handle gutter occupies this
+        // same position (plugins/headingFold/foldDecorations.ts) and is also
+        // `contenteditable=false`, so a positive side puts the caret's DOM
+        // position BETWEEN two uneditable widgets — and WebKit will not hold an
+        // insertion point there. It silently re-anchors to the end of the
+        // previous block, so the next character typed lands on the previous
+        // line. Chromium tolerates it, which is why this only ever showed up in
+        // Jot. Pinned by e2e/enterCaret, which must run under both engines.
+        // `ignoreSelection` keeps a DOM selection landing in the widget from
         // being read back as a document position.
         Decoration.widget(from + 1, emptyLineHintDom, {
-            side: 1,
+            side: -1,
             ignoreSelection: true,
             key: "md-empty-hint",
         }),

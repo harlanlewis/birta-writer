@@ -11,12 +11,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var prefsWindow: PreferencesWindowController?
     private var reopenItem: NSMenuItem!
     private var showItem: NSMenuItem!
+    private var terminationSignal: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
         coordinator = Coordinator()
         buildStatusItem()
         coordinator.start()
+        installTerminationSignal()
+    }
+
+    /// SIGTERM runs the same flush-then-quit path as the menu's Quit.
+    ///
+    /// AppKit installs no handler of its own, so the default action would kill
+    /// the process outright and `applicationShouldTerminate` would never get to
+    /// flush the buffer. jot/scripts/install-app.sh signals a running copy this
+    /// way before replacing it, and anything else that manages the process
+    /// (a shell, a login-item manager) reaches for SIGTERM too.
+    ///
+    /// The terminate is handed to the RUN LOOP rather than called here, and it
+    /// must stay that way. `applicationShouldTerminate` answers `.terminateLater`
+    /// and the reply arrives on the main queue; starting that wait from inside a
+    /// main-queue drain, which is where this handler runs, means the reply's own
+    /// block never gets serviced. The app then sits alive forever, having run
+    /// neither the flush nor the quit.
+    private func installTerminationSignal() {
+        signal(SIGTERM, SIG_IGN) // the source below handles it, not the default action
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler {
+            NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
+        }
+        source.resume()
+        terminationSignal = source
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

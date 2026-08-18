@@ -3,6 +3,9 @@
  * profiles table, and the command predicate every surface reads.
  */
 import { describe, it, expect, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
     ALL_HOST_CAPABILITIES,
     HOST_PROFILES,
@@ -98,5 +101,46 @@ describe("hostHasCommand", () => {
         declare([]);
         const kept = TOOLBAR_MENU_COMMANDS.filter((m) => hostHasCommand(m.id)).map((m) => m.id);
         expect(kept).toEqual(["customizeToolbar", "hideToolbar", "openShortcutsHelp"]);
+    });
+});
+
+/**
+ * `HOST_PROFILES.jot` is the source, and nothing imports it: the shell is Swift
+ * and the harness pages are HTML, so both restate the list as a literal. This
+ * is what makes it one declaration rather than three that agree by luck. Each
+ * check parses its file rather than trusting a comment to be obeyed.
+ */
+describe("the Jot profile's copies", () => {
+    const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");
+
+    /** The elements of the first `hostCapabilities: [ ... ]` literal in `src`. */
+    function declaredIn(src: string): string[] {
+        const m = /hostCapabilities:\s*\[([^\]]*)\]/.exec(src);
+        if (!m) { throw new Error("no hostCapabilities literal found"); }
+        return [...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!);
+    }
+
+    /** The `window.__i18n = { ... }` bootstrap line, which is the declaration;
+     *  prose about the field in a comment is not one. */
+    function bootstrapLine(src: string): string {
+        const line = src.split("\n").find((l) => l.includes("window.__i18n"));
+        if (!line) { throw new Error("no window.__i18n bootstrap found"); }
+        return line;
+    }
+
+    it("the Swift shell should declare exactly the profile", () => {
+        const swift = read("jot/Sources/BirtaJot/Preferences.swift");
+        // Fail loudly if the call moved, rather than matching some other array.
+        expect(swift).toContain("func bootConfig()");
+        expect(declaredIn(swift.slice(swift.indexOf("func bootConfig()")))).toEqual([...HOST_PROFILES.jot]);
+    });
+
+    it("the e2e Jot page should declare exactly the profile", () => {
+        expect(declaredIn(bootstrapLine(read("e2e/jotHost/index.html")))).toEqual([...HOST_PROFILES.jot]);
+    });
+
+    it("the e2e control page should declare nothing at all, which is what absent-means-all needs", () => {
+        expect(bootstrapLine(read("e2e/jotHost/control.html"))).not.toContain("hostCapabilities");
     });
 });

@@ -56,8 +56,10 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  */
 export const HOST_PROFILES = {
     vscode: ALL_HOST_CAPABILITIES,
-    // Mirrored by hand in jot/Sources/BirtaJot/Preferences.swift
-    // (`Prefs.bootConfig`), which cannot import this file: change both.
+    // The Jot shell (`Prefs.bootConfig` in jot/Sources/BirtaJot/Preferences.swift)
+    // and the e2e Jot page restate this list as a literal, because neither
+    // Swift nor an HTML bootstrap can import it. They are not free to drift:
+    // shared/__tests__/hostCapabilities.test.ts parses both and fails.
     jot: [] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
