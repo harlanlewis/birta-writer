@@ -116,6 +116,7 @@
   "command.connectService.title": "Connect Service…",
   "command.disconnectService.title": "Disconnect Service…",
   "command.sendFeedback.title": "Send Feedback",
+  "command.stopAgentRuns.title": "Stop Agent Runs",
   "command.toggleCalcAutoInsert.title": "Toggle Calc Auto-Insert (Insert Result on =)",
   "command.togglePasteUnfurl.title": "Toggle Paste-Unfurl (Fetch Titles for Pasted URLs)",
   "command.togglePasteUnfurlAutoApply.title": "Toggle Applying Fetched Titles Automatically",
