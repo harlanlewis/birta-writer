@@ -676,7 +676,7 @@ export function renderEmbedCard(
     widthAnchor?: string,
 ): HTMLElement {
     if (match.kind === "linkCard") {
-        return renderLinkCard(match.id, actions);
+        return renderLinkCard(match.id, match.label, actions);
     }
     const provider = providerFor(match.kind);
     return provider.playerUrl
@@ -686,16 +686,18 @@ export function renderEmbedCard(
 
 /**
  * A link card (MAR-185): the info-card anatomy for a page no provider
- * claims. Site on top, the page's title, its description beneath, all read
- * from the page's own Open Graph metadata through the extension's fetch
- * (linkCardMeta.ts); until it lands, or when the page carried none, the
- * title slot shows the readable URL, so the card is never blank and never
- * a lie about what the link is. No image: the card fetches text and only
+ * claims. Site on top, the title, the description beneath. A labelled
+ * link keeps its label as the title (the author's own words for the page)
+ * with the page's title as the detail line when it has no description; a
+ * bare link takes the page's Open Graph title, read through the
+ * extension's fetch (linkCardMeta.ts), and shows the readable URL until it
+ * lands or when the page carried none, so the card is never blank and
+ * never a lie about what the link is. No image: the card fetches text and only
  * text (docs/NETWORK_POSTURE.md). The corner controls are the shared
  * column: open externally, and "show as text link", which for a link card
  * records a per-link choice rather than rewriting the link.
  */
-function renderLinkCard(href: string, actions?: EmbedCardActions): HTMLElement {
+function renderLinkCard(href: string, label: string | undefined, actions?: EmbedCardActions): HTMLElement {
     const card = document.createElement("div");
     card.className = "embed-card embed-card--info embed-card--link bc-host";
     card.dataset["embedKind"] = "linkCard";
@@ -708,7 +710,11 @@ function renderLinkCard(href: string, actions?: EmbedCardActions): HTMLElement {
     site.textContent = linkCardSite(href);
     const title = document.createElement("span");
     title.className = "embed-card__title";
-    title.textContent = readableUrl(href, 80);
+    // A labelled link's label is the author's title for the page and stays
+    // the card's title; the page's own title then reads as its detail unless
+    // the page carries a description. A bare link shows the readable URL
+    // until the page answers.
+    title.textContent = label ?? readableUrl(href, 80);
     const description = document.createElement("span");
     description.className = "embed-card__description";
     text.appendChild(site);
@@ -719,11 +725,13 @@ function renderLinkCard(href: string, actions?: EmbedCardActions): HTMLElement {
         if (!meta) {
             return;
         }
-        if (meta.title) {
+        if (meta.title && label === undefined) {
             title.textContent = meta.title;
         }
-        if (meta.description) {
-            description.textContent = meta.description;
+        const detail = meta.description
+            ?? (label !== undefined && meta.title && meta.title !== label ? meta.title : null);
+        if (detail) {
+            description.textContent = detail;
             if (!description.parentNode) {
                 text.appendChild(description);
             }

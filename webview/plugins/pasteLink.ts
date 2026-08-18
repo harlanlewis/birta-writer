@@ -43,6 +43,7 @@ import { offerNetworkOptIn } from "@/components/networkOptIn";
 import { notifyUnfurl } from "@/messaging";
 import { registerPendingUnfurl } from "@/unfurl";
 import { embedProviderOn, providerFor, recognizeProvider } from "@/utils/embedProviders";
+import { linkCardWanted, soleLinkHref } from "@/linkCards";
 import { t } from "@/i18n";
 
 /** Scheme URL (https://…, ftp://…, and the authority-less mailto:). */
@@ -267,6 +268,20 @@ function handleEmptySelectionPaste(
             });
         }
         return true;
+    }
+
+    // The same one-owner rule for a LINK CARD: a lone top-level link the
+    // reader wants as a card (linkCards.ts: the default, or a choice for
+    // this link) is the card's, so the page is fetched once, for the card,
+    // and no title offer is raised over a card that already shows the
+    // title. Read after the dispatch, on the paragraph the paste made.
+    const $pasted = view.state.doc.resolve(from);
+    if ($pasted.depth === 1) {
+        const paragraphPos = $pasted.before(1);
+        const paragraph = view.state.doc.nodeAt(paragraphPos);
+        if (paragraph && soleLinkHref(paragraph) === href && linkCardWanted(view.state.doc, paragraphPos, href)) {
+            return true;
+        }
     }
 
     if (networkEnabled()) {

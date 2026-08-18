@@ -155,7 +155,11 @@ Both inline forms live under `birta.calc.enabled`. Fragments are never computed:
 
 ---
 
-## Links
+## Links, cards, and embeds
+
+One family, three renderings of a link. A link is text that opens somewhere; a **link card** draws a lone link as a quiet card of the page's title and description; a **URL embed** draws a lone provider link as a player, a frame, or an information card. Every card is a rendering of the plain link that is already in the file, never a byte in it, and every card opens the way a link does: **Cmd/Ctrl+click** on the card body opens the page, a plain click selects the card, and the corner ↗ button is there for a pointer that does not know the modifier. Read-only mode removes the editing chrome and nothing else.
+
+### Links
 
 - Inline link: [Birta Writer](https://example.com)
 - Link with a title: [hover me](https://example.com "A title")
@@ -172,7 +176,7 @@ Hover a link for the popup (clicking pins it open): it shows **where the link ac
 
 Pasting a bare URL inserts `[url](url)` immediately - one history step, offline-safe, and the final answer if you want nothing more. Paste-unfurl (`birta.pasteUnfurl.enabled`, on by default but inert until the master network switch is on) then fetches the page title in the background and **offers** it in a small pill near the link: take it to swap the link text for the title, or ignore it and it fades on its own. The document is never touched until you accept - `birta.pasteUnfurl.autoApply` opts into the silent upgrade, the same shape as `birta.calc.autoInsert`. With the master switch off the paste still inserts the plain link, makes no request, and quietly offers to turn the switch on.
 
-A URL that would render as a card (see **URL embeds** below) is never unfurled: the card is the better answer, and carding requires the link text to still equal its href - which is exactly what a fetched title would overwrite. The two features are deliberately exclusive.
+A URL that would render as a card is never unfurled: one owner per link. A provider link belongs to its **URL embed** (below), whose card requires the link text to still equal its href, which is exactly what a fetched title would overwrite; and a lone link the reader wants as a **link card** belongs to the card, which fetches the page once for itself and already shows the title, so a title offer over it would say what the card says. The features are deliberately exclusive.
 
 ### Smart local links
 
@@ -222,7 +226,19 @@ In a table cell the alias pipe is escaped (`\|`), and it still reads as one cell
 
 ---
 
-## URL embeds
+### Link cards
+
+A web link that sits alone on its own line, bare or `[labelled](url)`, can render as a quiet card of the page's title, its description, and the site it lives on, read from the page's own Open Graph metadata. No image is fetched, only the link's own site is contacted (and, if it redirects, the site it sends you to, each hop under the same guards as paste-unfurl), and the file keeps the plain link. It ships **off** even under the master switch, because unlike an embed card no provider table bounds which hosts it can reach: `birta.linkCards.enabled` (Cmd+Shift+P → "Toggle Link Cards") turns it on for every lone link, and needs `birta.network.enabled` on. Or leave the default off and choose per link: the block menu on a lone link offers **Show as Card** and **Show as Link**, as do the card's own control and its edit palette, and that choice lives with the workspace, not in the document. Only a top-level line cards; a link inside a quote or a list item stays a link. A labelled link keeps its label as the card's title, with the page's title beneath as detail; a bare link shows the readable URL until the page answers.
+
+A card is the link it draws: Cmd/Ctrl+click on the card body opens the page, a plain click selects it (arrow keys stop at it like any card; Enter opens its palette; Backspace selects before it deletes), and the corner ↗ opens it too. Two lone links, one bare and one labelled, so both shapes are on the page:
+
+https://birtalabs.com/
+
+[The Birta Writer repository](https://github.com/harlanlewis/birta-writer/blob/main/README.md)
+
+That second link is a labelled GitHub file link, which its provider card leaves alone (see GitHub, below), so it is the link card's to draw when cards are on; a bare `github.com` link is the provider's.
+
+### URL embeds
 
 A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte. Cards are first-class blocks: **arrow keys stop at each card** (a selection ring appears - sequential cards are each their own stop), and selecting opens a small **palette** with the editable URL plus open / copy / show-as-link / delete. Press **Enter** on a selected card to edit its URL in place; **Backspace selects before it deletes**, so a second press removes the card's paragraph cleanly. Every player card carries a resident **identity strip** just below the frame - the **page title** (fetched from the provider when the network is on) over the **URL** - visible at all times, playing included; the edit palette takes its place while open. Branded facades name their service in the frame's upper-left corner. Click semantics split by surface: **the media area - anywhere on the facade - loads the player**, and **the identity strip selects the card** and raises the palette.
 
@@ -232,25 +248,25 @@ What "publicly viewable" means is the provider's own rule, and it is worth knowi
 
 A YouTube link gets a player card - a static thumbnail that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it; press the player's own play button to start it (the editor never forces autoplay). The corner controls survive playback: **⨯ stops the player and restores the facade**, and ↗ always opens the provider page. The short host and the mobile/music hosts are the same card:
 
-### YouTube
+#### YouTube
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
 Expect that player to refuse, with YouTube's **"Error 153, video player configuration error"** in place of the video. YouTube decides whether to play on the referrer it is given, and the editor's frame has no web address to offer it, so there is nothing to send and the player declines. The video is public and plays anywhere else, which is the point of using a famous one here: the failure is YouTube's rule about where a player may run, not this video, this network, or this editor. The card's containment is not the cause either, and relaxing it would not help. ↗ opens the video in your browser, and that button exists for exactly this.
 
-### Vimeo
+#### Vimeo
 
 A Vimeo link cards the same way behind a branded facade, and its player loads with `dnt=1` - Vimeo's do-not-track flag, this provider's `youtube-nocookie`:
 
 https://vimeo.com/1084537
 
-### Loom
+#### Loom
 
 A Loom link gets the same click-to-load player behind a quiet branded facade (no thumbnail is fetched - nothing loads until you press play):
 
 https://www.loom.com/share/e41353f2fe1c43eba6c6829693e0f2c5
 
-### Figma
+#### Figma
 
 A Figma link gets a taller frame that loads the live Figma embed on click. Every Embed Kit surface cards the same way - `/design/`, `/board/` (FigJam), `/slides/`, `/deck/`, and `/proto/` - and the legacy `/file/` form is normalized to `/design/`. This is Figma's own public Embed Kit examples file, so the preview genuinely loads:
 
@@ -260,7 +276,7 @@ The same file through the legacy `/file/` form (watch it normalize):
 
 https://www.figma.com/file/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
-### GitHub
+#### GitHub
 
 A GitHub link gets a compact info card. With the network switch off it is built **from the URL alone** - zero network, so it renders anyway, saying what the address spells out. With the network switch and URL embeds on, the same card carries the real title and state, read from GitHub's own API: a repository's description, an issue's title, and for a pull request whether it is open, draft, closed, or **merged** (GitHub reports a merged pull request as closed, and the two are not the same news).
 
@@ -276,7 +292,7 @@ https://github.com/microsoft/vscode/issues/12345
 
 https://github.com/microsoft/vscode/blob/main/README.md
 
-### Google Docs, Slides, and Sheets
+#### Google Docs, Slides, and Sheets
 
 Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. All three below are really published, so the document, the deck, and the sheet each render inside the frame:
 
@@ -290,25 +306,25 @@ An **ordinary** Docs/Slides/Sheets link (the `/edit` URL you copy from the addre
 
 https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
 
-### Google Drive
+#### Google Drive
 
 A Drive **file** link loads Google's `/preview` endpoint on click - the supported no-auth embed for files shared "anyone with the link". This is the **first of two deliberate failure states** in this file: the id is synthetic, because a Drive file shared by link is unlisted by design and there is no public one to borrow, so clicking load brings up Google's own "the file you have requested does not exist" page inside the frame. That is the point of keeping it - a provider-side error stays inside the frame, and the card's own controls stay reachable around it:
 
 https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/view
 
-### Miro
+#### Miro
 
 A Miro board link loads the **live-embed** view on click - pan and zoom without login for boards shared publicly, opening on the board itself rather than on Miro's preloader. This is Miro's own example board, so it genuinely pans:
 
 https://miro.com/app/board/o9J_kkQxX78=/
 
-### Linear
+#### Linear
 
 A Linear issue link gets an info card built **from the URL alone** - the issue key plus the humanized title slug, zero network, renders offline. The workspace slug is part of the URL and the card never checks it, so ↗ only lands somewhere real if the link is real; this one is:
 
 https://linear.app/harlan/issue/MAR-186/embed-provider-roadmap
 
-### Code playgrounds
+#### Code playgrounds
 
 A CodePen, CodeSandbox, or StackBlitz link loads that provider's own embedded editor on click - the resting card fetches nothing. Each of these is a real public project, so the editor and its result pane come up live. The CodePen one is a **team** pen, which carries its `team/` path in the URL and cards the same way:
 
@@ -1134,7 +1150,7 @@ Add your own tokens with `birta.notes.customMarkers` - a plain word like `DRAFT`
 
 ### Raw `<video>` / `<iframe>` tags
 
-Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub, Google Docs/Slides/Sheets/Drive, Miro, Linear, CodePen, CodeSandbox, StackBlitz) on its own line does render as a card, though - see **URL embeds** above.
+Raw `<video>` / `<iframe>` HTML tags aren't rendered as players - they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub, Google Docs/Slides/Sheets/Drive, Miro, Linear, CodePen, CodeSandbox, StackBlitz) on its own line does render as a card, though - see **Links, cards, and embeds** above.
 
 
 

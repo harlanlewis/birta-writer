@@ -2316,31 +2316,26 @@ export class MarkdownEditorProvider
      * document), and that per-link choice is not visible from here, so the
      * extension re-checks the master switch alone: with it off, no page is
      * fetched whatever the webview asks. A page that answered is cached for
-     * the session by URL, so a card that re-renders (caret in and out, a
-     * reload of the same panel) asks its host once; a page that answered
-     * nothing is not, and the webview's own store is what keeps it from
-     * being asked again within a panel's life.
+     * the session by URL (`_pageMetaCache`, shared with paste-unfurl), so a
+     * card that re-renders asks its host once; a page that answered nothing
+     * is not, and the webview's own store is what keeps it from being asked
+     * again within a panel's life.
      */
     private async _handleResolveLinkCard(
         panel: vscode.WebviewPanel,
         id: string,
         url: string,
     ): Promise<void> {
-        let card: LinkCardMeta | null = this._linkCardCache.get(url) ?? null;
-        if (card === null) {
-            const networkOn = this._networkWriteInFlight ?? readBirtaSetting("networkEnabled");
-            const meta = networkOn ? await this._fetchPageMeta(url) : null;
-            card = meta && (meta.title !== null || meta.description !== null) ? meta : null;
-            if (card !== null) {
-                this._linkCardCache.set(url, card);
-            }
-        }
+        const networkOn = this._networkWriteInFlight ?? readBirtaSetting("networkEnabled");
+        const meta = networkOn ? await this._fetchPageMeta(url) : null;
+        const card = meta && (meta.title !== null || meta.description !== null) ? meta : null;
         postToWebview(panel.webview, { type: "linkCardResult", id, url, card });
     }
 
-    /** Session cache for link-card metadata, keyed by URL. Never written to
-     * disk (docs/NETWORK_POSTURE.md invariant 15). */
-    private readonly _linkCardCache = new Map<string, LinkCardMeta>();
+    /** Session cache of pages that answered, keyed by URL, shared by paste-
+     * unfurl and link cards so a page is asked once whichever asks first.
+     * Never written to disk (docs/NETWORK_POSTURE.md invariant 15). */
+    private readonly _pageMetaCache = new Map<string, LinkCardMeta>();
 
     /**
      * Embed-card metadata: resolve and ALWAYS reply (null title on failure).
@@ -2416,6 +2411,18 @@ export class MarkdownEditorProvider
      * null on ANY failure, never throws.
      */
     private async _fetchPageMeta(url: string): Promise<LinkCardMeta | null> {
+        const cached = this._pageMetaCache.get(url);
+        if (cached) {
+            return cached;
+        }
+        const meta = await this._fetchPageMetaUncached(url);
+        if (meta && (meta.title !== null || meta.description !== null)) {
+            this._pageMetaCache.set(url, meta);
+        }
+        return meta;
+    }
+
+    private async _fetchPageMetaUncached(url: string): Promise<LinkCardMeta | null> {
         let parsed: URL;
         try {
             parsed = new URL(url);
@@ -2450,7 +2457,7 @@ export class MarkdownEditorProvider
                     // leaner page (or refuse) without these. No cookies.
                     headers: {
                         accept: "text/html,application/xhtml+xml",
-                        "user-agent": "Birta-Writer/paste-unfurl",
+                        "user-agent": "Birta-Writer/page-meta",
                     },
                 });
                 if (res.status >= 300 && res.status < 400) {
@@ -2474,7 +2481,7 @@ export class MarkdownEditorProvider
             return null; // redirect chain too long
         } catch (e) {
             // Offline, DNS failure, abort-on-timeout, malformed response, etc.
-            reportError("unfurlUrl", e);
+            reportError("pageMeta", e);
             return null;
         } finally {
             clearTimeout(timer);

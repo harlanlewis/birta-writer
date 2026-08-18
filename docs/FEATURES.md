@@ -20,7 +20,7 @@ Birta raises a badge when a file with unsaved edits changes on disk, whether the
 
 ### Offline by default
 
-Images save into your workspace, remote loads are blocked, and proofreading runs offline, so document content has no path off your machine. Only two features can touch the network: paste-unfurl and URL embeds. Both sit behind a master switch, `birta.network.enabled`, which ships off. With it off the editor makes no outbound request at all.
+Images save into your workspace, remote loads are blocked, and proofreading runs offline, so document content has no path off your machine. Only three features can touch the network: paste-unfurl, URL embeds, and link cards. All three sit behind a master switch, `birta.network.enabled`, which ships off, and link cards ship off beneath it as well. With the master off the editor makes no outbound request at all.
 
 ## Blocks: grab, move, convert
 
@@ -68,6 +68,7 @@ Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Ad
 - Wikilinks. `[[target]]`, `[[target|alias]]`, and `[[target#heading]]` (Obsidian conventions) parse, render, navigate, and round-trip byte-identically. Typing `[[` opens name autocompletion.
 - Section links. Picking a heading from a live list (`/section`, the selection palette, or Link to Section) inserts a standard `[text](#slug)` anchor. Typing `#` in the link editor's URL field suggests the document's headings. Renaming a heading repoints every in-note anchor to it, in the same undo step (`birta.autoUpdateAnchors`).
 - Bare-URL paste. Pasting a bare URL with nothing selected fetches the page's own title extension-side, with network features on and no third-party service involved, and offers it as the link text. Accept it and the link becomes `[title](url)`; ignore it and the plain link stays. Nothing is written to your file until you accept, unless you turn on `birta.pasteUnfurl.autoApply`. A bare YouTube link on its own line renders as a player card instead. The card is display only, so the file keeps the plain link either way (`birta.embeds.enabled`), and a link that can become a card is never retitled.
+- Link cards. A web link alone on its own line, bare or `[labelled](url)`, can render as a quiet card of the page's title, description, and site, read from the page's own Open Graph metadata; the file keeps the plain link. Off by default (`birta.linkCards.enabled`, or per link from the block menu's Show as Card / Show as Link), and needs `birta.network.enabled`. Cmd/Ctrl+click on any card body, link card or embed, opens the page; a plain click selects it.
 - Path autocomplete. `@/`, `./`, and `../` inside inline code browse the workspace with file-type icons.
 
 ## Tables
@@ -142,10 +143,11 @@ The settings you're most likely to touch. The full list is searchable in VS Code
 | `birta.agent.command` | `""` | Where `/ai` and Ask Agent hand your request: a shell command with `{prompt}` (`claude {prompt}`), `chat` for the VS Code Chat view, or `clipboard`. Empty asks on first use. Never read from a workspace |
 | `birta.copyFormat` | `"markdown"` | What Cmd+C puts on the clipboard as plain text: the selection's Markdown source, or the rendered text (`richText`). The rich HTML flavor is always included |
 | `birta.pasteFormat` | `"markdown"` | How Cmd+V reads plain text: parsed as Markdown source, or inserted literally (`plainText`). Rich pastes and code blocks are unaffected, and Paste as Plain Text (⇧⌘V) is always literal |
-| `birta.network.enabled` | `false` | Master network switch, offline by default; gates paste-unfurl and URL embeds. Off means no outbound request at all |
+| `birta.network.enabled` | `false` | Master network switch, offline by default; gates paste-unfurl, URL embeds, and link cards. Off means no outbound request at all |
 | `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and offer it as the link text. Needs `birta.network.enabled` (offered inline when off), and falls back to the plain link offline |
 | `birta.pasteUnfurl.autoApply` | `false` | Apply a fetched title as soon as it arrives instead of offering it. Off by default, so a network reply never edits your document unprompted |
 | `birta.embeds.enabled` | `true` | Bare YouTube links on their own line render as player cards. Display only, so your file is never changed; needs `birta.network.enabled` |
+| `birta.linkCards.enabled` | `false` | A lone web link on its own line renders as a card of the page's title and description. Display only; needs `birta.network.enabled`. Choose per link from the block menu when off |
 | `birta.autoUpdateAnchors` | `true` | Renaming a heading repoints every in-note `[text](#slug)` link to it, in the same undo step |
 | `birta.calc.enabled` | `true` | Inline calculator: `12 * 4 =` (or `=5+7`) offers the result as a suggestion (Tab to accept; Return stays a newline) |
 | `birta.calc.autoInsert` | `false` | Insert the calc result immediately on `=` instead of offering a suggestion |

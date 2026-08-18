@@ -15,11 +15,14 @@
  * webview image URI back into the path the file spells (`imageUriMapFor`),
  * which the path completer has to feed for the previews it offers.
  *
- * Both caches are keyed on time alone. Only a create or delete of a file can
- * change what either answers, so the provider's `**\/*` watcher clears them
- * through `invalidateFor` (MAR-208), and the front-matter scan is cleared
- * only for a file it reads (`isFrontMatterScanned`): a scan is a 500-file
- * read, and a photo landing in the workspace must not cost it.
+ * Both caches are keyed on time alone. The file index can only change on a
+ * create or delete, so the provider's `**\/*` watcher clears it through
+ * `invalidateFor` on those two events (MAR-208). The front-matter scan
+ * changes on those and on an edit to a scanned file's front matter; the
+ * watcher clears it on create and delete of a file it reads
+ * (`isFrontMatterScanned`) and the TTL alone covers the edit, because a scan
+ * is a 500-file read and a keystroke must not cost it, any more than a photo
+ * landing in the workspace may.
  */
 import * as path from "path";
 import * as vscode from "vscode";
