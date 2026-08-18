@@ -28,6 +28,8 @@ enum Prefs {
         static let contentWidth = "contentWidth"
         static let viewState = "viewState"
         static let saveAsDirectory = "saveAsDirectory"
+        static let saveDirectory = "saveDirectory"
+        static let recentDestinations = "recentDestinations"
     }
 
     static var hotkey: HotkeyCombo {
@@ -98,9 +100,36 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.viewState) }
     }
 
+    /// Where the last Save As went, so the next one opens there. A memory of
+    /// the panel, not a setting; `saveDirectory` is the setting.
     static var saveAsDirectory: URL? {
         get { d.string(forKey: Key.saveAsDirectory).map { URL(fileURLWithPath: $0) } }
         set { d.set(newValue?.path, forKey: Key.saveAsDirectory) }
+    }
+
+    /// The default destination: where Save puts a note when nobody is asked.
+    /// A folder of its own under Documents, because a chute produces files at
+    /// the rate notes are finished and they should not land on top of the
+    /// user's own filing.
+    static var saveDirectory: URL {
+        get {
+            if let p = d.string(forKey: Key.saveDirectory), !p.isEmpty { return URL(fileURLWithPath: p, isDirectory: true) }
+            return defaultSaveDirectory
+        }
+        set { d.set(newValue.path, forKey: Key.saveDirectory) }
+    }
+
+    static var defaultSaveDirectory: URL {
+        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        return base.appendingPathComponent("Jot", isDirectory: true)
+    }
+
+    /// Folders notes have gone to lately, for the overflow menu's one-click
+    /// repeat of a destination.
+    static var recentDestinations: RecentDestinations {
+        get { RecentDestinations(d.stringArray(forKey: Key.recentDestinations) ?? []) }
+        set { d.set(newValue.paths, forKey: Key.recentDestinations) }
     }
 
     static func bootConfig() -> BootConfig {
@@ -117,153 +146,5 @@ enum Prefs {
             hostCapabilities: [],
             viewStateJSON: viewStateJSON
         )
-    }
-}
-
-/// The Preferences window: a small grid built in code. Opened from the status
-/// menu; the app activates first or the window opens behind the front app.
-@MainActor
-final class PreferencesWindowController: NSWindowController, NSTextFieldDelegate {
-    private let hotkeyField = NSTextField(string: Prefs.hotkey.spelling)
-    private let hotkeyStatus = NSTextField(labelWithString: "")
-    private let scratchpadLabel = NSTextField(labelWithString: Prefs.scratchpadURL.path)
-    private let documentCheck = NSButton(checkboxWithTitle: "Open this document instead of the scratchpad:", target: nil, action: nil)
-    private let documentLabel = NSTextField(labelWithString: Prefs.documentURL?.path ?? "(none chosen)")
-    private let networkCheck = NSButton(checkboxWithTitle: "Allow network: rich embeds (video, gists, and the like)", target: nil, action: nil)
-    private let onHotkeyChange: () -> OSStatus
-    private let onChange: () -> Void
-
-    init(onHotkeyChange: @escaping () -> OSStatus, onChange: @escaping () -> Void) {
-        self.onHotkeyChange = onHotkeyChange
-        self.onChange = onChange
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 260),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Birta Jot Preferences"
-        window.isReleasedWhenClosed = false
-        super.init(window: window)
-        window.contentView = buildContent()
-        window.center()
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    private func buildContent() -> NSView {
-        hotkeyField.delegate = self
-        hotkeyField.placeholderString = "cmd+alt+ctrl+j"
-        hotkeyStatus.textColor = .secondaryLabelColor
-        hotkeyStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        scratchpadLabel.lineBreakMode = .byTruncatingMiddle
-        documentLabel.lineBreakMode = .byTruncatingMiddle
-        documentCheck.state = Prefs.documentURL == nil ? .off : .on
-        documentCheck.target = self
-        documentCheck.action = #selector(toggleDocument)
-        networkCheck.state = Prefs.networkEnabled ? .on : .off
-        networkCheck.target = self
-        networkCheck.action = #selector(toggleNetwork)
-
-        let chooseScratch = NSButton(title: "Choose…", target: self, action: #selector(chooseScratchpad))
-        let chooseDoc = NSButton(title: "Choose…", target: self, action: #selector(chooseDocument))
-
-        let grid = NSGridView(views: [
-            [NSTextField(labelWithString: "Global hotkey:"), hotkeyField],
-            [NSView(), hotkeyStatus],
-            [NSTextField(labelWithString: "Scratchpad file:"), row(scratchpadLabel, chooseScratch)],
-            [documentCheck, row(documentLabel, chooseDoc)],
-            [NSView(), networkCheck],
-            [NSView(), NSTextField(wrappingLabelWithString: "Off by default. When on, an embed loads from its provider. Link cards and pasted-link titles are not fetched by Jot yet.")],
-        ])
-        grid.rowSpacing = 10
-        grid.columnSpacing = 12
-        grid.column(at: 0).xPlacement = .trailing
-        grid.column(at: 1).width = 360
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        documentCheck.contentTintColor = nil
-
-        let container = NSView()
-        container.addSubview(grid)
-        NSLayoutConstraint.activate([
-            grid.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
-            grid.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            grid.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-            grid.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -20),
-        ])
-        return container
-    }
-
-    private func row(_ a: NSView, _ b: NSView) -> NSView {
-        let s = NSStackView(views: [a, b])
-        s.orientation = .horizontal
-        s.spacing = 8
-        a.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        a.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return s
-    }
-
-    // MARK: hotkey
-
-    func controlTextDidEndEditing(_ obj: Notification) {
-        switch HotkeyCombo.parse(hotkeyField.stringValue) {
-        case .success(let combo):
-            guard combo != Prefs.hotkey else { return }
-            Prefs.hotkey = combo
-            hotkeyField.stringValue = combo.spelling
-            let status = onHotkeyChange()
-            if status == 0 {
-                hotkeyStatus.stringValue = "Registered as \(combo.symbols)."
-                hotkeyStatus.textColor = .secondaryLabelColor
-            } else {
-                hotkeyStatus.stringValue = "macOS refused \(combo.symbols) (status \(status)); another app may own it. Jot has no hotkey until this is fixed."
-                hotkeyStatus.textColor = .systemRed
-            }
-        case .failure(let err):
-            hotkeyStatus.stringValue = err.description
-            hotkeyStatus.textColor = .systemRed
-        }
-    }
-
-    // MARK: files
-
-    @objc private func chooseScratchpad() {
-        let panel = NSSavePanel()
-        panel.title = "Scratchpad location"
-        panel.nameFieldStringValue = Prefs.scratchpadURL.lastPathComponent
-        panel.directoryURL = Prefs.scratchpadURL.deletingLastPathComponent()
-        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
-        panel.beginSheetModal(for: window!) { [weak self] resp in
-            guard resp == .OK, let url = panel.url, let self else { return }
-            Prefs.scratchpadURL = url
-            self.scratchpadLabel.stringValue = url.path
-            self.onChange()
-        }
-    }
-
-    @objc private func chooseDocument() {
-        let panel = NSOpenPanel()
-        panel.title = "Document to open"
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText, .plainText]
-        panel.beginSheetModal(for: window!) { [weak self] resp in
-            guard resp == .OK, let url = panel.url, let self else { return }
-            Prefs.documentURL = url
-            self.documentCheck.state = .on
-            self.documentLabel.stringValue = url.path
-            self.onChange()
-        }
-    }
-
-    @objc private func toggleDocument() {
-        if documentCheck.state == .off {
-            Prefs.documentURL = nil
-            documentLabel.stringValue = "(none chosen)"
-            onChange()
-        } else if Prefs.documentURL == nil {
-            chooseDocument()
-        }
-    }
-
-    @objc private func toggleNetwork() {
-        Prefs.networkEnabled = networkCheck.state == .on
-        onChange()
     }
 }

@@ -22,6 +22,33 @@ final class HotkeyComboTests: XCTestCase {
         XCTAssertEqual(try? HotkeyCombo.parse("cmd+space").get().keyCode, 49)
     }
 
+    func testAPressedKeyBecomesTheComboItSpells() {
+        // What the recorder control has in hand: the code and the Carbon bits.
+        let combo = HotkeyCombo.from(keyCode: 38, modifiers: HotkeyCombo.cmdKey | HotkeyCombo.optionKey | HotkeyCombo.controlKey)
+
+        XCTAssertEqual(combo, HotkeyCombo.default)
+        XCTAssertEqual(combo?.spelling, "cmd+alt+ctrl+j")
+        XCTAssertEqual(combo?.keyName, "j")
+    }
+
+    func testEveryCodeItAcceptsSpellsBackToTheSameCode() {
+        // The reverse map picks one name per code; a wrong pick would store a
+        // spelling that reparses to a different key than the one pressed.
+        for code in Set(HotkeyCombo.keyCodes.values) {
+            let combo = HotkeyCombo.from(keyCode: code, modifiers: HotkeyCombo.cmdKey)
+            XCTAssertEqual(combo?.keyCode, code, "code \(code) spelled as \(combo?.spelling ?? "nil")")
+        }
+    }
+
+    func testAKeyWithNoModifierIsRefused() {
+        // It would take that key away from every app on the machine.
+        XCTAssertNil(HotkeyCombo.from(keyCode: 38, modifiers: 0))
+    }
+
+    func testAKeyWithNoNameIsRefused() {
+        XCTAssertNil(HotkeyCombo.from(keyCode: 999, modifiers: HotkeyCombo.cmdKey))
+    }
+
     func testRejections() {
         XCTAssertEqual(HotkeyCombo.parse(""), .failure(.empty))
         XCTAssertEqual(HotkeyCombo.parse("cmd+wat"), .failure(.unknownToken("wat")))
