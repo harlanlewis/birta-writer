@@ -25,7 +25,7 @@
 import type * as vscode from "vscode";
 import type { ActiveContextResolver, BirtaApi } from "./api";
 import { registerReferenceCommands } from "./referenceCommand";
-import { registerAskAgent } from "./askAgent";
+import { registerAskAgent, type AgentRunReporter } from "./askAgent";
 import { registerEditorContextTool } from "./languageModelTool";
 import { createBirtaApi } from "./publicApi";
 
@@ -38,9 +38,10 @@ export type { BirtaApi, BirtaEditorContext, BirtaPosition } from "./api";
 export function registerAgentBridge(
     context: vscode.ExtensionContext,
     getActive: ActiveContextResolver,
+    reportAgentRun: AgentRunReporter,
 ): BirtaApi {
     registerReferenceCommands(context, getActive);
-    registerAskAgent(context, getActive);
+    registerAskAgent(context, getActive, reportAgentRun);
     registerEditorContextTool(context, getActive);
     return createBirtaApi(getActive);
 }

@@ -1575,7 +1575,10 @@ export class MarkdownEditorProvider
                         // `/ai <request>` or the palette's Ask Agent: the
                         // extension composes the caret reference in, saves,
                         // and routes (src/agentBridge/askAgent.ts).
-                        vscode.commands.executeCommand("birta.askAgent", message.prompt);
+                        vscode.commands.executeCommand("birta.askAgent", message.prompt, message.requestId);
+                        break;
+                    case "agentCancel":
+                        vscode.commands.executeCommand("birta.cancelAgent", message.requestId);
                         break;
                 }
             },

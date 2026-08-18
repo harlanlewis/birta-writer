@@ -30,7 +30,9 @@ import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setLogTableSel, syncExternalContent, flushPendingEdit, acknowledgeFlush } from "./editor";
-import { regateCalcCues, regateNoteMarkers, setProofreadConfig } from "./plugins";
+import { regateCalcCues, regateNoteMarkers, setProofreadConfig, failAgentRun, markAgentRunning, settleAgentRun } from "./plugins";
+import { mergeAgentResult } from "./editor";
+import { t } from "./i18n";
 import { mark } from "./perf";
 import { setReadOnly } from "./readOnly";
 import { absorbTocVisibilityUnderFocus, maskProofreadConfigUnderFocus, maskToolbarConfigUnderFocus } from "./focusMode";
@@ -354,6 +356,41 @@ export function createMessageHandlers(
         },
         imageUploaded(msg) {
             handleImageUploaded(msg.id, msg.url);
+        },
+        agentRun(msg) {
+            // The life of an `/ai` background run (plugins/agentPending): the
+            // marker shows on `running`, clears on `done`, and a `done` that
+            // carries the file's text is the reload VS Code refused because
+            // the user typed meanwhile, merged here around their edits.
+            const view = getEditorView();
+            if (!view) { return; }
+            switch (msg.status) {
+                case "running":
+                    markAgentRunning(view, msg.requestId);
+                    return;
+                case "failed":
+                    failAgentRun(view, msg.requestId, msg.message ?? "");
+                    return;
+                case "done": {
+                    if (msg.text !== undefined) {
+                        const outcome = mergeAgentResult(msg.requestId, msg.text);
+                        if (outcome === "conflict") {
+                            failAgentRun(view, msg.requestId, t("its changes overlap yours; the file on disk holds them, and Compare in the drift badge shows both"));
+                            return;
+                        }
+                        if (outcome === "partial") {
+                            failAgentRun(view, msg.requestId, t("some of its changes overlapped yours and were left out; the file on disk holds them all"));
+                            return;
+                        }
+                    }
+                    settleAgentRun(view, msg.requestId);
+                    return;
+                }
+                case "cancelled":
+                case "handedOff":
+                    settleAgentRun(view, msg.requestId);
+                    return;
+            }
         },
         imageUploadError(msg) {
             handleImageUploadError(msg.id, msg.error);

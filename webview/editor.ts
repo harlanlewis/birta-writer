@@ -63,6 +63,9 @@ import {
     pasteMarkdownPlugin,
     pasteContainerFitPlugin,
     imageUploadProgressPlugin,
+    agentPendingPlugin,
+    applyAgentResult,
+    recordsExternalInHistory,
     imagePastePlugin,
     htmlEditKeymapPlugin,
     htmlLivePairsPlugin,
@@ -480,6 +483,23 @@ function setupInteractionTracking(): void {
     document.addEventListener('beforeinput',      mark, { capture: true });
 }
 
+/**
+ * Merge a background agent's result into the live document (plugins/
+ * agentPending's dirty-document path). Applied as an ordinary transaction, so
+ * it enters the undo history and the sync writes it out like a user edit.
+ */
+export function mergeAgentResult(requestId: string, text: string): "applied" | "partial" | "conflict" | "unchanged" {
+    if (!_editor) { return "conflict"; }
+    const editor = _editor;
+    return editor.action((ctx) => applyAgentResult(
+        getView(ctx),
+        requestId,
+        text,
+        (markdown) => ctx.get(parserCtx)(markdown) as ProseNode | null,
+        (doc) => ctx.get(serializerCtx)(doc),
+    ));
+}
+
 export function getEditorView(): EditorView | null {
     if (!_editor) {
         return null;
@@ -522,7 +542,10 @@ function _applyExternalNow(newMarkdown: string): boolean {
     let applied: boolean;
     _applyingExternal = true;
     try {
-        applied = applyExternalSync(_editor, newMarkdown);
+        // An agent's answer to a request made here is the user's own edit
+        // and undoes like one; every other inbound change stays out of history.
+        const view = _editor.action((ctx) => getView(ctx));
+        applied = applyExternalSync(_editor, newMarkdown, { intoHistory: recordsExternalInHistory(view) });
     } finally {
         _applyingExternal = false;
     }
@@ -775,6 +798,9 @@ export async function createEditor(
         // it is running (and any failure) as decoration at the paste
         // position, so the document is never touched by a save that fails.
         .use(imageUploadProgressPlugin)
+        // An `/ai` request's marker in the gutter while its agent runs, and
+        // the undo policy for the edit it brings back (see the plugin header).
+        .use(agentPendingPlugin)
         // Must be a PM prop, not a DOM listener: a pasted image carries an
         // HTML <img> flavor too, and PM would insert that first.
         .use(imagePastePlugin)

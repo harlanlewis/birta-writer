@@ -158,6 +158,13 @@ export interface BirtaConfig extends ProofreadConfig {
      */
     agentCommand: string;
     /**
+     * How a shell template in `agentCommand` runs (birta.agent.mode):
+     * `background`, a child process with no terminal and a gutter marker
+     * while it runs, or `terminal`, one reused "Birta AI" terminal.
+     * Normalize with normalizeAgentMode. The chat and clipboard routes ignore it.
+     */
+    agentMode: string;
+    /**
      * Master network switch (birta.network.enabled) — offline by default
      * (MAR-179). Birta's positioning is "nothing leaves your machine", so this
      * is the single knob that is OFF by default and gates EVERY feature that
@@ -357,6 +364,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     smartLinks: "smartLinks",
     logseq: "logseq",
     agentCommand: "agent.command",
+    agentMode: "agent.mode",
     networkEnabled: "network.enabled",
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
     linkCardsEnabled: "linkCards.enabled",
@@ -457,6 +465,7 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     logseq: "off",
     // Unset until the user picks a route on first use.
     agentCommand: "",
+    agentMode: "background",
     // Master network switch ships OFF (MAR-179): Birta is offline by default,
     // so NO network feature runs until the user turns this on. This is the one
     // setting whose default is off; the per-feature keys below stay ON so

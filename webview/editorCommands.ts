@@ -47,6 +47,7 @@ import {
     transformToUppercase,
     unfoldAllCommand,
     unfoldAtCaret,
+    beginAgentRun,
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { armBlockStartHeadingComplete } from "@/plugins/headingLinkComplete";
@@ -775,9 +776,14 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // relays: composing the caret's line reference and choosing the route
     // (terminal, Chat view, clipboard) is extension work, where the document
     // can be saved first so the reference names what is on disk.
-    askAgent: (_getEditor, args) => {
+    askAgent: (getEditor, args) => {
         const prompt = (args as { prompt?: unknown } | undefined)?.prompt;
-        notifyAskAgent(typeof prompt === "string" ? prompt : undefined);
+        // Register the request at the caret first (a gutter marker while a
+        // background run lives; nothing shows until the extension confirms
+        // one), then hand off with its id.
+        let requestId = "";
+        runProse(getEditor, (view) => { requestId = beginAgentRun(view); });
+        notifyAskAgent(typeof prompt === "string" ? prompt : undefined, requestId);
     },
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),

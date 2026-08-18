@@ -1,0 +1,52 @@
+/**
+ * The `/ai` run marker (plugins/agentPending.ts): a small pulsing dot in the
+ * gutter beside the request's block while a background agent works, an error
+ * dot once it fails. Chrome, not content: it sits in the margin on the same
+ * geometry contract as the block gutter (see .heading-fold-gutter in
+ * style.css), one step further into the margin so it never covers the block's
+ * own marker. Quiet by design (docs/DESIGN_PRINCIPLES.md): a dot, not a
+ * spinner in the text, and nothing in the file.
+ */
+.milkdown .editor .agent-pending {
+    position: absolute;
+    left: calc(var(--gutter-left, var(--gutter-column)) - 22px);
+    top: var(--gutter-top, 0px);
+    height: var(--gutter-height, 1.5em);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    transform: translateX(-100%);
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+    color: var(--vscode-focusBorder);
+}
+
+.milkdown .editor .agent-pending__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: agent-pending-pulse 1.2s ease-in-out infinite;
+}
+
+.milkdown .editor .agent-pending--error {
+    color: var(--vscode-inputValidation-errorBorder);
+}
+
+.milkdown .editor .agent-pending--error .agent-pending__dot {
+    animation: none;
+    opacity: 1;
+}
+
+@keyframes agent-pending-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+}
+
+/* Reduced motion: the dot still reads as busy from its colour and its
+   tooltip; the pulse is decoration we can drop. */
+@media (prefers-reduced-motion: reduce) {
+    .milkdown .editor .agent-pending__dot { animation: none; opacity: 0.8; }
+}

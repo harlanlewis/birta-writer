@@ -56,6 +56,16 @@ export {
 // the eager graph, and the embed plugin must stay lazy (dynamic import in
 // editor.ts, gated on the network master switch). Import it directly.
 export { htmlEditKeymapPlugin, htmlLivePairsPlugin } from "./htmlLivePairs";
+export {
+    agentPendingKey,
+    agentPendingPlugin,
+    applyAgentResult,
+    beginAgentRun,
+    failAgentRun,
+    markAgentRunning,
+    recordsExternalInHistory,
+    settleAgentRun,
+} from "./agentPending";
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkEditPlugin } from "./wikiLinkEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";

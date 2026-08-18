@@ -78,8 +78,15 @@ export function notifyCopyAgentReference(): void {
  * line reference in and routes it (src/agentBridge/askAgent.ts). `prompt` is
  * absent from the palette route, where the extension asks for it.
  */
-export function notifyAskAgent(prompt?: string): void {
-    vscode.postMessage(prompt === undefined ? { type: "askAgent" } : { type: "askAgent", prompt });
+export function notifyAskAgent(prompt: string | undefined, requestId: string): void {
+    vscode.postMessage(prompt === undefined
+        ? { type: "askAgent", requestId }
+        : { type: "askAgent", prompt, requestId });
+}
+
+/** Cancel a background agent run from its gutter marker. */
+export function notifyAgentCancel(requestId: string): void {
+    vscode.postMessage({ type: "agentCancel", requestId });
 }
 
 export function notifyOpenUrl(url: string): void {
