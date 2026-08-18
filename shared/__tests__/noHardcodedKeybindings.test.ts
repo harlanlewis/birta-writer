@@ -77,6 +77,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "bails out when modifiers are held — isBareEscape, the one plain-Escape guard every transient and input-owned surface calls (blockKeys, the findings popup, the image dialog, titles, front matter), so none of them acts on modifier-Escape; not a chord",
         "webview/plugins/mathInlineEdit.ts":
             "bails out when modifiers are held — typing-level arrow/Backspace boundary handling at a formula's edge, not a chord",
+        "webview/plugins/slashMenu.ts":
+            "bails out when modifiers are held — a bare Space on a highlighted argument-taking row commits it (typing-level, like Enter picking a row), not a chord",
         "webview/plugins/wikiLinkEdit.ts":
             "bails out when modifiers are held — typing-level arrow/Backspace boundary handling at a wikilink's edge, not a chord",
         "webview/plugins/codeBlockSelectAll.ts":
@@ -97,6 +99,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
         "webview/components/pathLink/index.ts":
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
+        "webview/plugins/embed.ts":
+            "Cmd/Ctrl+click on a card body to open the link it draws (mouse), not a keybinding",
         "webview/plugins/headingFold/foldGutter.ts":
             "Alt+click recursive fold (mouse modifier), not a keybinding",
         "webview/plugins/headingSticky.ts":

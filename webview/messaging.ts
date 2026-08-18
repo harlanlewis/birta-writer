@@ -73,6 +73,15 @@ export function notifyCopyAgentReference(): void {
     vscode.postMessage({ type: "copyAgentReference" });
 }
 
+/**
+ * Ask Agent: hand the caret's prompt to the extension, which composes the
+ * line reference in and routes it (src/agentBridge/askAgent.ts). `prompt` is
+ * absent from the palette route, where the extension asks for it.
+ */
+export function notifyAskAgent(prompt?: string): void {
+    vscode.postMessage(prompt === undefined ? { type: "askAgent" } : { type: "askAgent", prompt });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }

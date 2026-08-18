@@ -36,6 +36,7 @@ A Family-A agent that runs *inside* VS Code and reads `activeTextEditor` cannot 
 | Adapter | Reaches | Trigger |
 |---|---|---|
 | `referenceCommand` | every agent | user picks it from the editor's right-click menu (or the palette), pastes the reference |
+| `askAgent` | every agent the user runs | user types `/ai <request>` at the caret (or runs Ask Agent from the palette); Birta composes the request plus the caret's `path.md#L12` reference into one line, saves the document, and hands the line to a terminal command, the Chat view, or the clipboard per `birta.agent.command`. One-shot: no waiting state, no reply, no history |
 | `languageModelTool` | Copilot agent mode, any LM-tool client | the model calls `#birtaSelection` |
 | `publicApi` | any cooperating extension | caller invokes `getActiveEditorContext()` |
 

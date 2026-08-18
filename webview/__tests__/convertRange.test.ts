@@ -205,6 +205,51 @@ describe("convertRange sweep", () => {
         }
         expect(converted).toEqual(offered);
     });
+
+    it("a run holding a code block should convert to every offered target schema-valid, round-trip stable, and undo in ONE step", async () => {
+        // A fence is the one convertible source whose content is not inline
+        // prose, so it is the shape most likely to convert around, or to
+        // leave its text un-reparsed. The mixed run above has none.
+        const editor = await makeEditor(["intro", "", "```js", "const x = 1;", "```", "", "- item"].join("\n"));
+        const v = view(editor);
+        const original = markdown(editor);
+        const positions = coveredBlockPositions(v.state.doc, wholeDoc(v));
+        expect(positions).toHaveLength(3);
+        expect(positions.map((pos) => conversionKindAt(v, pos))).toContain("codeBlock");
+
+        const offered = ALL_KINDS.filter((kind) => canConvertRange(v, wholeDoc(v), kind));
+        const intersection = ALL_KINDS.filter((kind) => positions.every((pos) => canConvert(v, pos, kind)));
+        expect(offered).toEqual(intersection);
+        // A fence derives no conversion of its own in the single-block
+        // grammar (a leaf never becomes prose by a menu pick), so the only
+        // target every block in this run shares is Code Block: the run,
+        // fence included, becomes one fence of its markdown.
+        expect(offered).toEqual(["codeBlock"]);
+
+        const converted: ConversionKind[] = [];
+        for (const kind of offered) {
+            selectAll(v);
+            const before = v.state.doc;
+            expect(convertRange(v, wholeDoc(v), kind, getEditor), `convertRange → ${kind}`).toBe(true);
+            expect(v.state.doc.eq(before), `${kind} changed nothing`).toBe(false);
+            expect(() => v.state.doc.check()).not.toThrow();
+            const after = markdown(editor);
+            expect(reserialized(editor, after), `${kind} round-trip`).toBe(after);
+            // The fence's text survives every conversion; nothing converts
+            // around the code block.
+            expect(after, `${kind} kept the code`).toContain("const x = 1;");
+            const kindsAfter = coveredBlockPositions(v.state.doc, wholeDoc(v)).map((pos) => conversionKindAt(v, pos));
+            if (kind === "paragraph" || /^h[1-6]$/.test(kind)) {
+                expect(kindsAfter.filter((k) => k === kind).length, `${kind}: run is [${kindsAfter}]`).toBeGreaterThanOrEqual(3);
+            } else {
+                expect(kindsAfter.every((k) => k === kind), `${kind}: run is [${kindsAfter}]`).toBe(true);
+            }
+            expect(undo(v.state, v.dispatch), `${kind} undo`).toBe(true);
+            expect(markdown(editor), `${kind}: one undo restores the document`).toBe(original);
+            converted.push(kind);
+        }
+        expect(converted).toEqual(offered);
+    });
 });
 
 describe("convertRange results", () => {
@@ -393,6 +438,40 @@ describe("the block menu over a covered run", () => {
             .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Blockquote");
         row!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
         expect(markdown(editor)).toBe("> one\n>\n> two\n>\n> three");
+    });
+
+    it("over a run, the Actions rows act on the whole run and the anchor-only rows stay away", async () => {
+        const editor = await makeEditor(["# Title", "", "one", "", "two", "", "Omega"].join("\n"));
+        const v = view(editor);
+        // Cover the two paragraphs between the heading and Omega.
+        const positions = coveredBlockPositions(v.state.doc, wholeDoc(v));
+        const range = BlockRangeSelection.tryCreate(v.state.doc, positions[1]!, positions[3]!)!;
+        v.dispatch(v.state.tr.setSelection(range));
+        expect(openBlockMenuAtCaret(v)).toBe(true);
+        const labels = () => menuRows().map((row) => row.label);
+        expect(labels()).toEqual(expect.arrayContaining(["Duplicate", "Copy as Markdown", "Move Up", "Move Down", "Delete"]));
+        // Nothing that describes one block: no Copy Link (the anchor is not a
+        // heading here anyway), no Indent, no Full Width, no Show as Card.
+        expect(labels()).not.toContain("Indent");
+        expect(labels()).not.toContain("Show as Card");
+
+        // Delete removes the run, not the anchor block alone.
+        const del = Array.from(document.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Delete")!;
+        del.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toBe("# Title\n\nOmega");
+    });
+
+    it("over a run, Duplicate copies the whole run", async () => {
+        const editor = await makeEditor(["one", "", "two", "", "Omega"].join("\n"));
+        const v = view(editor);
+        const positions = coveredBlockPositions(v.state.doc, wholeDoc(v));
+        v.dispatch(v.state.tr.setSelection(BlockRangeSelection.tryCreate(v.state.doc, positions[0]!, positions[2]!)!));
+        expect(openBlockMenuAtCaret(v)).toBe(true);
+        const dup = Array.from(document.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Duplicate")!;
+        dup.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toBe("one\n\ntwo\n\none\n\ntwo\n\nOmega");
     });
 
     it("a caret with no cover should keep the single-block menu", async () => {

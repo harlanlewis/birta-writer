@@ -136,6 +136,10 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     selectAllOccurrences: "mutates",
     // ── Reading, navigation and selection ───────────────────────────────────
     openLink: "reads",
+    // Hands a prompt to an external agent; the document itself is untouched
+    // by the command (whatever the agent later writes arrives as an external
+    // edit, which read-only never fights).
+    askAgent: "reads",
     openFind: "reads",
     // The block menu is NOT a writing surface the way the two panels above
     // are: it also folds, copies a block as Markdown, and copies a link to a

@@ -117,6 +117,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     insertMath: NONE,
     insertFootnote: NONE,
     openLink: NONE,
+    askAgent: NONE,
     editBlockSource: NONE,
 
     // ── Find ────────────────────────────────────────────────────────────────

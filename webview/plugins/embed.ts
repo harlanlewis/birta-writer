@@ -120,9 +120,16 @@ function bareLinkHref(node: ProseNode): string | null {
  * What a card stands for: a recognized provider match, or a link card, whose
  * id is the href itself. Widget keys, ordinals and the palette carry either.
  */
-export type CardMatch = EmbedMatch | { kind: "linkCard"; id: string };
+export type LinkCardMatch = {
+    kind: "linkCard";
+    id: string;
+    /** The link's own text when it is not the URL: the author's words for
+     * the page, which the card keeps as its title. */
+    label?: string;
+};
+export type CardMatch = EmbedMatch | LinkCardMatch;
 
-export function isLinkCard(match: CardMatch): match is { kind: "linkCard"; id: string } {
+export function isLinkCard(match: CardMatch): match is LinkCardMatch {
     return match.kind === "linkCard";
 }
 
@@ -181,6 +188,16 @@ function embedWidget(match: CardMatch, sourceUrl: string): (view: EditorView, ge
         host.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            // A card is the link it draws, so it opens the way a link does:
+            // Cmd/Ctrl+click on the card body opens the page (the link
+            // popup's own modifier-click, components/linkPopup), in read-only
+            // as much as when editing; a plain click selects the card, as it
+            // pins a link's popup. The corner button stays for the pointer
+            // that does not know the modifier.
+            if (event.metaKey || event.ctrlKey) {
+                notifyOpenUrl(sourceUrl);
+                return;
+            }
             // The widget rides at from + 1; the paragraph is one position
             // up. getPos() is undefined during teardown races.
             const pos = getPos();
@@ -360,7 +377,8 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         // cards only on the reader's own choice: "leave YouTube links plain"
         // must not become an OG card that fetches youtube.com anyway.
         if (linkCards && linkCardWanted(state.doc, pos, href, recognized !== null)) {
-            push({ kind: "linkCard", id: href }, href, pos, node);
+            const label = node.textContent !== href ? node.textContent : undefined;
+            push({ kind: "linkCard", id: href, ...(label !== undefined && { label }) }, href, pos, node);
         }
     });
     return embeds;

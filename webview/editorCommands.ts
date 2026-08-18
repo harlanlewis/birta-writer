@@ -82,7 +82,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@/pm";
 import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
-import { notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
+import { notifyAskAgent, notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
@@ -770,6 +770,15 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
         openLinkAtCaret(view);
         view.focus();
     }),
+    // Ask Agent (MAR-371): the slash menu's `/ai` row passes `{ prompt }`;
+    // the palette passes nothing and the extension asks. The webview only
+    // relays: composing the caret's line reference and choosing the route
+    // (terminal, Chat view, clipboard) is extension work, where the document
+    // can be saved first so the reference names what is on disk.
+    askAgent: (_getEditor, args) => {
+        const prompt = (args as { prompt?: unknown } | undefined)?.prompt;
+        notifyAskAgent(typeof prompt === "string" ? prompt : undefined);
+    },
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
     insertFootnote: (getEditor) => insertFootnote(getEditor),

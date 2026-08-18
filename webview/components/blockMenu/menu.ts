@@ -105,7 +105,7 @@ import {
 import { mergeableListBoundary, mergeListsAt } from "../../editing/listMerge";
 import { outermostListAt } from "../../editing/listConvert";
 import { listTreeIsLoose, setListTreeSpread } from "../../plugins/list";
-import { blockMarkdownAt, selectInto } from "./turnInto";
+import { blockMarkdownAt, rangeMarkdown, selectInto } from "./turnInto";
 import { setListNumberingAt } from "../../plugins/listNumbering";
 import { isOrderedNumbering, type OrderedNumbering } from "../../utils/orderedMarkers";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
@@ -1023,6 +1023,13 @@ export function openBlockMenu(
     const runKinds = coveredRun
         ? coveredBlockPositions(view.state.doc, coveredRun).map((pos) => conversionKindAt(view, pos))
         : [];
+    // Over a run, the Actions section holds only the verbs that act on the
+    // whole run (Duplicate, Copy as Markdown, Move, Delete, through the same
+    // selection commands the keyboard chords run) and none of the rows that
+    // describe the anchor block alone (its link, its image, its width, its
+    // list). A header that says three blocks over rows that act on one is
+    // the confusion this rule prevents.
+    const singleBlock = coveredRun === null;
 
     const menu = document.createElement("div");
     menu.className = "block-menu";
@@ -1473,7 +1480,10 @@ export function openBlockMenu(
     };
     action(t("Duplicate"), ["duplicate", "copy", "clone"], {
         icon: IconCopy,
-        action: () => duplicateBlock(view, blockPos),
+        ...(coveredRun !== null && { actsOnSelection: true }),
+        action: () => coveredRun
+            ? runEditorCommand("duplicateBlockDown", getEditor)
+            : duplicateBlock(view, blockPos),
     });
     // Direct block serialization — the shared copyAsMarkdown command prefers
     // a non-empty ambient selection, which would violate this menu's
@@ -1482,13 +1492,15 @@ export function openBlockMenu(
         icon: IconFileText,
         mutates: false,
         action: () => {
-            const markdown = blockMarkdownAt(view, blockPos, getEditor);
+            const markdown = coveredRun
+                ? rangeMarkdown(view, coveredRun, getEditor)
+                : blockMarkdownAt(view, blockPos, getEditor);
             if (markdown !== null) {
                 notifyClipboardWrite("markdown", markdown);
             }
         },
     });
-    if (isHeading) {
+    if (isHeading && singleBlock) {
         action(t("Copy Link"), ["link", "anchor", "copy", "url"], {
             icon: IconLink,
             mutates: false,
@@ -1508,7 +1520,7 @@ export function openBlockMenu(
             anchorNode !== null &&
             $head.pos >= blockPos &&
             $head.pos <= blockPos + anchorNode.nodeSize;
-        if (caretInBlock && linkAtCaret(view) !== null) {
+        if (singleBlock && caretInBlock && linkAtCaret(view) !== null) {
             action(t("Open Link"), ["open", "follow", "link", "url", "go"], {
                 icon: IconExternalLink,
                 mutates: false,
@@ -1525,7 +1537,7 @@ export function openBlockMenu(
     // unit); the FIRST image is the paragraph's identity — a multi-image
     // paragraph is rare enough that per-image targeting stays with the
     // mouse/NodeView.
-    {
+    if (singleBlock) {
         let image: ProseNode | null = null;
         let imageOffset = 0;
         if (anchorNode?.type.name === "paragraph") {
@@ -1577,6 +1589,7 @@ export function openBlockMenu(
         }
     }
     if (
+        singleBlock &&
         anchorNode?.type.name === "table" &&
         view.state.doc.resolve(blockPos).depth === 0 &&
         // In FULL-width page mode a table already fills the pane — the row
@@ -1603,7 +1616,7 @@ export function openBlockMenu(
             action: () => setBlockWidth(widthAnchor, isFullWidth ? null : "full"),
         });
     }
-    if (anchorNode && view.state.doc.resolve(blockPos).depth === 0) {
+    if (singleBlock && anchorNode && view.state.doc.resolve(blockPos).depth === 0) {
         // Link card (MAR-185): a lone web link on its own line can be shown
         // as an OG card or as the plain link, per link. Presentation state
         // beside the document (blockWidth.ts), never a byte in it, so like
@@ -1628,7 +1641,7 @@ export function openBlockMenu(
             });
         }
     }
-    if (anchorNode?.type.name === "callout") {
+    if (singleBlock && anchorNode?.type.name === "callout") {
         // T1 write path (MAR-110): a deliberate, undoable document edit that
         // writes/removes the Obsidian `[!kind]-` fold marker — the syntax
         // sets the DEFAULT state; chevron clicks stay transient and never
@@ -1662,7 +1675,7 @@ export function openBlockMenu(
             },
         });
     }
-    if (isItem && anchorNode?.attrs["checked"] != null) {
+    if (singleBlock && isItem && anchorNode?.attrs["checked"] != null) {
         // Reset a task list for reuse (MAR-175): clear every checked box in the
         // whole checklist, nested sublists included, in one undo step. The row
         // is disabled when nothing is checked so it is never a dead action.
@@ -1702,7 +1715,7 @@ export function openBlockMenu(
             action: () => setChecklistSinkEnabled(!isChecklistSinkEnabled()),
         });
     }
-    if (isItem) {
+    if (isItem && singleBlock) {
         // ── Numbering: how THIS ordered list draws its markers ──
         // A real, undoable transaction (the style is a node attr), unlike the
         // width rows next door which write only to the store — so `mutates`
@@ -1804,25 +1817,31 @@ export function openBlockMenu(
     }
     action(movesSection ? t("Move Section Up") : t("Move Up"), ["move", "up", "reorder"], {
         icon: IconChevronUp,
-        disabled: !canMove(view, blockPos, -1),
-        action: () => moveBlockAt(view, blockPos, -1),
+        ...(coveredRun !== null && { actsOnSelection: true }),
+        disabled: singleBlock && !canMove(view, blockPos, -1),
+        action: () => coveredRun
+            ? runEditorCommand("moveBlockUp", getEditor)
+            : moveBlockAt(view, blockPos, -1),
     });
     action(movesSection ? t("Move Section Down") : t("Move Down"), ["move", "down", "reorder"], {
         icon: IconChevronDown,
-        disabled: !canMove(view, blockPos, 1),
-        action: () => moveBlockAt(view, blockPos, 1),
+        ...(coveredRun !== null && { actsOnSelection: true }),
+        disabled: singleBlock && !canMove(view, blockPos, 1),
+        action: () => coveredRun
+            ? runEditorCommand("moveBlockDown", getEditor)
+            : moveBlockAt(view, blockPos, 1),
     });
     // ── Refile (MAR-118) — the keyboard path to drag-refile. Hidden rather
     // than disabled when impossible (the merge-rows convention: possibility
     // hangs on this block's neighbors/ancestry, and a block with no container
     // in reach makes the action never-possible from here).
-    if (canIndentAt(view, blockPos)) {
+    if (singleBlock && canIndentAt(view, blockPos)) {
         action(t("Indent"), ["indent", "nest", "sink", "move", "into", "refile"], {
             icon: IconChevronRight,
             action: () => indentBlockAt(view, blockPos),
         });
     }
-    if (canOutdentAt(view, blockPos)) {
+    if (singleBlock && canOutdentAt(view, blockPos)) {
         action(t("Outdent"), ["outdent", "unnest", "lift", "move", "out", "refile"], {
             icon: IconChevronLeft,
             action: () => outdentBlockAt(view, blockPos),
@@ -1850,7 +1869,10 @@ export function openBlockMenu(
     action(t("Delete"), ["delete", "remove", "trash", ...(anchorNode?.type.name.split("_") ?? [])], {
         icon: IconTrash2,
         danger: true,
-        action: () => deleteBlock(view, blockPos),
+        ...(coveredRun !== null && { actsOnSelection: true }),
+        action: () => coveredRun
+            ? deleteBlockRange(view, coveredRun)
+            : deleteBlock(view, blockPos),
     });
 
     // ── Render (and re-render per filter keystroke) ──

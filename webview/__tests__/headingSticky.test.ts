@@ -384,6 +384,21 @@ describe("sticky heading ancestor trail (MAR-31)", () => {
         expect(stickyAncestors(headings, -1)).toEqual([]);
     });
 
+    it("a heading nested inside a callout should not be an ancestor of the top-level heading after it", async () => {
+        const editor = await makeEditor([
+            "# Root", "", "> [!NOTE]", "> ## Quoted", "> body", "", "### Current", "", "Body.",
+        ].join("\n"));
+        const editorView = view(editor);
+        const headings = headingsOf(editorView);
+        const current = headings.findIndex((h) => h.textContent?.includes("Current"));
+        const isTopLevel = (h: HTMLElement): boolean => h.parentElement === editorView.dom;
+        // The quoted H2 is level-wise a parent of the H3 and position-wise
+        // above it, and it is still not the section the H3 sits in.
+        expect(stickyAncestors(headings, current, isTopLevel).map((c) => c.text)).toEqual(["Root"]);
+        // Without the container rule it would be, which is the defect pinned.
+        expect(stickyAncestors(headings, current).map((c) => c.text)).toEqual(["Root", "Quoted"]);
+    });
+
     it("the sticky should render the trail above the title, and no trail for a top-level heading", async () => {
         const editor = await makeEditor(["# Root", "", "## Parent", "", "### Current", "", "Body."].join("\n"));
         const editorView = view(editor);

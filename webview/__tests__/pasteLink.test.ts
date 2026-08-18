@@ -528,3 +528,73 @@ describe("findBareLinkRange", () => {
         expect(findBareLinkRange(v.state.doc, "https://example.com", 1)).toBeNull();
     });
 });
+
+describe("a lone link the reader wants as a card is owned by the card, not paste-unfurl", () => {
+    let editor: Editor;
+    let v: EditorView;
+
+    const PAGE = "https://example.com/some/article";
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        __resetNetworkOptInForTests();
+        window.__i18n = {
+            translations: {}, isMac: false,
+            network: true, pasteUnfurl: true, linkCardsEnabled: true,
+        };
+        vi.spyOn(unfurl, "registerPendingUnfurl").mockImplementation(() => {});
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+        __resetNetworkOptInForTests();
+        delete window.__i18n;
+        vi.restoreAllMocks();
+    });
+
+    const unfurlPosts = (): number => mockVscodeApi.postMessage.mock.calls
+        .map((c) => c[0] as { type: string })
+        .filter((m) => m.type === "unfurlUrl").length;
+
+    it("pasted onto an empty top-level line with link cards on, it should insert the link and fetch NOTHING for a title", async () => {
+        // The card will fetch the page once for itself; a title fetch would
+        // ask the same host twice and offer a title over a card showing it.
+        editor = await makeEditor("hello\n");
+        v = view(editor);
+        // A fresh empty paragraph below (Enter at the end of the line).
+        const end = v.state.doc.child(0).nodeSize - 1;
+        v.dispatch(v.state.tr.split(end));
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, v.state.doc.child(0).nodeSize + 1)));
+
+        expect(firePaste(v, PAGE)).toBe(true);
+
+        expect(hasLinkMark(v, PAGE)).toBe(true);
+        expect(unfurlPosts()).toBe(0);
+        expect(unfurl.registerPendingUnfurl).not.toHaveBeenCalled();
+    });
+
+    it("pasted after prose on the same line it is not a lone link, so the title fetch goes ahead", async () => {
+        editor = await makeEditor("hello \n");
+        v = view(editor);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, v.state.doc.content.size - 1)));
+
+        expect(firePaste(v, PAGE)).toBe(true);
+
+        expect(unfurlPosts()).toBe(1);
+    });
+
+    it("with link cards off (and no per-link choice) the title fetch goes ahead as before", async () => {
+        window.__i18n = { translations: {}, isMac: false, network: true, pasteUnfurl: true, linkCardsEnabled: false };
+        editor = await makeEditor("hello\n");
+        v = view(editor);
+        // A fresh empty paragraph below (Enter at the end of the line).
+        const end = v.state.doc.child(0).nodeSize - 1;
+        v.dispatch(v.state.tr.split(end));
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, v.state.doc.child(0).nodeSize + 1)));
+
+        expect(firePaste(v, PAGE)).toBe(true);
+
+        expect(unfurlPosts()).toBe(1);
+    });
+});
