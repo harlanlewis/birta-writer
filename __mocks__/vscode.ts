@@ -570,6 +570,8 @@ export const window = {
         clear: vi.fn(),
         dispose: vi.fn(),
     })),
+    onDidEndTerminalShellExecution: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidCloseTerminal: vi.fn(() => ({ dispose: vi.fn() })),
     /** Live terminals; tests reset it (`window.terminals.length = 0`) between cases. */
     terminals: [] as Array<{ name: string; exitStatus: undefined | { code: number | undefined }; show: ReturnType<typeof vi.fn>; sendText: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }>,
     createQuickPick: vi.fn(makeFakeQuickPick),

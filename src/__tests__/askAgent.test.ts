@@ -13,6 +13,7 @@ import { EventEmitter } from "node:events";
 import * as vscode from "vscode";
 import {
     agentOutputChannel,
+    agentRunsStatusItem,
     askAgent,
     cancelAgentRun,
     reportAgentMerge,
@@ -33,7 +34,9 @@ import { makeFakeTextDocument, resetTextDocumentMocks, Range, Uri } from "../../
 class FakeChild extends EventEmitter {
     stderr = new EventEmitter();
     stdout = new EventEmitter();
-    kill = vi.fn(() => { this.emit("exit", null); return true; });
+    /** Undefined by default: `killTree` then falls back to `kill`. A test sets one to reach the group kill. */
+    pid: number | undefined = undefined;
+    kill = vi.fn(() => { this.emit("close", null); return true; });
 }
 const spawnMock = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ spawn: spawnMock }));
@@ -237,7 +240,7 @@ describe("askAgent", () => {
         const disk = "# Plan\n\nAgent line.\n";
         vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from(disk));
         doc.setTextExternally(disk);
-        child.emit("exit", 0);
+        child.emit("close", 0);
         // `done` waits for the reload to land and the push to go out first.
         await new Promise((r) => setTimeout(r, 600));
 
@@ -256,7 +259,7 @@ describe("askAgent", () => {
         await askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai14");
         vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n\nAgent line.\n"));
 
-        child.emit("exit", 0);
+        child.emit("close", 0);
         await new Promise((r) => setTimeout(r, 200));
 
         // Not yet: the document has not taken the write.
@@ -272,7 +275,7 @@ describe("askAgent", () => {
         await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "do x", "ai15");
 
         child.stderr.emit("data", Buffer.from("boom"));
-        child.emit("exit", 2);
+        child.emit("close", 2);
         await flush();
         await flush();
 
@@ -293,7 +296,7 @@ describe("askAgent", () => {
 
         child.stdout.emit("data", Buffer.from("Hello! Nothing to change here.\n"));
         vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
-        child.emit("exit", 0);
+        child.emit("close", 0);
         await flush();
 
         expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai12", status: "done", harness: "claude" });
@@ -311,7 +314,7 @@ describe("askAgent", () => {
         await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "say hello", "ai13");
 
         vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
-        child.emit("exit", 0);
+        child.emit("close", 0);
         await flush();
 
         expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -331,7 +334,7 @@ describe("askAgent", () => {
         (doc as unknown as { applyReplace(r: Range, t: string): void }).applyReplace(new Range(doc.positionAt(0), doc.positionAt(0)), "x");
         vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n\nAgent line.\n"));
 
-        child.emit("exit", 0);
+        child.emit("close", 0);
         await flush();
 
         expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai8", status: "done", text: "# Plan\n\nAgent line.\n", harness: "claude" });
@@ -347,7 +350,7 @@ describe("askAgent", () => {
         (doc as unknown as { applyReplace(r: Range, t: string): void }).applyReplace(new Range(doc.positionAt(0), doc.positionAt(0)), "x");
         vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
 
-        child.emit("exit", 0);
+        child.emit("close", 0);
         await flush();
 
         expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai9", status: "done", harness: "claude" });
@@ -362,7 +365,7 @@ describe("askAgent", () => {
         await askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai10");
 
         child.stderr.emit("data", Buffer.from("no such command"));
-        child.emit("exit", 127);
+        child.emit("close", 127);
         await flush();
 
         expect(messages[1]?.status).toBe("failed");
@@ -372,19 +375,81 @@ describe("askAgent", () => {
         expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("claude could not finish"), "Show Output");
     });
 
-    it("cancelling a run should kill the child and report cancelled, not failed", async () => {
+    it("cancelling a run should kill the child's whole process group and report cancelled, not failed", async () => {
         configureRoute("claude -p {prompt}", "background");
         makeFakeTextDocument("# Plan\n", noteUri);
         const child = new FakeChild();
+        child.pid = 4242;
         spawnMock.mockImplementation(() => child);
+        const killSpy = vi.spyOn(process, "kill").mockImplementation(() => { child.emit("close", null); return true; });
         const { report, messages } = reporter();
         await askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai11");
 
         cancelAgentRun("ai11");
         await flush();
 
-        expect(child.kill).toHaveBeenCalled();
+        // The group (negative pid), so a compound template's agent dies with its shell.
+        expect(killSpy).toHaveBeenCalledWith(-4242, "SIGTERM");
+        expect(child.kill).not.toHaveBeenCalled();
+        killSpy.mockRestore();
         expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai11", status: "cancelled", harness: "claude" });
+    });
+
+    it("a run whose reload landed while it was still going should end with a plain done, even if the user edited or undid afterwards", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        const doc = makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        const { report, messages } = reporter();
+        await askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai16");
+        // The agent writes, VS Code reloads the clean document (landed)...
+        const disk = "# Plan\n\nAgent line.\n";
+        doc.setTextExternally(disk);
+        // ...then the user undoes or edits BEFORE the process exits, dirtying the document.
+        (doc as unknown as { applyReplace(r: Range, t: string): void }).applyReplace(new Range(doc.positionAt(0), doc.positionAt(0)), "x");
+        expect(doc.isDirty).toBe(true);
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from(disk));
+
+        child.emit("close", 0);
+        await flush();
+
+        // No merge text: merging the disk text over the user's edit would put the agent's version back.
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai16", status: "done", harness: "claude" });
+    });
+
+    it("a status bar item should show while a run is live and hide when it ends", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "do x", "ai17");
+
+        const item = agentRunsStatusItem() as unknown as { text: string; command: unknown; show: ReturnType<typeof vi.fn>; hide: ReturnType<typeof vi.fn> };
+        expect(item.text).toContain("claude");
+        expect(item.command).toBe("birta.stopAgentRuns");
+        expect(item.show).toHaveBeenCalled();
+
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
+        child.emit("close", 0);
+        await flush();
+        expect(item.hide).toHaveBeenCalled();
+    });
+
+    it("terminal mode should run through shell integration when the shell offers it, and never type into a terminal still running its last command", async () => {
+        configureRoute("claude {prompt}", "terminal");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const first = vscode.window.createTerminal({ name: TERMINAL_NAME }) as unknown as { shellIntegration?: { executeCommand: ReturnType<typeof vi.fn> } };
+        first.shellIntegration = { executeCommand: vi.fn() };
+        vi.mocked(vscode.window.createTerminal).mockClear();
+
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "one", "ai18");
+        expect(first.shellIntegration.executeCommand).toHaveBeenCalledWith(`claude 'In notes/plan.md#L1: one'`);
+        expect(vscode.window.createTerminal).not.toHaveBeenCalled();
+
+        // The interactive session is still running: a second request gets its own terminal.
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "two", "ai19");
+        expect(vscode.window.createTerminal).toHaveBeenCalledTimes(1);
+        expect(vscode.window.terminals[1]!.sendText).toHaveBeenCalledWith(`claude 'In notes/plan.md#L1: two'`, true);
     });
 
     it("a dirty document should be saved before the hand-off", async () => {

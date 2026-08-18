@@ -139,6 +139,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.stopAgentRuns",
+                "title": "%command.stopAgentRuns.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.toggleCalcAutoInsert",
                 "title": "%command.toggleCalcAutoInsert.title%",
                 "category": "Birta Writer"

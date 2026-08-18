@@ -53,6 +53,8 @@ export const ASK_AGENT_COMMAND = "birta.askAgent";
 export const CANCEL_AGENT_COMMAND = "birta.cancelAgent";
 /** Internal command the webview's `agentMergeResult` message runs. */
 export const MERGE_RESULT_COMMAND = "birta.agentMergeResult";
+/** Contributed: stop every background run (also the status bar item's click). */
+export const STOP_ALL_COMMAND = "birta.stopAgentRuns";
 
 /** Reserved `birta.agent.command` values that are routes rather than shells. */
 export const AGENT_ROUTE_CHAT = "chat";
@@ -175,16 +177,66 @@ interface BackgroundRun {
     readonly uri: vscode.Uri;
     /** The file's bytes when the run started; unchanged bytes at exit mean the agent wrote nothing. */
     readonly savedText: string;
+    readonly harness: string;
     readonly child: ChildProcess;
     cancelled: boolean;
+    /**
+     * VS Code reloaded the clean document with the agent's write while the
+     * run was still going: the webview already has the edit (in history). A
+     * landed run ends with a plain done whatever the document looks like at
+     * exit, because an edit or an undo made after the landing is the user's,
+     * and a merge of the disk text over it would put the agent's version back.
+     */
+    landed: boolean;
+    readonly watch: vscode.Disposable;
 }
 
 const runs = new Map<string, BackgroundRun>();
 
-/** The reused terminal, created on first use and found again by name. */
+/**
+ * One status bar item while any background run is live: the runs are
+ * visible outside the document (a closed tab, a rebuilt editor, a hung
+ * template have no pill), and clicking it stops them all.
+ */
+let runsItem: vscode.StatusBarItem | undefined;
+/** The item, for tests. Undefined until the first run. */
+export function agentRunsStatusItem(): vscode.StatusBarItem | undefined { return runsItem; }
+function refreshRunsItem(): void {
+    if (runs.size === 0) { runsItem?.hide(); return; }
+    runsItem ??= vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+    const names = [...new Set([...runs.values()].map((r) => r.harness))].join(", ");
+    runsItem.text = `$(sync~spin) ${names}`;
+    runsItem.tooltip = runs.size === 1
+        ? vscode.l10n.t("{0} is working on your request. Click to stop it.", names)
+        : vscode.l10n.t("{0} requests running. Click to stop them all.", String(runs.size));
+    runsItem.command = STOP_ALL_COMMAND;
+    runsItem.show();
+}
+
+/** Terminals with a command still executing under shell integration, so a new request never types into a live session. */
+const busyTerminals = new Set<vscode.Terminal>();
+
+/**
+ * The reused terminal: found by name, recreated after it exits, and left
+ * alone while shell integration says its last command (an interactive
+ * `claude` session, say) is still running, because `sendText` into that
+ * would type the new request into the old session as a message.
+ */
 function agentTerminal(cwd: vscode.Uri | undefined): vscode.Terminal {
-    const existing = vscode.window.terminals.find((t) => t.name === TERMINAL_NAME && t.exitStatus === undefined);
+    const existing = vscode.window.terminals.find((t) =>
+        t.name === TERMINAL_NAME && t.exitStatus === undefined && !busyTerminals.has(t));
     return existing ?? vscode.window.createTerminal({ name: TERMINAL_NAME, cwd });
+}
+
+/** Run a line in the terminal, through shell integration when the shell offers it (so its end is known). */
+function runInTerminal(terminal: vscode.Terminal, commandLine: string): void {
+    const integration = terminal.shellIntegration;
+    if (integration) {
+        busyTerminals.add(terminal);
+        integration.executeCommand(commandLine);
+        return;
+    }
+    terminal.sendText(commandLine, true);
 }
 
 /**
@@ -274,8 +326,15 @@ function startBackground(
     report: AgentRunReporter,
 ): void {
     const child = spawnBackground(commandLine, cwd);
-    const run: BackgroundRun = { requestId, uri, savedText, child, cancelled: false };
+    // A clean document taking a text change that is not the saved text is
+    // VS Code's reload of the agent's write: the edit has landed.
+    const watch = vscode.workspace.onDidChangeTextDocument((e) => {
+        if (e.document.uri.toString() !== uri.toString() || e.document.isDirty) { return; }
+        if (e.document.getText() !== savedText) { run.landed = true; }
+    });
+    const run: BackgroundRun = { requestId, uri, savedText, harness, child, cancelled: false, landed: false, watch };
     runs.set(requestId, run);
+    refreshRunsItem();
     report(uri, { type: "agentRun", requestId, status: "running", harness });
     const relPath = vscode.workspace.asRelativePath(uri, false);
     let stderr = "";
@@ -304,14 +363,21 @@ function startBackground(
             showOutput,
         )).then((pick) => { if (pick === showOutput) { output().show(true); } });
     };
-    child.on("error", (err) => {
+    const finish = (): void => {
         runs.delete(requestId);
+        run.watch.dispose();
+        refreshRunsItem();
+    };
+    child.on("error", (err) => {
+        finish();
         reportError("askAgent background", err);
         failed(String((err as Error).message ?? err));
     });
-    child.on("exit", (code) => {
+    // `close`, not `exit`: the streams are drained by then, and for a headless
+    // agent the last lines of stdout are the answer.
+    child.on("close", (code) => {
         void (async () => {
-            runs.delete(requestId);
+            finish();
             if (run.cancelled) {
                 logRun("cancelled");
                 report(uri, { type: "agentRun", requestId, status: "cancelled", harness });
@@ -347,11 +413,11 @@ function startBackground(
             // text over for the webview to merge around the user's edits; the
             // webview reports how that went (agentMergeResult).
             let document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
-            if (document && !document.isDirty) {
+            if (document && !document.isDirty && !run.landed) {
                 await waitForReload(uri, disk);
                 document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
             }
-            if (document?.isDirty && document.getText() !== disk) {
+            if (!run.landed && document?.isDirty && document.getText() !== disk) {
                 report(uri, { type: "agentRun", requestId, status: "done", text: disk, harness });
                 return;
             }
@@ -412,7 +478,12 @@ async function dispatch(
     // relative reference in the line resolves where the agent runs.
     const terminal = agentTerminal(folder);
     terminal.show(false);
-    terminal.sendText(commandLine, true);
+    runInTerminal(terminal, commandLine);
+}
+
+/** Stop every live background run (the status bar item, the palette command, deactivation). */
+export function cancelAllAgentRuns(): void {
+    for (const run of runs.values()) { run.cancelled = true; killTree(run.child); }
 }
 
 /**
@@ -504,6 +575,12 @@ export function registerAskAgent(
         vscode.commands.registerCommand(MERGE_RESULT_COMMAND, (uri?: unknown, outcome?: unknown) => {
             if (uri && typeof (uri as vscode.Uri).fsPath === "string" && typeof outcome === "string") { reportAgentMerge(uri as vscode.Uri, outcome); }
         }),
-        { dispose: () => { for (const run of runs.values()) { run.cancelled = true; killTree(run.child); } runs.clear(); outputChannel?.dispose(); } },
+        vscode.commands.registerCommand(STOP_ALL_COMMAND, () => cancelAllAgentRuns()),
+        vscode.window.onDidEndTerminalShellExecution((e) => { busyTerminals.delete(e.terminal); }),
+        vscode.window.onDidCloseTerminal((t) => { busyTerminals.delete(t); }),
+        // Deactivation (a window reload, an extension update) stops every run:
+        // a process the extension can no longer report on must not keep
+        // writing the file. The transcript channel goes with it.
+        { dispose: () => { cancelAllAgentRuns(); for (const run of runs.values()) { run.watch.dispose(); } runs.clear(); runsItem?.dispose(); outputChannel?.dispose(); } },
     );
 }

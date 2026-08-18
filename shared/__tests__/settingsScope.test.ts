@@ -22,12 +22,15 @@ const props: Record<string, { scope?: string }> =
     pkg.contributes.configuration.properties;
 
 /**
- * Every key that gates a network request or an automatic file write. The
+ * Every key that gates a network request or an automatic file write, plus the
+ * one that names a shell command to run (`birta.agent.command`: a workspace
+ * that could set it could run a command on the user's machine). The
  * per-provider roster is enumerated from EMBED_KINDS rather than listed, so a
  * provider added later inherits the guard instead of needing to be remembered
  * here — which is the failure mode this file exists to prevent.
  */
 const CONSENT_KEYS = [
+    "birta.agent.command",
     "birta.network.enabled",
     "birta.pasteUnfurl.enabled",
     "birta.pasteUnfurl.autoApply",
