@@ -371,6 +371,11 @@ export type ToExtensionMessage =
     // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
     // the right-click menu); the extension writes `data` to the system clipboard.
     | { type: "clipboardWrite"; format: "html" | "markdown"; data: string }
+    // Export as HTML: the webview rendered the live document into one
+    // self-contained HTML string; the extension asks where to save it, writes
+    // it, and offers to open it in the browser (MAR-32). `suggestedName` is
+    // the default file name, derived from the document's own name.
+    | { type: "exportHtml"; html: string; suggestedName: string }
     // The toolbar's disk-drift badge was clicked; the extension shows the
     // native picker (reload from disk / compare with disk). The extension never
     // edits the document itself — the user chooses.

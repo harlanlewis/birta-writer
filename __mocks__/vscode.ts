@@ -539,6 +539,7 @@ export const window = {
     showQuickPick: vi.fn(),
     showInputBox: vi.fn(),
     showOpenDialog: vi.fn(),
+    showSaveDialog: vi.fn(),
     setStatusBarMessage: vi.fn(),
     createQuickPick: vi.fn(makeFakeQuickPick),
     createStatusBarItem: vi.fn((_id?: unknown, _alignment?: unknown, _priority?: unknown) =>

@@ -307,6 +307,14 @@ export const EDITOR_COMMANDS = [
     // undo step — resets a reusable checklist. Palette-only (also offered on the
     // block menu of a task list); no default chord.
     { id: "uncheckAllTasks", title: "Uncheck All Tasks", palette: true, sections: [] },
+    // Export as HTML (MAR-32): the rendered document as one self-contained
+    // file. Offered wherever the copy-as commands are (palette, and the
+    // right-click menu of every content section, in its own group below the
+    // copy group), because it is the same gesture writ large: the whole
+    // document instead of the selection, to a file instead of the clipboard.
+    // No PDF sibling: a webview has no print API, so the honest PDF path is
+    // the browser's print-to-PDF on the exported file (src/htmlExport.ts).
+    { id: "exportHtml", title: "Export as HTML", palette: true, sections: ["editor", "table", "link"] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

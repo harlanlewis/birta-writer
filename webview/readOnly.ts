@@ -193,6 +193,9 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     toggleGrammarCheck: "reads",
     toggleStyleCheck: "reads",
     toggleNoteHighlights: "reads",
+    // Export reads the rendered document and writes a file elsewhere; the
+    // document itself is untouched, and a locked document is still exportable.
+    exportHtml: "reads",
 };
 
 /** True when this command changes the document and read-only must refuse it. */
