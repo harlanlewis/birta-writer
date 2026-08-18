@@ -95,6 +95,16 @@ describe("the gate", () => {
         ]);
     });
 
+    it("a lone link inside a quote or a list item should stay a link even with the default on and a per-link choice for it", async () => {
+        i18n({ linkCardsEnabled: true });
+        setLinkCardDisplay(linkCardAnchor(OTHER), "card");
+        const editor = await makeCorpusEditor(`# T\n\n> ${OTHER}\n\n- ${OTHER}\n\n${PAGE}\n`);
+        const view = editorView(editor);
+        // Only the top-level line cards; the two nested lone links do not,
+        // and the choice recorded for their href does not reach them.
+        expect(widgetKeys(computeEmbedDecorations(view.state))).toEqual([`embed:linkCard:${PAGE}:0`]);
+    });
+
     it("network off should card nothing, whatever the default or the choice says", async () => {
         i18n({ linkCardsEnabled: true, network: false });
         setLinkCardDisplay(linkCardAnchor(PAGE), "card");
@@ -193,6 +203,18 @@ describe("the card and its metadata", () => {
         expect(card.querySelector(".embed-card__title b")).toBeNull();
     });
 
+    it("a labelled link's card should keep the label as its title and show the page's title as detail", () => {
+        const card = renderEmbedCard({ kind: "linkCard", id: PAGE, label: "the article I meant" });
+        expect(card.querySelector(".embed-card__title")?.textContent).toBe("the article I meant");
+        queueLinkCardResolution([PAGE]);
+        const request = mockVscodeApi.postMessage.mock.calls
+            .map(([m]) => m as { type: string; id: string })
+            .find((m) => m.type === "resolveLinkCard")!;
+        handleLinkCardResult(request.id, { title: "An Article", description: null });
+        expect(card.querySelector(".embed-card__title")?.textContent).toBe("the article I meant");
+        expect(card.querySelector(".embed-card__description")?.textContent).toBe("An Article");
+    });
+
     it("a page should be asked once per session, and a null reply should stay cached as failed", () => {
         queueLinkCardResolution([PAGE, PAGE]);
         queueLinkCardResolution([PAGE]);
@@ -206,6 +228,30 @@ describe("the card and its metadata", () => {
         expect(seen).toBeNull();
         queueLinkCardResolution([PAGE]);
         expect(mockVscodeApi.postMessage.mock.calls.filter(([m]) => (m as { type: string }).type === "resolveLinkCard")).toHaveLength(1);
+    });
+});
+
+describe("a card is the link it draws", () => {
+    it("Cmd/Ctrl+click on the card body should open the page and leave the selection alone; a plain click selects", async () => {
+        i18n({ linkCardsEnabled: true });
+        const editor = await makeCorpusEditor(`# T\n\n${PAGE}\n`, [embedPlugin]);
+        const view = editorView(editor);
+        regateEmbeds(view);
+        const host = document.querySelector<HTMLElement>(".embed-card-host")!;
+        expect(host).not.toBeNull();
+        const before = view.state.selection;
+        mockVscodeApi.postMessage.mockClear();
+
+        host.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, metaKey: true }));
+        const opened = mockVscodeApi.postMessage.mock.calls
+            .map(([m]) => m as { type: string; url?: string })
+            .filter((m) => m.type === "openUrl");
+        expect(opened).toEqual([{ type: "openUrl", url: PAGE }]);
+        expect(view.state.selection.eq(before)).toBe(true);
+
+        host.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(view.state.selection).toBeInstanceOf(NodeSelection);
+        expect(mockVscodeApi.postMessage.mock.calls.filter(([m]) => (m as { type: string }).type === "openUrl")).toHaveLength(1);
     });
 });
 

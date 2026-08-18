@@ -103,17 +103,28 @@ export interface StickyAncestor {
  * The stuck heading's ancestors, root first: walking back through the
  * visible headings, each heading whose level is smaller than every level
  * seen so far is the parent of the section the reader is in. A heading of
- * the same or a deeper level is a sibling or a cousin and is skipped. Pure,
- * so the trail is a function of the visible heading list and the active
- * index alone. Exported for tests.
+ * the same or a deeper level is a sibling or a cousin and is skipped, and
+ * so is a heading nested inside a container (a quote, a callout, a list
+ * item): a `## Note` inside a callout is not the section a top-level `###`
+ * below it belongs to, which is the same rule `stickyHeadingFoldable`
+ * applies to folding. `isTopLevel` is injected because the answer is a
+ * property of the view (`heading.parentElement === view.dom`); the tests
+ * pass their own. Pure otherwise. Exported for tests.
  */
-export function stickyAncestors(headings: readonly HTMLElement[], activeIndex: number): StickyAncestor[] {
+export function stickyAncestors(
+    headings: readonly HTMLElement[],
+    activeIndex: number,
+    isTopLevel: (heading: HTMLElement) => boolean = () => true,
+): StickyAncestor[] {
     const trail: StickyAncestor[] = [];
     let level = activeIndex >= 0 && activeIndex < headings.length
         ? getHeadingLevel(headings[activeIndex]!)
         : 0;
     for (let i = activeIndex - 1; i >= 0 && level > 1; i--) {
         const heading = headings[i]!;
+        if (!isTopLevel(heading)) {
+            continue;
+        }
         const candidate = getHeadingLevel(heading);
         if (candidate < level) {
             level = candidate;
@@ -462,7 +473,7 @@ export const headingStickyPlugin = $prose(() =>
                 sticky.style.left = `${rect.left}px`;
                 sticky.style.width = `${rect.width}px`;
 
-                const ancestors = stickyAncestors(headings, activeIndex);
+                const ancestors = stickyAncestors(headings, activeIndex, (h) => h.parentElement === view.dom);
                 const trail = trailKey(ancestors);
                 if (
                     heading !== activeHeading ||

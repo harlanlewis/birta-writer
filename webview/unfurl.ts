@@ -25,6 +25,7 @@
  */
 
 import type { EditorView, Node as ProseNode } from "./pm";
+import { linkCardWanted } from "./linkCards";
 
 /**
  * How long the webview waits for an `unfurlResult` before giving up and keeping
@@ -127,6 +128,12 @@ export function handleUnfurlResult(
     // points the offer at the right place (and skips it if the link is gone).
     const range = findBareLinkRange(view.state.doc, pending.url, pending.pos);
     if (!range) { return; }
+    // A link that became a card while the fetch was out (the setting flipped,
+    // or a per-link choice was made) shows its title already; an offer would
+    // sit over a hidden link and, accepted, rewrite the file for no visible
+    // change. The card owns it now.
+    const $link = view.state.doc.resolve(range.from);
+    if ($link.depth === 1 && linkCardWanted(view.state.doc, $link.before(1), pending.url)) { return; }
     const url = pending.url;
     const pos = pending.pos;
     const from = range.from;

@@ -39,8 +39,8 @@ export async function run({ page, check, baseUrl }) {
         article?.title === "An Article <b>Title</b>" && article?.description === "What the page says about itself.", JSON.stringify(article));
     check("the title is literal text, never markup", article?.html === "An Article &lt;b&gt;Title&lt;/b&gt;", article?.html);
     const labelled = links.find((c) => c.site === "example.org");
-    check("a page with no usable metadata keeps the readable URL as its title and no description",
-        labelled?.title === "example.org/labelled" && labelled?.description === null, JSON.stringify(labelled));
+    check("a labelled link with no usable page metadata keeps its label as the title and no description",
+        labelled?.title === "an article" && labelled?.description === null, JSON.stringify(labelled));
 
     // ── 3. Open routes through the host ──
     await page.evaluate(() => {
@@ -51,6 +51,30 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(100);
     const opened = await posted("openUrl");
     check("the open control asks the host to open the page", opened.some((m) => m.url === "https://example.com/some/article"), JSON.stringify(opened));
+
+    // ── 3b. Cmd+click on the card body opens the page; a plain click selects it ──
+    const cardBox = await page.evaluate(() => {
+        const card = Array.from(document.querySelectorAll(".embed-card--link"))
+            .find((el) => el.querySelector(".embed-card__site")?.textContent === "example.org");
+        const r = card.querySelector(".embed-card__text").getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    const openedBefore = (await posted("openUrl")).length;
+    // page.mouse.click takes no modifiers; hold the key around it.
+    await page.keyboard.down("Meta");
+    await page.mouse.click(cardBox.x, cardBox.y);
+    await page.keyboard.up("Meta");
+    await page.waitForTimeout(100);
+    const openedAfter = await posted("openUrl");
+    check("Cmd+click on the card body asks the host to open the page",
+        openedAfter.length === openedBefore + 1 && openedAfter.at(-1).url === "https://example.org/labelled", JSON.stringify(openedAfter));
+    await page.mouse.click(cardBox.x, cardBox.y);
+    await page.waitForTimeout(100);
+    check("a plain click selects the card rather than opening it",
+        (await posted("openUrl")).length === openedAfter.length
+        && await page.$eval(".ProseMirror", (pm) => pm.querySelector(".embed-host--selected") !== null));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
 
     // ── 4. The block menu's per-link choice repaints without a document change ──
     const updatesBefore = (await posted("update")).length;
