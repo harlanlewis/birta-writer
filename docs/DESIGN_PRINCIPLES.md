@@ -114,6 +114,10 @@ It degrades to the default, never to a guess. These are keyed by content, so an 
 
 The counter-case is a choice Markdown CAN spell: a bullet character, an ordered delimiter, a callout's fold marker. Those belong in the file, recorded as the author typed them, and `sourceStyle.ts` exists for exactly that. The test is not whether a choice is cosmetic, it is whether the file can say it.
 
+## A card is the link it draws
+
+An embed card, a connector card and a link card all stand in for one link in the file, and they open the way a link does. Cmd/Ctrl+click on the card body opens the page, exactly the modifier-click that opens a plain link; a plain click selects the card (the ring, and the palette while editing), as a plain click pins a link's popup rather than leaving the document. The corner Open button stays for a pointer that does not know the modifier. Read-only removes the editing chrome and nothing else: opening is reading, so the same clicks open (`webview/plugins/embed.ts`, `webview/components/linkPopup`).
+
 ## Rendered HTML is output, not a surface
 
 A document's inline HTML is preserved byte for byte, edited as source, and drawn as output. The drawing is where the scope of this feature could run away, because rendering costs the editor nothing per tag: the browser does it. So the rendered face of an html atom is inert by construction. It does not hold the caret, it does not become schema structure, and nothing inside it becomes a control. A click anywhere on it opens the source panel, which is the one way in. The single exception is the `<details>` toggle, because a disclosure that cannot disclose is worse than no disclosure.

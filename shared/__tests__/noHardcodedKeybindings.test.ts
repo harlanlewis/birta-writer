@@ -97,6 +97,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
         "webview/components/pathLink/index.ts":
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
+        "webview/plugins/embed.ts":
+            "Cmd/Ctrl+click on a card body to open the link it draws (mouse), not a keybinding",
         "webview/plugins/headingFold/foldGutter.ts":
             "Alt+click recursive fold (mouse modifier), not a keybinding",
         "webview/plugins/headingSticky.ts":
