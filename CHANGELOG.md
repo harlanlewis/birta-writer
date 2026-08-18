@@ -6,6 +6,10 @@
 
 ### Added
 
+- Images in Birta Writer Jot. Paste or drop one and it is saved beside the document in an `Attachments` folder, named by a hash of its bytes so the same screenshot twice writes one file, and referenced relatively so the note stays portable and carries no path from your machine. Save As copies the images that note actually uses into an `Attachments` folder beside the file you chose, leaving the rest of the folder behind, and tells you if any could not be copied rather than saving a note of broken images quietly. One rough edge: pasting in the first moment after the panel appears occasionally saves the file without adding it to the document, which clicking into the editor first avoids; the image is on disk either way.
+
+### Added
+
 - Birta Writer Jot is now a download. Every release carries the app, and `bash jot/scripts/update-jot.sh` on any Mac fetches the newest one, checks it against its published checksum, and installs it, quitting and relaunching a running copy. The app is ad-hoc signed rather than notarized, so the script clears the download quarantine macOS would otherwise stop it with: that is a reasonable trade on your own machines and not one to ask of anyone else, which is why Jot still is not offered to other people. `jot/README.md` says what changes that.
 
 ### Fixed

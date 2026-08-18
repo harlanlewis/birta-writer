@@ -29,6 +29,16 @@ The app appears as a pencil in the menu bar. Press ⌘⌥⌃J to summon or hide 
 
 Layout: `Sources/BirtaJotCore` is everything testable without a window (hotkey parsing, the flush/seq guard ported from `shared/saveFlushController.ts`, atomic writes, the bridge codec and the boot config); `Sources/BirtaJot` is the AppKit/WebKit app; `Resources/index.html` is the page template, served over the `birta://app/` scheme with the CSP and theme class filled in; `scripts/build-app.sh` assembles the bundle by hand, no Xcode project.
 
+## Images
+
+Paste or drop an image and it is saved into an `Attachments` folder beside the document, named by a hash of its own bytes (so pasting the same screenshot twice writes one file), and referenced from the markdown as `Attachments/<name>.png`. The reference is relative on purpose: the note stays portable, and nothing in a file you might share names your home directory.
+
+Save As carries them. The images the note actually references are copied into an `Attachments` folder beside the file you chose, and the references are already correct there, which is why nothing in the document text has to be rewritten. Images the folder holds but the note does not use stay behind, because an attachments folder accumulates everything ever pasted and a note that uses one screenshot should not drag the rest of it along. If a file cannot be copied the save still happens and an alert names what stayed behind, since the text is what you asked to keep.
+
+The page reaches those files through the same `birta://` scheme that serves the app, with the document's own folder as a second resource root (`BirtaJotCore.ResourceRoots`). A document cannot read outside that folder: the request path is refused before it touches the disk if it traverses, and the resolved path is refused if a symlink leads out.
+
+Known, and not yet fixed: pasting an image in the first moment after summoning the panel occasionally saves the file without putting the reference in the document, so nothing appears to happen. It reproduces at roughly one run in four under machine load and not at all on an idle machine, so measure it before you believe a result either way. The bytes are never lost, and clicking into the editor first avoids it entirely.
+
 ## Where the bytes are
 
 One buffer, autosaved to `~/Library/Application Support/Birta Jot/Scratchpad.md` (Preferences can point Jot at another file; the bytes stay with the file they were typed into) on every content update the page reports, atomically (temp file, fsync, rename). Hiding, quitting and Save As first ask the page to flush and wait a bounded second, as the extension's will-save participant does, then write. The file trails the editor by at most one sync-scheduler window (`webview/syncScheduler.ts`) plus one in-flight write.

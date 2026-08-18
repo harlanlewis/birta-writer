@@ -1,14 +1,19 @@
 /**
- * Host-capability gating end-to-end (MAR-373): the same bundle mounted by a
- * host that declares NO capabilities (`hostCapabilities: []`, the Jot
- * profile) has no TOC panel and no host-bound toolbar item, offers none of
- * them from the customize tray, the gear menu or the slash menu, keeps a
- * chord bound to a gated command inert, and still edits. control.html is the
- * same page with the field ABSENT, which must read as the VS Code host, so a
- * build that lost the TOC for everyone fails here rather than passing.
+ * Host-capability gating end-to-end (MAR-373): the same bundle mounted with
+ * the Jot profile has no TOC panel and none of the toolbar items, tray items,
+ * gear rows or slash rows that name something its shell does not provide,
+ * keeps a chord bound to such a command inert, and still edits. What the shell
+ * DOES provide (`imageUpload`) keeps its item and its row, which is the arm
+ * that stops a build gating everything from passing.
+ *
+ * control.html is the same page with the field ABSENT, which must read as the
+ * VS Code host, so a build that lost the TOC for everyone fails here rather
+ * than passing.
  */
 export async function run({ page, check, baseUrl }) {
-    const GATED_ITEMS = ["viewSource", "styleCheck", "readOnly", "image"];
+    // Jot declares `imageUpload`, so the Image item is NOT gated here: it is
+    // in the list below, as one of the editor's own items that must survive.
+    const GATED_ITEMS = ["viewSource", "styleCheck", "readOnly"];
     const OPEN_WAIT = 220;
 
     async function mount(file) {
@@ -47,6 +52,11 @@ export async function run({ page, check, baseUrl }) {
     check("jot: the editor's own items are still on the bar",
         ["format", "bold", "link", "table", "find", "fontPreset", "settings"].every((id) => jot.items.includes(id)),
         JSON.stringify(jot.items));
+    // The other direction of the same rule: a capability the host DOES declare
+    // keeps its item. Without this the suite would pass a build that gated
+    // everything, which is the failure a gating test is most likely to have.
+    check("jot: the Image item is present, because the shell declares imageUpload",
+        jot.items.includes("image"), JSON.stringify(jot.items));
 
     // Gear menu: exactly the unconditional rows, in table order, one separator
     // (layout | shortcuts); the settings group is gone with its rows.
@@ -131,16 +141,18 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(150);
     let labels = await slashLabels();
     const GATED_LABELS = ["Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts", "Check spelling",
-        "Check grammar", "Check style", "Highlight note markers", "Lock Edits (Read-only)", "Image", "Ask Agent"];
+        "Check grammar", "Check style", "Highlight note markers", "Lock Edits (Read-only)", "Ask Agent"];
     check("jot: Show all commands lists no host-bound row",
         GATED_LABELS.every((l) => !labels.includes(l)), JSON.stringify(labels.filter((l) => GATED_LABELS.includes(l))));
     check("jot: Show all commands still lists the editor's own rows",
         ["Table", "Code Block", "Bold", "Find"].every((l) => labels.includes(l)), JSON.stringify(labels));
+    check("jot: Show all commands lists Image, the one capability the shell declares",
+        labels.includes("Image"), JSON.stringify(labels));
     check("jot: no TOC rows in the slash menu", !labels.some((l) => /Table of Contents/.test(l)),
         JSON.stringify(labels.filter((l) => /Table of Contents/.test(l))));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
-    for (const [q, label] of [["raw", "Edit Raw Markdown"], ["setting", "Settings"], ["image", "Image"], ["spell", "Check spelling"]]) {
+    for (const [q, label] of [["raw", "Edit Raw Markdown"], ["setting", "Settings"], ["spell", "Check spelling"]]) {
         await openSlash(q, { expectRows: false });
         labels = await page.evaluate((sel) => {
             const menu = document.querySelector(sel);

@@ -114,7 +114,7 @@ enum Prefs {
             // Swift cannot import it, so this literal restates it and
             // shared/__tests__/hostCapabilities.test.ts parses this file and
             // fails when the two disagree.
-            hostCapabilities: [],
+            hostCapabilities: ["imageUpload"],
             viewStateJSON: viewStateJSON
         )
     }

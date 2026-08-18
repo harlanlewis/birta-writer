@@ -21,8 +21,36 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setContentWidth","mode":"fixed"}"#), .setContentWidth("fixed"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"focusState","focused":true}"#), .focusState(true))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"crash","message":"boom","source":"error"}"#), .crash(message: "boom", source: "error"))
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"uploadImage","id":"u1","data":null,"mimeType":"image/png","altText":""}"#), .uploadImage(id: "u1"))
+        // "hi" as base64, in the `$bytes` wrapper the page-side shim writes.
+        XCTAssertEqual(
+            WebviewMessage.parse(#"{"type":"uploadImage","id":"u1","data":{"$bytes":"aGk="},"mimeType":"image/png","altText":"a shot"}"#),
+            .uploadImage(id: "u1", data: Data("hi".utf8), mimeType: "image/png", altText: "a shot"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"viewState","state":{"scrollY":12}}"#), .viewState(json: #"{"scrollY":12}"#))
+    }
+
+    func testAnUploadWithNoBytesIsNotAnUpload() {
+        // The old shim posted `null` in place of the typed array, so an upload
+        // arrived with nothing in it. Reading that as an upload of zero bytes
+        // would write an empty file and report success; it has to be the case
+        // the shell answers with an error instead.
+        for payload in [#"null"#, #""""#, #"{"$bytes":""}"#, #"{"$bytes":"!!!not base64"}"#, #"[1,2,3]"#] {
+            XCTAssertEqual(
+                WebviewMessage.parse(#"{"type":"uploadImage","id":"u1","data":\#(payload),"mimeType":"image/png"}"#),
+                .other(type: "uploadImage"),
+                "payload \(payload) must not read as an upload")
+        }
+    }
+
+    func testTheShimEncodesBytesRatherThanDroppingThem() {
+        // The script is the other half of BinaryPayload, and it is text here
+        // rather than behaviour, so this pins the contract it implements: the
+        // wrapper key, and that a typed array is encoded rather than nulled.
+        let script = BootConfig().userScript(themeClass: "vscode-light")
+
+        XCTAssertTrue(script.contains("\"\(BinaryPayload.key)\""), script)
+        XCTAssertTrue(script.contains("btoa"))
+        XCTAssertTrue(script.contains("ArrayBuffer.isView"))
+        XCTAssertFalse(script.contains("return null"), "a typed array must not be dropped any more")
     }
 
     func testUnknownAndMalformedAreNeverFatal() {

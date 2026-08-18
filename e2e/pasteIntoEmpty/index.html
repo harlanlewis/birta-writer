@@ -1,0 +1,39 @@
+<!doctype html>
+<!-- e2e harness for pasting an image into an EMPTY document, which is the
+     ordinary opening gesture in Birta Jot: summon the scratchpad, paste a
+     screenshot. The host stub answers `uploadImage` the way a real host does,
+     with a relative reference, so the check is about where the reference
+     lands rather than about the upload itself.
+
+     `?content=` seeds the document, so one page serves both the empty case and
+     the non-empty control. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-light"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, hostCapabilities: ["imageUpload"] };
+  window.__posted = [];
+  const CONTENT = new URL(location.href).searchParams.get("content") ?? "";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+      // The host saved it and hands back the reference to put in the document.
+      if (msg.type === "uploadImage") {
+        window.postMessage({ type: "imageUploaded", id: msg.id, url: "Attachments/abc123.png" }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

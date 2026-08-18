@@ -26,6 +26,7 @@ final class Coordinator {
     private let contentView = AppearanceObservingView()
     private let host: WebHost
     private let writer: CoalescingWriter
+    private let attachments = AttachmentStore()
     private var guardState = SyncGuard()
     private var state: State = .cold
     /// The newest buffer content the host has seen or written.
@@ -47,7 +48,14 @@ final class Coordinator {
     /// only there: a Preferences change that points at another file first
     /// flushes to THIS one, then rebinds, so a scratchpad is never written
     /// over the document the user just chose to open.
-    private var boundURL: URL = Prefs.activeURL
+    /// Its folder is also what the page may read images from, so the two move
+    /// together by construction rather than by two call sites remembering to.
+    private var boundURL: URL = Prefs.activeURL {
+        didSet {
+            host.schemeHandler.roots =
+                host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
+        }
+    }
     private var escMonitor: Any?
     private var lastEscape: TimeInterval = 0
     private let flushTimeout: TimeInterval = 1.0
@@ -57,7 +65,7 @@ final class Coordinator {
 
     init() {
         let webRoot = Coordinator.locateWebRoot()
-        host = WebHost(webRoot: webRoot)
+        host = WebHost(webRoot: webRoot, documentDirectory: Prefs.activeURL.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
             NSLog("Birta Jot: write failed: \(error)")
         })
@@ -150,12 +158,32 @@ final class Coordinator {
     /// Deliver key events to the panel as a keyboard would. Single characters
     /// type themselves; "Enter", "End", "Home", "Backspace", "Escape",
     /// "ArrowUp/Down/Left/Right", "Tab" and "Space" are named keys.
+    ///
+    /// A key may carry modifiers, written as `cmd+v` or `shift+ArrowLeft`.
+    /// That is what lets a script drive a paste, which is the only way to
+    /// exercise an image arriving through the real pasteboard, the real
+    /// bridge and the real store rather than through a unit test of each.
     private func typeKeys(_ keys: [String]) {
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeFirstResponder(host.webView)
         var delay: TimeInterval = 0
-        for key in keys {
+        for spec in keys {
+            var flags: NSEvent.ModifierFlags = []
+            var key = spec
+            while let plus = key.firstIndex(of: "+"), key.distance(from: key.startIndex, to: plus) > 0 {
+                let name = String(key[key.startIndex..<plus]).lowercased()
+                let modifier: NSEvent.ModifierFlags? = switch name {
+                case "cmd", "command": .command
+                case "shift": .shift
+                case "alt", "option": .option
+                case "ctrl", "control": .control
+                default: nil
+                }
+                guard let modifier else { break }
+                flags.insert(modifier)
+                key = String(key[key.index(after: plus)...])
+            }
             let (chars, code): (String, UInt16) = {
                 switch key {
                 case "Enter": return ("\r", 36)
@@ -175,13 +203,22 @@ final class Coordinator {
                 }
             }()
             let at = delay
+            let heldFlags = flags // captured per key, not shared across the loop
             delay += 0.06
             DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
                 guard let self else { return }
                 for type in [NSEvent.EventType.keyDown, .keyUp] {
-                    if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                                 windowNumber: self.panel.windowNumber, context: nil, characters: chars,
+                    // With a modifier held, `characters` is what the system
+                    // would deliver for the chord and is not the bare letter;
+                    // AppKit routes a key equivalent by
+                    // `charactersIgnoringModifiers`, so that one carries it.
+                    let typed = heldFlags.contains(.command) ? "" : chars
+                    if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: heldFlags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                 windowNumber: self.panel.windowNumber, context: nil, characters: typed,
                                                  charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                        if heldFlags.contains(.command), type == .keyDown, NSApp.mainMenu?.performKeyEquivalent(with: ev) == true {
+                            continue
+                        }
                         self.panel.sendEvent(ev)
                     }
                 }
@@ -340,13 +377,60 @@ final class Coordinator {
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
             NSLog("Birta Jot: webview crash (\(source)): \(message)")
-        case let .uploadImage(id):
-            host.send(.imageUploadError(id: id, error: "Images are not supported in Jot yet."))
+        case let .uploadImage(id, data, mimeType, _):
+            saveAttachment(id: id, data: data, mimeType: mimeType)
         case let .perfMarks(json):
             measure.receivedPerfMarks(json)
         case let .other(type):
             measure.trace("message ignored: \(type)")
         }
+    }
+
+    // MARK: attachments
+
+    /// Save a pasted or dropped image beside the bound document and answer with
+    /// the reference to put in it.
+    ///
+    /// The reply carries the store's RELATIVE reference, which is both what the
+    /// document should say and, because the page is served from a scheme handler
+    /// rooted at the document's folder, a URL the editor can render as-is. One
+    /// string doing both jobs is the reason no `imageUriMap` is needed here.
+    private func saveAttachment(id: String, data: Data, mimeType: String) {
+        do {
+            let reference = try attachments.save(data, mimeType: mimeType, besideDocument: boundURL)
+            host.send(.imageUploaded(id: id, url: reference))
+        } catch AttachmentStore.StoreError.unsupportedType(let type) {
+            host.send(.imageUploadError(id: id, error: "Jot cannot save a \(type) image."))
+        } catch {
+            NSLog("Birta Jot: attachment save failed: \(error)")
+            host.send(.imageUploadError(id: id, error: "The image could not be saved beside this document."))
+        }
+    }
+
+    /// Copy the attachments a saved note references into its new home, and say
+    /// so when some could not be copied.
+    ///
+    /// Reported rather than thrown: the markdown is already written by this
+    /// point, and that is the thing the user asked to keep. An alert naming
+    /// the files that did not make it leaves them able to fix it; failing the
+    /// save would not put the bytes back.
+    private func migrateAttachments(markdown: String, from source: URL, to target: URL) {
+        let plan = AttachmentReferences.migrationPlan(markdown: markdown, from: source, to: target)
+        guard !plan.isEmpty else { return }
+        let failed = AttachmentReferences.apply(plan)
+        guard !failed.isEmpty else { return }
+        NSLog("Birta Jot: \(failed.count) attachment(s) could not be copied: \(failed.joined(separator: ", "))")
+        let alert = NSAlert()
+        alert.messageText = failed.count == 1
+            ? "One image could not be copied"
+            : "\(failed.count) images could not be copied"
+        alert.informativeText = """
+        The note was saved to \(target.lastPathComponent), but these images stayed behind and will not show in it: \
+        \(failed.joined(separator: ", ")). They are still in the \(AttachmentStore.directoryName) folder beside \
+        \(source.lastPathComponent).
+        """
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 
     // MARK: persistence
@@ -422,6 +506,11 @@ final class Coordinator {
                     return
                 }
                 Prefs.saveAsDirectory = url.deletingLastPathComponent()
+                // The images travel with the note. Without this the markdown
+                // arrives at its new home with references to a folder it no
+                // longer sits beside, so a note that looked complete on screen
+                // is a note of broken images the moment it is saved.
+                self.migrateAttachments(markdown: content, from: self.boundURL, to: url)
                 // Whether the scratchpad graduates is decided in
                 // BirtaJotCore.SaveAsDecision, which has the tests: every
                 // branch of it can lose bytes when it is decided wrongly.

@@ -51,8 +51,9 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
 ];
 
 /**
- * The named profiles, one per surface. VS Code declares everything; Jot v1
- * declares nothing, and grows an entry here the day its shell provides one.
+ * The named profiles, one per surface. VS Code declares everything; Jot
+ * declares what its own shell provides, and grows an entry here the day it
+ * provides another.
  */
 export const HOST_PROFILES = {
     vscode: ALL_HOST_CAPABILITIES,
@@ -60,7 +61,7 @@ export const HOST_PROFILES = {
     // and the e2e Jot page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostCapabilities.test.ts parses both and fails.
-    jot: [] as readonly HostCapability[],
+    jot: ["imageUpload"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 interface HostDeclaration {
