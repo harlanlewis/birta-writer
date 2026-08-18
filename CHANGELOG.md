@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.818.0] - 2026, August 18
+
 ### Added
 
 - Ask your agent from the caret. Type `/ai`, Space, then a request in plain words (`/ai add a mermaid diagram of the flow above`) and Enter. Birta composes one line, your request plus a `path.md#L12` reference to the caret, saves the document so that reference names what is on disk, and hands the line to the agent you already run per `birta.agent.command`: a shell command such as `claude -p {prompt} --permission-mode acceptEdits`, `chat` for VS Code's Chat view, or `clipboard`. It asks which once, on first use, and stores the answer in your user settings; the setting is never read from a workspace. Nothing is sent to a model by Birta itself, and it is one request each time, not a conversation. Ask Agent in the command palette does the same and asks for the request in an input box, as does `/ai` then Enter with nothing typed. Typed on a fresh empty line, the request stays on that line and the reference names the blank line after the block above. In the slash menu, Space commits only the Ask Agent row and only once you have typed its name (`/ai`, or a full keyword such as `/agent`); on every other row it stays a filter character, so `delete table` still filters.
