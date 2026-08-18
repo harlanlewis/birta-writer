@@ -59,12 +59,22 @@ export type { HarnessCapabilities };
  */
 export function helpParagraph(help: string, flag: string): string | null {
     const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // `(?:-[^\s,]+,\s*)*` admits the short-alias prefix clap prints
-    // (`-m, --model <MODEL>`). Without it the long flag is not at the start of
-    // its own line and the whole paragraph is missed, which is how Codex came
-    // back reporting no model support at all while documenting `--model`.
     const re = new RegExp(
-        `^[ \\t]+(?:-[^\\s,]+,[ \\t]*)*${escaped}[ =]<[^>]+>[.]*(.*?)(?=\\n\\s*-{1,2}[\\w-]|\\n\\S|(?![\\s\\S]))`,
+        // The short-alias prefix, which clap prints as `-m, --model <MODEL>`
+        // and argparse as `-m MESSAGE, --message MESSAGE`, so the alias may
+        // carry a metavar of its own. Without this the long flag is not at
+        // the start of its own line and the paragraph is missed entirely,
+        // which is how Codex reported no model support while documenting one.
+        `^[ \\t]+(?:-[^\\s,]+(?:[ =][^\\s,]+)?,[ \\t]*)*${escaped}` +
+        // The metavar, in the three shapes help formatters print. Angled is
+        // commander and clap (`<model>`); BARE UPPERCASE is argparse and
+        // click (`MODEL`, `TEXT`), which is most of the Python ecosystem and
+        // matched nothing at all until it was added; bracketed is optional
+        // arguments (`[search]`). Uppercase must be the WHOLE token, or a
+        // description beginning with an ordinary capitalised word ("Use
+        // open-source provider") would be eaten as the flag's metavar.
+        `[ =](?:<[^>]+>|\\[[^\\]]+\\]|[A-Z][A-Z0-9_]*(?![a-z]))` +
+        `[.]*(.*?)(?=\\n\\s*-{1,2}[\\w-]|\\n\\S|(?![\\s\\S]))`,
         "ms",
     );
     const m = re.exec(help);
@@ -129,7 +139,12 @@ export const EFFORT_FLAGS = ["--effort", "--thinking"] as const;
  */
 export function allFlags(help: string): Array<{ flag: string; paragraph: string }> {
     const out: Array<{ flag: string; paragraph: string }> = [];
-    for (const m of help.matchAll(/^[ \t]+(?:-[^\s,]+,[ \t]*)*(--[\w-]+)[ =]<[^>]+>/gm)) {
+    // Same alias prefix and same three metavar shapes as helpParagraph; the
+    // two must agree, or a flag found here has no paragraph and one found
+    // there is absent from the sweep that hunts for the effort scale.
+    const flagLine =
+        /^[ \t]+(?:-[^\s,]+(?:[ =][^\s,]+)?,[ \t]*)*(--[\w-]+)[ =](?:<[^>]+>|\[[^\]]+\]|[A-Z][A-Z0-9_]*(?![a-z]))/gm;
+    for (const m of help.matchAll(flagLine)) {
         const flag = m[1]!;
         if (out.some((f) => f.flag === flag)) { continue; }
         const paragraph = helpParagraph(help, flag);

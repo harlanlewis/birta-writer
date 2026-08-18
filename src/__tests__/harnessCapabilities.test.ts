@@ -16,6 +16,7 @@
 import { describe, it, expect } from "vitest";
 import {
     allFlags,
+    EFFORT_FLAGS,
     enumeratedValues,
     helpParagraph,
     parseHarnessHelp,
@@ -86,6 +87,36 @@ Options:
   --model <pattern>              Model pattern or ID (supports "provider/id" and optional ":<thinking>")
   --thinking <level>             Set thinking level: off, minimal, low, medium, high, xhigh, max
   --list-models [search]         List available models (with optional fuzzy search)
+`;
+
+/**
+ * Python's argparse. Its metavar is a bare uppercase word rather than an
+ * angled placeholder, the alias carries a metavar of its own
+ * (`-m MESSAGE, --message MESSAGE`), and a long flag pushes its description
+ * onto the next line. Nothing in this shape parsed at all until the metavar
+ * pattern learned the bare form, which silently excluded most CLIs written
+ * in Python.
+ *
+ * Synthetic rather than captured: it is argparse's documented output shape,
+ * not a claim about any particular tool's flags.
+ */
+const ARGPARSE_HELP = `usage: agent [-h] [--model MODEL] [--reasoning-effort REASONING_EFFORT]
+
+options:
+  -h, --help            show this help message and exit
+  --model MODEL         Specify the model to use for the main chat
+  --reasoning-effort REASONING_EFFORT
+                        Set the reasoning effort (low, medium, high)
+  -m MESSAGE, --message MESSAGE
+                        Specify a single message, process it, then exit
+`;
+
+/** click's variant of the same idea: an uppercase type name, no brackets. */
+const CLICK_HELP = `Usage: tool [OPTIONS]
+
+Options:
+  --model TEXT      Which model to use
+  --effort TEXT     Effort (low, medium, high)
 `;
 
 /** A harness offering neither flag: the shape that must produce no controls. */
@@ -355,6 +386,51 @@ Options:
                 .map((f) => f.flag);
             expect(bearing).toEqual(expected === undefined ? [] : [expected]);
         }
+    });
+
+    it("a bare uppercase metavar should parse, which is most of Python's CLIs", () => {
+        // argparse writes `--model MODEL`, not `--model <MODEL>`. Requiring
+        // the angled form found nothing in this whole shape, and the failure
+        // was silent: no control offered, no error, for every CLI written
+        // with argparse or click.
+        const caps = parseHarnessHelp("agent", "1.0", ARGPARSE_HELP);
+
+        expect(caps.supportsModel).toBe(true);
+        expect(caps.modelFlag).toBe("--model");
+    });
+
+    it("an argparse effort flag should be found by its values, not by its name", () => {
+        // `--reasoning-effort` is deliberately NOT in EFFORT_FLAGS; it was
+        // removed as an unverified guess. Finding it here is the shape rule
+        // doing the work the name list used to be asked for.
+        const caps = parseHarnessHelp("agent", "1.0", ARGPARSE_HELP);
+
+        expect(caps.effortFlag).toBe("--reasoning-effort");
+        expect(caps.efforts).toEqual(["low", "medium", "high"]);
+        expect(EFFORT_FLAGS).not.toContain("--reasoning-effort");
+    });
+
+    it("an alias carrying its own metavar should not swallow the long flag", () => {
+        // argparse prints `-m MESSAGE, --message MESSAGE`. `-m` is MESSAGE
+        // here and not model, which is exactly why only long forms are read.
+        expect(helpParagraph(ARGPARSE_HELP, "--message"))
+            .toBe("Specify a single message, process it, then exit");
+        expect(parseHarnessHelp("agent", "1", ARGPARSE_HELP).modelFlag).toBe("--model");
+    });
+
+    it("a description beginning with a capitalised word should not be read as a metavar", () => {
+        // The risk the bare-uppercase form introduces. `Use` is capitalised
+        // but not a metavar, and treating it as one would invent a
+        // value-taking flag out of a boolean switch.
+        expect(helpParagraph(CODEX_HELP, "--oss")).toBeNull();
+    });
+
+    it("click's uppercase type name should parse too", () => {
+        const caps = parseHarnessHelp("tool", "1", CLICK_HELP);
+
+        expect(caps.supportsModel).toBe(true);
+        expect(caps.effortFlag).toBe("--effort");
+        expect(caps.efforts).toEqual(["low", "medium", "high"]);
     });
 
     it("the examples should never be treated as the set of what exists", () => {
