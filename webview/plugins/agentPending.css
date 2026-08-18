@@ -11,17 +11,18 @@
  */
 .milkdown .editor .agent-pending {
     position: absolute;
-    /* Left of the whole gutter box's chevron slot: a heading's fold chevron
-       sits just inside the marker column, and the pill must not cover the
-       one clickable thing in that gutter. */
-    left: calc(var(--gutter-left, var(--gutter-column)) - 44px);
+    /* Inside the gutter box, left of the fold chevron slot: a heading's
+       chevron sits just inside the marker column and is the one clickable
+       thing in that gutter, so the pill stops short of it. The box is right-
+       aligned against the text and this is as far left as it reaches. */
+    left: calc(var(--gutter-left, var(--gutter-column)) - 42px);
     top: var(--gutter-top, 0px);
     height: var(--gutter-height, 1.5em);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    width: 26px;
+    width: 20px;
     /* Anchored to the gutter line's vertical centre; the pill is shorter
        than the line box and centred in it. */
     padding: 0;
@@ -35,7 +36,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
+    width: 20px;
     height: 16px;
     border-radius: var(--ui-radius-m);
     background: var(--vscode-button-background);
@@ -67,6 +68,16 @@
     background: var(--vscode-inputValidation-errorBackground);
     color: var(--vscode-inputValidation-errorForeground);
     border: 1px solid var(--vscode-inputValidation-errorBorder);
+}
+
+/* A narrow pane pulls the gutter column in (style.css sets --gutter-column
+   at this width) and the box no longer has room left of the chevron; the
+   pill then shares the chevron's slot for the run's duration rather than
+   sit past the pane's edge. */
+@media (max-width: 720px) {
+    .milkdown .editor .agent-pending {
+        left: calc(var(--gutter-left, var(--gutter-column)) - 22px);
+    }
 }
 
 @keyframes agent-pending-breathe {

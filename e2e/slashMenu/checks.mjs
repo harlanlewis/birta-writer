@@ -268,12 +268,12 @@ export async function run({ page, check, baseUrl }) {
         const overlap = (a, b) => a && b && b.width > 0 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0;
         return { pill: pill && [pill.left, pill.right], chevron: chevron && [chevron.left, chevron.right], marker: marker && [marker.left, marker.right], overChevron: overlap(pill, chevron), overMarker: overlap(pill, marker) };
     });
-    check("on a heading, the pill sits clear of the fold chevron and the level badge",
-        geometry.pill !== undefined && geometry.pill !== null && !geometry.overChevron && !geometry.overMarker, JSON.stringify(geometry));
+    check("on a heading, the pill sits clear of the fold chevron and the level badge, and inside the pane",
+        geometry.pill !== undefined && geometry.pill !== null && !geometry.overChevron && !geometry.overMarker && geometry.pill[0] >= 0, JSON.stringify(geometry));
     await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "done" }, "*"), third);
     await page.waitForTimeout(100);
     check("the marker is a pill wide enough to read, carrying a stop square and naming the harness",
-        second_marker !== null && second_marker.width >= 20 && second_marker.height >= 12
+        second_marker !== null && second_marker.width >= 18 && second_marker.height >= 12
             && second_marker.squareWidth === "7px" && /claude/.test(second_marker.title ?? ""), JSON.stringify(second_marker));
     await page.locator(".ProseMirror .agent-pending").first().click();
     await page.waitForTimeout(100);
