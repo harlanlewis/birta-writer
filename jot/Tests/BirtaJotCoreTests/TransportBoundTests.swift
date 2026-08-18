@@ -11,11 +11,11 @@ import XCTest
 /// what gets PARSED and buffers the whole response first, so a host that
 /// streams without end is bounded only by the resource timeout.
 ///
-/// Measured once, against a server that streams forever: buffered, the client
-/// took 67 MB before stopping; streamed, it holds the cap and stops in a
-/// fraction of a second. The figure is a reading rather than a record, and the
-/// way to take it again is a page that never ends and a `for try await` that
-/// breaks at the cap.
+/// The reason this was invisible is the part worth keeping: a bound applied to
+/// the RESULT reads the same as a bound applied to the READING, in review and
+/// in every test that supplies a fake transport, because the fake never streams
+/// more than it was told to. Point the real transport at a page that never ends
+/// and ask how much arrived; that is the only question that separates them.
 final class TransportBoundTests: XCTestCase {
     private func transportSource() throws -> String {
         let file = URL(fileURLWithPath: #filePath)
