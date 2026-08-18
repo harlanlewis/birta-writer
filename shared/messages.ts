@@ -431,6 +431,9 @@ export type ToExtensionMessage =
     | { type: "askAgent"; prompt?: string; requestId?: string }
     // Cancel a background agent run from its gutter marker (plugins/agentPending).
     | { type: "agentCancel"; requestId: string }
+    // How a dirty-document merge of an agent's result went, so the extension
+    // can say so (applied, partial, conflict, unchanged).
+    | { type: "agentMergeResult"; requestId: string; outcome: string }
     // The document cannot open in the WYSIWYG editor because its format's
     // parse is fatal on this content (MDX: a stray `{`, an unclosed tag —
     // unlike markdown, where every byte sequence is valid). The extension
@@ -486,6 +489,8 @@ export type AgentRunMessage = {
     status: "running" | "done" | "failed" | "cancelled" | "handedOff";
     text?: string;
     message?: string;
+    /** The harness running the request (`claude`, `codex`): the command's first word, for the marker's tooltip. */
+    harness?: string;
 };
 
 export type ToWebviewMessage =

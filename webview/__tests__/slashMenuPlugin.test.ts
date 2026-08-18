@@ -623,12 +623,14 @@ describe("argument mode (takesArgument rows)", () => {
         expect(menuVisible()).toBe(true);
     });
 
-    it("an argument pick on an empty paragraph below other content should remove that paragraph and park the caret at the end of the block before it", async () => {
+    it("an argument pick on an empty paragraph below other content should keep that paragraph, with the caret in it", async () => {
+        // The request's own line is where its marker sits while the agent
+        // works, so it stays; the caret reference for an empty paragraph is
+        // the blank line after the block before it (agentContext.ts).
         await editor.destroy();
         editor = await makeEditor("Some text.\n\nMore.");
         v = view(editor);
         setSlashMenuHost({ runCommand });
-        // Enter after "Some text." makes the fresh empty paragraph the request is typed in.
         placeCursorAtEndOfBlock(v, 0);
         v.dispatch(v.state.tr.split(v.state.selection.from));
         expect(v.state.doc.childCount).toBe(3);
@@ -639,23 +641,9 @@ describe("argument mode (takesArgument rows)", () => {
         press(v, "Enter");
 
         expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "add a diagram" });
-        expect(v.state.doc.childCount).toBe(2);
-        expect(v.state.doc.child(0).textContent).toBe("Some text.");
-        // The caret sits at the end of "Some text.", so a caret reference names that line.
-        expect(v.state.selection.$from.parent.textContent).toBe("Some text.");
-        expect(v.state.selection.$from.parentOffset).toBe("Some text.".length);
-    });
-
-    it("an argument pick in the document's first paragraph should keep that paragraph", () => {
-        typeText(v, "/ai");
-        press(v, " ");
-        typeText(v, "start here");
-
-        press(v, "Enter");
-
-        expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "start here" });
-        expect(v.state.doc.childCount).toBe(1);
-        expect(v.state.doc.child(0).type.name).toBe("paragraph");
+        expect(v.state.doc.childCount).toBe(3);
+        expect(v.state.doc.child(1).textContent).toBe("");
+        expect(v.state.selection.$from.index(0)).toBe(1);
     });
 
     it("clicking the argument row should deliver the typed prompt like Enter", () => {

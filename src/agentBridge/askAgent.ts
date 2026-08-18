@@ -51,6 +51,8 @@ import type { AgentRunMessage } from "../../shared/messages";
 export const ASK_AGENT_COMMAND = "birta.askAgent";
 /** Internal command the webview's `agentCancel` message runs. */
 export const CANCEL_AGENT_COMMAND = "birta.cancelAgent";
+/** Internal command the webview's `agentMergeResult` message runs. */
+export const MERGE_RESULT_COMMAND = "birta.agentMergeResult";
 
 /** Reserved `birta.agent.command` values that are routes rather than shells. */
 export const AGENT_ROUTE_CHAT = "chat";
@@ -61,8 +63,19 @@ export const PROMPT_PLACEHOLDER = "{prompt}";
 export const CHAT_OPEN_COMMAND = "workbench.action.chat.open";
 /** The one terminal `/ai` reuses in terminal mode, so repeated asks do not litter the panel. */
 export const TERMINAL_NAME = "Birta AI";
-/** Stderr tail carried into a failure report. */
-const STDERR_TAIL = 400;
+/** Stderr tail carried into a failure report; stdout tail shown when a run changes nothing. */
+const OUTPUT_TAIL = 400;
+
+/**
+ * The harness a template runs, for the marker's tooltip and the finish
+ * report: the first word of the command (`claude`, `codex`), which is the
+ * one thing about it the editor can know. Which MODEL answered is the
+ * harness's own business and no CLI reports it in a form worth parsing.
+ */
+export function harnessName(template: string): string {
+    const first = template.trim().split(/\s+/)[0] ?? "";
+    return first.replace(/^.*[\\/]/, "") || "agent";
+}
 
 /**
  * The one line handed over: the request, whitespace collapsed to keep it a
@@ -177,16 +190,64 @@ function agentTerminal(cwd: vscode.Uri | undefined): vscode.Terminal {
 /**
  * The child that runs a template in the background: the platform's own
  * shell, so a template reads exactly as it would in a terminal, and the same
- * quoting serves both. Stdout is dropped (a headless agent narrates); the
- * last of stderr is kept for a failure report.
+ * quoting serves both. Both streams are kept (tail for the reports, whole
+ * for the output channel). On POSIX the child leads its own process group,
+ * so cancelling kills the agent and not only the shell in front of it: a
+ * template with `&&` or a pipe would otherwise keep running after the pill
+ * said cancelled, and write the file later.
  */
 function spawnBackground(commandLine: string, cwd: string | undefined): ChildProcess {
     if (process.platform === "win32") {
         return spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", commandLine], {
-            cwd, stdio: ["ignore", "ignore", "pipe"], windowsHide: true,
+            cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
         });
     }
-    return spawn(commandLine, { cwd, shell: true, stdio: ["ignore", "ignore", "pipe"] });
+    return spawn(commandLine, { cwd, shell: true, stdio: ["ignore", "pipe", "pipe"], detached: true });
+}
+
+/** Stop a run's whole process tree, not just the shell that fronts it. */
+function killTree(child: ChildProcess): void {
+    if (child.pid === undefined) { child.kill(); return; }
+    if (process.platform === "win32") {
+        spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }).on("error", () => child.kill());
+        return;
+    }
+    try {
+        process.kill(-child.pid, "SIGTERM");
+    } catch {
+        child.kill();
+    }
+}
+
+/** The one output channel every run appends to, created on first use. */
+let outputChannel: vscode.OutputChannel | undefined;
+function output(): vscode.OutputChannel {
+    outputChannel ??= vscode.window.createOutputChannel("Birta AI");
+    return outputChannel;
+}
+/** The channel, for tests and for anything that wants to show it. */
+export function agentOutputChannel(): vscode.OutputChannel { return output(); }
+/** Whole-run transcript cap for the output channel. */
+const OUTPUT_CAP = 64 * 1024;
+
+/**
+ * Wait, briefly, for VS Code's own reload of a clean document to land after
+ * the agent wrote it, so the webview has the change (and its history entry)
+ * before the run is reported done and stops recording. Bounded: a document
+ * VS Code will not reload (dirty, closed) is not waited for.
+ */
+async function waitForReload(uri: vscode.Uri, disk: string): Promise<void> {
+    const key = uri.toString();
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+        const document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === key);
+        if (!document || document.isDirty || document.getText() === disk) { break; }
+        await new Promise((r) => setTimeout(r, 50));
+    }
+    // The provider pushes the reload to the webview after its own settle
+    // debounce (src/externalChanges.ts); give that push a moment to be sent
+    // before `done`, which the webview handles in message order.
+    await new Promise((r) => setTimeout(r, 400));
 }
 
 async function readDisk(uri: vscode.Uri): Promise<string | undefined> {
@@ -208,48 +269,94 @@ function startBackground(
     uri: vscode.Uri,
     savedText: string,
     commandLine: string,
+    harness: string,
     cwd: string | undefined,
     report: AgentRunReporter,
 ): void {
     const child = spawnBackground(commandLine, cwd);
     const run: BackgroundRun = { requestId, uri, savedText, child, cancelled: false };
     runs.set(requestId, run);
-    report(uri, { type: "agentRun", requestId, status: "running" });
+    report(uri, { type: "agentRun", requestId, status: "running", harness });
+    const relPath = vscode.workspace.asRelativePath(uri, false);
     let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
-        stderr = (stderr + chunk.toString("utf8")).slice(-STDERR_TAIL);
-    });
+    let stdout = "";
+    let transcript = "";
+    const record = (chunk: Buffer, isErr: boolean): void => {
+        const text = chunk.toString("utf8");
+        transcript = (transcript + text).slice(-OUTPUT_CAP);
+        if (isErr) { stderr = (stderr + text).slice(-OUTPUT_TAIL); } else { stdout = (stdout + text).slice(-OUTPUT_TAIL); }
+    };
+    child.stderr?.on("data", (chunk: Buffer) => record(chunk, true));
+    child.stdout?.on("data", (chunk: Buffer) => record(chunk, false));
+    const showOutput = vscode.l10n.t("Show Output");
+    const logRun = (verdict: string): void => {
+        const channel = output();
+        channel.appendLine(`[${new Date().toISOString()}] ${harness} on ${relPath}: ${verdict}`);
+        channel.appendLine(commandLine);
+        if (transcript.trim()) { channel.appendLine(transcript.trimEnd()); }
+        channel.appendLine("");
+    };
+    const failed = (message: string): void => {
+        logRun(`failed (${message})`);
+        report(uri, { type: "agentRun", requestId, status: "failed", message, harness });
+        void Promise.resolve(vscode.window.showErrorMessage(
+            vscode.l10n.t("{0} could not finish your request on {1}: {2}", harness, relPath, message),
+            showOutput,
+        )).then((pick) => { if (pick === showOutput) { output().show(true); } });
+    };
     child.on("error", (err) => {
         runs.delete(requestId);
         reportError("askAgent background", err);
-        report(uri, { type: "agentRun", requestId, status: "failed", message: String((err as Error).message ?? err) });
+        failed(String((err as Error).message ?? err));
     });
     child.on("exit", (code) => {
         void (async () => {
             runs.delete(requestId);
             if (run.cancelled) {
-                report(uri, { type: "agentRun", requestId, status: "cancelled" });
+                logRun("cancelled");
+                report(uri, { type: "agentRun", requestId, status: "cancelled", harness });
+                vscode.window.setStatusBarMessage(vscode.l10n.t("{0}: request cancelled", harness), 4000);
                 return;
             }
             if (code !== 0) {
-                report(uri, {
-                    type: "agentRun", requestId, status: "failed",
-                    message: vscode.l10n.t("The agent exited with code {0}. {1}", String(code), stderr.trim()),
-                });
+                failed(vscode.l10n.t("exit code {0}. {1}", String(code), (stderr.trim() || stdout.trim())));
                 return;
             }
-            // Clean document: VS Code has already reloaded (or the file did
-            // not change), and the webview took it. Dirty: the reload was
-            // refused, so hand the disk text over for the webview to merge.
-            let text: string | undefined;
-            const document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
-            if (document?.isDirty) {
-                const disk = await readDisk(uri);
-                if (disk !== undefined && disk !== savedText) { text = disk; }
+            // Every run ends with something the user can see. A run that
+            // changed the file: the change itself, and one line in the status
+            // bar. A run that changed nothing: its own last words, since the
+            // answer to "say hello" was never in the file to begin with.
+            const disk = await readDisk(uri);
+            const changed = disk !== undefined && disk !== savedText;
+            if (!changed) {
+                logRun("finished, no change to the file");
+                report(uri, { type: "agentRun", requestId, status: "done", harness });
+                const said = stdout.trim().split(/\r?\n/).filter((l) => l.trim() !== "").slice(-3).join(" ");
+                void Promise.resolve(vscode.window.showInformationMessage(
+                    said
+                        ? vscode.l10n.t("{0} finished without changing {1}. It said: {2}", harness, relPath, said)
+                        : vscode.l10n.t("{0} finished without changing {1}, and said nothing.", harness, relPath),
+                    showOutput,
+                )).then((pick) => { if (pick === showOutput) { output().show(true); } });
+                return;
             }
-            report(uri, text === undefined
-                ? { type: "agentRun", requestId, status: "done" }
-                : { type: "agentRun", requestId, status: "done", text });
+            logRun("finished, file changed");
+            // Clean document: VS Code reloads it and the webview takes the
+            // change into history; wait for that to land before the run
+            // stops recording. Dirty: the reload is refused, so hand the disk
+            // text over for the webview to merge around the user's edits; the
+            // webview reports how that went (agentMergeResult).
+            let document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
+            if (document && !document.isDirty) {
+                await waitForReload(uri, disk);
+                document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
+            }
+            if (document?.isDirty && document.getText() !== disk) {
+                report(uri, { type: "agentRun", requestId, status: "done", text: disk, harness });
+                return;
+            }
+            report(uri, { type: "agentRun", requestId, status: "done", harness });
+            vscode.window.setStatusBarMessage(vscode.l10n.t("{0} finished: {1} updated", harness, relPath), 5000);
         })();
     });
 }
@@ -259,7 +366,22 @@ export function cancelAgentRun(requestId: string): void {
     const run = runs.get(requestId);
     if (!run) { return; }
     run.cancelled = true;
-    run.child.kill();
+    killTree(run.child);
+}
+
+/**
+ * The webview's verdict on a dirty-document merge, so the finish line in the
+ * status bar says what happened rather than what was hoped.
+ */
+export function reportAgentMerge(uri: vscode.Uri, outcome: string): void {
+    const relPath = vscode.workspace.asRelativePath(uri, false);
+    if (outcome === "applied" || outcome === "unchanged") {
+        vscode.window.setStatusBarMessage(vscode.l10n.t("Agent finished: {0} updated around your edits", relPath), 5000);
+        return;
+    }
+    void vscode.window.showWarningMessage(outcome === "partial"
+        ? vscode.l10n.t("The agent's changes to {0} overlapped yours in places; those were left out. Its full version is on disk: use Compare in the drift badge to see both.", relPath)
+        : vscode.l10n.t("The agent's changes to {0} overlap yours and could not be merged. Its version is on disk: use Compare in the drift badge to see both.", relPath));
 }
 
 /** Hand the composed line to the configured route. */
@@ -282,7 +404,7 @@ async function dispatch(
     const folder = vscode.workspace.getWorkspaceFolder(active.uri)?.uri;
     const commandLine = expandCommandTemplate(setting, shellQuote(line));
     if (mode === "background" && active.requestId) {
-        startBackground(active.requestId, active.uri, active.savedText, commandLine, folder?.fsPath, report);
+        startBackground(active.requestId, active.uri, active.savedText, commandLine, harnessName(setting), folder?.fsPath, report);
         return;
     }
     // One reused terminal: nothing piles up in the panel, and the user sees
@@ -379,6 +501,9 @@ export function registerAskAgent(
         vscode.commands.registerCommand(CANCEL_AGENT_COMMAND, (requestId?: unknown) => {
             if (typeof requestId === "string") { cancelAgentRun(requestId); }
         }),
-        { dispose: () => { for (const run of runs.values()) { run.cancelled = true; run.child.kill(); } runs.clear(); } },
+        vscode.commands.registerCommand(MERGE_RESULT_COMMAND, (uri?: unknown, outcome?: unknown) => {
+            if (uri && typeof (uri as vscode.Uri).fsPath === "string" && typeof outcome === "string") { reportAgentMerge(uri as vscode.Uri, outcome); }
+        }),
+        { dispose: () => { for (const run of runs.values()) { run.cancelled = true; killTree(run.child); } runs.clear(); outputChannel?.dispose(); } },
     );
 }

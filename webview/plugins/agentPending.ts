@@ -37,7 +37,7 @@
  */
 import { $prose } from "@milkdown/utils";
 import { computeDocDiff } from "@milkdown/plugin-diff";
-import { Decoration, DecorationSet, Mapping, Plugin, PluginKey } from "@/pm";
+import { closeHistory, Decoration, DecorationSet, Mapping, Plugin, PluginKey } from "@/pm";
 import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "../i18n";
 import { notifyAgentCancel } from "../messaging";
@@ -56,6 +56,8 @@ export interface AgentRun {
     readonly mapping: Mapping;
     /** `armed` until the extension confirms a background run; then `running`. */
     status: "armed" | "running";
+    /** The harness running it (`claude`, `codex`), for the tooltip; unknown until `running`. */
+    harness?: string;
     /** Set once the run fails; the marker switches to an error until dismissed. */
     error?: string;
 }
@@ -67,7 +69,7 @@ interface AgentPendingState {
 
 type AgentAction =
     | { kind: "begin"; id: string; pos: number; base: ProseNode }
-    | { kind: "running"; id: string }
+    | { kind: "running"; id: string; harness?: string }
     | { kind: "settle"; id: string }
     | { kind: "fail"; id: string; error: string };
 
@@ -77,12 +79,18 @@ function markerWidget(run: AgentRun, view: EditorView): HTMLElement {
     el.setAttribute("aria-live", "polite");
     el.setAttribute("role", "button");
     el.tabIndex = -1;
+    const who = run.harness ?? t("Your agent");
     el.title = run.error
-        ? t("Agent request failed: ") + run.error + " " + t("(click to dismiss)")
-        : t("Your agent is working on this request (click to cancel)");
-    const dot = document.createElement("span");
-    dot.className = "agent-pending__dot";
-    el.append(dot);
+        ? `${who}: ${t("request failed")} (${run.error}). ${t("Click to dismiss.")}`
+        : `${who} ${t("is working on this request. Click to stop it.")}`;
+    // A filled pill carrying a stop square while running (the one verb the
+    // marker has), an exclamation once failed. Both draw in the theme's own
+    // button and error inks, so the pill reads at a glance on any theme.
+    const glyph = document.createElement("span");
+    glyph.className = run.error ? "agent-pending__glyph agent-pending__glyph--error" : "agent-pending__glyph agent-pending__glyph--stop";
+    glyph.setAttribute("aria-hidden", "true");
+    if (run.error) { glyph.textContent = "!"; }
+    el.append(glyph);
     // The marker is chrome: its click is not a document edit and must not
     // move the caret or enter the undo history.
     el.addEventListener("mousedown", (e) => {
@@ -105,7 +113,7 @@ function buildDecorations(runs: readonly AgentRun[], view: EditorView | null, do
         .filter((r) => r.pos >= 0 && r.pos <= doc.content.size)
         .map((r) => Decoration.widget(r.pos, () => markerWidget(r, view), {
             side: -1,
-            key: `${r.id}:${r.status}:${r.error ?? ""}`,
+            key: `${r.id}:${r.status}:${r.harness ?? ""}:${r.error ?? ""}`,
         }));
     return DecorationSet.create(doc, decos);
 }
@@ -136,7 +144,7 @@ export const agentPendingPlugin = $prose(() => {
                 if (action?.kind === "begin") {
                     runs = [...runs, { id: action.id, pos: action.pos, base: action.base, mapping: new Mapping(), status: "armed" }];
                 } else if (action?.kind === "running") {
-                    runs = runs.map((r) => (r.id === action.id ? { ...r, status: "running" } : r));
+                    runs = runs.map((r) => (r.id === action.id ? { ...r, status: "running", harness: action.harness ?? r.harness } : r));
                 } else if (action?.kind === "settle") {
                     runs = runs.filter((r) => r.id !== action.id);
                 } else if (action?.kind === "fail") {
@@ -170,8 +178,8 @@ export function beginAgentRun(view: EditorView): string {
     return id;
 }
 
-export function markAgentRunning(view: EditorView, id: string): void {
-    dispatchIfLive(view, { kind: "running", id });
+export function markAgentRunning(view: EditorView, id: string, harness?: string): void {
+    dispatchIfLive(view, { kind: "running", id, harness });
 }
 
 export function settleAgentRun(view: EditorView, id: string): void {
@@ -213,18 +221,17 @@ export function applyAgentResult(
     id: string,
     agentText: string,
     parse: (markdown: string) => ProseNode | null,
-    serialize: (doc: ProseNode) => string,
 ): AgentMergeOutcome {
     const run = agentRun(view, id);
     if (!run) { return "conflict"; }
     const agentDoc = parse(agentText);
     if (!agentDoc) { return "conflict"; }
-    // Nothing typed since hand-off: the live doc IS the base, so a plain
-    // diff-and-replace against it is exact (the external-sync shape, but
-    // recorded in history and echoed to the file like a user edit).
-    const untouched = run.mapping.maps.length === 0 || view.state.doc.eq(run.base);
-    const baseParsed = untouched ? run.base : parse(serialize(run.base));
-    if (!baseParsed || !baseParsed.eq(run.base)) { return "conflict"; }
+    // The diff runs against the base the run kept, so its ranges are
+    // positions in that base, which the mapping carries into the live doc.
+    // The base is the live document as it was, post-parse attributes (a
+    // heading's stamped id) and all; the content diff does not see those,
+    // and a guard that compared the two docs whole refused every document
+    // with a heading (the corpus sweep below is what pins that).
     const changes = computeDocDiff(run.base, agentDoc);
     if (changes.length === 0) { return "unchanged"; }
     let tr = view.state.tr;
@@ -233,8 +240,10 @@ export function applyAgentResult(
         const change = changes[i];
         const from = run.mapping.mapResult(change.fromA, -1);
         const to = run.mapping.mapResult(change.toA, 1);
-        // The user's edits reached into this range: not ours to overwrite.
-        if (from.deleted || to.deleted || from.pos > to.pos) { skipped++; continue; }
+        // The user's edits reached into this range, deleting part of it or
+        // typing inside it (a mapped range that grew): not ours to overwrite.
+        if (from.deleted || to.deleted || from.pos > to.pos
+            || to.pos - from.pos !== change.toA - change.fromA) { skipped++; continue; }
         try {
             tr = tr.replace(from.pos, to.pos, agentDoc.slice(change.fromB, change.toB));
         } catch {
@@ -244,6 +253,8 @@ export function applyAgentResult(
         }
     }
     if (skipped === changes.length) { return "conflict"; }
-    view.dispatch(tr);
+    // One undo step of its own: never grouped with the keystroke before or
+    // after it, so Cmd+Z removes exactly the agent's edit.
+    view.dispatch(closeHistory(tr));
     return skipped > 0 ? "partial" : "applied";
 }

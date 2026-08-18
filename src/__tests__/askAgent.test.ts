@@ -12,10 +12,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
 import * as vscode from "vscode";
 import {
+    agentOutputChannel,
     askAgent,
     cancelAgentRun,
+    reportAgentMerge,
     composeAgentRequest,
     expandCommandTemplate,
+    harnessName,
     normalizeAgentMode,
     shellQuote,
     CHAT_OPEN_COMMAND,
@@ -29,6 +32,7 @@ import { makeFakeTextDocument, resetTextDocumentMocks, Range, Uri } from "../../
 /** A spawn stand-in: an emitter with a stderr stream and a kill the test can drive. */
 class FakeChild extends EventEmitter {
     stderr = new EventEmitter();
+    stdout = new EventEmitter();
     kill = vi.fn(() => { this.emit("exit", null); return true; });
 }
 const spawnMock = vi.hoisted(() => vi.fn());
@@ -100,6 +104,32 @@ describe("expandCommandTemplate", () => {
 
     it("a template without the placeholder should get the line appended", () => {
         expect(expandCommandTemplate("  claude  ", "'q'")).toBe("claude 'q'");
+    });
+});
+
+describe("harnessName", () => {
+    it("the command's first word, without any path, names the harness", () => {
+        expect(harnessName("claude -p {prompt} --permission-mode acceptEdits")).toBe("claude");
+        expect(harnessName("/usr/local/bin/codex exec {prompt}")).toBe("codex");
+        expect(harnessName("   ")).toBe("agent");
+    });
+});
+
+describe("reportAgentMerge (the webview's verdict on a dirty-document merge)", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("applied should be a status-bar line, not a toast", () => {
+        reportAgentMerge(noteUri, "applied");
+        expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(expect.stringContaining("updated around your edits"), 5000);
+        expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    it("partial and conflict should warn and point at Compare", () => {
+        reportAgentMerge(noteUri, "partial");
+        reportAgentMerge(noteUri, "conflict");
+        expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
+        expect(vscode.window.showWarningMessage).toHaveBeenNthCalledWith(1, expect.stringContaining("left out"));
+        expect(vscode.window.showWarningMessage).toHaveBeenNthCalledWith(2, expect.stringContaining("could not be merged"));
     });
 });
 
@@ -187,9 +217,9 @@ describe("askAgent", () => {
         });
     });
 
-    it("background mode should spawn the template in a shell, report running, then done on a clean exit", async () => {
+    it("background mode should spawn the template in its own process group, report running, then done once the clean reload landed", async () => {
         configureRoute("claude -p {prompt}", "background");
-        makeFakeTextDocument("# Plan\n", noteUri);
+        const doc = makeFakeTextDocument("# Plan\n", noteUri);
         const child = new FakeChild();
         spawnMock.mockImplementation(() => child);
         const { report, messages } = reporter();
@@ -199,14 +229,95 @@ describe("askAgent", () => {
         expect(spawnMock).toHaveBeenCalledTimes(1);
         const [commandLine, options] = spawnMock.mock.calls[0]!;
         expect(commandLine).toBe(`claude -p 'In notes/plan.md#L1: do x'`);
-        expect(options).toMatchObject({ shell: true });
+        expect(options).toMatchObject({ shell: true, detached: true });
         expect(vscode.window.createTerminal).not.toHaveBeenCalled();
-        expect(messages).toEqual([{ type: "agentRun", requestId: "ai7", status: "running" }]);
+        expect(messages).toEqual([{ type: "agentRun", requestId: "ai7", status: "running", harness: "claude" }]);
 
+        // The agent writes the file; VS Code reloads the clean document.
+        const disk = "# Plan\n\nAgent line.\n";
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from(disk));
+        doc.setTextExternally(disk);
+        child.emit("exit", 0);
+        // `done` waits for the reload to land and the push to go out first.
+        await new Promise((r) => setTimeout(r, 600));
+
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai7", status: "done", harness: "claude" });
+        // The change itself is the feedback, plus one status-bar line.
+        expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(expect.stringContaining("claude finished"), 5000);
+        expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it("done should not be reported until the clean document shows the agent's write, within a bound", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        const { report, messages } = reporter();
+        await askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai14");
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n\nAgent line.\n"));
+
+        child.emit("exit", 0);
+        await new Promise((r) => setTimeout(r, 200));
+
+        // Not yet: the document has not taken the write.
+        expect(messages).toHaveLength(1);
+    });
+
+    it("the finish channel: a failure logs the run to the Birta AI output channel and the toast offers Show Output", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        vi.mocked(vscode.window.showErrorMessage).mockResolvedValueOnce("Show Output" as never);
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "do x", "ai15");
+
+        child.stderr.emit("data", Buffer.from("boom"));
+        child.emit("exit", 2);
+        await flush();
+        await flush();
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("boom"), "Show Output");
+        const channel = agentOutputChannel();
+        expect(channel.appendLine).toHaveBeenCalledWith(expect.stringContaining("failed"));
+        expect(channel.appendLine).toHaveBeenCalledWith(expect.stringContaining("boom"));
+        expect(channel.show).toHaveBeenCalled();
+    });
+
+    it("a run that changed nothing should still end with feedback: the agent's last words in a message", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        const { report, messages } = reporter();
+        await askAgent(() => Promise.resolve(activeAt(1)), report, "say hello", "ai12");
+
+        child.stdout.emit("data", Buffer.from("Hello! Nothing to change here.\n"));
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
         child.emit("exit", 0);
         await flush();
 
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai7", status: "done" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai12", status: "done", harness: "claude" });
+        expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+            expect.stringMatching(/claude finished without changing notes\/plan\.md\. It said: Hello! Nothing to change here\./),
+            "Show Output",
+        );
+    });
+
+    it("a run that changed nothing and said nothing should say so", async () => {
+        configureRoute("codex exec {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "say hello", "ai13");
+
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
+        child.emit("exit", 0);
+        await flush();
+
+        expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("codex finished without changing notes/plan.md, and said nothing."),
+            "Show Output",
+        );
     });
 
     it("a dirty document at exit should carry the disk text into the done report", async () => {
@@ -223,7 +334,7 @@ describe("askAgent", () => {
         child.emit("exit", 0);
         await flush();
 
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai8", status: "done", text: "# Plan\n\nAgent line.\n" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai8", status: "done", text: "# Plan\n\nAgent line.\n", harness: "claude" });
     });
 
     it("a dirty document whose file the agent did not change should report a plain done", async () => {
@@ -239,7 +350,7 @@ describe("askAgent", () => {
         child.emit("exit", 0);
         await flush();
 
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai9", status: "done" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai9", status: "done", harness: "claude" });
     });
 
     it("a non-zero exit should report failed with the code and the stderr tail", async () => {
@@ -257,6 +368,8 @@ describe("askAgent", () => {
         expect(messages[1]?.status).toBe("failed");
         expect(messages[1]?.message).toContain("127");
         expect(messages[1]?.message).toContain("no such command");
+        // A failure is announced, not only marked in the gutter.
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("claude could not finish"), "Show Output");
     });
 
     it("cancelling a run should kill the child and report cancelled, not failed", async () => {
@@ -271,7 +384,7 @@ describe("askAgent", () => {
         await flush();
 
         expect(child.kill).toHaveBeenCalled();
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai11", status: "cancelled" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai11", status: "cancelled", harness: "claude" });
     });
 
     it("a dirty document should be saved before the hand-off", async () => {

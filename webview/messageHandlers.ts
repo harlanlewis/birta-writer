@@ -32,6 +32,7 @@ import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./compone
 import { setLogTableSel, syncExternalContent, flushPendingEdit, acknowledgeFlush } from "./editor";
 import { regateCalcCues, regateNoteMarkers, setProofreadConfig, failAgentRun, markAgentRunning, settleAgentRun } from "./plugins";
 import { mergeAgentResult } from "./editor";
+import { notifyAgentMergeResult } from "./messaging";
 import { t } from "./i18n";
 import { mark } from "./perf";
 import { setReadOnly } from "./readOnly";
@@ -366,7 +367,7 @@ export function createMessageHandlers(
             if (!view) { return; }
             switch (msg.status) {
                 case "running":
-                    markAgentRunning(view, msg.requestId);
+                    markAgentRunning(view, msg.requestId, msg.harness);
                     return;
                 case "failed":
                     failAgentRun(view, msg.requestId, msg.message ?? "");
@@ -374,6 +375,7 @@ export function createMessageHandlers(
                 case "done": {
                     if (msg.text !== undefined) {
                         const outcome = mergeAgentResult(msg.requestId, msg.text);
+                        notifyAgentMergeResult(msg.requestId, outcome);
                         if (outcome === "conflict") {
                             failAgentRun(view, msg.requestId, t("its changes overlap yours; the file on disk holds them, and Compare in the drift badge shows both"));
                             return;

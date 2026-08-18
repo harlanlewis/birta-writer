@@ -96,7 +96,7 @@ export { deleteSelection, joinTextblockBackward, lift, splitBlock, toggleMark } 
 export { gapCursor, GapCursor } from "@milkdown/prose/gapcursor";
 
 // ─── prose/history: undo history ───
-export { history, redo, undo } from "@milkdown/prose/history";
+export { closeHistory, history, redo, undo } from "@milkdown/prose/history";
 
 // ─── prose/inputrules: text-trigger rules ───
 // `undoInputRule` reverts the most recent input rule, restoring the characters

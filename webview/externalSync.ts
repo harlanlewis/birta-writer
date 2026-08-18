@@ -20,7 +20,7 @@
 import { type Editor, parserCtx } from "@milkdown/core";
 import { computeDocDiff } from "@milkdown/plugin-diff";
 import { EXTERNAL_SYNC_META } from "./plugins/docChange";
-import { getView } from "./pm";
+import { closeHistory, getView } from "./pm";
 
 /**
  * Applies `newMarkdown` to the editor as a minimal ProseMirror diff.
@@ -81,7 +81,13 @@ export function applyExternalSync(
             // The one exception (plugins/agentPending): an agent's write in
             // answer to a request made at the caret is the user's own edit,
             // and undoes like a paste.
-            if (!options.intoHistory) { tr.setMeta("addToHistory", false); }
+            if (options.intoHistory) {
+                // Its own undo step, never grouped with a neighbouring
+                // keystroke or with another sync, so Cmd+Z removes exactly it.
+                closeHistory(tr);
+            } else {
+                tr.setMeta("addToHistory", false);
+            }
             view.dispatch(tr);
             return true;
         });

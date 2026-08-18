@@ -16,7 +16,7 @@
 
 import type { EditorView } from "./pm";
 import type { DocSelection, EditorSelectionContext } from "../shared/agentContext";
-import { sourceSelectionEnds } from "./utils/sourceCaret";
+import { sourceEndOfBlock, sourceSelectionEnds } from "./utils/sourceCaret";
 
 /**
  * Build the selection context, or null when the position can't be placed (an
@@ -36,7 +36,8 @@ export function buildSelectionContext(
     lineOffset: number,
 ): EditorSelectionContext | null {
     const { doc, selection } = view.state;
-    const ends = sourceSelectionEnds(doc, lineMap, sourceLines, selection);
+    const ends = emptyParagraphCaret(view, lineMap, sourceLines)
+        ?? sourceSelectionEnds(doc, lineMap, sourceLines, selection);
     if (!ends) { return null; }
     const { anchor, head: active } = ends;
 
@@ -52,4 +53,36 @@ export function buildSelectionContext(
         text,
     };
     return { selections: [sel], primary: 0, isEmpty: selection.empty };
+}
+
+/**
+ * A caret in an EMPTY top-level paragraph below other content: Enter for a
+ * fresh line, then `/ai <request>` on it (MAR-376). An empty paragraph
+ * serializes to nothing, so the block-index line map has no line for it and
+ * the generic mapping names whatever block FOLLOWS. What the writer means is
+ * the blank line after the block before it: the separator every block pair
+ * has in the source, or one past the last line when the paragraph ends the
+ * document. Either way it is the line an agent inserts at. Undefined
+ * (defer to the generic mapping) for anything else.
+ */
+function emptyParagraphCaret(
+    view: EditorView,
+    lineMap: number[],
+    sourceLines: string[],
+): { anchor: { line: number; column: number }; head: { line: number; column: number } } | undefined {
+    const { doc, selection } = view.state;
+    if (!selection.empty || !lineMap.length) { return undefined; }
+    const $head = doc.resolve(selection.head);
+    if ($head.depth !== 1) { return undefined; }
+    const block = $head.parent;
+    if (!block.isTextblock || block.content.size !== 0) { return undefined; }
+    // Two Enters make two empty paragraphs; the block "before" is the last
+    // one that has any source at all.
+    let index = $head.index(0);
+    while (index > 0 && doc.child(index - 1).isTextblock && doc.child(index - 1).content.size === 0) { index--; }
+    if (index === 0) { return undefined; }
+    const before = sourceEndOfBlock(doc, lineMap, sourceLines, index - 1);
+    if (!before) { return undefined; }
+    const caret = { line: before.line + 1, column: 0 };
+    return { anchor: caret, head: caret };
 }

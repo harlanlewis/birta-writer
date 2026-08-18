@@ -89,6 +89,11 @@ export function notifyAgentCancel(requestId: string): void {
     vscode.postMessage({ type: "agentCancel", requestId });
 }
 
+/** How the webview's merge of a background agent's result went. */
+export function notifyAgentMergeResult(requestId: string, outcome: string): void {
+    vscode.postMessage({ type: "agentMergeResult", requestId, outcome });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }
