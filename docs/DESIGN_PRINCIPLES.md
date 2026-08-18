@@ -116,7 +116,7 @@ The counter-case is a choice Markdown CAN spell: a bullet character, an ordered 
 
 ## A card is the link it draws
 
-An embed card, a connector card and a link card all stand in for one link in the file, and they open the way a link does. Cmd/Ctrl+click on the card body opens the page, exactly the modifier-click that opens a plain link; a plain click selects the card (the ring, and the palette while editing), as a plain click pins a link's popup rather than leaving the document. The corner Open button stays for a pointer that does not know the modifier. Read-only removes the editing chrome and nothing else: opening is reading, so the same clicks open (`webview/plugins/embed.ts`, `webview/components/linkPopup`).
+An embed card, a connector card and a link card all stand in for one link in the file, and they open the way a link does. Cmd/Ctrl+click on the card body opens the page, exactly the modifier-click that opens a plain link; a plain click selects the card (the ring, and the palette while editing), as a plain click pins a link's popup rather than leaving the document. The corner Open button stays for a pointer that does not know the modifier. Read-only removes the editing chrome and nothing else, and opening is reading, so the modifier-click still opens there. A plain click opens too, because in read-only selecting a card shows nothing (the ring and the palette are both editing chrome), which leaves the plain click only one useful meaning; a plain link's popup still has Open and Copy to offer, so it keeps its pin (`webview/plugins/embed.ts`, `webview/components/linkPopup`).
 
 ## Rendered HTML is output, not a surface
 

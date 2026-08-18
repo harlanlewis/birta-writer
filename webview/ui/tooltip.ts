@@ -1,4 +1,4 @@
-import { safeAreaTop } from "../utils/headingUtils";
+import { getTopbarBottom } from "../utils/headingUtils";
 
 let tooltipEl: HTMLElement | null = null;
 
@@ -57,10 +57,12 @@ function position(
     let x = elRect.left + elRect.width / 2 - tipRect.width / 2;
     let y: number;
 
-    // The fixed chrome (the topbar, and the sticky heading under it) paints
-    // over the tooltip, so every vertical decision below is taken against this
-    // line rather than the viewport top.
-    const safeTop = safeAreaTop();
+    // The topbar paints over the tooltip, so every vertical decision below is
+    // taken against its bottom edge rather than the viewport top. The floor
+    // must stay the topbar alone, not safeAreaTop(): the tooltip stacks above
+    // the sticky heading, and a floor that counted it would push a toolbar
+    // button's own tip down past the sticky title.
+    const safeTop = getTopbarBottom();
 
     if (placement === "left") {
         x = elRect.left - tipRect.width - 6;

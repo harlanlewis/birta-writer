@@ -44,6 +44,15 @@ import {
 
 const fixtures = loadCorpusFixtures();
 
+// Per-fixture ceiling. The sweep is every block against every slot, so the
+// samples (content-inventory above all) dominate it, and on the CI runner
+// under coverage that fixture runs an order of magnitude slower than it
+// does alone here (`pnpm vitest run webview/__tests__/dropSlotLegality.test.ts`
+// measures it). The default ceiling sat inside the runner's own noise, so
+// this matches the other corpus sweeps (blockSourceRoundTrip,
+// conversionSurfaceParity) rather than raising the project default.
+const SWEEP_TIMEOUT = 120_000;
+
 let editors: Editor[] = [];
 
 afterEach(async () => {
@@ -90,7 +99,7 @@ describe("every offered drop slot is one the primitive accepts", () => {
         it(`${fixture.name} should offer no slot a drop would refuse`, async () => {
             const editor = await makeEditor(fixture.content);
             expect(refusedOfferings(editor)).toEqual([]);
-        }, 30_000);
+        }, SWEEP_TIMEOUT);
     }
 
     for (const fixture of fixtures) {
@@ -105,6 +114,6 @@ describe("every offered drop slot is one the primitive accepts", () => {
                 type: "setMany", positions, folded: true,
             } satisfies HeadingFoldMeta));
             expect(refusedOfferings(editor)).toEqual([]);
-        }, 30_000);
+        }, SWEEP_TIMEOUT);
     }
 });
