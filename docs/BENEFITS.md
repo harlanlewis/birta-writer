@@ -57,6 +57,8 @@ It's not a wiki, knowledge base, or [PKM](https://en.wikipedia.org/wiki/Personal
 - Markdown files open automatically in Birta Writer. Crosslink them. Click to navigate across pages. View files side by side in a window.
 - Open GitHub Copilot, Claude Code, or another AI assistant in a VS Code sidebar to chat with and modify your documents live, and let it see what you're looking at. VS Code hides a custom editor from the active-editor API agents read, so Birta bridges the gap. Copy a precise `file.md#L12-L20` reference (or the reference plus the selected lines, quoted as real markdown) to paste into any agent, or let a tool-using agent pull your current file, caret, and selection directly: a Language Model Tool for Copilot agent mode, and a public API for any extension. No more hand-directing the agent to the lines you mean.
 
+- Or ask without leaving the document at all: type `/ai`, press Space, write what you want, and press Enter. Birta saves the file and runs the agent you already use, in a terminal you can watch, with that file and the lines your cursor sits in already named for it. Birta sends nothing anywhere itself; the agent is your own tool, running as you. It is off until you turn it on, because picking it starts a program on your machine, and the command it runs is yours to set, so it points at whichever agent you actually use rather than one we picked. The edit comes back the way any other change to the file on disk does.
+
 Use Birta Writer as a knowledge base complement when you want a more enjoyable and helpful writing tool, or lean on VS Code and fully replace your other systems.
 
 ## Why I made it
