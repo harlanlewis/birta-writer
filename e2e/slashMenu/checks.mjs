@@ -243,6 +243,35 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the marker sits beside the empty line the request was typed on, not the paragraph beside it",
         second_marker !== null && second_marker.paragraphText === "" && second_marker.paragraphIndex === 1, JSON.stringify(second_marker));
+    // The pill must not cover the heading fold chevron, the one clickable
+    // thing in a heading's gutter: a third request on the H1 (the second
+    // stays live for the cancel checks below), hover the heading (the
+    // chevron shows on hover) and compare rects.
+    await page.locator(".milkdown .ProseMirror h1").first().click();
+    await page.keyboard.press("Home");
+    await page.keyboard.type("/ai", { delay: 60 });
+    await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
+    await page.keyboard.press("Space");
+    await page.keyboard.type("heading request", { delay: 30 });
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const third = await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgent").at(-1).requestId);
+    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "running", harness: "claude" }, "*"), third);
+    await page.waitForTimeout(150);
+    await page.locator(".milkdown .ProseMirror h1").first().hover();
+    await page.waitForTimeout(150);
+    const geometry = await page.evaluate(() => {
+        const h1 = document.querySelector(".ProseMirror h1");
+        const pill = h1?.querySelector(".agent-pending__glyph")?.getBoundingClientRect();
+        const chevron = h1?.querySelector(".heading-fold-toggle, .heading-fold-chevron")?.getBoundingClientRect();
+        const marker = h1?.querySelector(".heading-fold-marker")?.getBoundingClientRect();
+        const overlap = (a, b) => a && b && b.width > 0 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0;
+        return { pill: pill && [pill.left, pill.right], chevron: chevron && [chevron.left, chevron.right], marker: marker && [marker.left, marker.right], overChevron: overlap(pill, chevron), overMarker: overlap(pill, marker) };
+    });
+    check("on a heading, the pill sits clear of the fold chevron and the level badge",
+        geometry.pill !== undefined && geometry.pill !== null && !geometry.overChevron && !geometry.overMarker, JSON.stringify(geometry));
+    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "done" }, "*"), third);
+    await page.waitForTimeout(100);
     check("the marker is a pill wide enough to read, carrying a stop square and naming the harness",
         second_marker !== null && second_marker.width >= 20 && second_marker.height >= 12
             && second_marker.squareWidth === "7px" && /claude/.test(second_marker.title ?? ""), JSON.stringify(second_marker));

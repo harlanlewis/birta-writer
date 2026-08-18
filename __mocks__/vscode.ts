@@ -562,6 +562,14 @@ export const window = {
         window.terminals.push(terminal);
         return terminal;
     }),
+    /** A fake output channel whose lines a test can read back. */
+    createOutputChannel: vi.fn((_name?: string) => ({
+        appendLine: vi.fn(),
+        append: vi.fn(),
+        show: vi.fn(),
+        clear: vi.fn(),
+        dispose: vi.fn(),
+    })),
     /** Live terminals; tests reset it (`window.terminals.length = 0`) between cases. */
     terminals: [] as Array<{ name: string; exitStatus: undefined | { code: number | undefined }; show: ReturnType<typeof vi.fn>; sendText: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }>,
     createQuickPick: vi.fn(makeFakeQuickPick),

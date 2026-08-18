@@ -130,6 +130,14 @@ describe("MarkdownEditorProvider askAgent routing", () => {
         expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", "add a diagram", "ai1");
     });
 
+    it("an agentMergeResult message should run birta.agentMergeResult with the document's uri and the outcome", async () => {
+        const { panel, uri } = await withActivePanel();
+
+        await messageHandler(panel)({ type: "agentMergeResult", requestId: "ai1", outcome: "partial" });
+
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.agentMergeResult", uri, "partial");
+    });
+
     it("an askAgent message without a prompt should run the command with none", async () => {
         const { panel } = await withActivePanel();
 

@@ -76,7 +76,10 @@ function emptyParagraphCaret(
     if ($head.depth !== 1) { return undefined; }
     const block = $head.parent;
     if (!block.isTextblock || block.content.size !== 0) { return undefined; }
-    const index = $head.index(0);
+    // Two Enters make two empty paragraphs; the block "before" is the last
+    // one that has any source at all.
+    let index = $head.index(0);
+    while (index > 0 && doc.child(index - 1).isTextblock && doc.child(index - 1).content.size === 0) { index--; }
     if (index === 0) { return undefined; }
     const before = sourceEndOfBlock(doc, lineMap, sourceLines, index - 1);
     if (!before) { return undefined; }

@@ -1580,6 +1580,9 @@ export class MarkdownEditorProvider
                     case "agentCancel":
                         vscode.commands.executeCommand("birta.cancelAgent", message.requestId);
                         break;
+                    case "agentMergeResult":
+                        vscode.commands.executeCommand("birta.agentMergeResult", document.uri, message.outcome);
+                        break;
                 }
             },
         );

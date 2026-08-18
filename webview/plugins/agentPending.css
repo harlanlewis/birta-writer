@@ -11,7 +11,10 @@
  */
 .milkdown .editor .agent-pending {
     position: absolute;
-    left: calc(var(--gutter-left, var(--gutter-column)) - 20px);
+    /* Left of the whole gutter box's chevron slot: a heading's fold chevron
+       sits just inside the marker column, and the pill must not cover the
+       one clickable thing in that gutter. */
+    left: calc(var(--gutter-left, var(--gutter-column)) - 44px);
     top: var(--gutter-top, 0px);
     height: var(--gutter-height, 1.5em);
     display: inline-flex;
@@ -19,8 +22,8 @@
     justify-content: center;
     box-sizing: border-box;
     width: 26px;
-    /* Anchored to the gutter line's vertical centre; the pill itself is a
-       fixed 16px tall inside the line box. */
+    /* Anchored to the gutter line's vertical centre; the pill is shorter
+       than the line box and centred in it. */
     padding: 0;
     transform: translateX(-100%);
     cursor: pointer;

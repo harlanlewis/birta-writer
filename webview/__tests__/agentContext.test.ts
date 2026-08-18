@@ -105,6 +105,14 @@ describe("buildSelectionContext", () => {
         expect(ctx.selections[0].active).toEqual({ line: 2, column: 0 });
     });
 
+    it("two empty paragraphs in a row should both name the blank line after the block above them", () => {
+        const source = "First paragraph.\n\nSecond paragraph.\n";
+        const d = doc(p("First paragraph."), p(""), p(""), p("Second paragraph."));
+        const pos = inBlock(d, 2, 0);
+        const ctx = buildSelectionContext(view(d, pos, pos), computeLineMap(source), source.split("\n"), 0)!;
+        expect(ctx.selections[0].active).toEqual({ line: 2, column: 0 });
+    });
+
     it("an empty FIRST paragraph should keep the generic mapping (there is no block before it)", () => {
         const source = "Second paragraph.\n";
         const d = doc(p(""), p("Second paragraph."));

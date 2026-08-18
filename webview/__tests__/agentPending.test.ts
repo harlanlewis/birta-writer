@@ -7,7 +7,7 @@
  * position mapping the run accumulated, refusing where they collide.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx, serializerCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx } from "@milkdown/core";
 import { history, undo } from "../pm";
 import { TextSelection } from "../pm";
 import type { EditorView, Node as ProseNode } from "../pm";
@@ -25,6 +25,7 @@ import {
 } from "../plugins/agentPending";
 import { applyExternalSync } from "../externalSync";
 import { mockVscodeApi } from "./setup";
+import { editorView, loadCorpusFixtures, makeCorpusEditor } from "./helpers/moveFuzz";
 
 const historyPlugin = $prose(() => history());
 
@@ -73,7 +74,6 @@ function merge(editor: Editor, id: string, text: string) {
         id,
         text,
         (md) => ctx.get(parserCtx)(md) as ProseNode | null,
-        (doc) => ctx.get(serializerCtx)(doc),
     ));
 }
 
@@ -179,6 +179,20 @@ describe("undo policy for an agent's external write", () => {
         expect(v.state.doc.childCount).toBe(3);
     });
 
+    it("with a run live, two external changes should be two undo steps, not one", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id);
+        expect(applyExternalSync(editor, "First paragraph.\n\nSecond paragraph.\n\nAgent line.", { intoHistory: true })).toBe(true);
+        expect(applyExternalSync(editor, "First paragraph.\n\nSecond paragraph.\n\nAgent line.\n\nCheckout line.", { intoHistory: true })).toBe(true);
+        expect(v.state.doc.childCount).toBe(4);
+
+        undo(v.state, v.dispatch);
+
+        expect(v.state.doc.childCount).toBe(3);
+        expect(v.state.doc.child(2).textContent).toBe("Agent line.");
+    });
+
     it("with a run live, an external change should undo in one step like a paste", () => {
         placeCaret(v, endOfBlock(v, 1));
         const id = beginAgentRun(v);
@@ -265,6 +279,56 @@ describe("applyAgentResult (the dirty-document merge)", () => {
         expect(v.state.doc.childCount).toBe(2);
     });
 
+    it("a document with a heading (whose id a plugin stamps after parsing) should still merge", async () => {
+        // The live heading carries an `id` no fresh parse has; a merge that
+        // compared docs raw refused every document with a heading.
+        await editor.destroy();
+        editor = await makeEditor("# Title\n\nFirst paragraph.\n\nSecond.");
+        v = view(editor);
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id);
+        placeCaret(v, endOfBlock(v, 2));
+        typeText(v, " Typed meanwhile.");
+
+        const outcome = merge(editor, id, "# Title\n\nFirst paragraph.\n\nAgent added this.\n\nSecond.");
+
+        expect(outcome).toBe("applied");
+        const texts = Array.from({ length: v.state.doc.childCount }, (_, i) => v.state.doc.child(i).textContent);
+        expect(texts).toEqual(["Title", "First paragraph.", "Agent added this.", "Second. Typed meanwhile."]);
+    });
+
+    it("typing INSIDE the range the agent rewrote should be a conflict, never silently overwritten", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id);
+        // The user types into the very word the agent rewrites.
+        const secondStart = endOfBlock(v, 0) + 2;
+        placeCaret(v, secondStart + 3);
+        typeText(v, "XX");
+        expect(v.state.doc.child(1).textContent).toBe("SecXXond paragraph.");
+
+        const outcome = merge(editor, id, "First paragraph.\n\nSECOND paragraph.\n\nThird.");
+
+        expect(outcome).toBe("conflict");
+        expect(v.state.doc.child(1).textContent).toBe("SecXXond paragraph.");
+    });
+
+    it("the agent's merged edit should be its own undo step, not grouped with the keystroke before it", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id);
+        placeCaret(v, endOfBlock(v, 0));
+        typeText(v, " Typed.");
+
+        expect(merge(editor, id, "First paragraph.\n\nSecond paragraph.\n\nAgent added this.\n\nThird.")).toBe("applied");
+        undo(v.state, v.dispatch);
+
+        // The agent's paragraph is gone, the user's keystroke stays.
+        expect(v.state.doc.childCount).toBe(3);
+        expect(v.state.doc.child(0).textContent).toBe("First paragraph. Typed.");
+    });
+
     it("an unchanged file should report unchanged and touch nothing", () => {
         const id = beginAgentRun(v);
         markAgentRunning(v, id);
@@ -274,4 +338,44 @@ describe("applyAgentResult (the dirty-document merge)", () => {
     it("an unknown run id should report conflict", () => {
         expect(merge(editor, "nope", "x")).toBe("conflict");
     });
+});
+
+/**
+ * The corpus sweep the heading defect would have failed: on every fixture the
+ * editor opens with the production presets, a run begins at the end of the
+ * first block, the user types after it, and the agent's result is the file
+ * with a paragraph appended. Every one must merge as `applied` (a
+ * `partial` or `conflict` here means a construct the merge cannot see past),
+ * and the sweep asserts its own size.
+ */
+describe("applyAgentResult over the corpus", () => {
+    const fixtures = loadCorpusFixtures();
+
+    it("should have a corpus to sweep", () => {
+        expect(fixtures.length).toBeGreaterThan(20);
+    });
+
+    it("a trailing insertion should apply on every fixture after the user typed elsewhere", async () => {
+        const refused: string[] = [];
+        for (const fixture of fixtures) {
+            const ed = await makeCorpusEditor(fixture.content, [historyPlugin, agentPendingPlugin]);
+            const ev = editorView(ed);
+            try {
+                placeCaret(ev, endOfBlock(ev, 0));
+                const id = beginAgentRun(ev);
+                markAgentRunning(ev, id);
+                // A keystroke that lands inside the first block, whatever kind
+                // it is; a block that refuses text (a rule) is left alone.
+                try { typeText(ev, " x"); } catch { /* not a textblock */ }
+                const outcome = ed.action((ctx) => applyAgentResult(
+                    ev, id, fixture.content.replace(/\s*$/, "") + "\n\nAgent added this paragraph.\n",
+                    (md) => ctx.get(parserCtx)(md) as ProseNode | null,
+                ));
+                if (outcome !== "applied") { refused.push(`${fixture.name}: ${outcome}`); }
+            } finally {
+                await ed.destroy();
+            }
+        }
+        expect(refused).toEqual([]);
+    }, 120_000);
 });

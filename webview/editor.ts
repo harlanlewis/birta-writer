@@ -496,7 +496,6 @@ export function mergeAgentResult(requestId: string, text: string): "applied" | "
         requestId,
         text,
         (markdown) => ctx.get(parserCtx)(markdown) as ProseNode | null,
-        (doc) => ctx.get(serializerCtx)(doc),
     ));
 }
 

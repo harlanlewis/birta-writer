@@ -37,7 +37,7 @@
  */
 import { $prose } from "@milkdown/utils";
 import { computeDocDiff } from "@milkdown/plugin-diff";
-import { Decoration, DecorationSet, Mapping, Plugin, PluginKey } from "@/pm";
+import { closeHistory, Decoration, DecorationSet, Mapping, Plugin, PluginKey } from "@/pm";
 import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "../i18n";
 import { notifyAgentCancel } from "../messaging";
@@ -221,18 +221,17 @@ export function applyAgentResult(
     id: string,
     agentText: string,
     parse: (markdown: string) => ProseNode | null,
-    serialize: (doc: ProseNode) => string,
 ): AgentMergeOutcome {
     const run = agentRun(view, id);
     if (!run) { return "conflict"; }
     const agentDoc = parse(agentText);
     if (!agentDoc) { return "conflict"; }
-    // Nothing typed since hand-off: the live doc IS the base, so a plain
-    // diff-and-replace against it is exact (the external-sync shape, but
-    // recorded in history and echoed to the file like a user edit).
-    const untouched = run.mapping.maps.length === 0 || view.state.doc.eq(run.base);
-    const baseParsed = untouched ? run.base : parse(serialize(run.base));
-    if (!baseParsed || !baseParsed.eq(run.base)) { return "conflict"; }
+    // The diff runs against the base the run kept, so its ranges are
+    // positions in that base, which the mapping carries into the live doc.
+    // The base is the live document as it was, post-parse attributes (a
+    // heading's stamped id) and all; the content diff does not see those,
+    // and a guard that compared the two docs whole refused every document
+    // with a heading (the corpus sweep below is what pins that).
     const changes = computeDocDiff(run.base, agentDoc);
     if (changes.length === 0) { return "unchanged"; }
     let tr = view.state.tr;
@@ -241,8 +240,10 @@ export function applyAgentResult(
         const change = changes[i];
         const from = run.mapping.mapResult(change.fromA, -1);
         const to = run.mapping.mapResult(change.toA, 1);
-        // The user's edits reached into this range: not ours to overwrite.
-        if (from.deleted || to.deleted || from.pos > to.pos) { skipped++; continue; }
+        // The user's edits reached into this range, deleting part of it or
+        // typing inside it (a mapped range that grew): not ours to overwrite.
+        if (from.deleted || to.deleted || from.pos > to.pos
+            || to.pos - from.pos !== change.toA - change.fromA) { skipped++; continue; }
         try {
             tr = tr.replace(from.pos, to.pos, agentDoc.slice(change.fromB, change.toB));
         } catch {
@@ -252,6 +253,8 @@ export function applyAgentResult(
         }
     }
     if (skipped === changes.length) { return "conflict"; }
-    view.dispatch(tr);
+    // One undo step of its own: never grouped with the keystroke before or
+    // after it, so Cmd+Z removes exactly the agent's edit.
+    view.dispatch(closeHistory(tr));
     return skipped > 0 ? "partial" : "applied";
 }
