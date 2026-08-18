@@ -495,7 +495,7 @@ describe("argument mode (takesArgument rows)", () => {
     });
 
     it("Space on the highlighted Ask Agent row should commit to /ai and keep the menu open on that row alone", () => {
-        typeText(v, "/a");
+        typeText(v, "/agent");
         expect(rowLabels()[0]).toBe("Ask Agent");
 
         const space = press(v, " ");
@@ -521,6 +521,15 @@ describe("argument mode (takesArgument rows)", () => {
         // And the row is committable again.
         press(v, " ");
         expect(v.state.doc.textContent).toBe("/ai ");
+    });
+
+    it("Space on a query that merely ranks Ask Agent first should stay a filter character", () => {
+        typeText(v, "/a");
+        expect(rowLabels()[0]).toBe("Ask Agent");
+
+        expect(pressReachesDocument(v, " ")).toBe(true);
+        expect(v.state.doc.textContent).toBe("/a");
+        expect(runCommand).not.toHaveBeenCalled();
     });
 
     it("Space on a row without takesArgument should stay a filter character", () => {
@@ -612,6 +621,41 @@ describe("argument mode (takesArgument rows)", () => {
 
         expect(pressReachesDocument(v, "ArrowUp")).toBe(true);
         expect(menuVisible()).toBe(true);
+    });
+
+    it("an argument pick on an empty paragraph below other content should remove that paragraph and park the caret at the end of the block before it", async () => {
+        await editor.destroy();
+        editor = await makeEditor("Some text.\n\nMore.");
+        v = view(editor);
+        setSlashMenuHost({ runCommand });
+        // Enter after "Some text." makes the fresh empty paragraph the request is typed in.
+        placeCursorAtEndOfBlock(v, 0);
+        v.dispatch(v.state.tr.split(v.state.selection.from));
+        expect(v.state.doc.childCount).toBe(3);
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "add a diagram");
+
+        press(v, "Enter");
+
+        expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "add a diagram" });
+        expect(v.state.doc.childCount).toBe(2);
+        expect(v.state.doc.child(0).textContent).toBe("Some text.");
+        // The caret sits at the end of "Some text.", so a caret reference names that line.
+        expect(v.state.selection.$from.parent.textContent).toBe("Some text.");
+        expect(v.state.selection.$from.parentOffset).toBe("Some text.".length);
+    });
+
+    it("an argument pick in the document's first paragraph should keep that paragraph", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "start here");
+
+        press(v, "Enter");
+
+        expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "start here" });
+        expect(v.state.doc.childCount).toBe(1);
+        expect(v.state.doc.child(0).type.name).toBe("paragraph");
     });
 
     it("clicking the argument row should deliver the typed prompt like Enter", () => {

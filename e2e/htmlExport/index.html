@@ -38,6 +38,9 @@
   window.__i18n = {
     translations: {}, isMac: true,
     mermaidTheme: "auto",
+    // Style checks on, Harper off (no extension host here): the fixture carries a filler and a [TK] marker
+    // so the annotation checks below have a live control.
+    proofread: { grammarCheck: false, spellCheck: false },
     toolbar: { placements: {}, order: [] },
     // The document "lives" at the served root, so its images map to that origin.
     resourceBaseUri: ORIGIN + "/",
@@ -48,6 +51,7 @@
   const DOC = [
     "# Export sample", "",
     "Some **bold** and *em* text with `code` and a [link](https://example.com) and $E=mc^2$ inline.", "",
+    "This paragraph is really quite short and carries a [TK] marker for the export to leave alone.", "",
     "> [!NOTE]", "> A callout", "",
     "- [ ] task", "- [x] done", "",
     "| a | b |", "|---|---|", "| 1 | 2 |", "",

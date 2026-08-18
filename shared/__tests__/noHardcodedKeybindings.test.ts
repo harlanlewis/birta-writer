@@ -78,7 +78,7 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
         "webview/plugins/mathInlineEdit.ts":
             "bails out when modifiers are held — typing-level arrow/Backspace boundary handling at a formula's edge, not a chord",
         "webview/plugins/slashMenu.ts":
-            "bails out when modifiers are held — a bare Space on a highlighted argument-taking row commits it (typing-level, like Enter picking a row), not a chord",
+            "bails out when modifiers are held; a bare Space on a highlighted argument-taking row commits it (typing-level, like Enter picking a row), not a chord",
         "webview/plugins/wikiLinkEdit.ts":
             "bails out when modifiers are held — typing-level arrow/Backspace boundary handling at a wikilink's edge, not a chord",
         "webview/plugins/codeBlockSelectAll.ts":

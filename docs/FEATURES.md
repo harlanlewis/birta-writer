@@ -99,6 +99,10 @@ The editor is backed by a native text document, so saving is VS Code's own `Cmd+
 
 Switching to Raw Markdown (`Cmd+Shift+M`) and back is lossless. External file changes from git or another editor sync in without stealing your cursor. If the editor ever hits an internal error, VS Code shows a notification instead of failing silently, and your document and its save path are unaffected.
 
+## Export
+
+Export as HTML (palette, or the right-click menu's Export group) writes the rendered document as one self-contained HTML file: diagrams as SVG, math, code highlighting, tables, callouts, task state, footnotes and images, styled with the theme the editor is showing and print-ready, with editor chrome and proofreading marks left out. It offers to open the file in your browser, where print-to-PDF is one step. Images stay linked relative to the document, so save the export beside it.
+
 ***
 
 ## Keyboard shortcuts

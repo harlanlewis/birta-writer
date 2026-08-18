@@ -114,6 +114,21 @@ export async function run({ page, check, baseUrl }) {
     check("only the KaTeX faces the document uses travel", faces > 0 && faces < 10, String(faces));
     check("print rules travel", /@media print/.test(css));
     check("the export page has no script errors", outErrors.length === 0, outErrors.join(" | "));
+    // Editor annotations are view state: the live view underlines the filler
+    // "really" and chips the [TK] marker; the file must carry neither.
+    const liveAnnotated = await page.evaluate(() => ({
+        hits: document.querySelectorAll(".ProseMirror .pf-style-hit").length,
+        markers: document.querySelectorAll(".ProseMirror .note-marker").length,
+    }));
+    check("the live view is annotated (the control for the next check)", liveAnnotated.hits > 0, JSON.stringify(liveAnnotated));
+    const exportedAnnotations = await out.evaluate(() => ({
+        hits: document.querySelectorAll(".pf-style-hit, .pf-spell-err, .pf-lint-err").length,
+        markers: document.querySelectorAll(".note-marker").length,
+        text: document.body.textContent.includes("really quite short and carries a [TK] marker"),
+    }));
+    check("proofread underlines and note-marker chips do not travel, their text does",
+        exportedAnnotations.hits === 0 && exportedAnnotations.markers === 0 && exportedAnnotations.text, JSON.stringify(exportedAnnotations));
+    check("no proofread rules travel in the stylesheet", !/\.pf-style-hit|\.pf-spell-err|\.note-marker\b/.test(css));
     await out.close();
 
     // ── A folded document exports its content, not its view state ──
@@ -134,6 +149,26 @@ export async function run({ page, check, baseUrl }) {
     await foldedOut.close();
     await page.evaluate(() => window.postMessage({ type: "editorCommand", command: "unfoldAll" }, "*"));
     await page.waitForTimeout(100);
+
+    // ── A block open in source-peek is still content ──
+    await page.locator(".ProseMirror p", { hasText: "really quite short" }).click();
+    await page.evaluate(() => window.postMessage({ type: "editorCommand", command: "editBlockSource" }, "*"));
+    await page.waitForSelector(".ProseMirror .block-source-hidden", { state: "attached", timeout: 5000 });
+    await page.evaluate(() => window.postMessage({ type: "editorCommand", command: "exportHtml" }, "*"));
+    await page.waitForFunction(() => window.__posted.filter((m) => m.type === "exportHtml").length === 3, { timeout: 15000 });
+    const peeked = await page.evaluate(() => window.__posted.filter((m) => m.type === "exportHtml")[2].html);
+    const peekedOut = await page.context().browser().newPage();
+    await peekedOut.setContent(peeked, { waitUntil: "load" });
+    const peekedShape = await peekedOut.evaluate(() => ({
+        text: document.body.textContent.includes("really quite short and carries"),
+        textareas: document.querySelectorAll("textarea").length,
+        hiddenClass: document.querySelectorAll(".block-source-hidden").length,
+    }));
+    check("a block open in source-peek exports its rendered content, without the source editor",
+        peekedShape.text && peekedShape.textareas === 0 && peekedShape.hiddenClass === 0, JSON.stringify(peekedShape));
+    await peekedOut.close();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
 
     // ── The live editor is untouched by the snapshot ──
     const liveAfter = await page.evaluate(() => ({

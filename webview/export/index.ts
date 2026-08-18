@@ -79,6 +79,29 @@ const FOLD_STATE_CLASSES: readonly (readonly [string, string])[] = [
     [".heading-fold-hidden", "heading-fold-hidden"],
     [".heading-fold-heading--collapsed", "heading-fold-heading--collapsed"],
     [".block-gutter-host.collapsed", "collapsed"],
+    // Source-peek (components/blockSource) hides the rendered block behind
+    // its source editor with the same CSS mechanism; the block is content.
+    [".block-source-hidden", "block-source-hidden"],
+];
+
+/**
+ * Inline DECORATIONS: spans ProseMirror wraps around text for the editor's own
+ * annotations (proofread findings, note-marker chips, calc cues, live HTML
+ * pairing). They are view state, not document, and the file must not carry a
+ * spelling underline. Unwrapped in the clone: the span goes, its text stays.
+ */
+const INLINE_DECORATION_SELECTOR = [
+    ".pf-style-hit", ".pf-spell-err", ".pf-lint-err", ".note-marker", ".calc-cue", ".html-live",
+    ".pending-range", ".slash-query",
+].join(",");
+
+/**
+ * Node-decoration classes that mark an editing state on a real element (a
+ * formula or wikilink under the caret, a paired HTML tag, the hidden-selection
+ * host). The element is content; the class is not.
+ */
+const EDITING_STATE_CLASSES = [
+    "math-inline--editing", "wiki-link--editing", "html-tag--paired", "pm-hidden-selection",
 ];
 
 /**
@@ -337,6 +360,14 @@ function snapshotUnfolded(live: HTMLElement, view: Window): HTMLElement {
             dst.remove();
             continue;
         }
+        if (src.matches(INLINE_DECORATION_SELECTOR)) {
+            // Its descendants stay in the clone (and in `cloneAll`, so the
+            // walk still lines up); only the annotation wrapper goes.
+            dst.replaceWith(...Array.from(dst.childNodes));
+            continue;
+        }
+        for (const cls of EDITING_STATE_CLASSES) { dst.classList.remove(cls); }
+        if (dst.getAttribute("class") === "") { dst.removeAttribute("class"); }
         const tag = src.tagName.toLowerCase();
         if (tag === "button") {
             if (src.classList.contains("callout-kind")) {

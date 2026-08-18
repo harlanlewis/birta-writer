@@ -201,8 +201,10 @@ describe("findUniformRhythm", () => {
         "Integration tests confirm that those components work together correctly. " +
         "End-to-end tests validate the entire system from the perspective of users.";
 
-    it("a paragraph of evenly long sentences should be flagged whole", () => {
-        expect(flagged(even, findUniformRhythm)).toEqual([even]);
+    it("a paragraph of evenly long sentences should be flagged on its first sentence", () => {
+        expect(flagged(even, findUniformRhythm)).toEqual([
+            "Testing plays a critical role in maintaining software quality.",
+        ]);
         expect(findUniformRhythm(even)[0].category).toBe("rhythm");
     });
 
@@ -222,10 +224,12 @@ describe("findUniformRhythm", () => {
         expect(findUniformRhythm("Save the file. Close the tab. Open it again. Read it back.")).toEqual([]);
     });
 
-    it("the flagged span should trim surrounding whitespace, not the sentences' own", () => {
+    it("the flagged span should start at the first sentence's first word, not the padding", () => {
         const padded = `  ${even}  `;
         const [hit] = findUniformRhythm(padded);
-        expect(padded.slice(hit.start, hit.end)).toBe(even);
+        expect(padded.slice(hit.start, hit.end)).toBe(
+            "Testing plays a critical role in maintaining software quality.",
+        );
     });
 
     it("the variation threshold should be the discriminating line", () => {

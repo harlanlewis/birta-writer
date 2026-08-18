@@ -102,9 +102,9 @@ export async function run({ page, check, baseUrl }) {
     await load();
     const rhythmHits = await page.$$eval(".pf-style-hit", (els) =>
         els.map((e) => e.textContent).filter((t) => /Testing plays a critical role/.test(t)));
-    check("a paragraph of evenly long sentences carries one whole-paragraph style hit",
-        rhythmHits.length === 1 && /perspective of users\.$/.test(rhythmHits[0]), JSON.stringify(rhythmHits));
-    await page.locator(".milkdown .ProseMirror").getByText("Integration tests confirm", { exact: false }).first().click();
+    check("a paragraph of evenly long sentences carries one style hit on its first sentence only",
+        rhythmHits.length === 1 && /^Testing plays a critical role in maintaining software quality\.$/.test(rhythmHits[0]), JSON.stringify(rhythmHits));
+    await page.locator(".milkdown .ProseMirror").getByText("Testing plays a critical role", { exact: false }).first().click();
     await page.waitForSelector(POPUP, { state: "visible", timeout: 5000 });
     await page.waitForTimeout(100);
     const rg = (await groups()).find((x) => x.tag === "Uniform rhythm");

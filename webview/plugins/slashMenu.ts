@@ -29,7 +29,7 @@
  * webview/editorCommands.ts — plugins/index.ts is imported BY that module's
  * consumers and a value import back would create a cycle.
  */
-import { Plugin, PluginKey } from "../pm";
+import { Plugin, PluginKey, Selection } from "../pm";
 import type { EditorState, Transaction } from "../pm";
 import type { ResolvedPos } from "../pm";
 import type { EditorView } from "../pm";
@@ -271,7 +271,7 @@ class SlashMenuController {
 
         // Already open: re-filter only when the query changed (unrelated
         // transactions must not reset the keyboard highlight), but always
-        // re-anchor — edits above can move the slash's caret rect. In
+        // re-anchor (edits above can move the slash's caret rect). In
         // argument mode nothing filters; only the pill grows with the text.
         const key = match.argument === undefined ? match.query : `${match.query} ${match.argument}`;
         if (key !== this.lastQuery) {
@@ -522,6 +522,7 @@ class SlashMenuController {
         // grabbing focus back would break them.
         const { state } = this.view;
         this.view.dispatch(state.tr.delete(match.slashPos, match.caret));
+        if (item.takesArgument) { this.collapseEmptyCaretParagraph(); }
         // An argument-mode pick carries the typed text as `{ prompt }`. An
         // empty argument (Space, then Enter) and a direct pick of the row
         // (Enter without Space) both send none, and the command asks for it.
@@ -532,6 +533,34 @@ class SlashMenuController {
             return;
         }
         _host.runCommand(item.commandId, item.args);
+    }
+
+    /**
+     * After an argument pick, the paragraph the construct was typed in is
+     * usually empty: Enter for a fresh line, `/ai <request>`, Enter. An empty
+     * paragraph serializes to nothing, so no source line names it, and the
+     * command's caret reference (`path.md#L<n>`, resolved from the caret's
+     * source line) would name whatever block FOLLOWS. Remove the empty
+     * top-level paragraph and leave the caret at the end of the block before
+     * it, so the reference names the line the request follows. The file does
+     * not change: an empty paragraph was never in it. A first-block or nested
+     * empty paragraph is left alone (there is no line before it, or the
+     * container needs it).
+     */
+    private collapseEmptyCaretParagraph(): void {
+        const { state } = this.view;
+        const $from = state.selection.$from;
+        const block = $from.parent;
+        if ($from.depth !== 1 || block.type.name !== "paragraph" || block.content.size !== 0) {
+            return;
+        }
+        if ($from.index(0) === 0) {
+            return;
+        }
+        const before = $from.before(1);
+        const tr = state.tr.delete(before, before + block.nodeSize);
+        tr.setSelection(Selection.near(tr.doc.resolve(before), -1));
+        this.view.dispatch(tr);
     }
 
     // ── Keyboard ─────────────────────────────────────────────────────────
@@ -558,11 +587,15 @@ class SlashMenuController {
             return;
         }
 
-        // Space commits ONLY a highlighted argument-taking row; for every
-        // other row it stays a filter character (multi-word queries).
+        // Space commits ONLY a highlighted argument-taking row, and only once
+        // the query names it: its id or one of its keywords in full. A one-
+        // letter query that happens to rank it first (`/a`) must not turn into
+        // `/ai ` under the user's fingers; there Space stays what it is for
+        // every other row, a filter character (multi-word queries).
         if (e.key === " " && !this.argumentItem && !e.ctrlKey && !e.metaKey && !e.altKey) {
             const active = this.menu.activeItem();
-            if (active?.takesArgument) {
+            const query = this.matchContext()?.query.toLowerCase() ?? "";
+            if (active?.takesArgument && (query === active.id || active.keywords.includes(query))) {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();

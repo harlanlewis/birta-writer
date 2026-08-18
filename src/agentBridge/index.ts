@@ -12,7 +12,7 @@
  * source onto one agent-ingestion surface:
  *
  *   - referenceCommand — universal clipboard reference (every agent, explicit)
- *   - askAgent         — one-shot hand-off of a caret request to the user's
+ *   - askAgent         - one-shot hand-off of a caret request to the user's
  *                        agent (terminal, Chat view, or clipboard; MAR-371)
  *   - languageModelTool — Copilot agent mode can pull it (VS Code ≥ 1.95)
  *   - publicApi        — any cooperating extension can read it

@@ -211,7 +211,6 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
             visible = [argumentItem];
             list.textContent = "";
             const row = renderRow(argumentItem, 0, t("Enter to send"));
-            row.classList.add("slash-menu-item--argument");
             rows = [row];
             list.appendChild(row);
             root.style.display = "";
