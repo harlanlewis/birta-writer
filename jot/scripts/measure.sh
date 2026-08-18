@@ -5,7 +5,9 @@
 # Accessibility grant):
 #
 #   SIGUSR1  toggle the panel, as the hotkey does
-#   SIGURG   post <scratchpad dir>/.debug-message.json to the page
+#   SIGURG   post <scratchpad dir>/.debug-message.json to the page, or, when
+#            its type is __jotKeys, type its keys into the panel as NSEvents
+#            (real WebKit editing, the engine the panel renders in)
 #
 # and stages the cold-recovery path by kill -9 on the WebContent helper that
 # appeared when the app launched (WebKit's helpers are not children of the
@@ -20,7 +22,8 @@
 # and it checks the persistence loop: inserted text reaches the scratchpad
 # file after a hide, and survives the content-process kill.
 #
-# Usage: bash jot/scripts/measure.sh [--keep] (keep leaves the app running)
+# Usage: bash jot/scripts/measure.sh [--keep] (keep leaves the app running,
+# bound to the throwaway scratchpad it created)
 #
 # A figure this prints is a reading, not a record: quote it from a run on an
 # idle machine, never from a doc.
@@ -30,7 +33,10 @@ cd "$(dirname "$0")/../.."
 APP="jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
 [ -x "$APP" ] || { echo "build first: bash jot/scripts/build-app.sh" >&2; exit 1; }
 
-SCRATCH_DIR="$HOME/Library/Application Support/Birta Jot"
+# A throwaway scratchpad: the probes below type into it, and the user's real
+# one is never touched.
+SCRATCH_DIR="$(mktemp -d -t jot-measure-scratch)"
+export BIRTA_JOT_SCRATCHPAD="$SCRATCH_DIR/Scratchpad.md"
 LOG="$(mktemp -t jot-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
@@ -38,7 +44,7 @@ if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
 WC_BEFORE="$(pgrep -f com.apple.WebKit | sort || true)"
 BIRTA_JOT_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
-trap '[ $KEEP = 1 ] || kill $PID 2>/dev/null || true' EXIT
+trap '[ $KEEP = 1 ] || kill $PID 2>/dev/null || true; rm -rf "$SCRATCH_DIR"' EXIT
 
 wait_for() { # wait_for <mark> <timeout-s>
     local n=0
@@ -60,7 +66,6 @@ echo "hotkey→caret-ready   $(delta "$(last hotkey)" "$(last caret-ready)") ms 
 
 # Persistence: insert text through the test-only page command, hide (which
 # flushes), and read the file.
-mkdir -p "$SCRATCH_DIR"
 STAMP="probe-$(date +%s)"
 printf '{"type":"__testInsertText","text":"%s\\n"}' "$STAMP" > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 0.5
@@ -70,6 +75,21 @@ if grep -q "$STAMP" "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null; then
     echo "persistence          ok: '$STAMP' is in Scratchpad.md after hide"
 else
     echo "persistence          FAILED: '$STAMP' not in Scratchpad.md" >&2; cat "$LOG" >&2; exit 1
+fi
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
+# Real typing: Return must move the caret to the new paragraph and the next
+# characters must land there. Playwright's WebKit build gets this wrong through
+# its own key injection (text stays on the previous line), the app's NSEvent
+# path does not, so this is the check that speaks for the panel.
+kill -USR1 $PID; wait_for visible 5; sleep 0.5
+printf '{"type":"__jotKeys","keys":["End","Enter","Enter","N","e","x","t","Enter","l","i","n","e"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2
+kill -USR1 $PID; sleep 1.5
+if grep -q "^Next$" "$SCRATCH_DIR/Scratchpad.md" && grep -q "^line$" "$SCRATCH_DIR/Scratchpad.md"; then
+    echo "typing               ok: Return moves to a new paragraph in the panel's WebKit"
+else
+    echo "typing               FAILED: expected 'Next' and 'line' on their own lines:" >&2; cat "$SCRATCH_DIR/Scratchpad.md" >&2; exit 1
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 

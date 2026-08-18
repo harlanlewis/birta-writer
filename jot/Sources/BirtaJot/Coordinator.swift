@@ -111,15 +111,71 @@ final class Coordinator {
     }
 
     /// SIGURG: post the JSON object in `<scratchpad dir>/.debug-message.json`
-    /// to the page verbatim (the test-only `__testInsertText` is the use).
+    /// to the page verbatim (the test-only `__testInsertText` is the use), or,
+    /// for `{"type":"__jotKeys","keys":[...]}`, synthesize those keystrokes
+    /// into the panel as NSEvents. The keys path is what makes real WebKit
+    /// typing reachable from a script without an Accessibility grant: the
+    /// events are the app's own, delivered through the same responder chain a
+    /// keyboard uses, so `Return` and the characters after it exercise the
+    /// engine the panel really renders in.
     private func postDebugMessageFile() {
         let file = Prefs.scratchpadURL.deletingLastPathComponent().appendingPathComponent(".debug-message.json")
         guard let json = try? String(contentsOf: file, encoding: .utf8) else {
             measure.trace("no debug message at \(file.path)")
             return
         }
+        if let data = json.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           obj["type"] as? String == "__jotKeys",
+           let keys = obj["keys"] as? [String] {
+            measure.mark("debug-keys")
+            typeKeys(keys)
+            return
+        }
         measure.mark("debug-post")
         host.send(.raw(json: json))
+    }
+
+    /// Deliver key events to the panel as a keyboard would. Single characters
+    /// type themselves; "Enter", "End", "Home", "Backspace", "Escape",
+    /// "ArrowUp/Down/Left/Right", "Tab" and "Space" are named keys.
+    private func typeKeys(_ keys: [String]) {
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeFirstResponder(host.webView)
+        var delay: TimeInterval = 0
+        for key in keys {
+            let (chars, code): (String, UInt16) = {
+                switch key {
+                case "Enter": return ("\r", 36)
+                case "End": return ("\u{F72B}", 119)
+                case "Home": return ("\u{F729}", 115)
+                case "Backspace": return ("\u{7F}", 51)
+                case "Escape": return ("\u{1B}", 53)
+                case "Tab": return ("\t", 48)
+                case "Space": return (" ", 49)
+                case "ArrowUp": return ("\u{F700}", 126)
+                case "ArrowDown": return ("\u{F701}", 125)
+                case "ArrowLeft": return ("\u{F702}", 123)
+                case "ArrowRight": return ("\u{F703}", 124)
+                default:
+                    let code = (try? HotkeyCombo.parse("cmd+\(key.lowercased())").get().keyCode) ?? 0
+                    return (key, UInt16(code))
+                }
+            }()
+            let at = delay
+            delay += 0.06
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
+                guard let self else { return }
+                for type in [NSEvent.EventType.keyDown, .keyUp] {
+                    if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                 windowNumber: self.panel.windowNumber, context: nil, characters: chars,
+                                                 charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                        self.panel.sendEvent(ev)
+                    }
+                }
+            }
+        }
     }
 
     private func loadPage() {

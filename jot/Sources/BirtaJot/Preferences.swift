@@ -33,8 +33,11 @@ enum Prefs {
     }
 
     /// The scratchpad file. Default: ~/Library/Application Support/Birta Jot/Scratchpad.md.
+    /// `BIRTA_JOT_SCRATCHPAD` overrides it for a run, so jot/scripts/measure.sh
+    /// can type into a throwaway file and never touch the real one.
     static var scratchpadURL: URL {
         get {
+            if let env = ProcessInfo.processInfo.environment["BIRTA_JOT_SCRATCHPAD"], !env.isEmpty { return URL(fileURLWithPath: env) }
             if let p = d.string(forKey: Key.scratchpadPath), !p.isEmpty { return URL(fileURLWithPath: p) }
             return defaultScratchpadURL
         }
