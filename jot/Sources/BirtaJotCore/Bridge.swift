@@ -5,9 +5,29 @@ import Foundation
 /// outbound); Jot speaks the subset a scratchpad needs and files everything
 /// else under `.other`, which is logged and never fatal.
 ///
-/// Inbound messages arrive as JSON text (the shim in the page stringifies
-/// before `webkit.messageHandlers.birta.postMessage`, so typed arrays and
-/// other unmarshallable values are already replaced by null).
+/// Inbound messages arrive as JSON text: the shim in the page stringifies
+/// before `webkit.messageHandlers.birta.postMessage`, so what reaches Swift is
+/// always a JSON object. Bytes are the one payload JSON cannot carry directly;
+/// see `BinaryPayload` below for the shape they take instead.
+
+/// How binary data crosses the bridge.
+///
+/// `WKScriptMessage` cannot marshal a typed array and JSON has no bytes, so a
+/// payload that is bytes (today: the image an `uploadImage` carries) is wrapped
+/// as `{"$bytes": "<base64>"}` by the page-side shim and read back here. Both
+/// halves are in this one type so the key is named once rather than spelled in
+/// two languages that cannot check each other.
+public enum BinaryPayload {
+    public static let key = "$bytes"
+
+    /// The bytes of a `{"$bytes": ...}` wrapper, or nil for anything else.
+    public static func data(from value: Any?) -> Data? {
+        guard let dict = value as? [String: Any],
+              let encoded = dict[key] as? String else { return nil }
+        return Data(base64Encoded: encoded)
+    }
+}
+
 public enum WebviewMessage: Equatable {
     case ready
     case update(content: String, baseSyncVersion: Int, seq: Int)
@@ -22,7 +42,15 @@ public enum WebviewMessage: Equatable {
     case setContentWidth(String)
     case focusState(Bool)
     case crash(message: String, source: String)
-    case uploadImage(id: String)
+    case uploadImage(id: String, data: Data, mimeType: String, altText: String)
+    /// Link-card metadata for a link sitting alone on its own line.
+    case resolveLinkCard(id: String, url: String)
+    /// The title of a bare URL just pasted, so its link text can be upgraded.
+    case unfurlUrl(id: String, url: String)
+    /// Embed-card caption for a recognized provider. Jot answers it with
+    /// nothing (see `Coordinator`), but must answer: the page keeps a pending
+    /// request until it hears back.
+    case resolveEmbedMeta(id: String, url: String)
     case perfMarks(json: String)
     case other(type: String)
 
@@ -34,6 +62,7 @@ public enum WebviewMessage: Equatable {
         func str(_ k: String) -> String? { dict[k] as? String }
         func int(_ k: String) -> Int? { (dict[k] as? NSNumber)?.intValue }
         func bool(_ k: String) -> Bool? { dict[k] as? Bool }
+        func bytes(_ k: String) -> Data? { BinaryPayload.data(from: dict[k]) }
         func json(_ k: String) -> String? {
             guard let v = dict[k], JSONSerialization.isValidJSONObject(v),
                   let d = try? JSONSerialization.data(withJSONObject: v, options: [.sortedKeys]) else { return nil }
@@ -62,7 +91,27 @@ public enum WebviewMessage: Equatable {
         case "setContentWidth": return str("mode").map { .setContentWidth($0) } ?? .other(type: type)
         case "focusState": return bool("focused").map { .focusState($0) } ?? .other(type: type)
         case "crash": return .crash(message: str("message") ?? "", source: str("source") ?? "")
-        case "uploadImage": return str("id").map { .uploadImage(id: $0) } ?? .other(type: type)
+        case "uploadImage":
+            // No bytes is `.other`, not an upload with an empty payload: the
+            // shell must answer an upload it cannot fulfil with an error the
+            // user sees, and silently saving nothing is the one outcome that
+            // looks like success.
+            guard let id = str("id"), let data = bytes("data"), !data.isEmpty else {
+                return .other(type: type)
+            }
+            return .uploadImage(id: id,
+                                data: data,
+                                mimeType: str("mimeType") ?? "",
+                                altText: str("altText") ?? "")
+        case "resolveLinkCard":
+            guard let id = str("id"), let u = str("url") else { return .other(type: type) }
+            return .resolveLinkCard(id: id, url: u)
+        case "unfurlUrl":
+            guard let id = str("id"), let u = str("url") else { return .other(type: type) }
+            return .unfurlUrl(id: id, url: u)
+        case "resolveEmbedMeta":
+            guard let id = str("id"), let u = str("url") else { return .other(type: type) }
+            return .resolveEmbedMeta(id: id, url: u)
         case "__perfMarks": return .perfMarks(json: json("marks") ?? "{}")
         default: return .other(type: type)
         }
@@ -76,7 +125,19 @@ public enum HostMessage: Equatable {
     case externalUpdate(content: String, syncVersion: Int)
     case flushSave(id: String)
     case flushAck(id: String, applied: Bool)
+    /// Reply to `uploadImage`: `url` is what goes INTO the document, so it is
+    /// the store's relative reference rather than a path on this machine.
+    case imageUploaded(id: String, url: String)
     case imageUploadError(id: String, error: String)
+    /// Reply to `resolveLinkCard`. A nil title AND description is sent as a
+    /// null card, which is the contract's "nothing usable, leave the link
+    /// alone" rather than a card with empty fields.
+    case linkCardResult(id: String, url: String, title: String?, description: String?)
+    /// Reply to `unfurlUrl`. A nil title means the webview keeps the bare
+    /// `[url](url)` it already inserted, which is the offline-safe default.
+    case unfurlResult(id: String, url: String, title: String?)
+    /// Reply to `resolveEmbedMeta`.
+    case embedMetaResult(id: String, url: String, title: String?)
     case toolbarConfig(json: String)
     case getPerfMarks(id: String)
     /// Run one editor command by id (shared/editorCommands.ts), the way a
@@ -103,8 +164,23 @@ public enum HostMessage: Equatable {
             return ["type": "flushSave", "id": id]
         case let .flushAck(id, applied):
             return ["type": "flushAck", "id": id, "applied": applied]
+        case let .imageUploaded(id, url):
+            return ["type": "imageUploaded", "id": id, "url": url]
         case let .imageUploadError(id, error):
             return ["type": "imageUploadError", "id": id, "error": error]
+        case let .linkCardResult(id, url, title, description):
+            var card: Any = NSNull()
+            if title != nil || description != nil {
+                var fields: [String: Any] = [:]
+                fields["title"] = title ?? NSNull()
+                fields["description"] = description ?? NSNull()
+                card = fields
+            }
+            return ["type": "linkCardResult", "id": id, "url": url, "card": card]
+        case let .unfurlResult(id, url, title):
+            return ["type": "unfurlResult", "id": id, "url": url, "title": title ?? NSNull()]
+        case let .embedMetaResult(id, url, title):
+            return ["type": "embedMetaResult", "id": id, "url": url, "title": title ?? NSNull()]
         case let .toolbarConfig(json):
             let config = (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
             return ["type": "toolbarConfig", "config": config]
@@ -164,13 +240,20 @@ public struct BootConfig: Equatable {
             "fontSize": fontSize,
             "contentWidth": contentWidth,
             "network": networkEnabled,
-            // Embeds render in an iframe the page loads itself; link cards
-            // and paste-unfurl titles are fetched by the HOST (resolveLinkCard,
-            // unfurlUrl), which Jot does not answer yet, so they stay off
-            // whatever the network switch says.
+            // All three ride the one network switch. An embed renders in an
+            // iframe the page loads itself; a link card and a pasted link's
+            // title are fetched by the HOST, which the shell now answers
+            // (`Coordinator.resolveLinkCard` and `unfurl`, under the SSRF
+            // guard and the byte and time bounds in `PageMetadataFetcher`).
+            //
+            // `pasteUnfurlAutoApply` is deliberately absent, so it keeps its
+            // default of false: a fetched title arrives as an offer at the
+            // link and nothing reaches the file until the user takes it. That
+            // is what keeps this rung 1 "a URL you typed" rather than
+            // something that writes on its own (docs/NETWORK_POSTURE.md).
             "embedsEnabled": networkEnabled,
-            "linkCardsEnabled": false,
-            "pasteUnfurl": false,
+            "linkCardsEnabled": networkEnabled,
+            "pasteUnfurl": networkEnabled,
             "calcEnabled": true,
             "calcBlocksEnabled": true,
             "hostCapabilities": hostCapabilities,
@@ -184,9 +267,15 @@ public struct BootConfig: Equatable {
     }
 
     /// The document-start user script: `__i18n`, the `acquireVsCodeApi` shim
-    /// and the initial theme class. Typed arrays are replaced by null before
-    /// posting because `WKScriptMessage` cannot marshal them (`uploadImage`
-    /// carries one; the shell answers it with an error).
+    /// and the initial theme class.
+    ///
+    /// The replacer is the binary seam. A message carrying image bytes
+    /// (`uploadImage`) holds a `Uint8Array`, which `JSON.stringify` would turn
+    /// into an object keyed by index ("0", "1", ...) and which the message
+    /// handler cannot marshal at all, so it is encoded as base64 under
+    /// `$bytes`. Chunked rather than one `apply` over the whole array, because
+    /// `String.fromCharCode.apply` on a multi-megabyte screenshot exceeds the
+    /// argument limit and throws.
     public func userScript(themeClass: String) -> String {
         let i18n = jsonText(i18nObject())
         let state = viewStateJSON ?? "null"
@@ -197,8 +286,24 @@ public struct BootConfig: Equatable {
           document.addEventListener("DOMContentLoaded", function () {
             document.body.classList.add(\(jsonText(themeClass)));
           });
+          function toBase64(bytes) {
+            var CHUNK = 8192;
+            var parts = [];
+            // The comparison is written the long way round on purpose: this
+            // script contains no angle bracket, so it stays safe to inline
+            // into HTML, and BridgeTests pins that.
+            for (var i = 0; bytes.length > i; i += CHUNK) {
+              parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
+            }
+            return btoa(parts.join(""));
+          }
           function replacer(key, value) {
-            if (value && (ArrayBuffer.isView(value) || value instanceof ArrayBuffer)) { return null; }
+            if (value instanceof ArrayBuffer) {
+              return { "\(BinaryPayload.key)": toBase64(new Uint8Array(value)) };
+            }
+            if (value && ArrayBuffer.isView(value)) {
+              return { "\(BinaryPayload.key)": toBase64(new Uint8Array(value.buffer, value.byteOffset, value.byteLength)) };
+            }
             return value;
           }
           window.acquireVsCodeApi = function () {

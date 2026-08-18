@@ -31,12 +31,29 @@
 import { isIP } from "node:net";
 import { lookup as dnsLookup } from "node:dns/promises";
 
-/** IPv4 helper: the four octets, or null when `ip` is not dotted-quad. */
+/**
+ * IPv4 helper: the four octets, or null when `ip` is not dotted-quad.
+ *
+ * Digits only, deliberately. `Number()` accepts a great deal that is not an
+ * octet: `Number("0x10")` is 16, `Number("1e2")` is 100, `Number(" 10")` is 10,
+ * and `Number("")` is 0, so `1.2.3.` parsed as `1.2.3.0`. Each of those made
+ * `isPrivateIp` answer FALSE, meaning publicly routable, for a string it did
+ * not understand, which is the opposite of the fail-closed default this guard
+ * documents. Not reachable through `isPubliclyRoutableUrl`, whose `isIP` check
+ * rejects them first, but the classifier is exported and its contract is what
+ * callers read.
+ */
 function v4Octets(ip: string): number[] | null {
     const parts = ip.split(".");
     if (parts.length !== 4) { return null; }
-    const nums = parts.map((p) => Number(p));
-    return nums.every((n) => Number.isInteger(n) && n >= 0 && n <= 255) ? nums : null;
+    const nums: number[] = [];
+    for (const part of parts) {
+        if (!/^\d+$/.test(part)) { return null; }
+        const n = Number(part);
+        if (n > 255) { return null; }
+        nums.push(n);
+    }
+    return nums;
 }
 
 /**

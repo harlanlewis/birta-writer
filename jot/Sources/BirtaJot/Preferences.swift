@@ -114,7 +114,7 @@ enum Prefs {
             // Swift cannot import it, so this literal restates it and
             // shared/__tests__/hostCapabilities.test.ts parses this file and
             // fails when the two disagree.
-            hostCapabilities: [],
+            hostCapabilities: ["imageUpload"],
             viewStateJSON: viewStateJSON
         )
     }
@@ -170,7 +170,7 @@ final class PreferencesWindowController: NSWindowController, NSTextFieldDelegate
             [NSTextField(labelWithString: "Scratchpad file:"), row(scratchpadLabel, chooseScratch)],
             [documentCheck, row(documentLabel, chooseDoc)],
             [NSView(), networkCheck],
-            [NSView(), NSTextField(wrappingLabelWithString: "Off by default. When on, an embed loads from its provider. Link cards and pasted-link titles are not fetched by Jot yet.")],
+            [NSView(), NSTextField(wrappingLabelWithString: "Off by default. When on: an embed loads from its provider, a link on its own line can show the page's title and description as a card, and a pasted link offers you its title. Only the page a link names is contacted, and a fetched title is an offer until you take it.")],
         ])
         grid.rowSpacing = 10
         grid.columnSpacing = 12

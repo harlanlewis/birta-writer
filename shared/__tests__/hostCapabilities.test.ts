@@ -51,9 +51,14 @@ describe("hostHas", () => {
 });
 
 describe("HOST_PROFILES", () => {
-    it("vscode should declare everything and jot nothing", () => {
+    it("vscode should declare everything, and jot only what its shell provides", () => {
         expect([...HOST_PROFILES.vscode].sort()).toEqual([...ALL_HOST_CAPABILITIES].sort());
-        expect(HOST_PROFILES.jot).toEqual([]);
+        // Jot's shell saves a pasted image beside the document and serves it
+        // back over its own scheme, so it owns an image store. It provides
+        // none of the others: there is no text editor to switch to, no
+        // settings or keybindings UI, no proofreading engine, no read-only
+        // owner, no sidebar, and no agent.
+        expect(HOST_PROFILES.jot).toEqual(["imageUpload"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {
