@@ -41,6 +41,10 @@ releases/**
 # with two full copies of the bundle (318 files / 30 MB vs 114 / 10 MB).
 dist-base/**
 dist-head/**
+# The --vscode-* palette for hosts that are not VS Code (jot/, the e2e
+# harness). Inside the extension the workbench injects the real palette, so
+# this asset has no reader there.
+dist/hostPalette.css
 .gitignore
 .editorconfig
 .prettierignore

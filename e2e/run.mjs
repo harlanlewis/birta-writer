@@ -9,6 +9,10 @@
  *
  * Requires the playwright devDependency plus a browser install:
  *   npx playwright install chromium
+ *
+ * BIRTA_E2E_BROWSER=webkit runs the same suites in Playwright's WebKit build
+ * (npx playwright install webkit), the engine the Jot shell (jot/) renders in;
+ * VS Code is Chromium, so this is the only check a WebKit-only gap can fail.
  */
 import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
@@ -72,7 +76,13 @@ try {
     process.exit(2);
 }
 
-const { chromium } = await loadPlaywright();
+const BROWSER = process.env.BIRTA_E2E_BROWSER || "chromium";
+if (BROWSER !== "chromium" && BROWSER !== "webkit") {
+    console.error(`BIRTA_E2E_BROWSER must be "chromium" or "webkit", got "${BROWSER}".`);
+    process.exit(2);
+}
+const playwright = await loadPlaywright();
+const browserType = playwright[BROWSER];
 const only = process.argv[2];
 const dirs = (await readdir(e2eDir, { withFileTypes: true }))
     .filter((d) => d.isDirectory() && (!only || d.name === only))
@@ -109,7 +119,7 @@ for (const suite of suites) {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
-    const browser = await chromium.launch();
+    const browser = await browserType.launch();
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
     const pageErrors = [];
     page.on("pageerror", (e) => pageErrors.push(String(e)));

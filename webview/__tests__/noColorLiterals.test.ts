@@ -67,9 +67,17 @@ const NON_COLOR_VARS = new Set([
     "--vscode-editor-font-size",
 ]);
 
+/**
+ * The one stylesheet whose job IS literals: the palette a non-VS-Code host
+ * injects in place of the workbench's --vscode-* variables. Inside VS Code it
+ * is never loaded (hostPalette.test.ts pins that), so it is not a fallback and
+ * cannot mask a theme. Its own guard checks its coverage.
+ */
+const HOST_PALETTE = "hostPalette.css";
+
 function collectFiles(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
-        if (name === "__tests__" || name === "__mocks__") continue;
+        if (name === "__tests__" || name === "__mocks__" || name === HOST_PALETTE) continue;
         const full = join(dir, name);
         if (statSync(full).isDirectory()) collectFiles(full, out);
         else if (/\.(ts|css)$/.test(name)) out.push(full);
