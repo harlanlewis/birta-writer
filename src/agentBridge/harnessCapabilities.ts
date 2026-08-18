@@ -111,11 +111,63 @@ export function harnessName(template: string): string {
 /** What a CLI may call the model flag. */
 export const MODEL_FLAGS = ["--model"] as const;
 /**
- * What a CLI may call the reasoning-effort flag. Claude Code says `--effort`
- * and pi says `--thinking`; Codex says neither, and exposes it only as a
- * config override, which is why it correctly gets no effort control.
+ * What a CLI may call the reasoning-effort flag, for the case where it names
+ * itself but enumerates nothing. Both entries are VERIFIED against installed
+ * binaries: Claude Code says `--effort`, pi says `--thinking`. Nothing
+ * speculative belongs here; an unverified guess is the same n-of-1 error as
+ * a parser written against one CLI, and `effortFlagFromValues` below is the
+ * path that does not need the name at all.
  */
-export const EFFORT_FLAGS = ["--effort", "--thinking", "--reasoning-effort"] as const;
+export const EFFORT_FLAGS = ["--effort", "--thinking"] as const;
+
+/**
+ * Every long flag the help documents, with its paragraph.
+ *
+ * The enumeration is what lets a control be found by the SHAPE of what it
+ * accepts rather than by its name, which is the difference between a list
+ * that has to be maintained per vendor and one that does not.
+ */
+export function allFlags(help: string): Array<{ flag: string; paragraph: string }> {
+    const out: Array<{ flag: string; paragraph: string }> = [];
+    for (const m of help.matchAll(/^[ \t]+(?:-[^\s,]+,[ \t]*)*(--[\w-]+)[ =]<[^>]+>/gm)) {
+        const flag = m[1]!;
+        if (out.some((f) => f.flag === flag)) { continue; }
+        const paragraph = helpParagraph(help, flag);
+        if (paragraph !== null) { out.push({ flag, paragraph }); }
+    }
+    return out;
+}
+
+/** A scale is an effort scale when it offers at least these three rungs. */
+const EFFORT_RUNGS = ["low", "medium", "high"];
+
+/**
+ * The flag whose documented values look like a reasoning scale, whatever it
+ * is called.
+ *
+ * This is the mechanism; the name list is the fallback. Claude Code's
+ * `--effort` and pi's `--thinking` are the same control under different
+ * words, and both enumerate low/medium/high among their rungs, so the values
+ * identify it where the name cannot. A harness inventing a third name for it
+ * is then found on the day it ships rather than on the day someone adds a
+ * string here.
+ *
+ * The three rungs are required TOGETHER because one alone is not evidence: a
+ * `--compression` or `--quality` flag might offer `high`, but a low/medium/
+ * high triple on a coding agent's flag is the reasoning knob. A false
+ * positive costs a wrong control rather than a wrong command, since the
+ * value still comes from the flag's own documented set.
+ */
+export function effortFlagFromValues(
+    help: string,
+): { flag: string; paragraph: string } | null {
+    for (const candidate of allFlags(help)) {
+        if (MODEL_FLAGS.includes(candidate.flag as (typeof MODEL_FLAGS)[number])) { continue; }
+        const values = enumeratedValues(candidate.paragraph);
+        if (EFFORT_RUNGS.every((rung) => values.includes(rung))) { return candidate; }
+    }
+    return null;
+}
 
 /**
  * Values a paragraph enumerates as `(a, b, c)`. Three or more, lowercase
@@ -152,7 +204,10 @@ export function parseHarnessHelp(
     help: string,
 ): HarnessCapabilities {
     const model = findFlag(help, MODEL_FLAGS);
-    const effort = findFlag(help, EFFORT_FLAGS);
+    // Shape first, name second. A flag documenting a low/medium/high scale is
+    // the reasoning control whatever it is called, and only a flag that names
+    // itself without enumerating anything needs the list.
+    const effort = effortFlagFromValues(help) ?? findFlag(help, EFFORT_FLAGS);
     // An enumeration first, examples second. Claude Code's model paragraph
     // has only examples, but that is one data point rather than a rule, and
     // reading a harness that DOES list its models as if it had not would

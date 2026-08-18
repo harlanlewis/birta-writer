@@ -15,6 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+    allFlags,
     enumeratedValues,
     helpParagraph,
     parseHarnessHelp,
@@ -304,6 +305,56 @@ Options:
         expect(all.map((c) => c.supportsModel)).toEqual([true, true, true]);
         expect(all.map((c) => c.supportsEffort)).toEqual([true, false, true]);
         expect(all.map((c) => c.effortFlag)).toEqual(["--effort", undefined, "--thinking"]);
+    });
+
+    it("a reasoning flag under a name nobody listed should still be found", () => {
+        // The point of shape discovery: a harness inventing a third word for
+        // this is found on the day it ships, not on the day someone adds a
+        // string to EFFORT_FLAGS. Neither name below is in that list.
+        const invented = `Usage: newagent [options]
+
+Options:
+  --model <model>                Which model
+  --brainpower <level>           How hard to think (low, medium, high, ludicrous)
+`;
+        const caps = parseHarnessHelp("newagent", "1.0", invented);
+
+        expect(caps.supportsEffort).toBe(true);
+        expect(caps.effortFlag).toBe("--brainpower");
+        expect(caps.efforts).toEqual(["low", "medium", "high", "ludicrous"]);
+    });
+
+    it("a flag offering only one rung should not be read as a reasoning scale", () => {
+        // `high` alone is not evidence. The three rungs are required together
+        // because unrelated flags do use one of the words.
+        const noisy = `Usage: other [options]
+
+Options:
+  --model <model>                Which model
+  --quality <q>                  Output quality (draft, high)
+  --compression <c>              Compression (none, high, extreme)
+`;
+
+        expect(parseHarnessHelp("other", "1", noisy).supportsEffort).toBe(false);
+    });
+
+    it("across three real CLIs the only rung-bearing flags should be the reasoning ones", () => {
+        // The false-positive check, run over real help rather than fixtures
+        // chosen to pass it. It also asserts what the sweep REACHED: a flag
+        // enumerator that found nothing would satisfy the first claim
+        // vacuously and report success having examined no flags at all.
+        for (const [help, expected, floor] of [
+            [CLAUDE_HELP, "--effort", 3],
+            [CODEX_HELP, undefined, 3],
+            [PI_HELP, "--thinking", 3],
+        ] as const) {
+            const flags = allFlags(help);
+            expect(flags.length).toBeGreaterThanOrEqual(floor);
+            const bearing = flags
+                .filter((f) => /\b(low|medium|high)\b/.test(f.paragraph))
+                .map((f) => f.flag);
+            expect(bearing).toEqual(expected === undefined ? [] : [expected]);
+        }
     });
 
     it("the examples should never be treated as the set of what exists", () => {
