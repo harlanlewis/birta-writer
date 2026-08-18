@@ -119,7 +119,7 @@ fi
 if [ "$WAS_RUNNING" = 1 ]; then
     echo "→ relaunching"
     open "$DEST"
-    echo "✓ Installed and running. The hotkey works again once the menu-bar pencil is back."
+    echo "✓ Installed and running. The hotkey works again once the menu-bar mark is back."
 else
     echo "✓ Installed to $DEST. It was not running, so nothing was launched: open it from Finder, or run 'open \"$DEST\"'."
 fi
