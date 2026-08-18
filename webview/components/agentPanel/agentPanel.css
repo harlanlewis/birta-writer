@@ -1,0 +1,158 @@
+/* The `/ai` advanced panel (components/agentPanel). Composes the chrome card
+   recipe rather than re-authoring one; everything local here is anatomy the
+   card has no opinion about. */
+
+.agent-panel {
+    position: fixed;
+    z-index: 1300;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(560px, calc(100vw - 32px));
+    padding: 10px;
+    /* The card recipe supplies ground, border and shadow. */
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
+}
+
+/* Drop target: the whole panel, so a file dragged anywhere over it lands. */
+.agent-panel--dropping {
+    outline: 2px dashed var(--vscode-focusBorder);
+    outline-offset: -2px;
+}
+
+.agent-panel-input {
+    width: 100%;
+    box-sizing: border-box;
+    resize: none;
+    border: none;
+    outline: none;
+    padding: 4px 2px;
+    background: transparent;
+    color: var(--vscode-input-foreground);
+    font-family: inherit;
+    font-size: var(--ui-fs-m);
+    line-height: 1.5;
+
+    &::placeholder {
+        color: var(--vscode-input-placeholderForeground);
+    }
+}
+
+/* ── Attachments ─────────────────────────────────────────── */
+
+.agent-panel-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* No row at all when nothing is attached, so the panel opens at its
+   smallest and grows only when it has something to show. */
+.agent-panel-chips--empty {
+    display: none;
+}
+
+.agent-panel-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 3px 3px 3px 6px;
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-m);
+    background: var(--vscode-toolbar-hoverBackground);
+    font-size: var(--ui-fs-xs);
+
+    img {
+        width: 28px;
+        height: 28px;
+        object-fit: cover;
+        border-radius: var(--ui-radius-s);
+    }
+}
+
+/* A write that failed says so on the chip rather than silently sending a
+   path to nothing (the send filters it out either way). */
+.agent-panel-chip--failed {
+    border-style: dashed;
+    opacity: 0.7;
+}
+
+.agent-panel-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The picker is driven by the paperclip button; it never shows itself. */
+.agent-panel-file-input {
+    display: none;
+}
+
+/* ── Controls row ────────────────────────────────────────── */
+
+.agent-panel-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* The model and effort buttons sit right of centre, next to Send, which is
+   where every composer in this shape puts what-will-run. */
+.agent-panel-spec {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.agent-panel-spec-btn {
+    padding: 2px 8px;
+    font-size: var(--ui-fs-xs);
+    color: var(--ui-menu-ink-dim);
+    border-radius: var(--ui-radius-m);
+}
+
+.agent-panel-menu {
+    position: absolute;
+    z-index: 1;
+    min-width: 180px;
+    padding: 4px;
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-m);
+    box-shadow: var(--ui-card-shadow);
+}
+
+.agent-panel-menu-row {
+    width: 100%;
+    text-align: left;
+    font-size: var(--ui-fs-s);
+}
+
+/* The current choice, marked the way the rest of the chrome marks one. */
+.agent-panel-menu-row--checked {
+    color: var(--vscode-focusBorder);
+}
+
+/* Free-text model entry, in place of the menu. Always reachable, because the
+   rows above are examples the harness's help happened to name and never the
+   set of models it accepts. */
+.agent-panel-menu-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-s);
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: inherit;
+    font-size: var(--ui-fs-s);
+
+    &::placeholder {
+        color: var(--vscode-input-placeholderForeground);
+    }
+}

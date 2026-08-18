@@ -19,6 +19,7 @@ import {
 } from "../plugins/slashMenu";
 import { runEditorCommand } from "../editorCommands";
 import { pendingRangePlugin } from "../plugins/pendingRange";
+import { slashArgumentHintPlugin } from "../plugins/slashArgumentHint";
 import { SLASH_MENU_DOM_ID, slashRowDomId } from "../components/slashMenu";
 import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
 
@@ -34,6 +35,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfmFidelity)
         .use(pendingRangePlugin)
+        .use(slashArgumentHintPlugin)
         .use(slashMenuPlugin)
         .create();
 }
@@ -462,6 +464,169 @@ describe("slash command menu plugin", () => {
  * character. `runCommand` is a plain spy here: `askAgent` only posts a
  * message, so there is nothing to observe in the document.
  */
+describe("the row's trailing slot", () => {
+    let editor: Editor;
+    let v: EditorView;
+
+    const rowSlot = (label: string): HTMLElement | null => {
+        const row = [...document.querySelectorAll(".slash-menu-item")]
+            .find((r) => r.querySelector(".slash-menu-item-label")?.textContent === label);
+        return row?.querySelector(".slash-menu-item-hint") ?? null;
+    };
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        editor = await makeEditor("");
+        v = view(editor);
+        placeCursorAtEndOfBlock(v, 0);
+        setSlashMenuHost({ runCommand: vi.fn() });
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    it("a row with no syntax should show its description, marked as prose", () => {
+        typeText(v, "/");
+
+        const slot = rowSlot("Mermaid Diagram");
+        expect(slot?.textContent).toBe("empty diagram");
+        expect(slot?.classList.contains("slash-menu-item-hint--detail")).toBe(true);
+    });
+
+    it("a row with syntax should keep the syntax, not the description", () => {
+        // Both would fit the slot; the syntax is the one worth the space,
+        // and the marker class is what keeps them visually distinct.
+        typeText(v, "/");
+
+        const slot = rowSlot("Bullet List");
+        expect(slot?.textContent).toBe("-");
+        expect(slot?.classList.contains("slash-menu-item-hint--detail")).toBe(false);
+    });
+
+    it("no row should carry both a syntax hint and a description", () => {
+        const both = SLASH_MENU_ITEMS.filter((i) => i.hint !== undefined && i.detail !== undefined);
+        expect(both.map((i) => i.id)).toEqual([]);
+    });
+
+    it("a description should say something the label does not", () => {
+        // The bar this field exists to hold: a note that restates the label
+        // spends the attention the useful ones need.
+        const described = SLASH_MENU_ITEMS.filter((i) => i.detail !== undefined);
+        expect(described.length).toBeGreaterThan(0);
+        for (const item of described) {
+            expect(item.detail!.toLowerCase()).not.toBe(item.label.toLowerCase());
+            expect(item.detail!.length).toBeLessThanOrEqual(24);
+        }
+    });
+});
+
+describe("the committed pill's caret hint", () => {
+    let editor: Editor;
+    let v: EditorView;
+
+    /** The hint is dispatched from a microtask, the syncQueryPill deferral. */
+    const settle = (): Promise<void> => Promise.resolve();
+    const hintText = (): string | null =>
+        document.querySelector(".md-slash-arg-hint")?.textContent ?? null;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        editor = await makeEditor("");
+        v = view(editor);
+        placeCursorAtEndOfBlock(v, 0);
+        setSlashMenuHost({
+            runCommand: vi.fn(),
+            argumentHint: (item) => (item.commandId === "askAgent"
+                ? { text: "edit with claude (Opus xHigh)", strong: "Opus xHigh", trailing: "press Enter for more options" }
+                : undefined),
+        });
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    it("committing the pill with nothing typed should show the host's hint", async () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        await settle();
+
+        expect(hintText()).toBe("edit with claude (Opus xHigh) (press Enter for more options)");
+    });
+
+    it("the hint should never become document text", async () => {
+        // A decoration that reached the document would serialize into the
+        // user's file, which is the whole reason this is a widget.
+        typeText(v, "/ai");
+        press(v, " ");
+        await settle();
+
+        expect(v.state.doc.textContent).toBe("/ai ");
+    });
+
+    it("one character of argument should remove it, and deleting back should restore it", async () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        await settle();
+        expect(hintText()).not.toBeNull();
+
+        typeText(v, "m");
+        await settle();
+        expect(hintText()).toBeNull();
+
+        // The question is unanswered again, so the prompt comes back.
+        v.dispatch(v.state.tr.delete(v.state.selection.from - 1, v.state.selection.from));
+        await settle();
+        expect(hintText()).toBe("edit with claude (Opus xHigh) (press Enter for more options)");
+    });
+
+    it("a space typed as the argument should count as typing, not as nothing", async () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        await settle();
+
+        typeText(v, " ");
+        await settle();
+
+        expect(hintText()).toBeNull();
+    });
+
+    it("closing the menu should take the hint with it", async () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        await settle();
+        expect(hintText()).not.toBeNull();
+
+        press(v, "Escape");
+        await settle();
+
+        expect(hintText()).toBeNull();
+    });
+
+    it("a host that offers no hint should fall back to the registry's own", async () => {
+        setSlashMenuHost({ runCommand: vi.fn() });
+        const ai = SLASH_MENU_ITEMS.find((i) => i.id === "ai");
+
+        typeText(v, "/ai");
+        press(v, " ");
+        await settle();
+
+        expect(ai?.argumentHint).toBeTruthy();
+        expect(hintText()).toBe(ai?.argumentHint);
+    });
+
+    it("a browsing menu with no pill committed should show no hint", async () => {
+        typeText(v, "/ai");
+        await settle();
+
+        expect(menuVisible()).toBe(true);
+        expect(hintText()).toBeNull();
+    });
+});
+
 describe("argument mode (takesArgument rows)", () => {
     let editor: Editor;
     let v: EditorView;
@@ -481,10 +646,33 @@ describe("argument mode (takesArgument rows)", () => {
         await editor.destroy();
     });
 
-    it("the registry should carry exactly one argument-taking row, and it should be /ai", () => {
+    it("the argument-taking rows should be the two Ask Agent entries", () => {
+        // Both take free text after the row; they differ only in what Enter
+        // does with it, which is send (`/ai`) or open the composer with it
+        // already in place (`/ai-advanced`).
         const rows = SLASH_MENU_ITEMS.filter((i) => i.takesArgument);
-        expect(rows.map((r) => r.id)).toEqual(["ai"]);
-        expect(rows[0]!.commandId).toBe("askAgent");
+        expect(rows.map((r) => r.id)).toEqual(["ai", "ai-advanced"]);
+        expect(rows.map((r) => r.commandId)).toEqual(["askAgent", "askAgentAdvanced"]);
+    });
+
+    it("every argument-taking row should be findable by its own id", () => {
+        // The filter matches labels and keywords and never ids, so a row
+        // whose id is not among its keywords cannot be reached by typing its
+        // own name: `/ai-advanced` matched nothing, the menu stayed hidden,
+        // and Space fell through as a literal space. The commit check reads
+        // the same list, so this one invariant covers both.
+        for (const row of SLASH_MENU_ITEMS.filter((i) => i.takesArgument)) {
+            expect(row.keywords, `${row.id} is not findable by its own id`).toContain(row.id);
+        }
+    });
+
+    it("every argument-taking row should carry a placeholder for its blank", () => {
+        // The invariant, rather than a list: a row that captures free text
+        // and says nothing about what goes in it is the gap this feature
+        // exists to close, and a new one must not reopen it.
+        for (const row of SLASH_MENU_ITEMS.filter((i) => i.takesArgument)) {
+            expect(row.argumentHint, `${row.id} has no argumentHint`).toBeTruthy();
+        }
     });
 
     it("typing /ai should rank Ask Agent first", () => {

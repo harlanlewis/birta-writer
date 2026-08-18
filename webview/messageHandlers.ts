@@ -55,6 +55,8 @@ import { handleLinkCardResult } from "./linkCardMeta";
 import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
+import { setAgentRoute } from "./agentRoute";
+import { resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -565,6 +567,19 @@ export function createMessageHandlers(
             // Same seam as proofreadConfig: the echo carries `visible`, and
             // focus mode hides the toolbar without writing it.
             topbarTb?.applyConfig(maskToolbarConfigUnderFocus(msg.config));
+        },
+        agentRoute(msg) {
+            // Display only: it feeds the `/ai` caret hint and nothing else.
+            setAgentRoute(msg.route);
+        },
+        agentCapabilities(msg) {
+            // What the harness's own --help says it accepts. Undefined means
+            // the probe found nothing, and the composer then offers no model
+            // or effort control rather than guessing at either.
+            setAgentCapabilities(msg.capabilities);
+        },
+        agentAttachmentSaved(msg) {
+            resolveAgentAttachment(msg.id, msg.path);
         },
         whatsNewUnread(msg) {
             setWhatsNewUnread(msg.unread);

@@ -99,6 +99,15 @@ interface SlashMenuItemBase {
     readonly badge?: string;
     /** Right-aligned markdown-shortcut hint — literal syntax, untranslated. */
     readonly hint?: string;
+    /**
+     * What the row inserts, in the trailing slot when there is no `hint` to
+     * put there — for the few rows whose label leaves a real question ("does
+     * Table ask me for a size?"). Deliberately not on every row: a note on
+     * Bold spends the attention the useful ones need, and the slot is scanned.
+     * Never shown next to a `hint`; the two answer different questions and
+     * the syntax is the one worth the space.
+     */
+    readonly detail?: string;
     /** Lowercase aliases the filter matches in addition to the label. */
     readonly keywords: readonly string[];
     /**
@@ -125,6 +134,15 @@ interface SlashMenuItemBase {
      * which multi-word queries ("delete table") depend on.
      */
     readonly takesArgument?: true;
+    /**
+     * `takesArgument` rows only: the placeholder shown at the caret once the
+     * pill is committed and nothing has been typed after it, naming what
+     * goes in the blank. Static, and the floor rather than the whole answer —
+     * a host that knows more (what `/ai` is actually wired to) overrides it
+     * through `SlashMenuHost.argumentHint`, and this is what shows when it
+     * does not.
+     */
+    readonly argumentHint?: string;
 }
 
 /**
@@ -169,7 +187,7 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "taskList", group: "lists", label: t("Task List"), icon: IconCheckSquare, hint: "[ ]", keywords: ["todo", "checkbox", "check", "list"], commandId: "toggleTaskList" },
     // ── Insert: everything you add — containers, embeds, references, dividers.
     // (Not "Blocks": every node is a block; this names what you DO with the row.) ──
-    { id: "table", group: "insert", label: t("Table"), icon: IconTable, keywords: ["table", "grid", "rows", "columns"], commandId: "insertTable" },
+    { id: "table", group: "insert", label: t("Table"), icon: IconTable, keywords: ["table", "grid", "rows", "columns"], commandId: "insertTable", detail: t("3 by 3") },
     { id: "image", group: "insert", label: t("Image"), icon: IconImage, hint: "![]", keywords: ["image", "picture", "photo", "figure"], commandId: "insertImage" },
     { id: "codeBlock", group: "insert", label: t("Code Block"), icon: IconTerminal, hint: "```", keywords: ["code", "fence", "snippet", "pre"], commandId: "insertCodeBlock" },
     { id: "blockquote", group: "insert", label: t("Blockquote"), icon: IconQuote, hint: ">", keywords: ["quote", "cite"], commandId: "toggleBlockquote" },
@@ -186,7 +204,7 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "callout-important", group: "insert", label: t("Important"), icon: CALLOUT_ICONS.important, keywords: ["important", "callout", "admonition"], commandId: "insertCallout", args: "important", searchOnly: true },
     { id: "callout-warning", group: "insert", label: t("Warning"), icon: CALLOUT_ICONS.warning, keywords: ["warning", "attention", "callout", "admonition", "alert"], commandId: "insertCallout", args: "warning", searchOnly: true },
     { id: "callout-caution", group: "insert", label: t("Caution"), icon: CALLOUT_ICONS.caution, keywords: ["caution", "callout", "admonition", "alert"], commandId: "insertCallout", args: "caution", searchOnly: true },
-    { id: "mermaid", group: "insert", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid" },
+    { id: "mermaid", group: "insert", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid", detail: t("empty diagram") },
     // Inline math is a real node; a math BLOCK is a LaTeX-language code block
     // (same mechanism as Mermaid), otherwise reachable only by typing "$$ ".
     { id: "math", group: "insert", label: t("Inline Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula", "inline"], commandId: "insertMath" },
@@ -235,7 +253,17 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     // routes the line per `birta.agent.command`. Enter straight on the row
     // sends no argument, and the extension asks for the request instead.
     // Search-only, like the rest of the parity rows: `/ai` is the gesture.
-    { id: "ai", group: "actions", label: t("Ask Agent"), icon: IconAgentChat, keywords: ["ai", "agent", "ask", "prompt", "llm", "assistant", "claude", "codex", "copilot", "chat"], commandId: "askAgent", takesArgument: true, searchOnly: true },
+    { id: "ai", group: "actions", label: t("Ask Agent"), icon: IconAgentChat, keywords: ["ai", "agent", "ask", "prompt", "llm", "assistant", "claude", "codex", "copilot", "chat"], commandId: "askAgent", takesArgument: true, searchOnly: true, argumentHint: t("your request") },
+    // The same hand-off with a composer in front of it: files, and the model
+    // and effort for this one request. Its own row rather than a modifier on
+    // the one above, so `/ai-advanced <request>` opens the panel with the
+    // text already in it and the fast path stays exactly one line and Enter.
+    { id: "ai-advanced", group: "actions", label: t("Ask Agent (advanced)"), icon: IconAgentChat, // "ai-advanced" is listed because the filter matches labels and keywords
+    // and NEVER ids, so without it the row's own name finds nothing: typing
+    // `/ai-advanced` matched zero rows, the menu stayed hidden, and Space
+    // then fell through as a literal space. The commit check reads the same
+    // list, so one entry fixes both.
+    keywords: ["ai-advanced", "ai", "advanced", "agent", "attach", "image", "file", "model", "effort", "options"], commandId: "askAgentAdvanced", takesArgument: true, searchOnly: true, argumentHint: t("your request; Enter opens the composer") },
     { id: "find", group: "actions", label: t("Find"), icon: IconSearch, keywords: ["find", "search"], commandId: "openFind", searchOnly: true },
     { id: "viewSource", group: "actions", label: t("Edit Raw Markdown"), icon: IconFileCode, keywords: ["source", "raw", "markdown", "text", "code"], commandId: "editRawMarkdown", searchOnly: true },
     { id: "customizeToolbar", group: "actions", label: t("Customize Toolbar"), icon: IconPencil, keywords: ["customize", "toolbar", "layout", "arrange"], commandId: "customizeToolbar", searchOnly: true },

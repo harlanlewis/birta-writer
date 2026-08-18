@@ -111,6 +111,10 @@ export const IconFootnote    = svg(`<path d="M6 4h5a4 4 0 0 1 0 8H8"/><path d="M
 
 export const IconHighlighter = svg(`<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>`);
 
+// ── Agent panel (components/agentPanel) ──────────────────────────────────────
+export const IconPaperclip     = svg(`<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>`);
+export const IconArrowUp       = svg(`<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>`);
+
 // ── Callout kinds (plugins/callouts.ts, components/callout) ──────────────────
 export const IconInfo          = svg(`<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`);
 export const IconLightbulb     = svg(`<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>`);

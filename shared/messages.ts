@@ -429,6 +429,26 @@ export type ToExtensionMessage =
     // extension composes the caret's line reference in and routes the line
     // per `birta.agent.command`; the webview never invokes anything itself.
     | { type: "askAgent"; prompt?: string; requestId?: string }
+    // The advanced panel's send. `model` and `effort` override whatever
+    // `birta.agent.command` names, for this one request only: the setting is
+    // never written, because a choice made for one edit is not a preference.
+    // `attachments` are paths the extension itself wrote (agentAttachment).
+    | {
+        type: "askAgentAdvanced";
+        prompt: string;
+        requestId?: string;
+        model?: string;
+        effort?: string;
+        attachments?: readonly string[];
+    }
+    // A pasted, dropped or picked file on its way to becoming a path the
+    // agent can read. Bytes go to a session temp directory, never into the
+    // document's own image folder: an attachment is context for one request,
+    // not an asset of the document.
+    | { type: "agentAttachment"; id: string; name: string; bytes: string }
+    // The panel is open and wants to know what the harness accepts; the
+    // answer may already be cached, in which case it returns immediately.
+    | { type: "requestAgentCapabilities" }
     // Cancel a background agent run from its gutter marker (plugins/agentPending).
     | { type: "agentCancel"; requestId: string }
     // How a dirty-document merge of an agent's result went, so the extension
@@ -483,6 +503,69 @@ export type ToExtensionMessage =
  * follow: terminal, Chat view, clipboard, or a request that never ran; the
  * marker is dropped silently).
  */
+/**
+ * What `/ai` is about to do, as the webview needs to SAY it: the configured
+ * route reduced to display facts. Computed extension-side, because the
+ * setting is application-scoped and the raw shell template is the user's
+ * machine config with no business in a webview. Pushed on init and on every
+ * `birta.agent.*` change.
+ *
+ * `model` is present only when the template names one with an explicit
+ * `--model`. Absent means the harness chooses, which is NOT the same as
+ * knowing the harness's default and must never be rendered as one: an alias
+ * resolves inside the CLI, and nothing here can see what it resolved to.
+ */
+/**
+ * What the configured harness accepts, as its own `--help` documents it.
+ * Produced by `src/agentBridge/harnessCapabilities.ts`; declared here
+ * because it crosses to the webview, which cannot import from `src/`.
+ *
+ * `modelExamples` is the field most easily misread. It holds whatever the
+ * help gave: an enumeration where there is one, and otherwise the aliases
+ * the prose happened to quote. The harness this was checked against gives
+ * only examples, so a model absent from the list says nothing whatever about
+ * whether the harness accepts it. Anything that renders these as "the
+ * models", or that hides free entry because the list looks complete, is a
+ * bug. The name is deliberately the weaker word.
+ */
+export interface HarnessCapabilities {
+    /** The binary probed (`claude`), the template's first word. */
+    harness: string;
+    /** Whatever `--version` printed. The cache key: an upgrade re-probes. */
+    version: string;
+    /** The help documents a model flag, so a model can be offered and set. */
+    supportsModel: boolean;
+    /** The help documents a reasoning-effort flag under some name. */
+    supportsEffort: boolean;
+    /** The model flag's spelling in THIS harness, for writing it back. */
+    modelFlag?: string;
+    /**
+     * The effort flag's spelling in THIS harness. Claude Code says
+     * `--effort`, pi says `--thinking`, and writing one where the other is
+     * meant is a command that fails rather than a request that differs.
+     */
+    effortFlag?: string;
+    /** Effort values the help ENUMERATES, in its own order. Empty when it lists none. */
+    efforts: readonly string[];
+    /** Model names the help quotes as examples. Suggestions, never a catalog. */
+    modelExamples: readonly string[];
+}
+
+export interface AgentRouteSummary {
+    /** `birta.agent.command` is set. False means the first `/ai` asks where to send it. */
+    configured: boolean;
+    /** A shell command, VS Code's Chat view, or the clipboard. */
+    kind: "shell" | "chat" | "clipboard";
+    /** Shell only: the command's first word (`claude`, `codex`), per `harnessName`. */
+    harness?: string;
+    /** Shell only: the value of an explicit `--model` in the template. */
+    model?: string;
+    /** Shell only: the value of an explicit `--effort` in the template. */
+    effort?: string;
+    /** Shell only: a child process, or the reused Birta AI terminal. */
+    mode?: "background" | "terminal";
+}
+
 export type AgentRunMessage = {
     type: "agentRun";
     requestId: string;
@@ -591,6 +674,16 @@ export type ToWebviewMessage =
     | { type: "reviewConfig"; groupByType: boolean }
     // Live toolbar layout update (per-item placement settings changed).
     | { type: "toolbarConfig"; config: ToolbarConfig }
+    // The `/ai` route, for the slash menu's inline hint. Display facts only.
+    | { type: "agentRoute"; route: AgentRouteSummary }
+    // What the configured harness accepts, read from its own `--help`
+    // (src/agentBridge/harnessCapabilities.ts). Absent means the probe found
+    // nothing, and the panel then offers no model or effort control rather
+    // than guessing at either.
+    | { type: "agentCapabilities"; capabilities?: HarnessCapabilities }
+    // Reply to agentAttachment: the path the bytes were written to, or null
+    // when the write failed. `id` correlates with the request.
+    | { type: "agentAttachmentSaved"; id: string; path: string | null }
     /**
      * Light or clear the settings gear's unread dot. Advisory only: it appears,
      * waits, and does nothing on its own. Sent after activation computes it and

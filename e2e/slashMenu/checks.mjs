@@ -4,6 +4,11 @@
  * the "Show all commands" footer that reveals the search-only rows, and the
  * single dynamic toggle rows for TOC visibility/side and toolbar visibility
  * (whose labels reflect live state via the getState snapshot).
+ *
+ * The committed-pill caret hint is checked here rather than in jsdom because
+ * what can go wrong with it is geometry: whether it sits on the line's
+ * baseline, and whether it takes width that shoves the rest of the line
+ * along. jsdom has no layout engine and reports both as zero.
  */
 export async function run({ page, check, baseUrl }) {
     const SLASH = "#md-slash-menu";
@@ -293,4 +298,238 @@ export async function run({ page, check, baseUrl }) {
     check("Space on a non-argument row is inserted as text", text.startsWith("/he "), `text=${JSON.stringify(text)}`);
     check("…and no askAgent was posted by it",
         (await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgent").length)) === 0);
+
+    // ── The committed pill's caret hint ──────────────────────
+    /** Rects for the hint's host, its line, and the pill it follows. */
+    const hintGeometry = () => page.evaluate(() => {
+        const host = document.querySelector(".ProseMirror .md-slash-arg-hint");
+        const line = document.querySelector(".ProseMirror .slash-query");
+        if (!host || !line) { return null; }
+        const span = host.firstElementChild;
+        const s = span.getBoundingClientRect();
+        const l = line.getBoundingClientRect();
+        return {
+            text: span.textContent,
+            hostWidth: host.getBoundingClientRect().width,
+            hostOffsetWidth: host.offsetWidth,
+            bottomGap: Math.abs(s.bottom - l.bottom),
+            startsAfterPill: s.left >= l.right,
+            italic: getComputedStyle(span).fontStyle,
+        };
+    });
+
+    await open("ai");
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(200);
+    let g = await hintGeometry();
+    check("committing the pill shows the caret hint", g !== null && g.text.length > 0, JSON.stringify(g));
+    // The invariant that keeps the rest of the line still: a host with no
+    // width cannot move what follows it, whatever the hint says.
+    check("the hint's host takes no width", g && g.hostWidth === 0 && g.hostOffsetWidth === 0, JSON.stringify(g));
+    // Baseline: the hint and the pill are text on one line, so their boxes
+    // bottom out together. An absolutely positioned child of a zero-height
+    // inline box missed this by about an ascent.
+    check("the hint sits on the line's baseline", g && g.bottomGap <= 2, `bottomGap=${g?.bottomGap}`);
+    check("the hint follows the pill rather than overlapping it", g && g.startsAfterPill, JSON.stringify(g));
+    check("the hint is italic, the empty-line hint's voice", g && g.italic === "italic", g?.italic);
+    check("with no route pushed, the hint is the registry’s own text", g && g.text === "your request (press Enter for more options)", JSON.stringify(g?.text));
+
+    // One character of argument retires it, and it never reached the document.
+    await page.keyboard.type("make a diagram", { delay: 20 });
+    await page.waitForTimeout(200);
+    check("typing the request removes the hint",
+        (await page.evaluate(() => document.querySelectorAll(".ProseMirror .md-slash-arg-hint").length)) === 0);
+    // Asserted against the serialized document, not `textContent`: a widget
+    // decoration IS a DOM node inside the paragraph, so it shows up in
+    // `textContent` while never existing in the document. That is exactly
+    // the distinction worth pinning, and only the posted markdown can see it.
+    //
+    // Waited for rather than sampled: the sync is debounced, so reading
+    // straight after typing can catch a document from before the pill was
+    // committed and report a pass having never seen the state under test.
+    await page.waitForFunction(
+        () => window.__posted.some((m) => m.type === "update" && m.content.includes("/ai make a diagram")),
+        { timeout: 10000 },
+    );
+    const serialized = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "update").map((m) => m.content).join("\n"));
+    check("the hint never reaches the serialized document",
+        serialized.includes("/ai make a diagram") && !serialized.includes("your request"),
+        JSON.stringify(serialized.slice(-160)));
+
+    // The extension's route summary reaches the sentence: this is the whole
+    // path (message → agentRoute store → host hook → decoration).
+    await open("ai");
+    await page.evaluate(() => window.postMessage({
+        type: "agentRoute",
+        route: { configured: true, kind: "shell", harness: "claude", model: "haiku", mode: "background" },
+    }, "*"));
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(200);
+    g = await hintGeometry();
+    check("a pushed route names the harness and its model",
+        g && g.text === "edit with claude (Haiku) (press Enter for more options)", JSON.stringify(g?.text));
+    // The emphasis is what the eye is meant to land on, and it is the only
+    // part of the line that changes, so it is asserted as its own element
+    // rather than as a substring of the sentence.
+    const strong = await page.evaluate(() =>
+        document.querySelector(".ProseMirror .md-slash-arg-hint strong")?.textContent ?? null);
+    check("…with what will run drawn heavier", strong === "Haiku", JSON.stringify(strong));
+
+    // A row whose label leaves a real question carries its description in the
+    // trailing slot, in the UI font so it never reads as syntax to type.
+    await open("");
+    const detail = await page.evaluate(() => {
+        const row = [...document.querySelectorAll("#md-slash-menu .slash-menu-item")]
+            .find((r) => r.querySelector(".slash-menu-item-label")?.textContent === "Mermaid Diagram");
+        const slot = row?.querySelector(".slash-menu-item-hint");
+        const syntaxRow = [...document.querySelectorAll("#md-slash-menu .slash-menu-item")]
+            .find((r) => r.querySelector(".slash-menu-item-label")?.textContent === "Bullet List");
+        const syntax = syntaxRow?.querySelector(".slash-menu-item-hint");
+        if (!slot || !syntax) { return null; }
+        return {
+            text: slot.textContent,
+            style: getComputedStyle(slot).fontStyle,
+            font: getComputedStyle(slot).fontFamily,
+            syntaxText: syntax.textContent,
+            syntaxFont: getComputedStyle(syntax).fontFamily,
+        };
+    });
+    check("the Mermaid row says what it inserts", detail?.text === "empty diagram", JSON.stringify(detail));
+    // The two kinds share the slot, so they have to be told apart by eye. The
+    // syntax hint is the control: same slot, same page, monospace by rule.
+    check("…in italic and the UI font, where the syntax hint is monospace",
+        detail?.style === "italic" && detail.font !== detail.syntaxFont && /mono/i.test(detail.syntaxFont),
+        JSON.stringify(detail));
+
+    // ── The advanced composer ────────────────────────────────
+    const PANEL = ".agent-panel";
+    /** Open the composer via `/ai-advanced`, optionally with text after it. */
+    async function openPanel(argument) {
+        await open("ai-advanced");
+        await page.keyboard.press("Space");
+        if (argument) { await page.keyboard.type(argument, { delay: 20 }); }
+        await page.keyboard.press("Enter");
+        await page.waitForSelector(PANEL, { state: "visible", timeout: 10000 });
+        await page.waitForTimeout(150);
+    }
+
+    await openPanel();
+    check("`/ai-advanced` opens the composer", await page.$(PANEL) !== null);
+    check("…focused, so it can be typed into immediately",
+        await page.evaluate(() => document.activeElement?.classList.contains("agent-panel-input")));
+    // The construct is consumed exactly as the plain row consumes it: the
+    // composer is a way of writing the request, not something in the document.
+    text = await page.$eval(".milkdown .ProseMirror p", (el) => el.textContent);
+    check("…and the /ai-advanced construct left the document", !text.includes("/ai-advanced"), `text=${JSON.stringify(text)}`);
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    check("Escape closes it leaving nothing behind", await page.$(PANEL) === null);
+
+    // Text typed after the row arrives already in the textarea.
+    await openPanel("summarise the section above");
+    check("`/ai-advanced <text>` prefills the composer",
+        await page.$eval(".agent-panel-input", (el) => el.value) === "summarise the section above");
+
+    // No route is configured in this harness, so no capabilities are pushed
+    // and the pickers must be absent rather than empty.
+    check("with no harness capabilities, no model or effort control is offered",
+        await page.$$eval(".agent-panel-spec-btn", (els) => els.length) === 0);
+
+    // Capabilities arriving after the panel opened must reach it. This is the
+    // real path: message → controller → open panel.
+    await page.evaluate(() => window.postMessage({
+        type: "agentCapabilities",
+        capabilities: {
+            harness: "claude", version: "test",
+            supportsModel: true, supportsEffort: true,
+            efforts: ["low", "medium", "high"],
+            modelExamples: ["opus", "sonnet"],
+        },
+    }, "*"));
+    await page.waitForTimeout(200);
+    let specs = await page.$$eval(".agent-panel-spec-btn", (els) => els.map((e) => e.textContent));
+    check("capabilities arriving late still reach an open composer",
+        JSON.stringify(specs) === JSON.stringify(["Default model", "Default effort"]), JSON.stringify(specs));
+
+    // The model menu offers what the help NAMED, plus free entry — never a
+    // catalog, because no CLI publishes one.
+    await page.locator(".agent-panel-spec-btn").first().click();
+    await page.waitForTimeout(150);
+    const modelRows = await page.$$eval(".agent-panel-menu-row", (els) => els.map((e) => e.textContent));
+    check("the model menu offers the harness's own examples, a default, and free entry",
+        JSON.stringify(modelRows) === JSON.stringify(["Default model", "Opus", "Sonnet", "Other model…"]),
+        JSON.stringify(modelRows));
+    // Free entry has to be a real field: Electron does not implement
+    // window.prompt, so a row that called it would look live and do nothing.
+    await page.locator(".agent-panel-menu-row").last().click();
+    await page.waitForTimeout(150);
+    check("Other model… opens a field rather than a native prompt",
+        await page.$(".agent-panel-menu-input") !== null);
+    await page.keyboard.type("claude-fable-5");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    specs = await page.$$eval(".agent-panel-spec-btn", (els) => els.map((e) => e.textContent));
+    check("…and a typed model that is in no list is accepted verbatim",
+        specs[0] === "claude-fable-5", JSON.stringify(specs));
+
+    await page.locator(".agent-panel-spec-btn").first().click();
+    await page.waitForTimeout(150);
+    await page.locator(".agent-panel-menu-row").nth(1).click();
+    await page.waitForTimeout(150);
+    specs = await page.$$eval(".agent-panel-spec-btn", (els) => els.map((e) => e.textContent));
+    check("picking a model shows it on the control", specs[0] === "Opus", JSON.stringify(specs));
+
+    // Sending carries the chosen model, and the request, to the extension.
+    await page.locator(".agent-panel-submit").click();
+    await page.waitForTimeout(250);
+    const sent = await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgentAdvanced"));
+    check("sending posts one advanced request carrying the model",
+        sent.length === 1 && sent[0].model === "opus" && sent[0].prompt === "summarise the section above",
+        JSON.stringify(sent));
+    check("…and the composer closed on send", await page.$(PANEL) === null);
+    check("…and no plain askAgent was posted alongside it",
+        (await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgent").length)) === 0);
+
+    // An attachment still being written blocks Send. The alternative was to
+    // drop it silently, which sends a request missing the file the user
+    // attached it for, having watched the chip appear.
+    await openPanel("describe this");
+    await page.evaluate(() => {
+        const input = document.querySelector(".agent-panel-file-input");
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" }));
+        input.files = dt.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await page.waitForTimeout(200);
+    check("an attached file shows a chip", await page.$$eval(".agent-panel-chip", (e) => e.length) === 1);
+    check("…and Send is refused while its bytes are still being written",
+        await page.$eval(".agent-panel-submit", (el) => el.disabled) === true);
+    // The extension is stubbed here, so resolve the write by hand.
+    const attId = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "agentAttachment").at(-1)?.id ?? null);
+    check("…and the bytes were handed to the extension to write", attId !== null);
+    await page.evaluate((id) => window.postMessage(
+        { type: "agentAttachmentSaved", id, path: "/tmp/birta-ai/shot.png" }, "*"), attId);
+    await page.waitForTimeout(200);
+    check("…and Send is allowed once the path comes back",
+        await page.$eval(".agent-panel-submit", (el) => el.disabled) === false);
+    await page.locator(".agent-panel-submit").click();
+    await page.waitForTimeout(200);
+    const withFile = await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgentAdvanced").at(-1));
+    check("sending carries the written path, not the browser's file object",
+        JSON.stringify(withFile?.attachments) === JSON.stringify(["/tmp/birta-ai/shot.png"]),
+        JSON.stringify(withFile));
+
+    // `/ai` with nothing typed opens the composer rather than the old input box.
+    await open("ai");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    check("`/ai` with nothing typed opens the composer", await page.$(PANEL) !== null);
+    await page.keyboard.press("Escape");
+
 }
