@@ -15,9 +15,14 @@ import {
     agentOutputChannel,
     agentRunsStatusItem,
     askAgent,
+    askAgentAdvanced,
     cancelAgentRun,
     reportAgentMerge,
+    saveAgentAttachment,
+    agentEffortName,
+    agentModelName,
     composeAgentRequest,
+    describeAgentRoute,
     expandCommandTemplate,
     harnessName,
     normalizeAgentMode,
@@ -115,6 +120,195 @@ describe("harnessName", () => {
         expect(harnessName("claude -p {prompt} --permission-mode acceptEdits")).toBe("claude");
         expect(harnessName("/usr/local/bin/codex exec {prompt}")).toBe("codex");
         expect(harnessName("   ")).toBe("agent");
+    });
+});
+
+describe("agentModelName", () => {
+    it("an explicit --model in either spelling should be the model", () => {
+        expect(agentModelName("claude -p {prompt} --model haiku")).toBe("haiku");
+        expect(agentModelName("claude -p {prompt} --model=sonnet --effort low")).toBe("sonnet");
+        expect(agentModelName(`claude --model "claude-fable-5" {prompt}`)).toBe("claude-fable-5");
+        expect(agentModelName("claude --model 'opus' {prompt}")).toBe("opus");
+    });
+
+    it("no --model should report nothing rather than a guessed default", () => {
+        expect(agentModelName("claude -p {prompt} --permission-mode acceptEdits")).toBeUndefined();
+        expect(agentModelName("")).toBeUndefined();
+    });
+
+    it("a flag that merely ends in model should not be read as one", () => {
+        // `--fallback-model` names what runs when the FIRST choice is
+        // unavailable, so reporting it as the model would be wrong exactly
+        // when the user is deciding whether to send.
+        expect(agentModelName("claude -p {prompt} --fallback-model sonnet")).toBeUndefined();
+        // `-m` is a different flag in enough tools that reading it is a guess.
+        expect(agentModelName("someagent -m haiku {prompt}")).toBeUndefined();
+    });
+});
+
+describe("agentEffortName", () => {
+    it("an explicit --effort in either spelling should be the effort", () => {
+        expect(agentEffortName("claude -p {prompt} --effort xhigh")).toBe("xhigh");
+        expect(agentEffortName("claude -p {prompt} --effort=low --model opus")).toBe("low");
+    });
+
+    it("no --effort should report nothing", () => {
+        expect(agentEffortName("claude -p {prompt} --model opus")).toBeUndefined();
+    });
+
+    it("a value outside the documented set should be reported as typed", () => {
+        // The set is a display table, not a filter: a template naming an
+        // effort this build has not heard of still names one, and dropping
+        // it would misreport what is configured.
+        expect(agentEffortName("claude -p {prompt} --effort ludicrous")).toBe("ludicrous");
+    });
+});
+
+describe("describeAgentRoute", () => {
+    it("an empty command should be unconfigured, so the hint can say so", () => {
+        expect(describeAgentRoute("", "background")).toEqual({ configured: false, kind: "shell" });
+        expect(describeAgentRoute("   ", "terminal")).toEqual({ configured: false, kind: "shell" });
+    });
+
+    it("the reserved routes should carry no harness or model", () => {
+        expect(describeAgentRoute("chat", "background")).toEqual({ configured: true, kind: "chat" });
+        expect(describeAgentRoute("clipboard", "terminal")).toEqual({ configured: true, kind: "clipboard" });
+    });
+
+    it("a shell template should carry the harness, the mode, and the model when named", () => {
+        expect(describeAgentRoute("claude -p {prompt} --model haiku --effort low", "background")).toEqual({
+            configured: true, kind: "shell", harness: "claude", model: "haiku", effort: "low", mode: "background",
+        });
+        expect(describeAgentRoute("codex exec --full-auto {prompt}", "terminal")).toEqual({
+            configured: true, kind: "shell", harness: "codex", model: undefined, effort: undefined, mode: "terminal",
+        });
+    });
+
+    it("the summary should never carry the template itself", () => {
+        // The raw string is the user's machine config and a shell command;
+        // the webview gets display facts and nothing it could echo back.
+        const template = "claude -p {prompt} --permission-mode acceptEdits --model haiku";
+        const summary = describeAgentRoute(template, "background");
+        expect(JSON.stringify(summary)).not.toContain("{prompt}");
+        expect(JSON.stringify(summary)).not.toContain("permission-mode");
+    });
+});
+
+describe("askAgentAdvanced", () => {
+    /**
+     * Children are closed at the end of every test that spawns one. The runs
+     * map is module state, so a run left open here leaks into later tests:
+     * it kept the status-bar item alive and the hide-on-last-run assertion
+     * two describes down failed for a reason that had nothing to do with it.
+     */
+    let live: FakeChild[] = [];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        resetTextDocumentMocks();
+        live = [];
+        spawnMock.mockImplementation(() => {
+            const child = new FakeChild();
+            live.push(child);
+            return child;
+        });
+    });
+
+    const settle = async (): Promise<void> => {
+        for (const child of live) {
+            vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
+            child.emit("close", 0);
+        }
+        await flush();
+    };
+
+    it("a chosen model and effort should be written into the command that runs", async () => {
+        configureRoute("claude -p {prompt} --permission-mode acceptEdits");
+        makeFakeTextDocument("# Plan\n", noteUri);
+
+        await askAgentAdvanced(() => Promise.resolve(activeAt(1)), reporter().report, {
+            prompt: "tighten this", requestId: "ai1", model: "opus", effort: "xhigh",
+        });
+
+        const line = spawnMock.mock.calls[0]![0] as string;
+        expect(line).toContain("--model opus");
+        expect(line).toContain("--effort xhigh");
+        await settle();
+    });
+
+    it("choosing a model should never rewrite the setting", async () => {
+        // A model picked for one edit is a choice about that edit. Writing it
+        // back would turn it into a preference the user never asked to change.
+        const { update } = configureRoute("claude -p {prompt}");
+        makeFakeTextDocument("# Plan\n", noteUri);
+
+        await askAgentAdvanced(() => Promise.resolve(activeAt(1)), reporter().report, {
+            prompt: "tighten this", requestId: "ai1", model: "opus",
+        });
+
+        expect(update).not.toHaveBeenCalled();
+        await settle();
+    });
+
+    it("attachments should reach the clipboard route too, not only a shell command", async () => {
+        // The regression this pins: the flag-writing branch returned early for
+        // chat and clipboard, and the attachments were composed after it, so
+        // "describe this screenshot" was handed over with no screenshot in it
+        // and nothing to show anything had gone missing.
+        configureRoute("clipboard");
+        makeFakeTextDocument("# Plan\n", noteUri);
+
+        await askAgentAdvanced(() => Promise.resolve(activeAt(1)), reporter().report, {
+            prompt: "describe this", requestId: "ai1", attachments: ["/tmp/birta-ai/1-shot.png"],
+        });
+
+        const copied = vi.mocked(vscode.env.clipboard.writeText).mock.calls[0]![0];
+        expect(copied).toContain("/tmp/birta-ai/1-shot.png");
+        expect(copied).toContain("describe this");
+    });
+
+    it("an attachment path should survive the line's whitespace collapse as one token", async () => {
+        // composeAgentRequest collapses every run of whitespace, so a path
+        // through a directory with a space in it (the normal shape of %TEMP%
+        // under a Windows user name) would otherwise become two words.
+        configureRoute("clipboard");
+        makeFakeTextDocument("# Plan\n", noteUri);
+
+        await askAgentAdvanced(() => Promise.resolve(activeAt(1)), reporter().report, {
+            prompt: "describe this", requestId: "ai1",
+            attachments: ["C:\\Users\\First Last\\Temp\\shot.png"],
+        });
+
+        expect(vi.mocked(vscode.env.clipboard.writeText).mock.calls[0]![0])
+            .toContain(`"C:\\Users\\First Last\\Temp\\shot.png"`);
+    });
+});
+
+describe("saveAgentAttachment", () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it("a file within the cap should be written and its path returned", async () => {
+        const uri = await saveAgentAttachment("shot.png", new Uint8Array([1, 2, 3]));
+
+        expect(uri.fsPath).toContain("shot.png");
+        expect(vscode.workspace.fs.writeFile).toHaveBeenCalled();
+    });
+
+    it("a name that walks out of the directory should be reduced to a filename", async () => {
+        const uri = await saveAgentAttachment("../../../etc/passwd", new Uint8Array([1]));
+
+        expect(uri.fsPath).not.toContain("..");
+        expect(uri.fsPath).toContain("passwd");
+    });
+
+    it("an oversized attachment should be refused rather than written", async () => {
+        // The floor under the panel's own pre-read cap. This is the side that
+        // touches the disk, and it must not depend on its caller having
+        // checked: a bound applied only where the bytes are convenient to
+        // measure is a bound the next caller can walk straight past.
+        await expect(saveAgentAttachment("huge.bin", new Uint8Array(17 * 1024 * 1024)))
+            .rejects.toThrow(/exceeds/);
+        expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
     });
 });
 

@@ -194,10 +194,19 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         label.textContent = opts.labelFor?.(item) ?? item.label;
         row.appendChild(label);
 
-        const hintValue = hintText ?? item.hint;
+        // The trailing slot holds one of three things, in this order: what
+        // argument mode is waiting for, the markdown syntax, or what the row
+        // inserts. Syntax outranks the description because a reader who
+        // knows the syntax stops needing the menu.
+        const hintValue = hintText ?? item.hint ?? item.detail;
         if (hintValue) {
             const hint = document.createElement("span");
-            hint.className = "slash-menu-item-hint";
+            // The description is prose, not something to type, so it takes
+            // the UI font and italic; the other two are literal syntax.
+            const isDetail = hintText === undefined && item.hint === undefined;
+            hint.className = isDetail
+                ? "slash-menu-item-hint slash-menu-item-hint--detail"
+                : "slash-menu-item-hint";
             hint.textContent = hintValue;
             row.appendChild(hint);
         }

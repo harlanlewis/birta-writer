@@ -102,6 +102,8 @@ export type GetEditor = () => Editor | null;
 export interface EditorCommandHost {
     openLinkPrompt(): void;
     openImagePanel(): void;
+    /** The `/ai` composer, optionally prefilled with the text typed after the row. */
+    openAgentPanel(initial: string | undefined): void;
     openFind(): void;
     openFindReplace(): void;
     findNext(): void;
@@ -779,12 +781,25 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // can be saved first so the reference names what is on disk.
     askAgent: (getEditor, args) => {
         const prompt = (args as { prompt?: unknown } | undefined)?.prompt;
+        // Nothing typed is not an empty request: it is someone who reached
+        // for `/ai` and has more to say than a line. That used to open a
+        // native input box; it opens the composer now, which is the same
+        // question with somewhere to put a file and a model.
+        if (typeof prompt !== "string" || prompt.trim() === "") {
+            host.openAgentPanel?.(undefined);
+            return;
+        }
         // Register the request at the caret first (a gutter marker while a
         // background run lives; nothing shows until the extension confirms
         // one), then hand off with its id.
         let requestId = "";
         runProse(getEditor, (view) => { requestId = beginAgentRun(view); });
-        notifyAskAgent(typeof prompt === "string" ? prompt : undefined, requestId);
+        notifyAskAgent(prompt, requestId);
+    },
+    // Always the composer, prefilled with whatever was typed after the row.
+    askAgentAdvanced: (_getEditor, args) => {
+        const prompt = (args as { prompt?: unknown } | undefined)?.prompt;
+        host.openAgentPanel?.(typeof prompt === "string" && prompt.trim() ? prompt : undefined);
     },
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),

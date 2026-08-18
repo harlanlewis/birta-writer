@@ -29,6 +29,9 @@ import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtm
 import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { detectLogseq } from "./utils/logseqDetect";
+import { currentAgentRoute } from "./agentBridge";
+import { saveAgentAttachment } from "./agentBridge/askAgent";
+import { cachedCapabilities, probeHarness } from "./agentBridge/harnessProbe";
 import { scanHeadings } from "../shared/headingScan";
 import { extractOgDescription, extractOgTitle } from "./utils/openGraph";
 import type { LinkCardMeta } from "../shared/messages";
@@ -497,6 +500,25 @@ export class MarkdownEditorProvider
         return nav;
     }
 
+    /**
+     * Tell one webview what the configured harness accepts. Answers from the
+     * in-memory cache first so a second document costs nothing, then probes.
+     * Failure is silent by design: absent capabilities mean the panel offers
+     * no model or effort control, which is the correct answer for a harness
+     * that documents neither.
+     */
+    private async _sendAgentCapabilities(panel: vscode.WebviewPanel): Promise<void> {
+        const template = readBirtaSetting("agentCommand").trim();
+        if (!template) { return; }
+        const cached = cachedCapabilities(template);
+        if (cached) {
+            postToWebview(panel.webview, { type: "agentCapabilities", capabilities: cached });
+            return;
+        }
+        const caps = await probeHarness(this.context, template);
+        postToWebview(panel.webview, { type: "agentCapabilities", capabilities: caps });
+    }
+
     public postToAll(msg: ToWebviewMessage): void {
         for (const panel of this._webviewPanels.values()) {
             postToWebview(panel.webview, msg);
@@ -931,6 +953,21 @@ export class MarkdownEditorProvider
                         // Same placement, and the same reason: detection is
                         // async while init is on the path to first paint.
                         this.detectLogseqFor(document, webviewPanel);
+                        // What `/ai` would run, for the slash menu's hint. A
+                        // message rather than the __i18n snapshot even though
+                        // the read is synchronous: the route changes while a
+                        // webview is open, so the push path has to exist
+                        // anyway, and nothing needs this before first paint.
+                        postToWebview(webviewPanel.webview, {
+                            type: "agentRoute",
+                            route: currentAgentRoute(),
+                        });
+                        // Probe the harness now so the answer is in memory
+                        // before anyone types `/ai`. Deliberately not awaited:
+                        // it spawns a process, and nothing on this path may
+                        // wait on one. A panel opened before it lands simply
+                        // shows no pickers and gains them when it resolves.
+                        void this._sendAgentCapabilities(webviewPanel);
                         // The unread dot, from the answer activation already
                         // computed. A webview is disposed on every switch to
                         // the raw editor, so a fresh one has to be told; the
@@ -1576,6 +1613,37 @@ export class MarkdownEditorProvider
                         // extension composes the caret reference in, saves,
                         // and routes (src/agentBridge/askAgent.ts).
                         vscode.commands.executeCommand("birta.askAgent", message.prompt, message.requestId);
+                        break;
+                    case "askAgentAdvanced":
+                        // The panel's send: same hand-off, with the model and
+                        // effort it chose written into the command for this
+                        // one request only.
+                        vscode.commands.executeCommand("birta.askAgentAdvanced", {
+                            prompt: message.prompt,
+                            requestId: message.requestId,
+                            model: message.model,
+                            effort: message.effort,
+                            attachments: message.attachments,
+                        });
+                        break;
+                    case "agentAttachment": {
+                        // Bytes to a path the agent can read. The reply
+                        // carries null on any failure, so the panel can drop
+                        // the chip rather than send a path to nothing.
+                        const { id, name, bytes } = message;
+                        void (async () => {
+                            let saved: string | null = null;
+                            try {
+                                saved = (await saveAgentAttachment(name, Buffer.from(bytes, "base64"))).fsPath;
+                            } catch (err) {
+                                reportError("agentAttachment", err);
+                            }
+                            postToWebview(webviewPanel.webview, { type: "agentAttachmentSaved", id, path: saved });
+                        })();
+                        break;
+                    }
+                    case "requestAgentCapabilities":
+                        void this._sendAgentCapabilities(webviewPanel);
                         break;
                     case "agentCancel":
                         vscode.commands.executeCommand("birta.cancelAgent", message.requestId);

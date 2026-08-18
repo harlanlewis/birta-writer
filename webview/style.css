@@ -238,6 +238,49 @@
     }
 }
 
+/* The committed-pill placeholder (plugins/slashArgumentHint.ts): the same
+   quiet italic as the empty-line hint, one level down — that one says what
+   the slash menu is, this one says what goes in the blank after a pill.
+   The host is zero-sized and the line is absolutely positioned out of flow,
+   so a construct with text after it on the same line does not reflow when
+   the hint appears and vanishes. Inert to the pointer: a click across it
+   lands in the paragraph, where the caret already is. */
+.ProseMirror .md-slash-arg-hint {
+    /* Zero-width rather than absolutely positioned. The line has to carry
+       the hint at the caret's own x, which only an inline anchor knows, and
+       an absolute child of a zero-height inline box has no correct vertical
+       origin to hang from: that box's edges both sit on the baseline, so
+       `top: 0` lands an ascent low and `bottom: 0` a descender high. Content
+       overflowing a zero-width box is in normal flow, so it takes the line's
+       baseline exactly and still adds no width for following text to move by. */
+    display: inline-block;
+    width: 0;
+    overflow: visible;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+
+    > span {
+        /* Clear of the pill's rounded end, about the space that committed it. */
+        margin-left: 0.35em;
+        font-style: italic;
+        color: var(--vscode-editor-foreground);
+        opacity: 0.38;
+    }
+
+    /* What will actually run. The rest of the line is scaffolding; this is
+       the part worth reading, and the only thing on it that changes. */
+    strong {
+        font-weight: 600;
+    }
+
+    /* What another key does from here: quieter still, because it names a way
+       out rather than the thing being asked for. */
+    .md-slash-arg-hint-tail {
+        opacity: 0.72;
+    }
+}
+
 /* The block a menu is open FOR: a quiet tint so Duplicate/Delete's target is
    visible at a glance (Editor.js/Notion cue; theme token, no custom color).
    Keyed off the marker's own --menu-open class via :has() — mutating the
@@ -2302,6 +2345,14 @@ body.toolbar-hidden::before {
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--ui-fs-xs);
     color: var(--ui-menu-ink-dim);
+}
+
+/* The same slot carrying prose rather than markdown syntax (registry
+   `detail`): the UI font and italic, so a description never reads as
+   something you could type. */
+.slash-menu-item-hint--detail {
+    font-family: inherit;
+    font-style: italic;
 }
 
 .slash-menu-footer {
