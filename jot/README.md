@@ -29,36 +29,41 @@ Replacing a running copy is the part worth knowing about. `jot/scripts/install-a
 
 Read the warning at the top of that script before running it anywhere. The app is ad-hoc signed, with no Apple Developer ID behind it and no notarization, so macOS cannot tell you who built it, and the script clears the download quarantine that would otherwise stop it opening. That is a reasonable trade on a machine whose owner also owns the source, and it is not one to ask of anybody else. Notarization is what replaces it, and it needs a paid Apple Developer account; until then Jot is not distributed to other people.
 
-The app appears in the menu bar as the boxed Birta Writer Jot mark (see "Icons" below). Clicking it summons or hides the panel; Control-click or right-click opens its menu, which holds the panel toggle, Settings and Quit and nothing about files. Press ⌘⌥⌃J to summon or hide from anywhere; Esc twice hides it (one Esc belongs to the editor: it closes a menu or selects the block). Cmd+F opens find and Cmd+K the link prompt through the Edit menu, since those are VS Code keybindings in the extension. Settings (from the menu, or ⌘,) hold whether Jot opens at login, the hotkey, the scratchpad location, the default save destination, an optional document to edit instead of the scratchpad, and the network opt-in for embeds, link cards and pasted-link titles. See "Network" below for what that switch turns on.
+The app appears in the menu bar as the boxed Birta Writer Jot mark (see "Icons" below). Clicking it summons or hides the panel; Control-click or right-click opens its menu, which holds the panel toggle, Settings and Quit and nothing about files. Press ⌘⌥⌃J to summon or hide from anywhere; Esc twice hides it (one Esc belongs to the editor: it closes a menu or selects the block). Cmd+F opens find and Cmd+K the link prompt through the Edit menu, since those are VS Code keybindings in the extension. Settings (from the menu, the gear in the toolbar, or ⌘,) hold whether Jot opens at login, whether the panel floats above other windows, autosave, the hotkey, the scratchpad location, an optional document to edit instead of the scratchpad, the agent command `/ai` runs, and the network opt-in for embeds, link cards and pasted-link titles. See "Network" below for what that switch turns on.
 
-## The chute
+## Saving
 
-A note in Jot is finished by leaving. The row along the bottom of the panel is the two ways out:
+Jot edits one file. There is nothing to file away and nothing that empties the panel; the row along the bottom is the file the bytes are going to, and the overflow menu:
 
 ```
-[ status                       ] [ Copy and Delete ] [ Save ] [ ··· ]
+[ ~/…/Scratchpad.md                                              ] [ ··· ]
 ```
 
-Copy and Delete (⌥⌘C) puts the whole note on the clipboard, empties the buffer and hides the panel, so the paste lands in the app the note was headed for. Save (⌘S) writes it to the destination Settings names, with a file name taken from the first heading or from the date, and empties the buffer the same way. Both leave what they took in one undo slot, which the ··· menu offers back as "Restore Deleted Note" or "Reopen Last Saved" until the next action replaces it.
+The path follows the WINDOW'S focus rather than the pointer. It answers "where am I typing", which is a question only the person typing has, so a panel sitting over another app's window does not name a file at somebody who is not using it. The overflow button follows the pointer with the rest of the chrome, because it is something you reach for rather than read.
 
-The ··· menu holds Save As (⇧⌘S), Save to a folder used recently, Copy Everything, Share, Discard, that restore item, Reveal Last Save in Finder, and Settings.
+- Autosave (Settings, on by default) writes as you type, after a short pause and never later than a ceiling that continuous typing cannot outrun. That ceiling is the whole crash-safety story: it is how far the file is ever allowed to trail the editor.
+- Cmd+S writes now. With autosave on it is a flush and an acknowledgement rather than news; it earns its place by being the key everyone presses, and by being the write that happens when autosave is off.
+- Shift+Cmd+S writes a COPY somewhere you choose. The panel goes on showing the note, still bound to the same file, which is what every other editor on the machine does.
 
-Two rules the code keeps rather than assumes:
+`BirtaJotCore.AutosavePolicy` is the one rule and the only pure piece worth having: the setting's scope is the EDIT trigger and nothing else. Hiding the panel and quitting write whatever the setting says, because a preference that stops writing on the way out is one that loses work rather than one anybody asked for. Its tests pin that asymmetry, including the case where the setting must change nothing.
 
-- The chute is the SCRATCHPAD. When Settings point Jot at a document instead, no action may empty it: Copy and Delete becomes Copy, Discard is not offered, and Save writes a copy. `BirtaJotCore.ChuteDecision` is that rule, next to `SaveAsDecision`, both pure and both tested.
-- A default destination is a place two notes can collide. Save never overwrites: `BirtaJotCore.DestinationName` numbers a name that is taken, because a silent overwrite there destroys a note with no gesture that says so.
+The window itself is quiet until you point at it. While the pointer is elsewhere the panel is the page, the traffic lights and the settings gear; the toolbar's other buttons and the overflow fade in when the pointer arrives and out when it leaves. The shell owns that: `AppearanceObservingView`'s tracking area is the one source of truth, and it tells the page by setting `jot-resting` on the body, which `jot/Resources/index.html` styles. That stylesheet also carves the traffic lights' corner out of the toolbar, takes its bottom hairline off, and turns off elastic overscroll, which would otherwise rubber-band the fixed toolbar away from the top edge. All three are facts about a window rather than about the editor, which is why they are the host page's and not `webview/`'s.
 
-The window itself is quiet until you point at it. While the pointer is elsewhere the panel is the page, the traffic lights and the settings gear; the toolbar's other buttons and the action row fade in when the pointer arrives and out when it leaves. The shell owns that: `AppearanceObservingView`'s tracking area is the one source of truth, and it tells the page by setting `jot-resting` on the body, which `jot/Resources/index.html` styles. That stylesheet also carves the traffic lights' corner out of the toolbar and takes its bottom hairline off, both facts about a window rather than about the editor, which is why they are the host page's and not `webview/`'s.
+Layout: `Sources/BirtaJotCore` is everything testable without a window (hotkey parsing, the flush/seq guard ported from `shared/saveFlushController.ts`, atomic writes, the autosave rule, the agent request codec, the bridge codec and the boot config); `Sources/BirtaJot` is the AppKit/WebKit app; `Resources/index.html` is the page template, served over the `birta://app/` scheme with the CSP and theme class filled in; `scripts/build-app.sh` assembles the bundle by hand, no Xcode project.
 
-The undo slot is one deep and in memory: a chute that keeps copies on disk of everything it was told to delete is not a chute. What makes the loss survivable is that Copy and Delete puts the note on the clipboard on its way out, and Save writes the file first.
+## Asking an agent
 
-Layout: `Sources/BirtaJotCore` is everything testable without a window (hotkey parsing, the flush/seq guard ported from `shared/saveFlushController.ts`, atomic writes, the bridge codec and the boot config); `Sources/BirtaJot` is the AppKit/WebKit app; `Resources/index.html` is the page template, served over the `birta://app/` scheme with the CSP and theme class filled in; `scripts/build-app.sh` assembles the bundle by hand, no Xcode project.
+`/ai` works here, and Settings holds the command it runs, in the same shape as the extension's `birta.agent.command`: a shell command with `{prompt}` where the quoted request goes. A command tuned for the extension can be pasted in unchanged, because `BirtaJotCore.AgentRequest` is a literal port of the extension's composition and its tests carry the same cases.
+
+Jot writes the note to disk before the run, always, whatever the autosave setting says. That is not about safety here: the agent edits the FILE, so the bytes it opens have to be the bytes on screen and the `path.md#L1` reference has to name something real.
+
+One real difference from the extension, which is why it is written down rather than left to be discovered: there is no merge. The extension folds an agent's edit around whatever you typed while it ran and says so when a hunk overlaps. Jot reloads the file when the run finishes, so an edit made in the panel during a run is the losing side. The merge engine lives in the extension's TypeScript and porting it is its own job.
 
 ## Images
 
 Paste or drop an image and it is saved into an `Attachments` folder beside the document, named by a hash of its own bytes (so pasting the same screenshot twice writes one file), and referenced from the markdown as `Attachments/<name>.png`. The reference is relative on purpose: the note stays portable, and nothing in a file you might share names your home directory.
 
-Save As carries them. The images the note actually references are copied into an `Attachments` folder beside the file you chose, and the references are already correct there, which is why nothing in the document text has to be rewritten. Images the folder holds but the note does not use stay behind, because an attachments folder accumulates everything ever pasted and a note that uses one screenshot should not drag the rest of it along. If a file cannot be copied the save still happens and an alert names what stayed behind, since the text is what you asked to keep.
+Saving a copy carries them. The images the note actually references are copied into an `Attachments` folder beside the file you chose, and the references are already correct there, which is why nothing in the document text has to be rewritten. Images the folder holds but the note does not use stay behind, because an attachments folder accumulates everything ever pasted and a note that uses one screenshot should not drag the rest of it along. If a file cannot be copied the save still happens and an alert names what stayed behind, since the text is what you asked to keep.
 
 The page reaches those files through the same `birta://` scheme that serves the app, with the document's own folder as a second resource root (`BirtaJotCore.ResourceRoots`). A document cannot read outside that folder: the request path is refused before it touches the disk if it traverses, and the resolved path is refused if a symlink leads out.
 
@@ -98,12 +103,12 @@ The SSRF guard exists twice, once per surface, and the cases live in `shared/__f
 
 ## Where the bytes are
 
-One buffer, autosaved to `~/Library/Application Support/Birta Jot/Scratchpad.md` (Preferences can point Jot at another file; the bytes stay with the file they were typed into) on every content update the page reports, atomically (temp file, fsync, rename). Hiding, quitting and Save As first ask the page to flush and wait a bounded second, as the extension's will-save participant does, then write. The file trails the editor by at most one sync-scheduler window (`webview/syncScheduler.ts`) plus one in-flight write.
+One buffer, written to `~/Library/Application Support/Birta Jot/Scratchpad.md` (Settings can point Jot at another file; the bytes stay with the file they were typed into) atomically (temp file, fsync, rename), on the schedule `AutosavePolicy` and the autosave setting decide. Hiding, quitting, Cmd+S and saving a copy first ask the page to flush and wait a bounded second, as the extension's will-save participant does, then write. The file trails the editor by at most one sync-scheduler window (`webview/syncScheduler.ts`) plus one in-flight write.
 
 ## Checking it
 
 `bash jot/scripts/measure.sh` runs the built app under `BIRTA_JOT_MEASURE=1`, drives it through that mode's debug signals, and prints the intervals MAR-374 asks about (first mount, warm summon to caret, cold recovery after the WebContent process is killed) plus idle memory, and it checks that inserted text reaches the scratchpad after a hide and survives the kill. A figure it prints is a reading; quote it from an idle machine, never from a document.
 
-Manual checklist, because a window server and a global hotkey are outside what CI can drive: summon from a fullscreen app; type, hide, `cat` the scratchpad; quit mid-typing and relaunch; toggle System Settings > Appearance and watch the panel follow; Cmd+S then Reopen Last Saved; open a menu, press Esc once (menu closes) and twice (panel hides).
+Manual checklist, because a window server and a global hotkey are outside what CI can drive: summon from a fullscreen app; type, hide, `cat` the scratchpad; quit mid-typing and relaunch; toggle System Settings > Appearance and watch the panel follow; type and watch the file change with autosave on, then turn it off and confirm Cmd+S and quitting still write; open a menu, press Esc once (menu closes) and twice (panel hides).
 
 The editor itself stays covered by the repo's harness: `node e2e/run.mjs jotHost` mounts the bundle with the Jot profile in Chromium, and `BIRTA_E2E_BROWSER=webkit` runs the same suite in the engine the panel renders in. That WebKit run speaks for rendering and DOM; for typed sequences it does not (Playwright's WebKit key injection puts text after a Return on the previous line, the app's own NSEvent path does not), which is why `measure.sh` types through the panel itself.

@@ -6,7 +6,7 @@
  */
 import { IconSettings, IconChevronDown } from "@/ui/icons";
 import { t, productName } from "@/i18n";
-import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifyWhatsNewSeen } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifyWhatsNewSeen, notifyOpenHostPreferences } from "@/messaging";
 import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
 import { createMenuTrigger, makeSep } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
@@ -87,6 +87,10 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
             // browser. Same one-liner as the registry entry in
             // webview/editorCommands.ts, because both are the whole action.
             openWhatsNew: () => notifyOpenUrl(RELEASES_URL),
+            // The host application's own Settings window (Jot). Gated by
+            // `appPreferences`, so the row is absent where there is no such
+            // window, which is every host but that one.
+            openHostPreferences: () => notifyOpenHostPreferences(),
         };
         let prevGroup: string | undefined;
         for (const meta of TOOLBAR_MENU_COMMANDS) {

@@ -11,8 +11,7 @@ import {
     HOST_PROFILES,
     hostHas,
     hostHasCommand,
-    type HostCapability,
-} from "../hostCapabilities";
+    type HostCapability, APP_ONLY_CAPABILITIES } from "../hostCapabilities";
 import { EDITOR_COMMANDS, TOOLBAR_MENU_COMMANDS } from "../editorCommands";
 
 type Declared = { __i18n?: { hostCapabilities?: readonly HostCapability[] } };
@@ -28,14 +27,24 @@ const UNGATED = EDITOR_COMMANDS.filter((m) => !("hostCapability" in m) || !m.hos
 describe("hostHas", () => {
     afterEach(() => { delete g.__i18n; });
 
-    it("no declaration at all should mean every capability", () => {
+    // Absent means the VS CODE profile, not the literal union: a page with no
+    // declaration is one that predates the field, which is a VS Code page, and
+    // it must not inherit a capability that names a standalone app's window.
+    // For every capability that existed before `APP_ONLY_CAPABILITIES`, this
+    // is the same answer absent has always given.
+    it("no declaration at all should mean every capability a VS Code host has", () => {
         delete g.__i18n;
-        for (const cap of ALL_HOST_CAPABILITIES) { expect(hostHas(cap)).toBe(true); }
+        for (const cap of HOST_PROFILES.vscode) { expect(hostHas(cap), cap).toBe(true); }
+        for (const cap of APP_ONLY_CAPABILITIES) { expect(hostHas(cap), cap).toBe(false); }
     });
 
-    it("an __i18n without the field should mean every capability", () => {
+    it("an __i18n without the field should mean the same", () => {
         declare(undefined);
-        for (const cap of ALL_HOST_CAPABILITIES) { expect(hostHas(cap)).toBe(true); }
+        for (const cap of HOST_PROFILES.vscode) { expect(hostHas(cap), cap).toBe(true); }
+        for (const cap of APP_ONLY_CAPABILITIES) { expect(hostHas(cap), cap).toBe(false); }
+        // The split has to be a real one, or these two loops are one loop.
+        expect(APP_ONLY_CAPABILITIES.length).toBeGreaterThan(0);
+        expect(HOST_PROFILES.vscode.length).toBeGreaterThan(0);
     });
 
     it("an empty declaration should mean no capability", () => {
@@ -52,7 +61,11 @@ describe("hostHas", () => {
 
 describe("HOST_PROFILES", () => {
     it("vscode should declare everything, and jot only what its shell provides", () => {
-        expect([...HOST_PROFILES.vscode].sort()).toEqual([...ALL_HOST_CAPABILITIES].sort());
+        // Everything EXCEPT the app-only ones: those name a window a
+        // standalone application has and an editor pane does not, so a VS Code
+        // host declaring one would offer a row that opens nothing.
+        expect([...HOST_PROFILES.vscode].sort()).toEqual(
+            ALL_HOST_CAPABILITIES.filter((c) => !APP_ONLY_CAPABILITIES.includes(c)).sort());
         // Jot's shell saves a pasted image beside the document and serves it
         // back over its own scheme, so it owns an image store; it has a
         // Settings window of its own; and it runs a coding agent as a child
@@ -67,6 +80,16 @@ describe("HOST_PROFILES", () => {
         expect(GATED.length).toBeGreaterThan(0);
         for (const m of GATED) {
             expect(ALL_HOST_CAPABILITIES).toContain((m as { hostCapability: HostCapability }).hostCapability);
+        }
+    });
+
+    it("every app-only capability should be declared by some other profile, or it names nothing", () => {
+        expect(APP_ONLY_CAPABILITIES.length).toBeGreaterThan(0);
+        const others = Object.entries(HOST_PROFILES).filter(([name]) => name !== "vscode");
+        expect(others.length).toBeGreaterThan(0);
+        for (const cap of APP_ONLY_CAPABILITIES) {
+            expect(others.some(([, caps]) => caps.includes(cap)), cap).toBe(true);
+            expect(HOST_PROFILES.vscode.includes(cap), cap).toBe(false);
         }
     });
 

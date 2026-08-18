@@ -192,9 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = nil
     }
 
-    /// The panel's ··· menu: everything the chute can do that the two buttons
-    /// do not. Built fresh on each click, so an item that cannot act right now
-    /// is simply absent rather than present and dead.
+    /// The panel's ··· menu: everything the note can do that the row itself
+    /// does not. Built fresh on each click, so an item that cannot act right
+    /// now is simply absent rather than present and dead.
     private func buildOverflowMenu() -> NSMenu {
         let menu = NSMenu()
 

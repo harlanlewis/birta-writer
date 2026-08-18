@@ -69,11 +69,16 @@ export async function run({ page, check, baseUrl }) {
         kinds: [...menu.children].map((el) =>
             el.classList.contains("tb-menu-sep") ? "sep" : el.classList.contains("tb-fmt-item") ? "item" : el.className),
     }));
-    check("jot: gear menu offers exactly Customize / Hide / Show Keyboard Shortcuts",
-        JSON.stringify(gear.labels) === JSON.stringify(["Customize Toolbar", "Hide Toolbar", "Show Keyboard Shortcuts"]),
+    // The shell has a Settings window (`appPreferences`), so its row belongs;
+    // VS Code's own settings and keybindings rows do not, and neither does the
+    // release page. This asserts both directions in one list.
+    check("jot: gear menu offers the layout rows, the cheatsheet, and the shell's own Settings",
+        JSON.stringify(gear.labels) === JSON.stringify(
+            ["Customize Toolbar", "Hide Toolbar", "Show Keyboard Shortcuts", "Birta Jot Settings"]),
         JSON.stringify(gear.labels));
-    check("jot: gear menu draws one separator (layout | shortcuts), none dangling",
-        JSON.stringify(gear.kinds) === JSON.stringify(["item", "item", "sep", "item"]), JSON.stringify(gear.kinds));
+    check("jot: gear menu separates the groups without dangling one",
+        JSON.stringify(gear.kinds) === JSON.stringify(["item", "item", "sep", "item", "sep", "item"]),
+        JSON.stringify(gear.kinds));
 
     // Customize mode via the gear row: the hidden tray offers no gated item.
     await page.locator(`${gearMenu} .tb-fmt-item`, { hasText: "Customize Toolbar" }).dispatchEvent("mousedown");
@@ -140,14 +145,21 @@ export async function run({ page, check, baseUrl }) {
     await page.locator(`${SLASH} .slash-menu-footer-hint`).click();
     await page.waitForTimeout(150);
     let labels = await slashLabels();
+    // Rows bound to a capability Jot's shell does NOT provide. "Ask Agent" is
+    // deliberately absent from this list: the shell runs one now, so its row
+    // belongs, and moving it to the offered set below is the point.
     const GATED_LABELS = ["Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts", "Check spelling",
-        "Check grammar", "Check style", "Highlight note markers", "Lock Edits (Read-only)", "Ask Agent"];
-    check("jot: Show all commands lists no host-bound row",
+        "Check grammar", "Check style", "Highlight note markers", "Lock Edits (Read-only)",
+        "Editor Font", "Full Width", "Fixed Width"];
+    check("jot: Show all commands lists no row bound to a capability the shell lacks",
         GATED_LABELS.every((l) => !labels.includes(l)), JSON.stringify(labels.filter((l) => GATED_LABELS.includes(l))));
     check("jot: Show all commands still lists the editor's own rows",
         ["Table", "Code Block", "Bold", "Find"].every((l) => labels.includes(l)), JSON.stringify(labels));
-    check("jot: Show all commands lists Image, the one capability the shell declares",
-        labels.includes("Image"), JSON.stringify(labels));
+    // The other half of the gate: a capability the shell DOES declare has to
+    // put its row back, or the check above would pass on a page that offers
+    // nothing at all.
+    check("jot: Show all commands lists the rows the shell's own capabilities earn",
+        ["Image", "Ask Agent"].every((l) => labels.includes(l)), JSON.stringify(labels));
     check("jot: no TOC rows in the slash menu", !labels.some((l) => /Table of Contents/.test(l)),
         JSON.stringify(labels.filter((l) => /Table of Contents/.test(l))));
     await page.keyboard.press("Escape");

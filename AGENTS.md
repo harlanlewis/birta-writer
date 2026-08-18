@@ -114,6 +114,7 @@ webview/style.css                             VS Code theming (--vscode-* CSS va
 webview/ui/chrome.css                         Chrome design tokens (--ui-radius/-space/-fs, card recipe) + the .ui-btn primitive; guarded by chromeTokens.test.ts
 webview/i18n/index.ts                         t() / kbd() translation functions
 webview/ui/fullscreenSurface.ts               THE fullscreen shell (grounds + control geography) every lightbox composes
+webview/ui/hoverSelection.ts                  Hover and the arrows share one menu highlight; the guard that stops a still pointer taking it back
 webview/ui/icons.ts                           SVG icons
 webview/ui/tooltip.ts                         Tooltip component
 webview/components/toolbar/index.ts           Top main toolbar: composition root over the sibling modules (layout, menus, typography, image panel)
@@ -129,6 +130,8 @@ shared/hostCapabilities.ts                    Which host provides what: the prof
 jot/                                          Birta Writer Jot, the macOS menu-bar scratchpad shell (SwiftPM) around dist/webview.js; jot/README.md
 jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
+jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes: the autosave setting's scope is the edit trigger and nothing else
+jot/Sources/BirtaJotCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
 jot/scripts/update-jot.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
 ```

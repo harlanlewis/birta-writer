@@ -114,7 +114,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             Self.group([
                 Self.row("Scratchpad", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
                 Self.row("Edit a document instead", control: documentSwitch,
-                         caption: Caption("Jot edits that file rather than the scratchpad, and never empties it: Copy and Delete becomes Copy.")),
+                         caption: Caption("Jot edits that file rather than the scratchpad. Everything else is the same: it is autosaved, Cmd+S writes it, and saving a copy leaves it alone.")),
                 Self.row("Document", control: Self.pathControl(documentPath, documentChoose)),
             ]),
             Self.heading("Agent"),

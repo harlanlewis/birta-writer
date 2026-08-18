@@ -6,6 +6,12 @@
 
 ### Added
 
+- `/ai` works in Birta Writer Jot. Settings holds the command it runs, in the same shape as the extension's `birta.agent.command`, so one tuned there can be pasted in unchanged. Jot writes the note to disk before the run, whatever autosave says, because the agent edits the file and the reference has to name something real. One difference from the extension: there is no merge, so an edit typed in the panel while a run is in flight is replaced when the run finishes.
+
+- Birta Writer Jot's Settings can be opened from the gear in its toolbar, not only from the menu bar and Cmd+Comma.
+
+- Whether Birta Writer Jot floats above other applications' windows is now a setting, on by default.
+
 - Birta Writer Jot can open at login, from a switch in Settings. macOS may hold the request until you allow Birta Jot under General and then Login Items in System Settings, and the switch says so with a button that opens that pane rather than leaving you to find it. Only the installed copy can register, so install it to Applications first.
 
 - Birta Writer Jot has a way out for a finished note. A row along the bottom of the panel offers Copy and Delete (⌥⌘C), which puts the whole note on the clipboard, clears the panel and hides it so the paste lands in the app you were in, and Save (⌘S), which files it in the folder Settings names, under a name taken from the note's first heading or the date, and clears the panel the same way. Neither can lose the note: whichever acted last is offered back from the ··· menu as Restore Deleted Note or Reopen Last Saved, one note deep, and Save never writes over a file that is already there. The ··· menu also holds Save As, Save to a folder you used recently, Copy Everything, Share, Discard, and Reveal Last Save in Finder. When Settings have Jot editing a document instead of the scratchpad, nothing empties it: Copy and Delete becomes Copy and Discard is not offered.
@@ -26,6 +32,14 @@
 
 ### Changed
 
+- Breaking, in Birta Writer Jot: saving no longer empties the panel. Jot edits one file the way any editor does. Autosave (a new setting, on by default) writes as you type, Cmd+S writes on demand, and Shift+Cmd+S writes a copy somewhere you choose and leaves the note where it is. The old model, where Save filed the note under a generated name in a destination folder and cleared the buffer, is gone, along with that destination setting, Copy and Delete, Discard, and the one-deep Restore and Reopen items that existed to undo the clearing. Turning autosave off stops writing while you type and nothing else: hiding the panel and quitting still write.
+
+- Birta Writer Jot defaults to a serif font and no longer offers the Editor font option, which named a VS Code editor font it has none of. Its font picker also had no effect at all before this: it moved the checkmark and left the document alone.
+
+- Birta Writer Jot's text is always full width. The full and fixed control is gone there, because the panel is already its own reading measure. In the editor inside VS Code the control is unchanged, and Full Width and Fixed Width are now also in the command palette.
+
+- The file being edited is named in Birta Writer Jot's bottom left only while its window has focus.
+
 - Birta Writer Jot has its own icons: the Birta Writer Jot mark in the menu bar in place of the stock pencil, and an app icon in Finder, Login Items and the Settings window where it previously showed the blank default.
 
 - Birta Writer Jot's panel is quiet until you point at it. The toolbar's buttons and the action row fade in while the pointer is over the window and back out when it leaves, leaving the page, the window buttons and the settings gear. The panel also has all three window buttons now instead of a lone close button, its toolbar no longer runs under them or draws a line beneath itself, and the file the note is being written to is named in the bottom left. Summoning and dismissing use the system's own window animation rather than a chosen one.
@@ -39,6 +53,10 @@
 - The `birta.agent.command` setting now says that the model and reasoning effort are yours to choose there, as your harness's own flags on the same line. Adding `--model haiku --effort low` gives `/ai` a smaller and faster model than your interactive sessions use and changes nothing about them, which is the point: an editing request on a document is a different shape of task from the coding work the same tool does elsewhere. The first-use route picker says the same thing.
 
 ### Fixed
+
+- Arrow keys could not move the highlight past the row the mouse pointer happened to be resting on, in the slash menu, the block menu and the frontmatter suggestion menu. Pointing at a row and using the arrows still moves one highlight, which is the intent; what was wrong is that a list scrolling under a still pointer counted as pointing, so the selection sprang back and the rows beyond the pointer could not be reached from the keyboard at all.
+
+- In Birta Writer Jot, the toolbar slid away from the top edge when a scroll ran past either end of the document, and sprang back.
 
 - In Birta Writer Jot, the minus key could not be used in the summon hotkey. Typing `cmd+-` into the old Preferences hotkey field was refused as naming no key, and the new Settings recorder registered nothing when that key was pressed, because the parser reads `-` as a separator between the parts of a combination and so never saw it as the key itself. Every other key was unaffected.
 
