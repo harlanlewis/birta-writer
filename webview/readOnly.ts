@@ -113,6 +113,9 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     transformToLowercase: "mutates",
     transformToTitleCase: "mutates",
     uncheckAllTasks: "mutates",
+    // The agent edits the document, so the gesture is a mutation even though
+    // this command's own effect is to hand off a prompt. Read-only refuses it.
+    aiPrompt: "mutates",
     pasteAsPlainText: "mutates",
     // ── Tables ──────────────────────────────────────────────────────────────
     tableInsertRowAbove: "mutates",

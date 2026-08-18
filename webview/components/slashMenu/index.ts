@@ -42,6 +42,12 @@ export interface SlashMenuHandle {
     isVisible(): boolean;
     /** DOM id of the highlighted row (aria-activedescendant), or null. */
     activeRowId(): string | null;
+    /**
+     * The highlighted row itself, or null when none is. The plugin reads it to
+     * decide whether Space commits into argument mode (`takesArgument`) or
+     * stays an ordinary filter character.
+     */
+    activeItem(): SlashMenuItem | null;
     /** Places the menu at the anchor, flipping above when it overflows. */
     position(anchor: SlashMenuAnchor): void;
     /** Removes the menu DOM. */
@@ -303,6 +309,11 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         },
         isVisible(): boolean {
             return visible.length > 0;
+        },
+        activeItem(): SlashMenuItem | null {
+            return activeIndex >= 0 && activeIndex < visible.length
+                ? visible[activeIndex]
+                : null;
         },
         activeRowId(): string | null {
             return activeIndex >= 0 ? slashRowDomId(visible[activeIndex].id) : null;

@@ -14,7 +14,13 @@ import {
 import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
 
 /** The unfiltered view: searchOnly items surface only by typing a query. */
-const BROWSABLE_ITEMS = SLASH_MENU_ITEMS.filter((i) => !i.searchOnly);
+// What the menu actually mounts: browsable AND not gated off. createSlashMenu
+// applies `visibleWhen` itself, so a helper that only dropped `searchOnly`
+// would over-count by every row whose gate is closed — which nothing noticed
+// while every gated row defaulted to visible (the `/ai` row defaults to off).
+const BROWSABLE_ITEMS = SLASH_MENU_ITEMS.filter(
+    (i) => !i.searchOnly && (i.visibleWhen?.() ?? true),
+);
 
 function rowEls(): HTMLElement[] {
     return Array.from(document.querySelectorAll(".slash-menu-item"));
@@ -214,7 +220,9 @@ describe("createSlashMenu", () => {
 
     it("an items override should limit what renders and what picks resolve to", () => {
         menu.destroy();
-        const subset = SLASH_MENU_ITEMS.filter((i) => i.id !== "bulletList");
+        const subset = SLASH_MENU_ITEMS.filter(
+            (i) => i.id !== "bulletList" && (i.visibleWhen?.() ?? true),
+        );
         menu = createSlashMenu({ onPick, onActiveChange, items: subset });
 
         expect(document.getElementById(slashRowDomId("bulletList"))).toBeNull();

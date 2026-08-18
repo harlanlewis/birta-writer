@@ -36,8 +36,19 @@ A Family-A agent that runs *inside* VS Code and reads `activeTextEditor` cannot 
 | Adapter | Reaches | Trigger |
 |---|---|---|
 | `referenceCommand` | every agent | user picks it from the editor's right-click menu (or the palette), pastes the reference |
+| `invoke` | every agent with a CLI | user types `/ai <prompt>` in the document; Birta runs the configured command in a terminal |
 | `languageModelTool` | Copilot agent mode, any LM-tool client | the model calls `#birtaSelection` |
 | `publicApi` | any cooperating extension | caller invokes `getActiveEditorContext()` |
+
+### `/ai`: a one-way invoke, and why it is not Family-B
+
+`invoke` (`src/agentBridge/invoke.ts`) closes the last manual step of the reference path: instead of copying a reference and switching to the agent's panel, the user types `/ai <prompt>` at the caret and Birta hands the agent one prompt with the file and line span already named. The invocation is a `birta.ai.command` template run in a terminal, with placeholders substituted shell-quoted, so a prompt containing a quote or a `$` reaches the agent as typed rather than being split or expanded on the way.
+
+It stays on the safe side of the boundary below, and the distinction is what makes it fileable at all. There is no socket, no server, no lockfile, no discovery entry and no auth: Birta composes a command line and runs it, the same shape as the Send Feedback command. It is rung 0b in [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md), because Birta itself makes no request; the agent is the user's own tool acting under their own identity. `birta.ai.enabled` ships off, since picking the row spawns a process.
+
+A template rather than a roster of harnesses, for the reason the adapter design already gives: the ecosystem is churning, and a shipped vendor list rots. Claude Code's CLI is the default; anything else is one setting.
+
+Two limits are inherent to a one-way invoke and are not bugs to fix here. It cannot know when the agent finished, so nothing reports completion and the result arrives through the ordinary external-change path. And VS Code applies a disk change only to a CLEAN document, so Birta saves before invoking; if the user edits during the wait the agent's write lands as a disk-drift advisory instead of an edit. The window after the invoke cannot be closed from this side.
 
 ### Why Family-B is not built
 

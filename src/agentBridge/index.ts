@@ -12,6 +12,8 @@
  * source onto one agent-ingestion surface:
  *
  *   - referenceCommand — universal clipboard reference (every agent, explicit)
+ *   - invoke           — `/ai`: one prompt handed to the user's own agent in a
+ *                        terminal, one-way, no protocol (MAR-371)
  *   - languageModelTool — Copilot agent mode can pull it (VS Code ≥ 1.95)
  *   - publicApi        — any cooperating extension can read it
  *
@@ -25,6 +27,7 @@ import type { ActiveContextResolver, BirtaApi } from "./api";
 import { registerReferenceCommands } from "./referenceCommand";
 import { registerEditorContextTool } from "./languageModelTool";
 import { createBirtaApi } from "./publicApi";
+import { registerAgentInvoke } from "./invoke";
 
 export type { BirtaApi, BirtaEditorContext, BirtaPosition } from "./api";
 
@@ -37,6 +40,7 @@ export function registerAgentBridge(
     getActive: ActiveContextResolver,
 ): BirtaApi {
     registerReferenceCommands(context, getActive);
+    registerAgentInvoke(context, getActive);
     registerEditorContextTool(context, getActive);
     return createBirtaApi(getActive);
 }

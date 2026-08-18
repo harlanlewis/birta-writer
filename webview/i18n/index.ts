@@ -36,6 +36,7 @@ declare global {
             calcEnabled?: boolean;
             /** Fenced ```calc block ledger gate (birta.calc.blocks.enabled); independent of `calcEnabled`. */
             calcBlocksEnabled?: boolean;
+            aiEnabled?: boolean;
             /** Auto-insert the calc result on `=` instead of suggesting (birta.calc.autoInsert). */
             calcAutoInsert?: boolean;
             /** URL embeds: render a bare YouTube link as an inline facade card (birta.embeds.enabled). */

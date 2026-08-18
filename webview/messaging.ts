@@ -73,6 +73,17 @@ export function notifyCopyAgentReference(): void {
     vscode.postMessage({ type: "copyAgentReference" });
 }
 
+/**
+ * `/ai <prompt>`: hand one prompt to the user's configured coding agent. The
+ * extension owns composing and running the invocation, because only it can see
+ * the workspace path and open a terminal. Fire-and-forget: a one-way invoke
+ * cannot know when the agent finished, and the result arrives (if at all)
+ * through the ordinary external-change path like any other edit made on disk.
+ */
+export function notifyInvokeAgent(prompt: string): void {
+    vscode.postMessage({ type: "invokeAgent", prompt });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }

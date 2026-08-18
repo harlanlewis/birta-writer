@@ -187,6 +187,16 @@ class SlashMenuController {
     // Set by Escape; stays set until the caret leaves the slash construct,
     // so the menu does not pop right back while typing in the same text.
     private suppressed = false;
+    /**
+     * Argument mode (MAR-371): a row whose command needs free text has been
+     * committed with Space, so everything typed after it is that command's
+     * ARGUMENT rather than the menu's filter. Two things change while it is
+     * set: SLASH_CONTEXT_REGEX no longer matches (it stops at whitespace), so
+     * the context comes from `argContext()` instead; and the menu stops
+     * re-filtering, which leaves the committed row on screen as the standing
+     * indication that the line is armed.
+     */
+    private argMode: { slashPos: number; item: SlashMenuItem } | null = null;
 
     private readonly onKeydown = (e: KeyboardEvent): void => {
         this.handleKeydown(e);
@@ -224,6 +234,18 @@ class SlashMenuController {
         this.view = view;
         if (view.composing) {
             return; // IME: never react mid-composition
+        }
+
+        if (this.argMode) {
+            // The construct now contains a space, so matchContext() is null by
+            // design. Track the argument text instead, and only tear down when
+            // the caret has actually left it.
+            if (this.argContext() === null) {
+                this.closeMenu();
+            } else {
+                this.positionMenu();
+            }
+            return;
         }
 
         const match = this.matchContext();
@@ -308,6 +330,47 @@ class SlashMenuController {
         };
     }
 
+    /**
+     * The argument text between the committed row and the caret, or null when
+     * the caret has left it (moved before the slash, or into another block).
+     * Returning null is what ends argument mode; the text itself is ordinary
+     * document text until submit deletes it, exactly as the filter query is.
+     */
+    private argContext(): { text: string; caret: number } | null {
+        const arg = this.argMode;
+        if (!arg) {
+            return null;
+        }
+        const { selection } = this.view.state;
+        if (!selection.empty) {
+            return null;
+        }
+        const caret = selection.from;
+        if (caret < arg.slashPos) {
+            return null;
+        }
+        const $from = selection.$from;
+        if (!$from.parent.isTextblock) {
+            return null;
+        }
+        // Same block only: the slash position is a document position, so a
+        // caret in a later block would read a span across the boundary.
+        if (arg.slashPos < $from.start() || arg.slashPos > $from.end()) {
+            return null;
+        }
+        const raw = this.view.state.doc.textBetween(arg.slashPos, caret, undefined, "￼");
+        if (raw.includes("￼")) {
+            return null;
+        }
+        // raw is "/<row query><space><argument>"; the argument is everything
+        // past the first space, which is the one Space committed the row with.
+        const firstSpace = raw.indexOf(" ");
+        if (firstSpace < 0) {
+            return null;
+        }
+        return { text: raw.slice(firstSpace + 1), caret };
+    }
+
     // ── Menu lifecycle ───────────────────────────────────────────────────
 
     private openMenu(match: MatchContext): void {
@@ -351,6 +414,9 @@ class SlashMenuController {
     }
 
     private closeMenu(): void {
+        // Cleared before the early return: argument mode outlives a hidden
+        // menu, so a stale one must not survive a close that found nothing.
+        this.argMode = null;
         if (!this.menu) {
             return;
         }
@@ -402,14 +468,16 @@ class SlashMenuController {
     }
 
     private positionMenu(): void {
-        const match = this.matchContext();
-        if (!this.menu || !match) {
+        // Anchor position comes from argument mode when it owns the construct,
+        // because matchContext() is null the moment the committing space lands.
+        const slashPos = this.argMode?.slashPos ?? this.matchContext()?.slashPos;
+        if (!this.menu || slashPos === undefined) {
             return;
         }
         // Anchor at the "/" itself — stable while the query grows.
         let coords: { left: number; top: number; bottom: number };
         try {
-            const c = this.view.coordsAtPos(match.slashPos);
+            const c = this.view.coordsAtPos(slashPos);
             coords = { left: c.left, top: c.top, bottom: c.bottom };
         } catch {
             // jsdom (unit tests) cannot measure text positions.
@@ -425,6 +493,43 @@ class SlashMenuController {
     // ── Picking ──────────────────────────────────────────────────────────
 
     private apply(item: SlashMenuItem): void {
+        // Argument mode owns the construct once committed, so its span (slash
+        // through caret) is what gets deleted and its text is what the command
+        // receives. An argument that is blank or whitespace never dispatches:
+        // running the agent with nothing to do would cost a terminal and
+        // change nothing.
+        if (item.takesArgument) {
+            // Picked straight off the menu, with no argument yet: ARM the row
+            // rather than no-op. Enter on "Ask AI" then means "start typing the
+            // prompt", which is the same place Space would have put the user,
+            // so neither key is a dead end and the composer this replaced is
+            // not missed for the simple case.
+            if (!this.argMode) {
+                const match = this.matchContext();
+                if (!match || !_host) {
+                    this.closeMenu();
+                    return;
+                }
+                this.argMode = { slashPos: match.slashPos, item };
+                this.view.dispatch(this.view.state.tr.insertText(" ", match.caret));
+                this.positionMenu();
+                return;
+            }
+            const arg = this.argContext();
+            const slashPos = this.argMode.slashPos;
+            if (!arg || !arg.text.trim()) {
+                return;
+            }
+            this.closeMenu();
+            if (!_host) {
+                return;
+            }
+            const { state } = this.view;
+            this.view.dispatch(state.tr.delete(slashPos, arg.caret));
+            _host.runCommand(item.commandId, { prompt: arg.text.trim() });
+            return;
+        }
+
         const match = this.matchContext();
         this.closeMenu();
         if (!match || !_host) {
@@ -460,7 +565,34 @@ class SlashMenuController {
             return;
         }
 
+        // Space commits a row that takes an argument, and ONLY then. Every
+        // other row keeps a space as an ordinary filter character, which the
+        // multi-word filter depends on, and the space itself is never
+        // swallowed: it becomes document text like the rest of the construct,
+        // and argContext() uses it as the boundary between row and argument.
+        if (e.key === " " && !this.argMode) {
+            const active = this.menu.activeItem();
+            const slashPos = this.matchContext()?.slashPos;
+            if (active?.takesArgument && slashPos !== undefined) {
+                this.argMode = { slashPos, item: active };
+            }
+            return;
+        }
+
         if (e.key === "Enter" || e.key === "Tab") {
+            // In argument mode Enter submits the committed row with its text.
+            // Tab is excluded: it is Enter's synonym for picking a row, and a
+            // Tab mid-sentence reads as indentation rather than submission.
+            if (this.argMode) {
+                if (e.key !== "Enter") {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.apply(this.argMode.item);
+                return;
+            }
             if (this.menu.pickActive()) {
                 e.preventDefault();
                 e.stopPropagation();

@@ -130,7 +130,9 @@ describe("slash command menu plugin", () => {
 
         expect(menuVisible()).toBe(true);
         expect(rowLabels()).toHaveLength(
-            SLASH_MENU_ITEMS.filter((i) => !i.searchOnly).length,
+            // Gated-off rows never mount (createSlashMenu applies visibleWhen),
+            // so the expected count has to drop them too.
+            SLASH_MENU_ITEMS.filter((i) => !i.searchOnly && (i.visibleWhen?.() ?? true)).length,
         );
     });
 
@@ -633,5 +635,151 @@ describe("contextHiddenItemIds — nesting policy", () => {
         for (const id of ["callout", "blockquote"]) {
             expect(shown.has(id), `${id} should stay offered in a table cell`).toBe(true);
         }
+    });
+});
+
+
+/**
+ * Argument mode (MAR-371): the `/ai` row does not run on pick — it commits,
+ * and everything typed after it is the command's argument rather than the
+ * menu's filter. Two things make this more than a flag. A space ENDS the slash
+ * construct by design (SLASH_CONTEXT_REGEX stops at whitespace so paths like
+ * /usr/bin never trigger), so argument mode has to keep the menu alive past
+ * the point the ordinary context match goes null; and Space has to stay an
+ * ordinary filter character for every other row, because the multi-word filter
+ * depends on it.
+ *
+ * The row is gated off by default (`birta.ai.enabled` ships false), so these
+ * open the gate explicitly — which is also what pins the gate itself.
+ */
+describe("slash menu argument mode", () => {
+    let editor: Editor;
+    let v: EditorView;
+    let runCommand: ReturnType<typeof vi.fn>;
+    let prevI18n: typeof window.__i18n;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        prevI18n = window.__i18n;
+        window.__i18n = {
+            ...(prevI18n ?? { translations: {}, isMac: false }),
+            aiEnabled: true,
+        };
+        editor = await makeEditor("");
+        v = view(editor);
+        placeCursorAtEndOfBlock(v, 0);
+        runCommand = vi.fn();
+        setSlashMenuHost({ runCommand });
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+        window.__i18n = prevI18n;
+    });
+
+    /** Type "/ai", highlight the row, then commit it with Space. */
+    function armAi(): void {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, " ");
+    }
+
+    it("the gated row should be absent while birta.ai.enabled is off", async () => {
+        await editor.destroy();
+        window.__i18n = { ...(prevI18n ?? { translations: {}, isMac: false }), aiEnabled: false };
+        editor = await makeEditor("");
+        v = view(editor);
+        placeCursorAtEndOfBlock(v, 0);
+
+        typeText(v, "/ai");
+
+        expect(rowLabels()).not.toContain("Ask AI");
+    });
+
+    it("the gated row should be present once birta.ai.enabled is on", () => {
+        typeText(v, "/ai");
+
+        expect(rowLabels()).toContain("Ask AI");
+    });
+
+    it("a space after the ai row should keep the menu open instead of ending the construct", () => {
+        armAi();
+
+        // Without argument mode the space ends the slash construct and the
+        // menu closes; this is the whole behavior under test.
+        expect(menuVisible()).toBe(true);
+    });
+
+    it("a space on a row that takes no argument should close the menu as before", () => {
+        typeText(v, "/table");
+        press(v, " ");
+        typeText(v, " ");
+
+        expect(menuVisible()).toBe(false);
+        expect(runCommand).not.toHaveBeenCalled();
+    });
+
+    it("Enter after typing an argument should dispatch it and delete the construct", () => {
+        armAi();
+        typeText(v, "add a mermaid diagram");
+
+        press(v, "Enter");
+
+        expect(runCommand).toHaveBeenCalledWith("aiPrompt", { prompt: "add a mermaid diagram" });
+        // The whole "/ai <prompt>" construct is removed, like any other pick.
+        expect(v.state.doc.textContent).toBe("");
+        expect(menuVisible()).toBe(false);
+    });
+
+    it("an argument of only whitespace should not dispatch", () => {
+        armAi();
+        typeText(v, "   ");
+
+        press(v, "Enter");
+
+        expect(runCommand).not.toHaveBeenCalled();
+    });
+
+    it("Enter on the row with no argument yet should arm it rather than dispatch", () => {
+        typeText(v, "/ai");
+
+        press(v, "Enter");
+
+        // Armed: a space was inserted and the menu is still up, so the user is
+        // exactly where Space would have put them — not at a dead end.
+        expect(runCommand).not.toHaveBeenCalled();
+        expect(v.state.doc.textContent).toBe("/ai ");
+        expect(menuVisible()).toBe(true);
+    });
+
+    it("Escape in argument mode should dismiss and keep the typed text", () => {
+        armAi();
+        typeText(v, "keep me");
+
+        press(v, "Escape");
+
+        expect(menuVisible()).toBe(false);
+        expect(runCommand).not.toHaveBeenCalled();
+        expect(v.state.doc.textContent).toBe("/ai keep me");
+    });
+
+    it("Tab in argument mode should not submit (it reads as indentation mid-sentence)", () => {
+        armAi();
+        typeText(v, "some prompt");
+
+        press(v, "Tab");
+
+        expect(runCommand).not.toHaveBeenCalled();
+    });
+
+    it("moving the caret out of the construct should end argument mode", () => {
+        armAi();
+        typeText(v, "abandoned");
+        // Caret to the very start of the doc, before the slash.
+        v.dispatch(v.state.tr.setSelection(Selection.atStart(v.state.doc)));
+
+        expect(menuVisible()).toBe(false);
+        expect(runCommand).not.toHaveBeenCalled();
     });
 });

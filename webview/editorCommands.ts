@@ -82,7 +82,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@/pm";
 import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
-import { notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
+import { notifyClipboardWrite, notifyInvokeAgent, notifyOpenUrl } from "@/messaging";
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
@@ -885,6 +885,18 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
         uncheckAllTasks(view);
         view.focus();
     }),
+    // `/ai <prompt>`: the prompt arrives as the command's argument (the
+    // insertCallout / pasteAsPlainText idiom). Blank is a no-op rather than an
+    // error — an agent invoked with nothing to do would just cost a terminal.
+    // The extension owns everything after this: it alone can resolve the
+    // workspace path and open a terminal.
+    aiPrompt: (_getEditor, args) => {
+        const prompt = (args as { prompt?: unknown } | undefined)?.prompt;
+        if (typeof prompt !== "string" || !prompt.trim()) {
+            return;
+        }
+        notifyInvokeAgent(prompt.trim());
+    },
 };
 
 /**

@@ -307,6 +307,13 @@ export const EDITOR_COMMANDS = [
     // undo step — resets a reusable checklist. Palette-only (also offered on the
     // block menu of a task list); no default chord.
     { id: "uncheckAllTasks", title: "Uncheck All Tasks", palette: true, sections: [] },
+    // Hand a one-shot prompt to the user's own coding agent, with the caret's
+    // file and line span already named (MAR-371). The prompt is an ARGUMENT,
+    // which is why this entry is palette: false — a palette row carries none,
+    // and a row that ran the agent with an empty prompt would be a dead end.
+    // The slash menu supplies it (`/ai <text>`), and the argument travels the
+    // same `args` channel insertCallout and pasteAsPlainText already use.
+    { id: "aiPrompt", title: "Ask Your AI Agent", palette: false, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

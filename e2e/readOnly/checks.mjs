@@ -663,7 +663,7 @@ const MUTATING_COMMANDS = [
     "duplicateBlockUp", "duplicateBlockDown", "moveBlockUp", "moveBlockDown",
     "indentBlock", "outdentBlock", "deleteBlock", "joinLines",
     "transformToUppercase", "transformToLowercase", "transformToTitleCase",
-    "uncheckAllTasks", "pasteAsPlainText",
+    "uncheckAllTasks", "aiPrompt", "pasteAsPlainText",
     "tableInsertRowAbove", "tableInsertRowBelow", "tableInsertColumnLeft",
     "tableInsertColumnRight", "tableAlignColumnLeft", "tableAlignColumnCenter",
     "tableAlignColumnRight", "tableDeleteRow", "tableDeleteColumn", "tableDeleteTable",

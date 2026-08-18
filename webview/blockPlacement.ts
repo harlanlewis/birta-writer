@@ -193,6 +193,10 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     insertParagraphAfter: NONE,
     insertParagraphBefore: NONE,
     uncheckAllTasks: NONE,
+    // Places nothing itself: it names the caret's file and line span for an
+    // external agent, which edits the file. No block reaches the document from
+    // here, so there is nothing for the placement walk to answer.
+    aiPrompt: NONE,
 
     // ── Selection and case ──────────────────────────────────────────────────
     transformToUppercase: NONE,

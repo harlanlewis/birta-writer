@@ -205,6 +205,33 @@ export interface BirtaConfig extends ProofreadConfig {
      * preview. Off, a calc fence is just an ordinary code block. */
     calcBlocksEnabled: boolean;
     /**
+     * The `/ai` slash row (birta.ai.enabled). Ships OFF: picking it SPAWNS A
+     * PROCESS on the user's machine, which is a larger thing to do unasked
+     * than anything else the editor offers, and this is a product whose
+     * default posture is that nothing reaches outward until asked. Off, the
+     * row does not exist in the menu at all and nothing is loaded for it.
+     *
+     * Not a network gate. Birta makes no request either way: it composes text
+     * and hands it to a tool the user already runs, under their own identity,
+     * which is rung 0b in docs/NETWORK_POSTURE.md. `birta.network.enabled` is
+     * therefore NOT consulted, and turning it on grants nothing here.
+     */
+    aiEnabled: boolean;
+    /**
+     * The command template `/ai` runs in a terminal (birta.ai.command).
+     * Placeholders are substituted SHELL-QUOTED, so a prompt containing
+     * quotes, `$`, or backticks is passed through as text rather than
+     * interpreted: `${prompt}` (what the user typed), `${reference}`
+     * (`notes.md#L12-L20`), `${file}` (the workspace-relative path), and
+     * `${instruction}` (the prompt with the reference named, the default).
+     *
+     * A template rather than a vendor list, because the agent ecosystem is
+     * churning and a shipped roster of harnesses would rot (docs/AGENT_BRIDGE
+     * .md makes the same argument for the adapters). The default targets the
+     * Claude Code CLI; Codex, Copilot CLI and anything else are one setting.
+     */
+    aiCommand: string;
+    /**
      * URL-embed feature gate (birta.embeds.enabled): a bare provider link
      * (YouTube) on its own line renders as an inline facade card — a static
      * thumbnail that loads the player only on click. Render-only: the on-disk
@@ -352,6 +379,8 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     pasteUnfurlAutoApply: "pasteUnfurl.autoApply",
     calcEnabled: "calc.enabled",
     calcBlocksEnabled: "calc.blocks.enabled",
+    aiEnabled: "ai.enabled",
+    aiCommand: "ai.command",
     calcAutoInsert: "calc.autoInsert",
     autoUpdateAnchors: "autoUpdateAnchors",
     embedsEnabled: "embeds.enabled",
@@ -469,6 +498,9 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // The inline and block gates are independent — see the interface docs.
     calcEnabled: true,
     calcBlocksEnabled: true,
+    // The /ai row ships OFF — it spawns a process, and this editor asks first.
+    aiEnabled: false,
+    aiCommand: "claude ${instruction}",
     calcAutoInsert: false,
     // Auto-update anchor links on heading rename ships ON — the maintainer
     // wants it automatic ("magical"); the gate is the escape hatch for anyone

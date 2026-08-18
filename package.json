@@ -702,6 +702,11 @@
                 "command": "birta.editor.uncheckAllTasks",
                 "title": "%command.editor.uncheckAllTasks.title%",
                 "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.aiPrompt",
+                "title": "%command.editor.aiPrompt.title%",
+                "category": "Birta Writer"
             }
         ],
         "keybindings": [
@@ -1352,6 +1357,10 @@
                 {
                     "command": "birta.editor.uncheckAllTasks",
                     "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.aiPrompt",
+                    "when": "false"
                 }
             ],
             "webview/context": [
@@ -2456,6 +2465,18 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.calc.blocks.enabled.description%"
+                },
+                "birta.ai.enabled": {
+                    "order": 107.6,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.ai.enabled.description%"
+                },
+                "birta.ai.command": {
+                    "order": 107.7,
+                    "type": "string",
+                    "default": "claude ${instruction}",
+                    "description": "%config.ai.command.description%"
                 },
                 "birta.calc.autoInsert": {
                     "order": 108,

@@ -411,6 +411,12 @@ export type ToExtensionMessage =
     // command the context menu offers, so the one-click path and the menu path
     // share behavior (clipboard payload, status-bar feedback) exactly.
     | { type: "copyAgentReference" }
+    // `/ai <prompt>`: hand one prompt to the user's configured coding agent,
+    // with the caret's file and line span named for it (MAR-371/MAR-272). The
+    // extension composes the invocation and runs it in a terminal; nothing is
+    // sent over a network by Birta, and the agent is the user's own tool under
+    // their own identity (rung 0b in docs/NETWORK_POSTURE.md).
+    | { type: "invokeAgent"; prompt: string }
     // The document cannot open in the WYSIWYG editor because its format's
     // parse is fatal on this content (MDX: a stray `{`, an unclosed tag —
     // unlike markdown, where every byte sequence is valid). The extension

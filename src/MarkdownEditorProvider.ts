@@ -1559,6 +1559,13 @@ export class MarkdownEditorProvider
                         // context menu, so payload and feedback stay identical.
                         vscode.commands.executeCommand("birta.copyAgentReference");
                         break;
+                    case "invokeAgent":
+                        // `/ai <prompt>`: routed to the agent-bridge adapter,
+                        // which composes the command and runs it in a terminal
+                        // (src/agentBridge/invoke.ts). Fire-and-forget by
+                        // design — a one-way invoke has no completion to await.
+                        vscode.commands.executeCommand("birta._invokeAgent", message.prompt);
+                        break;
                 }
             },
         );

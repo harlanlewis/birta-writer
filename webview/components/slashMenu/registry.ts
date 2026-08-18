@@ -40,6 +40,7 @@ import {
     IconPilcrow,
     IconQuote,
     IconSearch,
+    IconZap,
     IconSettings,
     IconSpellCheck,
     IconStrikethrough,
@@ -115,6 +116,19 @@ interface SlashMenuItemBase {
      * (most `__i18n` gates are baked at panel load).
      */
     readonly visibleWhen?: () => boolean;
+    /**
+     * This row's command needs a free-text ARGUMENT, so picking it is a
+     * two-step gesture: Space commits the row and the menu hands the rest of
+     * the line to the command instead of filtering on it (MAR-371).
+     *
+     * Space is the commit key because Enter and Tab are already one branch
+     * (both pick the active row), and because a space would otherwise END the
+     * slash construct outright — SLASH_CONTEXT_REGEX stops at whitespace so
+     * that paths like /usr/bin never trigger the menu. The commit is gated on
+     * THIS flag so every other row keeps a space as an ordinary filter
+     * character, which the multi-word filter below depends on.
+     */
+    readonly takesArgument?: true;
 }
 
 /**
@@ -220,6 +234,10 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "fontSizeIncrease", group: "view", label: t("Increase font size"), icon: "", badge: "A+", keywords: ["font", "size", "bigger", "larger", "zoom"], commandId: "increaseFontSize", searchOnly: true },
     { id: "fontSizeDecrease", group: "view", label: t("Decrease font size"), icon: "", badge: "A−", keywords: ["font", "size", "smaller"], commandId: "decreaseFontSize", searchOnly: true },
     // ── Actions: commands and tools (toolbar parity; all search-revealed) ──
+    // The one argument-taking row (MAR-371). Browsable rather than searchOnly:
+    // an argument gesture nobody can discover is a feature nobody uses, and the
+    // hint teaches the Space step in the place the user is already looking.
+    { id: "ai", group: "actions", label: t("Ask AI"), icon: IconZap, hint: "/ai …", keywords: ["ai", "agent", "prompt", "claude", "codex", "copilot", "llm", "ask", "generate"], commandId: "aiPrompt", takesArgument: true, visibleWhen: () => window.__i18n?.aiEnabled ?? false },
     { id: "find", group: "actions", label: t("Find"), icon: IconSearch, keywords: ["find", "search"], commandId: "openFind", searchOnly: true },
     { id: "viewSource", group: "actions", label: t("Edit Raw Markdown"), icon: IconFileCode, keywords: ["source", "raw", "markdown", "text", "code"], commandId: "editRawMarkdown", searchOnly: true },
     { id: "customizeToolbar", group: "actions", label: t("Customize Toolbar"), icon: IconPencil, keywords: ["customize", "toolbar", "layout", "arrange"], commandId: "customizeToolbar", searchOnly: true },
