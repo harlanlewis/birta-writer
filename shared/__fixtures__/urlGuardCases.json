@@ -46,7 +46,19 @@
     ["64:ff9b::a9fe:a9fe", true, "metadata endpoint through NAT64"],
     ["64:ff9b::808:808", false, "public address through NAT64"],
     ["not-an-ip", true, "unparseable fails closed"],
-    ["", true, "empty fails closed"]
+    ["", true, "empty fails closed"],
+    ["1.2.3.", true, "a missing octet is not an address; fail closed"],
+    ["1.2.3.4.5", true, "five octets is not an address"],
+    ["0x10.1.1.1", true, "hex octets are not dotted-quad; fail closed"],
+    ["1e2.1.1.1", true, "an exponent is not an octet; fail closed"],
+    [" 10.0.0.1", true, "leading space is not an address"],
+    ["10.0.0.1 ", true, "trailing space is not an address"],
+    ["10.0.0.256", true, "an octet out of range is not an address"],
+    ["::ffff:0.0.0.1", true, "v4-mapped this-network"],
+    ["fe80::1%en0", true, "a scoped link-local literal is not parseable here; fail closed"],
+    ["gggg::1", true, "not hex; fail closed"],
+    ["1:2:3:4:5:6:7", true, "seven groups without :: is not an address"],
+    ["1:2:3:4:5:6:7:8:9", true, "nine groups is not an address"]
   ],
   "blockedHostnames": [
     ["localhost", true, "the name itself"],

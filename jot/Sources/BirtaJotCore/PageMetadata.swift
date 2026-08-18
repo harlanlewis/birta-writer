@@ -135,18 +135,36 @@ public final class URLSessionTransport: NSObject, HttpTransport, URLSessionTaskD
     public override init() { super.init() }
 
     public func perform(_ request: URLRequest, maxBytes: Int) async throws -> HttpReply {
-        let (data, response) = try await session.data(for: request)
+        // STREAMED, and stopped at the cap. `data(for:)` would buffer the whole
+        // response before anything could be truncated, so a host that streams
+        // without end is bounded only by the resource timeout, and on a fast
+        // link that is a great many megabytes held in memory for a link card.
+        // The extension has the same property for the same reason
+        // (src/utils/cappedRead.ts); this is that, in Swift.
+        let (stream, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
+            stream.task.cancel()
             return HttpReply(status: 0, location: nil, contentType: nil, body: Data())
         }
+        var body = Data()
+        body.reserveCapacity(min(maxBytes, 64 * 1024))
+        do {
+            for try await byte in stream {
+                body.append(byte)
+                if body.count >= maxBytes { break }
+            }
+        } catch {
+            // A body that failed midway is still worth parsing: a title lives
+            // near the top of <head>, and half a page is not nothing.
+        }
+        // Stop the transfer as soon as there is enough, rather than letting the
+        // rest of a large page arrive unread.
+        stream.task.cancel()
         return HttpReply(
             status: http.statusCode,
             location: http.value(forHTTPHeaderField: "Location"),
             contentType: http.value(forHTTPHeaderField: "Content-Type"),
-            // The cap is applied after the body arrives rather than during the
-            // read, which bounds what is PARSED but not what is downloaded.
-            // `timeoutIntervalForResource` is what bounds the download.
-            body: data.prefix(maxBytes))
+            body: body)
     }
 
     /// Refuse to follow redirects here: the fetcher follows them itself, so

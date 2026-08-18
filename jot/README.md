@@ -37,6 +37,8 @@ Save As carries them. The images the note actually references are copied into an
 
 The page reaches those files through the same `birta://` scheme that serves the app, with the document's own folder as a second resource root (`BirtaJotCore.ResourceRoots`). A document cannot read outside that folder: the request path is refused before it touches the disk if it traverses, and the resolved path is refused if a symlink leads out.
 
+How much that folder holds is the user's choice, and worth knowing when making it. The default scratchpad sits alone under Application Support, so the root is one directory with an `Attachments` folder in it. Point Preferences at a document in a large directory and every file beside it becomes readable by a document that references it, which is the same bargain VS Code's `localResourceRoots` makes for a workspace. It is not a reason to avoid the feature; it is a reason not to point Jot at your home directory.
+
 One thing to know before reading a failure in the paste check. `measure.sh` drives the paste by sending the editing selector to the web view, not by pressing the menu's key equivalent, because an accessory app driven from a shell frequently cannot take activation, and a menu chord with no key window reaches nothing at all. Delivered the other way it failed about one run in four and looked exactly like a defect in the editor. What the check therefore covers is the pasteboard, WebKit's own paste handling, the bridge and the store; what it does not cover is the menu binding, which needs a real keyboard.
 
 ## Network
