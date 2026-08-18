@@ -21,9 +21,6 @@ final class AgentRunner {
     /// Runs in flight, so the panel can stop them and quitting can too.
     private var running: [String: Process] = [:]
 
-    /// Whether anything is in flight, for the app's termination path.
-    var hasRunning: Bool { !running.isEmpty }
-
     /// - Parameters:
     ///   - requestId: the webview's id for this run; every report carries it.
     ///   - line: the composed request line, already including its reference.
@@ -51,11 +48,31 @@ final class AgentRunner {
         process.standardOutput = pipe
         process.standardError = pipe
 
+        // Drained WHILE the child runs, not in the termination handler.
+        // A pipe holds about 64KB, and a child that fills it blocks on its
+        // next write; if the only reader waits for termination, termination
+        // never comes and the run hangs forever with its marker still
+        // spinning. An agent's transcript passes 64KB easily, so this is the
+        // ordinary case rather than a large one. Verified by reproduction: a
+        // child writing 400KB against a read-at-termination handler never
+        // finishes.
+        let collected = Collected()
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            // Zero bytes is EOF; clearing the handler here is what lets the
+            // file handle close rather than spinning on an empty pipe.
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                return
+            }
+            collected.append(chunk)
+        }
+
         process.terminationHandler = { [weak self] finished in
-            // Read before the handler returns: draining after the pipe's owner
-            // is gone loses the tail, which is usually the error message.
-            let data = try? pipe.fileHandleForReading.readToEnd()
-            let output = String(data: data ?? Data(), encoding: .utf8) ?? ""
+            // Whatever arrived between the last readability callback and exit.
+            let tail = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
+            pipe.fileHandleForReading.readabilityHandler = nil
+            let output = collected.take(appending: tail)
             Task { @MainActor [weak self] in
                 guard let self, self.running.removeValue(forKey: requestId) != nil else {
                     // Already removed means `stop` reported it; a cancelled run
@@ -115,4 +132,28 @@ struct AgentRunStatus {
     let harness: String?
     let text: String?
     let message: String?
+}
+
+
+/// A byte buffer two queues touch: the readability handler fills it off a
+/// background queue while the termination handler drains it on another. Small
+/// and lock-based on purpose; the alternative is an actor, and the readability
+/// handler is not async.
+private final class Collected {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func append(_ chunk: Data) {
+        lock.lock()
+        data.append(chunk)
+        lock.unlock()
+    }
+
+    func take(appending tail: Data) -> String {
+        lock.lock()
+        data.append(tail)
+        let all = data
+        lock.unlock()
+        return String(data: all, encoding: .utf8) ?? ""
+    }
 }

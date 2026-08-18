@@ -38,6 +38,27 @@ public enum AgentRequest {
         return trimmed.replacingOccurrences(of: promptPlaceholder, with: quotedPrompt)
     }
 
+    /// Add `flag value` to a template, BEFORE a trailing `{prompt}`.
+    ///
+    /// Position is the whole point, and appending is wrong: a template that
+    /// ends in the placeholder hands the prompt POSITIONALLY, so a flag added
+    /// after it (`codex exec --full-auto {prompt} --model x`) is read by the
+    /// CLI as arguments following the prompt rather than as the prompt's
+    /// options, and some read the flag's value as the prompt itself. This is
+    /// the same rule `setTemplateFlag` keeps in `src/agentBridge/askAgent.ts`.
+    ///
+    /// A template that already carries the flag is left alone: the user wrote
+    /// it there, and this is a per-request addition rather than an override.
+    public static func adding(flag: String, value: String, to template: String) -> String {
+        let trimmed = template.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.contains(flag) else { return trimmed }
+        let addition = "\(flag) \(shellQuote(value))"
+        guard trimmed.hasSuffix(promptPlaceholder) else { return "\(trimmed) \(addition)" }
+        let head = String(trimmed.dropLast(promptPlaceholder.count))
+            .trimmingCharacters(in: .whitespaces)
+        return "\(head) \(addition) \(promptPlaceholder)"
+    }
+
     /// The harness a command names, for the running marker's tooltip: the
     /// first word, with any directory part dropped. Nil when the template is
     /// blank, which is the one case where there is nothing to name.

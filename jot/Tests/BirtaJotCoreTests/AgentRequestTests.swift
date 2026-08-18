@@ -46,6 +46,38 @@ final class AgentRequestTests: XCTestCase {
         XCTAssertEqual(AgentRequest.expand(template: "  claude  ", quotedPrompt: "'go'"), "claude 'go'")
     }
 
+    /// The case the rule exists for: a template ending in the placeholder
+    /// hands the prompt positionally, so a flag appended after it is read as
+    /// arguments following the prompt rather than as its options.
+    func testAFlagShouldGoBeforeATrailingPromptPlaceholder() {
+        XCTAssertEqual(
+            AgentRequest.adding(flag: "--model", value: "opus",
+                                to: "codex exec --full-auto {prompt}"),
+            "codex exec --full-auto --model 'opus' {prompt}")
+    }
+
+    func testAFlagShouldBeAppendedWhenThePlaceholderIsNotLast() {
+        XCTAssertEqual(
+            AgentRequest.adding(flag: "--model", value: "opus",
+                                to: "claude -p {prompt} --permission-mode acceptEdits"),
+            "claude -p {prompt} --permission-mode acceptEdits --model 'opus'")
+    }
+
+    /// A template the user already gave the flag to is theirs; a per-request
+    /// addition must not produce the flag twice and let the CLI pick.
+    func testATemplateThatAlreadyCarriesTheFlagShouldBeLeftAlone() {
+        let template = "claude --model haiku -p {prompt}"
+        XCTAssertEqual(
+            AgentRequest.adding(flag: "--model", value: "opus", to: template), template)
+    }
+
+    /// The value is quoted for the same reason the prompt is: it reaches a
+    /// shell, and a model name is data.
+    func testAFlagValueShouldBeShellQuoted() {
+        XCTAssertTrue(
+            AgentRequest.adding(flag: "--effort", value: "a b", to: "claude").contains("'a b'"))
+    }
+
     func testTheHarnessNameShouldBeTheCommandsFirstWordWithoutItsDirectory() {
         XCTAssertEqual(AgentRequest.harnessName(from: "claude -p {prompt}"), "claude")
         XCTAssertEqual(AgentRequest.harnessName(from: "codex exec --full-auto {prompt}"), "codex")

@@ -4,19 +4,21 @@ import BirtaJotCore
 import os
 
 /// The one object that knows the whole flow: prewarm → summon → edit →
-/// persist → hide, plus Save As, theme, preferences and cold recovery.
+/// persist → hide, plus saving, theme, settings and cold recovery.
 ///
-/// Persistence model (MAR-375): exactly one buffer, autosaved to a plain
-/// `.md` file the user can find (Preferences names it), on every admitted
-/// `update`, atomically. Hiding, quitting and Save As first ask the page to
+/// Persistence model (MAR-375): exactly one buffer, one plain `.md` file the
+/// user can find (Settings names it), written atomically. WHEN it is written
+/// is `BirtaJotCore.AutosavePolicy`'s answer: an edit is held for a beat and
+/// only written at all with autosave on, and every other reason to write
+/// (Cmd+S, hiding, quitting, New Note, handing the file to an agent) writes
+/// immediately whatever the setting says. Each of those first asks the page to
 /// flush (`flushSave`), bounded by `flushTimeout` like the extension's
-/// will-save participant, then write.
+/// will-save participant, then writes.
 ///
-/// One buffer, one file, and nothing that empties it. Jot edits a document the
-/// way any editor edits a document: writes are governed by the autosave
-/// setting through `BirtaJotCore.AutosavePolicy`, Cmd+S flushes and writes, and
-/// Save As writes a COPY somewhere else while the panel goes on showing the
-/// same note bound to the same file.
+/// Nothing empties the buffer. Jot edits a document the way any editor edits
+/// one: Save a Copy As writes a COPY somewhere else while the panel goes on
+/// showing the same note bound to the same file, and New Note leaves the old
+/// note in its own file and binds to a fresh one.
 ///
 /// State machine for the web view: `cold` (nothing loaded, or the content
 /// process died) → `loading` (page requested, `ready` not yet seen) → `warm`
@@ -720,12 +722,16 @@ final class Coordinator {
                                              message: "No agent command is set in Settings."))
             return
         }
-        // The composer's per-request overrides, appended rather than merged:
-        // the extension rewrites the flag in place, which needs its help
-        // parser. Appending is correct for every CLI that takes the last
-        // occurrence, and the template is the user's own either way.
-        if let model, !model.isEmpty { template += " --model \(AgentRequest.shellQuote(model))" }
-        if let effort, !effort.isEmpty { template += " --effort \(AgentRequest.shellQuote(effort))" }
+        // The composer's per-request choices. Added before a trailing
+        // `{prompt}` rather than appended, because a template that ends in the
+        // placeholder hands the prompt positionally and a flag after it is not
+        // the prompt's flag any more (`AgentRequest.adding`).
+        if let model, !model.isEmpty {
+            template = AgentRequest.adding(flag: "--model", value: model, to: template)
+        }
+        if let effort, !effort.isEmpty {
+            template = AgentRequest.adding(flag: "--effort", value: effort, to: template)
+        }
         let command = template
 
         flushThen { [weak self] in
