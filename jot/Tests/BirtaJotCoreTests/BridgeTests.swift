@@ -67,6 +67,7 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(i18n["embedsEnabled"] as? Bool, false)
         XCTAssertEqual(i18n["calcEnabled"] as? Bool, true)
         XCTAssertEqual(i18n["tocVisibility"] as? String, "hidden")
+        XCTAssertEqual((i18n["proofread"] as? [String: Bool])?["proofreadingEnabled"], false)
         XCTAssertEqual((i18n["hostCapabilities"] as? [String]) ?? ["x"], [])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

@@ -56,6 +56,8 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  */
 export const HOST_PROFILES = {
     vscode: ALL_HOST_CAPABILITIES,
+    // Mirrored by hand in jot/Sources/BirtaJot/Preferences.swift
+    // (`Prefs.bootConfig`), which cannot import this file: change both.
     jot: [] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 

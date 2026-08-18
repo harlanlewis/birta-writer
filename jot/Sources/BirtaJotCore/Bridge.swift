@@ -166,6 +166,10 @@ public struct BootConfig: Equatable {
             "hostCapabilities": hostCapabilities,
             // No sidebar in Jot: belt to the `toc` capability's braces.
             "tocVisibility": "hidden",
+            // Proofreading is a host capability Jot does not declare, and the
+            // engine defaults ON when the snapshot is absent; the capability
+            // gates the chrome, this gates the work (webview/plugins/proofread.ts).
+            "proofread": ["proofreadingEnabled": hostCapabilities.contains("proofreading")],
         ]
     }
 
