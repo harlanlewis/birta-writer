@@ -33,6 +33,7 @@ final class ActionBar: NSView {
     /// What the status line says when nothing has just happened.
     private var restingText = ""
     private var windowIsFocused = false
+    private var pathShown = true
 
     init() {
         super.init(frame: .zero)
@@ -112,7 +113,19 @@ final class ActionBar: NSView {
     func setWindowFocused(_ focused: Bool, animated: Bool = true) {
         guard focused != windowIsFocused else { return }
         windowIsFocused = focused
-        setAlpha(focused ? 1 : 0, on: status, animated: animated)
+        applyStatusVisibility(animated: animated)
+    }
+
+    /// Whether the path is shown at all. Off wins over focus: someone who
+    /// turned it off does not want it back when the window takes keys.
+    func setPathShown(_ shown: Bool) {
+        guard shown != pathShown else { return }
+        pathShown = shown
+        applyStatusVisibility(animated: true)
+    }
+
+    private func applyStatusVisibility(animated: Bool) {
+        setAlpha(pathShown && windowIsFocused ? 1 : 0, on: status, animated: animated)
     }
 
     private func setAlpha(_ alpha: CGFloat, on view: NSView, animated: Bool) {

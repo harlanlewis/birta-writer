@@ -80,6 +80,10 @@ export const EDITOR_COMMANDS = [
     { id: "toggleBulletList", title: "Bullet List", palette: true, sections: [] },
     { id: "toggleOrderedList", title: "Ordered List", palette: true, sections: [] },
     { id: "toggleTaskList", title: "Task List", palette: true, sections: [] },
+    // Ticking the task the caret is in, which the checkbox and the `[x] `
+    // marker could already do with a pointer or a fresh line and neither could
+    // do from inside the text.
+    { id: "toggleTaskChecked", title: "Toggle Task Done", palette: true, sections: [] },
     { id: "toggleBlockquote", title: "Blockquote", palette: true, sections: [] },
     { id: "insertCodeBlock", title: "Code Block", palette: true, sections: [] },
     { id: "insertHorizontalRule", title: "Horizontal Rule", palette: true, sections: [] },

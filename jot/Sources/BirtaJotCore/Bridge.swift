@@ -220,6 +220,42 @@ public enum HostMessage: Equatable {
 /// The `window.__i18n` config blob the page reads at boot, and the
 /// `acquireVsCodeApi` shim. Built here so the exact JS the shell injects is
 /// testable text rather than a string assembled in three places.
+/// One shortcut the host binds itself, as the cheatsheet prints it.
+public struct HostShortcut: Equatable, Sendable {
+    /// The chord in the page's own notation ("Cmd+Shift+D").
+    public let keys: String
+    /// What it does, in the words the menu uses.
+    public let label: String
+
+    public init(keys: String, label: String) {
+        self.keys = keys
+        self.label = label
+    }
+
+    /// A chord in the ProseMirror keymap notation the page already speaks
+    /// (`Mod-Shift-d`), which is what `kbd()` in `webview/i18n` parses.
+    ///
+    /// Not a rendered chord. The panel runs these through the same helper its
+    /// own rows use, so they come out as ⌘⇧D beside everything else instead of
+    /// as a differently spelled string in the same column. Order is the order
+    /// that helper prints, since it renders the parts as it is given them.
+    ///
+    /// `Mod` rather than `Cmd`: the notation means "the platform's command
+    /// key", and it is the token `kbd()` maps.
+    public static func chord(
+        key: String, command: Bool = false, shift: Bool = false,
+        option: Bool = false, control: Bool = false
+    ) -> String {
+        var parts: [String] = []
+        if command { parts.append("Mod") }
+        if control { parts.append("Ctrl") }
+        if option { parts.append("Alt") }
+        if shift { parts.append("Shift") }
+        parts.append(key)
+        return parts.joined(separator: "-")
+    }
+}
+
 public struct BootConfig: Equatable {
     /// `toolbar` config as the page expects it: `{placements, order}` plus `visible`.
     public var toolbarJSON: String
@@ -230,6 +266,11 @@ public struct BootConfig: Equatable {
     public var hostCapabilities: [String]
     /// Persisted `viewState` bag, JSON object text, or nil.
     public var viewStateJSON: String?
+    /// The host's OWN fixed shortcuts, for the cheatsheet to print. Only a
+    /// host that truly fixes a key may declare one: the panel's whole content
+    /// policy is that a printed key cannot lie, and in VS Code these are
+    /// rebindable, which is why it declares none and links to its own UI.
+    public var hostShortcuts: [HostShortcut]
 
     public init(toolbarJSON: String = #"{"placements":{},"order":[]}"#,
                 fontPreset: String = "editor",
@@ -237,7 +278,9 @@ public struct BootConfig: Equatable {
                 contentWidth: String = "full",
                 networkEnabled: Bool = false,
                 hostCapabilities: [String] = [],
-                viewStateJSON: String? = nil) {
+                viewStateJSON: String? = nil,
+                hostShortcuts: [HostShortcut] = []) {
+        self.hostShortcuts = hostShortcuts
         self.toolbarJSON = toolbarJSON
         self.fontPreset = fontPreset
         self.fontSize = fontSize
@@ -256,6 +299,7 @@ public struct BootConfig: Equatable {
             "translations": [String: String](),
             "isMac": true,
             "toolbar": toolbar,
+            "hostShortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
             "fontPreset": fontPreset,
             "fontSize": fontSize,
             "contentWidth": contentWidth,

@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
         coordinator = Coordinator()
-        coordinator.openPreferences = { [weak self] in self?.openSettings() }
+        coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.makeOverflowMenu = { [weak self] anchor in
             self?.overflowAnchor = anchor
             return self?.buildOverflowMenu() ?? NSMenu()
@@ -75,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu(title: "Birta Jot")
         appMenu.addItem(withTitle: "About Birta Jot", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        JotMenu.add(.app, to: appMenu, target: self)
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Birta Jot", action: #selector(hidePanel), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Birta Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -85,9 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // saves the document being edited and Shift+Cmd+S writes a copy
         // elsewhere. Neither empties the panel.
         let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(withTitle: "Save", action: #selector(saveNow), keyEquivalent: "s")
-        let saveAsItem = fileMenu.addItem(withTitle: "Save a Copy As…", action: #selector(saveAs), keyEquivalent: "s")
-        saveAsItem.keyEquivalentModifierMask = [.command, .shift]
+        JotMenu.add(.file, to: fileMenu, target: self)
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
         fileMenu.addItem(withTitle: "Reveal Last Save in Finder", action: #selector(revealLastSave), keyEquivalent: "")
@@ -113,8 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(.separator())
         // The extension binds these as VS Code keybindings; here the menu is
         // the binding, and each runs the same editor command in the page.
-        editMenu.addItem(withTitle: "Find…", action: #selector(findInEditor), keyEquivalent: "f")
-        editMenu.addItem(withTitle: "Insert Link…", action: #selector(insertLink), keyEquivalent: "k")
+        JotMenu.add(.edit, to: editMenu, target: self)
         let editItem = NSMenuItem(); editItem.submenu = editMenu; main.addItem(editItem)
 
         let windowMenu = NSMenu(title: "Window")
@@ -146,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the window, next to the note it would act on.
         showItem = menu.addItem(withTitle: "Show Birta Writer Jot", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: "")
+        menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Birta Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for item in menu.items where item.action != nil && item.action != #selector(NSApplication.terminate(_:)) {
@@ -198,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildOverflowMenu() -> NSMenu {
         let menu = NSMenu()
 
-        menu.addItem(withTitle: "Save a Copy As…", action: #selector(saveAs), keyEquivalent: "")
+        menu.addItem(withTitle: "Save a Copy As…", action: #selector(menuSaveAs), keyEquivalent: "")
             .isEnabled = coordinator.hasContent
         menu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
             .isEnabled = coordinator.hasContent
@@ -209,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: "")
+        menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
 
         // The menu answers for its own items: automatic validation would ask
         // the responder chain and re-enable everything disabled above.
@@ -241,11 +238,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePanel() { coordinator.toggle() }
     @objc private func hidePanel() { coordinator.hide() }
     @objc private func copyEverything() { coordinator.copyEverything() }
-    @objc private func saveNow() { coordinator.saveNow() }
-    @objc private func saveAs() { coordinator.saveAs() }
+    @objc func menuSaveNow() { coordinator.saveNow() }
+    @objc func menuNewNote() { coordinator.newNote() }
+    @objc func menuSaveAs() { coordinator.saveAs() }
     @objc private func revealLastSave() { coordinator.revealLastSave() }
-    @objc private func findInEditor() { coordinator.runEditorCommand("openFind") }
-    @objc private func insertLink() { coordinator.runEditorCommand("insertLink") }
+    @objc func menuFind() { coordinator.runEditorCommand("openFind") }
+    @objc func menuInsertLink() { coordinator.runEditorCommand("insertLink") }
+    @objc func menuToggleTaskChecked() { coordinator.runEditorCommand("toggleTaskChecked") }
 
 
     @objc private func shareNote() {
@@ -253,7 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.shareNote(from: anchor)
     }
 
-    @objc private func openSettings() {
+    @objc func menuOpenSettings() {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
@@ -284,7 +283,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// between openings. The overflow menu answers for its own.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(copyEverything), #selector(saveAs):
+        case #selector(copyEverything), #selector(menuSaveAs):
             return coordinator.hasContent
         case #selector(revealLastSave):
             return coordinator.lastSavedURL != nil

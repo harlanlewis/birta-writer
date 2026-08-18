@@ -17,7 +17,7 @@
 </style>
 <script>
   document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, hostCapabilities: ["imageUpload", "appPreferences", "agent"] };
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, hostCapabilities: ["imageUpload", "appPreferences", "agent"], hostShortcuts: [{ keys: "Mod-,", label: "Settings" }, { keys: "Mod-Shift-d", label: "Toggle Task Done" }] };
   window.__posted = [];
   const CONTENT = "# One\n\nSome text.\n\n## Two\n\ntext\n\n## Three\n\ntext\n\n## Four\n\ntext\n\n## Five\n\ntext\n";
   window.acquireVsCodeApi = () => ({

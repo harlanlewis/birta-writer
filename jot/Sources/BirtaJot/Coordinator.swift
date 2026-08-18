@@ -95,6 +95,12 @@ final class Coordinator {
     // MARK: lifecycle
 
     func start() {
+        // "Open to a blank note" is decided before the first page loads, so
+        // the editor mounts against the file it will actually edit rather than
+        // mounting the last one and swapping it out a moment later.
+        if Prefs.openToBlankNote, Prefs.documentURL == nil {
+            startBlank()
+        }
         host.bootConfig = { Prefs.bootConfig() }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }
@@ -127,6 +133,7 @@ final class Coordinator {
             }
         }
         actionBar.setWindowFocused(panel.isKeyWindow, animated: false)
+        actionBar.setPathShown(Prefs.showFilePath)
         refreshPathLabel()
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.hide() }
@@ -398,6 +405,7 @@ final class Coordinator {
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshPathLabel()
+            host.setFormattingToolbarVisible(Prefs.showFormattingToolbar)
             host.setChromeResting(!contentView.isHovering)
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
@@ -756,6 +764,92 @@ final class Coordinator {
         }
     }
 
+    /// Cmd+N. Put the current note beyond doubt, then start a fresh file.
+    ///
+    /// No Save/Don't Save sheet, and that is the macOS answer rather than a
+    /// shortcut past it: the buffer is written before the switch every time,
+    /// unconditionally and whatever the autosave setting says, so there is
+    /// never an unsaved change to ask about. A prompt here would be asking
+    /// permission to do something already done.
+    ///
+    /// A bound DOCUMENT is left alone. New Note makes a note in Jot's own
+    /// folder; it is not a way to stop editing the file the user pointed Jot
+    /// at, which is what the Document setting is for.
+    func newNote() {
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            guard Prefs.documentURL == nil else {
+                self.actionBar.flash("Jot is set to edit a document; New Note is off while that is on.")
+                return
+            }
+            let directory = Prefs.notesDirectory
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            } catch {
+                NSLog("Birta Jot: could not create \(directory.path): \(error)")
+                self.actionBar.flash("Could not make a new note in \(directory.lastPathComponent).")
+                return
+            }
+            let target = Coordinator.unusedNoteURL(in: directory)
+            do {
+                // Create it now, empty. A note that exists only in memory is
+                // one the next launch cannot find its way back to.
+                try AtomicFile.writeString("", to: target)
+            } catch {
+                NSLog("Birta Jot: could not write \(target.path): \(error)")
+                self.actionBar.flash("Could not make a new note.")
+                return
+            }
+            Prefs.currentNoteURL = target
+            self.bindTo(target, content: "")
+            self.actionBar.flash("New note.")
+        }
+    }
+
+    /// The launch half of New Note: a fresh file, chosen before anything has
+    /// loaded, so there is no buffer to flush and nothing to write first.
+    private func startBlank() {
+        let directory = Prefs.notesDirectory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let target = Coordinator.unusedNoteURL(in: directory)
+            try AtomicFile.writeString("", to: target)
+            Prefs.currentNoteURL = target
+            boundURL = target
+        } catch {
+            // The scratchpad is the fallback, and it is a good one: the setting
+            // says where to START, not that the old note may be lost.
+            NSLog("Birta Jot: could not start a blank note in \(directory.path): \(error)")
+        }
+    }
+
+    /// Point the editor and the file at `url`, with `content` as the truth.
+    private func bindTo(_ url: URL, content: String) {
+        cancelPendingAutosave()
+        boundURL = url
+        latest = content
+        refreshPathLabel()
+        if state == .warm {
+            host.send(.externalUpdate(content: content, syncVersion: guardState.bumpVersion()))
+        }
+    }
+
+    /// `Note 2026-08-18.md`, numbered if that name is taken, so a second note
+    /// on one day never lands on the first.
+    static func unusedNoteURL(in directory: URL) -> URL {
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyy-MM-dd"
+        let base = "Note \(stamp.string(from: Date()))"
+        var candidate = directory.appendingPathComponent("\(base).md")
+        var n = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(base) \(n).md")
+            n += 1
+        }
+        return candidate
+    }
+
     /// Cmd+S. The buffer is already being written as you type, so this is a
     /// flush and an acknowledgement rather than news; it earns its place by
     /// being the key everyone presses, and by being the one write that happens
@@ -934,6 +1028,7 @@ final class Coordinator {
             self.loadPage()
             // The bound file may have changed; the row names it.
             self.refreshPathLabel()
+            self.actionBar.setPathShown(Prefs.showFilePath)
             self.panel.applyFloatLevel()
         }
     }

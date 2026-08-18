@@ -86,6 +86,7 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     toggleBulletList: "mutates",
     toggleOrderedList: "mutates",
     toggleTaskList: "mutates",
+    toggleTaskChecked: "mutates",
     toggleBlockquote: "mutates",
     // ── Inserts ─────────────────────────────────────────────────────────────
     insertCodeBlock: "mutates",

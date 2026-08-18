@@ -110,6 +110,29 @@ export async function run({ page, check, baseUrl }) {
     }));
     check("jot: the shortcuts cheatsheet still opens", help.open, JSON.stringify(help));
     check("jot: the cheatsheet has no Edit Keyboard Shortcuts footer", !help.footer, JSON.stringify(help));
+
+    // The host's own shortcuts print in the cheatsheet, rendered by the same
+    // helper as every other row rather than as a raw string in the same
+    // column. The harness declares two, which is enough to prove both the
+    // section and the rendering; the real shell declares its whole menu.
+    const hostRows = await page.evaluate(() => {
+        const heads = [...document.querySelectorAll(".shortcuts-help__section-title")];
+        const section = heads.find((h) => h.textContent === "This app");
+        if (!section) { return null; }
+        const rows = [];
+        for (let el = section.nextElementSibling;
+             el && !el.classList.contains("shortcuts-help__section-title");
+             el = el.nextElementSibling) {
+            const chip = el.querySelector("kbd");
+            if (chip) { rows.push(chip.textContent); }
+        }
+        return rows;
+    });
+    check("jot: the cheatsheet prints a section for the host's own shortcuts",
+        Array.isArray(hostRows) && hostRows.length > 0, JSON.stringify(hostRows));
+    check("jot: …rendered as glyphs by the shared helper, not the raw notation",
+        Array.isArray(hostRows) && hostRows.some((k) => /⌘/.test(k)) && !hostRows.some((k) => /Mod-/.test(k)),
+        JSON.stringify(hostRows));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 

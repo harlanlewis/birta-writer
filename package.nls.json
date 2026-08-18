@@ -143,6 +143,7 @@
   "command.editor.toggleBulletList.title": "Bullet List",
   "command.editor.toggleOrderedList.title": "Ordered List",
   "command.editor.toggleTaskList.title": "Task List",
+  "command.editor.toggleTaskChecked.title": "Toggle Task Done",
   "command.editor.toggleBlockquote.title": "Blockquote",
   "command.editor.insertCodeBlock.title": "Code Block",
   "command.editor.insertHorizontalRule.title": "Horizontal Rule",

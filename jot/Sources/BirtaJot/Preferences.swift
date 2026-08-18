@@ -31,6 +31,10 @@ enum Prefs {
         static let autosave = "autosave"
         static let floatAboveOtherWindows = "floatAboveOtherWindows"
         static let agentCommand = "agentCommand"
+        static let showFilePath = "showFilePath"
+        static let showFormattingToolbar = "showFormattingToolbar"
+        static let openToBlankNote = "openToBlankNote"
+        static let currentNotePath = "currentNotePath"
     }
 
     static var hotkey: HotkeyCombo {
@@ -68,8 +72,22 @@ enum Prefs {
         set { d.set(newValue?.path ?? "", forKey: Key.documentPath) }
     }
 
+    /// The note the last New Note made, if any. Between the chosen document
+    /// and the scratchpad in precedence: a document the user pointed Jot at
+    /// outranks it, and it outranks the scratchpad, which is where Jot starts
+    /// and returns when no note has been made.
+    static var currentNoteURL: URL? {
+        get {
+            guard let p = d.string(forKey: Key.currentNotePath), !p.isEmpty else { return nil }
+            let url = URL(fileURLWithPath: p)
+            // A note deleted from Finder must not leave Jot bound to nothing.
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+        set { d.set(newValue?.path ?? "", forKey: Key.currentNotePath) }
+    }
+
     /// The file the editor is bound to right now.
-    static var activeURL: URL { documentURL ?? scratchpadURL }
+    static var activeURL: URL { documentURL ?? currentNoteURL ?? scratchpadURL }
 
     static var networkEnabled: Bool {
         get { d.bool(forKey: Key.networkEnabled) }
@@ -135,6 +153,37 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.agentCommand) }
     }
 
+    /// Whether the row along the bottom names the file being edited. On by
+    /// default; off is for someone who knows where their notes go and would
+    /// rather have the pixels.
+    static var showFilePath: Bool {
+        get { d.object(forKey: Key.showFilePath) == nil ? true : d.bool(forKey: Key.showFilePath) }
+        set { d.set(newValue, forKey: Key.showFilePath) }
+    }
+
+    /// Whether the editing half of the toolbar is built at all. Off leaves the
+    /// window buttons, the search and font controls and the gear, which is the
+    /// panel for someone who formats with Markdown syntax and shortcuts.
+    static var showFormattingToolbar: Bool {
+        get { d.object(forKey: Key.showFormattingToolbar) == nil ? true : d.bool(forKey: Key.showFormattingToolbar) }
+        set { d.set(newValue, forKey: Key.showFormattingToolbar) }
+    }
+
+    /// Whether launching starts a new empty note rather than reopening the
+    /// last one. Off by default: a scratchpad that survives a restart is what
+    /// most people summon a scratchpad for.
+    static var openToBlankNote: Bool {
+        get { d.bool(forKey: Key.openToBlankNote) }
+        set { d.set(newValue, forKey: Key.openToBlankNote) }
+    }
+
+    /// Where a new note goes: beside the scratchpad, in Jot's own folder. Not
+    /// a setting of its own, because the scratchpad's location already answers
+    /// "where does Jot keep things" and two answers would disagree.
+    static var notesDirectory: URL {
+        scratchpadURL.deletingLastPathComponent()
+    }
+
     static func bootConfig() -> BootConfig {
         BootConfig(
             toolbarJSON: toolbarLayout.json,
@@ -147,7 +196,8 @@ enum Prefs {
             // shared/__tests__/hostCapabilities.test.ts parses this file and
             // fails when the two disagree.
             hostCapabilities: ["imageUpload", "appPreferences", "agent"],
-            viewStateJSON: viewStateJSON
+            viewStateJSON: viewStateJSON,
+            hostShortcuts: JotMenu.shortcuts.map { HostShortcut(keys: $0.chord, label: $0.title) }
         )
     }
 }

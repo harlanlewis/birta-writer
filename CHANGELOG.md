@@ -6,6 +6,14 @@
 
 ### Added
 
+- Toggle a task item done from the keyboard, with the caret anywhere in its text: Shift+Cmd+D in the editor, and the same chord on Birta Writer Jot's Edit menu. Ticking a box needed the pointer or a fresh `[x] ` marker before this. A caret in a plain list item does nothing, because turning one into a task is a different question with its own command.
+
+- Birta Writer Jot: New Note (⌘N) starts a fresh file beside the scratchpad, and Settings can make that the launch behavior instead of reopening the last note. Nothing is asked before the switch because nothing is unsaved: the note is written first every time, whatever autosave says.
+
+- Birta Writer Jot's Settings can hide the formatting half of the toolbar, and the file path along the bottom.
+
+- Birta Writer Jot's keyboard cheatsheet lists the app's own shortcuts, which are fixed by its menu and so can be printed without the risk of naming a key that has been rebound.
+
 - `/ai` works in Birta Writer Jot. Settings holds the command it runs, in the same shape as the extension's `birta.agent.command`, so one tuned there can be pasted in unchanged. Jot writes the note to disk before the run, whatever autosave says, because the agent edits the file and the reference has to name something real. One difference from the extension: there is no merge, so an edit typed in the panel while a run is in flight is replaced when the run finishes.
 
 - Birta Writer Jot's Settings can be opened from the gear in its toolbar, not only from the menu bar and Cmd+Comma.
@@ -53,6 +61,8 @@
 - The `birta.agent.command` setting now says that the model and reasoning effort are yours to choose there, as your harness's own flags on the same line. Adding `--model haiku --effort low` gives `/ai` a smaller and faster model than your interactive sessions use and changes nothing about them, which is the point: an editing request on a document is a different shape of task from the coding work the same tool does elsewhere. The first-use route picker says the same thing.
 
 ### Fixed
+
+- Birta Writer Jot's Settings drew every group on a ground the same colour as the window, so the sections ran together as one list. `windowBackgroundColor` and `controlBackgroundColor` are the same colour in both light and dark.
 
 - Arrow keys could not move the highlight past the row the mouse pointer happened to be resting on, in the slash menu, the block menu and the frontmatter suggestion menu. Pointing at a row and using the arrows still moves one highlight, which is the intent; what was wrong is that a list scrolling under a still pointer counted as pointing, so the selection sprang back and the rows beyond the pointer could not be reached from the keyboard at all.
 

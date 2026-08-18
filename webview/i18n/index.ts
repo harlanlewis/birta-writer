@@ -84,6 +84,14 @@ declare global {
              */
             floatingToolbar?: { enabled?: boolean; items?: Record<string, boolean> };
             /** Editor content font preset (drives the toolbar font picker). */
+            /**
+             * Shortcuts the HOST binds itself, for the cheatsheet to print.
+             * Only a host that truly fixes a key declares one: inside VS Code
+             * these are rebindable, so it declares none and the panel links to
+             * the Keyboard Shortcuts UI instead of printing a default that
+             * could be a lie.
+             */
+            hostShortcuts?: { keys: string; label: string }[];
             fontPreset?: FontPreset;
             /** Effective per-preset font stacks (user overrides applied). */
             fontStacks?: FontStacks;

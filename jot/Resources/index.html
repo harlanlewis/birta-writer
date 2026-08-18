@@ -46,6 +46,12 @@
   .editor-topbar .tb-zone,
   .editor-topbar .tb-item { transition: opacity 0.15s ease; }
 
+  /* Two choices the window's owner makes, set by the shell as classes for the
+     same reason jot-resting is one. Hiding the editing cluster leaves the
+     window buttons, find, the font controls and the gear, which is the panel
+     for someone who formats with Markdown syntax and shortcuts. */
+  body.jot-no-format-toolbar .editor-topbar .tb-zone--left { display: none; }
+
   body.jot-resting .editor-topbar .tb-zone--left,
   body.jot-resting .editor-topbar .tb-zone--right .tb-item:not([data-item-id="settings"]) {
     opacity: 0;

@@ -189,6 +189,16 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
+    /// Whether the page shows the editing half of the toolbar. A class for the
+    /// same reason `jot-resting` is one: the bundle is the extension's, and
+    /// "this window's owner would rather not see the formatting buttons" is a
+    /// fact about this window. The file path is not here because it is not the
+    /// page's: it is a label in the native row along the bottom.
+    func setFormattingToolbarVisible(_ visible: Bool) {
+        let js = "document.body.classList.toggle('jot-no-format-toolbar', \(visible ? "false" : "true"));"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
     func focusEditor() {
         webView.evaluateJavaScript("(function(){var e=document.querySelector('.ProseMirror'); if(e){e.focus();} return !!e;})()") { _, _ in }
     }

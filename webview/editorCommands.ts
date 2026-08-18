@@ -345,6 +345,41 @@ function demoteHeadingsInSelection(view: EditorView): void {
  *   - caret not in a list → demote any heading the selection covers, then
  *     wrap it (the stock commands).
  */
+/**
+ * Tick or untick the task the caret is in.
+ *
+ * The checkbox has always been clickable and typeable (`[x] ` as an input
+ * rule), and neither reaches a keyboard user with their hands on the text.
+ * This walks OUT from the caret to the nearest ancestor list item that carries
+ * a `checked` attr, which is what makes a task item a task item, so a caret
+ * anywhere in the item's text works and a nested task ticks the item it is in
+ * rather than the outer one.
+ *
+ * A caret in a plain list item does nothing. Turning one INTO a task is
+ * `toggleTaskList`, a different question with its own command; silently
+ * converting here would make one key mean two things depending on where it
+ * landed.
+ */
+function toggleTaskChecked(getEditor: GetEditor): void {
+    const editor = getEditor();
+    if (!editor) { return; }
+    editor.action((ctx) => {
+        const view = getView(ctx);
+        const $from = view.state.selection.$from;
+        for (let depth = $from.depth; depth > 0; depth--) {
+            const node = $from.node(depth);
+            const checked = node.attrs["checked"];
+            if (checked === undefined || checked === null) { continue; }
+            const tr = view.state.tr.setNodeMarkup($from.before(depth), undefined, {
+                ...node.attrs,
+                checked: !checked,
+            });
+            view.dispatch(tr);
+            return;
+        }
+    });
+}
+
 function toggleList(getEditor: GetEditor, kind: ListKind): void {
     const editor = getEditor();
     if (!editor) { return; }
@@ -711,6 +746,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleBulletList: (getEditor) => toggleList(getEditor, "bulletList"),
     toggleOrderedList: (getEditor) => toggleList(getEditor, "orderedList"),
     toggleTaskList: (getEditor) => toggleList(getEditor, "taskList"),
+    toggleTaskChecked: (getEditor) => toggleTaskChecked(getEditor),
     toggleBlockquote: (getEditor) => toggleBlockquote(getEditor),
     // Optional string arg = fence language ("mermaid" from the slash menu).
     // Retypes the caret's line, so a list line lifts out of its list first —

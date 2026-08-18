@@ -32,6 +32,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let documentChoose = NSButton(title: "Choose…", target: nil, action: nil)
     private let networkSwitch = NSSwitch()
     private let agentField = NSTextField(string: Prefs.agentCommand)
+    private let pathSwitch = NSSwitch()
+    private let formatToolbarSwitch = NSSwitch()
+    private let blankSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
     private let floatSwitch = NSSwitch()
     private let loginSwitch = NSSwitch()
@@ -81,6 +84,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         autosaveSwitch.target = self
         autosaveSwitch.action = #selector(toggleAutosave)
+        for (control, on, action) in [
+            (pathSwitch, Prefs.showFilePath, #selector(togglePath)),
+            (formatToolbarSwitch, Prefs.showFormattingToolbar, #selector(toggleFormatToolbar)),
+            (blankSwitch, Prefs.openToBlankNote, #selector(toggleOpenToBlank)),
+        ] {
+            control.state = on ? .on : .off
+            control.target = self
+            control.action = action
+        }
         agentField.placeholderString = "claude -p {prompt} --permission-mode acceptEdits"
         agentField.delegate = self
         agentField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
@@ -110,8 +122,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             Self.group([
                 Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
             ]),
+            Self.heading("Appearance"),
+            Self.group([
+                Self.row("Show formatting toolbar", control: formatToolbarSwitch,
+                         caption: Caption("The editing buttons on the left of the toolbar. Off leaves the window buttons, find, the text controls and the gear.")),
+                Self.row("Show file path", control: pathSwitch,
+                         caption: Caption("Names the file being edited along the bottom, while the window has focus.")),
+            ]),
             Self.heading("Files"),
             Self.group([
+                Self.row("Start with a blank note", control: blankSwitch,
+                         caption: Caption("Open a new empty note each launch instead of reopening the last one. New Note (⌘N) does the same at any time, and never touches a document chosen below.")),
                 Self.row("Scratchpad", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
                 Self.row("Edit a document instead", control: documentSwitch,
                          caption: Caption("Jot edits that file rather than the scratchpad. Everything else is the same: it is autosaved, Cmd+S writes it, and saving a copy leaves it alone.")),
@@ -138,7 +159,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
         sections.translatesAutoresizingMaskIntoConstraints = false
 
-        let container = NSView()
+        let container = BackgroundView()
         container.addSubview(sections)
         NSLayoutConstraint.activate([
             sections.topAnchor.constraint(equalTo: container.topAnchor, constant: Metrics.windowPadding),
@@ -157,6 +178,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     // MARK: pieces
+
+    /// The ground a settings group sits on.
+    ///
+    /// NOT `controlBackgroundColor`, which is the obvious choice and is
+    /// measurably the SAME colour as `windowBackgroundColor` in both
+    /// appearances (white on white, and 0.118 on 0.118), so a card painted
+    /// with it is invisible and the groups read as one long list. This is a
+    /// translucent lift instead, which composites over whatever the window
+    /// ground is: it settles into a light window and lifts off a dark one,
+    /// which is the direction System Settings' own cards go in each.
+    static let settingsCard = NSColor(name: "birtaJotSettingsCard") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.06)
+            : NSColor(white: 0, alpha: 0.035)
+    }
 
     private static func heading(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
@@ -180,9 +216,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
         let box = NSBox()
         box.boxType = .custom
-        box.borderWidth = 0
+        box.borderWidth = 1
+        box.borderColor = .separatorColor
         box.cornerRadius = 10
-        box.fillColor = .controlBackgroundColor
+        box.fillColor = SettingsWindowController.settingsCard
         box.contentViewMargins = .zero
         box.contentView = stack
         box.translatesAutoresizingMaskIntoConstraints = false
@@ -388,6 +425,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.agentCommand = agentField.stringValue
     }
 
+    @objc private func togglePath() {
+        Prefs.showFilePath = pathSwitch.state == .on
+        onChange()
+    }
+
+    @objc private func toggleFormatToolbar() {
+        Prefs.showFormattingToolbar = formatToolbarSwitch.state == .on
+        onChange()
+    }
+
+    @objc private func toggleOpenToBlank() {
+        Prefs.openToBlankNote = blankSwitch.state == .on
+    }
+
     @objc private func toggleAutosave() {
         Prefs.autosave = autosaveSwitch.state == .on
     }
@@ -468,5 +519,19 @@ final class PathLabel: NSTextField {
         stringValue = url.map { $0.path.replacingOccurrences(of: NSHomeDirectory(), with: "~") } ?? "None chosen"
         toolTip = url?.path
         textColor = isDimmed ? .tertiaryLabelColor : .secondaryLabelColor
+    }
+}
+
+/// A view that paints the window ground.
+///
+/// A plain NSView draws nothing, so the settings card's translucency would
+/// composite over whatever happened to be behind the window. Painting it here
+/// with a dynamic NSColor, in `draw` rather than a layer, is what keeps the
+/// ground correct when the system flips between light and dark: a CGColor on a
+/// layer is resolved once and then stale.
+final class BackgroundView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        dirtyRect.fill()
     }
 }

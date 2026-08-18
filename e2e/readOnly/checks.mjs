@@ -656,7 +656,7 @@ const MUTATING_COMMANDS = [
     "toggleBold", "toggleItalic", "toggleStrikethrough", "toggleHighlight",
     "toggleInlineCode", "clearFormatting", "setParagraph", "setHeading1",
     "setHeading2", "setHeading3", "setHeading4", "setHeading5", "setHeading6",
-    "toggleBulletList", "toggleOrderedList", "toggleTaskList", "toggleBlockquote",
+    "toggleBulletList", "toggleOrderedList", "toggleTaskList", "toggleTaskChecked", "toggleBlockquote",
     "insertCodeBlock", "insertHorizontalRule", "insertTable", "insertLink",
     "insertSectionLink", "insertImage", "insertMath", "insertFootnote",
     "insertCallout", "toggleCallout", "insertParagraphAfter", "insertParagraphBefore",

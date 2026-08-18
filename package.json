@@ -279,6 +279,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.toggleTaskChecked",
+                "title": "%command.editor.toggleTaskChecked.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.toggleBlockquote",
                 "title": "%command.editor.toggleBlockquote.title%",
                 "category": "Birta Writer"
@@ -874,6 +879,12 @@
                 "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
+                "command": "birta.editor.toggleTaskChecked",
+                "key": "ctrl+shift+d",
+                "mac": "cmd+shift+d",
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
+            },
+            {
                 "command": "birta.editor.setParagraph",
                 "key": "ctrl+alt+0",
                 "mac": "cmd+alt+0",
@@ -1042,6 +1053,10 @@
                 },
                 {
                     "command": "birta.editor.toggleTaskList",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.toggleTaskChecked",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
