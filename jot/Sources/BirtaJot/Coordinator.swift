@@ -112,7 +112,9 @@ final class Coordinator {
         actionBar.onChute = { [weak self] in self?.copyAndDelete() }
         actionBar.onSave = { [weak self] in self?.saveToDefaultDestination() }
         actionBar.onOverflow = { [weak self] view in self?.showOverflowMenu(from: view) }
+        contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
         refreshActionBar()
+        refreshPathLabel()
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.hide() }
         applyTheme(initial: true)
@@ -252,11 +254,15 @@ final class Coordinator {
             previousApp = front
         }
         panel.placeIfUnplaced()
+        if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeFirstResponder(host.webView)
         if state == .warm { host.focusEditor() }
         if state == .cold { loadPage() }
+        // Summoned under a pointer that never moved: no enter event fires, so
+        // the window has to ask where the pointer is.
+        contentView.syncHoverFromPointer()
         measure.mark("visible")
     }
 
@@ -315,6 +321,10 @@ final class Coordinator {
             }
             host.send(.initDoc(content: latest, syncVersion: guardState.version, viewStateJSON: Prefs.viewStateJSON))
             state = .warm
+            // A fresh page starts with its chrome shown; tell it where the
+            // pointer is, and say which file it is now bound to.
+            refreshPathLabel()
+            host.setChromeResting(!contentView.isHovering)
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
@@ -571,6 +581,19 @@ final class Coordinator {
 
     private func refreshActionBar() {
         actionBar.update(chuteTitle: chuteActionTitle, hasContent: hasContent)
+    }
+
+    /// The bound file, written the way a person reads a path.
+    private func refreshPathLabel() {
+        actionBar.setRestingText(boundURL.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+    }
+
+    /// Chrome follows the pointer: everything on while it is over the window,
+    /// and a page with a caret in it when it is not. The page's half is a body
+    /// class its own stylesheet reads.
+    private func applyChromeVisibility(_ hovering: Bool) {
+        actionBar.setChromeVisible(hovering)
+        host.setChromeResting(!hovering)
     }
 
     private func focusEditorIfVisible() {

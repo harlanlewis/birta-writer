@@ -17,6 +17,33 @@
 <link rel="stylesheet" href="dist/webview.css">
 <style>
   html, body { margin: 0; height: 100%; background: var(--vscode-editor-background); }
+
+  /* The panel's window chrome, which only this host has. The bundle is the
+     extension's and knows nothing about a titlebar, traffic lights or a
+     pointer that has left the window, so the three rules that follow are the
+     host page's, exactly as the palette above it is. */
+
+  .editor-topbar {
+    /* The toolbar sits under a transparent full-height titlebar, so the first
+       button would land on the traffic lights. Carve their corner out. */
+    padding-left: 78px;
+    /* No hairline under it: the toolbar is the top of the page, not a bar
+       stuck above it. */
+    border-bottom: none;
+  }
+
+  /* At rest (the pointer is not over the window, jot-resting is set by the
+     shell) the panel is a page and a cursor: traffic lights in one corner, the
+     settings gear in the other, and nothing else. Opacity rather than display,
+     so nothing reflows and the gear never moves. */
+  .editor-topbar .tb-zone,
+  .editor-topbar .tb-item { transition: opacity 0.15s ease; }
+
+  body.jot-resting .editor-topbar .tb-zone--left,
+  body.jot-resting .editor-topbar .tb-zone--right .tb-item:not([data-item-id="settings"]) {
+    opacity: 0;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body class="{{THEME_CLASS}}">

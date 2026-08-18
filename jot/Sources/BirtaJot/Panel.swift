@@ -12,8 +12,10 @@ final class JotPanel: NSPanel {
     var onHideRequest: (() -> Void)?
 
     init() {
+        // All three window buttons, and the style mask each one needs: a panel
+        // showing a lone close button reads as a window with something missing.
         super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-                   styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+                   styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                    backing: .buffered, defer: false)
         title = "Birta Jot"
         titleVisibility = .hidden
@@ -24,10 +26,9 @@ final class JotPanel: NSPanel {
         isReleasedWhenClosed = false
         becomesKeyOnlyIfNeeded = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        animationBehavior = .utilityWindow
+        // The system's own show and hide, not a chosen one.
+        animationBehavior = .default
         minSize = NSSize(width: 360, height: 240)
-        standardWindowButton(.miniaturizeButton)?.isHidden = true
-        standardWindowButton(.zoomButton)?.isHidden = true
         setFrameAutosaveName("JotPanel")
     }
 
@@ -51,14 +52,49 @@ final class JotPanel: NSPanel {
     }
 }
 
-/// The panel's content view: hosts the web view and forwards appearance
-/// changes so the page's theme class follows the system.
+/// The panel's content view: hosts the web view, forwards appearance changes so
+/// the page's theme class follows the system, and reports whether the pointer is
+/// over the window, which is what the chrome is shown by.
+///
+/// A tracking area rather than mouse-moved events: it is matched against the
+/// rect, so the WKWebView filling this view does not have to forward anything,
+/// and it keeps reporting while the app is inactive.
 @MainActor
 final class AppearanceObservingView: NSView {
     var onAppearanceChange: (() -> Void)?
+    var onHoverChange: ((Bool) -> Void)?
+    private(set) var isHovering = false
+    private var tracking: NSTrackingArea?
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         onAppearanceChange?()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: .zero,
+                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovering(true) }
+    override func mouseExited(with event: NSEvent) { setHovering(false) }
+
+    /// The pointer can be inside the window without an enter event having
+    /// fired: the panel is summoned under a cursor that never moved.
+    func syncHoverFromPointer() {
+        guard let window else { return setHovering(false) }
+        let inWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        setHovering(bounds.contains(convert(inWindow, from: nil)))
+    }
+
+    private func setHovering(_ hovering: Bool) {
+        guard hovering != isHovering else { return }
+        isHovering = hovering
+        onHoverChange?(hovering)
     }
 }

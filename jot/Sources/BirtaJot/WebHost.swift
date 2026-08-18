@@ -169,6 +169,15 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
+    /// Host → page: whether the window is at rest, which the page's own
+    /// stylesheet (jot/Resources/index.html) reads to put the toolbar away.
+    /// A class rather than a message: the bundle is the extension's and knows
+    /// nothing about a window nobody is pointing at.
+    func setChromeResting(_ resting: Bool) {
+        let js = "document.body.classList.toggle('jot-resting', \(resting ? "true" : "false"));"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
     func focusEditor() {
         webView.evaluateJavaScript("(function(){var e=document.querySelector('.ProseMirror'); if(e){e.focus();} return !!e;})()") { _, _ in }
     }

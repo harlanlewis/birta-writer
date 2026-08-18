@@ -14,6 +14,8 @@
 
 ### Changed
 
+- Birta Writer Jot's panel is quiet until you point at it. The toolbar's buttons and the action row fade in while the pointer is over the window and back out when it leaves, leaving the page, the window buttons and the settings gear. The panel also has all three window buttons now instead of a lone close button, its toolbar no longer runs under them or draws a line beneath itself, and the file the note is being written to is named in the bottom left. Summoning and dismissing use the system's own window animation rather than a chosen one.
+
 - Breaking, in Birta Writer Jot: Cmd+S is now Save, which files the note in your default destination without asking, and Save As moves to ⇧⌘S.
 
 - Birta Writer Jot's menu-bar item now toggles the panel when you click it, the way the hotkey does; its menu is on Control-click or right-click. That menu is down to the panel toggle, Settings and Quit, with the toggle's shortcut drawn where a menu draws a shortcut. Where a note goes is a question about the note, so it is answered in the window that holds it and no longer from the menu bar.
