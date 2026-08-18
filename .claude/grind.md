@@ -32,6 +32,7 @@ A war story is not a finding. The finding is the sentence that changes what the 
 ## Lanes
 
 - The default shape; ceiling 2, because the harness lock is machine-wide, refuses rather than queues (the loser exits 2 naming the holder), and a lane's gates are the bulk of its wall clock: a third lane spends its time failing gates and retrying. The ceiling prices the machine, not the session, so a live peer session's lanes (`ListAgents`) count against it. Integration branch `lewish/<slug>`.
+- Brief a lane to commit BEFORE its `pnpm test:e2e` sweep, not after: the sweep is a seven-minute call and a lane that stops mid-sweep leaves nothing on its branch (2026-08-18, resumed with "commit what you have, first").
 - Session target: 7 to 9 tickets. The ceiling is on concurrency, never throughput: two lanes refilled four times is the shape of a session, not a budget of two tickets.
 - Hot files: `webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins.
 - Orchestrator-only files: `CHANGELOG.md`, `docs/BENEFITS.md`, written once over the reconciled diff, plus BENEFITS only if a capability's story changed.
@@ -50,11 +51,11 @@ Read before touching code: `AGENTS.md`, `docs/DESIGN_PRINCIPLES.md`.
 
 Procedures a session cannot derive from the tree. Anything that reads as an account of how a bug was found belongs in `git log`, not here.
 
-- On a perf ticket: take a CDP sampling profile and fold native self-time into the nearest JS caller, or the top frames name no code you own. Calibrate a CI gate from a CI run rather than from a laptop, whose spans are steadier than a runner's.
+- On a perf ticket, take a CDP sampling profile and fold native self-time into the nearest JS caller, or the top frames name no code you own. Calibrate a CI gate from a CI run, not a laptop.
 - The variable under test must be the only difference between the two reads (AGENTS.md, "Required workflow", holds the `git show main:<file>` rule). For a UI count the contaminant is leftover state rather than the tree: run the after-gesture once before taking the baseline.
-- A mutation run expires on your next edit: a branch added afterwards can leave a proven test unreachable, with nothing red. Re-run mutations in the final state; a late-added gate is the usual culprit.
+- A mutation run expires on your next edit; re-run mutations in the final state, a late-added gate is the usual culprit.
 - On an integration-suite red, A/B two axes before triage: the tree (base vs branch) and the VS Code build (`BIRTA_ITEST_VSCODE`). Either axis alone misattributes an upstream channel change (MAR-353). A red that repeats alone on `main` while the Release job is green is this machine's; `diskDrift`'s external-write case is the known one.
-- Vitest: read the `Errors:` line of a passing run, not just `Tests:`. Unhandled errors exit non-zero with every test green. `pnpm typecheck` excludes `**/__tests__/**` by design, so a changed export signature stays green through typecheck and build and surfaces only as whatever the wrong value does at runtime.
+- Vitest: read the `Errors:` line of a passing run, not just `Tests:`; unhandled errors exit non-zero with every test green. `pnpm typecheck` excludes `**/__tests__/**` by design, so a changed export signature stays green through typecheck and build and surfaces only as whatever the wrong value does at runtime.
 - Exit 2 is ambiguous: the harness lock and a metafile-less `pnpm perf:bundle` both use it. Retry on the lock's message, never the code, and build with `node esbuild.mjs --production --metafile` first.
 - `cd` persists between Bash calls, so inspecting a lane's worktree silently moves later commands. The worktree hook does NOT cover this: it refuses git aimed elsewhere (`-C`, a path argument) and any command too compound to verify (a heredoc, a chain of three), so multi-step shell splits into plain calls, but a bare `cd` passes it and every later command runs in the new directory. The working path for a multi-line edit is a patch script written to the scratchpad and run by path, or the Edit tool for prose.
-- A lane that adds dependencies reds the merge gate for a phantom reason: `merge-lane.sh` gates before anyone runs `pnpm install`, so the incoming import fails to resolve in the integration worktree. Install there, merge by hand, gate again. The durable fix belongs in the plugin's `merge-lane.sh`.
+- A lane that adds dependencies reds the merge gate for a phantom reason: `merge-lane.sh` gates before anyone runs `pnpm install`, so the incoming import fails to resolve in the integration worktree. Install there, merge by hand, gate again.
