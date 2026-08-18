@@ -205,6 +205,10 @@ export const EDITOR_COMMANDS = [
     // Settings and Keyboard Shortcuts commands, and no command of its own
     // reaches OUR release notes.
     { id: "openWhatsNew", title: "What's New", palette: true, sections: ["toolbar"], menuGroup: "settings", hostCapability: "hostSettings" },
+    // The host application's own preferences, for a surface that IS an app
+    // (Jot). Shares the `settings` group with the rows above because it names
+    // the same thing they do: the program, rather than this document.
+    { id: "openHostPreferences", title: "Birta Jot Settings", palette: true, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a
@@ -212,7 +216,11 @@ export const EDITOR_COMMANDS = [
     // command palette — the standard surface for editor-chrome actions — can
     // reach them too. Each preset/direction is its own id because a palette
     // entry carries no argument.
-    { id: "fontEditor", title: "Editor Font", palette: true, sections: [] },
+    // The reading measure, offered only where the host's editor area is wide
+    // enough for it to be a choice (see `contentMeasure`).
+    { id: "contentWidthFull", title: "Full Width", palette: true, sections: [], hostCapability: "contentMeasure" },
+    { id: "contentWidthFixed", title: "Fixed Width", palette: true, sections: [], hostCapability: "contentMeasure" },
+    { id: "fontEditor", title: "Editor Font", palette: true, sections: [], hostCapability: "editorFont" },
     { id: "fontSans", title: "Sans-Serif Font", palette: true, sections: [] },
     { id: "fontSerif", title: "Serif Font", palette: true, sections: [] },
     { id: "fontMono", title: "Monospace Font", palette: true, sections: [] },

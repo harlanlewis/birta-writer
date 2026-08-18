@@ -58,7 +58,7 @@ describe("HOST_PROFILES", () => {
         // none of the others: there is no text editor to switch to, no
         // settings or keybindings UI, no proofreading engine, no read-only
         // owner, no sidebar, and no agent.
-        expect(HOST_PROFILES.jot).toEqual(["imageUpload"]);
+        expect(HOST_PROFILES.jot).toEqual(["imageUpload", "appPreferences"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

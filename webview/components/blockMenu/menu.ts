@@ -31,6 +31,7 @@
  * keyboard model mirrors the toolbar dropdowns (roving arrows, Enter, Escape).
  */
 import { bindActivate } from "@/ui/dom";
+import { createHoverSelection } from "@/ui/hoverSelection";
 import type { EditorView } from "../../pm";
 import { Fragment } from "../../pm";
 import type { Node as ProseNode } from "../../pm";
@@ -1032,6 +1033,9 @@ export function openBlockMenu(
     const singleBlock = coveredRun === null;
 
     const menu = document.createElement("div");
+    // Hover and the arrows move the same highlight; the guard keeps a still
+    // pointer from taking it straight back. See ui/hoverSelection.ts.
+    const hover = createHoverSelection(menu);
     menu.className = "block-menu";
     // Not role="menu": this is an aria-activedescendant-driven COMBOBOX (the
     // search input) over a LISTBOX of rows (the body), not a menu of
@@ -1134,6 +1138,7 @@ export function openBlockMenu(
             event.preventDefault();
             event.stopPropagation();
             const back = event.key === "ArrowUp" || (event.key === "Tab" && event.shiftKey);
+            hover.keyboardMoved();
             setHl(hlIdx + (back ? -1 : 1));
         } else if (event.key === "Enter") {
             event.preventDefault();
@@ -1312,7 +1317,7 @@ export function openBlockMenu(
         // the same --hl the arrows move, so Enter always fires the row
         // that looks selected (the slash menu's lesson).
         row.addEventListener("mouseover", () => {
-            if (!opts.disabled) {
+            if (!opts.disabled && hover.pointerIsLive()) {
                 setHl(rowEls().indexOf(row));
             }
         });

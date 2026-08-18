@@ -1,41 +1,38 @@
 import AppKit
 
-/// The chute's action row, along the bottom of the panel: what the note can be
-/// turned into, next to where it was typed.
+/// The row along the bottom of the panel: which file the bytes are going to,
+/// and the overflow menu for everything that is not typing.
 ///
-///     [ ~/…/Scratchpad.md            ] [ Copy and Delete ] [ Save ] [ … ]
+///     [ ~/…/Scratchpad.md                                          ] [ … ]
 ///
-/// At rest the row is just the file the bytes are going to, small and quiet.
-/// The buttons fade in while the pointer is over the window and back out when
-/// it leaves, so an untouched panel is a page and a cursor. A message about
-/// what just happened takes the path's place for a few seconds.
+/// One buffer, one file, always being written. There are no terminal actions
+/// here because the note has nowhere to terminate to: Jot edits a file the way
+/// any editor edits a file, and Save As in the overflow writes a copy without
+/// touching what is on screen.
 ///
-/// The two terminal actions are siblings because they answer the same
-/// question, "this note is finished, get it out of here", and differ only in
-/// where the bytes go. Everything rarer is behind the overflow, built fresh on
-/// each click by the app delegate, so nothing here has to be kept in step with
-/// the buffer's state.
+/// The path follows the WINDOW'S FOCUS rather than the pointer. It answers
+/// "where am I typing", which is a question only the person typing has, so it
+/// belongs on screen exactly while this window is the one taking keys. The
+/// overflow button follows the pointer with the rest of the chrome, because it
+/// is something you reach for rather than read.
 ///
 /// Native chrome rather than page chrome, on purpose. `webview/` is shared with
-/// the extension, where a scratchpad's terminal actions mean nothing; keeping
-/// the row in AppKit is what lets Jot have it without the editor growing a
-/// host-conditional toolbar, and it costs the launch bundle nothing.
+/// the extension, where the file being edited is VS Code's business and not the
+/// editor's; keeping the row in AppKit is what lets Jot have it without the
+/// editor growing a host-conditional footer, and it costs the bundle nothing.
 @MainActor
 final class ActionBar: NSView {
     static let height: CGFloat = 40
 
-    var onChute: (() -> Void)?
-    var onSave: (() -> Void)?
     /// Handed the button to hang the menu off, so the popup lands under it.
     var onOverflow: ((NSView) -> Void)?
 
     private let status = NSTextField(labelWithString: "")
-    private let chuteButton = NSButton(title: "Copy and Delete", target: nil, action: nil)
-    private let saveButton = NSButton(title: "Save", target: nil, action: nil)
     private let overflowButton = NSButton(title: "···", target: nil, action: nil)
     private var statusClear: DispatchWorkItem?
     /// What the status line says when nothing has just happened.
     private var restingText = ""
+    private var windowIsFocused = false
 
     init() {
         super.init(frame: .zero)
@@ -47,16 +44,12 @@ final class ActionBar: NSView {
     private func build() {
         wantsLayer = true
 
-        for (button, action) in [(chuteButton, #selector(chute)), (saveButton, #selector(save)), (overflowButton, #selector(overflow))] {
-            button.bezelStyle = .rounded
-            button.target = self
-            button.action = action
-            // No key equivalent on any of them. The panel is a text editor with
-            // the caret in it, and a default button would fire on Return.
-            button.keyEquivalent = ""
-        }
-        chuteButton.toolTip = "Copy the whole note to the clipboard, then clear it"
-        saveButton.toolTip = "Save the note to the default destination"
+        overflowButton.bezelStyle = .rounded
+        overflowButton.target = self
+        overflowButton.action = #selector(overflow)
+        // No key equivalent: the panel is a text editor with the caret in it,
+        // and a default button would fire on Return.
+        overflowButton.keyEquivalent = ""
         overflowButton.toolTip = "More actions"
         overflowButton.setAccessibilityLabel("More actions")
 
@@ -67,8 +60,9 @@ final class ActionBar: NSView {
         status.lineBreakMode = .byTruncatingMiddle
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         status.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        status.alphaValue = 0
 
-        let row = NSStackView(views: [status, chuteButton, saveButton, overflowButton])
+        let row = NSStackView(views: [status, overflowButton])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
@@ -86,16 +80,6 @@ final class ActionBar: NSView {
 
     // MARK: state
 
-    /// - Parameters:
-    ///   - chuteTitle: "Copy and Delete", or "Copy" when the buffer is a
-    ///     document the chute may not empty.
-    ///   - hasContent: an empty note has nothing to copy or save.
-    func update(chuteTitle: String, hasContent: Bool) {
-        chuteButton.title = chuteTitle
-        chuteButton.isEnabled = hasContent
-        saveButton.isEnabled = hasContent
-    }
-
     /// The file the buffer's bytes are going to, which is what the row says
     /// when it has nothing else to say.
     func setRestingText(_ text: String) {
@@ -103,9 +87,7 @@ final class ActionBar: NSView {
         if statusClear == nil { status.stringValue = text }
     }
 
-    /// Say what just happened, briefly, then go back to naming the file. The
-    /// message is a confirmation, not a control: an action whose undo matters
-    /// puts that undo in the overflow menu, where it stays until it is used.
+    /// Say what just happened, briefly, then go back to naming the file.
     func flash(_ message: String) {
         statusClear?.cancel()
         status.stringValue = message
@@ -118,26 +100,33 @@ final class ActionBar: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: clear)
     }
 
-    /// Fade the buttons in while the pointer is over the window. The status
-    /// line is not chrome and stays: it is one quiet line naming the file, and
-    /// a panel that forgets which file it is writing to is worse than a bare
-    /// one.
+    /// Fade the overflow button in while the pointer is over the window.
     func setChromeVisible(_ visible: Bool, animated: Bool = true) {
-        let alpha: CGFloat = visible ? 1 : 0
-        let buttons = [chuteButton, saveButton, overflowButton]
+        setAlpha(visible ? 1 : 0, on: overflowButton, animated: animated)
+    }
+
+    /// Show the path exactly while this window is the one taking keys. A panel
+    /// sitting over another app's window is a piece of that app's screen until
+    /// you click it, and naming a file on it then is noise about somewhere you
+    /// are not typing.
+    func setWindowFocused(_ focused: Bool, animated: Bool = true) {
+        guard focused != windowIsFocused else { return }
+        windowIsFocused = focused
+        setAlpha(focused ? 1 : 0, on: status, animated: animated)
+    }
+
+    private func setAlpha(_ alpha: CGFloat, on view: NSView, animated: Bool) {
         guard animated else {
-            for button in buttons { button.alphaValue = alpha }
+            view.alphaValue = alpha
             return
         }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
-            for button in buttons { button.animator().alphaValue = alpha }
+            view.animator().alphaValue = alpha
         }
     }
 
     // MARK: actions
 
-    @objc private func chute() { onChute?() }
-    @objc private func save() { onSave?() }
     @objc private func overflow() { onOverflow?(overflowButton) }
 }

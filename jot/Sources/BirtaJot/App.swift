@@ -6,14 +6,6 @@ import BirtaJotCore
 /// the panel, the web host and the store together.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Items whose title depends on the buffer's state, retitled whenever a
-    /// menu holding them opens. Tags rather than outlets because the same two
-    /// actions appear in the main menu, the status menu and the overflow.
-    private enum ItemTag: Int {
-        case chute = 1
-        case restore = 2
-    }
-
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var coordinator: Coordinator!
@@ -27,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
         coordinator = Coordinator()
+        coordinator.openPreferences = { [weak self] in self?.openSettings() }
         coordinator.makeOverflowMenu = { [weak self] anchor in
             self?.overflowAnchor = anchor
             return self?.buildOverflowMenu() ?? NSMenu()
@@ -88,25 +81,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: "Quit Birta Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appItem = NSMenuItem(); appItem.submenu = appMenu; main.addItem(appItem)
 
-        // The chute, in the order the row along the bottom of the panel has it.
-        // Copy and Delete takes Option+Cmd+C rather than anything more obvious:
-        // the panel is a live editor, so a chord the editor itself binds
-        // (Cmd+Return, Shift+Cmd+X) would be taken away from typing, which the
-        // main menu wins outright (shared/__tests__/keymapChords.ts lists what
-        // the webview claims).
+        // The conventional File menu, with the conventional chords: Cmd+S
+        // saves the document being edited and Shift+Cmd+S writes a copy
+        // elsewhere. Neither empties the panel.
         let fileMenu = NSMenu(title: "File")
-        let chute = fileMenu.addItem(withTitle: "Copy and Delete", action: #selector(copyAndDelete), keyEquivalent: "c")
-        chute.keyEquivalentModifierMask = [.command, .option]
-        chute.tag = ItemTag.chute.rawValue
-        fileMenu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
-        fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Save", action: #selector(saveNote), keyEquivalent: "s")
-        let saveAsItem = fileMenu.addItem(withTitle: "Save As…", action: #selector(saveAs), keyEquivalent: "s")
+        fileMenu.addItem(withTitle: "Save", action: #selector(saveNow), keyEquivalent: "s")
+        let saveAsItem = fileMenu.addItem(withTitle: "Save a Copy As…", action: #selector(saveAs), keyEquivalent: "s")
         saveAsItem.keyEquivalentModifierMask = [.command, .shift]
-        fileMenu.addItem(withTitle: "Discard", action: #selector(discard), keyEquivalent: "")
         fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Reopen Last Saved", action: #selector(restoreLastNote), keyEquivalent: "")
-            .tag = ItemTag.restore.rawValue
+        fileMenu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
         fileMenu.addItem(withTitle: "Reveal Last Save in Finder", action: #selector(revealLastSave), keyEquivalent: "")
         fileMenu.delegate = self
         // Before Close is added: it goes to the key window through the
@@ -215,39 +198,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildOverflowMenu() -> NSMenu {
         let menu = NSMenu()
 
-        let saveAsItem = menu.addItem(withTitle: "Save As…", action: #selector(saveAs), keyEquivalent: "")
-        saveAsItem.isEnabled = coordinator.hasContent
-
-        let recents = Prefs.recentDestinations.urls.filter { $0.path != Prefs.saveDirectory.standardizedFileURL.path }
-        if coordinator.hasContent, !recents.isEmpty {
-            let submenu = NSMenu()
-            for folder in recents {
-                let item = submenu.addItem(withTitle: folder.lastPathComponent, action: #selector(saveToRecent(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = folder
-                item.toolTip = folder.path
-            }
-            menu.addItem(withTitle: "Save to", action: nil, keyEquivalent: "").submenu = submenu
-        }
-
-        menu.addItem(.separator())
+        menu.addItem(withTitle: "Save a Copy As…", action: #selector(saveAs), keyEquivalent: "")
+            .isEnabled = coordinator.hasContent
         menu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
             .isEnabled = coordinator.hasContent
         menu.addItem(withTitle: "Share…", action: #selector(shareNote), keyEquivalent: "")
             .isEnabled = coordinator.hasContent
-        if coordinator.chuteEmptiesBuffer {
-            menu.addItem(withTitle: "Discard", action: #selector(discard), keyEquivalent: "")
-                .isEnabled = coordinator.hasContent
-        }
-
-        if coordinator.restoreActionTitle != nil || coordinator.lastSavedURL != nil {
-            menu.addItem(.separator())
-            if let title = coordinator.restoreActionTitle {
-                menu.addItem(withTitle: title, action: #selector(restoreLastNote), keyEquivalent: "")
-            }
-            if coordinator.lastSavedURL != nil {
-                menu.addItem(withTitle: "Reveal Last Save in Finder", action: #selector(revealLastSave), keyEquivalent: "")
-            }
+        if coordinator.lastSavedURL != nil {
+            menu.addItem(withTitle: "Reveal Last Save in Finder", action: #selector(revealLastSave), keyEquivalent: "")
         }
 
         menu.addItem(.separator())
@@ -282,20 +240,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePanel() { coordinator.toggle() }
     @objc private func hidePanel() { coordinator.hide() }
-    @objc private func copyAndDelete() { coordinator.copyAndDelete() }
     @objc private func copyEverything() { coordinator.copyEverything() }
-    @objc private func discard() { coordinator.discard() }
-    @objc private func saveNote() { coordinator.saveToDefaultDestination() }
+    @objc private func saveNow() { coordinator.saveNow() }
     @objc private func saveAs() { coordinator.saveAs() }
-    @objc private func restoreLastNote() { coordinator.restoreLastNote() }
     @objc private func revealLastSave() { coordinator.revealLastSave() }
     @objc private func findInEditor() { coordinator.runEditorCommand("openFind") }
     @objc private func insertLink() { coordinator.runEditorCommand("insertLink") }
 
-    @objc private func saveToRecent(_ sender: NSMenuItem) {
-        guard let folder = sender.representedObject as? URL else { return }
-        coordinator.saveNote(into: folder)
-    }
 
     @objc private func shareNote() {
         guard let anchor = overflowAnchor else { return }
@@ -326,13 +277,6 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
         showItem.keyEquivalent = combo.menuKeyEquivalent
         showItem.keyEquivalentModifierMask = combo.menuModifierMask
 
-        for item in menu.items {
-            switch ItemTag(rawValue: item.tag) {
-            case .chute: item.title = coordinator.chuteActionTitle
-            case .restore: item.title = coordinator.restoreActionTitle ?? "Reopen Last Saved"
-            case nil: break
-            }
-        }
         AppDelegate.suppressAutomaticIcons(in: menu)
     }
 
@@ -340,12 +284,8 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// between openings. The overflow menu answers for its own.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(copyAndDelete), #selector(copyEverything), #selector(saveNote), #selector(saveAs):
+        case #selector(copyEverything), #selector(saveAs):
             return coordinator.hasContent
-        case #selector(discard):
-            return coordinator.hasContent && coordinator.chuteEmptiesBuffer
-        case #selector(restoreLastNote):
-            return coordinator.restoreActionTitle != nil
         case #selector(revealLastSave):
             return coordinator.lastSavedURL != nil
         default:

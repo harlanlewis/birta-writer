@@ -83,7 +83,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@/pm";
 import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
-import { notifyAskAgent, notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
+import { notifyAskAgent, notifyClipboardWrite, notifyOpenUrl, notifyOpenHostPreferences } from "@/messaging";
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
@@ -122,6 +122,7 @@ export interface EditorCommandHost {
     // way as the toolbar's own hooks, so the palette reaches the exact code
     // paths the toolbar and slash menu use — and they work with the bar hidden.
     chooseFontPreset(preset: FontPreset): void;
+    chooseContentWidth(mode: import("../shared/contentWidth").ContentWidthMode): void;
     stepFontSize(delta: 1 | -1): void;
     toggleProofread(key: ProofreadOptionKey): void;
     /** The in-text editor-note highlight (birta.notes.highlightMarkers) — not a
@@ -838,7 +839,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // same host handoff the link popup uses. The extension scheme-checks the
     // URL and calls env.openExternal.
     openWhatsNew: () => notifyOpenUrl(RELEASES_URL),
+    // No host hook either: the shell owns the window, and the webview's whole
+    // part is asking for it.
+    openHostPreferences: () => notifyOpenHostPreferences(),
     openKeyboardShortcuts: () => host.openKeyboardShortcuts?.(),
+    contentWidthFull: () => host.chooseContentWidth?.("full"),
+    contentWidthFixed: () => host.chooseContentWidth?.("fixed"),
     fontEditor: () => host.chooseFontPreset?.("editor"),
     fontSans: () => host.chooseFontPreset?.("sans"),
     fontSerif: () => host.chooseFontPreset?.("serif"),

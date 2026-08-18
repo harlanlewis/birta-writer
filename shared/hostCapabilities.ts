@@ -38,7 +38,30 @@ export type HostCapability =
     /** An image store the Insert Image panel can upload to and browse. */
     | "imageUpload"
     /** A coding agent to hand a prompt to (Ask Agent). */
-    | "agent";
+    | "agent"
+    /**
+     * An editor font of the host's own for the content to inherit, which is
+     * what the "Editor font" preset names. A host with no editor behind the
+     * page (Jot is a window with a document in it) has no such font, so the
+     * preset would resolve to nothing and the row would be a dead choice.
+     */
+    | "editorFont"
+    /**
+     * An editor area wide enough that constraining text to a reading measure
+     * is a choice worth offering. VS Code gives the editor whatever the window
+     * has, which on a wide display is far past comfortable. A small floating
+     * panel is already its own measure, so the full/fixed control there offers
+     * a choice between one width and the same width.
+     */
+    | "contentMeasure"
+    /**
+     * The host is an application with a preferences window of its own, which
+     * the gear menu can offer to open. Distinct from `hostSettings`, which is
+     * VS Code's bundle of settings, keybindings and release notes: an app that
+     * has a Settings window has no keybindings editor behind it, and offering
+     * one row of three is not the same capability.
+     */
+    | "appPreferences";
 
 export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "textEditor",
@@ -48,6 +71,9 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "toc",
     "imageUpload",
     "agent",
+    "editorFont",
+    "contentMeasure",
+    "appPreferences",
 ];
 
 /**
@@ -61,7 +87,7 @@ export const HOST_PROFILES = {
     // and the e2e Jot page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostCapabilities.test.ts parses both and fails.
-    jot: ["imageUpload"] as readonly HostCapability[],
+    jot: ["imageUpload", "appPreferences"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 interface HostDeclaration {

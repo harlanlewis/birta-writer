@@ -587,9 +587,10 @@ export function createMessageHandlers(
         setFontFamily(msg) {
             // Anchored: swapping the family changes every glyph's metrics, so
             // the whole document rewraps and re-heights. Keep the top visible
-            // line stable, exactly as a width flip does. This is the only apply
-            // path for a preset change, wherever it came from (the menu posts
-            // and waits for this echo).
+            // line stable, exactly as a width flip does. The toolbar applies
+            // its own pick optimistically, so this echo usually re-applies the
+            // same value; it is still the apply path for a change made
+            // anywhere else, such as the host's settings UI.
             withScrollAnchor(getEditorView(), () => {
                 const root = document.documentElement;
                 if (msg.fontFamily) {

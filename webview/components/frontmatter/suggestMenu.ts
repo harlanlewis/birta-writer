@@ -21,6 +21,7 @@
  */
 
 import { t } from "../../i18n";
+import { createHoverSelection } from "@/ui/hoverSelection";
 import { notifyRequestFmSuggestions } from "../../messaging";
 import { attachInputUndo } from "../../utils/inputUndo";
 import { computeAnchoredPosition, viewportSize } from "../../ui/anchoredPlacement";
@@ -105,6 +106,9 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
     closeOpenMenu?.();
 
     const menu = document.createElement("div");
+    // Hover and the arrows move the same highlight; the guard keeps a still
+    // pointer from taking it straight back. See ui/hoverSelection.ts.
+    const hover = createHoverSelection(menu);
     menu.className = "fm-suggest-menu";
 
     const list = document.createElement("ul");
@@ -204,6 +208,7 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
                 pick(row.value);
             });
             li.addEventListener("mouseover", () => {
+                if (!hover.pointerIsLive()) { return; }
                 activeIndex = i;
                 updateActive();
             });
@@ -243,6 +248,7 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
         },
         moveHighlight(delta: 1 | -1): void {
             if (closed || rows.length === 0) { return; }
+            hover.keyboardMoved();
             if (delta === 1) {
                 activeIndex = activeIndex >= rows.length - 1 ? 0 : activeIndex + 1;
             } else {

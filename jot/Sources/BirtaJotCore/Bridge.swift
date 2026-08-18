@@ -34,6 +34,7 @@ public enum WebviewMessage: Equatable {
     case flushResult(id: String, content: String, baseSyncVersion: Int, seq: Int)
     case viewState(json: String)
     case openUrl(String)
+    case openHostPreferences
     case clipboardWrite(format: String, data: String)
     case setToolbarLayout(itemId: String?, placement: String?, order: [String])
     case setToolbarVisible(Bool)
@@ -78,6 +79,7 @@ public enum WebviewMessage: Equatable {
             return .flushResult(id: id, content: c, baseSyncVersion: b, seq: s)
         case "viewState": return .viewState(json: json("state") ?? "{}")
         case "openUrl": return str("url").map { .openUrl($0) } ?? .other(type: type)
+        case "openHostPreferences": return .openHostPreferences
         case "clipboardWrite":
             guard let f = str("format"), let d = str("data") else { return .other(type: type) }
             return .clipboardWrite(format: f, data: d)

@@ -12,11 +12,11 @@ import os
 /// flush (`flushSave`), bounded by `flushTimeout` like the extension's
 /// will-save participant, then write.
 ///
-/// Chute model (MAR-379): the scratchpad is a chute, not an archive. Copy and
-/// Delete and Save are siblings because they answer one question, "this note is
-/// finished, get it out of here", and differ only in where the bytes go. Both
-/// empty the buffer, both leave what they took in `undoSlot`, and neither is
-/// allowed to empty a bound DOCUMENT (`ChuteDecision`).
+/// One buffer, one file, and nothing that empties it. Jot edits a document the
+/// way any editor edits a document: writes are governed by the autosave
+/// setting through `BirtaJotCore.AutosavePolicy`, Cmd+S flushes and writes, and
+/// Save As writes a COPY somewhere else while the panel goes on showing the
+/// same note bound to the same file.
 ///
 /// State machine for the web view: `cold` (nothing loaded, or the content
 /// process died) → `loading` (page requested, `ready` not yet seen) → `warm`
@@ -25,17 +25,6 @@ import os
 @MainActor
 final class Coordinator {
     enum State { case cold, loading, warm }
-
-    /// What one chute action took, so the next gesture can put it back. One
-    /// deep, in memory only: a chute that keeps copies on disk of everything it
-    /// was told to delete is not a chute. What makes the loss survivable is
-    /// that Copy and Delete puts the note on the CLIPBOARD on its way out, and
-    /// Save writes it to `savedTo` first.
-    struct UndoSlot {
-        let content: String
-        /// The file the note was saved to, or nil when it was only copied.
-        let savedTo: URL?
-    }
 
     let hotkey: GlobalHotkey
     private let panel = JotPanel()
@@ -51,20 +40,22 @@ final class Coordinator {
     private var guardState = SyncGuard()
     private var state: State = .cold
     /// The newest buffer content the host has seen or written.
-    private var latest = "" {
-        didSet { if latest.isBlank != oldValue.isBlank { refreshActionBar() } }
-    }
-    /// What the last chute action took, for "Reopen Last Saved" / "Restore
-    /// Deleted Note". Read when the overflow menu is built, which is why
-    /// nothing observes it.
-    private var undoSlot: UndoSlot?
+    private var latest = ""
     /// The file the last Save wrote, for "Reveal Last Save in Finder".
     private(set) var lastSavedURL: URL?
     /// Built by the app delegate on each click, so the items match the state
     /// the buffer is in right now rather than a state a callback last reported.
     /// Handed the view the menu is opening from, which the sharing picker needs.
     var makeOverflowMenu: ((NSView) -> NSMenu)?
+    /// Opens the app's Settings window. Owned by the app delegate, which holds
+    /// the window; the page asks for it through the gear menu.
+    var openPreferences: (() -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
+    private var autosaveTimer: Timer?
+    private var autosaveDeadline: Date?
+    /// The typing pause that ends a burst, and the ceiling a burst cannot pass.
+    private let autosaveDebounce: TimeInterval = 0.5
+    private let autosaveMaxWait: TimeInterval = 2
     private var previousApp: NSRunningApplication?
     /// The next `ready` reads the bound file (launch, a changed scratchpad or
     /// document path) rather than re-showing `latest` (a remount after the
@@ -121,11 +112,20 @@ final class Coordinator {
             actionBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             actionBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
-        actionBar.onChute = { [weak self] in self?.copyAndDelete() }
-        actionBar.onSave = { [weak self] in self?.saveToDefaultDestination() }
         actionBar.onOverflow = { [weak self] view in self?.showOverflowMenu(from: view) }
         contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
-        refreshActionBar()
+        // The path answers "where am I typing", so it follows the window's
+        // focus rather than the pointer. Both notifications are needed: a
+        // panel loses key to another app's window without any pointer event.
+        for (name, focused) in [(NSWindow.didBecomeKeyNotification, true),
+                                (NSWindow.didResignKeyNotification, false)] {
+            NotificationCenter.default.addObserver(
+                forName: name, object: panel, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.actionBar.setWindowFocused(focused) }
+            }
+        }
+        actionBar.setWindowFocused(panel.isKeyWindow, animated: false)
         refreshPathLabel()
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.hide() }
@@ -355,7 +355,7 @@ final class Coordinator {
             NSApp.hide(nil)
         }
         previousApp = nil
-        flushThen {}
+        flushThen { [weak self] in self?.write(.panelHidden) }
     }
 
     /// Double-Esc hides: the first bare Escape belongs to the editor (block
@@ -403,7 +403,7 @@ final class Coordinator {
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
-                writer.submit(content, to: boundURL)
+                write(.edit)
             case .repush:
                 // Re-push authoritative content at the CURRENT version, as
                 // the extension does: bumping here would read the page's next
@@ -417,8 +417,12 @@ final class Coordinator {
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
-                writer.submit(content, to: boundURL)
-                writer.drain()
+                // Not through the policy: a flush only ever happens because
+                // something that always writes asked for one, and its own
+                // `write(...)` follows. Deferring here would put the debounce
+                // in front of a hide or a quit.
+                cancelPendingAutosave()
+                writeLatest()
                 host.send(.flushAck(id: id, applied: true))
                 resolve?(content)
             case .repush:
@@ -433,6 +437,8 @@ final class Coordinator {
             Prefs.viewStateJSON = json
         case let .openUrl(url):
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+        case .openHostPreferences:
+            openPreferences?()
         case let .clipboardWrite(format, data):
             writeToPasteboard(data, asHTML: format == "html")
         case let .setToolbarLayout(itemId, placement, order):
@@ -599,7 +605,7 @@ final class Coordinator {
 
     /// Last-chance synchronous write, idempotent after `prepareToTerminate`.
     func finalWrite() {
-        writeLatest()
+        write(.terminating)
     }
 
     /// Write `latest` to the bound file, synchronously. Nothing is written
@@ -612,46 +618,58 @@ final class Coordinator {
         writer.drain()
     }
 
-    // MARK: the chute
+    /// The one funnel every write goes through, so the autosave setting is
+    /// asked exactly once per reason rather than at each call site.
+    ///
+    /// An edit is held for `autosaveDebounce` and re-held by the next
+    /// keystroke, with `autosaveMaxWait` as the ceiling so continuous typing
+    /// still reaches disk. That ceiling is the whole crash-safety story: it is
+    /// how far the file is ever allowed to trail the editor.
+    private func write(_ trigger: WriteTrigger) {
+        switch AutosavePolicy.action(for: trigger, autosaveEnabled: Prefs.autosave) {
+        case .now:
+            cancelPendingAutosave()
+            writeLatest()
+        case .deferred:
+            scheduleAutosave()
+        case .skip:
+            cancelPendingAutosave()
+        }
+    }
+
+    private func scheduleAutosave() {
+        autosaveTimer?.invalidate()
+        if autosaveDeadline == nil {
+            autosaveDeadline = Date().addingTimeInterval(autosaveMaxWait)
+        }
+        // Whichever comes first: the typing pause, or the ceiling.
+        let pause = Date().addingTimeInterval(autosaveDebounce)
+        let fireAt = min(pause, autosaveDeadline ?? pause)
+        let timer = Timer(fireAt: fireAt, interval: 0, target: self,
+                          selector: #selector(autosaveFired), userInfo: nil, repeats: false)
+        RunLoop.main.add(timer, forMode: .common)
+        autosaveTimer = timer
+    }
+
+    @objc private func autosaveFired() {
+        autosaveTimer = nil
+        autosaveDeadline = nil
+        writeLatest()
+    }
+
+    private func cancelPendingAutosave() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
+        autosaveDeadline = nil
+    }
+
+    // MARK: the note
 
     /// Whether the buffer holds anything worth copying or saving.
     var hasContent: Bool { !latest.isBlank }
 
-    /// Whether a chute action may empty the buffer, or is only a copy. False
-    /// when Preferences have Jot editing a document instead of the scratchpad.
-    var chuteEmptiesBuffer: Bool {
-        ChuteDecision.outcome(boundURL: boundURL, scratchpadURL: Prefs.scratchpadURL) == .emptyBuffer
-    }
-
-    /// The primary action's name, which is the honest one for what it does:
-    /// on a bound document there is nothing to delete.
-    var chuteActionTitle: String { chuteEmptiesBuffer ? "Copy and Delete" : "Copy" }
-
-    /// The title of the restore action, or nil when there is nothing to
-    /// restore. Two names because the note is in two different places: a saved
-    /// note is still in its file, a deleted one is only on the clipboard.
-    var restoreActionTitle: String? {
-        guard let slot = undoSlot else { return nil }
-        return slot.savedTo == nil ? "Restore Deleted Note" : "Reopen Last Saved"
-    }
-
-    /// The chute's terminal action: the note goes to the clipboard, the buffer
-    /// is emptied, and the panel gets out of the way, because the paste is
-    /// happening in the app the user came from and they should not have to
-    /// dismiss anything first.
-    func copyAndDelete() {
-        withFlushedContent { [weak self] content in
-            guard let self else { return }
-            self.writeToPasteboard(content)
-            if self.chuteEmptiesBuffer {
-                self.undoSlot = UndoSlot(content: content, savedTo: nil)
-                self.replaceBuffer(with: "")
-            }
-            self.hide()
-        }
-    }
-
-    /// Copy without emptying: the same bytes, for when the note is not finished.
+    /// Copy the whole note. Nothing leaves the buffer: Jot edits a file, and
+    /// copying out of a file does not empty it.
     func copyEverything() {
         withFlushedContent { [weak self] content in
             guard let self else { return }
@@ -661,49 +679,19 @@ final class Coordinator {
         }
     }
 
-    /// Empty the buffer without copying. Only offered where the chute may empty
-    /// (never on a bound document), and undone from the same slot as the rest.
-    func discard() {
-        withFlushedContent { [weak self] content in
-            guard let self, self.chuteEmptiesBuffer else { return }
-            self.undoSlot = UndoSlot(content: content, savedTo: nil)
-            self.replaceBuffer(with: "")
-            self.actionBar.flash("Deleted. Restore it from the ··· menu.")
+    /// Cmd+S. The buffer is already being written as you type, so this is a
+    /// flush and an acknowledgement rather than news; it earns its place by
+    /// being the key everyone presses, and by being the one write that happens
+    /// when autosave is off.
+    func saveNow() {
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            self.actionBar.flash("Saved.")
             self.focusEditorIfVisible()
         }
     }
 
-    /// Save with no panel, to the destination Preferences names.
-    func saveToDefaultDestination() { saveNote(into: Prefs.saveDirectory) }
-
-    /// Save with no panel, to a folder the user has saved to before.
-    func saveNote(into directory: URL) {
-        withFlushedContent { [weak self] content in
-            guard let self else { return }
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let target = DestinationName.unique(Coordinator.suggestedFileName(for: content), in: directory)
-                try AtomicFile.writeString(content, to: target)
-                self.finishSave(to: target, content: content)
-            } catch {
-                // The likely failure is consent rather than a bug: macOS gates
-                // Documents, Desktop and Downloads behind a per-app grant, and
-                // choosing the file in a save panel is how a user gives one. So
-                // fall through to the panel instead of reporting a dead end.
-                NSLog("Birta Jot: save into \(directory.path) failed: \(error)")
-                self.actionBar.flash("Could not write to \(directory.lastPathComponent). Choose where to save.")
-                self.saveAs()
-            }
-        }
-    }
-
-    /// Put the note on the clipboard as plain Markdown text.
-    ///
-    /// Markdown, not rich text: it is what the editor's own bytes are, it
-    /// pastes into everything, and the destinations that understand Markdown
-    /// (an issue tracker, a chat box, another editor) render it. Copying the
-    /// whole document as rich text needs a whole-document command in the page,
-    /// which belongs in `webview/` where both surfaces get it.
     private func writeToPasteboard(_ text: String, asHTML: Bool = false) {
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -721,26 +709,18 @@ final class Coordinator {
         }
     }
 
-    /// Everything that follows a written file, whichever action wrote it.
+    /// Everything that follows a written copy.
     private func finishSave(to target: URL, content: String) {
         // The images travel with the note. Without this the markdown arrives at
         // its new home with references to a folder it no longer sits beside, so
         // a note that looked complete on screen is a note of broken images the
-        // moment it is saved. Every save path lands here, which is why the call
-        // belongs here and not in each of them.
+        // moment it is saved.
         migrateAttachments(markdown: content, from: boundURL, to: target)
         lastSavedURL = target
-        var recents = Prefs.recentDestinations
-        recents.remember(target.deletingLastPathComponent())
-        Prefs.recentDestinations = recents
-        // Whether the scratchpad graduates is decided in
-        // BirtaJotCore.SaveAsDecision, which has the tests: every branch of it
-        // can lose bytes when it is decided wrongly.
-        if SaveAsDecision.outcome(boundURL: boundURL, scratchpadURL: Prefs.scratchpadURL, target: target) == .graduate {
-            undoSlot = UndoSlot(content: content, savedTo: target)
-            replaceBuffer(with: "")
-        }
-        actionBar.flash("Saved to \(target.lastPathComponent).")
+        // The buffer is untouched, always. Save As writes a COPY: the panel
+        // goes on showing the note, still bound to the same file, which is
+        // what every other editor on the machine does.
+        actionBar.flash("Copy saved to \(target.lastPathComponent).")
         focusEditorIfVisible()
     }
 
@@ -763,9 +743,6 @@ final class Coordinator {
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY), in: view)
     }
 
-    private func refreshActionBar() {
-        actionBar.update(chuteTitle: chuteActionTitle, hasContent: hasContent)
-    }
 
     /// The bound file, written the way a person reads a path.
     private func refreshPathLabel() {
@@ -786,17 +763,19 @@ final class Coordinator {
         if state == .warm { host.focusEditor() }
     }
 
-    // MARK: Save As / restore
+    // MARK: Save As
 
+    /// Write a copy somewhere the user chooses. The buffer is not touched and
+    /// stays bound to the same file: this is "save a copy", not "move".
     func saveAs() {
         NSApp.activate(ignoringOtherApps: true)
         flushThen { [weak self] in
             guard let self else { return }
             let panel = NSSavePanel()
-            panel.title = "Save Jot As"
+            panel.title = "Save a Copy As"
             panel.nameFieldStringValue = Coordinator.suggestedFileName(for: self.latest)
             panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
-            panel.directoryURL = Prefs.saveAsDirectory ?? Prefs.saveDirectory
+            panel.directoryURL = Prefs.saveAsDirectory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             panel.canCreateDirectories = true
             let respond: (NSApplication.ModalResponse) -> Void = { [weak self] resp in
                 guard resp == .OK, let url = panel.url, let self else { return }
@@ -826,24 +805,6 @@ final class Coordinator {
         guard state == .warm else { return }
         show()
         host.send(.editorCommand(command))
-    }
-
-    /// Put back what the last chute action took.
-    ///
-    /// Restoring into a buffer the user has since typed into puts the note back
-    /// ABOVE what is there, rather than replacing it. Either note is somebody's
-    /// work, and there is no reading of "restore" under which one of them is
-    /// meant to disappear.
-    func restoreLastNote() {
-        guard let slot = undoSlot else { return }
-        undoSlot = nil
-        if latest.isBlank {
-            replaceBuffer(with: slot.content)
-        } else {
-            replaceBuffer(with: slot.content + "\n\n" + latest)
-            actionBar.flash("Restored above what you had typed.")
-        }
-        show()
     }
 
     /// Put `content` in the editor and the file, keeping the mounted editor
@@ -894,9 +855,9 @@ final class Coordinator {
             guard let self else { return }
             self.reloadFromDisk = true
             self.loadPage()
-            // The bound file may have changed, and with it whether the chute
-            // may empty the buffer at all.
-            self.refreshActionBar()
+            // The bound file may have changed; the row names it.
+            self.refreshPathLabel()
+            self.panel.applyFloatLevel()
         }
     }
 

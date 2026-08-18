@@ -13,6 +13,7 @@
  */
 import { t } from "@/i18n";
 import { clampLeft, computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
+import { createHoverSelection } from "@/ui/hoverSelection";
 import {
     filterSlashItems,
     SLASH_GROUPS,
@@ -155,6 +156,10 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         if (lastAnchor) { positionMenu(lastAnchor); }
     });
 
+    // Hover and the arrows move the same highlight; the guard keeps a still
+    // pointer from taking it straight back. See ui/hoverSelection.ts.
+    const hover = createHoverSelection(root);
+
     function setActive(index: number): void {
         activeIndex = index;
         rows.forEach((row, i) => {
@@ -212,7 +217,11 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         }
 
         row.addEventListener("mousedown", () => opts.onPick(item));
-        row.addEventListener("mouseover", () => setActive(index));
+        row.addEventListener("mouseover", () => {
+            if (hover.pointerIsLive()) {
+                setActive(index);
+            }
+        });
         return row;
     }
 
@@ -342,6 +351,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
             if (rows.length === 0) {
                 return;
             }
+            hover.keyboardMoved();
             setActive(
                 delta > 0
                     ? (activeIndex >= rows.length - 1 ? 0 : activeIndex + 1)

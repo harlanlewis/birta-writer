@@ -21,7 +21,7 @@ final class JotPanel: NSPanel {
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         isFloatingPanel = true
-        level = .floating
+        applyFloatLevel()
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         becomesKeyOnlyIfNeeded = false
@@ -30,6 +30,17 @@ final class JotPanel: NSPanel {
         animationBehavior = .default
         minSize = NSSize(width: 360, height: 240)
         setFrameAutosaveName("JotPanel")
+    }
+
+    /// Put the panel at the level the "Float above other windows" setting
+    /// names. `.floating` is one step above `.normal`, which is enough to sit
+    /// over other applications and low enough that a system alert still wins.
+    ///
+    /// Anything Jot opens ON TOP of the panel has to be raised to match, or it
+    /// opens behind the window that spawned it and reads as not having opened
+    /// at all. `SettingsWindowController` is the one that does.
+    func applyFloatLevel() {
+        level = Prefs.floatAboveOtherWindows ? .floating : .normal
     }
 
     override var canBecomeKey: Bool { true }

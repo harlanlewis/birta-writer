@@ -28,8 +28,8 @@ enum Prefs {
         static let contentWidth = "contentWidth"
         static let viewState = "viewState"
         static let saveAsDirectory = "saveAsDirectory"
-        static let saveDirectory = "saveDirectory"
-        static let recentDestinations = "recentDestinations"
+        static let autosave = "autosave"
+        static let floatAboveOtherWindows = "floatAboveOtherWindows"
     }
 
     static var hotkey: HotkeyCombo {
@@ -81,7 +81,7 @@ enum Prefs {
     }
 
     static var fontPreset: String {
-        get { d.string(forKey: Key.fontPreset) ?? "editor" }
+        get { d.string(forKey: Key.fontPreset) ?? "serif" }
         set { d.set(newValue, forKey: Key.fontPreset) }
     }
 
@@ -101,35 +101,28 @@ enum Prefs {
     }
 
     /// Where the last Save As went, so the next one opens there. A memory of
-    /// the panel, not a setting; `saveDirectory` is the setting.
+    /// the panel rather than a setting, which is why it is not in Settings.
     static var saveAsDirectory: URL? {
         get { d.string(forKey: Key.saveAsDirectory).map { URL(fileURLWithPath: $0) } }
         set { d.set(newValue?.path, forKey: Key.saveAsDirectory) }
     }
 
-    /// The default destination: where Save puts a note when nobody is asked.
-    /// A folder of its own under Documents, because a chute produces files at
-    /// the rate notes are finished and they should not land on top of the
-    /// user's own filing.
-    static var saveDirectory: URL {
-        get {
-            if let p = d.string(forKey: Key.saveDirectory), !p.isEmpty { return URL(fileURLWithPath: p, isDirectory: true) }
-            return defaultSaveDirectory
-        }
-        set { d.set(newValue.path, forKey: Key.saveDirectory) }
+    /// Write while you type. Off means Jot stops writing on edits and nothing
+    /// else: hiding the panel and quitting still write, because a preference
+    /// that drops the buffer is not one anybody asked for
+    /// (`BirtaJotCore.AutosavePolicy` holds that rule and its tests).
+    static var autosave: Bool {
+        get { d.object(forKey: Key.autosave) == nil ? true : d.bool(forKey: Key.autosave) }
+        set { d.set(newValue, forKey: Key.autosave) }
     }
 
-    static var defaultSaveDirectory: URL {
-        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        return base.appendingPathComponent("Jot", isDirectory: true)
-    }
-
-    /// Folders notes have gone to lately, for the overflow menu's one-click
-    /// repeat of a destination.
-    static var recentDestinations: RecentDestinations {
-        get { RecentDestinations(d.stringArray(forKey: Key.recentDestinations) ?? []) }
-        set { d.set(newValue.paths, forKey: Key.recentDestinations) }
+    /// Whether the panel stays above other applications' windows. On by
+    /// default: a scratchpad summoned over whatever you were reading is the
+    /// point of the hotkey, and a panel that hides behind the window you were
+    /// copying from would defeat it.
+    static var floatAboveOtherWindows: Bool {
+        get { d.object(forKey: Key.floatAboveOtherWindows) == nil ? true : d.bool(forKey: Key.floatAboveOtherWindows) }
+        set { d.set(newValue, forKey: Key.floatAboveOtherWindows) }
     }
 
     static func bootConfig() -> BootConfig {
@@ -143,7 +136,7 @@ enum Prefs {
             // Swift cannot import it, so this literal restates it and
             // shared/__tests__/hostCapabilities.test.ts parses this file and
             // fails when the two disagree.
-            hostCapabilities: ["imageUpload"],
+            hostCapabilities: ["imageUpload", "appPreferences"],
             viewStateJSON: viewStateJSON
         )
     }

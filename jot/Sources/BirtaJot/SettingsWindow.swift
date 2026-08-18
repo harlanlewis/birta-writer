@@ -27,11 +27,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let hotkeyRecorder = HotkeyRecorderView(combo: Prefs.hotkey)
     private let hotkeyCaption = Caption("Press the combination that summons the panel from any app.")
     private let scratchpadPath = PathLabel(Prefs.scratchpadURL)
-    private let saveDirectoryPath = PathLabel(Prefs.saveDirectory)
     private let documentPath = PathLabel(Prefs.documentURL)
     private let documentSwitch = NSSwitch()
     private let documentChoose = NSButton(title: "Choose…", target: nil, action: nil)
     private let networkSwitch = NSSwitch()
+    private let autosaveSwitch = NSSwitch()
+    private let floatSwitch = NSSwitch()
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption(LoginItemState.off.caption)
     private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
@@ -46,6 +47,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Birta Jot Settings"
         window.isReleasedWhenClosed = false
+        // The panel floats, so a settings window at the ordinary level opens
+        // BEHIND the window it was opened from. Match the panel's level, which
+        // is the setting's level, so turning floating off lowers both together
+        // rather than leaving Settings stranded above everything.
+        window.level = Prefs.floatAboveOtherWindows ? .floating : .normal
         super.init(window: window)
         window.delegate = self
         let content = buildContent()
@@ -71,6 +77,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         networkSwitch.state = Prefs.networkEnabled ? .on : .off
         networkSwitch.target = self
         networkSwitch.action = #selector(toggleNetwork)
+        autosaveSwitch.state = Prefs.autosave ? .on : .off
+        autosaveSwitch.target = self
+        autosaveSwitch.action = #selector(toggleAutosave)
+        floatSwitch.state = Prefs.floatAboveOtherWindows ? .on : .off
+        floatSwitch.target = self
+        floatSwitch.action = #selector(toggleFloat)
 
         loginSwitch.target = self
         loginSwitch.action = #selector(toggleLoginItem)
@@ -84,6 +96,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             Self.group([
                 Self.row("Open at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
                          caption: loginCaption),
+                Self.row("Float above other windows", control: floatSwitch,
+                         caption: Caption("Keep the panel over other apps' windows, so a note summoned over what you are reading stays in front of it.")),
+                Self.row("Autosave", control: autosaveSwitch,
+                         caption: Caption("Write to the file as you type. Turning it off does not risk the note: hiding the panel and quitting still write, and Cmd+S writes whenever you ask.")),
             ]),
             Self.heading("Hotkey"),
             Self.group([
@@ -92,8 +108,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             Self.heading("Files"),
             Self.group([
                 Self.row("Scratchpad", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
-                Self.row("Save notes to", control: Self.pathControl(saveDirectoryPath, self, #selector(chooseSaveDirectory)),
-                         caption: Caption("Where Save files a finished note. The folder is created when the first note lands in it; Save As can still send one anywhere.")),
                 Self.row("Edit a document instead", control: documentSwitch,
                          caption: Caption("Jot edits that file rather than the scratchpad, and never empties it: Copy and Delete becomes Copy.")),
                 Self.row("Document", control: Self.pathControl(documentPath, documentChoose)),
@@ -286,23 +300,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// The default destination. No `onChange`: the page has nothing to reload,
-    /// and choosing the folder here is also how macOS is asked for access to
-    /// it, so the first Save into it does not have to fall back to a panel.
-    @objc private func chooseSaveDirectory() {
-        let panel = NSOpenPanel()
-        panel.title = "Save notes to"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = Prefs.saveDirectory
-        panel.beginSheetModal(for: window!) { [weak self] resp in
-            guard resp == .OK, let url = panel.url, let self else { return }
-            Prefs.saveDirectory = url
-            self.saveDirectoryPath.setURL(url)
-        }
-    }
 
     @objc private func chooseDocument() {
         let panel = NSOpenPanel()
@@ -371,6 +368,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// is re-read on the way in rather than only when it is first built.
     func windowDidBecomeKey(_ notification: Notification) {
         showLoginItem(LoginItem.state)
+    }
+
+    @objc private func toggleAutosave() {
+        Prefs.autosave = autosaveSwitch.state == .on
+    }
+
+    /// The panel's level, and the Settings window's with it: this window opens
+    /// from the panel, so leaving it above while the panel drops would strand
+    /// it over every other app.
+    @objc private func toggleFloat() {
+        Prefs.floatAboveOtherWindows = floatSwitch.state == .on
+        window?.level = Prefs.floatAboveOtherWindows ? .floating : .normal
+        onChange()
     }
 
     @objc private func toggleNetwork() {
