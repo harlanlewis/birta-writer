@@ -11,6 +11,7 @@ import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
 import { createMenuTrigger, makeSep } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
+import { hostHasCommand } from "../../../shared/hostCapabilities";
 import { RELEASES_URL } from "../../../shared/product";
 
 /**
@@ -90,7 +91,9 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
         let prevGroup: string | undefined;
         for (const meta of TOOLBAR_MENU_COMMANDS) {
             const action = menuActions[meta.id];
-            if (!action) { continue; }
+            // A row the host cannot answer (its settings UI, its keybindings
+            // UI, our release page) is not offered; the layout rows stay.
+            if (!action || !hostHasCommand(meta.id)) { continue; }
             if (prevGroup !== undefined && meta.menuGroup !== prevGroup) {
                 menu.appendChild(makeSep());
             }

@@ -7,6 +7,7 @@
  */
 import type { ToolbarConfig, ToolbarPlacement, ToolbarZone } from "../../../shared/messages";
 import type { EditorCommandId } from "../../../shared/editorCommands";
+import { hostHas, type HostCapability } from "../../../shared/hostCapabilities";
 
 /**
  * Every toolbar item id, in canonical order. Items render in this order within
@@ -169,6 +170,53 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
     settings: ["openExtensionSettings", "customizeToolbar", "hideToolbar", "openKeyboardShortcuts", "openWhatsNew"],
 };
 
+/**
+ * The host capability each item needs, or null for an item the editor answers
+ * by itself (shared/hostCapabilities.ts). A host that does not declare the
+ * capability has no such item: it is not built, and `computeZones` drops it
+ * from every zone, the customize tray's hidden set included, so the user is
+ * never offered a control that posts to a host that cannot answer.
+ *
+ * Exhaustive by type like the two tables above, and tied to them the same
+ * way: `toolbarRegistry.test.ts` asserts an item needs capability C exactly
+ * when one of its `ITEM_COMMANDS` needs C. `settings` is the documented
+ * exception: the gear mixes gated rows (Settings, Edit Keyboard Shortcuts,
+ * What's New) with unconditional ones (Customize, Hide, Show Keyboard
+ * Shortcuts), so it stays and its menu filters row by row.
+ */
+export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> = {
+    format: null,
+    bold: null,
+    italic: null,
+    strikethrough: null,
+    highlight: null,
+    inlineCode: null,
+    link: null,
+    listMenu: null,
+    quote: null,
+    codeBlock: null,
+    horizontalRule: null,
+    table: null,
+    image: "imageUpload",
+    math: null,
+    footnote: null,
+    clearFormatting: null,
+    readOnly: "readOnlyMode",
+    viewSource: "textEditor",
+    find: null,
+    styleCheck: "proofreading",
+    fontPreset: null,
+    settings: null,
+};
+
+/** The items the host can carry: everything whose capability it declares. */
+export function hostAvailableItems(): ReadonlySet<ToolbarItemId> {
+    return new Set(TOOLBAR_ITEM_IDS.filter((id) => {
+        const cap = ITEM_HOST_CAPABILITY[id];
+        return cap === null || hostHas(cap);
+    }));
+}
+
 // "center" is intentionally NOT valid: the zone was removed, and persisted
 // "center" placements from older builds fall back to the item's default.
 function isValidPlacement(value: unknown): value is ToolbarPlacement {
@@ -186,9 +234,15 @@ const ZONES: ToolbarZone[] = ["left", "right"];
  * rest follow in the built-in (registry) order. This lets a user reorder a zone
  * (e.g. move Clear Formatting to the end of the left set) via settings without
  * drag-and-drop.
+ *
+ * `available` is the set of items the host can carry (`hostAvailableItems`);
+ * an item outside it appears in NO zone, `hidden` included, so the customize
+ * tray cannot offer it. The default is every item, which is what every host
+ * that declares no capabilities gets (absent means all).
  */
 export function computeZones(
     config: ToolbarConfig | undefined,
+    available: ReadonlySet<ToolbarItemId> = new Set(TOOLBAR_ITEM_IDS),
 ): Record<ToolbarZone | "hidden", ToolbarItemId[]> {
     const placements = config?.placements;
     const order = Array.isArray(config?.order) ? config!.order : [];
@@ -199,6 +253,7 @@ export function computeZones(
         hidden: [],
     };
     for (const id of TOOLBAR_ITEM_IDS) {
+        if (!available.has(id)) { continue; }
         const raw = placements?.[id];
         const placement = isValidPlacement(raw) ? raw : DEFAULT_PLACEMENTS[id];
         result[placement].push(id);

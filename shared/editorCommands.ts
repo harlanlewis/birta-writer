@@ -14,6 +14,8 @@
  * message protocol carries the bare `<id>` as `EditorCommandId`.
  */
 
+import type { HostCapability } from "./hostCapabilities";
+
 export type WebviewSection = "editor" | "table" | "link" | "toolbar" | "toolbarTab";
 
 export interface EditorCommandMeta {
@@ -34,6 +36,16 @@ export interface EditorCommandMeta {
      * `sections: ["toolbar"]` entry (drift-guarded), optional elsewhere.
      */
     readonly menuGroup?: "layout" | "shortcuts" | "settings";
+    /**
+     * The host-provided thing this command needs (shared/hostCapabilities.ts):
+     * a text editor to switch to, a settings UI, a proofreading engine, an
+     * image store. Absent on every command the editor answers by itself. A
+     * host that does not declare the capability never sees the command: not
+     * on the toolbar, not in the gear or slash menus, and `runEditorCommand`
+     * ignores it, so a chord bound to it is inert rather than a message to a
+     * host that cannot answer.
+     */
+    readonly hostCapability?: HostCapability;
 }
 
 /**
@@ -91,9 +103,9 @@ export const EDITOR_COMMANDS = [
     // input box. The webview never invokes anything: it hands the prompt to
     // the extension, which composes the caret's line reference in and routes
     // it per `birta.agent.command` (src/agentBridge/askAgent.ts).
-    { id: "askAgent", title: "Ask Agent", palette: true, sections: [] },
+    { id: "askAgent", title: "Ask Agent", palette: true, sections: [], hostCapability: "agent" },
     { id: "editBlockSource", title: "Edit Block as Markdown", palette: true, sections: [] },
-    { id: "insertImage", title: "Insert Image", palette: true, sections: [] },
+    { id: "insertImage", title: "Insert Image", palette: true, sections: [], hostCapability: "imageUpload" },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
     { id: "insertCallout", title: "Insert Callout", palette: true, sections: [] },
@@ -129,7 +141,7 @@ export const EDITOR_COMMANDS = [
     // silently break any user's keybindings.json entry with no migration path,
     // and the ID is not user-facing. The title is what users see.
     { id: "selectAllOccurrences", title: "Change All Occurrences", palette: true, sections: [] },
-    { id: "toggleToc", title: "Toggle Table of Contents", palette: true, sections: [] },
+    { id: "toggleToc", title: "Toggle Table of Contents", palette: true, sections: [], hostCapability: "toc" },
     { id: "editFrontmatter", title: "Edit Frontmatter", palette: true, sections: [] },
     { id: "tableInsertRowAbove", title: "Insert Row Above", palette: false, sections: ["table"] },
     { id: "tableInsertRowBelow", title: "Insert Row Below", palette: false, sections: ["table"] },
@@ -155,7 +167,7 @@ export const EDITOR_COMMANDS = [
     { id: "copyAsRichText", title: "Copy as Rich Text", palette: true, sections: ["editor", "table", "link"] },
     // Bottom "9_view" group of every content menu; same switch path as the
     // toolbar button (carries the first visible line to preserve the viewport).
-    { id: "editRawMarkdown", title: "Edit Raw Markdown", palette: false, sections: ["editor", "table", "link"] },
+    { id: "editRawMarkdown", title: "Edit Raw Markdown", palette: false, sections: ["editor", "table", "link"], hostCapability: "textEditor" },
     // Toolbar (chrome) right-click menu. The settings-gear dropdown is built
     // from these same entries (filtered by the "toolbar" section, in this
     // order), with a separator on every `menuGroup` change, so the two menus
@@ -175,11 +187,11 @@ export const EDITOR_COMMANDS = [
     // sequence-3 comment below for why the two stay distinct commands.
     // Command ids are unchanged so existing user keybindings keep working.
     { id: "openShortcutsHelp", title: "Show Keyboard Shortcuts", palette: true, sections: ["toolbar"], menuGroup: "shortcuts" },
-    { id: "openKeyboardShortcuts", title: "Edit Keyboard Shortcuts", palette: false, sections: ["toolbar"], menuGroup: "shortcuts" },
+    { id: "openKeyboardShortcuts", title: "Edit Keyboard Shortcuts", palette: false, sections: ["toolbar"], menuGroup: "shortcuts", hostCapability: "hostSettings" },
     // The full title is the SETTINGS_TITLE_TEMPLATE expansion of PRODUCT_NAME
     // (drift-guarded); the gear menu interpolates the product name via
     // settingsMenuTitle() instead of using this literal.
-    { id: "openExtensionSettings", title: "Birta Writer Settings", palette: false, sections: ["toolbar"], menuGroup: "settings" },
+    { id: "openExtensionSettings", title: "Birta Writer Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "hostSettings" },
     // Opens the published release history in the browser (RELEASES_URL, handed
     // to the host — the webview fetches nothing). It shares the `settings`
     // group with the row above rather than opening a fourth one: both name the
@@ -188,7 +200,7 @@ export const EDITOR_COMMANDS = [
     // Palette-visible, unlike its neighbours in the group: VS Code has its own
     // Settings and Keyboard Shortcuts commands, and no command of its own
     // reaches OUR release notes.
-    { id: "openWhatsNew", title: "What's New", palette: true, sections: ["toolbar"], menuGroup: "settings" },
+    { id: "openWhatsNew", title: "What's New", palette: true, sections: ["toolbar"], menuGroup: "settings", hostCapability: "hostSettings" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a
@@ -202,9 +214,9 @@ export const EDITOR_COMMANDS = [
     { id: "fontMono", title: "Monospace Font", palette: true, sections: [] },
     { id: "increaseFontSize", title: "Increase Font Size", palette: true, sections: [] },
     { id: "decreaseFontSize", title: "Decrease Font Size", palette: true, sections: [] },
-    { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [] },
-    { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [] },
-    { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [] },
+    { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [], hostCapability: "proofreading" },
+    { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [], hostCapability: "proofreading" },
+    { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [], hostCapability: "proofreading" },
     // The in-text editor-note highlight (birta.notes.highlightMarkers). It sits
     // beside the three check toggles because it is the same kind of thing — an
     // advisory in-text annotation the user turns on and off — even though the
@@ -212,7 +224,7 @@ export const EDITOR_COMMANDS = [
     // Titled after the markers, not the notes: "Highlight" alone is already the
     // `==mark==` command two rows up, and a palette search for "highlight" must
     // not offer two entries that read the same.
-    { id: "toggleNoteHighlights", title: "Highlight Note Markers", palette: true, sections: [] },
+    { id: "toggleNoteHighlights", title: "Highlight Note Markers", palette: true, sections: [], hostCapability: "proofreading" },
     // A single toggle each for the toolbar and the TOC — the state is binary,
     // so two idempotent show/hide palette entries would always leave one that
     // does nothing. `toggleToc` (above) covers TOC visibility; these cover the
@@ -224,7 +236,7 @@ export const EDITOR_COMMANDS = [
     // overrides `birta.readOnly` for the session; changing the setting itself
     // re-seeds every open document. No default chord — the editor's own chords
     // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
-    { id: "toggleReadOnly", title: "Toggle Read-only", palette: true, sections: [] },
+    { id: "toggleReadOnly", title: "Toggle Read-only", palette: true, sections: [], hostCapability: "readOnlyMode" },
     // Focus mode (MAR-72). One toggle down to the content: our toolbar and TOC
     // hidden, proofreading silenced. The workbench chrome is VS Code's own Zen
     // Mode, which stays a separate toggle with its own restore. A single entry
@@ -232,7 +244,7 @@ export const EDITOR_COMMANDS = [
     // editor's chords are spoken for, and a user picks one in Keyboard
     // Shortcuts.
     { id: "toggleFocusMode", title: "Toggle Focus Mode", palette: true, sections: [] },
-    { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [] },
+    { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [], hostCapability: "toc" },
     // MAR-294: once focus is inside the review sidebar its keyboard model is
     // complete (Escape returns to the editor from every region), but no gesture
     // moved focus there in the first place — Tab is the editor's indent key and
@@ -240,7 +252,7 @@ export const EDITOR_COMMANDS = [
     // VS Code's own workbench.action.focusSideBar: palette + rebindable, and it
     // opens the panel when hidden. No default chord — the editor's own chords
     // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
-    { id: "focusReviewSidebar", title: "Focus Review Sidebar", palette: true, sections: [] },
+    { id: "focusReviewSidebar", title: "Focus Review Sidebar", palette: true, sections: [], hostCapability: "toc" },
     // Keyboard canon (VS Code text-editing parity). Duplicate/smart-select/
     // insert-paragraph default chords are hardcoded ProseMirror keymaps —
     // they collide with native contenteditable behavior and need synchronous
