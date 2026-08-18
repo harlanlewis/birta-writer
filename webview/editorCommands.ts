@@ -87,6 +87,7 @@ import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
+import { exportHtmlLazy } from "@/export/loader";
 
 export type GetEditor = () => Editor | null;
 
@@ -894,6 +895,10 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
         uncheckAllTasks(view);
         view.focus();
     }),
+    // Export as HTML (MAR-32): snapshots the live rendered document and hands
+    // it to the host. The module loads on first use through its loader seam,
+    // so it costs the launch bundle nothing.
+    exportHtml: () => { void exportHtmlLazy(); },
 };
 
 /**

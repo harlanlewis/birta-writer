@@ -368,6 +368,15 @@ export function notifyClipboardWrite(format: "html" | "markdown", data: string):
     vscode.postMessage({ type: "clipboardWrite", format, data });
 }
 
+/**
+ * Export as HTML (MAR-32): hands the extension a finished, self-contained HTML
+ * document; the extension owns the save dialog, the write, and the
+ * open-in-browser offer. `suggestedName` is the default file name.
+ */
+export function notifyExportHtml(html: string, suggestedName: string): void {
+    vscode.postMessage({ type: "exportHtml", html, suggestedName });
+}
+
 /** Disk-drift badge click: asks the extension for the reload/compare picker. */
 export function notifyResolveSyncConflict(): void {
     vscode.postMessage({ type: "resolveSyncConflict" });

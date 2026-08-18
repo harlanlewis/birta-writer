@@ -544,6 +544,7 @@ export const window = {
     showQuickPick: vi.fn(),
     showInputBox: vi.fn(),
     showOpenDialog: vi.fn(),
+    showSaveDialog: vi.fn(),
     setStatusBarMessage: vi.fn(),
     /** A fake terminal whose `sendText` calls a test can read back. */
     createTerminal: vi.fn((_options?: unknown) => ({

@@ -46,6 +46,7 @@ import type { EditorCommandId } from "../shared/editorCommands";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { acknowledgeSeen, unreadNow } from "./whatsNew";
+import { saveHtmlExport } from "./htmlExport";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -1503,6 +1504,13 @@ export class MarkdownEditorProvider
                         if (message.data) {
                             void vscode.env.clipboard.writeText(message.data);
                         }
+                        break;
+                    case "exportHtml":
+                        // Export as HTML (MAR-32): the webview rendered the
+                        // document; the host asks where, writes, and offers
+                        // to open it in the browser. Never edits the document.
+                        void saveHtmlExport(document, message.html, message.suggestedName)
+                            .catch((err) => reportError("exportHtml", err));
                         break;
                     case "flushResult":
                         // Reply to an onWillSaveTextDocument flush: hand the parked

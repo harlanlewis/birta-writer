@@ -707,6 +707,11 @@
                 "command": "birta.editor.uncheckAllTasks",
                 "title": "%command.editor.uncheckAllTasks.title%",
                 "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.exportHtml",
+                "title": "%command.editor.exportHtml.title%",
+                "category": "Birta Writer"
             }
         ],
         "keybindings": [
@@ -1361,6 +1366,10 @@
                 {
                     "command": "birta.editor.uncheckAllTasks",
                     "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "activeCustomEditorId == 'birta.editor'"
                 }
             ],
             "webview/context": [
@@ -1523,6 +1532,21 @@
                     "command": "birta.editor.showToolbar",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbarTab'",
                     "group": "1_toolbar@1"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'editor'",
+                    "group": "4_export@1"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'table'",
+                    "group": "4_export@1"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'link'",
+                    "group": "4_export@1"
                 }
             ]
         },
@@ -2426,7 +2450,7 @@
                     "markdownDescription": "**Display only — your file never changes.** Show Google Sheets links as cards. A published-to-web sheet, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Google Sheets links looking like ordinary links."
                 },
                 "birta.embeds.providers.googlefile": {
-                    "order": 105.40,
+                    "order": 105.4,
                     "type": "boolean",
                     "default": true,
                     "scope": "application",
