@@ -340,6 +340,10 @@ export function makeFakeTextDocument(
 }
 
 export const workspace = {
+    /** Every registered fake document, the way `vscode.workspace.textDocuments` lists open ones. */
+    get textDocuments(): FakeTextDocument[] {
+        return [...fakeTextDocuments.values()];
+    },
     fs: {
         readFile: vi.fn<() => Promise<Uint8Array>>(),
         writeFile: vi.fn<() => Promise<void>>(),
@@ -546,12 +550,20 @@ export const window = {
     showOpenDialog: vi.fn(),
     showSaveDialog: vi.fn(),
     setStatusBarMessage: vi.fn(),
-    /** A fake terminal whose `sendText` calls a test can read back. */
-    createTerminal: vi.fn((_options?: unknown) => ({
-        show: vi.fn(),
-        sendText: vi.fn(),
-        dispose: vi.fn(),
-    })),
+    /** A fake terminal whose `sendText` calls a test can read back; it joins `terminals` (name kept, no exit). */
+    createTerminal: vi.fn((options?: { name?: string }) => {
+        const terminal = {
+            name: options?.name ?? "",
+            exitStatus: undefined as undefined | { code: number | undefined },
+            show: vi.fn(),
+            sendText: vi.fn(),
+            dispose: vi.fn(),
+        };
+        window.terminals.push(terminal);
+        return terminal;
+    }),
+    /** Live terminals; tests reset it (`window.terminals.length = 0`) between cases. */
+    terminals: [] as Array<{ name: string; exitStatus: undefined | { code: number | undefined }; show: ReturnType<typeof vi.fn>; sendText: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }>,
     createQuickPick: vi.fn(makeFakeQuickPick),
     createStatusBarItem: vi.fn((_id?: unknown, _alignment?: unknown, _priority?: unknown) =>
         makeFakeStatusBarItem(),

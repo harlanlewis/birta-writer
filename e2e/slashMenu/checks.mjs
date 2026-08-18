@@ -172,6 +172,62 @@ export async function run({ page, check, baseUrl }) {
     check("the /ai construct is removed from the document", !text.includes("/ai"), `text=${JSON.stringify(text)}`);
     check("the menu is closed after sending",
         await page.evaluate(() => document.querySelector("#md-slash-menu") === null));
+    check("the request carries an id the extension echoes back", typeof asked[0].requestId === "string" && asked[0].requestId.length > 0, JSON.stringify(asked));
+
+    // ── 9. The run marker and the undo policy (MAR-376) ──
+    // The harness plays the extension: confirm a background run, write the
+    // "agent's" result as an external update, undo it, then finish the run.
+    const requestId = asked[0].requestId;
+    check("no marker before the extension confirms a run",
+        await page.evaluate(() => document.querySelectorAll(".ProseMirror .agent-pending").length) === 0);
+    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "running" }, "*"), requestId);
+    await page.waitForTimeout(150);
+    const marker = await page.evaluate(() => {
+        const el = document.querySelector(".ProseMirror .agent-pending");
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        const p = el.closest("p")?.getBoundingClientRect();
+        return { inParagraph: el.closest("p")?.textContent ?? null, left: r.left, pLeft: p?.left ?? null, width: r.width, height: r.height };
+    });
+    check("a running run puts one marker in the gutter beside the request's block",
+        marker !== null && marker.inParagraph === "Some text." && marker.width > 0 && marker.left < marker.pLeft, JSON.stringify(marker));
+    // The agent writes the file; VS Code reloads; the webview takes it into history.
+    await page.evaluate(() => window.postMessage({
+        type: "externalUpdate",
+        content: "# Title\n\nSome text.\n\nAgent wrote this.\n\n> [!note] Outer\n> callout body here.\n",
+        syncVersion: 2,
+    }, "*"));
+    await page.waitForFunction(() => /Agent wrote this/.test(document.querySelector(".ProseMirror")?.textContent ?? ""), { timeout: 5000 });
+    await page.locator(".milkdown .ProseMirror p").first().click();
+    await page.keyboard.press("Meta+z");
+    await page.waitForTimeout(200);
+    check("Cmd+Z removes the agent's insertion while its run is live (undoes like a paste)",
+        !/Agent wrote this/.test(await page.evaluate(() => document.querySelector(".ProseMirror")?.textContent ?? "")));
+    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "done" }, "*"), requestId);
+    await page.waitForTimeout(150);
+    check("done clears the marker",
+        await page.evaluate(() => document.querySelectorAll(".ProseMirror .agent-pending").length) === 0);
+    // A second request, cancelled from its marker, then reported failed.
+    await page.locator(".milkdown .ProseMirror p").first().click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" /ai", { delay: 60 });
+    await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
+    await page.keyboard.press("Space");
+    await page.keyboard.type("second request", { delay: 30 });
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const second = await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgent").at(-1).requestId);
+    check("a second request gets its own id", second && second !== requestId, JSON.stringify({ requestId, second }));
+    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "running" }, "*"), second);
+    await page.waitForTimeout(150);
+    await page.locator(".ProseMirror .agent-pending").first().click();
+    await page.waitForTimeout(100);
+    const cancels = await page.evaluate(() => window.__posted.filter((m) => m.type === "agentCancel"));
+    check("clicking the marker asks the extension to cancel that run", cancels.length === 1 && cancels[0].requestId === second, JSON.stringify(cancels));
+    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "failed", message: "exit 1" }, "*"), second);
+    await page.waitForTimeout(150);
+    check("a failed run turns the marker into an error marker",
+        await page.evaluate(() => document.querySelectorAll(".ProseMirror .agent-pending--error").length) === 1);
 
     // Space on an ordinary row is still a filter character: the browser
     // inserts it and the construct ends.

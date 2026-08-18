@@ -1,20 +1,23 @@
 /**
  * src/agentBridge/askAgent.ts
  *
- * Ask Agent (MAR-371, MAR-272): a request typed at the caret, handed once to
- * whatever coding agent the user already runs. The webview's `/ai <request>`
- * row and the palette's "Ask Agent" both arrive here; the extension composes
- * ONE line, the request plus the caret's `path.md#L12` reference, and routes
- * it per `birta.agent.command`. Nothing here talks to a model, opens a
- * socket, or keeps a connection: it is the Send Feedback shape (compose,
- * hand off, the user's own tool does the rest), rung 0b of
+ * Ask Agent (MAR-371, MAR-272, MAR-376): a request typed at the caret, handed
+ * once to whatever coding agent the user already runs. The webview's
+ * `/ai <request>` row and the palette's "Ask Agent" both arrive here; the
+ * extension composes ONE line, the request plus the caret's `path.md#L12`
+ * reference, and routes it per `birta.agent.command`. Nothing here talks to a
+ * model, opens a socket, or keeps a connection: it is the Send Feedback shape
+ * (compose, hand off, the user's own tool does the rest), rung 0b of
  * `docs/NETWORK_POSTURE.md`, and `docs/AGENT_BRIDGE.md`'s standing
  * instruction against wire adapters is untouched.
  *
- * Three routes, all in one string setting so it stays greppable and needs no
- * vendor list to rot:
- *   - a shell command template (`claude {prompt}`), run in a fresh terminal
- *     rooted at the file's workspace folder so the relative reference resolves;
+ * Routes, all in one string setting so it stays greppable and needs no vendor
+ * list to rot:
+ *   - a shell command template (`claude -p {prompt} ...`), run per
+ *     `birta.agent.mode`: `background` (a child process of the extension host,
+ *     no terminal, the run's start and end reported to the webview so it can
+ *     mark the request's block in the gutter) or `terminal` (one reused
+ *     "Birta AI" terminal the user watches);
  *   - `chat`, VS Code's Chat view with the line filled in;
  *   - `clipboard`, the line copied for pasting anywhere.
  * An empty setting asks on first use and stores the answer globally. The
@@ -26,20 +29,28 @@
  * be the ones the reference was computed against. That is the one moment
  * this feature touches the document, and it is VS Code's own save.
  *
- * One-shot, never a conversation: there is no waiting state, no history, no
- * reply pane. What the agent writes arrives later as an ordinary external
- * change, and MAR-272's comments record why a waiting state would mislead.
+ * Completion, background mode only: the child's exit is the signal. If the
+ * document is clean when the agent writes, VS Code reloads it and the webview
+ * takes the change into its undo history (an edit the user asked for at the
+ * caret undoes like a paste; see plugins/agentPending.ts). If the user typed
+ * meanwhile, VS Code refuses the reload, so the disk text travels with the
+ * `done` message and the webview merges it around the user's edits. There is
+ * still no conversation: no history, no reply pane, one request per run.
  */
 
 import * as vscode from "vscode";
+import { spawn, type ChildProcess } from "node:child_process";
 import type { ActiveContextResolver } from "./api";
 import { buildReference } from "./format";
 import { getBirtaConfiguration, readBirtaSetting } from "../config";
 import { BIRTA_SETTING_KEYS } from "../../shared/config";
-import { reportErrorWithNotification } from "../errorSink";
+import { reportError, reportErrorWithNotification } from "../errorSink";
+import type { AgentRunMessage } from "../../shared/messages";
 
 /** Internal command the webview's `askAgent` message runs (not contributed). */
 export const ASK_AGENT_COMMAND = "birta.askAgent";
+/** Internal command the webview's `agentCancel` message runs. */
+export const CANCEL_AGENT_COMMAND = "birta.cancelAgent";
 
 /** Reserved `birta.agent.command` values that are routes rather than shells. */
 export const AGENT_ROUTE_CHAT = "chat";
@@ -48,7 +59,10 @@ export const AGENT_ROUTE_CLIPBOARD = "clipboard";
 export const PROMPT_PLACEHOLDER = "{prompt}";
 /** The Chat view's open command (VS Code core, `workbench.action.chat.open`). */
 export const CHAT_OPEN_COMMAND = "workbench.action.chat.open";
-export const TERMINAL_NAME = "Birta: Ask Agent";
+/** The one terminal `/ai` reuses in terminal mode, so repeated asks do not litter the panel. */
+export const TERMINAL_NAME = "Birta AI";
+/** Stderr tail carried into a failure report. */
+const STDERR_TAIL = 400;
 
 /**
  * The one line handed over: the request, whitespace collapsed to keep it a
@@ -61,13 +75,14 @@ export function composeAgentRequest(prompt: string, reference: string): string {
 
 /**
  * Quote `text` as one shell argument. POSIX shells get single quotes with the
- * embedded-quote idiom; on Windows the terminal VS Code opens by default is
- * PowerShell, whose double-quoted string escapes `"`, `$` and the backtick
- * with a backtick. A user on cmd.exe sets a template that quotes for it.
+ * embedded-quote idiom. On Windows the shell this module runs (background)
+ * and the terminal VS Code opens by default are both PowerShell, whose
+ * single-quoted string is literal, with an embedded quote doubled; nothing
+ * inside is expanded, which is the property that matters for prose.
  */
 export function shellQuote(text: string, platform: NodeJS.Platform = process.platform): string {
     if (platform === "win32") {
-        return `"${text.replace(/[`"$]/g, (c) => "`" + c)}"`;
+        return `'${text.replace(/'/g, "''")}'`;
     }
     return `'${text.replace(/'/g, `'\\''`)}'`;
 }
@@ -83,23 +98,36 @@ export function expandCommandTemplate(template: string, quotedPrompt: string): s
         : `${trimmed} ${quotedPrompt}`;
 }
 
+export type AgentMode = "background" | "terminal";
+
+/** A settings.json typo (the enum constrains only the Settings UI) → the default. */
+export function normalizeAgentMode(value: unknown): AgentMode {
+    return value === "terminal" ? "terminal" : "background";
+}
+
 interface RoutePick extends vscode.QuickPickItem {
     /** The setting value; null asks for a custom template. */
     value: string | null;
+    mode?: AgentMode;
 }
 
 /**
  * First-use picker. Deliberately short and made of things that do not rot:
- * two CLIs named by their binary, the host's own Chat view, the clipboard,
- * and a free template. The choice is stored globally so it is asked once.
+ * two CLIs named by their binary, each in both modes, the host's own Chat
+ * view, the clipboard, and a free template. The choice is stored globally so
+ * it is asked once. The background templates are the CLIs' own
+ * non-interactive forms; a template that would open an interactive session
+ * hangs in the background with no terminal to answer it.
  */
-async function pickRoute(): Promise<string | undefined> {
+async function pickRoute(): Promise<{ command: string; mode: AgentMode } | undefined> {
     const picks: RoutePick[] = [
-        { label: "Claude Code", description: "claude {prompt}", detail: vscode.l10n.t("Runs in a new terminal"), value: "claude {prompt}" },
-        { label: "Codex CLI", description: "codex {prompt}", detail: vscode.l10n.t("Runs in a new terminal"), value: "codex {prompt}" },
+        { label: "Claude Code, in the background", description: "claude -p {prompt} --permission-mode acceptEdits", detail: vscode.l10n.t("No terminal; a marker in the gutter while it runs, the edit arrives when it finishes"), value: "claude -p {prompt} --permission-mode acceptEdits", mode: "background" },
+        { label: "Claude Code, in a terminal", description: "claude {prompt}", detail: vscode.l10n.t("One reused Birta AI terminal you can watch and answer"), value: "claude {prompt}", mode: "terminal" },
+        { label: "Codex CLI, in the background", description: "codex exec --full-auto {prompt}", detail: vscode.l10n.t("No terminal; a marker in the gutter while it runs"), value: "codex exec --full-auto {prompt}", mode: "background" },
+        { label: "Codex CLI, in a terminal", description: "codex {prompt}", detail: vscode.l10n.t("One reused Birta AI terminal you can watch and answer"), value: "codex {prompt}", mode: "terminal" },
         { label: vscode.l10n.t("VS Code Chat view"), description: AGENT_ROUTE_CHAT, detail: vscode.l10n.t("Copilot Chat or any chat participant, with the request filled in"), value: AGENT_ROUTE_CHAT },
         { label: vscode.l10n.t("Copy to clipboard"), description: AGENT_ROUTE_CLIPBOARD, detail: vscode.l10n.t("Paste the request into any agent yourself"), value: AGENT_ROUTE_CLIPBOARD },
-        { label: vscode.l10n.t("Custom command"), description: "{prompt}", detail: vscode.l10n.t("A shell command; {prompt} is replaced by the quoted request"), value: null },
+        { label: vscode.l10n.t("Custom command"), description: "{prompt}", detail: vscode.l10n.t("A shell command; {prompt} is replaced by the quoted request; birta.agent.mode says whether it runs in the background or a terminal"), value: null },
     ];
     const pick = await vscode.window.showQuickPick(picks, {
         title: vscode.l10n.t("Where should Birta send your request?"),
@@ -112,40 +140,157 @@ async function pickRoute(): Promise<string | undefined> {
         value = await vscode.window.showInputBox({
             title: vscode.l10n.t("Agent command"),
             prompt: vscode.l10n.t("A shell command with {prompt} where the quoted request goes"),
-            value: "claude {prompt}",
+            value: "claude -p {prompt} --permission-mode acceptEdits",
             ignoreFocusOut: true,
         });
         if (!value?.trim()) { return undefined; }
     }
-    await getBirtaConfiguration().update(
-        BIRTA_SETTING_KEYS.agentCommand,
-        value,
-        vscode.ConfigurationTarget.Global,
-    );
-    return value;
+    const config = getBirtaConfiguration();
+    await config.update(BIRTA_SETTING_KEYS.agentCommand, value, vscode.ConfigurationTarget.Global);
+    const mode = pick.mode ?? normalizeAgentMode(readBirtaSetting("agentMode"));
+    if (pick.mode) {
+        await config.update(BIRTA_SETTING_KEYS.agentMode, pick.mode, vscode.ConfigurationTarget.Global);
+    }
+    return { command: value, mode };
+}
+
+/** Where run-state reports go: the provider posts them to the document's webview. */
+export type AgentRunReporter = (uri: vscode.Uri, message: AgentRunMessage) => void;
+
+interface BackgroundRun {
+    readonly requestId: string;
+    readonly uri: vscode.Uri;
+    /** The file's bytes when the run started; unchanged bytes at exit mean the agent wrote nothing. */
+    readonly savedText: string;
+    readonly child: ChildProcess;
+    cancelled: boolean;
+}
+
+const runs = new Map<string, BackgroundRun>();
+
+/** The reused terminal, created on first use and found again by name. */
+function agentTerminal(cwd: vscode.Uri | undefined): vscode.Terminal {
+    const existing = vscode.window.terminals.find((t) => t.name === TERMINAL_NAME && t.exitStatus === undefined);
+    return existing ?? vscode.window.createTerminal({ name: TERMINAL_NAME, cwd });
+}
+
+/**
+ * The child that runs a template in the background: the platform's own
+ * shell, so a template reads exactly as it would in a terminal, and the same
+ * quoting serves both. Stdout is dropped (a headless agent narrates); the
+ * last of stderr is kept for a failure report.
+ */
+function spawnBackground(commandLine: string, cwd: string | undefined): ChildProcess {
+    if (process.platform === "win32") {
+        return spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", commandLine], {
+            cwd, stdio: ["ignore", "ignore", "pipe"], windowsHide: true,
+        });
+    }
+    return spawn(commandLine, { cwd, shell: true, stdio: ["ignore", "ignore", "pipe"] });
+}
+
+async function readDisk(uri: vscode.Uri): Promise<string | undefined> {
+    try {
+        return Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Start a background run and report its life to the webview: `running` now,
+ * then `done` (with the disk text when the document is dirty, so the webview
+ * can merge it around the user's edits) or `failed`. A run cancelled from the
+ * gutter reports `cancelled`.
+ */
+function startBackground(
+    requestId: string,
+    uri: vscode.Uri,
+    savedText: string,
+    commandLine: string,
+    cwd: string | undefined,
+    report: AgentRunReporter,
+): void {
+    const child = spawnBackground(commandLine, cwd);
+    const run: BackgroundRun = { requestId, uri, savedText, child, cancelled: false };
+    runs.set(requestId, run);
+    report(uri, { type: "agentRun", requestId, status: "running" });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+        stderr = (stderr + chunk.toString("utf8")).slice(-STDERR_TAIL);
+    });
+    child.on("error", (err) => {
+        runs.delete(requestId);
+        reportError("askAgent background", err);
+        report(uri, { type: "agentRun", requestId, status: "failed", message: String((err as Error).message ?? err) });
+    });
+    child.on("exit", (code) => {
+        void (async () => {
+            runs.delete(requestId);
+            if (run.cancelled) {
+                report(uri, { type: "agentRun", requestId, status: "cancelled" });
+                return;
+            }
+            if (code !== 0) {
+                report(uri, {
+                    type: "agentRun", requestId, status: "failed",
+                    message: vscode.l10n.t("The agent exited with code {0}. {1}", String(code), stderr.trim()),
+                });
+                return;
+            }
+            // Clean document: VS Code has already reloaded (or the file did
+            // not change), and the webview took it. Dirty: the reload was
+            // refused, so hand the disk text over for the webview to merge.
+            let text: string | undefined;
+            const document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
+            if (document?.isDirty) {
+                const disk = await readDisk(uri);
+                if (disk !== undefined && disk !== savedText) { text = disk; }
+            }
+            report(uri, text === undefined
+                ? { type: "agentRun", requestId, status: "done" }
+                : { type: "agentRun", requestId, status: "done", text });
+        })();
+    });
+}
+
+/** Cancel a background run from its gutter marker. No-op for an unknown id. */
+export function cancelAgentRun(requestId: string): void {
+    const run = runs.get(requestId);
+    if (!run) { return; }
+    run.cancelled = true;
+    run.child.kill();
 }
 
 /** Hand the composed line to the configured route. */
-async function dispatch(setting: string, line: string, cwd: vscode.Uri | undefined): Promise<void> {
+async function dispatch(
+    setting: string,
+    mode: AgentMode,
+    line: string,
+    active: { uri: vscode.Uri; requestId?: string; savedText: string },
+    report: AgentRunReporter,
+): Promise<void> {
     if (setting === AGENT_ROUTE_CLIPBOARD) {
         await vscode.env.clipboard.writeText(line);
-        vscode.window.setStatusBarMessage(
-            vscode.l10n.t("Copied your request for your agent"),
-            3000,
-        );
+        vscode.window.setStatusBarMessage(vscode.l10n.t("Copied your request for your agent"), 3000);
         return;
     }
     if (setting === AGENT_ROUTE_CHAT) {
         await vscode.commands.executeCommand(CHAT_OPEN_COMMAND, { query: line });
         return;
     }
-    // A fresh terminal per request keeps the hand-off one-shot: nothing is
-    // typed into a session that may be mid-conversation, and the user sees
-    // exactly what ran. Rooted at the workspace folder so the relative
-    // reference in the line resolves where the agent runs.
-    const terminal = vscode.window.createTerminal({ name: TERMINAL_NAME, cwd });
+    const folder = vscode.workspace.getWorkspaceFolder(active.uri)?.uri;
+    const commandLine = expandCommandTemplate(setting, shellQuote(line));
+    if (mode === "background" && active.requestId) {
+        startBackground(active.requestId, active.uri, active.savedText, commandLine, folder?.fsPath, report);
+        return;
+    }
+    // One reused terminal: nothing piles up in the panel, and the user sees
+    // exactly what ran. Rooted at the workspace folder on creation so the
+    // relative reference in the line resolves where the agent runs.
+    const terminal = agentTerminal(folder);
     terminal.show(false);
-    terminal.sendText(expandCommandTemplate(setting, shellQuote(line)), true);
+    terminal.sendText(commandLine, true);
 }
 
 /**
@@ -154,14 +299,18 @@ async function dispatch(setting: string, line: string, cwd: vscode.Uri | undefin
  */
 export async function askAgent(
     getActive: ActiveContextResolver,
+    report: AgentRunReporter,
     prompt: string | undefined,
+    requestId: string | undefined,
 ): Promise<void> {
     const active = await getActive();
+    const handedOff = (): void => {
+        if (requestId && active) {
+            report(active.uri, { type: "agentRun", requestId, status: "handedOff" });
+        }
+    };
     if (!active) {
-        vscode.window.setStatusBarMessage(
-            vscode.l10n.t("Birta: no active editor to ask about."),
-            3000,
-        );
+        vscode.window.setStatusBarMessage(vscode.l10n.t("Birta: no active editor to ask about."), 3000);
         return;
     }
     let request = prompt?.trim();
@@ -172,12 +321,15 @@ export async function askAgent(
             placeHolder: vscode.l10n.t("add a mermaid diagram of the flow described above"),
             ignoreFocusOut: true,
         }))?.trim();
-        if (!request) { return; }
+        if (!request) { handedOff(); return; }
     }
     let route = readBirtaSetting("agentCommand").trim();
+    let mode = normalizeAgentMode(readBirtaSetting("agentMode"));
     if (!route) {
-        route = (await pickRoute()) ?? "";
-        if (!route) { return; }
+        const picked = await pickRoute();
+        if (!picked) { handedOff(); return; }
+        route = picked.command;
+        mode = picked.mode;
     }
     const relPath = vscode.workspace.asRelativePath(active.uri, false);
     const line = composeAgentRequest(request, buildReference(relPath, active.context));
@@ -188,11 +340,18 @@ export async function askAgent(
         vscode.window.showWarningMessage(
             vscode.l10n.t("Birta could not save {0}, so the request was not sent.", relPath),
         );
+        handedOff();
         return;
     }
     try {
-        await dispatch(route, line, vscode.workspace.getWorkspaceFolder(active.uri)?.uri);
+        await dispatch(route, mode, line, { uri: active.uri, requestId, savedText: document.getText() }, report);
+        // Only a background run reports its own life; every other route is a
+        // hand-off the editor cannot follow, and the webview drops its marker.
+        if (!(mode === "background" && route !== AGENT_ROUTE_CHAT && route !== AGENT_ROUTE_CLIPBOARD)) {
+            handedOff();
+        }
     } catch (err) {
+        handedOff();
         reportErrorWithNotification(
             "askAgent",
             err,
@@ -202,14 +361,24 @@ export async function askAgent(
     }
 }
 
-/** Register the internal `birta.askAgent` command. */
+/** Register the internal `birta.askAgent` and `birta.cancelAgent` commands. */
 export function registerAskAgent(
     context: vscode.ExtensionContext,
     getActive: ActiveContextResolver,
+    report: AgentRunReporter,
 ): void {
     context.subscriptions.push(
-        vscode.commands.registerCommand(ASK_AGENT_COMMAND, (prompt?: unknown) =>
-            askAgent(getActive, typeof prompt === "string" ? prompt : undefined),
+        vscode.commands.registerCommand(ASK_AGENT_COMMAND, (prompt?: unknown, requestId?: unknown) =>
+            askAgent(
+                getActive,
+                report,
+                typeof prompt === "string" ? prompt : undefined,
+                typeof requestId === "string" ? requestId : undefined,
+            ),
         ),
+        vscode.commands.registerCommand(CANCEL_AGENT_COMMAND, (requestId?: unknown) => {
+            if (typeof requestId === "string") { cancelAgentRun(requestId); }
+        }),
+        { dispose: () => { for (const run of runs.values()) { run.cancelled = true; run.child.kill(); } runs.clear(); } },
     );
 }

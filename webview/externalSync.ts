@@ -30,7 +30,11 @@ import { getView } from "./pm";
  * partial transaction applied — the self-check runs on the prospective
  * transaction before it is dispatched.
  */
-export function applyExternalSync(editor: Editor, newMarkdown: string): boolean {
+export function applyExternalSync(
+    editor: Editor,
+    newMarkdown: string,
+    options: { intoHistory?: boolean } = {},
+): boolean {
     try {
         return editor.action((ctx) => {
             const view = getView(ctx);
@@ -74,7 +78,10 @@ export function applyExternalSync(editor: Editor, newMarkdown: string): boolean 
             // the caller's job (`_applyingExternal` in editor.ts — see its
             // declaration for why the meta cannot express that, MAR-152).
             tr.setMeta(EXTERNAL_SYNC_META, true);
-            tr.setMeta("addToHistory", false);
+            // The one exception (plugins/agentPending): an agent's write in
+            // answer to a request made at the caret is the user's own edit,
+            // and undoes like a paste.
+            if (!options.intoHistory) { tr.setMeta("addToHistory", false); }
             view.dispatch(tr);
             return true;
         });

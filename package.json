@@ -2351,6 +2351,21 @@
                     "scope": "application",
                     "markdownDescription": "%config.agent.command.description%"
                 },
+                "birta.agent.mode": {
+                    "order": 106.21,
+                    "type": "string",
+                    "enum": [
+                        "background",
+                        "terminal"
+                    ],
+                    "default": "background",
+                    "scope": "application",
+                    "enumDescriptions": [
+                        "%config.agent.mode.background%",
+                        "%config.agent.mode.terminal%"
+                    ],
+                    "markdownDescription": "%config.agent.mode.description%"
+                },
                 "birta.network.enabled": {
                     "order": 105,
                     "type": "boolean",

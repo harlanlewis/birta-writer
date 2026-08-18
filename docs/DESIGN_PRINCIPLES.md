@@ -98,6 +98,8 @@ A block move, or an edit made outside the editor, breaks the proof that the arti
 
 Content that arrives from the raw editor or a git checkout is the author's text, whatever it says. External syncs are exactly when cues appear, and exactly when rewrites must not.
 
+One exception, and it is the user's own edit by proxy: what an agent writes in answer to an `/ai` request made at the caret enters the undo history while that run is live, so Cmd+Z removes the insertion in one step and the ordinary sync writes the file back. Every other inbound change stays out of history. That is what a writer who asked for an insertion expects, and it is how the tools they know behave (Notion AI's inserted blocks, Copilot's inline edits undo like a paste).
+
 A new dependent artifact (transcluded values, computed tables, cross-file links) should slot into this ladder rather than invent its own consent model.
 
 ## A display choice Markdown cannot spell stays a display choice
@@ -139,6 +141,8 @@ Decoration and analysis settle in after first paint, on idle. Never on the mount
 ### Gutter marks show what the block is, dimmed
 
 Every marker is the block's slash-menu icon: headings an `H1`-`H6` badge, list items their flavor's icon. They are drawn from the same icon set as the slash menu, so the two can never drift. Markers are quiet at rest and interactive by design: they are the block's primary control (see "The gutter is the handle" below).
+
+One more mark lives in the gutter, one step further into the margin so it never covers the block's own: a small pulsing dot beside a block means an agent is working on a request the user typed there (`/ai`), and clicking it cancels the run. It is the only progress indicator the editor draws in the document's margin, it never enters the content area (a placeholder in the text is something you would type into and around), and it leaves nothing in the file.
 
 ### Theme tokens only
 

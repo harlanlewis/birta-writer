@@ -428,7 +428,9 @@ export type ToExtensionMessage =
     // when invoked from the palette (the extension then asks for it). The
     // extension composes the caret's line reference in and routes the line
     // per `birta.agent.command`; the webview never invokes anything itself.
-    | { type: "askAgent"; prompt?: string }
+    | { type: "askAgent"; prompt?: string; requestId?: string }
+    // Cancel a background agent run from its gutter marker (plugins/agentPending).
+    | { type: "agentCancel"; requestId: string }
     // The document cannot open in the WYSIWYG editor because its format's
     // parse is fatal on this content (MDX: a stray `{`, an unclosed tag —
     // unlike markdown, where every byte sequence is valid). The extension
@@ -469,7 +471,25 @@ export type ToExtensionMessage =
  * ProseMirror diff so the caret and selection survive edits made elsewhere in
  * the document. The webview falls back to a full rebuild on any diff failure.
  */
+/**
+ * A background agent run's life, keyed by the webview's own request id:
+ * `running` (the marker shows), `done` (settle; `text` is the file's bytes
+ * when the document was dirty at exit, so the reload VS Code refused is
+ * merged around the user's edits), `failed` (the marker turns to an error
+ * with the message), `cancelled`, or `handedOff` (a route the editor cannot
+ * follow: terminal, Chat view, clipboard, or a request that never ran; the
+ * marker is dropped silently).
+ */
+export type AgentRunMessage = {
+    type: "agentRun";
+    requestId: string;
+    status: "running" | "done" | "failed" | "cancelled" | "handedOff";
+    text?: string;
+    message?: string;
+};
+
 export type ToWebviewMessage =
+    | AgentRunMessage
     // `viewState` carries the per-document VIEW state (fold anchors, scroll,
     // frontmatter collapse — the webview state bag) across webview recreation:
     // switching to the raw editor CLOSES the custom tab, so VS Code's own

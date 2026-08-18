@@ -125,9 +125,9 @@ describe("MarkdownEditorProvider askAgent routing", () => {
     it("an askAgent message should run birta.askAgent with the prompt", async () => {
         const { panel } = await withActivePanel();
 
-        await messageHandler(panel)({ type: "askAgent", prompt: "add a diagram" });
+        await messageHandler(panel)({ type: "askAgent", prompt: "add a diagram", requestId: "ai1" });
 
-        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", "add a diagram");
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", "add a diagram", "ai1");
     });
 
     it("an askAgent message without a prompt should run the command with none", async () => {
@@ -135,6 +135,6 @@ describe("MarkdownEditorProvider askAgent routing", () => {
 
         await messageHandler(panel)({ type: "askAgent" });
 
-        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", undefined);
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", undefined, undefined);
     });
 });
