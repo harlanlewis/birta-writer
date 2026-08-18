@@ -2,11 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
     computeZones,
     DEFAULT_PLACEMENTS,
+    hostAvailableItems,
     ITEM_COMMANDS,
+    ITEM_HOST_CAPABILITY,
     ITEM_MUTATES,
     TOOLBAR_ITEM_IDS,
 } from "../components/toolbar/registry";
 import type { ToolbarConfig, ToolbarPlacements } from "../../shared/messages";
+import { EDITOR_COMMANDS } from "../../shared/editorCommands";
+import type { HostCapability } from "../../shared/hostCapabilities";
 import { commandMutates } from "../readOnly";
 
 /** Build a config from a placements map (order defaults to empty). */
@@ -231,5 +235,80 @@ describe("ITEM_MUTATES against the command classification (MAR-53)", () => {
             return ITEM_MUTATES[id] !== commands.some(commandMutates);
         });
         expect(disagreements).toEqual([]);
+    });
+});
+
+describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
+    const commandCapability = (id: string): HostCapability | undefined =>
+        (EDITOR_COMMANDS as readonly { id: string; hostCapability?: HostCapability }[])
+            .find((m) => m.id === id)?.hostCapability;
+
+    it("every item should need a capability exactly when one of its commands needs it, settings excepted", () => {
+        // Two tables classify the same gestures again: the per-item gate that
+        // decides whether the control is built, and the per-command gate that
+        // decides whether it runs. `settings` is the documented exception: the
+        // gear mixes gated and unconditional rows and filters row by row.
+        expect(TOOLBAR_ITEM_IDS.length).toBeGreaterThan(0);
+        const disagreements = TOOLBAR_ITEM_IDS.filter((id) => {
+            if (id === "settings") { return ITEM_HOST_CAPABILITY[id] !== null; }
+            const needed = new Set(ITEM_COMMANDS[id].map(commandCapability).filter((c) => c !== undefined));
+            const item = ITEM_HOST_CAPABILITY[id];
+            return item === null ? needed.size !== 0 : !(needed.size === 1 && needed.has(item));
+        });
+        expect(disagreements).toEqual([]);
+        // The sweep reached the gated items, not only the null ones.
+        expect(TOOLBAR_ITEM_IDS.filter((id) => ITEM_HOST_CAPABILITY[id] !== null).length).toBeGreaterThanOrEqual(4);
+    });
+
+    it("the settings gear should mix gated and unconditional commands, or the exception is dead", () => {
+        const caps = ITEM_COMMANDS.settings.map(commandCapability);
+        expect(caps.some((c) => c === undefined)).toBe(true);
+        expect(caps.some((c) => c !== undefined)).toBe(true);
+    });
+});
+
+describe("computeZones with a host that lacks a capability (MAR-373)", () => {
+    it("an unavailable item should be absent from every zone, hidden included", () => {
+        // Arrange: readOnly ships hidden, viewSource ships right; the host has
+        // neither, and the customize tray reads `hidden`, so both must vanish
+        // from all three lists rather than merely fall to hidden.
+        const available = new Set(TOOLBAR_ITEM_IDS.filter((id) => id !== "readOnly" && id !== "viewSource"));
+
+        // Act
+        const zones = computeZones(undefined, available);
+
+        // Assert
+        for (const zone of ["left", "right", "hidden"] as const) {
+            expect(zones[zone]).not.toContain("readOnly");
+            expect(zones[zone]).not.toContain("viewSource");
+        }
+        // Everything else is where it was.
+        expect(zones.right).toEqual(["find", "styleCheck", "fontPreset", "settings"]);
+        expect(zones.hidden).toContain("footnote");
+    });
+
+    it("a user placement or order hint cannot bring an unavailable item back", () => {
+        const available = new Set(TOOLBAR_ITEM_IDS.filter((id) => id !== "image"));
+        const zones = computeZones(cfg({ image: "right" }, ["image"]), available);
+        expect([...zones.left, ...zones.right, ...zones.hidden]).not.toContain("image");
+    });
+
+    it("hostAvailableItems should read the host declaration through hostHas", () => {
+        const prior = window.__i18n;
+        try {
+            window.__i18n = { translations: {}, isMac: true, hostCapabilities: [] };
+            const none = hostAvailableItems();
+            expect(none.has("viewSource")).toBe(false);
+            expect(none.has("image")).toBe(false);
+            expect(none.has("readOnly")).toBe(false);
+            expect(none.has("styleCheck")).toBe(false);
+            expect(none.has("settings")).toBe(true);
+            expect(none.has("bold")).toBe(true);
+            // Absent means all.
+            window.__i18n = { translations: {}, isMac: true };
+            expect(hostAvailableItems().size).toBe(TOOLBAR_ITEM_IDS.length);
+        } finally {
+            window.__i18n = prior;
+        }
     });
 });

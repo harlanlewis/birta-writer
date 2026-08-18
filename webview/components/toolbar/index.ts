@@ -51,7 +51,7 @@ import { createChecksMenu } from "./checksMenu";
 import { createSettingsMenu } from "./settingsMenu";
 import { createDebugMenu, type DebugOpts } from "./debugMenu";
 import { createToolbarLayout, type ToolbarLayout } from "./layout";
-import { ITEM_MUTATES, type ToolbarItemId } from "./registry";
+import { ITEM_MUTATES, hostAvailableItems, type ToolbarItemId } from "./registry";
 import { isReadOnly, setReadOnly, subscribeReadOnly } from "@/readOnly";
 import { computeToolbarActiveState, DETACHED_STATE, type ToolbarActiveState } from "./activeState";
 import { notifyOpenSettings, notifyOpenKeybindings, notifyResolveSyncConflict } from "@/messaging";
@@ -129,6 +129,11 @@ export function initToolbar(
     // before it is assigned.
     let layout: ToolbarLayout;
 
+    // The items this host can carry (ITEM_HOST_CAPABILITY): a gated item whose
+    // capability the host does not declare is never built, so no zone, tray or
+    // overflow menu can show it. The layout applies the same set to the config.
+    const available = hostAvailableItems();
+
     // ── Block-type dropdown (P / H1–H6) ──
     const formatPicker = createFormatMenu(getEditor);
     items.format = wrap("format", formatPicker.el);
@@ -204,8 +209,11 @@ export function initToolbar(
             onGetProjectImages,
         );
     };
-    const imgBtnEl = btn(IconImage, t("Insert Image"), openImagePanel);
-    items.image = wrap("image", imgBtnEl);
+    // Host-gated (shared/hostCapabilities.ts): the image button needs a store
+    // to upload to, and a host without one gets no button at all. The panel
+    // itself stays wired, because `insertImage` is gated at runEditorCommand.
+    const imgBtnEl = available.has("image") ? btn(IconImage, t("Insert Image"), openImagePanel) : null;
+    if (imgBtnEl) { items.image = wrap("image", imgBtnEl); }
     const tableBtn = btn(IconTable, t("Insert Table"), () =>
         runEditorCommand("insertTable", getEditor));
     items.table = wrap("table", tableBtn);
@@ -288,8 +296,10 @@ export function initToolbar(
     logseqItem.style.display = "none";
 
     // ── Checks (spelling, grammar, style + the note-marker highlight) ──
-    const checks = createChecksMenu(onShowProofreading);
-    items.styleCheck = wrap("styleCheck", checks.el);
+    // Host-gated: the menu names a proofreading engine and a review sidebar,
+    // and a host without them gets neither the item nor its hooks.
+    const checks = available.has("styleCheck") ? createChecksMenu(onShowProofreading) : null;
+    if (checks) { items.styleCheck = wrap("styleCheck", checks.el); }
 
     // Mode switch: leave the rendered editor for the raw markdown text editor.
     // Same code path as the switch-to-text-editor keybinding and the tab-bar
@@ -303,16 +313,21 @@ export function initToolbar(
     // not typed yet", so the button carries the signal that owes the user
     // (docs/DESIGN_PRINCIPLES.md, "A silent absence needs a signal"): the icon
     // says which mode is ACTIVE, and the tooltip says what clicking does.
-    const readOnlyBtn = btn(IconPencil, "", () => setReadOnly(!isReadOnly()));
-    const readOnlyTip = applyTooltip(readOnlyBtn, "", { placement: "below" });
+    // Host-gated: the toggle is only built for a host that owns read-only
+    // mode. The dimming below is NOT gated, because it is the mode's own
+    // correctness and the mode can be seeded without the toggle.
+    const readOnlyBtn = available.has("readOnly") ? btn(IconPencil, "", () => setReadOnly(!isReadOnly())) : null;
+    const readOnlyTip = readOnlyBtn ? applyTooltip(readOnlyBtn, "", { placement: "below" }) : null;
     const paintReadOnly = (readOnly: boolean): void => {
-        readOnlyBtn.innerHTML = readOnly ? IconEye : IconPencil;
-        readOnlyBtn.classList.toggle("tb-btn--active", readOnly);
-        readOnlyBtn.setAttribute("aria-pressed", String(readOnly));
-        readOnlyBtn.setAttribute("aria-label", readOnly ? t("Read-only") : t("Editing"));
-        readOnlyTip.setText(readOnly
-            ? t("Read-only — edits are locked. Click to edit.")
-            : t("Editing. Click to lock edits."));
+        if (readOnlyBtn && readOnlyTip) {
+            readOnlyBtn.innerHTML = readOnly ? IconEye : IconPencil;
+            readOnlyBtn.classList.toggle("tb-btn--active", readOnly);
+            readOnlyBtn.setAttribute("aria-pressed", String(readOnly));
+            readOnlyBtn.setAttribute("aria-label", readOnly ? t("Read-only") : t("Editing"));
+            readOnlyTip.setText(readOnly
+                ? t("Read-only — edits are locked. Click to edit.")
+                : t("Editing. Click to lock edits."));
+        }
         // Every item that acts on the document goes visibly dead, rather than
         // staying live and no-opping against the transaction filter.
         for (const [id, el] of Object.entries(items)) {
@@ -325,9 +340,11 @@ export function initToolbar(
             }
         }
     };
-    items.readOnly = wrap("readOnly", readOnlyBtn);
+    if (readOnlyBtn) { items.readOnly = wrap("readOnly", readOnlyBtn); }
 
-    if (onSwitchToSource) {
+    // Host-gated too: the callback is the host's text editor, and a host that
+    // has none passes nothing (webview/index.ts).
+    if (onSwitchToSource && available.has("viewSource")) {
         items.viewSource = wrap("viewSource", btn(
             IconFileCode,
             t("Edit Raw Markdown"),
@@ -371,8 +388,7 @@ export function initToolbar(
         // the slash menu, reachable from the palette even with the bar hidden.
         chooseFontPreset: typography.chooseFontPreset,
         stepFontSize: typography.stepFontSize,
-        toggleProofread: checks.toggleProofread,
-        toggleNoteHighlights: checks.toggleNoteHighlights,
+        ...(checks ? { toggleProofread: checks.toggleProofread, toggleNoteHighlights: checks.toggleNoteHighlights } : {}),
         toggleToolbar: () => layout.setToolbarVisible(!layout.isVisible()),
     });
 
@@ -440,7 +456,7 @@ export function initToolbar(
         // usable while the bar itself is hidden.
         chooseFontPreset: typography.chooseFontPreset,
         stepFontSize: typography.stepFontSize,
-        toggleProofread: checks.toggleProofread,
+        toggleProofread: (key) => checks?.toggleProofread(key),
         isVisible: layout.isVisible,
         applyToolbarVisible: layout.applyToolbarVisible,
         openLinkPrompt,

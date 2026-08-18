@@ -88,6 +88,7 @@ import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
+import { hostHasCommand } from "../shared/hostCapabilities";
 import { exportHtmlLazy } from "@/export/loader";
 
 export type GetEditor = () => Editor | null;
@@ -919,8 +920,14 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
  * offering a button that silently does nothing. `commandMutates` reads the
  * exhaustive classification in webview/readOnly.ts, so a new command is
  * refused-by-default only after its author has classified it.
+ *
+ * A command whose host capability this host does not declare is refused the
+ * same way (shared/hostCapabilities.ts): every surface that offers commands
+ * hides it, and this is the layer that makes a chord bound to it inert too,
+ * so nothing ever posts to a host that cannot answer.
  */
 export function runEditorCommand(id: string, getEditor: GetEditor, args?: unknown): void {
+    if (!hostHasCommand(id)) { return; }
     if (isReadOnly() && commandMutates(id)) { return; }
     const fn = (editorCommands as Record<string, EditorCommandFn | undefined>)[id];
     fn?.(getEditor, args);

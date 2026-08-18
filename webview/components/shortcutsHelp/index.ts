@@ -39,6 +39,7 @@ import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { notifyOpenKeybindings } from "@/messaging";
+import { hostHasCommand } from "../../../shared/hostCapabilities";
 
 /**
  * kbd() output post-processing: kbd() upper-cases the final key segment
@@ -285,19 +286,23 @@ function buildPanel(): HTMLDivElement {
     // Rebindable commands are deliberately NOT inventoried here: a names-only
     // list says nothing about actual keys, and printing defaults could lie.
     // The sticky footer below routes to VS Code's Keyboard Shortcuts — the
-    // one accurate inventory of everything rebindable.
-    const footer = document.createElement("div");
-    footer.className = "shortcuts-help__footer";
-    const btnCustomize = createButton({
-        className: "ui-btn ui-btn--primary shortcuts-help__customize",
-        label: t("Edit Keyboard Shortcuts"),
-        onClick: () => {
-            close();
-            notifyOpenKeybindings();
-        },
-    });
-    footer.appendChild(btnCustomize);
-    el.appendChild(footer);
+    // one accurate inventory of everything rebindable. It is the same action
+    // as the `openKeyboardShortcuts` command, so it goes with that command on
+    // a host that has no keybindings UI (shared/hostCapabilities.ts).
+    if (hostHasCommand("openKeyboardShortcuts")) {
+        const footer = document.createElement("div");
+        footer.className = "shortcuts-help__footer";
+        const btnCustomize = createButton({
+            className: "ui-btn ui-btn--primary shortcuts-help__customize",
+            label: t("Edit Keyboard Shortcuts"),
+            onClick: () => {
+                close();
+                notifyOpenKeybindings();
+            },
+        });
+        footer.appendChild(btnCustomize);
+        el.appendChild(footer);
+    }
 
     // Esc closes from anywhere inside the panel; with editor focus the
     // escape-layer stack (blockKeys' Escape wiring) covers it instead.

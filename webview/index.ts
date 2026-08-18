@@ -41,7 +41,8 @@ import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
-import { setFocusSurfaces } from "./focusMode";
+import { setFocusSurfaces, TOC_COLLAPSED } from "./focusMode";
+import { hostHas } from "../shared/hostCapabilities";
 import { isReadOnly } from "./readOnly";
 import { getProofreadConfig, setProofreadConfig } from "./plugins";
 import { bankOpenHtmlPanel } from "./components/htmlView";
@@ -508,7 +509,7 @@ function scheduleTocRefresh(): void {
     }
     tocRefreshRaf = requestAnimationFrame(() => {
         tocRefreshRaf = null;
-        toc.refreshContent();
+        toc?.refreshContent();
     });
 }
 
@@ -605,7 +606,7 @@ async function initEditor(
         // anything else is a real crash for the crash boundary to report.
         throw e;
     }
-    toc.refresh();
+    toc?.refresh();
     // Seed the status-bar word count for the freshly loaded document (MAR-29):
     // the selection-change handler only fires on later edits/selection moves, so
     // without this the count would stay blank until the first interaction. The
@@ -637,9 +638,12 @@ async function initEditor(
 const eventManager = createEventManager();
 
 // ── UI component initialization ────────────────────────────
+// The TOC / review sidebar exists only for a host that declares it
+// (shared/hostCapabilities.ts); a Jot window has none, and every use below is
+// null-safe so the toc-bound commands and echoes are quiet no-ops there.
 mark("toc-start");
-const toc = initToc(eventManager, () => getEditorView());
-document.body.appendChild(toc.panel);
+const toc = hostHas("toc") ? initToc(eventManager, () => getEditorView()) : null;
+if (toc) { document.body.appendChild(toc.panel); }
 mark("toc-end");
 measure("initToc", "toc-start", "toc-end");
 
@@ -672,8 +676,10 @@ const topbarTb = topbar
         async (file: File, altText: string) => handleImageFile(file, altText),
         async (id: string) => handleGetProjectImages(id),
         () => findBar.open(),
-        switchToSource,
-        () => toc.showProofreadingTab(),
+        // A host with no text editor to switch to gets no Edit Raw Markdown
+        // button; the same gate makes the `editRawMarkdown` command inert.
+        hostHas("textEditor") ? switchToSource : undefined,
+        toc ? () => toc.showProofreadingTab() : undefined,
     )
     : null;
 mark("toolbar-end");
@@ -712,17 +718,18 @@ setEditorCommandHost({
     // Cmd+F2 (and Shift+Cmd+L): highlight every occurrence, focused on the
     // replace input.
     selectAllOccurrences: () => findBar.selectAllOccurrences(),
-    toggleToc: () => toc.toggle(),
+    toggleToc: () => toc?.toggle(),
     // Side-switch: flip to the opposite edge, mirroring the panel's own flip
     // button (optimistic apply + persist the tocPosition setting).
     swapTocSide: () => {
+        if (!toc) { return; }
         const next = toc.isRight() ? "left" : "right";
         toc.setPosition(next);
         notifySetTocPosition(next);
     },
     // The deliberate keyboard gesture INTO the review sidebar (MAR-294);
     // Escape inside any of its regions is the gesture back.
-    focusReviewSidebar: () => toc.focusPanel(),
+    focusReviewSidebar: () => toc?.focusPanel(),
     editFrontmatter: () => focusFrontmatterPanel(),
     editRawMarkdown: switchToSource,
     openShortcutsHelp: () => { void openShortcutsHelpLazy(); },
@@ -736,8 +743,8 @@ setEditorCommandHost({
 setSlashMenuHost({
     runCommand: (id, args) => runEditorCommand(id, () => currentEditor, args),
     getState: () => ({
-        tocOpen: toc.isOpen(),
-        tocRight: toc.isRight(),
+        tocOpen: toc?.isOpen() ?? false,
+        tocRight: toc?.isRight() ?? false,
         toolbarVisible: topbarTb?.isVisible() ?? false,
     }),
 });
@@ -753,8 +760,8 @@ setSlashMenuHost({
 setFocusSurfaces({
     toolbarVisible: () => topbarTb?.isVisible() ?? false,
     setToolbarVisible: (visible) => topbarTb?.applyToolbarVisible(visible),
-    tocState: () => toc.focusState(),
-    setTocState: (state) => toc.setFocusState(state),
+    tocState: () => toc?.focusState() ?? TOC_COLLAPSED,
+    setTocState: (state) => toc?.setFocusState(state),
     proofreadingOn: () => {
         const view = getEditorView();
         return view ? getProofreadConfig(view).proofreadingEnabled : false;
@@ -1020,12 +1027,12 @@ const handlers = createMessageHandlers({
         retryScroll,
         getEditorView,
         // An external edit changes the document, not the panel's own state.
-        refreshToc: () => toc.refreshContent(),
-        setTocPosition: (position) => toc.setPosition(position),
-        setTocVisibility: (visibility) => toc.applyVisibility(visibility),
-        setTocWidth: (width) => toc.setWidth(width),
-        setNotesMarkers: (markers) => toc.setNotesMarkers(markers),
-        setReviewGroupByType: (grouped) => toc.setReviewGroupByType(grouped),
+        refreshToc: () => toc?.refreshContent(),
+        setTocPosition: (position) => toc?.setPosition(position),
+        setTocVisibility: (visibility) => toc?.applyVisibility(visibility),
+        setTocWidth: (width) => toc?.setWidth(width),
+        setNotesMarkers: (markers) => toc?.setNotesMarkers(markers),
+        setReviewGroupByType: (grouped) => toc?.setReviewGroupByType(grouped),
         setLineNumbers: (enabled) => lineNumbers.setEnabled(enabled),
     },
     topbarTb,
