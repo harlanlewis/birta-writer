@@ -47,6 +47,7 @@ import {
     type SlashMenuState,
 } from "../components/slashMenu/registry";
 import { setPendingRange } from "./pendingRange";
+import { setSlashArgumentHint, type SlashArgumentHintText } from "./slashArgumentHint";
 import { canPlaceCommandBlock } from "../blockPlacement";
 
 /**
@@ -168,6 +169,14 @@ export interface SlashMenuHost {
     runCommand(id: EditorCommandId, args?: unknown): void;
     /** Snapshot of toggleable UI state for dynamic toggle-row labels. */
     getState?(): SlashMenuState;
+    /**
+     * The caret placeholder for a committed argument row, when the host knows
+     * better than the registry's static `argumentHint`. `/ai` is the case
+     * that needs it: what the request is about to run is the extension's
+     * setting, not something the registry can state. Returning undefined
+     * falls back to the registry.
+     */
+    argumentHint?(item: SlashMenuItem): SlashArgumentHintText | undefined;
 }
 
 let _host: SlashMenuHost | null = null;
@@ -201,6 +210,8 @@ class SlashMenuController {
     // construct is re-read from the document on every update, so an edit
     // that breaks it (the caret leaving, the token retyped) ends the mode.
     private argumentItem: SlashMenuItem | null = null;
+    /** Last hint KEY dispatched (""=none), so typing dispatches nothing. */
+    private lastHintText = "";
     private argumentSlashPos = -1;
 
     private readonly onKeydown = (e: KeyboardEvent): void => {
@@ -283,6 +294,7 @@ class SlashMenuController {
                 this.menu.setQuery(match.query);
             }
             this.syncQueryPill(match);
+            this.syncArgumentHint(match);
             this.syncAriaExpanded();
         }
         this.positionMenu();
@@ -441,6 +453,7 @@ class SlashMenuController {
         this.argumentItem = null;
         this.argumentSlashPos = -1;
         this.syncQueryPill(null);
+        this.syncArgumentHint(null);
         document.removeEventListener("mousedown", this.onDocMousedown, true);
         window.removeEventListener("blur", this.onWindowBlur);
         window.removeEventListener("scroll", this.onScroll, { capture: true });
@@ -471,6 +484,47 @@ class SlashMenuController {
                 return;
             }
             setPendingRange(this.view, range);
+        });
+    }
+
+    /**
+     * The caret placeholder while a committed pill has an EMPTY argument:
+     * what to type, and where it goes. One character of argument removes it,
+     * the empty-line hint's rule — the question it answers is gone once the
+     * user has started answering it.
+     *
+     * Dispatched only when the text changes, which for one argument session
+     * is twice (appear on commit, disappear on the first keystroke), so
+     * typing a request costs no transactions of its own.
+     */
+    private syncArgumentHint(match: MatchContext | null): void {
+        const item = this.argumentItem;
+        const hint: SlashArgumentHintText = match !== null && item !== null && match.argument === ""
+            ? (_host?.argumentHint?.(item) ?? { text: item.argumentHint ?? "" })
+            : { text: "" };
+        // One key over all three parts, so a change to the emphasis or the
+        // trailing clause alone still redraws.
+        const key = `${hint.text}|${hint.strong ?? ""}|${hint.trailing ?? ""}`;
+        if (key === this.lastHintText) {
+            return;
+        }
+        this.lastHintText = key;
+        const pos = match?.caret ?? 0;
+        queueMicrotask(() => {
+            if (this.view.isDestroyed) {
+                return;
+            }
+            // Same trap as syncQueryPill: the position was captured before
+            // the deferral and a same-task transaction can shrink the doc
+            // under it, and an out-of-range decoration throws. Forget the
+            // key on the way out, or the change guard above believes a hint
+            // is showing that was never dispatched and skips the next
+            // identical request, leaving the pill with no placeholder.
+            if (hint.text !== "" && pos > this.view.state.doc.content.size) {
+                this.lastHintText = "";
+                return;
+            }
+            setSlashArgumentHint(this.view, hint.text === "" ? null : { pos, ...hint });
         });
     }
 

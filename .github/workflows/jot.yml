@@ -32,6 +32,7 @@ on:
       - 'packages/**'
       - 'e2e/enterCaret/**'
       - 'e2e/jotHost/**'
+      - 'e2e/pasteIntoEmpty/**'
       - '.github/workflows/jot.yml'
 
 concurrency:
@@ -60,14 +61,23 @@ jobs:
           test -x "jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
           test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/webview.js"
           test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/hostPalette.css"
+          # The icons are committed, not generated here, so what this proves is
+          # that build-app.sh still copies them in: an app with no AppIcon.icns
+          # gets the blank document icon, and one with no MenuBarTemplate.pdf
+          # falls back to a stock symbol, both silently.
+          test -f "jot/build/Birta Jot.app/Contents/Resources/AppIcon.icns"
+          test -f "jot/build/Birta Jot.app/Contents/Resources/MenuBarTemplate.pdf"
 
       - name: install the WebKit browser
         run: npx playwright install webkit
 
-      # The engine the panel renders in. Both suites mount the real production
-      # bundle; enterCaret drives the keyboard, jotHost drives the capability
-      # gating. Run separately because e2e/run.mjs takes one suite name.
+      # The engine the panel renders in. Each suite mounts the real production
+      # bundle: enterCaret drives the keyboard, jotHost drives the capability
+      # gating, pasteIntoEmpty drives an image paste into an empty document,
+      # which is Jot's opening gesture. Run separately because e2e/run.mjs
+      # takes one suite name.
       - name: e2e in WebKit
         run: |
           BIRTA_E2E_BROWSER=webkit node e2e/run.mjs enterCaret
           BIRTA_E2E_BROWSER=webkit node e2e/run.mjs jotHost
+          BIRTA_E2E_BROWSER=webkit node e2e/run.mjs pasteIntoEmpty

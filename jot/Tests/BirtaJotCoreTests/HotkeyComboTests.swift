@@ -31,6 +31,24 @@ final class HotkeyComboTests: XCTestCase {
         XCTAssertEqual(combo?.keyName, "j")
     }
 
+    /// `-` is the one key whose name is also a separator this parser accepts,
+    /// so it is the one that can be listed in `keyCodes` and still be
+    /// unbindable. Both spellings of the same combination have to reach it.
+    func testTheMinusKeyIsBindableDespiteBeingASeparator() {
+        for spelling in ["cmd+-", "cmd-", "cmd -"] {
+            let combo = try? HotkeyCombo.parse(spelling).get()
+            XCTAssertEqual(combo?.keyCode, 27, "\(spelling) did not reach the minus key")
+            XCTAssertEqual(combo?.keyName, "-")
+        }
+    }
+
+    /// A separator run with no key after it is still no key, rather than the
+    /// trailing `-` being taken as one.
+    func testATrailingSeparatorWithNoKeyIsStillRefused() {
+        XCTAssertNil(try? HotkeyCombo.parse("cmd+").get())
+        XCTAssertNil(try? HotkeyCombo.parse("-").get())
+    }
+
     func testEveryCodeItAcceptsSpellsBackToTheSameCode() {
         // The reverse map picks one name per code; a wrong pick would store a
         // spelling that reparses to a different key than the one pressed.

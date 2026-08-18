@@ -51,10 +51,22 @@ public struct HotkeyCombo: Equatable, Sendable {
     /// Parse "cmd+alt+ctrl+j". Tokens are case-insensitive and separated by
     /// `+`, `-` or whitespace; modifier synonyms are accepted and the spelling
     /// is normalised to cmd/alt/ctrl/shift in that order.
+    ///
+    /// `-` is both a separator and a key, so a trailing one is taken as the key
+    /// before anything is split. Without that, "cmd+-" tokenises to ["cmd"] and
+    /// the minus key is unbindable while `keyCodes` still lists it, which makes
+    /// `from(keyCode:)` return nil for a key the user really did press.
     public static func parse(_ text: String) -> Result<HotkeyCombo, ParseError> {
-        let tokens = text.lowercased()
+        var body = text.lowercased()
+        var trailingMinus: String? = nil
+        if body.count > 1, body.hasSuffix("-") {
+            body = String(body.dropLast())
+            trailingMinus = "-"
+        }
+        var tokens = body
             .split(whereSeparator: { $0 == "+" || $0 == "-" || $0.isWhitespace })
             .map(String.init)
+        if let minus = trailingMinus { tokens.append(minus) }
         guard !tokens.isEmpty else { return .failure(.empty) }
         var mods: UInt32 = 0
         var key: (name: String, code: UInt32)?

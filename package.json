@@ -324,6 +324,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.askAgentAdvanced",
+                "title": "%command.editor.askAgentAdvanced.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.insertImage",
                 "title": "%command.editor.insertImage.title%",
                 "category": "Birta Writer"
@@ -1054,6 +1059,10 @@
                 },
                 {
                     "command": "birta.editor.askAgent",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.askAgentAdvanced",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

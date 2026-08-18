@@ -104,6 +104,10 @@ export const EDITOR_COMMANDS = [
     // the extension, which composes the caret's line reference in and routes
     // it per `birta.agent.command` (src/agentBridge/askAgent.ts).
     { id: "askAgent", title: "Ask Agent", palette: true, sections: [], hostCapability: "agent" },
+    // The composer in front of the same hand-off: files, and the model and
+    // effort for one request. What it may OFFER is read from the harness's
+    // own `--help`, so it needs no capability of its own beyond `agent`.
+    { id: "askAgentAdvanced", title: "Ask Agent (advanced)", palette: true, sections: [], hostCapability: "agent" },
     { id: "editBlockSource", title: "Edit Block as Markdown", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [], hostCapability: "imageUpload" },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },

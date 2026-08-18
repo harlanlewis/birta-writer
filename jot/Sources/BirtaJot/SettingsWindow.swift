@@ -13,7 +13,7 @@ import BirtaJotCore
 /// Everything is built in code. A window this size does not earn a nib, and a
 /// nib is the one part of the app a script cannot diff.
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// The window's one width, and the insets every row shares. A caption has
     /// to be told the width it wraps at before the first layout pass, or the
     /// window sizes itself around a one-line caption and clips the rest.
@@ -32,6 +32,9 @@ final class SettingsWindowController: NSWindowController {
     private let documentSwitch = NSSwitch()
     private let documentChoose = NSButton(title: "Choose…", target: nil, action: nil)
     private let networkSwitch = NSSwitch()
+    private let loginSwitch = NSSwitch()
+    private let loginCaption = Caption(LoginItemState.off.caption)
+    private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
 
     private let onHotkeyChange: () -> OSStatus
     private let onChange: () -> Void
@@ -44,6 +47,7 @@ final class SettingsWindowController: NSWindowController {
         window.title = "Birta Jot Settings"
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        window.delegate = self
         let content = buildContent()
         window.contentView = content
         window.setContentSize(content.fittingSize)
@@ -68,7 +72,19 @@ final class SettingsWindowController: NSWindowController {
         networkSwitch.target = self
         networkSwitch.action = #selector(toggleNetwork)
 
+        loginSwitch.target = self
+        loginSwitch.action = #selector(toggleLoginItem)
+        loginSettingsButton.target = self
+        loginSettingsButton.action = #selector(openLoginItemSettings)
+        loginSettingsButton.controlSize = .small
+        showLoginItem(LoginItem.state)
+
         let sections = NSStackView(views: [
+            Self.heading("General"),
+            Self.group([
+                Self.row("Open at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
+                         caption: loginCaption),
+            ]),
             Self.heading("Hotkey"),
             Self.group([
                 Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
@@ -84,15 +100,18 @@ final class SettingsWindowController: NSWindowController {
             ]),
             Self.heading("Network"),
             Self.group([
-                Self.row("Rich embeds", control: networkSwitch,
-                         caption: Caption("Off by default. When on, an embed loads from its provider. Link cards and pasted-link titles are not fetched by Jot yet.")),
+                Self.row("Fetch from the web", control: networkSwitch,
+                         caption: Caption("Off by default, and off means no outbound request at all. When on, an embed loads from its provider, a link on its own line can show the page's own title and description, and pasting a URL offers you the page's title as the link text.")),
             ]),
         ])
         sections.orientation = .vertical
         sections.alignment = .leading
         sections.spacing = 10
-        sections.setCustomSpacing(20, after: sections.arrangedSubviews[1])
-        sections.setCustomSpacing(20, after: sections.arrangedSubviews[3])
+        // After each group, so the next heading starts a section rather than
+        // reading as a caption on the group above it.
+        for (index, view) in sections.arrangedSubviews.enumerated() where view is NSBox {
+            if index + 1 < sections.arrangedSubviews.count { sections.setCustomSpacing(20, after: view) }
+        }
         sections.translatesAutoresizingMaskIntoConstraints = false
 
         let container = NSView()
@@ -225,6 +244,18 @@ final class SettingsWindowController: NSWindowController {
         pathControl(path, NSButton(title: "Choose…", target: target, action: action))
     }
 
+    /// A button and its switch as one trailing control. The button is the
+    /// occasional half: `isHidden` takes a view out of an NSStackView's layout
+    /// entirely, so the switch sits alone at the trailing edge when there is
+    /// nothing to say.
+    private static func pairedControl(_ button: NSButton, _ toggle: NSSwitch) -> NSView {
+        let stack = NSStackView(views: [button, toggle])
+        stack.orientation = .horizontal
+        stack.spacing = 8
+        stack.alignment = .centerY
+        return stack
+    }
+
     // MARK: hotkey
 
     private func hotkeyChosen(_ combo: HotkeyCombo) {
@@ -305,6 +336,41 @@ final class SettingsWindowController: NSWindowController {
     private func setDocumentRowEnabled(_ enabled: Bool) {
         documentChoose.isEnabled = enabled
         documentPath.isDimmed = !enabled
+    }
+
+    // MARK: login item
+
+    /// Put the row where the system says it is. Called on every toggle and
+    /// whenever the window comes forward, because System Settings changes the
+    /// same registration and Jot is never told.
+    private func showLoginItem(_ state: LoginItemState) {
+        loginSwitch.state = state.isOn ? .on : .off
+        loginSwitch.isEnabled = state.isEnabled
+        loginSettingsButton.isHidden = state != .blocked
+        loginCaption.say(state.caption, bad: state.isWarning)
+    }
+
+    @objc private func toggleLoginItem() {
+        do {
+            showLoginItem(try LoginItem.set(loginSwitch.state == .on))
+        } catch {
+            // Put the switch back where the system still has it, then say what
+            // happened. A switch left where the user pushed it would claim a
+            // registration that does not exist.
+            showLoginItem(LoginItem.state)
+            loginCaption.say("macOS refused: \(error.localizedDescription)", bad: true)
+        }
+    }
+
+    @objc private func openLoginItemSettings() {
+        LoginItem.openSystemSettings()
+    }
+
+    /// The window is reused rather than rebuilt, and the trip to System
+    /// Settings that `blocked` asks for ends by coming back to it, so the row
+    /// is re-read on the way in rather than only when it is first built.
+    func windowDidBecomeKey(_ notification: Notification) {
+        showLoginItem(LoginItem.state)
     }
 
     @objc private func toggleNetwork() {

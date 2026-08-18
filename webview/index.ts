@@ -25,6 +25,7 @@ import "./ui/chrome.css"; // shared ui-* chrome tokens (radius/spacing/type) + b
 import "./ui/typography.css"; // shared ui-* chrome type scale (menus, panels, sidebars)
 import "./style.css";
 import "./ui/suggestList.css"; // suggest-dropdown surface deltas (must follow style.css, which owns the .fm-suggest-* base)
+import "./components/agentPanel/agentPanel.css"; // the /ai composer's own anatomy
 import { installCrashReporter } from "./crashReporter";
 
 // Crash boundary (MAR-169): install before any component initializes, so an
@@ -62,6 +63,8 @@ import {
     sourceColumnForTextOffset,
 } from "./utils/sourceCaret";
 import { buildSelectionContext } from "./agentContext";
+import { agentRouteHintParts } from "./agentRoute";
+import { openAgentPanel } from "./agentPanelController";
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { isTaskCheckboxClick } from "./utils/taskCheckbox";
 import { applyTaskToggle } from "./editing/checklistSink";
@@ -709,6 +712,7 @@ const selectionTb = (window.__i18n?.floatingToolbar?.enabled ?? true)
 setBlockMenuContext({ getEditor: () => currentEditor });
 
 setEditorCommandHost({
+    openAgentPanel: (initial) => openAgentPanel(getEditorView, initial),
     openFindReplace: () => findBar.open(undefined, { showReplace: true }),
     findNext: () => findBar.findNext(),
     findPrevious: () => findBar.findPrev(),
@@ -747,6 +751,15 @@ setSlashMenuHost({
         tocRight: toc?.isRight() ?? false,
         toolbarVisible: topbarTb?.isVisible() ?? false,
     }),
+    // `/ai` is the one row whose placeholder depends on host configuration:
+    // which tool, and which model, is `birta.agent.command`, which only the
+    // extension can read. Every other row keeps its registry text.
+    // `/ai` is the row whose placeholder depends on host configuration: which
+    // tool, and which model, is `birta.agent.command`, which only the
+    // extension can read. The advanced row keeps its registry text, because
+    // it opens the composer where all of that is visible and changeable.
+    argumentHint: (item) =>
+        item.commandId === "askAgent" ? agentRouteHintParts() : undefined,
 });
 
 // Focus mode composes the toggles above rather than owning chrome (MAR-72).

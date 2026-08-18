@@ -45,6 +45,13 @@ const ISLAND_REGISTRY: Record<string, string> = {
         "calc ledger rows (user-select: text) → domChromeTarget's .calc-row path maps row → interior line",
     "components/linkPopup/linkPopup.css":
         "link popup URL text — mounted on document.body, OUTSIDE view.dom; not a switch surface",
+    "components/agentPanel/index.ts":
+        "the /ai composer's request textarea and its attachment chips — mounted on " +
+        "document.body (createAgentPanel's final appendChild), OUTSIDE view.dom, so a " +
+        "selection there is never read back as a document position and there is nothing " +
+        "for getSwitchTarget to map. It is also ephemeral by contract: it holds no " +
+        "document state, and Escape, a click outside, or a send all destroy it, so no " +
+        "selection in it can survive to a mode switch",
     "components/frontmatter/index.ts":
         "metadata table cells and list chips (role=\"textbox\" + contenteditable), plus the raw-YAML " +
         "textarea (createRawEditor → panel.appendChild) — the panel is " +

@@ -17,13 +17,22 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     let webRoot: URL
     private var stopped = Set<ObjectIdentifier>()
     private let lock = NSLock()
+    /// What the page may read. Guarded by `lock` because scheme tasks arrive
+    /// off the main thread while the coordinator rebinds this on the main one
+    /// (opening a different document changes which folder serves images).
+    private var _roots: ResourceRoots
+    var roots: ResourceRoots {
+        get { lock.lock(); defer { lock.unlock() }; return _roots }
+        set { lock.lock(); _roots = newValue; lock.unlock() }
+    }
     /// The theme class for the initial paint; the host updates it before every reload.
     var themeClass = "vscode-light"
     /// Whether the page may reach the network (Preferences opt-in).
     var networkEnabled = false
 
-    init(webRoot: URL) {
+    init(webRoot: URL, documentDirectory: URL?) {
         self.webRoot = webRoot
+        self._roots = ResourceRoots(bundle: webRoot, document: documentDirectory)
     }
 
     private static let mime: [String: String] = [
@@ -51,8 +60,10 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
         var path = url.path
         if path.isEmpty || path == "/" { path = "/index.html" }
         // No escaping the web root.
-        guard !path.split(separator: "/").contains("..") else { return fail(task, key) }
-        let file = webRoot.appendingPathComponent(String(path.dropFirst()))
+        // What may be read is ResourceRoots' question, not this method's: the
+        // request path can come from the open document (an image reference),
+        // so containment is a rule rather than a check to remember here.
+        guard let file = roots.resolve(path) else { return fail(task, key, status: 404) }
         let ext = file.pathExtension.lowercased()
         var data: Data
         if path == "/index.html" {
@@ -132,8 +143,8 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     /// gets the current prefs.
     var bootConfig: () -> BootConfig = { BootConfig() }
 
-    init(webRoot: URL) {
-        schemeHandler = BirtaSchemeHandler(webRoot: webRoot)
+    init(webRoot: URL, documentDirectory: URL?) {
+        schemeHandler = BirtaSchemeHandler(webRoot: webRoot, documentDirectory: documentDirectory)
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(schemeHandler, forURLScheme: BirtaSchemeHandler.scheme)
         config.userContentController = controller

@@ -23,6 +23,31 @@ BUILD=0
 [ "${1:-}" = "--build" ] && BUILD=1
 SRC="jot/build/Birta Jot.app"
 
+# Leave the tree as this run found it. Building here produces jot/.build (the
+# SwiftPM cache) and jot/build (the assembled app), together a few hundred
+# files and a few hundred megabytes in whichever checkout or worktree happened
+# to run the install. /Applications is the copy that gets run, so neither is
+# wanted afterwards.
+#
+# Only what this run created is removed. Someone already iterating on the shell
+# has both directories before it starts, and their compile cache survives; a
+# clean tree gets one cold `swift build` and keeps nothing. A stale assembled
+# app is the worse of the two to leave: it is runnable and branch-shaped, which
+# is the confusion the header above already warns about.
+#
+# `pnpm jot:build` is deliberately outside this. Producing jot/build IS its
+# result, and a script that deleted its own output would be useless.
+HAD_CACHE=0; [ -d jot/.build ] && HAD_CACHE=1
+HAD_BUILD=0; [ -d jot/build ] && HAD_BUILD=1
+tidy() {
+    # Runs on every exit, success or not, and must never change the status the
+    # script is exiting with: `if` rather than `&&`, which under `set -e` fails
+    # the whole list when its test is false.
+    if [ "$HAD_CACHE" = 0 ]; then rm -rf jot/.build; fi
+    if [ "$HAD_BUILD" = 0 ]; then rm -rf jot/build; fi
+}
+trap tidy EXIT
+
 if [ "$BUILD" = 1 ]; then
     node esbuild.mjs --production
     bash jot/scripts/build-app.sh

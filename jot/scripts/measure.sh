@@ -27,6 +27,14 @@
 #
 # A figure this prints is a reading, not a record: quote it from a run on an
 # idle machine, never from a doc.
+#
+# If you write a quick probe of your own instead of extending this: WebKit's
+# content processes are not children of the app, so SIGKILL on the app orphans
+# them, and an orphan sits there at a fraction of a core for hours. This script
+# ends the app with SIGTERM through its trap for that reason. An ad-hoc probe
+# that hard-kills leaves litter that reads, to whoever is next on the machine,
+# as an unexplained load and a test that times out in a file they did not
+# touch.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -94,6 +102,45 @@ if grep -q "^Next$" "$SCRATCH_DIR/Scratchpad.md" && grep -q "^line$" "$SCRATCH_D
     echo "typing               ok: Return moves to a new paragraph in the panel's WebKit"
 else
     echo "typing               FAILED: expected 'Next' and 'line' on their own lines:" >&2; cat "$SCRATCH_DIR/Scratchpad.md" >&2; exit 1
+fi
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
+# Paste an image into a panel that was just summoned and not touched, which is
+# the ordinary opening gesture: the real pasteboard, the real paste, the base64
+# bridge and the attachment store, and the only check that covers all four at
+# once.
+#
+# The paste is delivered to the web view rather than as a menu key equivalent,
+# because an accessory app driven from a shell frequently cannot take
+# activation, and a menu chord with no key window reaches nothing. That
+# difference is worth knowing about when reading a failure here: it made this
+# check fail about one run in four, and looked exactly like a defect in the
+# editor until the app was asked what it saw (`active=false key=false`).
+#
+# This briefly uses the clipboard, and puts back whatever text was on it.
+CLIP_BACKUP="$(mktemp -t jot-measure-clip)"
+pbpaste > "$CLIP_BACKUP" 2>/dev/null || true
+PNG="$SCRATCH_DIR/probe.png"
+printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==' \
+    | base64 --decode > "$PNG"
+# The typing check above left the panel hidden, so one press is a fresh
+# summon. Truncating the file here would prove nothing: the buffer in the app
+# is the authority and writes over it on the next flush.
+kill -USR1 $PID; wait_for visible 5; sleep 0.5
+osascript -e "set the clipboard to (read (POSIX file \"$PNG\") as «class PNGf»)" >/dev/null
+printf '{"type":"__jotKeys","keys":["cmd+v"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+kill -USR1 $PID; sleep 1.5
+pbcopy < "$CLIP_BACKUP" 2>/dev/null || true
+rm -f "$CLIP_BACKUP"
+PASTED_REF="$(grep -o 'Attachments/[A-Za-z0-9.]*' "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null | head -1 || true)"
+if [ -n "$PASTED_REF" ] && [ -f "$SCRATCH_DIR/$PASTED_REF" ]; then
+    echo "paste                ok: the image reached $PASTED_REF and the document references it"
+else
+    echo "paste                FAILED: expected an Attachments/ reference in the document." >&2
+    echo "document:" >&2; cat "$SCRATCH_DIR/Scratchpad.md" >&2
+    echo "attachments:" >&2; ls -l "$SCRATCH_DIR/Attachments" >&2 2>/dev/null || echo "(none)" >&2
+    exit 1
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 

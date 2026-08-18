@@ -10,7 +10,7 @@ import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { DOCUMENT_EXTENSIONS, isDocumentPath } from "../shared/documentExtensions";
 import { normalizeCopyFormat, normalizePasteFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";
-import { registerAgentBridge, type BirtaApi } from "./agentBridge";
+import { registerAgentBridge, currentAgentRoute, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
 import { registerSendFeedback } from "./feedback/sendFeedback";
 import { refreshUnread } from "./whatsNew";
@@ -500,6 +500,15 @@ export function activate(context: vscode.ExtensionContext) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setTableWrap",
                     wrap: readBirtaSetting("tableWrap"),
+                });
+            }
+            // Both `birta.agent.*` keys feed one summary, so one prefix test
+            // covers them: the `/ai` hint names the harness (command) and
+            // says where the run happens (mode), and either edit restates it.
+            if (e.affectsConfiguration("birta.agent")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "agentRoute",
+                    route: currentAgentRoute(),
                 });
             }
             // Read-at-use-time feature gates: broadcast the fresh value so

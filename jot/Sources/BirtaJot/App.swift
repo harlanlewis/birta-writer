@@ -151,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Birta Jot")
+            button.image = Self.statusItemImage()
             button.toolTip = "Birta Jot"
             button.target = self
             button.action = #selector(statusItemClicked)
@@ -171,6 +171,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.delegate = self
         statusMenu = menu
+    }
+
+    /// The menu-bar mark. A template image, so macOS draws it from its alpha
+    /// alone and it inverts for a dark menu bar and for the highlighted state;
+    /// a coloured image would stay dark on dark. PDF, so it is drawn at the
+    /// display's own backing scale rather than resampled from one bitmap.
+    ///
+    /// 16pt in a 22pt bar. The mark is a filled box that reaches its own edges,
+    /// where the SF Symbols beside it carry their padding inside the glyph, so
+    /// matching their 18pt would draw a visibly larger neighbour.
+    ///
+    /// The symbol is the fallback for `swift run`, which has no bundle to read.
+    /// An app with no menu-bar item has no way in at all, so this degrades to
+    /// the wrong picture rather than to nothing.
+    private static func statusItemImage() -> NSImage? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent("MenuBarTemplate.pdf"),
+              let image = NSImage(contentsOf: url) else {
+            return NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Birta Jot")
+        }
+        image.isTemplate = true
+        image.size = NSSize(width: 16, height: 16)
+        image.accessibilityDescription = "Birta Jot"
+        return image
     }
 
     @objc private func statusItemClicked() {

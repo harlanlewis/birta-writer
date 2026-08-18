@@ -8,6 +8,8 @@
 	<string>Birta Jot</string>
 	<key>CFBundleExecutable</key>
 	<string>BirtaJot</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.birtalabs.jot</string>
 	<key>CFBundleInfoDictionaryVersion</key>

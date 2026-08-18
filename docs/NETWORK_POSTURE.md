@@ -28,6 +28,18 @@ URL embed cards contact the recognized provider's own pinned hosts, and ask that
 
 Link cards contact the host of a web link that sits alone on its own line, and where it redirects the host it sends them to, each hop under the same guards, to read that page's Open Graph title and description, and show them as a quiet card in place of the link. They never write, and they fetch no image. The request goes through the same extension-side fetch as paste-unfurl, with the same guards (http(s) only on every hop, no private or link-local host, bounded in time and bytes), and is cached in memory for the session. This is the one rung-1 feature that ships off beneath the master switch (`birta.linkCards.enabled`), because unlike an embed card there is no provider recognizer bounding which hosts it can reach: any page a document links can be asked. A reader can also choose it per link from the block menu, in either direction, and that choice is presentation state beside the document, never bytes in it. That per-link choice is why the extension re-checks only the master switch for a link-card request where it re-checks both keys for paste-unfurl: the choice lives in the webview's own state, and a mirror of it posted by the same webview would prove nothing, so the master switch is the whole extension-side gate. A link a provider card recognizes but whose provider is switched off is left plain by the default and cards only on the reader's own choice.
 
+### The same rung, on a second surface
+
+Birta Writer Jot makes rung-1 requests too, and the rung is what matters rather than the process making them: a URL the user typed goes to its own host and to where that host redirects, and nowhere else. Nothing about rungs 2 or 3 exists there at all, since Jot has no connectors and uploads no document content.
+
+Three differences from the extension, all of them narrowing:
+
+- **One switch, not four.** Jot has a single network preference, off by default, and with it off the app makes no outbound request of any kind. Embeds, link cards and paste-unfurl all ride it. There is no per-provider table because there are no provider cards to gate.
+- **The guards are a second implementation, and are held to the first.** `jot/Sources/BirtaJotCore/UrlGuard.swift` mirrors `src/utils/urlGuard.ts`, and `PageMetadataFetcher` mirrors the redirect, byte and time bounds around it. Neither language can import the other, so the cases live in `shared/__fixtures__/urlGuardCases.json` and both test suites read them: a rule enforced on one surface and not the other fails a test rather than becoming an exposure nobody compared. Add a case there, never in one suite.
+- **The embed caption is not fetched.** `resolveEmbedMeta` is answered with nothing, because it needs the provider recognizer and that table is not worth a second copy in Swift. The card renders without a fetched caption.
+
+Paste-unfurl in Jot writes on the same terms as in the extension: the fetched title arrives as an offer, and auto-apply is left at its default of false, so nothing reaches the file until the user accepts it.
+
 `shared/embedProviders.ts` enumerates the hosts an embed card can reach, and the same table generates the webview's content-security-policy grants.
 
 ### Rung 0 includes diagram rendering, and that is not free by default

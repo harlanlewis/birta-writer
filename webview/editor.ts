@@ -84,6 +84,7 @@ import {
     noteMarkersPlugin,
     emptyLineHintPlugin,
     pendingRangePlugin,
+    slashArgumentHintPlugin,
     proofreadPlugin,
     readOnlyPlugin,
     selectionPlugin,
@@ -765,6 +766,7 @@ export async function createEditor(
         .use(headingAbsoluteInputRule)
         .use(selectionPlugin)
         .use(pendingRangePlugin)
+        .use(slashArgumentHintPlugin)
         .use(emptyLineHintPlugin)
         .use(headingFoldPlugin)
         .use(headingStickyPlugin)
