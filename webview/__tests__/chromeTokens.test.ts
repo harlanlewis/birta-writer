@@ -27,10 +27,15 @@ import { cssSourcesInFile, cssSourcesInTypeScript } from "./helpers/cssSources";
 
 const WEBVIEW_DIR = join(__dirname, "..");
 
+// ui/hostPalette.css is a THEME (the --vscode-* values a non-VS-Code host
+// injects), not chrome: it defines the tokens these rules read, so it is
+// outside every chrome sweep, on the terms noColorLiterals.test.ts states.
+const HOST_PALETTE = "hostPalette.css";
+
 function cssFiles(dir: string): string[] {
     const out: string[] = [];
     for (const name of readdirSync(dir)) {
-        if (name === "node_modules" || name.startsWith(".")) continue;
+        if (name === "node_modules" || name.startsWith(".") || name === HOST_PALETTE) continue;
         const p = join(dir, name);
         if (statSync(p).isDirectory()) out.push(...cssFiles(p));
         else if (name.endsWith(".css")) out.push(p);

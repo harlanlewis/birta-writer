@@ -77,9 +77,14 @@ const ROW_SELECTOR_RE = /-(?:item|row)(?:--[\w-]+)?(?:[:.[]|$)/;
 
 const EXEMPT_RE = /\/\*\s*menu-ground-ok:\s*[^\s*][\s\S]*?\*\//;
 
+// ui/hostPalette.css DEFINES the widget-ground tokens rule 1 forbids reading;
+// it is a theme, not a surface, and sits outside this sweep on the terms
+// noColorLiterals.test.ts states.
+const HOST_PALETTE = "hostPalette.css";
+
 function collectFiles(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
-        if (name === "__tests__" || name === "__mocks__") continue;
+        if (name === "__tests__" || name === "__mocks__" || name === HOST_PALETTE) continue;
         const full = join(dir, name);
         if (statSync(full).isDirectory()) collectFiles(full, out);
         else if (/\.(ts|css)$/.test(name)) out.push(full);
