@@ -122,6 +122,9 @@ webview/components/codeBlock/index.ts         Code block UI
 webview/components/toc/index.ts               Table of contents (TOC) panel
 webview/components/linkPopup/index.ts         Link hover popup
 webview/components/imageView/index.ts         Image NodeView (selection/lightbox/toolbar)
+webview/ui/hostPalette.css                    The --vscode-* palette a non-VS-Code host links (Jot, the e2e harness); guarded by hostPalette.test.ts
+shared/hostCapabilities.ts                    Which host provides what: the profile a page declares in window.__i18n.hostCapabilities, and what each capability gates
+jot/                                          Birta Writer Jot, the macOS menu-bar scratchpad shell (SwiftPM) around dist/webview.js; jot/README.md
 ```
 
 ## Architecture constraints
@@ -134,6 +137,12 @@ webview/components/imageView/index.ts         Image NodeView (selection/lightbox
 ### Color and theming
 
 CSS must use `--vscode-*` variables so light and dark themes both work. No custom colors, guarded by `noColorLiterals.test.ts`. Accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with no literal fallback, because inside VS Code the variable always exists: pinned and custom themes only override the native set, never remove it. Never give a `--vscode-*` variable a literal fallback. The last of them were removed in MAR-54, so the only ones left in the tree are fixtures inside `noColorLiterals.test.ts`.
+
+Outside VS Code the palette is `webview/ui/hostPalette.css`, emitted as its own asset (`dist/hostPalette.css`) and never imported by the bundle. `hostPalette.test.ts` fails when a `--vscode-*` variable is referenced anywhere in `webview/` and not defined there, so a new variable is a two-file change. The chrome guards skip that file by name; a new sweep over every `.css` under `webview/` needs the same line.
+
+### Hosts other than VS Code
+
+The webview has one entry and one composition root. A host that is not VS Code (Jot, the e2e harness) is a page that stubs `acquireVsCodeApi`, sets `window.__i18n`, answers `ready` with `init`, and links the host palette. What differs per host is declared, not forked: `window.__i18n.hostCapabilities` names what the host provides (`shared/hostCapabilities.ts`), and an item or command whose capability is absent is never built or offered, the customize tray included. Absent means all, so the extension page and every existing harness page are unchanged. Jot ships zero behavior the extension lacks; anything it needs lands in `webview/` first and both surfaces get it. VS Code is Chromium and Jot is WebKit, so a rendering change that matters to the panel gets a `BIRTA_E2E_BROWSER=webkit` run.
 
 ### Chrome skin
 

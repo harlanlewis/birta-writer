@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- The Jot page. A template: the shell fills {{CSP}} and {{THEME_CLASS}} at
+     serve time (jot/Sources/BirtaJot/WebHost.swift, BirtaSchemeHandler). It
+     mirrors src/webviewHtml.ts in shape and e2e/perf/index.html in spirit: the
+     same dist/webview.js the extension ships, the host palette in place of the
+     workbench's, and the config blob + acquireVsCodeApi shim injected as a
+     document-start user script rather than inline. The bundle must be served
+     at a URL ending in dist/webview.js: webview/utils/katexLoader.ts finds its
+     sibling stylesheet by that selector. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Birta Jot</title>
+<link rel="stylesheet" href="dist/hostPalette.css">
+<link rel="stylesheet" href="dist/webview.css">
+<style>
+  html, body { margin: 0; height: 100%; background: var(--vscode-editor-background); }
+</style>
+</head>
+<body class="{{THEME_CLASS}}">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
+</body>
+</html>

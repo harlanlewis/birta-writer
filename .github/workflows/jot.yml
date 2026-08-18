@@ -1,0 +1,43 @@
+name: Jot
+
+# Builds the Birta Writer Jot shell (jot/, SwiftPM) and runs its core tests
+# on a macOS runner. A separate workflow with a paths filter for the same
+# reason as typing-perf: macOS minutes are the expensive ones, and most PRs
+# cannot touch the shell. Advisory, not required: a required check a paths
+# filter skips leaves a PR waiting forever.
+#
+# The webview bundle the app embeds is covered by ci.yml; this job builds the
+# assets only to prove build-app.sh assembles a bundle from them.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'jot/**'
+      - '.github/workflows/jot.yml'
+
+concurrency:
+  group: jot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jot-test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: swift --version
+      - name: swift test (BirtaJotCore)
+        run: swift test --package-path jot
+      - name: build the webview bundle and assemble the app
+        run: |
+          node esbuild.mjs --production
+          bash jot/scripts/build-app.sh
+          test -x "jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
+          test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/webview.js"
+          test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/hostPalette.css"
