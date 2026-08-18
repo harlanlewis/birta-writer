@@ -64,7 +64,7 @@ export async function run({ page, check, baseUrl }) {
     const g = await groups();
     const fillerGroup = g.find((x) => x.tag === "Fillers");
     const longGroup = g.find((x) => x.tag === "Long sentences");
-    check("the filler section offers Remove + Ignore", JSON.stringify(fillerGroup?.items) === JSON.stringify(["Remove", "Ignore"]), JSON.stringify(fillerGroup));
+    check("the filler section offers Remove + Keep this phrase + Ignore", JSON.stringify(fillerGroup?.items) === JSON.stringify(["Remove", "Keep this phrase", "Ignore"]), JSON.stringify(fillerGroup));
     check("the long-sentence section offers only Ignore (a judgment call)", JSON.stringify(longGroup?.items) === JSON.stringify(["Ignore"]), JSON.stringify(longGroup));
     // The chip already names the category, so the message must not repeat it.
     check("the message does not repeat the category chip", !/\bfillers?\b/i.test(fillerGroup?.message ?? "Filler"), JSON.stringify(fillerGroup));
@@ -85,4 +85,30 @@ export async function run({ page, check, baseUrl }) {
     check("Ignore leaves the document text unchanged", /really/.test(await docText()), await docText());
     const stillFlagged = await page.$$eval(".pf-style-hit", (els) => els.map((e) => e.textContent));
     check("Ignore clears the filler decoration", !stillFlagged.some((x) => x.trim() === "really"), JSON.stringify(stillFlagged));
+
+    // ── 5. Keep this phrase: the protect-list gesture (MAR-236) ──────
+    await load();
+    await page.locator(".milkdown .ProseMirror").getByText("really", { exact: true }).first().click();
+    await page.waitForSelector(POPUP, { state: "visible", timeout: 5000 });
+    await page.locator(`${POPUP} .pf-popup-item`, { hasText: "Keep this phrase" }).first().click();
+    await page.waitForTimeout(250);
+    check("Keep this phrase leaves the document text unchanged", /really/.test(await docText()), await docText());
+    const keptFlagged = await page.$$eval(".pf-style-hit", (els) => els.map((e) => e.textContent));
+    check("Keep this phrase clears the filler decoration at once", !keptFlagged.some((x) => x.trim() === "really"), JSON.stringify(keptFlagged));
+    const kept = await page.evaluate(() => window.__posted.filter((m) => m.type === "styleAddException"));
+    check("Keep this phrase asks the extension to persist the phrase", kept.length === 1 && kept[0].phrase === "really", JSON.stringify(kept));
+
+    // ── 6. Uniform rhythm: the second paragraph is flagged whole, no Keep ──
+    await load();
+    const rhythmHits = await page.$$eval(".pf-style-hit", (els) =>
+        els.map((e) => e.textContent).filter((t) => /Testing plays a critical role/.test(t)));
+    check("a paragraph of evenly long sentences carries one whole-paragraph style hit",
+        rhythmHits.length === 1 && /perspective of users\.$/.test(rhythmHits[0]), JSON.stringify(rhythmHits));
+    await page.locator(".milkdown .ProseMirror").getByText("Integration tests confirm", { exact: false }).first().click();
+    await page.waitForSelector(POPUP, { state: "visible", timeout: 5000 });
+    await page.waitForTimeout(100);
+    const rg = (await groups()).find((x) => x.tag === "Uniform rhythm");
+    check("its popup section is Uniform rhythm", !!rg, JSON.stringify(await groups()));
+    check("a rhythm finding offers Ignore only (a paragraph is not a phrase)", JSON.stringify(rg?.items) === JSON.stringify(["Ignore"]), JSON.stringify(rg));
+    check("the rhythm message names the habit, not a verdict on who wrote it", /machine cadence/.test(rg?.message ?? "") && !/\bAI\b/.test(rg?.message ?? ""), JSON.stringify(rg));
 }

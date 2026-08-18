@@ -15,6 +15,7 @@ import {
     readBirtaSetting,
     readFoldingConfig,
     addUserWord,
+    addStyleException,
     setContentWidth,
     setFontPreset,
     setFontSize,
@@ -1480,6 +1481,9 @@ export class MarkdownEditorProvider
                         break;
                     case "spellAddWord":
                         addUserWord(message.word);
+                        break;
+                    case "styleAddException":
+                        addStyleException(message.phrase);
                         break;
                     case "lintBlocks":
                         lintBlocks(message.blocks)

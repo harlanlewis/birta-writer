@@ -35,6 +35,7 @@ export const STYLE_CATEGORIES: readonly StyleCategoryDef[] = [
     { category: "aiArtifacts", label: "AI boilerplate", section: "AI tells" },
     { category: "negativeParallelism", label: "Not X, but Y", section: "AI tells" },
     { category: "ruleOfThree", label: "Rule of three", section: "AI tells" },
+    { category: "rhythm", label: "Uniform rhythm", section: "AI tells" },
     { category: "passive", label: "Passive voice", section: "Prose" },
     { category: "longSentences", label: "Long sentences", section: "Prose" },
     { category: "emDash", label: "Em dash", section: "Prose" },

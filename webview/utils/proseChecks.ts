@@ -242,3 +242,48 @@ export function findAbsolutePerfClaims(text: string): StyleMatch[] {
     while (figures < 2 && FIGURE.exec(text) !== null) { figures++; }
     return figures >= 2 ? [] : matches;
 }
+
+/**
+ * Uniform rhythm (MAR-236): a paragraph whose sentences all run to about the
+ * same length. Structural-rhythm uniformity is the tell the anti-slop
+ * consensus ranks above vocabulary, and it is the one the phrase lists cannot
+ * see. Measured as the coefficient of variation (population standard deviation
+ * over the mean) of the sentence word counts, gated to paragraphs with at
+ * least `minSentences` sentences averaging at least `minMeanWords` words, so a
+ * list of short fragments, a URL, or a two-sentence note never qualifies. The
+ * whole paragraph is flagged, an underline rather than a strike: the fix is
+ * to let one sentence run long and one land short, not to delete anything.
+ *
+ * The threshold was set against the repository's own prose corpus and a
+ * sample of default machine prose (`node` probes on MAR-236); a stricter one
+ * lets the machine sample through, a looser one starts flagging deliberate
+ * parallel cadence, which is exactly the voice this lens exists to protect.
+ * A user who writes evenly on purpose turns the check off, and the finding is
+ * advisory either way.
+ */
+export function findUniformRhythm(
+    text: string,
+    { minSentences = 4, minMeanWords = 8, maxVariation = 0.15 } = {},
+): StyleMatch[] {
+    const counts: number[] = [];
+    let first = -1;
+    let last = 0;
+    SENTENCE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = SENTENCE.exec(text)) !== null) {
+        const chunk = m[0];
+        if (chunk.length === 0) { SENTENCE.lastIndex++; continue; }
+        const words = (chunk.match(/[\p{L}\p{N}][\p{L}\p{N}'-]*/gu) ?? []).length;
+        if (words === 0) { continue; }
+        const leading = chunk.length - chunk.replace(/^\s+/, "").length;
+        if (first < 0) { first = m.index + leading; }
+        last = m.index + chunk.replace(/\s+$/, "").length;
+        counts.push(words);
+    }
+    if (counts.length < minSentences) { return []; }
+    const mean = counts.reduce((a, b) => a + b, 0) / counts.length;
+    if (mean < minMeanWords) { return []; }
+    const variance = counts.reduce((a, b) => a + (b - mean) ** 2, 0) / counts.length;
+    if (Math.sqrt(variance) / mean > maxVariation) { return []; }
+    return [{ start: first, end: last, category: "rhythm" }];
+}

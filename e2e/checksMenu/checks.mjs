@@ -34,7 +34,7 @@ export async function run({ page, check, baseUrl }) {
     // Rows are on/off switches (createSwitchItem) since 338f8c9; the menu also
     // gained a 16th row — the master "Proofreading" gate above the body — and a
     // 17th, "Highlight note markers", leading the menu as that gate's sibling;
-    // the 18th is the "Absolute speed claim" style check.
+    // the 18th is the "Absolute speed claim" style check, the 19th "Uniform rhythm".
     const labels = () => page.$$eval(`${MENU} .tb-switch-item-label`, (els) => els.map((e) => e.textContent));
     const rowCount = () => page.$$eval(`${MENU} .tb-switch-item`, (els) => els.length);
     const hasChildren = () => page.locator(`${MENU} .tb-checks-children`).count().then((n) => n > 0);
@@ -50,7 +50,7 @@ export async function run({ page, check, baseUrl }) {
     check("the three masters are present", ["Check spelling", "Check grammar", "Check style"].every((x) => l.includes(x)), JSON.stringify(l));
     check("style sub-checks are shown while Check Style is on", l.includes("Fillers") && l.includes("Long sentences"), JSON.stringify(l));
     check("sub-checks live in the nested children container", await hasChildren());
-    check("full menu has all 18 rows (notes + gate + 16 checks)", (await rowCount()) === 18, String(await rowCount()));
+    check("full menu has all 19 rows (notes + gate + 17 checks)", (await rowCount()) === 19, String(await rowCount()));
     check("the notes highlight leads the menu, above the gate",
         JSON.stringify(l.slice(0, 2)) === JSON.stringify(["Highlight note markers", "Proofreading"]), JSON.stringify(l));
 
@@ -84,7 +84,7 @@ export async function run({ page, check, baseUrl }) {
     await clickRow("Check style");
     l = await labels();
     check("re-enabling Check Style restores the sub-checks", l.includes("Fillers") && l.includes("Curly punctuation"), JSON.stringify(l));
-    check("re-enabling restores all 18 rows", (await rowCount()) === 18, String(await rowCount()));
+    check("re-enabling restores all 19 rows", (await rowCount()) === 19, String(await rowCount()));
 
     // ── 4. Master gate OFF → menu collapses to the notes row + the gate ──
     // The note highlight is the writer's own content, not a finding, so the
@@ -99,7 +99,7 @@ export async function run({ page, check, baseUrl }) {
     // ── 5. Gate back ON → prior mix restored, IN ORDER ───────────────
     await clickRow("Proofreading");
     l = await labels();
-    check("gate back on restores all 18 rows", (await rowCount()) === 18, String(await rowCount()));
+    check("gate back on restores all 19 rows", (await rowCount()) === 19, String(await rowCount()));
     check("the notes highlight still leads after the gate cycles", l[0] === "Highlight note markers", JSON.stringify(l));
 
     // ── 6. The notes switch flips itself, independent of the gate ────
@@ -107,7 +107,7 @@ export async function run({ page, check, baseUrl }) {
     check("the notes highlight ships on", (await notesState()) === "true", await notesState());
     await clickRow("Highlight note markers");
     check("clicking the notes switch turns it off", (await notesState()) === "false", await notesState());
-    check("turning the highlight off leaves every other row alone", (await rowCount()) === 18, String(await rowCount()));
+    check("turning the highlight off leaves every other row alone", (await rowCount()) === 19, String(await rowCount()));
     await clickRow("Highlight note markers");
     check("clicking it again turns it back on", (await notesState()) === "true", await notesState());
 }

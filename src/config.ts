@@ -79,13 +79,13 @@ export function getProofreadConfig(config: BirtaConfig = readBirtaConfig()): Pro
     const {
         proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
         wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
-        longSentences, ruleOfThree, emDash, nonAsciiPunct, absolutePerf, styleExceptions,
+        longSentences, ruleOfThree, emDash, nonAsciiPunct, absolutePerf, rhythm, styleExceptions,
         spellCheck, grammarCheck, userWords,
     } = config;
     return {
         proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
         wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
-        longSentences, ruleOfThree, emDash, nonAsciiPunct, absolutePerf, styleExceptions,
+        longSentences, ruleOfThree, emDash, nonAsciiPunct, absolutePerf, rhythm, styleExceptions,
         spellCheck, grammarCheck, userWords,
     };
 }
@@ -205,6 +205,7 @@ const PROOFREAD_SETTING: Record<ProofreadOptionKey, string> = {
     emDash: "styleCheck.emDash",
     nonAsciiPunct: "styleCheck.nonAsciiPunct",
     absolutePerf: "styleCheck.absolutePerf",
+    rhythm: "styleCheck.rhythm",
 };
 
 /** Persist one proofread toggle (checks menu → settings write-back). */
@@ -243,6 +244,24 @@ export function addUserWord(word: string): void {
     void getBirtaConfiguration().update(
         "spellCheck.userWords",
         [...words, trimmed],
+        vscode.ConfigurationTarget.Global,
+    );
+}
+
+/**
+ * Add a phrase to the style checks' protect-list (birta.styleCheck.exceptions).
+ * GLOBAL settings for the same reason as `addUserWord`: "Keep this phrase" is
+ * a personal, single-click claim about how its writer writes, and a workspace
+ * write would commit it to the project's tracked settings.
+ */
+export function addStyleException(phrase: string): void {
+    const trimmed = phrase?.trim();
+    if (!trimmed) { return; }
+    const phrases = readBirtaSetting("styleExceptions");
+    if (phrases.some((p) => p.toLowerCase() === trimmed.toLowerCase())) { return; }
+    void getBirtaConfiguration().update(
+        BIRTA_SETTING_KEYS.styleExceptions,
+        [...phrases, trimmed],
         vscode.ConfigurationTarget.Global,
     );
 }

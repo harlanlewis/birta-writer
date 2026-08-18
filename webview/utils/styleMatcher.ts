@@ -22,6 +22,7 @@ import {
     findEmDash,
     findNonAsciiPunct,
     findAbsolutePerfClaims,
+    findUniformRhythm,
 } from "./proseChecks";
 
 /** Categories backed by a phrase list (compiled to one alternation regex each). */
@@ -42,7 +43,8 @@ export type StructuralCategory =
     | "ruleOfThree"
     | "emDash"
     | "nonAsciiPunct"
-    | "absolutePerf";
+    | "absolutePerf"
+    | "rhythm";
 
 export type StyleCategory = PhraseCategory | StructuralCategory;
 
@@ -307,6 +309,11 @@ const PHRASE_CATEGORIES: readonly PhraseCategory[] = [
     "fillers", "redundancies", "cliches", "wordiness", "aiVocabulary", "aiArtifacts",
 ];
 
+/** Whether a category is a phrase-list hit (a span a user can claim as their own phrase). */
+export function isPhraseCategory(category: string): category is PhraseCategory {
+    return (PHRASE_CATEGORIES as readonly string[]).includes(category);
+}
+
 /**
  * Structural checks keyed by category. `repeated` is intentionally absent: it
  * rides the style-check master switch (always on when the master is), so it is
@@ -323,6 +330,7 @@ const STRUCTURAL_CHECKS: Record<
     emDash: findEmDash,
     nonAsciiPunct: findNonAsciiPunct,
     absolutePerf: findAbsolutePerfClaims,
+    rhythm: findUniformRhythm,
 };
 
 /**

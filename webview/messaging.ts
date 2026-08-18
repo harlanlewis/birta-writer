@@ -323,6 +323,11 @@ export function notifySpellAddWord(word: string): void {
     vscode.postMessage({ type: "spellAddWord", word });
 }
 
+/** "Keep this phrase": persist a style-check protect-list entry (birta.styleCheck.exceptions). */
+export function notifyStyleAddException(phrase: string): void {
+    vscode.postMessage({ type: "styleAddException", phrase });
+}
+
 export function notifySetFontPreset(preset: import("../shared/messages").FontPreset): void {
     vscode.postMessage({ type: "setFontPreset", preset });
 }

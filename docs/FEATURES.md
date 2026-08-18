@@ -49,9 +49,9 @@ A move in the text is literal: a heading travels alone and the paragraphs under 
 
 Spelling, grammar, and style checking runs entirely on your machine, on the [Harper](https://writewithharper.com) engine via WASM. Nothing is sent anywhere.
 
-Style checks cover fillers, redundancies, clichés, wordiness, passive voice, long sentences, and AI-writing tells (vocabulary, artifacts, em-dash habits, non-ASCII punctuation). Each rule toggles individually under `birta.styleCheck.*`.
+Style checks cover fillers, redundancies, clichés, wordiness, passive voice, long sentences, and AI-writing tells (vocabulary, artifacts, em-dash habits, non-ASCII punctuation, and uniform rhythm: a paragraph whose sentences all run to about the same length, the structural habit that most makes prose read as machine-written). Each rule toggles individually under `birta.styleCheck.*`. The tells are a lens on your own habits, never a verdict on who wrote the text: each finding names the habit and why it reads as generic, and you keep it or change it.
 
-Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Add to dictionary" writes to your personal settings, never the workspace. Toggle everything with `Cmd+Alt+Shift+D` or the toolbar checks menu.
+Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Add to dictionary" writes to your personal settings, never the workspace, and "Keep this phrase" on a flagged phrase does the same for `birta.styleCheck.exceptions`, your protect-list of phrases that are yours and no check may flag. Toggle everything with `Cmd+Alt+Shift+D` or the toolbar checks menu.
 
 ## Folding and navigation
 

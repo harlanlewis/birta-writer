@@ -7,6 +7,7 @@ import {
     findEmDash,
     findNonAsciiPunct,
     findAbsolutePerfClaims,
+    findUniformRhythm,
 } from "../utils/proseChecks";
 
 function flagged(text: string, fn: (t: string) => { start: number; end: number }[]): string[] {
@@ -183,5 +184,57 @@ describe("findAbsolutePerfClaims", () => {
         const hits = findAbsolutePerfClaims("Zero jank when scrolling.");
         expect(hits).toHaveLength(1);
         expect(hits[0].category).toBe("absolutePerf");
+    });
+});
+
+describe("findUniformRhythm", () => {
+    // Four sentences of 9, 9, 9 and 10 words: the default machine cadence.
+    const even =
+        "Testing plays a critical role in maintaining software quality. " +
+        "Unit tests verify that individual components behave as expected. " +
+        "Integration tests confirm that those components work together correctly. " +
+        "End-to-end tests validate the entire system from the perspective of users.";
+    // The same content with one long sentence and one short one.
+    const varied =
+        "Testing plays a critical role in maintaining software quality, and the role changes shape as a project grows from a script into something other people depend on. " +
+        "Unit tests verify components. " +
+        "Integration tests confirm that those components work together correctly. " +
+        "End-to-end tests validate the entire system from the perspective of users.";
+
+    it("a paragraph of evenly long sentences should be flagged whole", () => {
+        expect(flagged(even, findUniformRhythm)).toEqual([even]);
+        expect(findUniformRhythm(even)[0].category).toBe("rhythm");
+    });
+
+    it("a paragraph with one long and one short sentence should not be flagged", () => {
+        expect(findUniformRhythm(varied)).toEqual([]);
+    });
+
+    it("fewer than four sentences should never qualify, however even", () => {
+        const three = "One two three four five six seven eight nine. " +
+            "One two three four five six seven eight nine. " +
+            "One two three four five six seven eight nine.";
+        expect(findUniformRhythm(three)).toEqual([]);
+    });
+
+    it("short fragments should never qualify, however even", () => {
+        // Four fragments of three words: a list read as prose, not a cadence.
+        expect(findUniformRhythm("Save the file. Close the tab. Open it again. Read it back.")).toEqual([]);
+    });
+
+    it("the flagged span should trim surrounding whitespace, not the sentences' own", () => {
+        const padded = `  ${even}  `;
+        const [hit] = findUniformRhythm(padded);
+        expect(padded.slice(hit.start, hit.end)).toBe(even);
+    });
+
+    it("the variation threshold should be the discriminating line", () => {
+        // 10, 10, 10, 10 words: no variation at all.
+        const flat = Array(4).fill("one two three four five six seven eight nine ten.").join(" ");
+        expect(findUniformRhythm(flat)).toHaveLength(1);
+        // Tightening the threshold to zero admits only that exact case;
+        // widening it past the varied paragraph's spread flags it too.
+        expect(findUniformRhythm(even, { maxVariation: 0 })).toEqual([]);
+        expect(findUniformRhythm(varied, { maxVariation: 2 })).toHaveLength(1);
     });
 });

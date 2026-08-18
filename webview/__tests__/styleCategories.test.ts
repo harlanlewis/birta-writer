@@ -19,7 +19,7 @@ import type { StyleCategory } from "../utils/styleMatcher";
 const ALL: StyleCategory[] = [
     "fillers", "redundancies", "cliches", "wordiness", "aiVocabulary", "aiArtifacts",
     "repeated", "passive", "longSentences", "negativeParallelism", "ruleOfThree",
-    "emDash", "nonAsciiPunct", "absolutePerf",
+    "emDash", "nonAsciiPunct", "absolutePerf", "rhythm",
 ];
 
 describe("style categories — single source of truth", () => {

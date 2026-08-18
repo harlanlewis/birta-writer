@@ -1619,6 +1619,12 @@
                     "default": true,
                     "description": "%config.styleCheck.absolutePerf.description%"
                 },
+                "birta.styleCheck.rhythm": {
+                    "order": 127,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.rhythm.description%"
+                },
                 "birta.spellCheck.enabled": {
                     "order": 114,
                     "type": "boolean",

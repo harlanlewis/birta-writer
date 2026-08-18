@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { Schema } from "../pm";
 import { computeDecorations, DEFAULT_CONFIG } from "../plugins/proofread";
-import { ignoreStyleSession, isStyleSuppressed } from "../proofread/engine";
+import { ignoreStyleSession, isStyleSuppressed, keepStylePhrase } from "../proofread/engine";
+import { isPhraseCategory } from "../utils/styleMatcher";
+import { mockVscodeApi } from "./setup";
 import type { ProofreadConfig } from "../../shared/messages";
 
 /**
@@ -55,5 +57,41 @@ describe("computeDecorations honours a style ignore", () => {
         expect(decoratedTexts("This is actually good.")).toEqual(["actually"]);
         ignoreStyleSession("fillers", "actually");
         expect(decoratedTexts("This is actually good.")).toEqual([]);
+    });
+});
+
+/**
+ * "Keep this phrase" (MAR-236): the protect-list gesture. It suppresses like a
+ * session ignore at once AND asks the extension to persist the phrase to
+ * birta.styleCheck.exceptions, so it stays kept across sessions.
+ */
+describe("keepStylePhrase", () => {
+    it("a kept phrase should be suppressed at once and posted for persistence", () => {
+        expect(isStyleSuppressed("cliches", "at the end of the day")).toBe(false);
+
+        keepStylePhrase("cliches", "at the end of the day");
+
+        expect(isStyleSuppressed("cliches", "at the end of the day")).toBe(true);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "styleAddException",
+            phrase: "at the end of the day",
+        });
+    });
+
+    it("a kept phrase should drop out of the decorations like an ignore", () => {
+        expect(decoratedTexts("It is very good.")).toEqual(["very"]);
+        keepStylePhrase("fillers", "very");
+        expect(decoratedTexts("It is very good.")).toEqual([]);
+    });
+});
+
+describe("isPhraseCategory (which findings offer Keep this phrase)", () => {
+    it("the six phrase-list categories should qualify and the structural ones should not", () => {
+        for (const c of ["fillers", "redundancies", "cliches", "wordiness", "aiVocabulary", "aiArtifacts"]) {
+            expect(isPhraseCategory(c), c).toBe(true);
+        }
+        for (const c of ["passive", "longSentences", "emDash", "nonAsciiPunct", "rhythm", "repeated", "absolutePerf"]) {
+            expect(isPhraseCategory(c), c).toBe(false);
+        }
     });
 });

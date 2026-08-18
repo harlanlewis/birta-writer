@@ -21,7 +21,7 @@ import type { Node as ProseNode } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { HarperLint, LintBlock, LintBlockResult, ProofreadConfig } from "../../shared/messages";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
-import { compileStyleMatcher, type StyleCategory, type StyleMatcher } from "../utils/styleMatcher";
+import { compileStyleMatcher, isPhraseCategory, type StyleCategory, type StyleMatcher } from "../utils/styleMatcher";
 import { styleCategoryLabel } from "../utils/styleCategories";
 import {
     AI_ARTIFACTS,
@@ -34,6 +34,7 @@ import {
 import {
     ignoreLintSession,
     ignoreStyleSession,
+    keepStylePhrase,
     isLintSuppressed,
     isStyleSuppressed,
     learnWord,
@@ -121,6 +122,7 @@ export const DEFAULT_CONFIG: ProofreadConfig = {
     emDash: true,
     nonAsciiPunct: true,
     absolutePerf: true,
+    rhythm: true,
     styleExceptions: [],
     spellCheck: true,
     grammarCheck: true,
@@ -153,6 +155,7 @@ function enabledMap(c: ProofreadConfig): Partial<Record<StyleCategory, boolean>>
         emDash: c.emDash,
         nonAsciiPunct: c.nonAsciiPunct,
         absolutePerf: c.absolutePerf,
+        rhythm: c.rhythm,
     };
 }
 
@@ -164,7 +167,7 @@ function enabledMap(c: ProofreadConfig): Partial<Record<StyleCategory, boolean>>
  */
 const FLAG_CATEGORIES = new Set<StyleCategory>([
     "passive", "longSentences", "negativeParallelism", "ruleOfThree", "emDash", "nonAsciiPunct",
-    "absolutePerf",
+    "absolutePerf", "rhythm",
 ]);
 
 function initialConfig(): ProofreadConfig {
@@ -226,6 +229,7 @@ function styleHitTitle(category: string): string {
         case "emDash": return t("Em dash - a spaced hyphen is safer everywhere");
         case "nonAsciiPunct": return t("Curly punctuation - ASCII is more portable");
         case "absolutePerf": return t("Absolute speed claim - carry the before and after");
+        case "rhythm": return t("Uniform rhythm - vary the sentence lengths");
         case "repeated": return t("Repeated word - delete one");
         default: return "";
     }
@@ -260,6 +264,7 @@ export function styleAdvice(category: string): string {
         case "emDash": return t("An em dash renders inconsistently outside the editor - a spaced hyphen is safe everywhere.");
         case "nonAsciiPunct": return t("Curly quotes and ellipses can garble in code, terminals, and diffs - ASCII stays portable.");
         case "absolutePerf": return t("A cost gets smaller, it does not vanish, so \"no longer stalls\" cannot be checked - give the before and after figures, or say what still costs.");
+        case "rhythm": return t("Every sentence here runs to about the same length, which reads as machine cadence rather than your voice - let one run long and one land short, or keep it if the evenness is deliberate.");
         case "repeated": return t("The same word appears twice in a row — delete one.");
         default: return "";
     }
@@ -529,6 +534,13 @@ function styleFinding(view: EditorView, from: number, to: number, style: StyleFi
             label: suggestion === "" ? t("Remove") : t("Fix"),
             run: () => applySuggestion(view, from, to, suggestion),
         });
+    }
+    // The protect-list gesture (MAR-236): a phrase hit can be claimed as the
+    // writer's own, for good, the way a spelling hit joins the dictionary.
+    // Structural hits (a whole sentence, a glyph, a paragraph's rhythm) are
+    // not phrases and get the session Ignore only.
+    if (isPhraseCategory(style.category)) {
+        buttons.push({ label: t("Keep this phrase"), dismiss: true, run: () => { keepStylePhrase(style.category, word); refreshProofread(view); } });
     }
     buttons.push({ label: t("Ignore"), dismiss: true, run: () => { ignoreStyleSession(style.category, word); refreshProofread(view); } });
     return { tag: styleTag(style.category), message: style.message, buttons };

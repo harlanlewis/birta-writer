@@ -161,7 +161,8 @@ export type ProofreadOptionKey =
     | "ruleOfThree"
     | "emDash"
     | "nonAsciiPunct"
-    | "absolutePerf";
+    | "absolutePerf"
+    | "rhythm";
 
 /** Proofread (style check + spell check) configuration snapshot */
 export type ProofreadConfig = {
@@ -200,6 +201,8 @@ export type ProofreadConfig = {
     nonAsciiPunct: boolean;
     /** Absolute claim about a performance cost ("no longer stalls") with no before and after */
     absolutePerf: boolean;
+    /** A paragraph whose sentences all run to about the same length (machine cadence) */
+    rhythm: boolean;
     /** Phrases the style check must never flag (user's escape valve) */
     styleExceptions: string[];
     /** Spelling switch (Harper "Spelling" findings; bundled English dictionary) */
@@ -335,6 +338,11 @@ export type ToExtensionMessage =
     | { type: "reviewGroupByType"; grouped: boolean }
     | { type: "setProofreadOption"; key: ProofreadOptionKey; value: boolean }
     | { type: "spellAddWord"; word: string }
+    // "Keep this phrase" on a style hit (MAR-236): the flagged text joins the
+    // user's protect-list, birta.styleCheck.exceptions, in GLOBAL settings, so
+    // no check ever flags it again. The persisted list round-trips back through
+    // the proofread config message and recompiles the matcher.
+    | { type: "styleAddException"; phrase: string }
     // Font picker choice from the toolbar; the extension persists it to the
     // `fontPreset` setting, which round-trips back as a `setFontFamily` message.
     | { type: "setFontPreset"; preset: FontPreset }
