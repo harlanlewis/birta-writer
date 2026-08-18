@@ -157,7 +157,7 @@ Both inline forms live under `birta.calc.enabled`. Fragments are never computed:
 
 ## Links, cards, and embeds
 
-One family, three renderings of a link. A link is text that opens somewhere; a **link card** draws a lone link as a quiet card of the page's title and description; a **URL embed** draws a lone provider link as a player, a frame, or an information card. Every card is a rendering of the plain link that is already in the file, never a byte in it, and every card opens the way a link does: **Cmd/Ctrl+click** on the card body opens the page, a plain click selects the card, and the corner ↗ button is there for a pointer that does not know the modifier. Read-only mode removes the editing chrome and nothing else.
+One family, three renderings of a link. A link is text that opens somewhere; a **link card** draws a lone link as a quiet card of the page's title and description; a **URL embed** draws a lone provider link as a player, a frame, or an information card. Every card is a rendering of the plain link that is already in the file, never a byte in it, and every card opens the way a link does: **Cmd/Ctrl+click** on the card body opens the page, a plain click selects the card, and the corner ↗ button is there for a pointer that does not know the modifier. Read-only mode removes the editing chrome and nothing else, and there a plain click opens the page as well, since selecting has nothing to show.
 
 ### Links
 
@@ -230,7 +230,7 @@ In a table cell the alias pipe is escaped (`\|`), and it still reads as one cell
 
 A web link that sits alone on its own line, bare or `[labelled](url)`, can render as a quiet card of the page's title, its description, and the site it lives on, read from the page's own Open Graph metadata. No image is fetched, only the link's own site is contacted (and, if it redirects, the site it sends you to, each hop under the same guards as paste-unfurl), and the file keeps the plain link. It ships **off** even under the master switch, because unlike an embed card no provider table bounds which hosts it can reach: `birta.linkCards.enabled` (Cmd+Shift+P → "Toggle Link Cards") turns it on for every lone link, and needs `birta.network.enabled` on. Or leave the default off and choose per link: the block menu on a lone link offers **Show as Card** and **Show as Link**, as do the card's own control and its edit palette, and that choice lives with the workspace, not in the document. Only a top-level line cards; a link inside a quote or a list item stays a link. A labelled link keeps its label as the card's title, with the page's title beneath as detail; a bare link shows the readable URL until the page answers.
 
-A card is the link it draws: Cmd/Ctrl+click on the card body opens the page, a plain click selects it (arrow keys stop at it like any card; Enter opens its palette; Backspace selects before it deletes), and the corner ↗ opens it too. Two lone links, one bare and one labelled, so both shapes are on the page:
+A card is the link it draws: Cmd/Ctrl+click on the card body opens the page, a plain click selects it (arrow keys stop at it like any card; Enter opens its palette; Backspace selects before it deletes), and the corner ↗ opens it too; in read-only mode a plain click opens it. Two lone links, one bare and one labelled, so both shapes are on the page:
 
 https://birtalabs.com/
 

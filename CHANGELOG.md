@@ -16,11 +16,13 @@
 
 ### Changed
 
-- A card is the link it draws: Cmd+click (Ctrl+click on Windows and Linux) anywhere on a link card or an embed card opens the page, the same modifier that opens a link from its popup. A plain click still selects the card, and the corner button still opens it. Read-only mode changes nothing about opening.
+- A card is the link it draws: Cmd+click (Ctrl+click on Windows and Linux) anywhere on a link card or an embed card opens the page, the same modifier that opens a link from its popup. A plain click still selects the card, and the corner button still opens it. In read-only mode a plain click on the card opens the page as well, since selecting a card there had nothing to offer.
 
 - Gutter badges, block icons and fold chevrons scale with the content font size, so at a larger content scale they grow with the text instead of staying at their fixed size; the pinned heading's mirror does the same. The badge follows the content font now rather than the UI font, so a small `editor.fontSize` draws it a little smaller than before.
 
 ### Fixed
+
+- Toolbar tooltips sit under their button again. While a heading was pinned at the top of the pane, hovering a toolbar button showed its tooltip below the pinned heading, well clear of the button it named.
 
 - Two adjacent lists no longer lose the marker the author spelled. A list the editor made (a paragraph just turned into a bullet) landing between a `-` list and a `*` list joined all three into one, and a marker-less list joining an authored `* b` list kept the default bullet, so `*` became `-` on a line you never touched. The join now stops at a marker change and carries the authored marker.
 

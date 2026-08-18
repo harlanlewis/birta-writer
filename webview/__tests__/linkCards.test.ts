@@ -30,6 +30,7 @@ import { linkCardAnchor, linkCardSite, soleLinkHref } from "../linkCards";
 import { inheritDuplicatedAnchors, getLinkCardDisplay, setLinkCardDisplay } from "../blockWidth";
 import { _resetLinkCardMetaForTests, handleLinkCardResult, queueLinkCardResolution, subscribeLinkCardMeta } from "../linkCardMeta";
 import { mockVscodeApi } from "./setup";
+import { setReadOnly } from "../readOnly";
 
 const PAGE = "https://example.com/some/article";
 const OTHER = "https://example.org/other";
@@ -252,6 +253,29 @@ describe("a card is the link it draws", () => {
         host.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
         expect(view.state.selection).toBeInstanceOf(NodeSelection);
         expect(mockVscodeApi.postMessage.mock.calls.filter(([m]) => (m as { type: string }).type === "openUrl")).toHaveLength(1);
+    });
+});
+
+describe("a card in read-only", () => {
+    afterEach(() => setReadOnly(false));
+
+    it("a plain click on the card body should open the page, since selecting offers nothing there", async () => {
+        i18n({ linkCardsEnabled: true });
+        const editor = await makeCorpusEditor(`# T\n\n${PAGE}\n`, [embedPlugin]);
+        const view = editorView(editor);
+        regateEmbeds(view);
+        const host = document.querySelector<HTMLElement>(".embed-card-host")!;
+        expect(host).not.toBeNull();
+        setReadOnly(true);
+        const before = view.state.selection;
+        mockVscodeApi.postMessage.mockClear();
+
+        host.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        const opened = mockVscodeApi.postMessage.mock.calls
+            .map(([m]) => m as { type: string; url?: string })
+            .filter((m) => m.type === "openUrl");
+        expect(opened).toEqual([{ type: "openUrl", url: PAGE }]);
+        expect(view.state.selection.eq(before)).toBe(true);
     });
 });
 

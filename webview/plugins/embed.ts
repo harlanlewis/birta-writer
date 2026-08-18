@@ -190,11 +190,13 @@ function embedWidget(match: CardMatch, sourceUrl: string): (view: EditorView, ge
             event.stopPropagation();
             // A card is the link it draws, so it opens the way a link does:
             // Cmd/Ctrl+click on the card body opens the page (the link
-            // popup's own modifier-click, components/linkPopup), in read-only
-            // as much as when editing; a plain click selects the card, as it
-            // pins a link's popup. The corner button stays for the pointer
-            // that does not know the modifier.
-            if (event.metaKey || event.ctrlKey) {
+            // popup's own modifier-click, components/linkPopup); a plain
+            // click selects the card, as it pins a link's popup. The corner
+            // button stays for the pointer that does not know the modifier.
+            // In read-only a plain click opens too: selecting a card there
+            // shows nothing (the ring and the palette are editing chrome), so
+            // the plain click has only one useful meaning left.
+            if (event.metaKey || event.ctrlKey || isReadOnly()) {
                 notifyOpenUrl(sourceUrl);
                 return;
             }

@@ -142,3 +142,51 @@ describe("showTooltipAt / hideTooltip", () => {
         expect(tipVisible()).toBe(false);
     });
 });
+
+describe("placement against the fixed chrome", () => {
+    beforeEach(() => {
+        hideTooltip();
+        document.querySelector(".editor-topbar")?.remove();
+        document.querySelector(".heading-sticky-title")?.remove();
+    });
+
+    // jsdom has no layout, so every rect is stubbed: a 40px topbar, a 64px
+    // sticky heading below it, a toolbar button inside the topbar, and a
+    // 20px-tall tooltip.
+    function fixedChrome(): HTMLButtonElement {
+        const topbar = document.createElement("div");
+        topbar.className = "editor-topbar";
+        topbar.getBoundingClientRect = () => new DOMRect(0, 0, 800, 40);
+        document.body.appendChild(topbar);
+        const sticky = document.createElement("div");
+        sticky.className = "heading-sticky-title";
+        sticky.getBoundingClientRect = () => new DOMRect(0, 40, 800, 64);
+        document.body.appendChild(sticky);
+        const btn = document.createElement("button");
+        btn.getBoundingClientRect = () => new DOMRect(300, 8, 24, 24);
+        topbar.appendChild(btn);
+        return btn;
+    }
+
+    it("a toolbar tooltip should sit just under its button, not under the sticky heading the tooltip paints over", () => {
+        const btn = fixedChrome();
+        showTooltipAt(btn, "Insert Table", "below");
+        const t = tip()!;
+        t.getBoundingClientRect = () => new DOMRect(0, 0, 80, 20);
+        // Re-place with the tooltip's own size known (the first placement
+        // measured a zero rect; the assertion is about the anchor gap).
+        showTooltipAt(btn, "Insert Table", "below");
+        // The button's own gap (8 + 24 + 6 = 38) is inside the topbar, which
+        // paints over the tooltip, so it lands on the topbar's floor: bottom
+        // edge plus the margin. Measured against the whole safe area it would
+        // sit under the sticky heading instead (40 + 64 + 4).
+        expect(t.style.top).toBe(`${40 + 4}px`);
+    });
+
+    it("an anchor above the topbar's bottom edge should still be floored to that edge", () => {
+        const btn = fixedChrome();
+        btn.getBoundingClientRect = () => new DOMRect(300, -30, 24, 24);
+        showTooltipAt(btn, "Off the top", "above");
+        expect(parseFloat(tip()!.style.top)).toBeGreaterThanOrEqual(40 + 4);
+    });
+});
