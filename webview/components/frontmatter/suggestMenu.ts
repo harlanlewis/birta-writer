@@ -207,8 +207,9 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
                 e.stopPropagation();
                 pick(row.value);
             });
-            li.addEventListener("mouseover", () => {
-                if (!hover.pointerIsLive()) { return; }
+            // `mousemove` rather than `mouseover`; see ui/hoverSelection.ts.
+            li.addEventListener("mousemove", () => {
+                if (!hover.pointerIsLive() || activeIndex === i) { return; }
                 activeIndex = i;
                 updateActive();
             });

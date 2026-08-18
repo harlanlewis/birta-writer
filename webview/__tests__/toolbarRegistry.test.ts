@@ -246,11 +246,16 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
     it("every item should need a capability exactly when one of its commands needs it, settings excepted", () => {
         // Two tables classify the same gestures again: the per-item gate that
         // decides whether the control is built, and the per-command gate that
-        // decides whether it runs. `settings` is the documented exception: the
-        // gear mixes gated and unconditional rows and filters row by row.
+        // decides whether it runs. Two items are documented exceptions, both
+        // for the same reason: they are MENUS that mix gated and unconditional
+        // rows, so they are always built and filter row by row. The gear is
+        // one; the font menu is the other, which carries the width segments
+        // (`contentMeasure`) and the Editor-font row (`editorFont`) beside a
+        // size stepper and three presets that every host can honour.
+        const ROW_FILTERING_MENUS = ["settings", "fontPreset"];
         expect(TOOLBAR_ITEM_IDS.length).toBeGreaterThan(0);
         const disagreements = TOOLBAR_ITEM_IDS.filter((id) => {
-            if (id === "settings") { return ITEM_HOST_CAPABILITY[id] !== null; }
+            if (ROW_FILTERING_MENUS.includes(id)) { return ITEM_HOST_CAPABILITY[id] !== null; }
             const needed = new Set(ITEM_COMMANDS[id].map(commandCapability).filter((c) => c !== undefined));
             const item = ITEM_HOST_CAPABILITY[id];
             return item === null ? needed.size !== 0 : !(needed.size === 1 && needed.has(item));
@@ -260,7 +265,12 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
         expect(TOOLBAR_ITEM_IDS.filter((id) => ITEM_HOST_CAPABILITY[id] !== null).length).toBeGreaterThanOrEqual(4);
     });
 
-    it("the settings gear should mix gated and unconditional commands, or the exception is dead", () => {
+    it("each row-filtering menu should mix gated and unconditional commands, or its exception is dead", () => {
+        for (const id of ["settings", "fontPreset"] as const) {
+            const caps = ITEM_COMMANDS[id].map(commandCapability);
+            expect(caps.some((c) => c === undefined), id).toBe(true);
+            expect(caps.some((c) => c !== undefined), id).toBe(true);
+        }
         const caps = ITEM_COMMANDS.settings.map(commandCapability);
         expect(caps.some((c) => c === undefined)).toBe(true);
         expect(caps.some((c) => c !== undefined)).toBe(true);

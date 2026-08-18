@@ -18,6 +18,13 @@
 <style>
   html, body { margin: 0; height: 100%; background: var(--vscode-editor-background); }
 
+  /* No elastic overscroll. The toolbar is `position: fixed`, and WebKit
+     rubber-bands fixed elements with the page when a scroll runs past either
+     end, so the bar visibly slides away from the top edge and springs back.
+     A document inside an application window has nothing above or below it to
+     reveal, which is what the bounce is for elsewhere. */
+  html, body { overscroll-behavior: none; }
+
   /* The panel's window chrome, which only this host has. The bundle is the
      extension's and knows nothing about a titlebar, traffic lights or a
      pointer that has left the window, so the three rules that follow are the

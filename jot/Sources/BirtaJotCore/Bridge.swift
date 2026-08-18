@@ -35,6 +35,10 @@ public enum WebviewMessage: Equatable {
     case viewState(json: String)
     case openUrl(String)
     case openHostPreferences
+    /// `/ai`: the request typed after the pill, with the id the page will
+    /// match every `agentRun` report against.
+    case askAgent(prompt: String?, requestId: String?, model: String?, effort: String?)
+    case stopAgentRun(requestId: String)
     case clipboardWrite(format: String, data: String)
     case setToolbarLayout(itemId: String?, placement: String?, order: [String])
     case setToolbarVisible(Bool)
@@ -80,6 +84,11 @@ public enum WebviewMessage: Equatable {
         case "viewState": return .viewState(json: json("state") ?? "{}")
         case "openUrl": return str("url").map { .openUrl($0) } ?? .other(type: type)
         case "openHostPreferences": return .openHostPreferences
+        case "askAgent", "askAgentAdvanced":
+            return .askAgent(prompt: str("prompt"), requestId: str("requestId"),
+                             model: str("model"), effort: str("effort"))
+        case "stopAgentRun":
+            return str("requestId").map { .stopAgentRun(requestId: $0) } ?? .other(type: type)
         case "clipboardWrite":
             guard let f = str("format"), let d = str("data") else { return .other(type: type) }
             return .clipboardWrite(format: f, data: d)
@@ -145,6 +154,9 @@ public enum HostMessage: Equatable {
     /// Run one editor command by id (shared/editorCommands.ts), the way a
     /// contributed keybinding reaches the page.
     case editorCommand(String)
+    /// One report about an `/ai` run. `status` drives the gutter marker the
+    /// page already draws for the extension.
+    case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
     /// Measurement-only: an arbitrary message object, so `jot/scripts/measure.sh`
     /// can drive the test-only page commands (`__testInsertText`, `__getPerfMarks`).
     case raw(json: String)
@@ -162,6 +174,12 @@ public enum HostMessage: Equatable {
             return o
         case let .externalUpdate(content, syncVersion):
             return ["type": "externalUpdate", "content": content, "syncVersion": syncVersion]
+        case let .agentRun(requestId, status, harness, text, message):
+            var o: [String: Any] = ["type": "agentRun", "requestId": requestId, "status": status]
+            if let harness { o["harness"] = harness }
+            if let text { o["text"] = text }
+            if let message { o["message"] = message }
+            return o
         case let .flushSave(id):
             return ["type": "flushSave", "id": id]
         case let .flushAck(id, applied):

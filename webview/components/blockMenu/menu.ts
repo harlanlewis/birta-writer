@@ -1316,9 +1316,12 @@ export function openBlockMenu(
         // Hover and keyboard share ONE highlight: pointing at a row moves
         // the same --hl the arrows move, so Enter always fires the row
         // that looks selected (the slash menu's lesson).
-        row.addEventListener("mouseover", () => {
-            if (!opts.disabled && hover.pointerIsLive()) {
-                setHl(rowEls().indexOf(row));
+        // `mousemove` rather than `mouseover`; see ui/hoverSelection.ts for the
+        // event-order reason, and the slash menu for the same pair.
+        row.addEventListener("mousemove", () => {
+            const index = rowEls().indexOf(row);
+            if (!opts.disabled && hover.pointerIsLive() && hlIdx !== index) {
+                setHl(index);
             }
         });
         bindActivate(row, () => {

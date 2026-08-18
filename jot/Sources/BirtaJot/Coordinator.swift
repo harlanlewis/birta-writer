@@ -51,6 +51,7 @@ final class Coordinator {
     /// the window; the page asks for it through the gear menu.
     var openPreferences: (() -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
+    private let agent = AgentRunner()
     private var autosaveTimer: Timer?
     private var autosaveDeadline: Date?
     /// The typing pause that ends a burst, and the ceiling a burst cannot pass.
@@ -439,6 +440,12 @@ final class Coordinator {
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
         case .openHostPreferences:
             openPreferences?()
+        case let .askAgent(prompt, requestId, model, effort):
+            runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort)
+        case let .stopAgentRun(requestId):
+            agent.stop(requestId: requestId) { [weak self] status in
+                self?.reportAgent(requestId: requestId, status)
+            }
         case let .clipboardWrite(format, data):
             writeToPasteboard(data, asHTML: format == "html")
         case let .setToolbarLayout(itemId, placement, order):
@@ -600,6 +607,8 @@ final class Coordinator {
 
     func prepareToTerminate(_ done: @escaping () -> Void) {
         hotkey.unregister()
+        // A child process outliving the app is litter nobody can attribute.
+        agent.stopAll()
         flushThen(done)
     }
 
@@ -676,6 +685,74 @@ final class Coordinator {
             self.writeToPasteboard(content)
             self.actionBar.flash("Copied the whole note.")
             self.focusEditorIfVisible()
+        }
+    }
+
+    // MARK: /ai
+
+    /// Run one `/ai` request against the file on disk.
+    ///
+    /// The buffer is flushed and WRITTEN first, always: the agent edits the
+    /// file, so the bytes it opens have to be the bytes on screen, and the
+    /// `path.md#L1` reference has to name something real. This is the one
+    /// place a write happens regardless of the autosave setting for a reason
+    /// that is not about safety: an agent reading a stale file would rewrite
+    /// the wrong text.
+    private func runAgent(prompt: String?, requestId: String?, model: String?, effort: String?) {
+        let id = requestId ?? UUID().uuidString
+        let request = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !request.isEmpty else {
+            reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
+                                             message: "Nothing was asked."))
+            return
+        }
+        var template = Prefs.agentCommand.trimmingCharacters(in: .whitespaces)
+        guard !template.isEmpty else {
+            reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
+                                             message: "No agent command is set in Settings."))
+            return
+        }
+        // The composer's per-request overrides, appended rather than merged:
+        // the extension rewrites the flag in place, which needs its help
+        // parser. Appending is correct for every CLI that takes the last
+        // occurrence, and the template is the user's own either way.
+        if let model, !model.isEmpty { template += " --model \(AgentRequest.shellQuote(model))" }
+        if let effort, !effort.isEmpty { template += " --effort \(AgentRequest.shellQuote(effort))" }
+        let command = template
+
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            let directory = self.boundURL.deletingLastPathComponent()
+            let reference = "\(self.boundURL.lastPathComponent)#L1"
+            let line = AgentRequest.compose(prompt: request, reference: reference)
+            self.agent.run(requestId: id, line: line, template: command,
+                           workingDirectory: directory) { [weak self] status in
+                guard let self else { return }
+                if status.status == "done" {
+                    // The agent edited the file; bring it back into the panel.
+                    // Whatever was typed during the run is the losing side,
+                    // which jot/README.md says out loud.
+                    self.reloadFromDiskIntoBuffer()
+                }
+                self.reportAgent(requestId: id, status)
+            }
+        }
+    }
+
+    private func reportAgent(requestId: String, _ status: AgentRunStatus) {
+        guard state == .warm else { return }
+        host.send(.agentRun(requestId: requestId, status: status.status,
+                            harness: status.harness, text: status.text, message: status.message))
+    }
+
+    /// Take what is on disk as the buffer's new truth.
+    private func reloadFromDiskIntoBuffer() {
+        let onDisk = readActiveFile()
+        guard onDisk != latest else { return }
+        latest = onDisk
+        if state == .warm {
+            host.send(.externalUpdate(content: onDisk, syncVersion: guardState.bumpVersion()))
         }
     }
 

@@ -494,6 +494,21 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.openHostPreferences",
+                "title": "%command.editor.openHostPreferences.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.contentWidthFull",
+                "title": "%command.editor.contentWidthFull.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.contentWidthFixed",
+                "title": "%command.editor.contentWidthFixed.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.openKeyboardShortcuts",
                 "title": "%command.editor.openKeyboardShortcuts.title%",
                 "category": "Birta Writer"
@@ -1202,6 +1217,18 @@
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
+                    "command": "birta.editor.openHostPreferences",
+                    "when": "false"
+                },
+                {
+                    "command": "birta.editor.contentWidthFull",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.contentWidthFixed",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
                     "command": "birta.editor.openKeyboardShortcuts",
                     "when": "false"
                 },
@@ -1539,6 +1566,11 @@
                 },
                 {
                     "command": "birta.editor.openWhatsNew",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
+                    "group": "3_settings@2"
+                },
+                {
+                    "command": "birta.editor.openHostPreferences",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
                     "group": "3_settings@2"
                 },

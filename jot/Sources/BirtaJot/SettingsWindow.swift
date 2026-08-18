@@ -13,7 +13,7 @@ import BirtaJotCore
 /// Everything is built in code. A window this size does not earn a nib, and a
 /// nib is the one part of the app a script cannot diff.
 @MainActor
-final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     /// The window's one width, and the insets every row shares. A caption has
     /// to be told the width it wraps at before the first layout pass, or the
     /// window sizes itself around a one-line caption and clips the rest.
@@ -31,6 +31,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let documentSwitch = NSSwitch()
     private let documentChoose = NSButton(title: "Choose…", target: nil, action: nil)
     private let networkSwitch = NSSwitch()
+    private let agentField = NSTextField(string: Prefs.agentCommand)
     private let autosaveSwitch = NSSwitch()
     private let floatSwitch = NSSwitch()
     private let loginSwitch = NSSwitch()
@@ -80,6 +81,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         autosaveSwitch.target = self
         autosaveSwitch.action = #selector(toggleAutosave)
+        agentField.placeholderString = "claude -p {prompt} --permission-mode acceptEdits"
+        agentField.delegate = self
+        agentField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        agentField.widthAnchor.constraint(equalToConstant: 300).isActive = true
         floatSwitch.state = Prefs.floatAboveOtherWindows ? .on : .off
         floatSwitch.target = self
         floatSwitch.action = #selector(toggleFloat)
@@ -111,6 +116,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 Self.row("Edit a document instead", control: documentSwitch,
                          caption: Caption("Jot edits that file rather than the scratchpad, and never empties it: Copy and Delete becomes Copy.")),
                 Self.row("Document", control: Self.pathControl(documentPath, documentChoose)),
+            ]),
+            Self.heading("Agent"),
+            Self.group([
+                Self.row("Command", control: agentField,
+                         caption: Caption("What `/ai` runs, with {prompt} where the quoted request goes. The same shape as the extension's birta.agent.command, so a command tuned there works here unchanged. Jot writes the note to disk first and reloads it when the run finishes.")),
             ]),
             Self.heading("Network"),
             Self.group([
@@ -368,6 +378,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// is re-read on the way in rather than only when it is first built.
     func windowDidBecomeKey(_ notification: Notification) {
         showLoginItem(LoginItem.state)
+    }
+
+    /// Committed on every edit rather than only on Return: the window has no
+    /// OK button, and a command typed and then dismissed by closing the window
+    /// would otherwise be lost without a word.
+    func controlTextDidChange(_ notification: Notification) {
+        guard (notification.object as? NSTextField) === agentField else { return }
+        Prefs.agentCommand = agentField.stringValue
     }
 
     @objc private func toggleAutosave() {

@@ -217,8 +217,14 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         }
 
         row.addEventListener("mousedown", () => opts.onPick(item));
-        row.addEventListener("mouseover", () => {
-            if (hover.pointerIsLive()) {
+        // `mousemove`, not `mouseover`: entering a row fires mouseover BEFORE
+        // the mousemove that proves the pointer moved, so a guard on mouseover
+        // ignores exactly the arrival it should honour. The root's capture
+        // listener runs first and marks the pointer live, so by the time this
+        // one fires the answer is already right. Cheap because it does nothing
+        // when the row is already the active one.
+        row.addEventListener("mousemove", () => {
+            if (hover.pointerIsLive() && activeIndex !== index) {
                 setActive(index);
             }
         });

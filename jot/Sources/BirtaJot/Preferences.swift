@@ -30,6 +30,7 @@ enum Prefs {
         static let saveAsDirectory = "saveAsDirectory"
         static let autosave = "autosave"
         static let floatAboveOtherWindows = "floatAboveOtherWindows"
+        static let agentCommand = "agentCommand"
     }
 
     static var hotkey: HotkeyCombo {
@@ -125,6 +126,15 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.floatAboveOtherWindows) }
     }
 
+    /// The shell command `/ai` runs, with `{prompt}` where the quoted request
+    /// goes. The same shape as the extension's `birta.agent.command`, so a
+    /// command tuned there can be pasted here unchanged. Empty turns `/ai` off:
+    /// the capability is withdrawn and the page never offers the row.
+    static var agentCommand: String {
+        get { d.string(forKey: Key.agentCommand) ?? "claude -p {prompt} --permission-mode acceptEdits" }
+        set { d.set(newValue, forKey: Key.agentCommand) }
+    }
+
     static func bootConfig() -> BootConfig {
         BootConfig(
             toolbarJSON: toolbarLayout.json,
@@ -136,7 +146,7 @@ enum Prefs {
             // Swift cannot import it, so this literal restates it and
             // shared/__tests__/hostCapabilities.test.ts parses this file and
             // fails when the two disagree.
-            hostCapabilities: ["imageUpload", "appPreferences"],
+            hostCapabilities: ["imageUpload", "appPreferences", "agent"],
             viewStateJSON: viewStateJSON
         )
     }

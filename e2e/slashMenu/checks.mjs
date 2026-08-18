@@ -532,4 +532,69 @@ export async function run({ page, check, baseUrl }) {
     check("`/ai` with nothing typed opens the composer", await page.$(PANEL) !== null);
     await page.keyboard.press("Escape");
 
+
+    // ── Keyboard navigation is not taken back by a still pointer ──
+    // The bug needs a row to ARRIVE under a pointer that has not moved, which
+    // is what `scrollIntoView` does on every arrow once the list is longer
+    // than its 320px max-height. `mouseover` fires then with no `mousemove` at
+    // all, and unguarded it dragged the selection back to whatever slid under
+    // the pointer, so the rows past it could not be reached from the keyboard.
+    // The unfiltered menu is used because it is the one that scrolls; a
+    // seven-row filtered list never moves and never reproduces this.
+    await open("");
+    const listBox = await page.locator(`${SLASH} .slash-menu-list`).boundingBox();
+    const rowCount = await page.$$eval(`${SLASH} .slash-menu-item`, (els) => els.length);
+    const scrolls = await page.$eval(
+        `${SLASH} .slash-menu-list`, (el) => el.scrollHeight > el.clientHeight + 8);
+    check("the browse list is long enough to scroll, which the case needs", scrolls);
+
+    // Park the pointer in the middle of the list and leave it there.
+    await page.mouse.move(listBox.x + listBox.width / 2, listBox.y + listBox.height / 2);
+    await page.waitForTimeout(120);
+
+    const selected = () => page.$$eval(
+        `${SLASH} .slash-menu-item`,
+        (els) => els.findIndex((e) => e.classList.contains("ui-menu-row--selected")));
+    // Stop short of the wrap: the last row wrapping to the first is correct
+    // behaviour, and counting it as a stall would fail the honest case.
+    const steps = Math.min(rowCount - 1, 14);
+    let previous = await selected();
+    let stalled = 0;
+    for (let i = 0; i < steps; i++) {
+        await page.keyboard.press("ArrowDown");
+        await page.waitForTimeout(60);
+        const now = await selected();
+        if (now !== previous + 1) { stalled++; }
+        previous = now;
+    }
+    check(`${steps} arrows each advance one row with the pointer parked mid-list`,
+        stalled === 0, `presses that did not advance: ${stalled}`);
+    const scrolledBy = await page.$eval(`${SLASH} .slash-menu-list`, (el) => el.scrollTop);
+    check("…and the walk really did scroll rows under the pointer", scrolledBy > 0, `scrollTop=${scrolledBy}`);
+
+    // The guard parks hover, it does not disable it: real motion takes it
+    // back. Aim at a row that is on screen NOW, since the walk scrolled the
+    // early rows out of the list's viewport.
+    const target = await page.evaluate((sel) => {
+        const list = document.querySelector(`${sel} .slash-menu-list`);
+        const box = list.getBoundingClientRect();
+        const rows = [...document.querySelectorAll(`${sel} .slash-menu-item`)];
+        const index = rows.findIndex((r) => {
+            const b = r.getBoundingClientRect();
+            return b.top >= box.top + 4 && b.bottom <= box.bottom - 4
+                && !r.classList.contains("ui-menu-row--selected");
+        });
+        const b = rows[index].getBoundingClientRect();
+        return { index, x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    }, SLASH);
+    // Move well away first, so the arrival at the target is a genuine
+    // coordinate change. Landing on the pixel the pointer already occupies
+    // produces no `mousemove`, which the guard correctly ignores.
+    await page.mouse.move(target.x, target.y - 200);
+    await page.waitForTimeout(60);
+    await page.mouse.move(target.x, target.y);
+    await page.waitForTimeout(120);
+    const afterMove = await selected();
+    check("real pointer motion takes the highlight back", afterMove === target.index,
+        `selected=${afterMove} wanted=${target.index}`);
 }
