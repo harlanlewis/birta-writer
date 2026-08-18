@@ -62,11 +62,24 @@ echo "→ installing to $DEST"
 # Stage beside the destination, then swap, so an interrupted copy never leaves
 # a half-written bundle where a whole app was. `ditto` preserves the ad-hoc
 # signature and the bundle's extended attributes; `cp -R` does not reliably.
+#
+# The old copy is moved aside rather than deleted first, and only removed once
+# the new one is in place. Deleting first leaves a window where a failed `mv`
+# means no app at all, which is a worse state than either version of it.
 STAGE="$DEST_DIR/.Birta Jot.app.incoming"
-rm -rf "$STAGE"
+OLD="$DEST_DIR/.Birta Jot.app.previous"
+rm -rf "$STAGE" "$OLD"
 ditto "$SRC" "$STAGE"
-rm -rf "$DEST"
-mv "$STAGE" "$DEST"
+if [ -d "$DEST" ]; then mv "$DEST" "$OLD"; fi
+if ! mv "$STAGE" "$DEST"; then
+    echo "install-app: could not move the new app into place." >&2
+    if [ -d "$OLD" ]; then
+        mv "$OLD" "$DEST"
+        echo "install-app: the previous copy is back at $DEST." >&2
+    fi
+    exit 1
+fi
+rm -rf "$OLD"
 
 # One copy only: a second in the other standard location is a second app for
 # Launch Services to choose between, and the hotkey belongs to whichever

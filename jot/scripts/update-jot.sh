@@ -5,8 +5,10 @@
 #   bash jot/scripts/update-jot.sh              # newest release
 #   bash jot/scripts/update-jot.sh v2026.818.0  # a specific one
 #
-# Or, with no checkout at all, on a fresh machine:
-#   curl -fsSL https://raw.githubusercontent.com/harlanlewis/birta-writer/main/jot/scripts/update-jot.sh | bash
+# On a machine with no checkout, fetch this file, read it, then run it. Piping
+# it straight into a shell is deliberately not suggested: the whole subject of
+# this script is that Jot's app cannot yet prove who built it, and running an
+# unread script from the network is the same trust question one level up.
 #
 # READ THIS BEFORE RUNNING IT ELSEWHERE. The app is ad-hoc signed: there is no
 # Apple Developer ID behind it and it is not notarized, so macOS cannot tell
@@ -28,12 +30,21 @@ fi
 echo "→ asking GitHub for ${TAG:-the newest release}"
 JSON="$(curl -fsSL "$API")" || { echo "could not reach $API" >&2; exit 1; }
 
+# The trailing `\"` matters: without it, `url_for ''` also matches the leading
+# part of the .sha256 asset's URL and returns it truncated at `.zip`. That
+# happens to be the right URL, which is worse than a wrong one, because it is
+# correct by accident and independent of nothing.
+#
 # `|| true`, because a release with no app attached is a case this script
 # REPORTS rather than dies on: under `pipefail` a grep that matches nothing
 # fails the whole assignment, and `set -e` would take the script out before it
 # could say which release it looked at.
 url_for() { # url_for <suffix>
-    printf '%s' "$JSON" | grep -o "https://[^\"]*BirtaJot-[0-9.]*\.zip$1" | head -1 || true
+    printf '%s' "$JSON" \
+        | grep -o "https://[^\"]*BirtaJot-[0-9.]*\.zip$1\"" \
+        | head -1 \
+        | tr -d '"' \
+        || true
 }
 ZIP_URL="$(url_for '')"
 SUM_URL="$(url_for '.sha256')"
@@ -97,11 +108,22 @@ if pgrep -x BirtaJot >/dev/null 2>&1; then
     fi
 fi
 
+# Old copy aside, new copy in, then remove the old: deleting first leaves a
+# window where a failed move means no app at all.
 STAGE="$DEST_DIR/.Birta Jot.app.incoming"
-rm -rf "$STAGE"
+OLD="$DEST_DIR/.Birta Jot.app.previous"
+rm -rf "$STAGE" "$OLD"
 ditto "$APP" "$STAGE"
-rm -rf "$DEST"
-mv "$STAGE" "$DEST"
+if [ -d "$DEST" ]; then mv "$DEST" "$OLD"; fi
+if ! mv "$STAGE" "$DEST"; then
+    echo "update-jot: could not move the new app into place." >&2
+    if [ -d "$OLD" ]; then
+        mv "$OLD" "$DEST"
+        echo "update-jot: the previous copy is back at $DEST." >&2
+    fi
+    exit 1
+fi
+rm -rf "$OLD"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$DEST/Contents/Info.plist" 2>/dev/null || echo unknown)"
 if [ "$WAS_RUNNING" = 1 ]; then

@@ -537,10 +537,18 @@ jobs:
           ditto -c -k --keepParent "Birta Jot.app" "BirtaJot-$VERSION.zip"
           shasum -a 256 "BirtaJot-$VERSION.zip" > "BirtaJot-$VERSION.zip.sha256"
 
+      # `gh release upload` rather than the action the release job uses: this
+      # job ATTACHES to a release that already exists and already carries its
+      # notes, and upload is the operation that can only add assets. The action
+      # takes the whole release as its subject, so what it does to a name and a
+      # body it was not given is a behaviour to look up rather than a guarantee,
+      # and the notes are not worth risking to save a line.
       - name: Attach to the release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.release.outputs.version }}
-          files: |
-            jot/build/BirtaJot-*.zip
-            jot/build/BirtaJot-*.zip.sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          gh release upload "v$VERSION" \
+            "jot/build/BirtaJot-$VERSION.zip" \
+            "jot/build/BirtaJot-$VERSION.zip.sha256" \
+            --clobber

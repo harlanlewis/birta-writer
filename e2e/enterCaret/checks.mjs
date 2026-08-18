@@ -1,14 +1,15 @@
 /**
  * Return must leave the caret in the block it just made.
  *
- * The empty paragraph a Return creates carries two `contenteditable=false`
- * widgets at the same position: the block-handle gutter and the empty-line
- * hint. When the hint sorted AFTER the caret's own position, the caret's DOM
- * position fell between the two, WebKit refused to hold an insertion point
- * there and re-anchored to the end of the previous block, and the next
- * character typed landed on the previous line. Chromium tolerated it, so the
- * whole class of defect was invisible to a Chromium-only sweep and shipped in
- * Jot, which renders in WebKit.
+ * The empty paragraph a Return creates holds nothing but widget decorations:
+ * the empty-line hint and the block-handle gutter, both `contenteditable=false`.
+ * When the hint sorted AFTER the caret's own position, WebKit could not hold an
+ * insertion point in front of it and re-anchored to the end of the previous
+ * block, so the next character typed landed on the previous line. One such
+ * widget is enough; the gutter is beside it but not part of the cause.
+ * Chromium tolerated the arrangement, so the whole class of defect was
+ * invisible to a Chromium-only sweep and shipped in Jot, which renders in
+ * WebKit.
  *
  * Run under BOTH engines. The typing arms only go red in WebKit, but the
  * widget-order arm pins the mechanism in either, so a Chromium sweep still
@@ -72,22 +73,29 @@ export async function run({ page, check, baseUrl }) {
     // exercising none of the arrangement they exist to pin.
     const decorated = await page.evaluate(() => {
         const p = document.querySelectorAll(".ProseMirror > p")[1];
-        const kids = [...(p?.childNodes ?? [])].filter((n) => n.nodeType === 1);
+        const kids = [...(p?.childNodes ?? [])];
         const hint = p?.querySelector(".md-empty-hint-text");
-        const gutter = p?.querySelector(".heading-fold-gutter");
+        const sel = document.getSelection();
+        // Where the caret sits INSIDE this paragraph, against where the hint
+        // sits. The invariant is between the widget and the caret, not between
+        // one widget and another: a single uneditable widget in front of the
+        // caret is enough to break it, whether or not the block-handle gutter
+        // happens to be beside it.
+        const caretIndex = sel?.anchorNode === p ? sel.anchorOffset : -1;
+        const hintIndex = hint ? kids.indexOf(hint) : -1;
         return {
             hasHint: !!hint,
-            hasGutter: !!gutter,
-            // The hint must come first: sorting it after the gutter is the
-            // arrangement WebKit will not put a caret into.
-            hintBeforeGutter: !!hint && !!gutter
-                && (hint.compareDocumentPosition(gutter) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
-            kinds: kids.map((n) => n.className || n.nodeName),
+            caretIndex,
+            hintIndex,
+            hintBeforeCaret: hintIndex >= 0 && caretIndex > hintIndex,
+            kinds: kids.filter((n) => n.nodeType === 1).map((n) => n.className || n.nodeName),
         };
     });
     check("the new empty paragraph carries the empty-line hint widget", decorated.hasHint, JSON.stringify(decorated.kinds));
-    check("and the block-handle gutter widget, at the same position", decorated.hasGutter, JSON.stringify(decorated.kinds));
-    check("the hint sorts before the gutter (side: -1)", decorated.hintBeforeGutter, JSON.stringify(decorated.kinds));
+    check("the caret is in that paragraph, not still in the one above",
+        decorated.caretIndex >= 0, JSON.stringify(decorated));
+    check("the hint sorts before the caret's own position (side: -1)",
+        decorated.hintBeforeCaret, JSON.stringify(decorated));
 
     await page.keyboard.type("Next", { delay: 40 });
     await page.waitForTimeout(400);
