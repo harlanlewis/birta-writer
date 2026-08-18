@@ -84,6 +84,14 @@ export const EDITOR_COMMANDS = [
     // on no link is a quiet no-op. Palette + rebindable; no default chord
     // (Cmd+Click and the block menu already carry the common paths).
     { id: "openLink", title: "Open Link", palette: true, sections: [] },
+    // Ask the user's coding agent for an edit at the caret (MAR-371, MAR-272).
+    // The one command that carries an ARGUMENT: the slash menu's `/ai` row
+    // captures the prompt typed after it and passes `{ prompt }`; from the
+    // palette the argument is absent and the extension asks for it in an
+    // input box. The webview never invokes anything: it hands the prompt to
+    // the extension, which composes the caret's line reference in and routes
+    // it per `birta.agent.command` (src/agentBridge/askAgent.ts).
+    { id: "askAgent", title: "Ask Agent", palette: true, sections: [] },
     { id: "editBlockSource", title: "Edit Block as Markdown", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [] },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },

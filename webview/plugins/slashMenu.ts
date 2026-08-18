@@ -8,6 +8,14 @@
  * editor command; Escape dismisses and keeps the typed text, suppressing
  * the menu until the caret leaves the construct.
  *
+ * One row kind takes an ARGUMENT (registry `takesArgument`, MAR-371): Space
+ * on such a highlighted row commits it, rewriting the typed query to
+ * "/<id> " and switching the menu to argument mode, where the text typed
+ * after it is captured rather than filtered (a space would otherwise end the
+ * construct). Enter then deletes the whole "/<id> argument" text and runs
+ * the command with `{ prompt }`; Escape and leaving the construct end the
+ * mode and keep the text, exactly as for a filter query.
+ *
  * Structure mirrors linkUrlComplete.ts: all work happens in the plugin
  * view, which re-evaluates the caret context on every transaction and owns
  * the menu DOM/listeners. Keyboard interception is strictly additive —
@@ -174,8 +182,10 @@ interface MatchContext {
     slashPos: number;
     /** Caret position (right after the query). */
     caret: number;
-    /** The filter query typed after "/". */
+    /** The filter query typed after "/" (the committed token in argument mode). */
     query: string;
+    /** Argument mode only: the text typed after "/<token> ", untrimmed. */
+    argument?: string;
 }
 
 const slashMenuKey = new PluginKey<{ openEligible: boolean }>("MD_SLASH_MENU");
@@ -187,6 +197,11 @@ class SlashMenuController {
     // Set by Escape; stays set until the caret leaves the slash construct,
     // so the menu does not pop right back while typing in the same text.
     private suppressed = false;
+    // Argument mode: the committed row and the doc position of its "/". The
+    // construct is re-read from the document on every update, so an edit
+    // that breaks it (the caret leaving, the token retyped) ends the mode.
+    private argumentItem: SlashMenuItem | null = null;
+    private argumentSlashPos = -1;
 
     private readonly onKeydown = (e: KeyboardEvent): void => {
         this.handleKeydown(e);
@@ -256,10 +271,17 @@ class SlashMenuController {
 
         // Already open: re-filter only when the query changed (unrelated
         // transactions must not reset the keyboard highlight), but always
-        // re-anchor — edits above can move the slash's caret rect.
-        if (match.query !== this.lastQuery) {
-            this.lastQuery = match.query;
-            this.menu.setQuery(match.query);
+        // re-anchor — edits above can move the slash's caret rect. In
+        // argument mode nothing filters; only the pill grows with the text.
+        const key = match.argument === undefined ? match.query : `${match.query} ${match.argument}`;
+        if (key !== this.lastQuery) {
+            this.lastQuery = key;
+            if (match.argument === undefined) {
+                // Also the way back: an argument construct edited out from
+                // under the mode (the space backspaced) filters again.
+                this.menu.setArgument(null);
+                this.menu.setQuery(match.query);
+            }
             this.syncQueryPill(match);
             this.syncAriaExpanded();
         }
@@ -290,6 +312,21 @@ class SlashMenuController {
         if ($from.marks().some((m) => m.type.spec.code)) {
             return null; // inline code
         }
+        if (this.argumentItem) {
+            const argument = this.argumentAtCaret($from);
+            if (argument !== null) {
+                return {
+                    slashPos: this.argumentSlashPos,
+                    caret: selection.from,
+                    query: this.argumentItem.id,
+                    argument,
+                };
+            }
+            // The construct no longer reads "/<token> …" up to the caret:
+            // the caret left, or the token was edited. Back to filtering.
+            this.argumentItem = null;
+            this.argumentSlashPos = -1;
+        }
         const textBefore = $from.parent.textBetween(
             Math.max(0, $from.parentOffset - 500),
             $from.parentOffset,
@@ -306,6 +343,50 @@ class SlashMenuController {
             caret: selection.from,
             query,
         };
+    }
+
+    /**
+     * Argument mode: the text between the committed "/<token> " and the
+     * caret, or null when the document no longer carries that construct
+     * ending at the caret (the caret moved out, the token was edited, the
+     * block changed). Read from the document rather than accumulated from
+     * keystrokes, so paste, undo and IME all end up in the argument.
+     */
+    private argumentAtCaret($from: ResolvedPos): string | null {
+        const item = this.argumentItem;
+        if (!item) {
+            return null;
+        }
+        const start = $from.start();
+        const slashPos = this.argumentSlashPos;
+        if (slashPos < start || slashPos >= $from.pos) {
+            return null;
+        }
+        const text = $from.parent.textBetween(slashPos - start, $from.parentOffset, undefined, "￼");
+        const prefix = `/${item.id} `;
+        if (!text.startsWith(prefix) || text.includes("￼")) {
+            return null;
+        }
+        return text.slice(prefix.length);
+    }
+
+    /**
+     * Space on a highlighted `takesArgument` row: rewrite the typed query to
+     * the row's canonical "/<id> " and switch the menu to argument mode. One
+     * transaction, so undo removes the commit in one step.
+     */
+    private commitArgument(item: SlashMenuItem): void {
+        const match = this.matchContext();
+        if (!match || !this.menu) {
+            return;
+        }
+        this.argumentItem = item;
+        this.argumentSlashPos = match.slashPos;
+        this.menu.setArgument(item);
+        const { state } = this.view;
+        this.view.dispatch(
+            state.tr.insertText(`${item.id} `, match.slashPos + 1, match.caret),
+        );
     }
 
     // ── Menu lifecycle ───────────────────────────────────────────────────
@@ -357,6 +438,8 @@ class SlashMenuController {
         this.menu.destroy();
         this.menu = null;
         this.lastQuery = null;
+        this.argumentItem = null;
+        this.argumentSlashPos = -1;
         this.syncQueryPill(null);
         document.removeEventListener("mousedown", this.onDocMousedown, true);
         window.removeEventListener("blur", this.onWindowBlur);
@@ -439,6 +522,15 @@ class SlashMenuController {
         // grabbing focus back would break them.
         const { state } = this.view;
         this.view.dispatch(state.tr.delete(match.slashPos, match.caret));
+        // An argument-mode pick carries the typed text as `{ prompt }`. An
+        // empty argument (Space, then Enter) and a direct pick of the row
+        // (Enter without Space) both send none, and the command asks for it.
+        const prompt = match.argument?.trim();
+        if (prompt) {
+            const baked = item.args && typeof item.args === "object" ? item.args : {};
+            _host.runCommand(item.commandId, { ...baked, prompt });
+            return;
+        }
         _host.runCommand(item.commandId, item.args);
     }
 
@@ -453,10 +545,29 @@ class SlashMenuController {
         }
 
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            // In argument mode the arrows keep their caret meaning: there is
+            // one row and nothing to move between, and the user is typing
+            // prose. Leaving the construct ends the mode by itself.
+            if (this.argumentItem) {
+                return;
+            }
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
             this.menu.moveActive(e.key === "ArrowDown" ? 1 : -1);
+            return;
+        }
+
+        // Space commits ONLY a highlighted argument-taking row; for every
+        // other row it stays a filter character (multi-word queries).
+        if (e.key === " " && !this.argumentItem && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const active = this.menu.activeItem();
+            if (active?.takesArgument) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                this.commitArgument(active);
+            }
             return;
         }
 

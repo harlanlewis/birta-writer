@@ -12,6 +12,8 @@
  * source onto one agent-ingestion surface:
  *
  *   - referenceCommand — universal clipboard reference (every agent, explicit)
+ *   - askAgent         — one-shot hand-off of a caret request to the user's
+ *                        agent (terminal, Chat view, or clipboard; MAR-371)
  *   - languageModelTool — Copilot agent mode can pull it (VS Code ≥ 1.95)
  *   - publicApi        — any cooperating extension can read it
  *
@@ -23,6 +25,7 @@
 import type * as vscode from "vscode";
 import type { ActiveContextResolver, BirtaApi } from "./api";
 import { registerReferenceCommands } from "./referenceCommand";
+import { registerAskAgent } from "./askAgent";
 import { registerEditorContextTool } from "./languageModelTool";
 import { createBirtaApi } from "./publicApi";
 
@@ -37,6 +40,7 @@ export function registerAgentBridge(
     getActive: ActiveContextResolver,
 ): BirtaApi {
     registerReferenceCommands(context, getActive);
+    registerAskAgent(context, getActive);
     registerEditorContextTool(context, getActive);
     return createBirtaApi(getActive);
 }

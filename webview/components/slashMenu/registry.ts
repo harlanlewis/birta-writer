@@ -14,6 +14,7 @@ import type { EditorCommandId } from "../../../shared/editorCommands";
 import { t } from "@/i18n";
 import { CALLOUT_ICONS } from "../callout";
 import {
+    IconAgentChat,
     IconAlertCircle,
     IconArrowLeftRight,
     IconBold,
@@ -115,6 +116,15 @@ interface SlashMenuItemBase {
      * (most `__i18n` gates are baked at panel load).
      */
     readonly visibleWhen?: () => boolean;
+    /**
+     * The row captures free text typed after it as its command's argument
+     * (`/ai make a diagram of the auth flow`), delivered as `{ prompt }`.
+     * Space on the highlighted row commits it: the typed query becomes
+     * `/<id> ` and the menu stops filtering, so `id` doubles as the token
+     * the user reads back. Every other row keeps Space a filter character,
+     * which multi-word queries ("delete table") depend on.
+     */
+    readonly takesArgument?: true;
 }
 
 /**
@@ -220,6 +230,12 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "fontSizeIncrease", group: "view", label: t("Increase font size"), icon: "", badge: "A+", keywords: ["font", "size", "bigger", "larger", "zoom"], commandId: "increaseFontSize", searchOnly: true },
     { id: "fontSizeDecrease", group: "view", label: t("Decrease font size"), icon: "", badge: "A−", keywords: ["font", "size", "smaller"], commandId: "decreaseFontSize", searchOnly: true },
     // ── Actions: commands and tools (toolbar parity; all search-revealed) ──
+    // Ask Agent (MAR-371): the one argument-taking row. `/ai`, Space, the
+    // request, Enter. The extension adds the caret's line reference and
+    // routes the line per `birta.agent.command`. Enter straight on the row
+    // sends no argument, and the extension asks for the request instead.
+    // Search-only, like the rest of the parity rows: `/ai` is the gesture.
+    { id: "ai", group: "actions", label: t("Ask Agent"), icon: IconAgentChat, keywords: ["ai", "agent", "ask", "prompt", "llm", "assistant", "claude", "codex", "copilot", "chat"], commandId: "askAgent", takesArgument: true, searchOnly: true },
     { id: "find", group: "actions", label: t("Find"), icon: IconSearch, keywords: ["find", "search"], commandId: "openFind", searchOnly: true },
     { id: "viewSource", group: "actions", label: t("Edit Raw Markdown"), icon: IconFileCode, keywords: ["source", "raw", "markdown", "text", "code"], commandId: "editRawMarkdown", searchOnly: true },
     { id: "customizeToolbar", group: "actions", label: t("Customize Toolbar"), icon: IconPencil, keywords: ["customize", "toolbar", "layout", "arrange"], commandId: "customizeToolbar", searchOnly: true },

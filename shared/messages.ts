@@ -411,6 +411,11 @@ export type ToExtensionMessage =
     // command the context menu offers, so the one-click path and the menu path
     // share behavior (clipboard payload, status-bar feedback) exactly.
     | { type: "copyAgentReference" }
+    // Ask Agent (MAR-371, MAR-272): the prompt typed after `/ai`, or absent
+    // when invoked from the palette (the extension then asks for it). The
+    // extension composes the caret's line reference in and routes the line
+    // per `birta.agent.command`; the webview never invokes anything itself.
+    | { type: "askAgent"; prompt?: string }
     // The document cannot open in the WYSIWYG editor because its format's
     // parse is fatal on this content (MDX: a stray `{`, an unclosed tag —
     // unlike markdown, where every byte sequence is valid). The extension

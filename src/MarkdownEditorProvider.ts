@@ -1559,6 +1559,12 @@ export class MarkdownEditorProvider
                         // context menu, so payload and feedback stay identical.
                         vscode.commands.executeCommand("birta.copyAgentReference");
                         break;
+                    case "askAgent":
+                        // `/ai <request>` or the palette's Ask Agent: the
+                        // extension composes the caret reference in, saves,
+                        // and routes (src/agentBridge/askAgent.ts).
+                        vscode.commands.executeCommand("birta.askAgent", message.prompt);
+                        break;
                 }
             },
         );

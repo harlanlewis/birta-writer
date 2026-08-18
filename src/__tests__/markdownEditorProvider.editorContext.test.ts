@@ -114,3 +114,27 @@ describe("MarkdownEditorProvider.getActiveEditorContext", () => {
         expect((await pending)?.context).toEqual(sampleContext);
     });
 });
+
+describe("MarkdownEditorProvider askAgent routing", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.useRealTimers();
+        resetTextDocumentMocks();
+    });
+
+    it("an askAgent message should run birta.askAgent with the prompt", async () => {
+        const { panel } = await withActivePanel();
+
+        await messageHandler(panel)({ type: "askAgent", prompt: "add a diagram" });
+
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", "add a diagram");
+    });
+
+    it("an askAgent message without a prompt should run the command with none", async () => {
+        const { panel } = await withActivePanel();
+
+        await messageHandler(panel)({ type: "askAgent" });
+
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", undefined);
+    });
+});

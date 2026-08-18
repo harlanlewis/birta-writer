@@ -314,6 +314,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.askAgent",
+                "title": "%command.editor.askAgent.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.insertImage",
                 "title": "%command.editor.insertImage.title%",
                 "category": "Birta Writer"
@@ -1035,6 +1040,10 @@
                 },
                 {
                     "command": "birta.editor.openLink",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.askAgent",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
@@ -2304,6 +2313,13 @@
                         "%config.logseq.on%"
                     ],
                     "description": "%config.logseq.description%"
+                },
+                "birta.agent.command": {
+                    "order": 106.2,
+                    "type": "string",
+                    "default": "",
+                    "scope": "application",
+                    "markdownDescription": "%config.agent.command.description%"
                 },
                 "birta.network.enabled": {
                     "order": 105,

@@ -149,6 +149,15 @@ export interface BirtaConfig extends ProofreadConfig {
      */
     logseq: LogseqMode;
     /**
+     * Where `/ai` and Ask Agent hand the composed request (birta.agent.command).
+     * Empty means unset, and the command asks on first use. Otherwise a shell
+     * command template (`{prompt}` is replaced by the quoted line), or one of
+     * the two reserved routes `chat` (VS Code's Chat view) and `clipboard`.
+     * Application-scoped, never workspace-readable: a workspace that could
+     * set a shell template could run a command on the user's machine.
+     */
+    agentCommand: string;
+    /**
      * Master network switch (birta.network.enabled) — offline by default
      * (MAR-179). Birta's positioning is "nothing leaves your machine", so this
      * is the single knob that is OFF by default and gates EVERY feature that
@@ -346,6 +355,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     floatingToolbarItems: "floatingToolbar.items",
     smartLinks: "smartLinks",
     logseq: "logseq",
+    agentCommand: "agent.command",
     networkEnabled: "network.enabled",
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
     linkCardsEnabled: "linkCards.enabled",
@@ -443,6 +453,8 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Logseq handling ships OFF: a user who does not keep a Logseq graph pays
     // nothing for it, not even the ancestor stat walk that `auto` runs on open.
     logseq: "off",
+    // Unset until the user picks a route on first use.
+    agentCommand: "",
     // Master network switch ships OFF (MAR-179): Birta is offline by default,
     // so NO network feature runs until the user turns this on. This is the one
     // setting whose default is off; the per-feature keys below stay ON so
