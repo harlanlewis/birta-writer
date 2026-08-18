@@ -117,6 +117,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     insertMath: NONE,
     insertFootnote: NONE,
     openLink: NONE,
+    askAgent: NONE,
     editBlockSource: NONE,
 
     // ── Find ────────────────────────────────────────────────────────────────
@@ -213,6 +214,9 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     foldLevel5: NONE,
     foldLevel6: NONE,
     foldLevel7: NONE,
+
+    // ── Export (reads the rendered document, places nothing) ────────────────
+    exportHtml: NONE,
 };
 
 /**

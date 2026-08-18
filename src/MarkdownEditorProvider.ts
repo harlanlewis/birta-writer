@@ -15,6 +15,7 @@ import {
     readBirtaSetting,
     readFoldingConfig,
     addUserWord,
+    addStyleException,
     setContentWidth,
     setFontPreset,
     setFontSize,
@@ -45,6 +46,7 @@ import type { EditorCommandId } from "../shared/editorCommands";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { acknowledgeSeen, unreadNow } from "./whatsNew";
+import { saveHtmlExport } from "./htmlExport";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -1481,6 +1483,9 @@ export class MarkdownEditorProvider
                     case "spellAddWord":
                         addUserWord(message.word);
                         break;
+                    case "styleAddException":
+                        addStyleException(message.phrase);
+                        break;
                     case "lintBlocks":
                         lintBlocks(message.blocks)
                             .then((results) => {
@@ -1499,6 +1504,13 @@ export class MarkdownEditorProvider
                         if (message.data) {
                             void vscode.env.clipboard.writeText(message.data);
                         }
+                        break;
+                    case "exportHtml":
+                        // Export as HTML (MAR-32): the webview rendered the
+                        // document; the host asks where, writes, and offers
+                        // to open it in the browser. Never edits the document.
+                        void saveHtmlExport(document, message.html, message.suggestedName)
+                            .catch((err) => reportError("exportHtml", err));
                         break;
                     case "flushResult":
                         // Reply to an onWillSaveTextDocument flush: hand the parked
@@ -1558,6 +1570,12 @@ export class MarkdownEditorProvider
                         // The selection palette's @ button: same command as the
                         // context menu, so payload and feedback stay identical.
                         vscode.commands.executeCommand("birta.copyAgentReference");
+                        break;
+                    case "askAgent":
+                        // `/ai <request>` or the palette's Ask Agent: the
+                        // extension composes the caret reference in, saves,
+                        // and routes (src/agentBridge/askAgent.ts).
+                        vscode.commands.executeCommand("birta.askAgent", message.prompt);
                         break;
                 }
             },

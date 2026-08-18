@@ -80,7 +80,7 @@ describe("filterSlashItems", () => {
         const subChecks = [
             "fillers", "redundancies", "cliches", "wordiness",
             "aiVocabulary", "aiArtifacts", "negativeParallelism", "ruleOfThree",
-            "passive", "longSentences", "emDash", "nonAsciiPunct", "absolutePerf",
+            "passive", "longSentences", "emDash", "nonAsciiPunct", "absolutePerf", "rhythm",
         ];
         for (const key of subChecks) { expect(ids).not.toContain(key); }
         for (const master of ["spellCheck", "grammarCheck", "styleCheck"]) {

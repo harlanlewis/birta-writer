@@ -44,6 +44,7 @@ const CONFIG: ProofreadConfig = {
     emDash: false,
     nonAsciiPunct: false,
     absolutePerf: false,
+    rhythm: false,
     styleExceptions: [],
     spellCheck: false,
     grammarCheck: false,

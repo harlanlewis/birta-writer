@@ -34,6 +34,14 @@ export interface SlashMenuHandle {
     el: HTMLDivElement;
     /** Re-filters the rows; hides the menu when nothing matches. */
     setQuery(query: string): void;
+    /**
+     * Argument mode (a `takesArgument` row committed with Space): the menu
+     * stops filtering and shows only `item`, highlighted, with the send hint,
+     * until `null` returns it to the filtered list. Text the user types is
+     * document text the controller reads back at pick time; the menu never
+     * sees it.
+     */
+    setArgument(item: SlashMenuItem | null): void;
     /** Moves the keyboard highlight down (+1) or up (-1), wrapping. */
     moveActive(delta: 1 | -1): void;
     /** Applies onPick to the highlighted row; false when none/hidden. */
@@ -42,6 +50,8 @@ export interface SlashMenuHandle {
     isVisible(): boolean;
     /** DOM id of the highlighted row (aria-activedescendant), or null. */
     activeRowId(): string | null;
+    /** The highlighted registry item, or null when none/hidden. */
+    activeItem(): SlashMenuItem | null;
     /** Places the menu at the anchor, flipping above when it overflows. */
     position(anchor: SlashMenuAnchor): void;
     /** Removes the menu DOM. */
@@ -113,8 +123,15 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
     // Sticky (until the menu closes) reveal of the search-only rows in the
     // unfiltered view — the "Show all commands" footer toggle.
     let showAll = false;
+    // The committed argument-taking row, while the user types its argument.
+    let argumentItem: SlashMenuItem | null = null;
 
     function updateFooter(grouped: boolean): void {
+        if (argumentItem) {
+            footerHint.textContent = t("Type your request, then press Enter to send");
+            footerHint.classList.remove("slash-menu-footer-action");
+            return;
+        }
         if (grouped) {
             footerHint.textContent = showAll ? t("Show fewer") : t("Show all commands");
             footerHint.classList.add("slash-menu-footer-action");
@@ -151,7 +168,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         );
     }
 
-    function renderRow(item: SlashMenuItem, index: number): HTMLElement {
+    function renderRow(item: SlashMenuItem, index: number, hintText?: string): HTMLElement {
         const row = document.createElement("div");
         row.className = "ui-menu-row slash-menu-item";
         row.id = slashRowDomId(item.id);
@@ -173,10 +190,11 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         label.textContent = opts.labelFor?.(item) ?? item.label;
         row.appendChild(label);
 
-        if (item.hint) {
+        const hintValue = hintText ?? item.hint;
+        if (hintValue) {
             const hint = document.createElement("span");
             hint.className = "slash-menu-item-hint";
-            hint.textContent = item.hint;
+            hint.textContent = hintValue;
             row.appendChild(hint);
         }
 
@@ -187,6 +205,19 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
 
     function render(query: string): void {
         lastQuery = query;
+        if (argumentItem) {
+            // One row, always visible, always highlighted: the query has
+            // become the argument and no longer filters anything.
+            visible = [argumentItem];
+            list.textContent = "";
+            const row = renderRow(argumentItem, 0, t("Enter to send"));
+            rows = [row];
+            list.appendChild(row);
+            root.style.display = "";
+            setActive(0);
+            updateFooter(false);
+            return;
+        }
         // Group headers only in the unfiltered view; a filtered view is a flat
         // ranked list (Notion behavior — ranking beats grouping). "Show all"
         // widens the unfiltered view to include the search-only rows.
@@ -284,6 +315,16 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
                 positionMenu(lastAnchor);
             }
         },
+        setArgument(item: SlashMenuItem | null): void {
+            if (argumentItem === item) {
+                return;
+            }
+            argumentItem = item;
+            render(lastQuery);
+            if (lastAnchor) {
+                positionMenu(lastAnchor);
+            }
+        },
         moveActive(delta: 1 | -1): void {
             if (rows.length === 0) {
                 return;
@@ -306,6 +347,9 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         },
         activeRowId(): string | null {
             return activeIndex >= 0 ? slashRowDomId(visible[activeIndex].id) : null;
+        },
+        activeItem(): SlashMenuItem | null {
+            return activeIndex >= 0 && activeIndex < visible.length ? visible[activeIndex] : null;
         },
         position(anchor: SlashMenuAnchor): void {
             positionMenu(anchor);

@@ -42,15 +42,16 @@ A move in the text is literal: a heading travels alone and the paragraphs under 
 - Frontmatter. YAML frontmatter renders as an editable key/value table at the top of the document, collapsible via `birta.frontmatterExpanded`.
 - Occurrence editing. `Cmd+D` cycles through occurrences of the selection and `Cmd+Shift+L` selects them all, covering the common "change every X" cases without leaving WYSIWYG.
 - Inline calculator. Arithmetic with `=` at either end (`12 * 4 =` or `=5+7`) gets its answer offered as a suggestion, which Tab accepts. Functions and constants count as arithmetic (`sqrt(9) =`, `3+log10(100)/π^2 =`), because each means one thing in any document; a variable does not, and belongs to `=>`. `birta.calc.autoInsert` opts into insert-on-`=` instead, and it is also a menu row and a palette command. The parser is deterministic, the result is plain text, and it never produces anything with letters in it.
+- Ask your agent from the caret. `/ai`, Space, then a request in plain words (`/ai add a mermaid diagram of the flow above`), then Enter. Birta composes one line, your request plus a `path.md#L12` reference to the caret, saves the document so that reference names what is on disk, and hands the line to the agent you already run: a terminal command such as `claude {prompt}`, VS Code's Chat view, or the clipboard, per `birta.agent.command` (asked once, on first use). Nothing is sent to a model by Birta itself, and it is one request each time, not a conversation; whatever the agent writes back arrives as an ordinary external change. Ask Agent in the palette does the same and asks for the request in an input box.
 - Working checklists. With Move checked tasks to bottom on (toolbar Lists menu, task-list block menu, palette, or `birta.checklist.sinkChecked`), checked items sink below the unchecked ones. Uncheck All Tasks resets a whole checklist in one undo step.
 
 ## Offline proofreading
 
 Spelling, grammar, and style checking runs entirely on your machine, on the [Harper](https://writewithharper.com) engine via WASM. Nothing is sent anywhere.
 
-Style checks cover fillers, redundancies, clichés, wordiness, passive voice, long sentences, and AI-writing tells (vocabulary, artifacts, em-dash habits, non-ASCII punctuation). Each rule toggles individually under `birta.styleCheck.*`.
+Style checks cover fillers, redundancies, clichés, wordiness, passive voice, long sentences, and AI-writing tells (vocabulary, artifacts, em-dash habits, non-ASCII punctuation, and uniform rhythm: a paragraph whose sentences all run to about the same length, the structural habit that most makes prose read as machine-written). Each rule toggles individually under `birta.styleCheck.*`. The tells are a lens on your own habits, never a verdict on who wrote the text: each finding names the habit and why it reads as generic, and you keep it or change it.
 
-Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Add to dictionary" writes to your personal settings, never the workspace. Toggle everything with `Cmd+Alt+Shift+D` or the toolbar checks menu.
+Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Add to dictionary" writes to your personal settings, never the workspace, and "Keep this phrase" on a flagged phrase does the same for `birta.styleCheck.exceptions`, your protect-list of phrases that are yours and no check may flag. Toggle everything with `Cmd+Alt+Shift+D` or the toolbar checks menu.
 
 ## Folding and navigation
 
@@ -98,6 +99,10 @@ The editor is backed by a native text document, so saving is VS Code's own `Cmd+
 
 Switching to Raw Markdown (`Cmd+Shift+M`) and back is lossless. External file changes from git or another editor sync in without stealing your cursor. If the editor ever hits an internal error, VS Code shows a notification instead of failing silently, and your document and its save path are unaffected.
 
+## Export
+
+Export as HTML (palette, or the right-click menu's Export group) writes the rendered document as one self-contained HTML file: diagrams as SVG, math, code highlighting, tables, callouts, task state, footnotes and images, styled with the theme the editor is showing and print-ready, with editor chrome and proofreading marks left out. It offers to open the file in your browser, where print-to-PDF is one step. Images stay linked relative to the document, so save the export beside it.
+
 ***
 
 ## Keyboard shortcuts
@@ -139,6 +144,7 @@ The settings you're most likely to touch. The full list is searchable in VS Code
 | `birta.frontmatterExpanded` | `true` | Frontmatter table starts expanded or collapsed |
 | `birta.frontmatterAddButton` | `false` | Show the Add metadata button on documents without frontmatter (Edit Frontmatter starts the same flow either way) |
 | `birta.smartLinks` | `true` | Site-generator-style local link resolution |
+| `birta.agent.command` | `""` | Where `/ai` and Ask Agent hand your request: a shell command with `{prompt}` (`claude {prompt}`), `chat` for the VS Code Chat view, or `clipboard`. Empty asks on first use. Never read from a workspace |
 | `birta.copyFormat` | `"markdown"` | What Cmd+C puts on the clipboard as plain text: the selection's Markdown source, or the rendered text (`richText`). The rich HTML flavor is always included |
 | `birta.pasteFormat` | `"markdown"` | How Cmd+V reads plain text: parsed as Markdown source, or inserted literally (`plainText`). Rich pastes and code blocks are unaffected, and Paste as Plain Text (⇧⌘V) is always literal |
 | `birta.network.enabled` | `false` | Master network switch, offline by default; gates paste-unfurl, URL embeds, and link cards. Off means no outbound request at all |

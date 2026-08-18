@@ -18,6 +18,7 @@ import {
     visibleSlashItems,
 } from "../plugins/slashMenu";
 import { runEditorCommand } from "../editorCommands";
+import { pendingRangePlugin } from "../plugins/pendingRange";
 import { SLASH_MENU_DOM_ID, slashRowDomId } from "../components/slashMenu";
 import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
 
@@ -32,6 +33,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(pureCommonmark)
         .use(gfmFidelity)
+        .use(pendingRangePlugin)
         .use(slashMenuPlugin)
         .create();
 }
@@ -450,6 +452,222 @@ describe("slash command menu plugin", () => {
         );
 
         expect(menuEl()).toBeNull();
+    });
+});
+
+/**
+ * Argument mode (MAR-371): the registry's one `takesArgument` row (`/ai`).
+ * Space commits it and the menu stops filtering; what follows is captured as
+ * `{ prompt }` and delivered on Enter. Every other row keeps Space a filter
+ * character. `runCommand` is a plain spy here: `askAgent` only posts a
+ * message, so there is nothing to observe in the document.
+ */
+describe("argument mode (takesArgument rows)", () => {
+    let editor: Editor;
+    let v: EditorView;
+    let runCommand: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        editor = await makeEditor("");
+        v = view(editor);
+        placeCursorAtEndOfBlock(v, 0);
+        runCommand = vi.fn();
+        setSlashMenuHost({ runCommand });
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    it("the registry should carry exactly one argument-taking row, and it should be /ai", () => {
+        const rows = SLASH_MENU_ITEMS.filter((i) => i.takesArgument);
+        expect(rows.map((r) => r.id)).toEqual(["ai"]);
+        expect(rows[0]!.commandId).toBe("askAgent");
+    });
+
+    it("typing /ai should rank Ask Agent first", () => {
+        typeText(v, "/ai");
+
+        expect(menuVisible()).toBe(true);
+        expect(rowLabels()[0]).toBe("Ask Agent");
+    });
+
+    it("Space on the highlighted Ask Agent row should commit to /ai and keep the menu open on that row alone", () => {
+        typeText(v, "/agent");
+        expect(rowLabels()[0]).toBe("Ask Agent");
+
+        const space = press(v, " ");
+
+        expect(space.defaultPrevented).toBe(true);
+        expect(v.state.doc.textContent).toBe("/ai ");
+        expect(menuVisible()).toBe(true);
+        expect(rowLabels()).toEqual(["Ask Agent"]);
+        expect(document.querySelector(".slash-menu-footer-hint")?.textContent).toMatch(/Enter to send/);
+    });
+
+    it("backspacing over the committed space should return the menu to filtering", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        expect(document.querySelector(".slash-menu-footer-hint")?.textContent).toMatch(/Enter to send/);
+
+        const caret = v.state.selection.from;
+        v.dispatch(v.state.tr.delete(caret - 1, caret));
+
+        expect(v.state.doc.textContent).toBe("/ai");
+        expect(menuVisible()).toBe(true);
+        expect(document.querySelector(".slash-menu-footer-hint")?.textContent).not.toMatch(/Enter to send/);
+        // And the row is committable again.
+        press(v, " ");
+        expect(v.state.doc.textContent).toBe("/ai ");
+    });
+
+    it("Space on a query that merely ranks Ask Agent first should stay a filter character", () => {
+        typeText(v, "/a");
+        expect(rowLabels()[0]).toBe("Ask Agent");
+
+        expect(pressReachesDocument(v, " ")).toBe(true);
+        expect(v.state.doc.textContent).toBe("/a");
+        expect(runCommand).not.toHaveBeenCalled();
+    });
+
+    it("Space on a row without takesArgument should stay a filter character", () => {
+        typeText(v, "/he");
+
+        expect(pressReachesDocument(v, " ")).toBe(true);
+        expect(v.state.doc.textContent).toBe("/he");
+        expect(runCommand).not.toHaveBeenCalled();
+    });
+
+    it("text typed after the commit, spaces included, should be delivered as the prompt on Enter and the construct removed", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "add a mermaid diagram of the flow");
+
+        expect(menuVisible()).toBe(true);
+        const enter = press(v, "Enter");
+
+        expect(enter.defaultPrevented).toBe(true);
+        expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "add a mermaid diagram of the flow" });
+        expect(v.state.doc.textContent).toBe("");
+        expect(menuEl()).toBeNull();
+    });
+
+    it("the whole /ai construct should read as the query pill while the argument is typed", async () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "tighten");
+
+        // The pill decoration is applied a microtask after the update.
+        await Promise.resolve();
+
+        const pill = document.querySelector(".ProseMirror .slash-query");
+        expect(pill?.textContent).toBe("/ai tighten");
+    });
+
+    it("Enter straight on the row (no Space) should run the command with no prompt", () => {
+        typeText(v, "/ai");
+
+        press(v, "Enter");
+
+        expect(runCommand).toHaveBeenCalledWith("askAgent", undefined);
+        expect(v.state.doc.textContent).toBe("");
+    });
+
+    it("Space then Enter with nothing typed should run the command with no prompt", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+
+        press(v, "Enter");
+
+        expect(runCommand).toHaveBeenCalledWith("askAgent", undefined);
+        expect(v.state.doc.textContent).toBe("");
+    });
+
+    it("Escape in argument mode should keep the typed text and close", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "make");
+
+        press(v, "Escape");
+
+        expect(menuEl()).toBeNull();
+        expect(v.state.doc.textContent).toBe("/ai make");
+        expect(runCommand).not.toHaveBeenCalled();
+    });
+
+    it("moving the caret out of the construct should end argument mode and keep the text", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "make");
+        expect(menuVisible()).toBe(true);
+
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1)));
+
+        expect(menuEl()).toBeNull();
+        expect(v.state.doc.textContent).toBe("/ai make");
+        // Back at the end, typing continues as prose: the space after "ai"
+        // means the filter regex no longer sees a construct here.
+        placeCursorAtEndOfBlock(v, 0);
+        typeText(v, "x");
+        expect(menuEl()).toBeNull();
+    });
+
+    it("arrow keys in argument mode should keep their caret meaning", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "make");
+
+        expect(pressReachesDocument(v, "ArrowUp")).toBe(true);
+        expect(menuVisible()).toBe(true);
+    });
+
+    it("an argument pick on an empty paragraph below other content should remove that paragraph and park the caret at the end of the block before it", async () => {
+        await editor.destroy();
+        editor = await makeEditor("Some text.\n\nMore.");
+        v = view(editor);
+        setSlashMenuHost({ runCommand });
+        // Enter after "Some text." makes the fresh empty paragraph the request is typed in.
+        placeCursorAtEndOfBlock(v, 0);
+        v.dispatch(v.state.tr.split(v.state.selection.from));
+        expect(v.state.doc.childCount).toBe(3);
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "add a diagram");
+
+        press(v, "Enter");
+
+        expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "add a diagram" });
+        expect(v.state.doc.childCount).toBe(2);
+        expect(v.state.doc.child(0).textContent).toBe("Some text.");
+        // The caret sits at the end of "Some text.", so a caret reference names that line.
+        expect(v.state.selection.$from.parent.textContent).toBe("Some text.");
+        expect(v.state.selection.$from.parentOffset).toBe("Some text.".length);
+    });
+
+    it("an argument pick in the document's first paragraph should keep that paragraph", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "start here");
+
+        press(v, "Enter");
+
+        expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "start here" });
+        expect(v.state.doc.childCount).toBe(1);
+        expect(v.state.doc.child(0).type.name).toBe("paragraph");
+    });
+
+    it("clicking the argument row should deliver the typed prompt like Enter", () => {
+        typeText(v, "/ai");
+        press(v, " ");
+        typeText(v, "rewrite");
+
+        const row = document.getElementById(slashRowDomId("ai"))!;
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        expect(runCommand).toHaveBeenCalledWith("askAgent", { prompt: "rewrite" });
+        expect(v.state.doc.textContent).toBe("");
     });
 });
 

@@ -351,8 +351,13 @@ export const workspace = {
     getConfiguration: vi.fn(() => ({
         get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
         inspect: vi.fn(() => undefined),
+        update: vi.fn(async (_key: string, _value: unknown, _target?: unknown) => undefined),
     })),
     getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: URI }),
+    /** Workspace-relative path: strips the leading slash of an absolute fsPath (no folder model here). */
+    asRelativePath: vi.fn((pathOrUri: URI | string, _includeWorkspaceFolder?: boolean) =>
+        (typeof pathOrUri === "string" ? pathOrUri : pathOrUri.fsPath).replace(/^\//, ""),
+    ),
     workspaceFolders: undefined as undefined | Array<{ uri: URI }>,
     /** Resolves to the registered fake document; rejects for unknown URIs (like the real API on a missing file). */
     openTextDocument: vi.fn(async (uri: URI) => {
@@ -539,7 +544,14 @@ export const window = {
     showQuickPick: vi.fn(),
     showInputBox: vi.fn(),
     showOpenDialog: vi.fn(),
+    showSaveDialog: vi.fn(),
     setStatusBarMessage: vi.fn(),
+    /** A fake terminal whose `sendText` calls a test can read back. */
+    createTerminal: vi.fn((_options?: unknown) => ({
+        show: vi.fn(),
+        sendText: vi.fn(),
+        dispose: vi.fn(),
+    })),
     createQuickPick: vi.fn(makeFakeQuickPick),
     createStatusBarItem: vi.fn((_id?: unknown, _alignment?: unknown, _priority?: unknown) =>
         makeFakeStatusBarItem(),

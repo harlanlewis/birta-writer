@@ -5,7 +5,7 @@
  * local filtering so "Add to dictionary" / "Ignore" take effect before the
  * settings round trip completes.
  */
-import { notifySpellAddWord } from "../messaging";
+import { notifyStyleAddException, notifySpellAddWord } from "../messaging";
 
 /** Words in the user's dictionary (from settings, plus "Add to dictionary"). */
 const userWords = new Set<string>();
@@ -24,6 +24,17 @@ export function setUserWords(words: readonly string[]): void {
 export function learnWord(word: string): void {
     userWords.add(word.toLowerCase());
     notifySpellAddWord(word);
+}
+
+/**
+ * "Keep this phrase": the flagged text is the writer's own and no check may
+ * flag it again. Suppressed for this session at once (the persisted list
+ * arrives a config round-trip later and recompiles the matcher for good).
+ * The spelling twin is `learnWord`; this is the style checks' protect-list.
+ */
+export function keepStylePhrase(category: string, phrase: string): void {
+    styleIgnores.add(ignoreKey(category, phrase));
+    notifyStyleAddException(phrase);
 }
 
 function ignoreKey(kind: string, text: string): string {

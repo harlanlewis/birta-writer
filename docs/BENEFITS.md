@@ -15,7 +15,7 @@ Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual
 - It sits within [VS Code](https://code.visualstudio.com) and its _vast_ (but optional!) catalog of themes and extensions. You're a keystroke away from editing files in the raw editor, or comparing changes in a diff view. Birta Writer is simple by design, but every aspect is customizable through VS Code's settings scopes at app, user, or project level.
 
 - It helps me write better:
-    - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, punctuation, and vocabulary.
+    - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, sentence rhythm, punctuation, and vocabulary; a lens on your own habits, never a verdict on who wrote the text, with a protect-list for the phrases that are yours.
     - Customizable draft-management tools for `[TK]` notes, `TODOs`, and inline comments. Each marker is highlighted where it sits, so unresolved bits are visible while writing, and the review sidebar lists them all for jumping between. The in-text highlighting is a switch in the Checks menu and on the sidebar's Notes tab, independent of the proofreading switches, because your own notes are content, not findings.
 
 - It's better than me at math:
@@ -55,7 +55,7 @@ It's not a wiki, knowledge base, or [PKM](https://en.wikipedia.org/wiki/Personal
 
 - Open an existing Obsidian vault in VS Code and use the file explorer and command palette to view your full repository of knowledge.
 - Markdown files open automatically in Birta Writer. Crosslink them. Click to navigate across pages. View files side by side in a window.
-- Open GitHub Copilot, Claude Code, or another AI assistant in a VS Code sidebar to chat with and modify your documents live, and let it see what you're looking at. VS Code hides a custom editor from the active-editor API agents read, so Birta bridges the gap. Copy a precise `file.md#L12-L20` reference (or the reference plus the selected lines, quoted as real markdown) to paste into any agent, or let a tool-using agent pull your current file, caret, and selection directly: a Language Model Tool for Copilot agent mode, and a public API for any extension. No more hand-directing the agent to the lines you mean.
+- Open GitHub Copilot, Claude Code, or another AI assistant in a VS Code sidebar to chat with and modify your documents live, and let it see what you're looking at. VS Code hides a custom editor from the active-editor API agents read, so Birta bridges the gap. Copy a precise `file.md#L12-L20` reference (or the reference plus the selected lines, quoted as real markdown) to paste into any agent, ask from the caret with `/ai` followed by a request (Birta composes the request and the reference into one line, saves, and hands it to the terminal command, Chat view or clipboard you chose, one request at a time, no model of its own), or let a tool-using agent pull your current file, caret, and selection directly: a Language Model Tool for Copilot agent mode, and a public API for any extension. No more hand-directing the agent to the lines you mean.
 
 Use Birta Writer as a knowledge base complement when you want a more enjoyable and helpful writing tool, or lean on VS Code and fully replace your other systems.
 

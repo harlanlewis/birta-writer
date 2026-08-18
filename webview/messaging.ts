@@ -73,6 +73,15 @@ export function notifyCopyAgentReference(): void {
     vscode.postMessage({ type: "copyAgentReference" });
 }
 
+/**
+ * Ask Agent: hand the caret's prompt to the extension, which composes the
+ * line reference in and routes it (src/agentBridge/askAgent.ts). `prompt` is
+ * absent from the palette route, where the extension asks for it.
+ */
+export function notifyAskAgent(prompt?: string): void {
+    vscode.postMessage(prompt === undefined ? { type: "askAgent" } : { type: "askAgent", prompt });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }
@@ -314,6 +323,11 @@ export function notifySpellAddWord(word: string): void {
     vscode.postMessage({ type: "spellAddWord", word });
 }
 
+/** "Keep this phrase": persist a style-check protect-list entry (birta.styleCheck.exceptions). */
+export function notifyStyleAddException(phrase: string): void {
+    vscode.postMessage({ type: "styleAddException", phrase });
+}
+
 export function notifySetFontPreset(preset: import("../shared/messages").FontPreset): void {
     vscode.postMessage({ type: "setFontPreset", preset });
 }
@@ -352,6 +366,15 @@ export function notifyLintBlocks(id: number, blocks: import("../shared/messages"
 /** Asks the extension to write serialized selection text to the system clipboard. */
 export function notifyClipboardWrite(format: "html" | "markdown", data: string): void {
     vscode.postMessage({ type: "clipboardWrite", format, data });
+}
+
+/**
+ * Export as HTML (MAR-32): hands the extension a finished, self-contained HTML
+ * document; the extension owns the save dialog, the write, and the
+ * open-in-browser offer. `suggestedName` is the default file name.
+ */
+export function notifyExportHtml(html: string, suggestedName: string): void {
+    vscode.postMessage({ type: "exportHtml", html, suggestedName });
 }
 
 /** Disk-drift badge click: asks the extension for the reload/compare picker. */

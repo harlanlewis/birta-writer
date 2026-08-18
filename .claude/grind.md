@@ -36,7 +36,7 @@ A war story is not a finding. The finding is the sentence that changes what the 
 - Hot files: `webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins.
 - Orchestrator-only files: `CHANGELOG.md`, `docs/BENEFITS.md`, written once over the reconciled diff, plus BENEFITS only if a capability's story changed.
 - Exclusive resources: browser perf captures (`perf:*`). The machine is idle exactly twice, at the start and at reconciliation; `perf:bundle` is browser-free and fine, node-level micro-measurement survives.
-- With peer sessions live, the harness lock refuses more often than it is free, and `merge-lane.sh --gate` runs its gate once. Wrap the gate in a loop that re-runs on the lock's refusal message (not on exit 2, which is ambiguous) and hand that wrapper to `--gate`; a merge that reports `gate_failed` on a lock refusal or a timed-out test is a contention red, so re-run the failing file alone before blaming the lane.
+- With peer sessions live, the harness lock refuses more often than it is free, and `merge-lane.sh --gate` runs its gate once. Pass `--gate` only while `$TMPDIR/birta-writer-harness.lock` is absent; otherwise merge bare and gate in a separate call that loops on the lock's refusal message (not on exit 2, which is ambiguous): a tool call dies at ten minutes, and a merge still waiting on the lock then lands without its verdict. A `gate_failed` on a lock refusal or a timed-out test is a contention red; re-run the failing file alone before blaming the lane.
 
 ## Priority doctrine
 

@@ -141,4 +141,45 @@ export async function run({ page, check, baseUrl }) {
         check(`picking ${firstRow} inside a callout lands ${name} INSIDE it`,
             doc !== null && pattern.test(doc), `doc=${JSON.stringify(doc)}`);
     }
+
+    // ── 8. Argument mode: /ai + Space + request + Enter (MAR-371) ──
+    // Real key events, because the whole gesture turns on which listener
+    // wins a Space keydown: the plugin's capture-phase handler must claim it
+    // (rewriting the query to "/ai ") before the browser inserts a space that
+    // would end the slash construct. jsdom cannot show that; only a real
+    // keydown followed by the browser's own default action can.
+    await open("ai");
+    let first = await page.$eval(`${SLASH} .slash-menu-item-label`, (el) => el.textContent);
+    check("/ai offers Ask Agent first", first === "Ask Agent", `first=${first}`);
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(150);
+    let text = await page.$eval(".milkdown .ProseMirror p", (el) => el.textContent);
+    check("Space commits the row: the paragraph now starts with '/ai '", text.startsWith("/ai "), `text=${JSON.stringify(text)}`);
+    let hint = await page.locator(`${SLASH} .slash-menu-footer-hint`).textContent();
+    check("the menu stays open in argument mode", /Enter to send/.test(hint), `hint=${hint}`);
+    await page.keyboard.type("add a mermaid diagram of the flow", { delay: 30 });
+    await page.waitForTimeout(150);
+    let argPill = await page.evaluate(
+        () => document.querySelector(".ProseMirror .slash-query")?.textContent ?? null);
+    check("the pill covers the whole /ai request while typing",
+        argPill === "/ai add a mermaid diagram of the flow", `pill=${JSON.stringify(argPill)}`);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const asked = await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgent"));
+    check("Enter posts one askAgent message carrying the typed request",
+        asked.length === 1 && asked[0].prompt === "add a mermaid diagram of the flow", JSON.stringify(asked));
+    text = await page.$eval(".milkdown .ProseMirror p", (el) => el.textContent);
+    check("the /ai construct is removed from the document", !text.includes("/ai"), `text=${JSON.stringify(text)}`);
+    check("the menu is closed after sending",
+        await page.evaluate(() => document.querySelector("#md-slash-menu") === null));
+
+    // Space on an ordinary row is still a filter character: the browser
+    // inserts it and the construct ends.
+    await open("he");
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(150);
+    text = await page.$eval(".milkdown .ProseMirror p", (el) => el.textContent);
+    check("Space on a non-argument row is inserted as text", text.startsWith("/he "), `text=${JSON.stringify(text)}`);
+    check("…and no askAgent was posted by it",
+        (await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgent").length)) === 0);
 }

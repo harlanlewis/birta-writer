@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- e2e harness: Export as HTML (MAR-32). A document with every rendered
+     construct the export must carry out of the live DOM: highlighted code, a
+     Mermaid diagram, KaTeX (inline and display), a table, a callout, a task
+     list, a footnote, and an image mapped through a webview resource URI. The
+     palette below is the ONLY source of --vscode-* values, so the exported
+     file must have baked them in or it paints unthemed. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editor-font-size: 14px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-textBlockQuote-background: #2b2b2b; --vscode-textBlockQuote-border: #616161;
+    --vscode-textPreformat-foreground: #d7ba7d;
+    --vscode-editorLineNumber-foreground: #858585;
+    --vscode-panel-border: #444444;
+    --vscode-textLink-foreground: #3794ff;
+    --vscode-checkbox-background: #313131; --vscode-checkbox-border: #3c3c3c;
+    --vscode-charts-blue: #3794ff; --vscode-charts-green: #89d185; --vscode-charts-yellow: #cca700;
+    --vscode-charts-purple: #b180d7; --vscode-charts-red: #f14c4c; --vscode-charts-orange: #d18616;
+    --vscode-terminal-ansiBlue: #2472c8; --vscode-terminal-ansiCyan: #11a8cd; --vscode-terminal-ansiYellow: #e5e510;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  const ORIGIN = location.origin;
+  window.__i18n = {
+    translations: {}, isMac: true,
+    mermaidTheme: "auto",
+    // Style checks on, Harper off (no extension host here): the fixture carries a filler and a [TK] marker
+    // so the annotation checks below have a live control.
+    proofread: { grammarCheck: false, spellCheck: false },
+    toolbar: { placements: {}, order: [] },
+    // The document "lives" at the served root, so its images map to that origin.
+    resourceBaseUri: ORIGIN + "/",
+    workspaceBaseUri: ORIGIN + "/",
+    documentUri: "file:///Users/x/docs/Export%20Sample.md",
+  };
+  window.__posted = [];
+  const DOC = [
+    "# Export sample", "",
+    "Some **bold** and *em* text with `code` and a [link](https://example.com) and $E=mc^2$ inline.", "",
+    "This paragraph is really quite short and carries a [TK] marker for the export to leave alone.", "",
+    "> [!NOTE]", "> A callout", "",
+    "- [ ] task", "- [x] done", "",
+    "| a | b |", "|---|---|", "| 1 | 2 |", "",
+    "```ts", "const x: number = 1;", "```", "",
+    "```mermaid", "flowchart LR", "  A --> B", "```", "",
+    "$$", "\\int_0^1 x dx", "$$", "",
+    "![a box](img/box.svg)", "",
+    "Footnote[^1].", "", "[^1]: The note.", "",
+    "---", "", "1. one", "2. two", "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: DOC + "\n",
+          imageUriMap: { [ORIGIN + "/img/box.svg"]: "img/box.svg" },
+          syncVersion: 1,
+        }, "*");
+      }
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<body class="vscode-dark">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

@@ -161,7 +161,8 @@ export type ProofreadOptionKey =
     | "ruleOfThree"
     | "emDash"
     | "nonAsciiPunct"
-    | "absolutePerf";
+    | "absolutePerf"
+    | "rhythm";
 
 /** Proofread (style check + spell check) configuration snapshot */
 export type ProofreadConfig = {
@@ -200,6 +201,8 @@ export type ProofreadConfig = {
     nonAsciiPunct: boolean;
     /** Absolute claim about a performance cost ("no longer stalls") with no before and after */
     absolutePerf: boolean;
+    /** A paragraph whose sentences all run to about the same length (machine cadence) */
+    rhythm: boolean;
     /** Phrases the style check must never flag (user's escape valve) */
     styleExceptions: string[];
     /** Spelling switch (Harper "Spelling" findings; bundled English dictionary) */
@@ -335,6 +338,11 @@ export type ToExtensionMessage =
     | { type: "reviewGroupByType"; grouped: boolean }
     | { type: "setProofreadOption"; key: ProofreadOptionKey; value: boolean }
     | { type: "spellAddWord"; word: string }
+    // "Keep this phrase" on a style hit (MAR-236): the flagged text joins the
+    // user's protect-list, birta.styleCheck.exceptions, in GLOBAL settings, so
+    // no check ever flags it again. The persisted list round-trips back through
+    // the proofread config message and recompiles the matcher.
+    | { type: "styleAddException"; phrase: string }
     // Font picker choice from the toolbar; the extension persists it to the
     // `fontPreset` setting, which round-trips back as a `setFontFamily` message.
     | { type: "setFontPreset"; preset: FontPreset }
@@ -371,6 +379,11 @@ export type ToExtensionMessage =
     // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
     // the right-click menu); the extension writes `data` to the system clipboard.
     | { type: "clipboardWrite"; format: "html" | "markdown"; data: string }
+    // Export as HTML: the webview rendered the live document into one
+    // self-contained HTML string; the extension asks where to save it, writes
+    // it, and offers to open it in the browser (MAR-32). `suggestedName` is
+    // the default file name, derived from the document's own name.
+    | { type: "exportHtml"; html: string; suggestedName: string }
     // The toolbar's disk-drift badge was clicked; the extension shows the
     // native picker (reload from disk / compare with disk). The extension never
     // edits the document itself — the user chooses.
@@ -411,6 +424,11 @@ export type ToExtensionMessage =
     // command the context menu offers, so the one-click path and the menu path
     // share behavior (clipboard payload, status-bar feedback) exactly.
     | { type: "copyAgentReference" }
+    // Ask Agent (MAR-371, MAR-272): the prompt typed after `/ai`, or absent
+    // when invoked from the palette (the extension then asks for it). The
+    // extension composes the caret's line reference in and routes the line
+    // per `birta.agent.command`; the webview never invokes anything itself.
+    | { type: "askAgent"; prompt?: string }
     // The document cannot open in the WYSIWYG editor because its format's
     // parse is fatal on this content (MDX: a stray `{`, an unclosed tag —
     // unlike markdown, where every byte sequence is valid). The extension

@@ -314,6 +314,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.askAgent",
+                "title": "%command.editor.askAgent.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.insertImage",
                 "title": "%command.editor.insertImage.title%",
                 "category": "Birta Writer"
@@ -702,6 +707,11 @@
                 "command": "birta.editor.uncheckAllTasks",
                 "title": "%command.editor.uncheckAllTasks.title%",
                 "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.exportHtml",
+                "title": "%command.editor.exportHtml.title%",
+                "category": "Birta Writer"
             }
         ],
         "keybindings": [
@@ -1038,6 +1048,10 @@
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
+                    "command": "birta.editor.askAgent",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
                     "command": "birta.editor.editBlockSource",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
@@ -1352,6 +1366,10 @@
                 {
                     "command": "birta.editor.uncheckAllTasks",
                     "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "activeCustomEditorId == 'birta.editor'"
                 }
             ],
             "webview/context": [
@@ -1514,6 +1532,21 @@
                     "command": "birta.editor.showToolbar",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbarTab'",
                     "group": "1_toolbar@1"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'editor'",
+                    "group": "4_export@1"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'table'",
+                    "group": "4_export@1"
+                },
+                {
+                    "command": "birta.editor.exportHtml",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'link'",
+                    "group": "4_export@1"
                 }
             ]
         },
@@ -1609,6 +1642,12 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.styleCheck.absolutePerf.description%"
+                },
+                "birta.styleCheck.rhythm": {
+                    "order": 127,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.rhythm.description%"
                 },
                 "birta.spellCheck.enabled": {
                     "order": 114,
@@ -2304,6 +2343,13 @@
                         "%config.logseq.on%"
                     ],
                     "description": "%config.logseq.description%"
+                },
+                "birta.agent.command": {
+                    "order": 106.2,
+                    "type": "string",
+                    "default": "",
+                    "scope": "application",
+                    "markdownDescription": "%config.agent.command.description%"
                 },
                 "birta.network.enabled": {
                     "order": 105,
