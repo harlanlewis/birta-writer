@@ -175,8 +175,13 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
 
     // MARK: WKScriptMessageHandler
 
+    // WebKit calls these delegate methods on the main thread, so each one
+    // states that with `assumeIsolated` before touching a main-actor-isolated
+    // property of what it was handed. Without it they are warnings under the
+    // Swift 5 language mode this package builds in, and errors under Swift 6.
     nonisolated func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let text = message.body as? String else { return }
+        let text = MainActor.assumeIsolated { message.body as? String }
+        guard let text else { return }
         Task { @MainActor in
             if let m = WebviewMessage.parse(text) { self.onMessage?(m) }
         }
@@ -192,8 +197,12 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
                              decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         // The page never navigates; a link the editor did not intercept goes
         // to the default browser instead of replacing the editor.
-        let url = navigationAction.request.url
-        if let url, url.scheme == BirtaSchemeHandler.scheme || navigationAction.navigationType == .other {
+        let (url, isOther, ownScheme) = MainActor.assumeIsolated {
+            (navigationAction.request.url,
+             navigationAction.navigationType == .other,
+             BirtaSchemeHandler.scheme)
+        }
+        if let url, url.scheme == ownScheme || isOther {
             decisionHandler(.allow)
         } else {
             if let url { NSWorkspace.shared.open(url) }
@@ -205,7 +214,11 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
 
     nonisolated func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                              for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = navigationAction.request.url { NSWorkspace.shared.open(url) }
+        // WebKit calls its UI delegate on the main thread; `assumeIsolated`
+        // states that so the main-actor-isolated `request` can be read here.
+        MainActor.assumeIsolated {
+            if let url = navigationAction.request.url { NSWorkspace.shared.open(url) }
+        }
         return nil
     }
 

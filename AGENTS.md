@@ -13,7 +13,7 @@ Everything here is written in English: code, comments, commit messages, docs, te
 - Dual-target build: `dist/extension.js` (Node.js) and `dist/webview.js` (browser), produced by `esbuild.mjs`.
 - Syntax level: modern JS and CSS are fine (native CSS nesting, `:has()`, optional chaining, top-level `await`). The only runtimes are Electron (VS Code) and Node 18, and esbuild transpiles to es2020 at build time, so nothing needs down-levelling. Prefer the concise modern form, such as nesting.
 - Packaging: `pnpm run package`, which writes the VSIX to `releases/`. It must always go there.
-- Local install: `pnpm run install:local` (`scripts/install-local.mjs`) runs the whole handoff below in one command. It never touches your `settings.json`, and the only manual step left is the window reload.
+- Local install: `pnpm run install:local` (`scripts/install-local.mjs`) runs the whole handoff below in one command, for both surfaces: the extension into VS Code, and Birta Jot into `/Applications`. It never touches your `settings.json`, and the only manual step left is the window reload. Jot needs no reload; a running copy is asked to quit, replaced, and relaunched.
 
 ### Dependencies
 
@@ -48,7 +48,7 @@ When a session changes `src/`, `webview/`, `shared/`, or `package.json`, finish 
 1. `pnpm test`, all green.
 2. Update `CHANGELOG.md` if the change is observable by a user: a new capability, a changed or removed behavior or setting, or a user-visible bug fix. Rules below.
 3. Review `docs/BENEFITS.md`. Unlike the CHANGELOG, an append-only log, this is a refined document: if the change altered a capability it describes, its fidelity or safety story, or the tool-compatibility table, revise that entry in place rather than appending. Most changes won't touch it. Keep the tone matter-of-fact, stating what the capability is and why it matters, never marketing copy.
-4. `pnpm run install:local`, which folds in step 1. It runs `pnpm test`, then `pnpm run package` (writing `releases/birta-writer-0.0.0.vsix`), then installs into VS Code, removes any legacy copy, and verifies exactly one remains. If VS Code truly isn't installed it builds and packages, then skips the install with a message rather than failing.
+4. `pnpm run install:local`, which folds in step 1. It runs `pnpm test`, then `pnpm run package` (writing `releases/birta-writer-0.0.0.vsix`), then installs into VS Code, removes any legacy copy, and verifies exactly one remains. Then it builds Birta Jot from the same `dist/` and installs it to `/Applications`. If VS Code truly isn't installed it builds and packages, then skips that install with a message rather than failing; Jot is skipped the same way off macOS or without Swift. The Jot install is unconditional on macOS on purpose, because Jot runs the same `dist/webview.js` the extension does, so nearly every change reaches it and a rule for when to skip is one more thing to get wrong.
 5. End your reply by telling the user to reload: Cmd+Shift+P, then "Developer: Reload Window".
 
 Don't touch `package.json`'s version to mark a build. It stays `0.0.0`, and real CalVer versions are stamped only by the CI `Release` job ([`docs/RELEASING.md`](docs/RELEASING.md)). The window reload is what confirms the new build is live.
@@ -125,6 +125,9 @@ webview/components/imageView/index.ts         Image NodeView (selection/lightbox
 webview/ui/hostPalette.css                    The --vscode-* palette a non-VS-Code host links (Jot, the e2e harness); guarded by hostPalette.test.ts
 shared/hostCapabilities.ts                    Which host provides what: the profile a page declares in window.__i18n.hostCapabilities, and what each capability gates
 jot/                                          Birta Writer Jot, the macOS menu-bar scratchpad shell (SwiftPM) around dist/webview.js; jot/README.md
+jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
+jot/scripts/update-jot.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
+e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
 ```
 
 ## Architecture constraints
@@ -142,7 +145,9 @@ Outside VS Code the palette is `webview/ui/hostPalette.css`, emitted as its own 
 
 ### Hosts other than VS Code
 
-The webview has one entry and one composition root. A host that is not VS Code (Jot, the e2e harness) is a page that stubs `acquireVsCodeApi`, sets `window.__i18n`, answers `ready` with `init`, and links the host palette. What differs per host is declared, not forked: `window.__i18n.hostCapabilities` names what the host provides (`shared/hostCapabilities.ts`), and an item or command whose capability is absent is never built or offered, the customize tray included. Absent means all, so the extension page and every existing harness page are unchanged. Jot ships zero behavior the extension lacks; anything it needs lands in `webview/` first and both surfaces get it. VS Code is Chromium and Jot is WebKit, so a rendering change that matters to the panel gets a `BIRTA_E2E_BROWSER=webkit` run. Trust that run for rendering and DOM, not for typed sequences: Playwright's WebKit build delivers keystrokes through its own path, and Return followed by text lands on the previous line there while the same keys through the app's own NSEvent path (`bash jot/scripts/measure.sh`, its typing check) land on the new one. A typing red under WebKit is verified in the panel before it is believed.
+The webview has one entry and one composition root. A host that is not VS Code (Jot, the e2e harness) is a page that stubs `acquireVsCodeApi`, sets `window.__i18n`, answers `ready` with `init`, and links the host palette. What differs per host is declared, not forked: `window.__i18n.hostCapabilities` names what the host provides (`shared/hostCapabilities.ts`), and an item or command whose capability is absent is never built or offered, the customize tray included. Absent means all, so the extension page and every existing harness page are unchanged. Jot ships zero behavior the extension lacks; anything it needs lands in `webview/` first and both surfaces get it. VS Code is Chromium and Jot is WebKit, so a rendering change that matters to the panel gets a `BIRTA_E2E_BROWSER=webkit` run, and so does anything that edits the document from the keyboard. A WebKit red is a claim about the product until the panel says otherwise, and the way to ask the panel is `bash jot/scripts/measure.sh`, whose typing check drives real keystrokes through the app's own NSEvent path. Both instruments agreeing is the answer; disagreement is the only thing that makes the engine's key delivery worth suspecting.
+
+The class of defect this exists for: in an empty textblock, where widget decorations are the only things present, WebKit cannot hold an insertion point in front of a `contenteditable=false` widget that has no content before it. It re-anchors the caret to the end of the previous block, so the next character typed lands on the previous line. One such widget is enough, and Chromium tolerates the arrangement. Every widget decoration at a block's first inline position therefore takes a negative `side`, so it sorts before the caret rather than after it; `plugins/emptyLineHint.ts` and `plugins/headingFold/foldDecorations.ts` are the two that sit there, and `e2e/enterCaret` pins the gesture in both engines.
 
 ### Chrome skin
 

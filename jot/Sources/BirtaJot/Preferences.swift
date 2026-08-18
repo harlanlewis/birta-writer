@@ -110,8 +110,10 @@ enum Prefs {
             fontSize: fontSize,
             contentWidth: contentWidth,
             networkEnabled: networkEnabled,
-            // HOST_PROFILES.jot in shared/hostCapabilities.ts, by hand: Swift
-            // cannot import it. Change both.
+            // HOST_PROFILES.jot in shared/hostCapabilities.ts is the source;
+            // Swift cannot import it, so this literal restates it and
+            // shared/__tests__/hostCapabilities.test.ts parses this file and
+            // fails when the two disagree.
             hostCapabilities: [],
             viewStateJSON: viewStateJSON
         )

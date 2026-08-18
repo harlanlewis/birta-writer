@@ -79,6 +79,20 @@ describe("emptyLineHintDecorations", () => {
         expect(attrs.class).toBe("md-empty-hint");
     });
 
+    it("the widget's side should be negative so it sorts before the caret", async () => {
+        const view = await makeEditor("");
+        const [, widget] = emptyLineHintDecorations(view.state).find();
+        const side = (widget as unknown as { type: { side: number } }).type.side;
+
+        // Not cosmetic. The block-handle gutter occupies this same position and
+        // is also contenteditable=false, so a positive side puts the caret's DOM
+        // position between two uneditable widgets — which WebKit will not hold,
+        // re-anchoring to the previous block so the next character typed lands
+        // on the previous line. e2e/enterCaret drives the gesture; this pins the
+        // value, because the e2e suite only runs by hand.
+        expect(side).toBeLessThan(0);
+    });
+
     it("the widget should render the key as an inline code element", async () => {
         const dom = emptyLineHintDom();
 

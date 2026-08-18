@@ -227,18 +227,23 @@ final class Coordinator {
         measure.mark("visible")
     }
 
+    /// Dismiss first, flush after. Hiding is not a teardown: the page stays
+    /// mounted and answers the flush from behind the hidden panel, so there is
+    /// nothing to wait for on screen. Waiting made the dismissal cost a
+    /// round trip to the web content process, and up to `flushTimeout` when
+    /// that process was busy, which is the one moment the user is asking for
+    /// the panel to be gone. The bytes are no less safe: the flush still runs,
+    /// and quitting flushes again.
     func hide() {
         guard panel.isVisible else { return }
-        flushThen { [weak self] in
-            guard let self else { return }
-            self.panel.orderOut(nil)
-            if let prev = self.previousApp, prev.isTerminated == false {
-                prev.activate()
-            } else {
-                NSApp.hide(nil)
-            }
-            self.previousApp = nil
+        panel.orderOut(nil)
+        if let prev = previousApp, prev.isTerminated == false {
+            prev.activate()
+        } else {
+            NSApp.hide(nil)
         }
+        previousApp = nil
+        flushThen {}
     }
 
     /// Double-Esc hides: the first bare Escape belongs to the editor (block
@@ -417,9 +422,13 @@ final class Coordinator {
                     return
                 }
                 Prefs.saveAsDirectory = url.deletingLastPathComponent()
-                // The scratchpad graduates and clears. A bound DOCUMENT is
-                // the user's file; Save As is a copy of it and leaves it be.
-                if self.boundURL == Prefs.scratchpadURL {
+                // Whether the scratchpad graduates is decided in
+                // BirtaJotCore.SaveAsDecision, which has the tests: every
+                // branch of it can lose bytes when it is decided wrongly.
+                let outcome = SaveAsDecision.outcome(boundURL: self.boundURL,
+                                                     scratchpadURL: Prefs.scratchpadURL,
+                                                     target: url)
+                if outcome == .graduate {
                     self.undoSlot = (url, content)
                     self.replaceBuffer(with: "")
                 }
@@ -469,6 +478,12 @@ final class Coordinator {
             break
         }
         let f = DateFormatter()
+        // Pinned to a fixed locale and calendar, because `dateFormat` is read
+        // against the USER's calendar otherwise: under a Japanese or Buddhist
+        // calendar preference `yyyy` is the era year, so the fallback filename
+        // would carry a date nothing else on the machine agrees with.
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
         f.dateFormat = "yyyy-MM-dd HH.mm"
         return "Jot \(f.string(from: Date())).md"
     }

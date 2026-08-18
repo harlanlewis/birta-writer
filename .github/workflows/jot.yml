@@ -8,11 +8,30 @@ name: Jot
 #
 # The webview bundle the app embeds is covered by ci.yml; this job builds the
 # assets only to prove build-app.sh assembles a bundle from them.
+#
+# It also runs the two e2e suites that speak for the panel, in WebKit. That is
+# a carve-out from ci.yml's "e2e is a local pre-push gate" policy, and it earns
+# one on the policy's own terms: those suites assert which block holds which
+# text, never layout geometry or an absolute time, and each guards its own
+# reach so a keystroke race reports as the probe missing rather than as the
+# editor failing. This job is advisory, so a flake costs a re-read and not a
+# blocked PR. It exists because a WebKit-only editing defect shipped with every
+# other check green (Return left the caret in the previous block):
+# nothing in CI ran the engine Jot renders in.
+#
+# The paths filter covers what can BREAK the panel, which is more than jot/:
+# the app embeds dist/webview.js, so a webview/ or shared/ change reaches it
+# without touching a Swift file.
 on:
   pull_request:
     branches: [main]
     paths:
       - 'jot/**'
+      - 'webview/**'
+      - 'shared/**'
+      - 'packages/**'
+      - 'e2e/enterCaret/**'
+      - 'e2e/jotHost/**'
       - '.github/workflows/jot.yml'
 
 concurrency:
@@ -41,3 +60,14 @@ jobs:
           test -x "jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
           test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/webview.js"
           test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/hostPalette.css"
+
+      - name: install the WebKit browser
+        run: npx playwright install webkit
+
+      # The engine the panel renders in. Both suites mount the real production
+      # bundle; enterCaret drives the keyboard, jotHost drives the capability
+      # gating. Run separately because e2e/run.mjs takes one suite name.
+      - name: e2e in WebKit
+        run: |
+          BIRTA_E2E_BROWSER=webkit node e2e/run.mjs enterCaret
+          BIRTA_E2E_BROWSER=webkit node e2e/run.mjs jotHost

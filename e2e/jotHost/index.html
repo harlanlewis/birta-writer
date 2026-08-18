@@ -1,39 +1,22 @@
 <!doctype html>
 <!-- e2e harness page for a host that declares NO capabilities (the Jot profile,
-     MAR-373): `hostCapabilities: []` in the __i18n bootstrap. Everything else
-     mirrors the provider template with acquireVsCodeApi stubbed. control.html
+     MAR-373): `hostCapabilities: []` in the __i18n bootstrap. control.html
      beside it is the same page with the field ABSENT, which must read as the
      VS Code host, so the suite discriminates. Five headings so the TOC would
-     auto-open on the control page (and must not exist here). -->
+     auto-open on the control page (and must not exist here).
+
+     The palette is dist/hostPalette.css, the same file the Jot shell links,
+     rather than a hand-written stub: what this suite renders is then what the
+     panel renders. A stub was a second palette that nothing else used, so a
+     wrong value in the real one could not fail here. -->
 <meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
 <style>
-  :root {
-    --vscode-editor-background: #1e1e1e;
-    --vscode-editor-foreground: #d4d4d4;
-    --vscode-foreground: #cccccc;
-    --vscode-descriptionForeground: #999999;
-    --vscode-editor-font-family: monospace;
-    --vscode-font-family: -apple-system, sans-serif;
-    --vscode-font-size: 13px;
-    --vscode-editorHoverWidget-background: #252526;
-    --vscode-editorHoverWidget-foreground: #cccccc;
-    --vscode-editorHoverWidget-border: #454545;
-    --vscode-focusBorder: #007fd4;
-    --vscode-panel-border: rgba(128, 128, 128, 0.2);
-    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
-    --vscode-list-hoverBackground: #2a2d2e;
-    --vscode-button-background: #0e639c;
-    --vscode-button-foreground: #ffffff;
-    --vscode-button-hoverBackground: #1177bb;
-    --vscode-button-secondaryBackground: #3a3d41;
-    --vscode-icon-foreground: #cccccc;
-    --vscode-input-placeholderForeground: #888888;
-  }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
-  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto"));
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, hostCapabilities: [] };
   window.__posted = [];
   const CONTENT = "# One\n\nSome text.\n\n## Two\n\ntext\n\n## Three\n\ntext\n\n## Four\n\ntext\n\n## Five\n\ntext\n";

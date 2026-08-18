@@ -474,3 +474,81 @@ jobs:
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: pnpm ovsx publish --packagePath releases/*.vsix --skip-duplicate
+
+  # The Birta Jot app, attached to the same GitHub Release as the VSIX.
+  #
+  # A separate job for the same reason publishing is: it needs a macOS runner
+  # (Swift, codesign) and it must not be able to hold up the tag, the release
+  # or the extension. A failure here costs the app download for one release.
+  #
+  # The app is AD-HOC SIGNED, not Developer ID signed and not notarized, so
+  # Gatekeeper will refuse it on a machine that did not build it until the
+  # download quarantine is cleared. jot/scripts/update-jot.sh does that
+  # deliberately and says so; a stranger should not run either. This is the
+  # personal-machines rung of the ladder, and the honest name for it is "not
+  # distributed to other people yet".
+  jot-app:
+    name: Attach Birta Jot to the release
+    needs: release
+    if: needs.release.outputs.release == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: write # attach an asset to the release this workflow just cut
+    steps:
+      # The tag, not the branch: the release job pushes a CHANGELOG stamp
+      # commit to main afterwards, so main and the tagged tree differ.
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the app
+        run: pnpm jot:build
+
+      # The version the release is stamped with, so a downloaded copy can say
+      # what it is. package.json stays 0.0.0 in the tree for the same reason it
+      # does for the extension: the release job is the only version authority.
+      - name: Stamp the bundle version
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          PLIST="jot/build/Birta Jot.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
+          # Editing the plist invalidates the signature the build applied.
+          codesign --force --deep --sign - "jot/build/Birta Jot.app"
+
+      # ditto, not zip: it preserves the bundle's symlinks and extended
+      # attributes, and a zip(1) archive of an .app can arrive unopenable.
+      - name: Zip
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          cd jot/build
+          ditto -c -k --keepParent "Birta Jot.app" "BirtaJot-$VERSION.zip"
+          shasum -a 256 "BirtaJot-$VERSION.zip" > "BirtaJot-$VERSION.zip.sha256"
+
+      # `gh release upload` rather than the action the release job uses: this
+      # job ATTACHES to a release that already exists and already carries its
+      # notes, and upload is the operation that can only add assets. The action
+      # takes the whole release as its subject, so what it does to a name and a
+      # body it was not given is a behaviour to look up rather than a guarantee,
+      # and the notes are not worth risking to save a line.
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          gh release upload "v$VERSION" \
+            "jot/build/BirtaJot-$VERSION.zip" \
+            "jot/build/BirtaJot-$VERSION.zip.sha256" \
+            --clobber
