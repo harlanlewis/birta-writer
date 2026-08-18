@@ -27,6 +27,10 @@ final class Coordinator {
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
+    /// Outbound page fetches for link cards and paste-unfurl. Built once: the
+    /// transport holds an ephemeral URLSession with no cookie store and no
+    /// cache, so nothing a fetch touches persists between requests.
+    private let fetcher = PageMetadataFetcher(transport: URLSessionTransport())
     private var guardState = SyncGuard()
     private var state: State = .cold
     /// The newest buffer content the host has seen or written.
@@ -161,8 +165,11 @@ final class Coordinator {
     ///
     /// A key may carry modifiers, written as `cmd+v` or `shift+ArrowLeft`.
     /// That is what lets a script drive a paste, which is the only way to
-    /// exercise an image arriving through the real pasteboard, the real
-    /// bridge and the real store rather than through a unit test of each.
+    /// exercise an image arriving through the real pasteboard, the real bridge
+    /// and the real store rather than through a unit test of each. An editing
+    /// chord is sent to the web view rather than through the menu; see the
+    /// comment at that branch for why, and for what it therefore does not
+    /// cover.
     private func typeKeys(_ keys: [String]) {
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -203,7 +210,10 @@ final class Coordinator {
                 }
             }()
             let at = delay
-            let heldFlags = flags // captured per key, not shared across the loop
+            // Captured per key rather than shared across the loop: the loop
+            // keeps mutating both as it parses the next spec.
+            let heldFlags = flags
+            let heldKey = key
             delay += 0.06
             DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in
                 guard let self else { return }
@@ -216,7 +226,33 @@ final class Coordinator {
                     if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: heldFlags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                  windowNumber: self.panel.windowNumber, context: nil, characters: typed,
                                                  charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
-                        if heldFlags.contains(.command), type == .keyDown, NSApp.mainMenu?.performKeyEquivalent(with: ev) == true {
+                        if heldFlags.contains(.command), type == .keyDown {
+                            // A chord goes through the main menu, and the menu
+                            // needs a key window to send its action to. An
+                            // accessory app driven from a shell frequently
+                            // cannot take activation at all (observed:
+                            // `active=false key=false`, the menu claiming the
+                            // chord and the action reaching nothing), so the
+                            // editing selectors are sent to the web view
+                            // directly. What this exercises is the pasteboard,
+                            // WebKit's own paste handling and everything
+                            // downstream of it; what it does NOT exercise is
+                            // the menu binding, which needs a real keyboard.
+                            // `#selector(NSText.paste(_:))` and friends name
+                            // the standard editing actions; WKWebView answers
+                            // them without declaring them itself.
+                            let selector: Selector? = switch heldKey.lowercased() {
+                            case "v": #selector(NSText.paste(_:))
+                            case "c": #selector(NSText.copy(_:))
+                            case "x": #selector(NSText.cut(_:))
+                            case "a": #selector(NSText.selectAll(_:))
+                            default: nil
+                            }
+                            if let selector {
+                                self.host.webView.perform(selector, with: nil)
+                            } else {
+                                _ = NSApp.mainMenu?.performKeyEquivalent(with: ev)
+                            }
                             continue
                         }
                         self.panel.sendEvent(ev)
@@ -379,11 +415,69 @@ final class Coordinator {
             NSLog("Birta Jot: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
             saveAttachment(id: id, data: data, mimeType: mimeType)
+        case let .resolveLinkCard(id, url):
+            resolveLinkCard(id: id, url: url)
+        case let .unfurlUrl(id, url):
+            unfurl(id: id, url: url)
+        case let .resolveEmbedMeta(id, url):
+            // Answered, not ignored: the page holds a pending request until it
+            // hears back, and a caption that never resolves is a card that
+            // never settles. Jot has no provider recognizer, which is what
+            // this needs and which lives in TypeScript
+            // (shared/embedProviders.ts); a second copy of that table in Swift
+            // is the kind of duplication this shell has been careful to avoid.
+            host.send(.embedMetaResult(id: id, url: url, title: nil))
         case let .perfMarks(json):
             measure.receivedPerfMarks(json)
         case let .other(type):
             measure.trace("message ignored: \(type)")
         }
+    }
+
+    // MARK: link data
+
+    /// The page's title and description for a link the reader chose to show as
+    /// a card.
+    ///
+    /// Gated on the network opt-in and nothing else, which mirrors the
+    /// extension: the per-link choice lives in the page's own state, so a
+    /// mirror of it posted by that same page would prove nothing, and the
+    /// switch the user set is the whole host-side gate.
+    private func resolveLinkCard(id: String, url: String) {
+        guard Prefs.networkEnabled, let target = Self.fetchableURL(url) else {
+            host.send(.linkCardResult(id: id, url: url, title: nil, description: nil))
+            return
+        }
+        let fetcher = self.fetcher
+        Task { @MainActor in
+            let meta = await fetcher.metadata(for: target)
+            self.host.send(.linkCardResult(id: id, url: url,
+                                           title: meta.title, description: meta.description))
+        }
+    }
+
+    /// The title of a bare URL just pasted, so the link text can be upgraded.
+    /// A nil title leaves the `[url](url)` the page already inserted, which is
+    /// what happens offline and is the honest default.
+    private func unfurl(id: String, url: String) {
+        guard Prefs.networkEnabled, let target = Self.fetchableURL(url) else {
+            host.send(.unfurlResult(id: id, url: url, title: nil))
+            return
+        }
+        let fetcher = self.fetcher
+        Task { @MainActor in
+            let title = await fetcher.title(for: target)
+            self.host.send(.unfurlResult(id: id, url: url, title: title))
+        }
+    }
+
+    /// A URL string from the document, as something fetchable, or nil. The
+    /// scheme is checked here as well as in the guard so an obviously wrong
+    /// string never reaches a Task at all.
+    static func fetchableURL(_ raw: String) -> URL? {
+        guard let url = URL(string: raw), let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https", url.host != nil else { return nil }
+        return url
     }
 
     // MARK: attachments

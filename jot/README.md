@@ -2,7 +2,7 @@
 
 A hotkey-summoned macOS scratchpad running Birta Writer's real editor: full rendering, slash commands, block drag, inline calc, from the first keystroke. It is a menu-bar agent (no Dock icon) that keeps the editor warm in a floating panel and hides it again on demand. The product decisions live on MAR-370; this file is how to build, run and check it.
 
-Jot ships zero behavior the extension lacks. It loads the same `dist/webview.js`, with `webview/ui/hostPalette.css` in place of the palette VS Code injects and a host-capability profile (`shared/hostCapabilities.ts`) that leaves out what only means something inside VS Code: the raw markdown view, the settings UI, proofreading, the read-only toggle, the TOC sidebar, image upload.
+Jot ships zero behavior the extension lacks. It loads the same `dist/webview.js`, with `webview/ui/hostPalette.css` in place of the palette VS Code injects and a host-capability profile (`shared/hostCapabilities.ts`) that leaves out what only means something inside VS Code: the raw markdown view, the settings UI, proofreading, the read-only toggle, the TOC sidebar. Images are in, because the shell has its own store for them (see "Images" below).
 
 ## Build and run
 
@@ -25,7 +25,7 @@ Replacing a running copy is the part worth knowing about. `jot/scripts/install-a
 
 Read the warning at the top of that script before running it anywhere. The app is ad-hoc signed, with no Apple Developer ID behind it and no notarization, so macOS cannot tell you who built it, and the script clears the download quarantine that would otherwise stop it opening. That is a reasonable trade on a machine whose owner also owns the source, and it is not one to ask of anybody else. Notarization is what replaces it, and it needs a paid Apple Developer account; until then Jot is not distributed to other people.
 
-The app appears as a pencil in the menu bar. Press ⌘⌥⌃J to summon or hide the panel; Esc twice hides it (one Esc belongs to the editor: it closes a menu or selects the block). Cmd+S is Save As: the buffer goes to a chosen `.md` file and the scratchpad is cleared; "Reopen Last Saved" in the menu brings it back. When Jot is bound to a document instead (Preferences), Save As writes a copy and leaves the document alone. Cmd+F opens find and Cmd+K the link prompt through the Edit menu, since those are VS Code keybindings in the extension. Preferences (from the menu, or ⌘,) hold the hotkey, the scratchpad location, an optional document to edit instead of the scratchpad, and the network opt-in for embeds; link cards and pasted-link titles are fetched by the host in the extension and Jot does not answer those requests yet, so they stay off.
+The app appears as a pencil in the menu bar. Press ⌘⌥⌃J to summon or hide the panel; Esc twice hides it (one Esc belongs to the editor: it closes a menu or selects the block). Cmd+S is Save As: the buffer goes to a chosen `.md` file and the scratchpad is cleared; "Reopen Last Saved" in the menu brings it back. When Jot is bound to a document instead (Preferences), Save As writes a copy and leaves the document alone. Cmd+F opens find and Cmd+K the link prompt through the Edit menu, since those are VS Code keybindings in the extension. Preferences (from the menu, or ⌘,) hold the hotkey, the scratchpad location, an optional document to edit instead of the scratchpad, and the network opt-in. See "Network" below for what that switch turns on.
 
 Layout: `Sources/BirtaJotCore` is everything testable without a window (hotkey parsing, the flush/seq guard ported from `shared/saveFlushController.ts`, atomic writes, the bridge codec and the boot config); `Sources/BirtaJot` is the AppKit/WebKit app; `Resources/index.html` is the page template, served over the `birta://app/` scheme with the CSP and theme class filled in; `scripts/build-app.sh` assembles the bundle by hand, no Xcode project.
 
@@ -37,7 +37,21 @@ Save As carries them. The images the note actually references are copied into an
 
 The page reaches those files through the same `birta://` scheme that serves the app, with the document's own folder as a second resource root (`BirtaJotCore.ResourceRoots`). A document cannot read outside that folder: the request path is refused before it touches the disk if it traverses, and the resolved path is refused if a symlink leads out.
 
-Known, and not yet fixed: pasting an image in the first moment after summoning the panel occasionally saves the file without putting the reference in the document, so nothing appears to happen. It reproduces at roughly one run in four under machine load and not at all on an idle machine, so measure it before you believe a result either way. The bytes are never lost, and clicking into the editor first avoids it entirely.
+One thing to know before reading a failure in the paste check. `measure.sh` drives the paste by sending the editing selector to the web view, not by pressing the menu's key equivalent, because an accessory app driven from a shell frequently cannot take activation, and a menu chord with no key window reaches nothing at all. Delivered the other way it failed about one run in four and looked exactly like a defect in the editor. What the check therefore covers is the pasteboard, WebKit's own paste handling, the bridge and the store; what it does not cover is the menu binding, which needs a real keyboard.
+
+## Network
+
+Off by default, and with the switch off the app makes no outbound request of any kind. Turning it on enables three things, all of them rung 1 in [`docs/NETWORK_POSTURE.md`](../docs/NETWORK_POSTURE.md): a URL you typed goes to its own host and nowhere else.
+
+- An embed loads in an iframe the page fetches itself.
+- A link alone on its own line can render as a card of the page's own title and description.
+- A pasted bare URL offers you the page's title as its link text. It is an offer: nothing reaches the file until you take it, because `pasteUnfurlAutoApply` is left at its default of false.
+
+The shell answers the last two (`resolveLinkCard`, `unfurlUrl`) in `BirtaJotCore.PageMetadataFetcher`, under the same rules the extension applies, and the rules are the interesting part because the input is a URL out of a document: http(s) only, an SSRF guard on the original URL and on every redirect hop, a redirect limit, a byte cap, a deadline, and HTML content types only. Every failure is the same answer, the plain link, because every failure has the same remedy.
+
+The SSRF guard exists twice, once per surface, and the cases live in `shared/__fixtures__/urlGuardCases.json` so both test suites read them. Add a case there rather than in one suite: a rule that only one implementation enforces is then a failing test instead of a difference nobody noticed.
+
+`resolveEmbedMeta`, the caption on a provider embed card, is answered with nothing. It needs the provider recognizer, which lives in `shared/embedProviders.ts`, and a second copy of that table in Swift is the duplication this shell has otherwise been careful to avoid. The card renders; it just has no fetched caption.
 
 ## Where the bytes are
 

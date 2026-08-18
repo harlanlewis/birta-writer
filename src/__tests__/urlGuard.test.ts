@@ -1,9 +1,18 @@
 /**
  * Unit tests for the SSRF guard (src/utils/urlGuard.ts): private/reserved IP
  * classification (v4 + v6), blocked local hostnames, and the DNS-resolving
- * URL check with an injected resolver. Pure logic — the real DNS is never hit.
+ * URL check with an injected resolver. Pure logic, the real DNS is never hit.
+ *
+ * The classification cases come from `shared/__fixtures__/urlGuardCases.json`,
+ * which `jot/Tests/BirtaJotCoreTests/UrlGuardTests.swift` reads as well. There
+ * are two implementations of this guard, one per surface, and neither language
+ * can import the other; sharing the cases is what makes a rule that only one
+ * of them enforces show up as a failing test. Add a case to that file.
  */
 import { describe, it, expect, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
     isPrivateIp,
     isBlockedHostname,
@@ -11,74 +20,29 @@ import {
     _setDnsLookupForTests,
 } from "../utils/urlGuard";
 
+/** `[value, expected, why]` rows, shared with the Swift suite. */
+const CASES = JSON.parse(readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..", "shared", "__fixtures__", "urlGuardCases.json"),
+    "utf8",
+)) as { privateIps: [string, boolean, string][]; blockedHostnames: [string, boolean, string][] };
+
 describe("isPrivateIp", () => {
-    it("loopback, RFC1918, CGNAT, and link-local v4 should be private", () => {
-        expect(isPrivateIp("127.0.0.1")).toBe(true);
-        expect(isPrivateIp("127.255.255.254")).toBe(true);
-        expect(isPrivateIp("10.0.0.5")).toBe(true);
-        expect(isPrivateIp("172.16.0.1")).toBe(true);
-        expect(isPrivateIp("172.31.255.255")).toBe(true);
-        expect(isPrivateIp("192.168.1.1")).toBe(true);
-        expect(isPrivateIp("100.64.0.1")).toBe(true);
-        expect(isPrivateIp("169.254.169.254")).toBe(true); // cloud metadata
-        expect(isPrivateIp("0.0.0.0")).toBe(true);
-        expect(isPrivateIp("255.255.255.255")).toBe(true);
-    });
-
-    it("ordinary public v4 addresses should not be private", () => {
-        expect(isPrivateIp("93.184.216.34")).toBe(false);
-        expect(isPrivateIp("8.8.8.8")).toBe(false);
-        expect(isPrivateIp("172.32.0.1")).toBe(false); // just past 172.16/12
-        expect(isPrivateIp("100.128.0.1")).toBe(false); // just past CGNAT
-    });
-
-    it("v6 loopback, unique-local, link-local, and v4-mapped should be private", () => {
-        expect(isPrivateIp("::1")).toBe(true);
-        expect(isPrivateIp("::")).toBe(true);
-        expect(isPrivateIp("fc00::1")).toBe(true);
-        expect(isPrivateIp("fd12:3456::1")).toBe(true);
-        expect(isPrivateIp("fe80::1")).toBe(true);
-        expect(isPrivateIp("::ffff:192.168.0.1")).toBe(true);
-        expect(isPrivateIp("::ffff:8.8.8.8")).toBe(false);
-        expect(isPrivateIp("2606:4700::6810:84e5")).toBe(false);
-    });
-
-    it("v4-mapped addresses in COMPRESSED-HEX form should be private (the form URL normalization emits)", () => {
-        // `new URL("http://[::ffff:127.0.0.1]/").hostname` is `[::ffff:7f00:1]`
-        // — a dotted-quad-only matcher never sees the dotted form on the real
-        // path, which is exactly the bypass this pins.
-        expect(isPrivateIp("::ffff:7f00:1")).toBe(true);      // 127.0.0.1
-        expect(isPrivateIp("::ffff:a9fe:a9fe")).toBe(true);   // 169.254.169.254
-        expect(isPrivateIp("::ffff:c0a8:1")).toBe(true);      // 192.168.0.1
-        expect(isPrivateIp("::ffff:808:808")).toBe(false);    // 8.8.8.8
-        expect(isPrivateIp("0:0:0:0:0:ffff:7f00:1")).toBe(true); // uncompressed spelling
-    });
-
-    it("NAT64 (64:ff9b::/96) addresses should be judged by their embedded v4", () => {
-        expect(isPrivateIp("64:ff9b::a9fe:a9fe")).toBe(true);  // metadata via NAT64
-        expect(isPrivateIp("64:ff9b::808:808")).toBe(false);   // 8.8.8.8 via NAT64
-    });
-
-    it("unparseable input should fail closed (treated as private)", () => {
-        expect(isPrivateIp("not-an-ip")).toBe(true);
-        expect(isPrivateIp("")).toBe(true);
+    it("every shared address case should classify as the fixture says", () => {
+        // The count is asserted so an unreadable or emptied fixture fails here
+        // rather than passing with nothing run.
+        expect(CASES.privateIps.length).toBeGreaterThanOrEqual(25);
+        for (const [ip, expected, why] of CASES.privateIps) {
+            expect(isPrivateIp(ip), `${ip}: ${why}`).toBe(expected);
+        }
     });
 });
 
 describe("isBlockedHostname", () => {
-    it("localhost and *.localhost/*.local/*.internal should be blocked", () => {
-        expect(isBlockedHostname("localhost")).toBe(true);
-        expect(isBlockedHostname("LOCALHOST")).toBe(true);
-        expect(isBlockedHostname("api.localhost")).toBe(true);
-        expect(isBlockedHostname("printer.local")).toBe(true);
-        expect(isBlockedHostname("db.internal")).toBe(true);
-        expect(isBlockedHostname("localhost.")).toBe(true); // trailing-dot form
-    });
-
-    it("public hostnames should not be blocked", () => {
-        expect(isBlockedHostname("example.com")).toBe(false);
-        expect(isBlockedHostname("internal.example.com")).toBe(false); // 'internal' as a label, not TLD
-        expect(isBlockedHostname("localhost.example.com")).toBe(false);
+    it("every shared hostname case should classify as the fixture says", () => {
+        expect(CASES.blockedHostnames.length).toBeGreaterThanOrEqual(8);
+        for (const [host, expected, why] of CASES.blockedHostnames) {
+            expect(isBlockedHostname(host), `${host}: ${why}`).toBe(expected);
+        }
     });
 });
 

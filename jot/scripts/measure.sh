@@ -97,12 +97,17 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
-# Paste an image, immediately after a summon and without touching anything
-# first, which is the ordinary opening gesture. It goes through the real
-# pasteboard, the real Cmd+V, the base64 bridge and the attachment store, and
-# it is the only check that covers all four at once. It caught a focus race
-# that dropped the reference from the document half the time while still
-# writing the file, so the user saw nothing happen.
+# Paste an image into a panel that was just summoned and not touched, which is
+# the ordinary opening gesture: the real pasteboard, the real paste, the base64
+# bridge and the attachment store, and the only check that covers all four at
+# once.
+#
+# The paste is delivered to the web view rather than as a menu key equivalent,
+# because an accessory app driven from a shell frequently cannot take
+# activation, and a menu chord with no key window reaches nothing. That
+# difference is worth knowing about when reading a failure here: it made this
+# check fail about one run in four, and looked exactly like a defect in the
+# editor until the app was asked what it saw (`active=false key=false`).
 #
 # This briefly uses the clipboard, and puts back whatever text was on it.
 CLIP_BACKUP="$(mktemp -t jot-measure-clip)"
