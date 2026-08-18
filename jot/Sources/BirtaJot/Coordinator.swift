@@ -37,6 +37,17 @@ final class Coordinator {
     var onUndoSlotChange: ((Bool) -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
     private var previousApp: NSRunningApplication?
+    /// The next `ready` reads the bound file (launch, a changed scratchpad or
+    /// document path) rather than re-showing `latest` (a remount after the
+    /// content process died).
+    private var reloadFromDisk = true
+    /// False until the bound file has been read once; nothing is written before.
+    private var hasLoaded = false
+    /// The file the buffer's bytes belong to. Bound when the file is read, and
+    /// only there: a Preferences change that points at another file first
+    /// flushes to THIS one, then rebinds, so a scratchpad is never written
+    /// over the document the user just chose to open.
+    private var boundURL: URL = Prefs.activeURL
     private var escMonitor: Any?
     private var lastEscape: TimeInterval = 0
     private let flushTimeout: TimeInterval = 1.0
@@ -254,7 +265,16 @@ final class Coordinator {
         case .ready:
             measure.mark("ready")
             guardState.resetForReady()
-            latest = readActiveFile()
+            // The file is the source only at launch and after the bound file
+            // changes; after a content-process death `latest` is fresher than
+            // the disk can be (a write may still be in flight), and it is what
+            // the remount must show.
+            if reloadFromDisk {
+                boundURL = Prefs.activeURL
+                latest = readActiveFile()
+                reloadFromDisk = false
+                hasLoaded = true
+            }
             host.send(.initDoc(content: latest, syncVersion: guardState.version, viewStateJSON: Prefs.viewStateJSON))
             state = .warm
             if panel.isVisible { host.focusEditor() }
@@ -262,9 +282,12 @@ final class Coordinator {
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
-                writer.submit(content, to: Prefs.activeURL)
+                writer.submit(content, to: boundURL)
             case .repush:
-                host.send(.externalUpdate(content: latest, syncVersion: guardState.bumpVersion()))
+                // Re-push authoritative content at the CURRENT version, as
+                // the extension does: bumping here would read the page's next
+                // correctly-based update as stale and replace typed text.
+                host.send(.externalUpdate(content: latest, syncVersion: guardState.version))
             case .staleSeq:
                 break
             }
@@ -273,13 +296,13 @@ final class Coordinator {
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
-                writer.submit(content, to: Prefs.activeURL)
+                writer.submit(content, to: boundURL)
                 writer.drain()
                 host.send(.flushAck(id: id, applied: true))
                 resolve?(content)
             case .repush:
                 host.send(.flushAck(id: id, applied: false))
-                host.send(.externalUpdate(content: latest, syncVersion: guardState.bumpVersion()))
+                host.send(.externalUpdate(content: latest, syncVersion: guardState.version))
                 resolve?(nil)
             case .staleSeq:
                 host.send(.flushAck(id: id, applied: false))
@@ -324,7 +347,7 @@ final class Coordinator {
     // MARK: persistence
 
     private func readActiveFile() -> String {
-        (try? String(contentsOf: Prefs.activeURL, encoding: .utf8)) ?? ""
+        (try? String(contentsOf: boundURL, encoding: .utf8)) ?? ""
     }
 
     /// Ask the page for its freshest bytes, write them, then run `then`.
@@ -332,8 +355,7 @@ final class Coordinator {
     /// (at most one scheduler window stale, see webview/syncScheduler.ts).
     private func flushThen(_ then: @escaping () -> Void) {
         guard state == .warm else {
-            writer.submit(latest, to: Prefs.activeURL)
-            writer.drain()
+            writeLatest()
             then()
             return
         }
@@ -345,8 +367,7 @@ final class Coordinator {
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
             NSLog("Birta Jot: flush timed out; writing the last admitted content")
-            self.writer.submit(self.latest, to: Prefs.activeURL)
-            self.writer.drain()
+            self.writeLatest()
             finish()
         }
     }
@@ -358,7 +379,16 @@ final class Coordinator {
 
     /// Last-chance synchronous write, idempotent after `prepareToTerminate`.
     func finalWrite() {
-        writer.submit(latest, to: Prefs.activeURL)
+        writeLatest()
+    }
+
+    /// Write `latest` to the bound file, synchronously. Nothing is written
+    /// before the file has been read once (`hasLoaded`): before the first
+    /// `ready`, or forever when the web assets are missing, `latest` is the
+    /// empty string and writing it would truncate the user's scratchpad.
+    private func writeLatest() {
+        guard hasLoaded else { return }
+        writer.submit(latest, to: boundURL)
         writer.drain()
     }
 
@@ -375,9 +405,11 @@ final class Coordinator {
             panel.directoryURL = Prefs.saveAsDirectory
                 ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             panel.canCreateDirectories = true
-            let content = self.latest
             let respond: (NSApplication.ModalResponse) -> Void = { [weak self] resp in
                 guard resp == .OK, let url = panel.url, let self else { return }
+                // Read `latest` now, not when the sheet opened: a flush that
+                // timed out can still land while the sheet is up.
+                let content = self.latest
                 do {
                     try AtomicFile.writeString(content, to: url)
                 } catch {
@@ -385,8 +417,12 @@ final class Coordinator {
                     return
                 }
                 Prefs.saveAsDirectory = url.deletingLastPathComponent()
-                self.undoSlot = (url, content)
-                self.replaceBuffer(with: "")
+                // The scratchpad graduates and clears. A bound DOCUMENT is
+                // the user's file; Save As is a copy of it and leaves it be.
+                if self.boundURL == Prefs.scratchpadURL {
+                    self.undoSlot = (url, content)
+                    self.replaceBuffer(with: "")
+                }
             }
             if self.panel.isVisible {
                 panel.beginSheetModal(for: self.panel, completionHandler: respond)
@@ -394,6 +430,14 @@ final class Coordinator {
                 respond(panel.runModal())
             }
         }
+    }
+
+    /// Run an editor command in the page (the Edit menu's Find and Insert
+    /// Link, which the extension binds as VS Code keybindings).
+    func runEditorCommand(_ command: String) {
+        guard state == .warm else { return }
+        show()
+        host.send(.editorCommand(command))
     }
 
     func reopenLastSaved() {
@@ -408,7 +452,7 @@ final class Coordinator {
     /// without echoing an `update`, so the write here is the only one).
     private func replaceBuffer(with content: String) {
         latest = content
-        writer.submit(content, to: Prefs.activeURL)
+        writer.submit(content, to: boundURL)
         if state == .warm {
             host.send(.externalUpdate(content: content, syncVersion: guardState.bumpVersion()))
         }
@@ -431,13 +475,19 @@ final class Coordinator {
 
     // MARK: preferences
 
-    func preferencesChanged() {
+    /// The hotkey text changed: rebind, and say whether the system took it.
+    @discardableResult
+    func hotkeyChanged() -> OSStatus {
         hotkey.register(Prefs.hotkey)
+    }
+
+    func preferencesChanged() {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
         // the new prefs. Cheap, and it keeps one code path.
         flushThen { [weak self] in
             guard let self else { return }
+            self.reloadFromDisk = true
             self.loadPage()
         }
     }

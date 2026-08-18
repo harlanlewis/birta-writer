@@ -64,6 +64,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(.separator())
+        // The extension binds these as VS Code keybindings; here the menu is
+        // the binding, and each runs the same editor command in the page.
+        editMenu.addItem(withTitle: "Find…", action: #selector(findInEditor), keyEquivalent: "f")
+        editMenu.addItem(withTitle: "Insert Link…", action: #selector(insertLink), keyEquivalent: "k")
         let editItem = NSMenuItem(); editItem.submenu = editMenu; main.addItem(editItem)
 
         let windowMenu = NSMenu(title: "Window")
@@ -106,10 +111,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func hidePanel() { coordinator.hide() }
     @objc private func saveAs() { coordinator.saveAs() }
     @objc private func reopenLastSaved() { coordinator.reopenLastSaved() }
+    @objc private func findInEditor() { coordinator.runEditorCommand("openFind") }
+    @objc private func insertLink() { coordinator.runEditorCommand("insertLink") }
 
     @objc private func openPreferences() {
         if prefsWindow == nil {
-            prefsWindow = PreferencesWindowController(onChange: { [weak self] in self?.coordinator.preferencesChanged() })
+            prefsWindow = PreferencesWindowController(
+                onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
+                onChange: { [weak self] in self?.coordinator.preferencesChanged() })
         }
         NSApp.activate(ignoringOtherApps: true)
         prefsWindow?.showWindow(nil)

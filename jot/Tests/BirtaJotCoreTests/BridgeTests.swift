@@ -75,16 +75,20 @@ final class BridgeTests: XCTestCase {
         XCTAssertTrue(script.contains(#"window.__i18n = {"#))
         XCTAssertTrue(script.contains(#""hostCapabilities":[]"#))
         XCTAssertTrue(script.contains(#"var state = {"scrollY":1};"#))
-        XCTAssertTrue(script.contains(#"classList.add("vscode-dark")"#))
+        XCTAssertTrue(script.contains(#"document.body.classList.add("vscode-dark")"#))
+        XCTAssertFalse(script.contains("documentElement"), "one theme class, on body, the one the bridge reads")
         XCTAssertTrue(script.contains("window.acquireVsCodeApi = function"))
         XCTAssertTrue(script.contains("webkit.messageHandlers.birta.postMessage(JSON.stringify(m, replacer))"))
         XCTAssertFalse(script.contains("<"), "script text is inline-safe")
     }
 
-    func testNetworkOptInEnablesTheNetworkFeatures() {
+    func testNetworkOptInEnablesEmbedsAndNotTheHostFetchedFeatures() {
         let on = BootConfig(networkEnabled: true).i18nObject()
         XCTAssertEqual(on["network"] as? Bool, true)
         XCTAssertEqual(on["embedsEnabled"] as? Bool, true)
-        XCTAssertEqual(on["linkCardsEnabled"] as? Bool, true)
+        // Link cards and unfurl are answered by the host, which Jot does not do yet.
+        XCTAssertEqual(on["linkCardsEnabled"] as? Bool, false)
+        XCTAssertEqual(on["pasteUnfurl"] as? Bool, false)
+        XCTAssertEqual(HostMessage.editorCommand("openFind").jsonString(), #"{"command":"openFind","type":"editorCommand"}"#)
     }
 }

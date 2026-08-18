@@ -14,13 +14,13 @@ pnpm jot:run       # build, then open the app
 pnpm jot:test      # swift test over jot/Sources/BirtaJotCore
 ```
 
-The app appears as a pencil in the menu bar. Press ⌘⌥⌃J to summon or hide the panel; Esc twice hides it (one Esc belongs to the editor: it closes a menu or selects the block). Cmd+S is Save As: the buffer goes to a chosen `.md` file and the scratchpad is cleared; "Reopen Last Saved" in the menu brings it back. Preferences (from the menu, or ⌘,) hold the hotkey, the scratchpad location, an optional document to edit instead of the scratchpad, and the network opt-in for link cards and embeds.
+The app appears as a pencil in the menu bar. Press ⌘⌥⌃J to summon or hide the panel; Esc twice hides it (one Esc belongs to the editor: it closes a menu or selects the block). Cmd+S is Save As: the buffer goes to a chosen `.md` file and the scratchpad is cleared; "Reopen Last Saved" in the menu brings it back. When Jot is bound to a document instead (Preferences), Save As writes a copy and leaves the document alone. Cmd+F opens find and Cmd+K the link prompt through the Edit menu, since those are VS Code keybindings in the extension. Preferences (from the menu, or ⌘,) hold the hotkey, the scratchpad location, an optional document to edit instead of the scratchpad, and the network opt-in for embeds; link cards and pasted-link titles are fetched by the host in the extension and Jot does not answer those requests yet, so they stay off.
 
 Layout: `Sources/BirtaJotCore` is everything testable without a window (hotkey parsing, the flush/seq guard ported from `shared/saveFlushController.ts`, atomic writes, the bridge codec and the boot config); `Sources/BirtaJot` is the AppKit/WebKit app; `Resources/index.html` is the page template, served over the `birta://app/` scheme with the CSP and theme class filled in; `scripts/build-app.sh` assembles the bundle by hand, no Xcode project.
 
 ## Where the bytes are
 
-One buffer, autosaved to `~/Library/Application Support/Birta Jot/Scratchpad.md` (Preferences can move it) on every content update the page reports, atomically (temp file, fsync, rename). Hiding, quitting and Save As first ask the page to flush and wait a bounded second, as the extension's will-save participant does, then write. The file trails the editor by at most one sync-scheduler window (`webview/syncScheduler.ts`) plus one in-flight write.
+One buffer, autosaved to `~/Library/Application Support/Birta Jot/Scratchpad.md` (Preferences can point Jot at another file; the bytes stay with the file they were typed into) on every content update the page reports, atomically (temp file, fsync, rename). Hiding, quitting and Save As first ask the page to flush and wait a bounded second, as the extension's will-save participant does, then write. The file trails the editor by at most one sync-scheduler window (`webview/syncScheduler.ts`) plus one in-flight write.
 
 ## Checking it
 

@@ -79,6 +79,9 @@ public enum HostMessage: Equatable {
     case imageUploadError(id: String, error: String)
     case toolbarConfig(json: String)
     case getPerfMarks(id: String)
+    /// Run one editor command by id (shared/editorCommands.ts), the way a
+    /// contributed keybinding reaches the page.
+    case editorCommand(String)
     /// Measurement-only: an arbitrary message object, so `jot/scripts/measure.sh`
     /// can drive the test-only page commands (`__testInsertText`, `__getPerfMarks`).
     case raw(json: String)
@@ -107,6 +110,8 @@ public enum HostMessage: Equatable {
             return ["type": "toolbarConfig", "config": config]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
+        case let .editorCommand(command):
+            return ["type": "editorCommand", "command": command]
         }
     }
 
@@ -159,8 +164,13 @@ public struct BootConfig: Equatable {
             "fontSize": fontSize,
             "contentWidth": contentWidth,
             "network": networkEnabled,
+            // Embeds render in an iframe the page loads itself; link cards
+            // and paste-unfurl titles are fetched by the HOST (resolveLinkCard,
+            // unfurlUrl), which Jot does not answer yet, so they stay off
+            // whatever the network switch says.
             "embedsEnabled": networkEnabled,
-            "linkCardsEnabled": networkEnabled,
+            "linkCardsEnabled": false,
+            "pasteUnfurl": false,
             "calcEnabled": true,
             "calcBlocksEnabled": true,
             "hostCapabilities": hostCapabilities,
@@ -184,7 +194,6 @@ public struct BootConfig: Equatable {
         (function () {
           window.__i18n = \(i18n);
           var state = \(state);
-          document.documentElement.classList.add(\(jsonText(themeClass)));
           document.addEventListener("DOMContentLoaded", function () {
             document.body.classList.add(\(jsonText(themeClass)));
           });

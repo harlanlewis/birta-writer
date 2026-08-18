@@ -37,6 +37,10 @@ APP="jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
 # one is never touched.
 SCRATCH_DIR="$(mktemp -d -t jot-measure-scratch)"
 export BIRTA_JOT_SCRATCHPAD="$SCRATCH_DIR/Scratchpad.md"
+# ...and a throwaway defaults domain, so the run never rewrites the user's
+# toolbar layout, view state or panel frame.
+export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
+trap 'defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" >/dev/null 2>&1 || true' EXIT
 LOG="$(mktemp -t jot-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
@@ -44,7 +48,7 @@ if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
 WC_BEFORE="$(pgrep -f com.apple.WebKit | sort || true)"
 BIRTA_JOT_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
-trap '[ $KEEP = 1 ] || kill $PID 2>/dev/null || true; rm -rf "$SCRATCH_DIR"' EXIT
+trap '[ $KEEP = 1 ] || { kill $PID 2>/dev/null; wait $PID 2>/dev/null; } || true; rm -rf "$SCRATCH_DIR"; defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" >/dev/null 2>&1 || true' EXIT
 
 wait_for() { # wait_for <mark> <timeout-s>
     local n=0
@@ -98,6 +102,9 @@ BEFORE=$(grep -c "^jot-measure ready " "$LOG")
 WC_AFTER="$(pgrep -f com.apple.WebKit.WebContent | sort || true)"
 WC_NEW="$(comm -13 <(printf '%s\n' "$WC_BEFORE") <(printf '%s\n' "$WC_AFTER") | tr '\n' ' ')"
 if [ -z "$WC_NEW" ]; then echo "could not identify Jot's WebContent process" >&2; exit 1; fi
+if [ "$(echo $WC_NEW | wc -w)" -ne 1 ]; then
+    echo "more than one WebContent process appeared since launch ($WC_NEW); another WebKit app started meanwhile, so the kill would not be ours alone. Re-run on a quieter machine." >&2; exit 1
+fi
 kill -9 $WC_NEW
 n=0
 while [ "$(grep -c "^jot-measure ready " "$LOG")" -le "$BEFORE" ]; do
@@ -107,6 +114,8 @@ done
 echo "terminate→ready      $(delta "$(last terminate)" "$(last ready)") ms   (cold recovery: WebKit reports the death, Jot remounts)"
 if grep -q "$STAMP" "$SCRATCH_DIR/Scratchpad.md"; then
     echo "recovery             ok: the buffer survived the content-process kill"
+else
+    echo "recovery             FAILED: the buffer did not survive the kill" >&2; cat "$LOG" >&2; exit 1
 fi
 
 # Idle memory: the app plus the WebKit helpers that appeared with it (the

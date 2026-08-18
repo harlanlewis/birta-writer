@@ -9,7 +9,13 @@ import BirtaJotCore
 /// Jot's configuration is wholly its own on purpose: sharing `birta.*`
 /// settings with the extension would couple the two release clocks (MAR-370).
 enum Prefs {
-    private static let d = UserDefaults.standard
+    /// `BIRTA_JOT_DEFAULTS_SUITE` names a separate defaults domain, so
+    /// jot/scripts/measure.sh never rewrites the user's own layout and frame.
+    private static let d: UserDefaults = {
+        if let suite = ProcessInfo.processInfo.environment["BIRTA_JOT_DEFAULTS_SUITE"], !suite.isEmpty,
+           let u = UserDefaults(suiteName: suite) { return u }
+        return .standard
+    }()
 
     enum Key {
         static let hotkey = "hotkey"
@@ -121,10 +127,12 @@ final class PreferencesWindowController: NSWindowController, NSTextFieldDelegate
     private let scratchpadLabel = NSTextField(labelWithString: Prefs.scratchpadURL.path)
     private let documentCheck = NSButton(checkboxWithTitle: "Open this document instead of the scratchpad:", target: nil, action: nil)
     private let documentLabel = NSTextField(labelWithString: Prefs.documentURL?.path ?? "(none chosen)")
-    private let networkCheck = NSButton(checkboxWithTitle: "Allow network: link cards and rich embeds", target: nil, action: nil)
+    private let networkCheck = NSButton(checkboxWithTitle: "Allow network: rich embeds (video, gists, and the like)", target: nil, action: nil)
+    private let onHotkeyChange: () -> OSStatus
     private let onChange: () -> Void
 
-    init(onChange: @escaping () -> Void) {
+    init(onHotkeyChange: @escaping () -> OSStatus, onChange: @escaping () -> Void) {
+        self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 260),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -160,7 +168,7 @@ final class PreferencesWindowController: NSWindowController, NSTextFieldDelegate
             [NSTextField(labelWithString: "Scratchpad file:"), row(scratchpadLabel, chooseScratch)],
             [documentCheck, row(documentLabel, chooseDoc)],
             [NSView(), networkCheck],
-            [NSView(), NSTextField(wrappingLabelWithString: "Off by default. When on, pasted links may fetch titles and cards, and embeds load from their providers.")],
+            [NSView(), NSTextField(wrappingLabelWithString: "Off by default. When on, an embed loads from its provider. Link cards and pasted-link titles are not fetched by Jot yet.")],
         ])
         grid.rowSpacing = 10
         grid.columnSpacing = 12
@@ -194,11 +202,17 @@ final class PreferencesWindowController: NSWindowController, NSTextFieldDelegate
     func controlTextDidEndEditing(_ obj: Notification) {
         switch HotkeyCombo.parse(hotkeyField.stringValue) {
         case .success(let combo):
+            guard combo != Prefs.hotkey else { return }
             Prefs.hotkey = combo
             hotkeyField.stringValue = combo.spelling
-            hotkeyStatus.stringValue = "Registered as \(combo.symbols)."
-            hotkeyStatus.textColor = .secondaryLabelColor
-            onChange()
+            let status = onHotkeyChange()
+            if status == 0 {
+                hotkeyStatus.stringValue = "Registered as \(combo.symbols)."
+                hotkeyStatus.textColor = .secondaryLabelColor
+            } else {
+                hotkeyStatus.stringValue = "macOS refused \(combo.symbols) (status \(status)); another app may own it. Jot has no hotkey until this is fixed."
+                hotkeyStatus.textColor = .systemRed
+            }
         case .failure(let err):
             hotkeyStatus.stringValue = err.description
             hotkeyStatus.textColor = .systemRed
