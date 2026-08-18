@@ -18,12 +18,15 @@ public enum LoginItemState: Equatable, Sendable {
     /// Not registered.
     case off
     /// Registered, and macOS is holding it until the user approves it in
-    /// System Settings. The switch reads on, because the request stands and
-    /// undoing it here is what turning the switch off would mean, but the app
-    /// will not actually launch until that approval happens.
+    /// System Settings. The switch reads on, because `SMAppService` documents
+    /// this state as a service that registered successfully and is waiting on
+    /// the user, so the request does stand; the app just will not launch until
+    /// that approval happens.
     case blocked
-    /// The system will not register this copy at all, which in practice means
-    /// it is running from somewhere it was not installed to.
+    /// `SMAppService` reported an error rather than a registration state.
+    /// The framework documents this only as "an error occurred and no such
+    /// service could be found" and names no cause, so the row says what
+    /// happened and offers the usual remedy rather than diagnosing it.
     case unavailable
 
     public init(_ status: SMAppService.Status) {
@@ -53,7 +56,7 @@ public enum LoginItemState: Equatable, Sendable {
         case .blocked:
             return "macOS is holding this until you allow Birta Jot in System Settings, under General and then Login Items."
         case .unavailable:
-            return "Only the installed copy can open at login. Run jot/scripts/install-app.sh, then open Birta Jot from Applications."
+            return "macOS could not register this copy of Birta Jot, so it cannot open at login. Opening the copy in your Applications folder is the usual fix."
         }
     }
 

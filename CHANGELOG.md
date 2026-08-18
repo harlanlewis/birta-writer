@@ -40,7 +40,7 @@
 
 ### Fixed
 
-- In Birta Writer Jot, the minus key could not be used in the summon hotkey. Pressing it in the recorder registered nothing, because the parser reads `-` as a separator between parts of a combination and so never saw it as the key itself. Every other key was unaffected.
+- In Birta Writer Jot, the minus key could not be used in the summon hotkey. Typing `cmd+-` into the old Preferences hotkey field was refused as naming no key, and the new Settings recorder registered nothing when that key was pressed, because the parser reads `-` as a separator between the parts of a combination and so never saw it as the key itself. Every other key was unaffected.
 
 - In Birta Writer Jot, pressing Return at the end of a block left the caret in the block above, so the next thing typed joined the previous line instead of starting the new one. Splitting a block from the middle was unaffected. The editor inside VS Code never had this: it renders in a different engine, which tolerated the arrangement that caused it.
 

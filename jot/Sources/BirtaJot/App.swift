@@ -178,9 +178,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// a coloured image would stay dark on dark. PDF, so it is drawn at the
     /// display's own backing scale rather than resampled from one bitmap.
     ///
-    /// 16pt in a 22pt bar. The mark is a filled box that reaches its own edges,
-    /// where the SF Symbols beside it carry their padding inside the glyph, so
-    /// matching their 18pt would draw a visibly larger neighbour.
+    /// Drawn smaller than the bar's own thickness. The mark is a filled box
+    /// reaching its own edges, where the SF Symbols beside it carry their
+    /// padding inside the glyph, so matching their nominal size would draw a
+    /// visibly larger neighbour.
     ///
     /// The symbol is the fallback for `swift run`, which has no bundle to read.
     /// An app with no menu-bar item has no way in at all, so this degrades to
