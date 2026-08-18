@@ -49,6 +49,14 @@ const offenders = entries.filter((name) => banned.test(name));
 // (left behind by `pnpm perf:ab`) failed this as a bare "entry count 318 exceeds
 // 200", which says nothing about WHICH directory leaked. They are in `banned`
 // above so the next occurrence reports itself.
+//
+// This number caught `jot/**` in 2026-08, which had shipped since the
+// directory arrived because `.vscodeignore` never gained a line for it. The
+// first instinct was to raise the ceiling to fit the growth; the count was
+// right and the growth was not. Raise this only once the entries above it
+// have been listed and each directory in them has a reason to be there:
+// "nothing on the banned list leaked" is a different question from "every
+// directory here belongs", and only the second one justifies a higher number.
 const MAX_FILES = 200;
 
 // The Marketplace tile. `.vscodeignore` is a deny-list, so the icon ships by
