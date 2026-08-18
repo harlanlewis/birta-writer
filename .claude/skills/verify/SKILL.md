@@ -38,7 +38,7 @@ The user-facing surface is a VS Code custom-editor webview. Launching an Extensi
      <script type="module" src="dist/webview.js"></script>
      ```
    - All `__i18n` reads are optional-chained; the minimal stub boots cleanly.
-   - Define a block of `--vscode-*` CSS variables in the harness (dark-theme hexes). Outside VS Code they don't exist and menus render transparent.
+   - Link `dist/hostPalette.css` (built with the bundle) for the `--vscode-*` variables, or define a block of them by hand. Outside VS Code they don't exist and menus render transparent; the palette file is complete by construction (`webview/__tests__/hostPalette.test.ts`) and picks light or dark from a `vscode-light` / `vscode-dark` class on `<body>`.
 4. Serve over HTTP (ESM chunks won't load from `file://`): `python3 -m http.server 8321` from the harness dir.
 5. Playwright: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i playwright` in the harness dir. Browsers are already cached in `~/Library/Caches/ms-playwright`.
 6. Drive with a node script: `page.goto`, `waitForSelector(".milkdown .ProseMirror")`, click/`keyboard.type`, screenshot, assert. Outbound messages (autosave markdown!) are in `window.__posted`, and asserting the serialized `update` content is the strongest end-to-end check.

@@ -125,7 +125,16 @@ const webviewBuild = {
     // KaTeX's stylesheet is a SECOND entry so it emits as dist/katex.css instead
     // of being hoisted into the render-blocking entry webview.css. It is injected
     // lazily at runtime the first time math loads (see webview/utils/katexLoader.ts).
-    entryPoints: { webview: 'webview/index.ts', katex: 'katex/dist/katex.min.css' },
+    // hostPalette.css is a THIRD entry for the same reason, with the opposite
+    // consumer: the --vscode-* palette a non-VS-Code host (jot/, the e2e
+    // harness) links in place of the workbench's. It must never be hoisted
+    // into webview.css, where it would fight the injected palette inside VS
+    // Code; webview/__tests__/hostPalette.test.ts pins that no module imports it.
+    entryPoints: {
+        webview: 'webview/index.ts',
+        katex: 'katex/dist/katex.min.css',
+        hostPalette: 'webview/ui/hostPalette.css',
+    },
     outdir: 'dist',
     platform: 'browser',
     target: 'es2020',

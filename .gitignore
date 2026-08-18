@@ -11,6 +11,9 @@ test/
 !src/test/**
 *.vsix
 releases/
+# Birta Jot (jot/): SwiftPM build products and the assembled .app
+jot/.build/
+jot/build/
 .DS_Store
 .docs
 .idea

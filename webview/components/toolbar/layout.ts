@@ -21,7 +21,7 @@ import { createMenuTrigger } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { createOverflowController } from "./overflow";
 import type { OverflowController, OverflowGroup } from "./overflow";
-import { computeZones } from "./registry";
+import { computeZones, hostAvailableItems } from "./registry";
 import type { ToolbarItemId } from "./registry";
 import { enterEditMode } from "./dnd";
 import type { ToolbarConfig } from "../../../shared/messages";
@@ -119,6 +119,9 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     // they don't tear down the drag state mid-session.
     let latestConfig: ToolbarConfig | undefined = window.__i18n?.toolbar;
     let editing = false;
+    // The items this host can carry (shared/hostCapabilities.ts). Read once:
+    // the declaration is baked at panel load and a webview is rebuilt on open.
+    const available = hostAvailableItems();
 
     // ── Whole-bar visibility (birta.toolbar.visible) ──
     // Hiding slides the fixed topbar up (a body class the CSS keys off) and
@@ -185,7 +188,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
 
         tray.append(label, trayItems, doneBtn);
 
-        for (const id of computeZones(latestConfig).hidden) {
+        for (const id of computeZones(latestConfig, available).hidden) {
             const el = items[id];
             if (el) { trayItems.appendChild(el); }
         }
@@ -287,7 +290,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         rightZone.replaceChildren();
         moreMenu.replaceChildren();
 
-        const zones = computeZones(config);
+        const zones = computeZones(config, available);
         for (const id of zones.left) {
             const el = items[id];
             if (el) { leftZone.appendChild(el); }

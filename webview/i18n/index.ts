@@ -108,6 +108,11 @@ declare global {
             resourceBaseUri?: string;
             /** The same, for the workspace root, which the `@/` alias names. */
             workspaceBaseUri?: string;
+            /**
+             * What the host provides beyond the editor (shared/hostCapabilities.ts).
+             * ABSENT MEANS ALL; read it through `hostHas`, never directly.
+             */
+            hostCapabilities?: readonly import("../../shared/hostCapabilities").HostCapability[];
         };
     }
 }
