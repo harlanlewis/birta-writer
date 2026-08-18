@@ -61,8 +61,19 @@ export const PROMPT_PLACEHOLDER = "{prompt}";
 export const CHAT_OPEN_COMMAND = "workbench.action.chat.open";
 /** The one terminal `/ai` reuses in terminal mode, so repeated asks do not litter the panel. */
 export const TERMINAL_NAME = "Birta AI";
-/** Stderr tail carried into a failure report. */
-const STDERR_TAIL = 400;
+/** Stderr tail carried into a failure report; stdout tail shown when a run changes nothing. */
+const OUTPUT_TAIL = 400;
+
+/**
+ * The harness a template runs, for the marker's tooltip and the finish
+ * report: the first word of the command (`claude`, `codex`), which is the
+ * one thing about it the editor can know. Which MODEL answered is the
+ * harness's own business and no CLI reports it in a form worth parsing.
+ */
+export function harnessName(template: string): string {
+    const first = template.trim().split(/\s+/)[0] ?? "";
+    return first.replace(/^.*[\\/]/, "") || "agent";
+}
 
 /**
  * The one line handed over: the request, whitespace collapsed to keep it a
@@ -183,10 +194,10 @@ function agentTerminal(cwd: vscode.Uri | undefined): vscode.Terminal {
 function spawnBackground(commandLine: string, cwd: string | undefined): ChildProcess {
     if (process.platform === "win32") {
         return spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", commandLine], {
-            cwd, stdio: ["ignore", "ignore", "pipe"], windowsHide: true,
+            cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
         });
     }
-    return spawn(commandLine, { cwd, shell: true, stdio: ["ignore", "ignore", "pipe"] });
+    return spawn(commandLine, { cwd, shell: true, stdio: ["ignore", "pipe", "pipe"] });
 }
 
 async function readDisk(uri: vscode.Uri): Promise<string | undefined> {
@@ -208,48 +219,66 @@ function startBackground(
     uri: vscode.Uri,
     savedText: string,
     commandLine: string,
+    harness: string,
     cwd: string | undefined,
     report: AgentRunReporter,
 ): void {
     const child = spawnBackground(commandLine, cwd);
     const run: BackgroundRun = { requestId, uri, savedText, child, cancelled: false };
     runs.set(requestId, run);
-    report(uri, { type: "agentRun", requestId, status: "running" });
+    report(uri, { type: "agentRun", requestId, status: "running", harness });
+    const relPath = vscode.workspace.asRelativePath(uri, false);
     let stderr = "";
+    let stdout = "";
     child.stderr?.on("data", (chunk: Buffer) => {
-        stderr = (stderr + chunk.toString("utf8")).slice(-STDERR_TAIL);
+        stderr = (stderr + chunk.toString("utf8")).slice(-OUTPUT_TAIL);
     });
+    child.stdout?.on("data", (chunk: Buffer) => {
+        stdout = (stdout + chunk.toString("utf8")).slice(-OUTPUT_TAIL);
+    });
+    const failed = (message: string): void => {
+        report(uri, { type: "agentRun", requestId, status: "failed", message, harness });
+        void vscode.window.showErrorMessage(vscode.l10n.t("{0} could not finish your request on {1}: {2}", harness, relPath, message));
+    };
     child.on("error", (err) => {
         runs.delete(requestId);
         reportError("askAgent background", err);
-        report(uri, { type: "agentRun", requestId, status: "failed", message: String((err as Error).message ?? err) });
+        failed(String((err as Error).message ?? err));
     });
     child.on("exit", (code) => {
         void (async () => {
             runs.delete(requestId);
             if (run.cancelled) {
-                report(uri, { type: "agentRun", requestId, status: "cancelled" });
+                report(uri, { type: "agentRun", requestId, status: "cancelled", harness });
+                vscode.window.setStatusBarMessage(vscode.l10n.t("{0}: request cancelled", harness), 4000);
                 return;
             }
             if (code !== 0) {
-                report(uri, {
-                    type: "agentRun", requestId, status: "failed",
-                    message: vscode.l10n.t("The agent exited with code {0}. {1}", String(code), stderr.trim()),
-                });
+                failed(vscode.l10n.t("exit code {0}. {1}", String(code), (stderr.trim() || stdout.trim())));
                 return;
             }
-            // Clean document: VS Code has already reloaded (or the file did
-            // not change), and the webview took it. Dirty: the reload was
-            // refused, so hand the disk text over for the webview to merge.
-            let text: string | undefined;
-            const document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
-            if (document?.isDirty) {
-                const disk = await readDisk(uri);
-                if (disk !== undefined && disk !== savedText) { text = disk; }
+            // Every run ends with something the user can see. A run that
+            // changed the file: the change itself, and one line in the status
+            // bar. A run that changed nothing: its own last words, since the
+            // answer to "say hello" was never in the file to begin with.
+            const disk = await readDisk(uri);
+            const changed = disk !== undefined && disk !== savedText;
+            if (!changed) {
+                report(uri, { type: "agentRun", requestId, status: "done", harness });
+                const said = stdout.trim().split(/\r?\n/).filter((l) => l.trim() !== "").slice(-3).join(" ");
+                void vscode.window.showInformationMessage(said
+                    ? vscode.l10n.t("{0} finished without changing {1}. It said: {2}", harness, relPath, said)
+                    : vscode.l10n.t("{0} finished without changing {1}, and said nothing.", harness, relPath));
+                return;
             }
-            report(uri, text === undefined
-                ? { type: "agentRun", requestId, status: "done" }
-                : { type: "agentRun", requestId, status: "done", text });
+            // Clean document: VS Code has already reloaded and the webview
+            // took it. Dirty: the reload was refused, so hand the disk text
+            // over for the webview to merge around the user's edits.
+            const document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
+            report(uri, document?.isDirty
+                ? { type: "agentRun", requestId, status: "done", text: disk, harness }
+                : { type: "agentRun", requestId, status: "done", harness });
+            vscode.window.setStatusBarMessage(vscode.l10n.t("{0} finished: {1} updated", harness, relPath), 5000);
         })();
     });
 }
@@ -282,7 +311,7 @@ async function dispatch(
     const folder = vscode.workspace.getWorkspaceFolder(active.uri)?.uri;
     const commandLine = expandCommandTemplate(setting, shellQuote(line));
     if (mode === "background" && active.requestId) {
-        startBackground(active.requestId, active.uri, active.savedText, commandLine, folder?.fsPath, report);
+        startBackground(active.requestId, active.uri, active.savedText, commandLine, harnessName(setting), folder?.fsPath, report);
         return;
     }
     // One reused terminal: nothing piles up in the panel, and the user sees

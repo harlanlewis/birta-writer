@@ -366,7 +366,7 @@ export function createMessageHandlers(
             if (!view) { return; }
             switch (msg.status) {
                 case "running":
-                    markAgentRunning(view, msg.requestId);
+                    markAgentRunning(view, msg.requestId, msg.harness);
                     return;
                 case "failed":
                     failAgentRun(view, msg.requestId, msg.message ?? "");

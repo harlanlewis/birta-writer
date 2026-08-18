@@ -56,6 +56,8 @@ export interface AgentRun {
     readonly mapping: Mapping;
     /** `armed` until the extension confirms a background run; then `running`. */
     status: "armed" | "running";
+    /** The harness running it (`claude`, `codex`), for the tooltip; unknown until `running`. */
+    harness?: string;
     /** Set once the run fails; the marker switches to an error until dismissed. */
     error?: string;
 }
@@ -67,7 +69,7 @@ interface AgentPendingState {
 
 type AgentAction =
     | { kind: "begin"; id: string; pos: number; base: ProseNode }
-    | { kind: "running"; id: string }
+    | { kind: "running"; id: string; harness?: string }
     | { kind: "settle"; id: string }
     | { kind: "fail"; id: string; error: string };
 
@@ -77,12 +79,18 @@ function markerWidget(run: AgentRun, view: EditorView): HTMLElement {
     el.setAttribute("aria-live", "polite");
     el.setAttribute("role", "button");
     el.tabIndex = -1;
+    const who = run.harness ?? t("Your agent");
     el.title = run.error
-        ? t("Agent request failed: ") + run.error + " " + t("(click to dismiss)")
-        : t("Your agent is working on this request (click to cancel)");
-    const dot = document.createElement("span");
-    dot.className = "agent-pending__dot";
-    el.append(dot);
+        ? `${who}: ${t("request failed")} (${run.error}). ${t("Click to dismiss.")}`
+        : `${who} ${t("is working on this request. Click to stop it.")}`;
+    // A filled pill carrying a stop square while running (the one verb the
+    // marker has), an exclamation once failed. Both draw in the theme's own
+    // button and error inks, so the pill reads at a glance on any theme.
+    const glyph = document.createElement("span");
+    glyph.className = run.error ? "agent-pending__glyph agent-pending__glyph--error" : "agent-pending__glyph agent-pending__glyph--stop";
+    glyph.setAttribute("aria-hidden", "true");
+    if (run.error) { glyph.textContent = "!"; }
+    el.append(glyph);
     // The marker is chrome: its click is not a document edit and must not
     // move the caret or enter the undo history.
     el.addEventListener("mousedown", (e) => {
@@ -105,7 +113,7 @@ function buildDecorations(runs: readonly AgentRun[], view: EditorView | null, do
         .filter((r) => r.pos >= 0 && r.pos <= doc.content.size)
         .map((r) => Decoration.widget(r.pos, () => markerWidget(r, view), {
             side: -1,
-            key: `${r.id}:${r.status}:${r.error ?? ""}`,
+            key: `${r.id}:${r.status}:${r.harness ?? ""}:${r.error ?? ""}`,
         }));
     return DecorationSet.create(doc, decos);
 }
@@ -136,7 +144,7 @@ export const agentPendingPlugin = $prose(() => {
                 if (action?.kind === "begin") {
                     runs = [...runs, { id: action.id, pos: action.pos, base: action.base, mapping: new Mapping(), status: "armed" }];
                 } else if (action?.kind === "running") {
-                    runs = runs.map((r) => (r.id === action.id ? { ...r, status: "running" } : r));
+                    runs = runs.map((r) => (r.id === action.id ? { ...r, status: "running", harness: action.harness ?? r.harness } : r));
                 } else if (action?.kind === "settle") {
                     runs = runs.filter((r) => r.id !== action.id);
                 } else if (action?.kind === "fail") {
@@ -170,8 +178,8 @@ export function beginAgentRun(view: EditorView): string {
     return id;
 }
 
-export function markAgentRunning(view: EditorView, id: string): void {
-    dispatchIfLive(view, { kind: "running", id });
+export function markAgentRunning(view: EditorView, id: string, harness?: string): void {
+    dispatchIfLive(view, { kind: "running", id, harness });
 }
 
 export function settleAgentRun(view: EditorView, id: string): void {

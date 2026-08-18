@@ -142,7 +142,7 @@ Decoration and analysis settle in after first paint, on idle. Never on the mount
 
 Every marker is the block's slash-menu icon: headings an `H1`-`H6` badge, list items their flavor's icon. They are drawn from the same icon set as the slash menu, so the two can never drift. Markers are quiet at rest and interactive by design: they are the block's primary control (see "The gutter is the handle" below).
 
-One more mark lives in the gutter, one step further into the margin so it never covers the block's own: a small pulsing dot beside a block means an agent is working on a request the user typed there (`/ai`), and clicking it cancels the run. It is the only progress indicator the editor draws in the document's margin, it never enters the content area (a placeholder in the text is something you would type into and around), and it leaves nothing in the file.
+One more mark lives in the gutter, one step further into the margin so it never covers the block's own: a small filled pill carrying a stop square beside a block means an agent is working on a request the user typed there (`/ai`); it is drawn in the theme's button ink so it reads at a glance, its tooltip names the harness, and clicking it stops the run. It is the only progress indicator the editor draws in the document's margin, it never enters the content area (a placeholder in the text is something you would type into and around), and it leaves nothing in the file. It sits beside the line the request was typed on, which for a request typed on a fresh empty line is that empty line, whose source position is the blank separator after the block above.
 
 ### Theme tokens only
 

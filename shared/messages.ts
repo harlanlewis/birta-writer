@@ -486,6 +486,8 @@ export type AgentRunMessage = {
     status: "running" | "done" | "failed" | "cancelled" | "handedOff";
     text?: string;
     message?: string;
+    /** The harness running the request (`claude`, `codex`): the command's first word, for the marker's tooltip. */
+    harness?: string;
 };
 
 export type ToWebviewMessage =

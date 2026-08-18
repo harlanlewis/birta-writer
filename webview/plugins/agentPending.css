@@ -1,52 +1,78 @@
 /**
- * The `/ai` run marker (plugins/agentPending.ts): a small pulsing dot in the
- * gutter beside the request's block while a background agent works, an error
- * dot once it fails. Chrome, not content: it sits in the margin on the same
- * geometry contract as the block gutter (see .heading-fold-gutter in
- * style.css), one step further into the margin so it never covers the block's
- * own marker. Quiet by design (docs/DESIGN_PRINCIPLES.md): a dot, not a
- * spinner in the text, and nothing in the file.
+ * The `/ai` run marker (plugins/agentPending.ts): a filled pill in the gutter
+ * beside the request's block while a background agent works, carrying a
+ * stop square (its one verb: click to stop the run), and an error pill with
+ * an exclamation once it fails. Chrome, not content: it sits in the margin on
+ * the same geometry contract as the block gutter (see .heading-fold-gutter
+ * in style.css), one step further into the margin so it never covers the
+ * block's own marker. Filled rather than outlined, in the theme's button and
+ * error inks, so it reads at a glance on any theme; the pulse is a gentle
+ * breathe of the whole pill, never below a legible opacity.
  */
 .milkdown .editor .agent-pending {
     position: absolute;
-    left: calc(var(--gutter-left, var(--gutter-column)) - 22px);
+    left: calc(var(--gutter-left, var(--gutter-column)) - 20px);
     top: var(--gutter-top, 0px);
     height: var(--gutter-height, 1.5em);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
+    box-sizing: border-box;
+    width: 26px;
+    /* Anchored to the gutter line's vertical centre; the pill itself is a
+       fixed 16px tall inside the line box. */
+    padding: 0;
     transform: translateX(-100%);
     cursor: pointer;
     pointer-events: auto;
     user-select: none;
-    color: var(--vscode-focusBorder);
 }
 
-.milkdown .editor .agent-pending__dot {
+.milkdown .editor .agent-pending__glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 16px;
+    border-radius: var(--ui-radius-m);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    font-size: var(--ui-fs-s);
+    font-weight: 700;
+    line-height: 1;
+    animation: agent-pending-breathe 1.4s ease-in-out infinite;
+}
+
+/* The stop square: drawn, not a glyph, so it is the same size in every font. */
+.milkdown .editor .agent-pending__glyph--stop::before {
+    content: "";
+    display: block;
     width: 7px;
     height: 7px;
-    border-radius: 50%;
+    border-radius: var(--ui-radius-s);
     background: currentColor;
-    animation: agent-pending-pulse 1.2s ease-in-out infinite;
 }
 
-.milkdown .editor .agent-pending--error {
-    color: var(--vscode-inputValidation-errorBorder);
-}
-
-.milkdown .editor .agent-pending--error .agent-pending__dot {
+.milkdown .editor .agent-pending:hover .agent-pending__glyph {
     animation: none;
     opacity: 1;
+    background: var(--vscode-button-hoverBackground);
 }
 
-@keyframes agent-pending-pulse {
-    0%, 100% { opacity: 0.35; transform: scale(0.85); }
-    50% { opacity: 1; transform: scale(1); }
+.milkdown .editor .agent-pending__glyph--error {
+    animation: none;
+    background: var(--vscode-inputValidation-errorBackground);
+    color: var(--vscode-inputValidation-errorForeground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
 }
 
-/* Reduced motion: the dot still reads as busy from its colour and its
-   tooltip; the pulse is decoration we can drop. */
+@keyframes agent-pending-breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Reduced motion: the pill still reads as busy from its fill and its
+   tooltip; the breathe is decoration we can drop. */
 @media (prefers-reduced-motion: reduce) {
-    .milkdown .editor .agent-pending__dot { animation: none; opacity: 0.8; }
+    .milkdown .editor .agent-pending__glyph { animation: none; }
 }

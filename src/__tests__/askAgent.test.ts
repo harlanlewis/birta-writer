@@ -16,6 +16,7 @@ import {
     cancelAgentRun,
     composeAgentRequest,
     expandCommandTemplate,
+    harnessName,
     normalizeAgentMode,
     shellQuote,
     CHAT_OPEN_COMMAND,
@@ -29,6 +30,7 @@ import { makeFakeTextDocument, resetTextDocumentMocks, Range, Uri } from "../../
 /** A spawn stand-in: an emitter with a stderr stream and a kill the test can drive. */
 class FakeChild extends EventEmitter {
     stderr = new EventEmitter();
+    stdout = new EventEmitter();
     kill = vi.fn(() => { this.emit("exit", null); return true; });
 }
 const spawnMock = vi.hoisted(() => vi.fn());
@@ -100,6 +102,14 @@ describe("expandCommandTemplate", () => {
 
     it("a template without the placeholder should get the line appended", () => {
         expect(expandCommandTemplate("  claude  ", "'q'")).toBe("claude 'q'");
+    });
+});
+
+describe("harnessName", () => {
+    it("the command's first word, without any path, names the harness", () => {
+        expect(harnessName("claude -p {prompt} --permission-mode acceptEdits")).toBe("claude");
+        expect(harnessName("/usr/local/bin/codex exec {prompt}")).toBe("codex");
+        expect(harnessName("   ")).toBe("agent");
     });
 });
 
@@ -201,12 +211,51 @@ describe("askAgent", () => {
         expect(commandLine).toBe(`claude -p 'In notes/plan.md#L1: do x'`);
         expect(options).toMatchObject({ shell: true });
         expect(vscode.window.createTerminal).not.toHaveBeenCalled();
-        expect(messages).toEqual([{ type: "agentRun", requestId: "ai7", status: "running" }]);
+        expect(messages).toEqual([{ type: "agentRun", requestId: "ai7", status: "running", harness: "claude" }]);
 
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n\nAgent line.\n"));
         child.emit("exit", 0);
         await flush();
 
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai7", status: "done" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai7", status: "done", harness: "claude" });
+        // The change itself is the feedback, plus one status-bar line.
+        expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(expect.stringContaining("claude finished"), 5000);
+        expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it("a run that changed nothing should still end with feedback: the agent's last words in a message", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        const { report, messages } = reporter();
+        await askAgent(() => Promise.resolve(activeAt(1)), report, "say hello", "ai12");
+
+        child.stdout.emit("data", Buffer.from("Hello! Nothing to change here.\n"));
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
+        child.emit("exit", 0);
+        await flush();
+
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai12", status: "done", harness: "claude" });
+        expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+            expect.stringMatching(/claude finished without changing notes\/plan\.md\. It said: Hello! Nothing to change here\./),
+        );
+    });
+
+    it("a run that changed nothing and said nothing should say so", async () => {
+        configureRoute("codex exec {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "say hello", "ai13");
+
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
+        child.emit("exit", 0);
+        await flush();
+
+        expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("codex finished without changing notes/plan.md, and said nothing."),
+        );
     });
 
     it("a dirty document at exit should carry the disk text into the done report", async () => {
@@ -223,7 +272,7 @@ describe("askAgent", () => {
         child.emit("exit", 0);
         await flush();
 
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai8", status: "done", text: "# Plan\n\nAgent line.\n" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai8", status: "done", text: "# Plan\n\nAgent line.\n", harness: "claude" });
     });
 
     it("a dirty document whose file the agent did not change should report a plain done", async () => {
@@ -239,7 +288,7 @@ describe("askAgent", () => {
         child.emit("exit", 0);
         await flush();
 
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai9", status: "done" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai9", status: "done", harness: "claude" });
     });
 
     it("a non-zero exit should report failed with the code and the stderr tail", async () => {
@@ -257,6 +306,8 @@ describe("askAgent", () => {
         expect(messages[1]?.status).toBe("failed");
         expect(messages[1]?.message).toContain("127");
         expect(messages[1]?.message).toContain("no such command");
+        // A failure is announced, not only marked in the gutter.
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("claude could not finish"));
     });
 
     it("cancelling a run should kill the child and report cancelled, not failed", async () => {
@@ -271,7 +322,7 @@ describe("askAgent", () => {
         await flush();
 
         expect(child.kill).toHaveBeenCalled();
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai11", status: "cancelled" });
+        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai11", status: "cancelled", harness: "claude" });
     });
 
     it("a dirty document should be saved before the hand-off", async () => {

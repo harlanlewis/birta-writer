@@ -84,6 +84,35 @@ describe("buildSelectionContext", () => {
         expect(ctx.selections[0].text).toBe("First paragraph.");
     });
 
+    it("a caret in an empty paragraph below a block should name the blank line after that block, not the next block", () => {
+        // Enter after "First paragraph.", then `/ai <request>` on the fresh
+        // line (MAR-376): the source has no line for the empty paragraph, and
+        // the generic mapping named "Second paragraph." (line 3). The writer
+        // means the separator, line 2, which is where an agent inserts.
+        const source = "First paragraph.\n\nSecond paragraph.\n";
+        const d = doc(p("First paragraph."), p(""), p("Second paragraph."));
+        const pos = inBlock(d, 1, 0);
+        const ctx = buildSelectionContext(view(d, pos, pos), computeLineMap(source), source.split("\n"), 0)!;
+        expect(ctx.selections[0].anchor).toEqual({ line: 2, column: 0 });
+        expect(ctx.selections[0].active).toEqual({ line: 2, column: 0 });
+    });
+
+    it("a caret in an empty paragraph ending the document should name one past its last line", () => {
+        const source = "First paragraph.\n";
+        const d = doc(p("First paragraph."), p(""));
+        const pos = inBlock(d, 1, 0);
+        const ctx = buildSelectionContext(view(d, pos, pos), computeLineMap(source), source.split("\n"), 0)!;
+        expect(ctx.selections[0].active).toEqual({ line: 2, column: 0 });
+    });
+
+    it("an empty FIRST paragraph should keep the generic mapping (there is no block before it)", () => {
+        const source = "Second paragraph.\n";
+        const d = doc(p(""), p("Second paragraph."));
+        const pos = inBlock(d, 0, 0);
+        const ctx = buildSelectionContext(view(d, pos, pos), computeLineMap(source), source.split("\n"), 0)!;
+        expect(ctx.selections[0].active.line).toBe(1);
+    });
+
     it("should add the frontmatter line offset to the reported document line", () => {
         const source = "Body line.\n";
         const d = doc(p("Body line."));

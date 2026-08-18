@@ -207,10 +207,17 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(150);
     check("done clears the marker",
         await page.evaluate(() => document.querySelectorAll(".ProseMirror .agent-pending").length) === 0);
-    // A second request, cancelled from its marker, then reported failed.
+    // A second request, typed on a fresh empty line below the paragraph (the
+    // common gesture): its marker sits beside THAT line, not the one above.
+    // Then cancelled from its marker, then reported failed.
+    // Home is the one caret key that is reliable headless (see open()), so
+    // the fresh line is made ABOVE the paragraph: Enter at its start, then
+    // ArrowUp into the empty paragraph that split off.
     await page.locator(".milkdown .ProseMirror p").first().click();
-    await page.keyboard.press("End");
-    await page.keyboard.type(" /ai", { delay: 60 });
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.type("/ai", { delay: 60 });
     await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
     await page.keyboard.press("Space");
     await page.keyboard.type("second request", { delay: 30 });
@@ -218,8 +225,27 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(200);
     const second = await page.evaluate(() => window.__posted.filter((m) => m.type === "askAgent").at(-1).requestId);
     check("a second request gets its own id", second && second !== requestId, JSON.stringify({ requestId, second }));
-    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "running" }, "*"), second);
+    await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "running", harness: "claude" }, "*"), second);
     await page.waitForTimeout(150);
+    const second_marker = await page.evaluate(() => {
+        const el = document.querySelector(".ProseMirror .agent-pending");
+        if (!el) return null;
+        const p = el.closest("p");
+        const glyph = el.querySelector(".agent-pending__glyph");
+        const r = glyph?.getBoundingClientRect();
+        const square = glyph ? getComputedStyle(glyph, "::before") : null;
+        return {
+            paragraphText: p ? [...p.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("") : null,
+            paragraphIndex: p ? [...p.parentElement.children].indexOf(p) : -1,
+            title: el.getAttribute("title"),
+            width: r?.width, height: r?.height, squareWidth: square?.width,
+        };
+    });
+    check("the marker sits beside the empty line the request was typed on, not the paragraph beside it",
+        second_marker !== null && second_marker.paragraphText === "" && second_marker.paragraphIndex === 1, JSON.stringify(second_marker));
+    check("the marker is a pill wide enough to read, carrying a stop square and naming the harness",
+        second_marker !== null && second_marker.width >= 20 && second_marker.height >= 12
+            && second_marker.squareWidth === "7px" && /claude/.test(second_marker.title ?? ""), JSON.stringify(second_marker));
     await page.locator(".ProseMirror .agent-pending").first().click();
     await page.waitForTimeout(100);
     const cancels = await page.evaluate(() => window.__posted.filter((m) => m.type === "agentCancel"));
