@@ -27,6 +27,14 @@
 #
 # A figure this prints is a reading, not a record: quote it from a run on an
 # idle machine, never from a doc.
+#
+# If you write a quick probe of your own instead of extending this: WebKit's
+# content processes are not children of the app, so SIGKILL on the app orphans
+# them, and an orphan sits there at a fraction of a core for hours. This script
+# ends the app with SIGTERM through its trap for that reason. An ad-hoc probe
+# that hard-kills leaves litter that reads, to whoever is next on the machine,
+# as an unexplained load and a test that times out in a file they did not
+# touch.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
