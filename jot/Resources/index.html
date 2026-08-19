@@ -54,22 +54,26 @@
   }
 
   /* At rest (the pointer is off the window, `jot-resting` set by the shell)
-     the panel is a page and a cursor. The editing controls are in the dock at
-     the bottom leading corner, so the dock is what settles down, kept WHOLE
-     rather than reduced to its toggle: it is one thing to the eye, and
-     dissolving part of it reads as chrome breaking up rather than as chrome
-     settling down. Opacity rather than display, so nothing reflows.
+     the panel is a page and a cursor.
 
-     The top bar's utility block stays, because it is the only route to search
-     and settings and a window with no way in is not a quieter window. The
-     window's own title stays too: it is native chrome, and macOS does not fade
-     a title when you look away from it. */
-  .tb-dock { transition: opacity 0.15s ease; }
+     The formatting row is NOT what settles down any more, and the move is what
+     changed the answer. It used to be a strip fixed to the window's bottom
+     edge, outside the layout entirely, so fading it to `opacity: 0` cost
+     nothing and left nothing: the page below was never displaced by it. It is
+     a row of the bar now, and its height is part of the bar's, so fading it
+     leaves the text pushed down around a strip with nothing drawn in it, which
+     is a worse resting state than the one this rule was written to reach.
 
-  body.jot-resting .tb-dock {
-    opacity: 0;
-    pointer-events: none;
-  }
+     The alternative, removing the row at rest, reflows the document every time
+     the pointer leaves the window, which is the thing the original rule chose
+     opacity to avoid.
+
+     So the row stays, on the same reasoning the utility block already stays
+     on: it is part of the bar, and the bar does not fade. Whether the row is
+     open is the one piece of this chrome the reader has said something about,
+     and taking it away when they look elsewhere answers a question they have
+     already answered. The window's own title stays too: it is native chrome,
+     and macOS does not fade a title when you look away from it. */
 </style>
 </head>
 <body class="{{THEME_CLASS}}">

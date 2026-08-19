@@ -184,6 +184,22 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     /// stylesheet (jot/Resources/index.html) reads to put the toolbar away.
     /// A class rather than a message: the bundle is the extension's and knows
     /// nothing about a window nobody is pointing at.
+    /// Toggle `body.jot-resting`, which the page styles when it has a resting
+    /// treatment to apply.
+    ///
+    /// It currently has none. The rule this drove faded the formatting
+    /// controls when the pointer left the window, and that stopped being
+    /// possible when they became a row of the bar: the strip it was written
+    /// for was fixed to the window's bottom edge and outside the layout, so
+    /// fading it left nothing behind, where fading a row of the bar leaves the
+    /// text pushed down around a gap with nothing drawn in it. Removing the
+    /// row instead reflows the document every time the pointer leaves the
+    /// window, which is what the original rule chose opacity to avoid.
+    ///
+    /// The machinery is kept rather than deleted because the question it
+    /// answers is still a good one and the hover tracking behind it is the
+    /// expensive half to rebuild. Anything that fades here has to cost no
+    /// layout, which is a real constraint on what the next treatment can be.
     func setChromeResting(_ resting: Bool) {
         let js = "document.body.classList.toggle('jot-resting', \(resting ? "true" : "false"));"
         webView.evaluateJavaScript(js) { _, _ in }
@@ -192,9 +208,10 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     /// Ask the page where its formatting dock is, for `jot/scripts/measure.sh`.
     ///
     /// The panel's own page carries CSS the browser harness does not (the
-    /// titlebar carve-out, the at-rest fade), so "the dock renders in WebKit"
-    /// and "the dock renders in THIS window" are different claims. This is how
-    /// the second one gets asked.
+    /// titlebar carve-out, and the leading inset that belongs to the first row
+    /// alone), so "the row renders in WebKit" and "the row renders in THIS
+    /// window, where the left edge is the window's" are different claims. This
+    /// is how the second one gets asked.
     func reportDockGeometry(_ report: @escaping (String) -> Void) {
         let js = """
         (function () {
