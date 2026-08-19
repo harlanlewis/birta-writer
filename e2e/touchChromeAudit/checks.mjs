@@ -43,12 +43,21 @@ const CONSTRUCTS = [
 
 /**
  * The only interactive things inside .ProseMirror that are editable ON
- * PURPOSE. `.wiki-link-src` is the wiki_link NodeView's contentDOM, which is
- * what makes a wikilink's source editable character by character; its `<a>`
- * parent is therefore editable too. Declaring either non-editable would break
- * that feature, so this is an exemption with a reason, not a tolerated leak.
+ * PURPOSE. Each is an exemption with a reason, not a tolerated leak.
+ *
+ * `.wiki-link-src` is the wiki_link NodeView's contentDOM, which is what makes
+ * a wikilink's source editable character by character; its `<a>` parent is
+ * therefore editable too.
+ *
+ * The callout and directive titles are editable ISLANDS: their own
+ * contentEditable region rather than ProseMirror's, registered through
+ * `markEditableIsland` so read-only still reaches them (MAR-53). They carry
+ * `role="textbox"`, which is how the sweep sees them at all — they have the
+ * text cursor, not an interactive one.
  */
-const EDITABLE_BY_DESIGN = ["a.wiki-link", "span.wiki-link-src"];
+const EDITABLE_BY_DESIGN = [
+    "a.wiki-link", "span.wiki-link-src", "span.callout-title-text", "span.directive-title",
+];
 
 /**
  * Chrome protected ONLY by prosemirror-view's implicit stamp, never by this
@@ -136,11 +145,29 @@ const sweepOnce = (page) => page.evaluate((primitives) => {
     const root = document.querySelector(".ProseMirror");
     if (!root) return { rows: [], foreign: [], error: "no .ProseMirror" };
     const INTERACTIVE = new Set(["pointer", "grab", "grabbing", "col-resize", "row-resize", "ew-resize", "ns-resize", "move"]);
+    const NATIVE_TAB_STOP = new Set(["A", "INPUT", "TEXTAREA", "SELECT", "BUTTON"]);
     const rows = [];
     const foreign = [];
     for (const el of root.querySelectorAll("*")) {
         const cs = getComputedStyle(el);
-        if (el.tagName !== "BUTTON" && !INTERACTIVE.has(cs.cursor)) continue;
+        // Cursor is the main tell, but it is not the only one: chrome driven by
+        // a listener can keep the default cursor, and a listener is not
+        // observable from here. An ARIA role and a tab stop are, and each is
+        // something only chrome and the editable islands carry.
+        //
+        // `el.draggable` looks like a third and is not: it defaults to true on
+        // `<img>` and `<a>`, so it readmitted every image and every link in the
+        // document, none of which is chrome and each of which is correctly
+        // editable. Do not put it back. The tag name fails the same way.
+        //
+        // The tab stop only counts on an element that is not natively
+        // focusable, for the same reason: a link reports tabIndex 0 without
+        // anyone having asked for it, so counting it admits the document's own
+        // links. What the signal is for is a div or span someone deliberately
+        // made reachable.
+        const flagged = el.tagName === "BUTTON" || el.hasAttribute("role")
+            || (el.tabIndex >= 0 && !NATIVE_TAB_STOP.has(el.tagName));
+        if (!flagged && !INTERACTIVE.has(cs.cursor)) continue;
         if (cs.pointerEvents === "none") continue;
         const classes = String(el.className?.baseVal ?? el.className ?? "").trim().split(/\s+/).filter(Boolean);
         const own = classes.filter((c) => !primitives.includes(c) && !c.startsWith("ui-btn--"));
@@ -293,7 +320,7 @@ export async function run({ page, check, baseUrl }) {
     const editable = rows.filter((r) => r.editable).map((r) => r.sel).sort();
     check("the sweep reached a substantial amount of chrome",
         rows.length >= MIN_CHROME_KINDS, `${rows.length} kinds, floor ${MIN_CHROME_KINDS}`);
-    check("all interactive chrome declares itself non-editable, bar the wikilink's own source",
+    check("all interactive chrome declares itself non-editable, bar the editable islands",
         JSON.stringify(editable) === JSON.stringify([...EDITABLE_BY_DESIGN].sort()),
         JSON.stringify(editable));
     // `declared` and `editable` are exact complements of one array, so summing
