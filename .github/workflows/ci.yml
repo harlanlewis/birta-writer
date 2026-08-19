@@ -214,35 +214,16 @@ jobs:
         if: steps.relevant.outputs.value == 'true'
         run: pnpm install --frozen-lockfile
 
-      # Key the cache on the Playwright version itself rather than on the
-      # lockfile. The lockfile is what PINS that version, but it also moves for
-      # every unrelated dependency, and each of those would otherwise throw away
-      # a browser that never changed. Fails loudly rather than emitting an empty
-      # key, which would quietly collapse every version onto one cache entry.
-      - name: Resolve the Playwright version
-        if: steps.relevant.outputs.value == 'true'
-        id: playwright
-        run: |
-          VERSION=$(node -p "require('playwright/package.json').version")
-          test -n "$VERSION" || { echo "could not resolve the Playwright version"; exit 1; }
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Playwright $VERSION"
-
-      # The browser binary is the slow, third-party half of the step below, and
-      # the half that can stall: `install --with-deps` fetches Chromium from
-      # Playwright's CDN and then installs system packages through apt. Caching
-      # the download removes the CDN from the common path; the apt half still
-      # runs every time, so nothing changes about which system packages are
-      # present. No restore-keys: a miss here means a browser build this cache
-      # has never held, so an approximate hit would restore a stale browser the
-      # install below downloads past anyway, and then keep it forever.
-      - name: Cache the Playwright browser
-        if: steps.relevant.outputs.value == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-
+      # Deliberately uncached. `install --with-deps` has two halves: it fetches
+      # Chromium from Playwright's CDN, then installs system packages through
+      # apt. A cache can only cover the CDN half, which is a fixed-size zip and
+      # the short, steady one. The apt half runs either way, and it is the half
+      # that stalls, because it pulls fonts from an Ubuntu mirror at whatever
+      # rate that mirror gives. Caching the browser also never paid: both perf
+      # jobs run only on `pull_request`, so every entry was scoped to a
+      # `refs/pull/N/merge` ref, nothing ever wrote one on `main`, and a fresh
+      # PR missed and stored another copy of the browser. The job's
+      # `timeout-minutes` is what bounds the half that can stall.
       - name: Install Chromium for Playwright
         if: steps.relevant.outputs.value == 'true'
         run: pnpm exec playwright install --with-deps chromium
