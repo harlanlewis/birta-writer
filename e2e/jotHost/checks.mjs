@@ -7,7 +7,7 @@
  * build gating everything from passing.
  *
  * The two ARRANGEMENTS the profile also declares are checked here rather than
- * in jsdom, because both are claims about layout: `formattingInBottomDock`
+ * in jsdom, because both are claims about layout: `formattingInSecondRow`
  * moves every document-editing control into a strip at the bottom leading
  * corner that scrolls when it does not fit, and `fixedToolbarLayout` takes
  * away the customize mode and the hide row that would otherwise rearrange it.
@@ -76,7 +76,7 @@ export async function run({ page, check, baseUrl }) {
         ["format", "bold", "link", "table", "find", "settings"].every((id) => jot.items.includes(id)),
         JSON.stringify(jot.items));
 
-    // ── formattingInBottomDock ─────────────────────────────────────────
+    // ── formattingInSecondRow ─────────────────────────────────────────
     // The partition itself is unit-tested (toolbarRegistry.test.ts); what only
     // a real page can answer is whether the two holders actually received it.
     check("jot: the top bar's left zone is empty, leaving the titlebar row to the window",
@@ -98,6 +98,51 @@ export async function run({ page, check, baseUrl }) {
     check("jot: no item is on both surfaces",
         jot.dock.every((id) => !jot.rightZone.includes(id)),
         JSON.stringify({ dock: jot.dock, right: jot.rightZone }));
+
+    // WHERE the second holder is, which is the half of this arrangement that
+    // only a laid-out page can answer. The three checks below are one claim in
+    // three parts: the row is inside the bar, the button that opens it is not,
+    // and opening it makes the bar taller.
+    //
+    // The last one is the load-bearing one. Everything that keeps chrome off
+    // the text — the content's top padding, the find bar's offset, heading
+    // scroll margins, and `safeAreaTop()` behind every popup's placement —
+    // measures the bar's own box. A row that opened without changing that
+    // measurement would look right on the day it landed and would be painted
+    // over by the first popup that opened into it, so "the bar grew" is the
+    // property to hold rather than any particular pixel.
+    const barShape = () => page.evaluate(() => {
+        const bar = document.querySelector(".editor-topbar");
+        const row = document.querySelector(".tb-dock");
+        const toggle = document.querySelector(".tb-dock-toggle");
+        const find = document.querySelector('[data-item-id="find"]');
+        return {
+            rowInBar: row?.parentElement === bar,
+            toggleInBar: !!toggle?.closest(".editor-topbar") && !toggle?.closest(".tb-dock"),
+            togglePrecedesFind: toggle?.nextElementSibling === find,
+            barHeight: bar?.getBoundingClientRect().height ?? 0,
+        };
+    });
+    // Driven through the page's own click rather than a synthesized event.
+    // `bindActivate` answers the FIRST of mousedown or click, so a probe that
+    // sends both toggles twice and measures the state it started in, which
+    // reads exactly like a row that does not move the bar.
+    const beforeOpen = await barShape();
+    await page.locator(".tb-dock-toggle").click();
+    await page.waitForTimeout(200);
+    const afterOpen = await barShape();
+    const rowGeometry = { ...beforeOpen, collapsed: beforeOpen.barHeight, expanded: afterOpen.barHeight };
+    // Put it back, so the checks after this one meet the page as they expect it.
+    await page.locator(".tb-dock-toggle").click();
+    await page.waitForTimeout(200);
+    check("jot: the formatting row is a row of the top bar, not a strip of its own",
+        rowGeometry.rowInBar, JSON.stringify(rowGeometry));
+    check("jot: its toggle is in the bar itself, not in the row it opens",
+        rowGeometry.toggleInBar, JSON.stringify(rowGeometry));
+    check("jot: the toggle sits immediately before Find",
+        rowGeometry.togglePrecedesFind, JSON.stringify(rowGeometry));
+    check("jot: opening the row makes the bar taller, so everything that measures it follows",
+        rowGeometry.expanded > rowGeometry.collapsed, JSON.stringify(rowGeometry));
 
     // ── fixedToolbarLayout ─────────────────────────────────────────────
     check("jot: no reveal tab, because the bar never hides", !jot.showTab);
@@ -342,31 +387,37 @@ export async function run({ page, check, baseUrl }) {
     const dockState = () => page.evaluate(() => {
         const dock = document.querySelector(".tb-dock");
         const row = document.querySelector(".tb-dock-row");
-        const divider = document.querySelector(".tb-dock-divider");
+        const bar = document.querySelector(".editor-topbar");
         const shown = (el) => !!el && !!el.getClientRects().length;
         return {
             expanded: dock?.dataset.expanded,
             rowShown: shown(row),
-            dividerShown: shown(divider),
             toggleShown: shown(document.querySelector(".tb-dock-toggle")),
             glyph: document.querySelector(".tb-dock-glyph")?.textContent,
             overflows: row ? row.scrollWidth > row.clientWidth + 1 : null,
             saved: window.__state?.formattingDockExpanded,
+            barHeight: bar?.getBoundingClientRect().height ?? null,
         };
     });
 
     const collapsed = await dockState();
-    check("jot: the dock starts collapsed, as a lone T",
+    check("jot: the row starts collapsed, with only the T in the bar",
         collapsed.expanded === "false" && collapsed.toggleShown && !collapsed.rowShown
-            && !collapsed.dividerShown && collapsed.glyph === "T",
+            && collapsed.glyph === "T",
         JSON.stringify(collapsed));
 
     await page.locator(toggleSel).click();
     await page.waitForTimeout(200);
     const expanded = await dockState();
-    check("jot: clicking the T shows the row and the divider",
-        expanded.expanded === "true" && expanded.rowShown && expanded.dividerShown,
+    check("jot: clicking the T opens the row",
+        expanded.expanded === "true" && expanded.rowShown,
         JSON.stringify(expanded));
+    // And the bar is what grew. Collapsed the row must not merely be invisible
+    // but absent from the bar's box, or the content below stays pushed down
+    // around a row nobody can see.
+    check("jot: opening it grows the bar, closing it gives the height back",
+        expanded.barHeight > collapsed.barHeight,
+        JSON.stringify({ collapsed: collapsed.barHeight, expanded: expanded.barHeight }));
 
     // The chevron used to animate its WIDTH in from zero on hover, which moved
     // the toggle's own box and shoved the whole row sideways as the pointer
@@ -457,15 +508,19 @@ export async function run({ page, check, baseUrl }) {
         return {
             position: getComputedStyle(menu).position,
             height: m.height,
-            aboveRow: m.bottom <= r.top + 1,
+            belowRow: m.top >= r.bottom - 1,
             insideViewport: m.top >= 0 && m.bottom <= window.innerHeight,
             rowHeight: r.height,
             reachable: !!hit && menu.contains(hit),
         };
     });
-    check("jot: the format dropdown opens at all inside the dock", menuBox !== null);
-    check("jot: it opens upward, above the row",
-        menuBox?.aboveRow === true, JSON.stringify(menuBox));
+    check("jot: the format dropdown opens at all inside the row", menuBox !== null);
+    // Downward, because the row sits at the top of the window now. The old
+    // row was at the bottom edge and its menus had to open upward; the
+    // direction is the placement engine's answer to where the room is, so it
+    // follows the move rather than being configured.
+    check("jot: it opens downward, below the row",
+        menuBox?.belowRow === true, JSON.stringify(menuBox));
     check("jot: it is positioned in viewport coordinates, so the scroller cannot clip it",
         menuBox?.position === "fixed", JSON.stringify(menuBox));
     check("jot: and it is drawn at full height inside the viewport",
@@ -491,9 +546,9 @@ export async function run({ page, check, baseUrl }) {
         return {
             btn: { x: b.x + b.width / 2, y: b.y + b.height / 2 },
             // Midway through the gap: over the page, over neither element.
-            gap: { x: b.x + b.width / 2, y: (m.bottom + b.top) / 2 },
+            gap: { x: b.x + b.width / 2, y: (b.bottom + m.top) / 2 },
             menu: { x: m.x + m.width / 2, y: m.y + m.height / 2 },
-            gapHeight: b.top - m.bottom,
+            gapHeight: m.top - b.bottom,
         };
     });
     check("jot: there really is a gap between the trigger and the menu to cross",
@@ -558,14 +613,25 @@ export async function run({ page, check, baseUrl }) {
         };
         const style = getComputedStyle(dock);
         const box = dock.getBoundingClientRect();
+        const bar = document.querySelector(".editor-topbar");
+        const barBox = bar.getBoundingClientRect();
         return {
             dock: z(dock),
-            dockParentIsBody: dock.parentElement === document.body,
+            dockParentIsBar: dock.parentElement === bar,
             dockPosition: style.position,
+            // What every piece of chrome that must stay off the text reads.
+            // If this does not include the row, the row is chrome nothing
+            // reserved space for.
+            reservedHeight: parseFloat(
+                getComputedStyle(document.documentElement)
+                    .getPropertyValue("--editor-topbar-height")),
+            barHeight: barBox.height,
+            sitsAtBarBottom: Math.abs(dock.getBoundingClientRect().bottom - barBox.bottom) <= 1,
             // What makes it a docked bar rather than a card: the page's own
             // ground, a hairline on top, square corners, no shadow, and the
             // full width of the window with no inset.
             background: style.backgroundColor,
+            barBackground: getComputedStyle(bar).backgroundColor,
             editorBackground: getComputedStyle(document.body).backgroundColor,
             borderTopWidth: style.borderTopWidth,
             borderTopColor: style.borderTopColor,
@@ -585,28 +651,45 @@ export async function run({ page, check, baseUrl }) {
             },
         };
     });
-    check("jot: the dock and the popups share one stacking context, so z-index is paint order",
-        stack.dockParentIsBody === true && stack.dockPosition === "fixed",
+    // The row is IN the bar, in the bar's flow. That is what replaced the old
+    // z-index argument: a strip at the bottom edge had nothing reserving space
+    // for it, so it needed a stacking order chosen against every popup that
+    // could open into that corner. Nothing paints into the bar's band, because
+    // `safeAreaTop()` keeps popups below it by geometry, so a row inside the
+    // bar inherits that protection instead of arguing with it.
+    check("jot: the formatting row is in the bar's flow, not a fixed strip of its own",
+        stack.dockParentIsBar === true && stack.dockPosition === "static",
         JSON.stringify(stack));
     // A probe that measured nothing reports agreement, so the count of
-    // popups that answered with a real z-index is asserted before the order is.
+    // popups that answered with a real z-index is asserted before anything is
+    // concluded from them.
     const measured = Object.entries(stack.popups).filter(([, z]) => Number.isFinite(z));
     check("jot: every popup probe actually resolved a z-index",
         measured.length === Object.keys(stack.popups).length, JSON.stringify(stack));
-    // The order matters MORE than it did when the dock was a small pill in a
-    // corner: an opaque strip across the whole width hides whatever it paints
-    // over entirely, where a pill hid a corner of it. The two claims below are
-    // what make that sentence true, and they are asserted rather than assumed
-    // for the same reason the stacking context is.
-    check("jot: every transient popup paints over the dock, not under it",
-        measured.length > 0 && measured.every(([, z]) => stack.dock < z), JSON.stringify(stack));
-    check("jot: the dock is the page's own ground, not a floating card",
-        stack.background === stack.editorBackground
+    // The row claims no stacking order of its own. Under the old design this
+    // was the check that every popup outranked the strip; the equivalent claim
+    // now is that there is no rank to get wrong.
+    check("jot: and the row itself claims no z-index, having no one to outrank",
+        !Number.isFinite(stack.dock) || stack.dock === 0, JSON.stringify(stack));
+    // The load-bearing one: the measured bar height is what the content
+    // padding, the find bar, the heading scroll margins and every popup's
+    // placement all read, so the row is only really off the text if it is
+    // inside that number.
+    check("jot: the height every consumer reserves includes the row",
+        Math.abs(stack.reservedHeight - stack.barHeight) <= 1, JSON.stringify(stack));
+    // Part of the bar rather than a thing on it: the BAR paints the ground and
+    // the row adds none of its own, which is the difference between a second
+    // row and a panel that happens to sit in the same place. A card would
+    // announce itself with a ground, a radius and a shadow; this has none of
+    // the three.
+    check("jot: the row is part of the bar's ground, not a card on it",
+        stack.barBackground === stack.editorBackground
+            && stack.background === "rgba(0, 0, 0, 0)"
             && stack.shadow === "none"
             && stack.radius === "0px",
         JSON.stringify(stack));
-    check("jot: it spans the window's bottom edge, separated by a hairline above",
-        stack.left === 0 && stack.right === 0 && stack.bottom === 0
+    check("jot: it spans the bar's full width, at its bottom, under a hairline",
+        stack.left === 0 && stack.right === 0 && stack.sitsAtBarBottom
             && stack.borderTopWidth === "1px" && stack.borderBottomWidth === "0px",
         JSON.stringify(stack));
     // The hairline's COLOUR, which the width says nothing about. A border

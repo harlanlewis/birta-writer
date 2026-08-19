@@ -325,7 +325,7 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
 });
 
 /**
- * The `formattingInBottomDock` partition.
+ * The `formattingInSecondRow` partition.
  *
  * The point of every case here is that the split is DERIVED. A hand-written
  * list of "the formatting ones" would be a list a new toolbar item never joins,

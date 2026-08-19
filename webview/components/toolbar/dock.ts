@@ -1,7 +1,7 @@
 /**
- * The formatting dock: every control that edits the document, in a strip at
- * the window's bottom leading corner, under the `formattingInBottomDock`
- * arrangement (shared/hostProfile.ts).
+ * The formatting row: every control that edits the document, on its own row
+ * directly under the top bar, under the `formattingInSecondRow` arrangement
+ * (shared/hostProfile.ts).
  *
  * It is a second HOLDER for the toolbar's items, not a second toolbar. The
  * same `.tb-item` wrappers `index.ts` built once are re-parented into it, so
@@ -9,23 +9,38 @@
  * as they survive a zone change on the top bar. Nothing here knows what any
  * item is.
  *
+ * The row is a CHILD of `.editor-topbar` rather than a strip of its own, and
+ * that placement is the whole design rather than a detail of it. Every
+ * consumer of the bar's height already measures the element
+ * (`--editor-topbar-height`, written from a ResizeObserver in index.ts, and
+ * `getTopbarBottom()` behind `safeAreaTop()`), so the content padding, the
+ * find bar's offset, heading scroll margins and every popup's placement follow
+ * a second row for free. A sibling fixed to the viewport would have needed all
+ * five taught about it separately, and the one that got missed would be a
+ * popup painting over the row.
+ *
  * Two states, and the toggle is the whole of the chrome:
  *
- *     collapsed   [T]
- *     expanded    [T] | P⌄ B I ⋯
+ *     collapsed   [T] in the top bar, no second row
+ *     expanded    [T] in the top bar, and P⌄ B I ⋯ below it
+ *
+ * The toggle sits in the TOP BAR, beside Find, rather than at the head of the
+ * row it opens. A control that opens a row cannot live in that row: collapsed,
+ * it would be the only thing on it, so the bar would keep a row's worth of
+ * height to hold one button and the row would never really be gone.
  *
  * A serif T because the row is about text, and because a letter survives being
  * drawn at chrome size where a glyph for "formatting" would not. The chevron
- * appears on hover and points the way the click goes, which is the only thing
- * about the state a first-time reader has to be told.
+ * points the way the click goes, which is the only thing about the state a
+ * first-time reader has to be told.
  *
- * The expanded row scrolls horizontally rather than collapsing into an
- * overflow menu: the set is fixed and opinionated, so there is no tail to
- * demote, and a narrow window should let you reach the last control rather
- * than reorganise the row under you. `overflow-x: auto` computes `overflow-y`
- * to `auto` as well, so the row would clip the four dropdowns that open out of
- * it; `MENU_CLIP_ATTR` is the declaration that sends them to viewport
- * coordinates instead, and `placeMenu` is the one reader.
+ * The row scrolls horizontally rather than collapsing into an overflow menu:
+ * the set is fixed and opinionated, so there is no tail to demote, and a
+ * narrow window should let you reach the last control rather than reorganise
+ * the row under you. `overflow-x: auto` computes `overflow-y` to `auto` as
+ * well, so the row would clip the four dropdowns that open out of it;
+ * `MENU_CLIP_ATTR` is the declaration that sends them to viewport coordinates
+ * instead, and `placeMenu` is the one reader.
  */
 import { IconChevronRight } from "@/ui/icons";
 import { t } from "@/i18n";
@@ -40,8 +55,15 @@ import "./dock.css";
 const STATE_KEY = "formattingDockExpanded";
 
 export interface FormattingDock {
-    /** The dock element, already appended to the body. */
+    /** The row element. The caller places it; this module never appends it. */
     el: HTMLElement;
+    /**
+     * The button that opens and closes the row, for the caller to place in the
+     * top bar. Handed over rather than positioned from here, because where a
+     * top-bar control sits among the other top-bar controls is the layout's
+     * question and this module knows nothing about the bar.
+     */
+    toggle: HTMLElement;
     /** Re-parent `ids`' wrappers into the row, in the order given. */
     render: (ids: readonly ToolbarItemId[]) => void;
     /** Whether the row is showing. */
@@ -76,11 +98,11 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
 
     // Built by hand rather than through createButton, because the label and the
     // tooltip depend on the state and have to change with it: createButton
-    // applies its tooltip once and keeps no handle. Placed ABOVE, the only
-    // side with room at the bottom edge of the window.
+    // applies its tooltip once and keeps no handle. Placed BELOW, which is the
+    // side with room now that the button sits in the top bar.
     const toggle = document.createElement("button");
     toggle.className = "ui-btn tb-btn tb-dock-toggle";
-    const toggleTip = applyTooltip(toggle, "", { placement: "above" });
+    const toggleTip = applyTooltip(toggle, "", { placement: "below" });
     bindActivate(toggle, () => setExpanded(!expanded));
     const glyph = document.createElement("span");
     glyph.className = "tb-dock-glyph";
@@ -90,26 +112,23 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
     chevron.innerHTML = IconChevronRight;
     toggle.append(glyph, chevron);
 
-    // A presentational rule between the toggle and the row, hidden with the
-    // row: collapsed, the corner is one button and a divider beside nothing
-    // would read as a row that failed to draw.
-    const divider = document.createElement("span");
-    divider.className = "tb-dock-divider";
-    divider.setAttribute("aria-hidden", "true");
-
     const row = document.createElement("div");
     row.className = "tb-dock-row tb-zone";
     // The declaration that sends this row's dropdowns to viewport coordinates
     // (webview/ui/anchoredPlacement.ts). It belongs to the box that clips.
     row.setAttribute(MENU_CLIP_ATTR, "");
 
-    el.append(toggle, divider, row);
-    document.body.appendChild(el);
+    el.appendChild(row);
 
     let expanded = readExpanded();
 
     function paint(): void {
         el.dataset["expanded"] = String(expanded);
+        // `hidden` rather than a CSS rule on a row that is still in the box:
+        // the bar measures its own height, so a collapsed row has to stop
+        // occupying one or the content below never comes back up.
+        el.hidden = !expanded;
+        toggle.dataset["expanded"] = String(expanded);
         toggle.setAttribute("aria-expanded", String(expanded));
         // The label says what the click DOES, which is the opposite of the
         // state; the glyph and the chevron already say which state it is in.
@@ -129,6 +148,7 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
 
     return {
         el,
+        toggle,
         render(ids: readonly ToolbarItemId[]): void {
             row.replaceChildren();
             for (const id of ids) {
@@ -137,6 +157,6 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
             }
         },
         isExpanded: () => expanded,
-        dispose(): void { el.remove(); },
+        dispose(): void { el.remove(); toggle.remove(); },
     };
 }

@@ -49,6 +49,14 @@ export BIRTA_JOT_SCRATCHPAD="$SCRATCH_DIR/Scratchpad.md"
 # toolbar layout, view state or panel frame.
 export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
 trap 'defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" >/dev/null 2>&1 || true' EXIT
+# The formatting row ships closed, and what this script has to look at is an
+# open one. Seeded through the view-state bag the app really restores from,
+# rather than through a debug message: the restore path is itself part of what
+# is being checked, and a message that forced the row open would leave it
+# unexercised.
+# `-string` is load-bearing: without it `defaults` reads the braces as
+# old-style plist syntax, fails to parse, and writes nothing at all.
+defaults write "$BIRTA_JOT_DEFAULTS_SUITE" viewState -string '{"formattingDockExpanded":true}'
 LOG="$(mktemp -t jot-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
@@ -220,6 +228,27 @@ else
     echo "$TITLEBAR" >&2; exit 1
 fi
 
+# The title is drawn IN FULL, which every check above is blind to. `text=` is
+# the accessibility label and `titletext` is the label's `stringValue`, and both
+# report the whole string whatever is on screen, so a name cut off in the middle
+# answers them exactly as an intact one does. The two widths are what
+# discriminate: what the label got, against what the string needs.
+#
+# The case this exists for is a name with a space in it, because that is the
+# one where a cut looks like a shorter name rather than like damage: "Birta
+# Jot.md" losing its tail reads as a file called "Birta", and nobody
+# investigates a title that looks like a filename.
+TB_TEXT_W="$(echo "$TITLEBAR" | sed -n 's/.*textW=\([0-9.-]*\).*/\1/p')"
+TB_TEXT_NEEDS="$(echo "$TITLEBAR" | sed -n 's/.*textNeeds=\([0-9.-]*\).*/\1/p')"
+if [ -n "$TB_TEXT_W" ] && [ -n "$TB_TEXT_NEEDS" ] \
+   && awk "BEGIN{exit !($TB_TEXT_NEEDS > 0)}" \
+   && awk "BEGIN{exit !($TB_TEXT_W >= $TB_TEXT_NEEDS - 0.5)}"; then
+    echo "title width          ok: the name is drawn at the width it needs ($TB_TEXT_W of $TB_TEXT_NEEDS)"
+else
+    echo "title width          FAILED: the title has less room than its own text needs" >&2
+    echo "$TITLEBAR" >&2; exit 1
+fi
+
 # WHERE the title sits vertically, which the check above says nothing about: it
 # reads the accessory's frame, and the accessory is the whole titlebar band, so
 # a title drawn 2pt low passed it exactly as a correct one did. It did, for a
@@ -249,25 +278,46 @@ else
     echo "$TITLEBAR" >&2; exit 1
 fi
 
-# The formatting dock, in THIS window rather than in a browser. The panel's own
+# The formatting row, in THIS window rather than in a browser. The panel's own
 # page carries CSS the harness does not (the titlebar carve-out, the at-rest
 # fade), so "it renders in WebKit" and "it renders here" are separate claims,
 # and only one of them has a browser that can answer it.
 DOCK="$(grep "^jot-trace dock " "$LOG" | tail -1 | sed 's/^jot-trace dock //')"
-D_X="$(echo "$DOCK" | sed -n 's/.*x=\([0-9-]*\).*/\1/p')"
-D_W="$(echo "$DOCK" | sed -n 's/.*w=\([0-9-]*\).*/\1/p')"
-D_GAP="$(echo "$DOCK" | sed -n 's/.*bottomGap=\([0-9-]*\).*/\1/p')"
+FR_X="$(echo "$DOCK" | sed -n 's/.*x=\([0-9-]*\).*/\1/p')"
+FR_W="$(echo "$DOCK" | sed -n 's/.* w=\([0-9-]*\).*/\1/p')"
+FR_Y="$(echo "$DOCK" | sed -n 's/.*y=\([0-9-]*\).*/\1/p')"
+FR_H="$(echo "$DOCK" | sed -n 's/.* h=\([0-9-]*\).*/\1/p')"
+FR_IN_BAR="$(echo "$DOCK" | sed -n 's/.*inBar=\([a-z]*\).*/\1/p')"
+FR_BAR_BOTTOM="$(echo "$DOCK" | sed -n 's/.*barBottom=\([0-9-]*\).*/\1/p')"
+FR_BAR_HEIGHT="$(echo "$DOCK" | sed -n 's/.*barHeight=\([0-9-]*\).*/\1/p')"
+FR_TOGGLE_W="$(echo "$DOCK" | sed -n 's/.*toggleW=\([0-9-]*\).*/\1/p')"
+FR_TOGGLE_IN_ROW="$(echo "$DOCK" | sed -n 's/.*toggleInRow=\([a-z]*\).*/\1/p')"
+FR_EXPANDED="$(echo "$DOCK" | sed -n 's/.*expanded=\([a-z]*\).*/\1/p')"
 if [ -z "$DOCK" ] || [ "$DOCK" = "absent" ]; then
-    echo "dock                 FAILED: the page reported no formatting dock (\"$DOCK\")" >&2; exit 1
+    echo "formatting row       FAILED: the page reported no formatting row (\"$DOCK\")" >&2; exit 1
 fi
-# On screen and inside the window on both axes. A dock pushed off the left edge
-# or below the sill is present in the DOM and unreachable with a mouse, which
-# is the failure a presence check cannot tell from a working one.
-if awk "BEGIN{exit !($D_X >= 0)}" && awk "BEGIN{exit !($D_W > 0)}" \
-   && awk "BEGIN{exit !($D_GAP >= 0 && $D_GAP < 200)}"; then
-    echo "dock                 ok: $DOCK"
+# The seed above has to have taken, or every geometry check below runs against
+# a hidden row whose zeros agree with each other.
+if [ "$FR_EXPANDED" != "true" ]; then
+    echo "formatting row       FAILED: the saved open flag did not restore; nothing below was measured" >&2
+    echo "$DOCK" >&2; exit 1
+fi
+# In the bar and at the bottom of it, which is the arrangement's whole claim.
+# Parentage AND geometry, because either alone passes on a page that has the
+# other wrong: a row drawn at the right pixels but parented to the body takes
+# none of the bar's protections, and a row inside the bar drawn somewhere else
+# is a layout bug the parent check cannot see. The toggle is checked as NOT in
+# the row, because a toggle that opens a row it lives in keeps that row's
+# height reserved even when closed.
+if awk "BEGIN{exit !($FR_X >= 0)}" && awk "BEGIN{exit !($FR_W > 0)}" \
+   && [ "$FR_IN_BAR" = "true" ] \
+   && [ "$FR_TOGGLE_IN_ROW" = "false" ] \
+   && awk "BEGIN{exit !($FR_TOGGLE_W > 0)}" \
+   && awk "BEGIN{exit !($FR_BAR_HEIGHT > 0)}" \
+   && awk "BEGIN{exit !(($FR_Y + $FR_H) >= $FR_BAR_BOTTOM - 1 && ($FR_Y + $FR_H) <= $FR_BAR_BOTTOM + 1)}"; then
+    echo "formatting row       ok: $DOCK"
 else
-    echo "dock                 FAILED: expected it on screen at the bottom leading corner" >&2
+    echo "formatting row       FAILED: expected an on-screen row inside the bar, with its toggle outside it" >&2
     echo "$DOCK" >&2; exit 1
 fi
 
@@ -384,6 +434,42 @@ else
     echo "title stability      FAILED: the title changed $BURST_COUNT ways while typing with autosave on" >&2
     printf '%s\n' "$BURST_DISTINCT" | sed 's/^/  /' >&2
     exit 1
+fi
+
+# The titlebar band can be grabbed.
+#
+# The drag itself is not checkable from here: moving a window needs a real
+# pointer, and synthesizing one needs an Accessibility grant these checks do not
+# have. Everything the drag DEPENDS on is checkable, and it is all geometry, so
+# this asserts the strip is where nothing else is rather than that it exists.
+# Every way of getting this wrong has the same shape: a strip of zero width, a
+# strip hidden behind the window buttons, or a strip lying over the page's own
+# controls, which would take the clicks meant for Find and the gear.
+show_panel
+DRAG="$(grep "^jot-trace titlebardrag " "$LOG" | tail -1 || true)"
+DRAG_X="$(echo "$DRAG" | sed -n 's/.*x=\([0-9.-]*\).*/\1/p')"
+DRAG_W="$(echo "$DRAG" | sed -n 's/.* w=\([0-9.-]*\).*/\1/p')"
+DRAG_H="$(echo "$DRAG" | sed -n 's/.*h=\([0-9.-]*\).*/\1/p')"
+DRAG_HIDDEN="$(echo "$DRAG" | sed -n 's/.*hidden=\([a-z]*\).*/\1/p')"
+DRAG_TITLE_MAXX="$(echo "$DRAG" | sed -n 's/.*titleMaxX=\([0-9.-]*\).*/\1/p')"
+DRAG_CONTROLS="$(echo "$DRAG" | sed -n 's/.*controlsW=\([0-9.-]*\).*/\1/p')"
+DRAG_WINDOW="$(echo "$DRAG" | sed -n 's/.*windowW=\([0-9.-]*\).*/\1/p')"
+if [ -z "$DRAG" ]; then
+    echo "titlebar drag        FAILED: the app reported no drag-strip trace at all" >&2; exit 1
+fi
+# The page's controls have to have been MEASURED, or the strip's trailing edge
+# is bounded by nothing and the check below passes on a strip that covers them.
+# A zero here is the pre-report state, not a page without controls.
+if [ "$DRAG_HIDDEN" = "no" ] \
+   && awk "BEGIN{exit !($DRAG_W > 0)}" \
+   && awk "BEGIN{exit !($DRAG_H > 0)}" \
+   && awk "BEGIN{exit !($DRAG_CONTROLS > 0)}" \
+   && awk "BEGIN{exit !($DRAG_X >= $DRAG_TITLE_MAXX - 0.5)}" \
+   && awk "BEGIN{exit !($DRAG_X + $DRAG_W <= $DRAG_WINDOW - $DRAG_CONTROLS + 0.5)}"; then
+    echo "titlebar drag        ok: ${DRAG_W}x${DRAG_H} at x=$DRAG_X, clear of the title and of the page's controls"
+else
+    echo "titlebar drag        FAILED: expected a visible strip between the title and the page's controls" >&2
+    echo "$DRAG" >&2; exit 1
 fi
 
 # The document popover, and the rename it exists for.

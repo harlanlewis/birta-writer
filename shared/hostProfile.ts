@@ -157,23 +157,27 @@ export type HostArrangement =
      */
     | "typographyInGearMenu"
     /**
-     * Every control that edits the document lives in a dock at the bottom
-     * leading corner, not in the top bar's left zone. The top bar keeps the
-     * controls that read rather than write.
+     * Every control that edits the document lives on a second row of the top
+     * bar, not in the bar's left zone. The bar's own row keeps the controls
+     * that read rather than write, and the button that opens the second row
+     * sits among them, beside Find.
      *
-     * The partition is DERIVED, never listed: an item docks exactly when
-     * `ITEM_MUTATES` says it changes the document, so a new toolbar item lands
-     * on the right surface by answering a question it already had to answer.
-     * `toolbarRegistry.test.ts` holds both halves.
+     * The left zone staying empty is the point on a surface with traffic
+     * lights: it leaves the window's own titlebar row to the window.
+     *
+     * The partition is DERIVED, never listed: an item takes the second row
+     * exactly when `ITEM_MUTATES` says it changes the document, so a new
+     * toolbar item lands on the right surface by answering a question it
+     * already had to answer. `toolbarRegistry.test.ts` holds both halves.
      */
-    | "formattingInBottomDock"
+    | "formattingInSecondRow"
     /**
      * The bar's contents and its visibility belong to the surface, not to the
      * user: no per-item placement, no Customize Toolbar, no Hide Toolbar.
      *
      * A layout fact rather than a capability, because it names nothing the
-     * host provides. It is a separate fact from `formattingInBottomDock` and
-     * has to be, even though one surface currently declares both: the dock
+     * host provides. It is a separate fact from `formattingInSecondRow` and
+     * has to be, even though one surface currently declares both: that one
      * decides WHERE a control sits, and this decides WHOSE the arrangement is.
      * Deriving the second from the first at a call site is what this file
      * exists to stop.
@@ -182,7 +186,7 @@ export type HostArrangement =
 
 export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "typographyInGearMenu",
-    "formattingInBottomDock",
+    "formattingInSecondRow",
     "fixedToolbarLayout",
 ];
 

@@ -146,9 +146,19 @@ final class TitleBarView: NSView {
     override func layout() {
         super.layout()
         let size = label.intrinsicContentSize
+        // Never wider than the room this view actually has. The ceiling above
+        // is about a long name crowding the page's controls; this is about the
+        // view being narrower than its own text for any reason at all, and the
+        // difference matters because of HOW each one fails. A label sized past
+        // its container is clipped by the container, which cuts the name at
+        // whatever pixel the edge falls on and leaves no ellipsis to say so, so
+        // a truncated title is indistinguishable from a file that is really
+        // called that. Bounded here, the label truncates itself and says it
+        // did.
+        let room = max(0, bounds.width - Self.leadingGap)
         label.frame = NSRect(x: Self.leadingGap,
                              y: ((bounds.height - size.height) / 2).rounded(),
-                             width: min(size.width, Self.maxTextWidth),
+                             width: min(size.width, Self.maxTextWidth, room),
                              height: size.height)
     }
 
@@ -181,6 +191,14 @@ final class TitleBarView: NSView {
     /// accessory's own frame is the whole titlebar band, so it answers whether
     /// the accessory arrived and nothing about where the title is drawn in it.
     func labelFrameInWindow() -> NSRect { label.convert(label.bounds, to: nil) }
+
+    /// The width the title WOULD need to be read in full, against the width
+    /// `labelFrameInWindow` says it got. Two numbers rather than one because
+    /// the label reports its whole string whatever is on screen, so
+    /// `stringValue` and `accessibilityLabel` both answer a question about
+    /// intent, and a name cut off in the middle answers it exactly as an
+    /// intact one does.
+    func textWidthNeeded() -> CGFloat { label.intrinsicContentSize.width }
 
     /// Name `url`, and say whether the buffer has bytes the file does not.
     func show(url: URL, edited: Bool) {

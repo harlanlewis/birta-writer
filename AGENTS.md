@@ -128,7 +128,7 @@ webview/ui/hoverSelection.ts                  Hover and the arrows share one men
 webview/ui/icons.ts                           SVG icons
 webview/ui/tooltip.ts                         Tooltip component
 webview/components/toolbar/index.ts           Top main toolbar: composition root over the sibling modules (layout, menus, typography, image panel)
-webview/components/toolbar/dock.ts            The formatting dock: the second holder for toolbar items, under the formattingInBottomDock arrangement
+webview/components/toolbar/dock.ts            The formatting row: the second holder for toolbar items, under the formattingInSecondRow arrangement
 webview/components/selectionToolbar/index.ts  Floating selection toolbar
 webview/components/table/tableView.ts         Table NodeView (overlay chrome: grips, insert bars, drag-reorder)
 webview/components/table/reorder.ts           Pure row/column block-reorder + drop-index helpers
@@ -143,6 +143,8 @@ jot/scripts/install-app.sh                    Installs the built app to /Applica
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
 jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
 jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory; why the label centres on `bounds` and not on the height it was built at
+jot/Sources/BirtaJot/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
+jot/Sources/BirtaJotCore/TitlebarBand.swift   Where that strip starts and stops, and what a double click on a titlebar is the user's setting to decide
 jot/Sources/BirtaJot/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
 jot/Sources/BirtaJotCore/ActiveBinding.swift  WHICH of Jot's three file settings is in force, so a rename writes back to the one it was read from
 jot/Sources/BirtaJotCore/DocumentName.swift   What a typed filename means: the extension kept, `/` and `:` refused, an unchanged field not a rename

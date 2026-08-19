@@ -74,8 +74,17 @@ final class JotPanel: NSPanel {
 final class AppearanceObservingView: NSView {
     var onAppearanceChange: (() -> Void)?
     var onHoverChange: ((Bool) -> Void)?
+    /// Every layout pass, which is where anything sized from this view's own
+    /// bounds has to be refitted. The titlebar drag strip is the one such
+    /// thing, and a resize is exactly when it would otherwise go stale.
+    var onLayout: (() -> Void)?
     private(set) var isHovering = false
     private var tracking: NSTrackingArea?
+
+    override func layout() {
+        super.layout()
+        onLayout?()
+    }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()

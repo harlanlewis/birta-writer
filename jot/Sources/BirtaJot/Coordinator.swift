@@ -45,6 +45,12 @@ final class Coordinator {
     let hotkey: GlobalHotkey
     private let panel = JotPanel()
     private let contentView = AppearanceObservingView()
+    /// The draggable middle of the titlebar band (TitlebarDrag.swift). Above
+    /// the web view, which is what covers the band and swallowed the drag.
+    private let titlebarDrag = TitlebarDragView()
+    /// What the page's trailing controls take from the band, as last reported.
+    /// Held so a resize can resize the strip without asking the page again.
+    private var titlebarControlsWidth: CGFloat = 0
     private let statusOverlay = StatusOverlay()
     private let titleBar = TitleBarAccessory()
     private let host: WebHost
@@ -137,6 +143,13 @@ final class Coordinator {
         contentView.onAppearanceChange = { [weak self] in self?.applyTheme() }
         contentView.addSubview(host.webView)
         contentView.addSubview(statusOverlay)
+        // ABOVE the web view in z-order, which is the whole of why it works:
+        // the web view covers the band, so a sibling below it would never see
+        // a mouse event. Laid out by frame rather than by constraints because
+        // its width answers to the page's controls and not to the window's
+        // edges, and `layoutTitlebarDrag` is the one place that arithmetic
+        // lives.
+        contentView.addSubview(titlebarDrag)
         host.webView.translatesAutoresizingMaskIntoConstraints = false
         statusOverlay.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -156,6 +169,9 @@ final class Coordinator {
             statusOverlay.heightAnchor.constraint(equalToConstant: StatusOverlay.height),
         ])
         contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
+        contentView.onLayout = { [weak self] in
+            MainActor.assumeIsolated { self?.layoutTitlebarDrag() }
+        }
         panel.addTitlebarAccessoryViewController(titleBar)
         titleBar.titleView.onReveal = { url in
             NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -433,6 +449,10 @@ final class Coordinator {
         contentView.syncHoverFromPointer()
         measure.mark("visible")
         traceTitleBar()
+        // The page's controls are only measurable once it has laid out, and
+        // showing the panel is the first moment that is true of a cold start.
+        refreshTitlebarControlsWidth()
+        traceTitlebarDrag()
         if measure.enabled, state == .warm {
             host.reportDockGeometry { [weak self] line in
                 MainActor.assumeIsolated { self?.measure.trace("dock \(line)") }
@@ -1189,6 +1209,75 @@ final class Coordinator {
     /// application to be running. The accessory's own frame is the whole
     /// titlebar band and says nothing about where the text inside it sits, so
     /// a title drawn low in that band moves no number the old check read.
+    /// Fit the drag strip to what neither the window's chrome nor the page's
+    /// is using.
+    ///
+    /// The band's height is asked of the window rather than written down:
+    /// `contentLayoutRect` is the part of the frame BELOW the titlebar, so the
+    /// difference is the band, whatever height the system is using today.
+    ///
+    /// `titleBar.titleView.frame.maxX` is where the window's own furniture
+    /// ends. It already accounts for the traffic lights, because AppKit places
+    /// a leading accessory after them, so nothing here repeats a number the
+    /// system owns.
+    func layoutTitlebarDrag() {
+        let bandHeight = panel.frame.height - panel.contentLayoutRect.height
+        let titleView = titleBar.titleView
+        let leading = titleView.convert(titleView.bounds, to: contentView).maxX
+        guard bandHeight > 0,
+              let span = TitlebarBand.draggableSpan(
+                  windowWidth: contentView.bounds.width,
+                  leading: leading,
+                  trailingControlsWidth: titlebarControlsWidth) else {
+            titlebarDrag.isHidden = true
+            return
+        }
+        titlebarDrag.isHidden = false
+        // The content view is flipped-free AppKit geometry, so the band is at
+        // the TOP, which is the high end of y.
+        titlebarDrag.frame = NSRect(x: span.x,
+                                    y: contentView.bounds.height - bandHeight,
+                                    width: span.width,
+                                    height: bandHeight)
+    }
+
+    /// Ask the page how much of the band its controls take, then refit.
+    ///
+    /// Called when the page has mounted and whenever its chrome could have
+    /// changed shape. Cheap, asynchronous, and never on the resize path: the
+    /// width does not depend on the window's size, which is what makes a
+    /// stored value correct between calls.
+    func refreshTitlebarControlsWidth() {
+        host.reportTitlebarControlsWidth { [weak self] width in
+            MainActor.assumeIsolated {
+                guard let self, let width else { return }
+                self.titlebarControlsWidth = width
+                self.layoutTitlebarDrag()
+                self.traceTitlebarDrag()
+            }
+        }
+    }
+
+    /// The drag strip's live frame, for `jot/scripts/measure.sh`.
+    ///
+    /// Whether the band can be dragged is not answerable from a script: a
+    /// window move needs a real pointer, and synthesizing one needs an
+    /// Accessibility grant this repository's checks do not have. What IS
+    /// answerable is everything the drag depends on, which is where the strip
+    /// is: a strip of zero width, or one lying under the page's controls, is
+    /// the shape every way of getting this wrong takes.
+    private func traceTitlebarDrag() {
+        guard measure.enabled else { return }
+        let frame = titlebarDrag.convert(titlebarDrag.bounds, to: nil)
+        let titleView = titleBar.titleView
+        let title = titleView.convert(titleView.bounds, to: nil)
+        measure.trace(String(
+            format: "titlebardrag x=%.1f w=%.1f h=%.1f hidden=%@ titleMaxX=%.1f controlsW=%.1f windowW=%.1f",
+            frame.origin.x, frame.width, frame.height,
+            titlebarDrag.isHidden ? "yes" : "no",
+            title.maxX, titlebarControlsWidth, panel.frame.width))
+    }
+
     private func traceTitleBar() {
         guard measure.enabled else { return }
         let view = titleBar.titleView
@@ -1197,8 +1286,9 @@ final class Coordinator {
         let close = panel.standardWindowButton(.closeButton)
             .map { $0.convert($0.bounds, to: nil) } ?? .zero
         measure.trace(String(
-            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f textW=%.1f textNeeds=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
             frame.origin.x, frame.origin.y, frame.width, frame.height,
+            text.width, view.textWidthNeeded(),
             text.midY, close.midY,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
             view.accessibilityLabel() ?? ""))
