@@ -19,7 +19,7 @@ import {
     TOOLBAR_MENU_COMMANDS,
     settingsMenuTitle,
 } from "../editorCommands";
-import { PRODUCT_NAME } from "../product";
+import { JOT_PRODUCT_NAME, PRODUCT_NAME } from "../product";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -97,6 +97,29 @@ describe("editor command contributions", () => {
         const meta = EDITOR_COMMANDS.find((m) => m.id === "openExtensionSettings");
         expect(meta?.title).toBe(expected);
         expect(nls["command.editor.openExtensionSettings.title"]).toBe(expected);
+    });
+
+    it("the host-preferences entry title should be the template expansion of Jot's name", () => {
+        // Jot's row names a different program from the row above it, so it
+        // expands JOT_PRODUCT_NAME rather than PRODUCT_NAME. Before this had a
+        // constant it was a bare literal in every surface, and a rename in an
+        // unrelated PR shipped a name no other surface used (f940d48e).
+        const expected = settingsMenuTitle(JOT_PRODUCT_NAME);
+        const meta = EDITOR_COMMANDS.find((m) => m.id === "openHostPreferences");
+        expect(meta?.title).toBe(expected);
+        expect(nls["command.editor.openHostPreferences.title"]).toBe(expected);
+    });
+
+    it("Jot's settings window should be titled the same as the row that opens it", () => {
+        // The window title is a Swift literal that no TypeScript imports, so
+        // nothing but a read of the file relates it to the row. Same technique
+        // as the Jot-profile guard in hostProfile.test.ts, and the same reason:
+        // a copy that agrees by luck is not one declaration.
+        const swift = fs.readFileSync(
+            path.join(root, "jot/Sources/BirtaJot/SettingsWindow.swift"), "utf8");
+        const assigned = /window\.title\s*=\s*"([^"]+)"/.exec(swift);
+        expect(assigned, "no window.title assignment in SettingsWindow.swift").not.toBeNull();
+        expect(assigned![1]).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
     });
 
     it("the native toolbar context menu order should match the shared table order", () => {
