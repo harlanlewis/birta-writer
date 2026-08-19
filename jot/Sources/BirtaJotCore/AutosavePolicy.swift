@@ -1,7 +1,7 @@
 import Foundation
 
 /// Why the buffer is being written.
-public enum WriteTrigger: Equatable, Sendable {
+public enum WriteTrigger: Equatable, Sendable, CaseIterable {
     /// The page reported a document change.
     case edit
     /// The user asked, with Cmd+S or the menu item.
