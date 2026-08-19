@@ -47,16 +47,17 @@ public enum LoginItemState: Equatable, Sendable {
     /// Whether the row can be operated at all.
     public var isEnabled: Bool { self != .unavailable }
 
-    /// The sentence under the row. Only two states have anything to add: the
-    /// ordinary ones are what the switch already says.
+    /// The sentence under the row, or empty where the switch says it already.
+    /// Only the two states that report a PROBLEM have anything to add, which
+    /// is why the ordinary ones are silent rather than restating the label.
     public var caption: String {
         switch self {
         case .on, .off:
-            return "Start Birta Jot when you log in, so the hotkey works without opening it first."
+            return ""
         case .blocked:
-            return "macOS is holding this until you allow Birta Jot in System Settings, under General and then Login Items."
+            return "Waiting for your approval in System Settings, under Login Items."
         case .unavailable:
-            return "macOS could not register this copy of Birta Jot, so it cannot open at login. Opening the copy in your Applications folder is the usual fix."
+            return "macOS will not register this copy. Open the one in Applications."
         }
     }
 

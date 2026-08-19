@@ -27,6 +27,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         buildStatusItem()
         coordinator.start()
+        // A settings window can otherwise only be opened by a person, which
+        // makes "does it construct" a question nothing but a human can answer.
+        // Same seam as BIRTA_JOT_SCRATCHPAD and BIRTA_JOT_DEFAULTS_SUITE, and
+        // used by the same script.
+        if let tab = ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_SETTINGS"], !tab.isEmpty {
+            menuOpenSettings()
+            // Panes are built on first show, so naming one is what proves it
+            // constructs. "1" opens the window on whichever pane is default.
+            settingsWindow?.selectTabForTesting(tab)
+        }
         installTerminationSignal()
     }
 

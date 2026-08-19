@@ -3,29 +3,65 @@ import BirtaJotCore
 
 /// Jot's Settings window.
 ///
-/// Built to the shape System Settings uses: sections with a heading, rows in a
-/// rounded group, the label leading and its control trailing, and a caption
-/// under a row when the setting needs a sentence rather than a name. The
-/// previous window put every label in a right-aligned column against controls
-/// of four different widths, which is the older Preferences grid and reads as
-/// one long form rather than as settings.
+/// Built to the shape macOS settings windows have: a preference toolbar of
+/// tabs across the top (which is what centres the title, `toolbarStyle =
+/// .preference` doing the work), one pane at a time, each pane a stack of
+/// sections with a heading and rows in a rounded group.
+///
+/// Panes rather than one long column because the list outgrew a column: a
+/// window that scrolls past its own title is a form, and a reader looking for
+/// one switch should not have to pass nine others. `Advanced` is where the
+/// file paths and the agent command live, so the two panes anyone opens are
+/// short and every row in them is a plain choice.
+///
+/// A caption is the exception, not the rule. A row whose label already says
+/// what it does gets none; the ones that remain either warn (login is blocked)
+/// or name something the label cannot (what `{prompt}` means).
 ///
 /// Everything is built in code. A window this size does not earn a nib, and a
 /// nib is the one part of the app a script cannot diff.
 @MainActor
-final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSToolbarDelegate {
     /// The window's one width, and the insets every row shares. A caption has
     /// to be told the width it wraps at before the first layout pass, or the
     /// window sizes itself around a one-line caption and clips the rest.
     enum Metrics {
-        static let content: CGFloat = 520
+        static let content: CGFloat = 480
         static let rowInset: CGFloat = 14
         static let windowPadding: CGFloat = 20
+        /// Past this the pane scrolls rather than growing the window off the
+        /// screen. Only Advanced reaches it today.
+        static let maxPaneHeight: CGFloat = 520
         static var captionWidth: CGFloat { content - rowInset * 2 }
     }
 
+    /// The panes, in toolbar order.
+    private enum Tab: String, CaseIterable {
+        case general, editor, advanced
+
+        var title: String {
+            switch self {
+            case .general: return "General"
+            case .editor: return "Editor"
+            case .advanced: return "Advanced"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .general: return "gearshape"
+            case .editor: return "textformat"
+            case .advanced: return "wrench.and.screwdriver"
+            }
+        }
+    }
+
+    private let scrollView = NSScrollView()
+    private var panes: [Tab: NSView] = [:]
+    private var current: Tab = .general
+
     private let hotkeyRecorder = HotkeyRecorderView(combo: Prefs.hotkey)
-    private let hotkeyCaption = Caption("Press the combination that summons the panel from any app.")
+    private let hotkeyCaption = Caption("")
     private let scratchpadPath = PathLabel(Prefs.scratchpadURL)
     private let documentPath = PathLabel(Prefs.documentURL)
     private let documentSwitch = NSSwitch()
@@ -47,9 +83,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     init(onHotkeyChange: @escaping () -> OSStatus, onChange: @escaping () -> Void) {
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 420),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Birta Jot Settings"
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: 300),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         // The panel floats, so a settings window at the ordinary level opens
         // BEHIND the window it was opened from. Match the panel's level, which
@@ -58,121 +94,233 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         window.level = Prefs.floatAboveOtherWindows ? .floating : .normal
         super.init(window: window)
         window.delegate = self
-        let content = buildContent()
-        window.contentView = content
-        window.setContentSize(content.fittingSize)
+
+        let toolbar = NSToolbar(identifier: "BirtaJotSettings")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconAndLabel
+        toolbar.allowsUserCustomization = false
+        window.toolbar = toolbar
+        // The whole reason for the toolbar: `.preference` is what draws tabs
+        // in the titlebar and centres the title above them, which is the shape
+        // every other settings window on the machine has.
+        window.toolbarStyle = .preference
+
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.autohidesScrollers = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = BackgroundView()
+        container.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+        window.contentView = container
+
+        toolbar.selectedItemIdentifier = NSToolbarItem.Identifier(Tab.general.rawValue)
+        show(.general, animated: false)
         window.center()
+    }
+
+    /// Put `tab` on screen and size the window to it, the way a settings
+    /// window does: the window is as tall as the pane needs, up to a ceiling
+    /// past which the pane scrolls instead.
+    private func show(_ tab: Tab, animated: Bool) {
+        guard let window else { return }
+        current = tab
+        window.title = tab.title
+        let pane = panes[tab] ?? {
+            let built = buildPane(tab)
+            panes[tab] = built
+            return built
+        }()
+        scrollView.documentView = pane
+        pane.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            pane.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            pane.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            pane.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+        ])
+        pane.layoutSubtreeIfNeeded()
+        let wanted = min(pane.fittingSize.height, Metrics.maxPaneHeight)
+        let frame = window.frameRect(forContentRect: NSRect(
+            x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: wanted))
+        var target = window.frame
+        // Grow downward from the title bar, which is where a settings window
+        // grows: the top edge is what the eye is anchored to.
+        target.origin.y += target.height - frame.height
+        target.size = frame.size
+        window.setFrame(target, display: true, animate: animated)
+    }
+
+    // MARK: toolbar
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Tab.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarAllowedItemIdentifiers(toolbar)
+    }
+
+    /// The selectable set IS the whole set: every item is a pane, and a
+    /// preference toolbar with no selectable items draws tabs that never
+    /// highlight.
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarAllowedItemIdentifiers(toolbar)
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard let tab = Tab(rawValue: identifier.rawValue) else { return nil }
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = tab.title
+        item.paletteLabel = tab.title
+        item.image = NSImage(systemSymbolName: tab.symbol, accessibilityDescription: tab.title)
+        item.target = self
+        item.action = #selector(selectTab(_:))
+        return item
+    }
+
+    /// Show a pane by name, for `BIRTA_JOT_OPEN_SETTINGS`. Unknown names are
+    /// ignored rather than fatal: the variable is a probe, and a typo in it
+    /// should not stop the app.
+    func selectTabForTesting(_ name: String) {
+        guard let tab = Tab(rawValue: name) else { return }
+        window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(tab.rawValue)
+        show(tab, animated: false)
+    }
+
+    @objc private func selectTab(_ sender: NSToolbarItem) {
+        guard let tab = Tab(rawValue: sender.itemIdentifier.rawValue) else { return }
+        show(tab, animated: true)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     // MARK: content
 
-    private func buildContent() -> NSView {
+    /// Wire every control once, whichever pane ends up holding it.
+    private func wireControls() {
         hotkeyRecorder.onCombo = { [weak self] combo in self?.hotkeyChosen(combo) }
 
         documentSwitch.state = Prefs.documentURL == nil ? .off : .on
-        documentSwitch.target = self
-        documentSwitch.action = #selector(toggleDocument)
         documentChoose.target = self
         documentChoose.action = #selector(chooseDocument)
         documentChoose.isEnabled = Prefs.documentURL != nil
         documentPath.isDimmed = Prefs.documentURL == nil
-        networkSwitch.state = Prefs.networkEnabled ? .on : .off
-        networkSwitch.target = self
-        networkSwitch.action = #selector(toggleNetwork)
-        autosaveSwitch.state = Prefs.autosave ? .on : .off
-        autosaveSwitch.target = self
-        autosaveSwitch.action = #selector(toggleAutosave)
+
+        agentField.placeholderString = "claude -p {prompt}"
+        agentField.delegate = self
+        agentField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        agentField.widthAnchor.constraint(equalToConstant: 260).isActive = true
+
+        loginSettingsButton.target = self
+        loginSettingsButton.action = #selector(openLoginItemSettings)
+        loginSettingsButton.controlSize = .small
+
         for (control, on, action) in [
+            (documentSwitch, Prefs.documentURL != nil, #selector(toggleDocument)),
+            (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
+            (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
+            (floatSwitch, Prefs.floatAboveOtherWindows, #selector(toggleFloat)),
             (pathSwitch, Prefs.showFilePath, #selector(togglePath)),
             (formatToolbarSwitch, Prefs.showFormattingToolbar, #selector(toggleFormatToolbar)),
             (blankSwitch, Prefs.openToBlankNote, #selector(toggleOpenToBlank)),
+            (loginSwitch, false, #selector(toggleLoginItem)),
         ] {
             control.state = on ? .on : .off
             control.target = self
             control.action = action
         }
-        agentField.placeholderString = "claude -p {prompt} --permission-mode acceptEdits"
-        agentField.delegate = self
-        agentField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-        agentField.widthAnchor.constraint(equalToConstant: 300).isActive = true
-        floatSwitch.state = Prefs.floatAboveOtherWindows ? .on : .off
-        floatSwitch.target = self
-        floatSwitch.action = #selector(toggleFloat)
-
-        loginSwitch.target = self
-        loginSwitch.action = #selector(toggleLoginItem)
-        loginSettingsButton.target = self
-        loginSettingsButton.action = #selector(openLoginItemSettings)
-        loginSettingsButton.controlSize = .small
         showLoginItem(LoginItem.state)
+    }
 
-        let sections = NSStackView(views: [
-            Self.heading("General"),
-            Self.group([
-                Self.row("Open at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
-                         caption: loginCaption),
-                Self.row("Float above other windows", control: floatSwitch,
-                         caption: Caption("Keep the panel over other apps' windows, so a note summoned over what you are reading stays in front of it.")),
-                Self.row("Autosave", control: autosaveSwitch,
-                         caption: Caption("Write to the file as you type. Turning it off does not risk the note: hiding the panel and quitting still write, and Cmd+S writes whenever you ask.")),
-            ]),
-            Self.heading("Hotkey"),
-            Self.group([
-                Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
-            ]),
-            Self.heading("Appearance"),
-            Self.group([
-                Self.row("Show formatting toolbar", control: formatToolbarSwitch,
-                         caption: Caption("The editing buttons on the left of the toolbar. Off leaves the window buttons, find, the text controls and the gear.")),
-                Self.row("Show file path", control: pathSwitch,
-                         caption: Caption("Names the file being edited along the bottom, while the window has focus.")),
-            ]),
-            Self.heading("Files"),
-            Self.group([
-                Self.row("Start with a blank note", control: blankSwitch,
-                         caption: Caption("Open a new empty note each launch instead of reopening the last one. New Note (⌘N) does the same at any time, and never touches a document chosen below.")),
-                Self.row("Scratchpad", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
-                Self.row("Edit a document instead", control: documentSwitch,
-                         caption: Caption("Jot edits that file rather than the scratchpad. Everything else is the same: it is autosaved, Cmd+S writes it, and saving a copy leaves it alone.")),
-                Self.row("Document", control: Self.pathControl(documentPath, documentChoose)),
-            ]),
-            Self.heading("Agent"),
-            Self.group([
-                Self.row("Command", control: agentField,
-                         caption: Caption("What `/ai` runs, with {prompt} where the quoted request goes. The same shape as the extension's birta.agent.command, so a command tuned there works here unchanged. Jot writes the note to disk first and reloads it when the run finishes.")),
-            ]),
-            Self.heading("Network"),
-            Self.group([
-                Self.row("Fetch from the web", control: networkSwitch,
-                         caption: Caption("Off by default, and off means no outbound request at all. When on, an embed loads from its provider, a link on its own line can show the page's own title and description, and pasting a URL offers you the page's title as the link text.")),
-            ]),
-        ])
-        sections.orientation = .vertical
-        sections.alignment = .leading
-        sections.spacing = 10
-        // After each group, so the next heading starts a section rather than
-        // reading as a caption on the group above it.
-        for (index, view) in sections.arrangedSubviews.enumerated() where view is NSBox {
-            if index + 1 < sections.arrangedSubviews.count { sections.setCustomSpacing(20, after: view) }
+    private func buildPane(_ tab: Tab) -> NSView {
+        if panes.isEmpty { wireControls() }
+        let sections: [NSView]
+        switch tab {
+        case .general:
+            sections = [
+                Self.heading("Startup"),
+                Self.group([
+                    Self.row("Open at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
+                             caption: loginCaption),
+                    Self.row("Start with a blank note", control: blankSwitch),
+                ]),
+                Self.heading("Panel"),
+                Self.group([
+                    Self.row("Float above other windows", control: floatSwitch),
+                    Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
+                ]),
+                Self.heading("Network"),
+                Self.group([
+                    Self.row("Fetch from the web", control: networkSwitch,
+                             caption: Caption("Off means no outbound request. On enables embeds, link cards and pasted-link titles.")),
+                ]),
+            ]
+        case .editor:
+            sections = [
+                Self.heading("Editing"),
+                Self.group([
+                    Self.row("Autosave", control: autosaveSwitch,
+                             caption: Caption("Cmd+S, hiding and quitting write either way.")),
+                ]),
+                Self.heading("Chrome"),
+                Self.group([
+                    Self.row("Show formatting toolbar", control: formatToolbarSwitch),
+                    Self.row("Show file path", control: pathSwitch),
+                ]),
+            ]
+        case .advanced:
+            sections = [
+                Self.heading("Files"),
+                Self.group([
+                    Self.row("Scratchpad", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
+                    Self.row("Edit a document instead", control: documentSwitch,
+                             caption: Caption("Jot edits that file rather than the scratchpad.")),
+                    Self.row("Document", control: Self.pathControl(documentPath, documentChoose)),
+                ]),
+                Self.heading("Agent"),
+                Self.group([
+                    Self.row("Command", control: agentField,
+                             caption: Caption("What /ai runs. {prompt} is replaced by the request.")),
+                ]),
+            ]
         }
-        sections.translatesAutoresizingMaskIntoConstraints = false
+        return Self.pane(sections)
+    }
 
-        let container = BackgroundView()
-        container.addSubview(sections)
+    /// One pane: sections down the page, padded, sized to its content.
+    private static func pane(_ sections: [NSView]) -> NSView {
+        let stack = NSStackView(views: sections)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        // 20 after each group, so the next heading starts a section rather
+        // than reading as a caption on the group above it.
+        for (index, view) in stack.arrangedSubviews.enumerated() where view is NSBox {
+            if index + 1 < stack.arrangedSubviews.count { stack.setCustomSpacing(20, after: view) }
+        }
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = NSView()
+        container.addSubview(stack)
         NSLayoutConstraint.activate([
-            sections.topAnchor.constraint(equalTo: container.topAnchor, constant: Metrics.windowPadding),
-            sections.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Metrics.windowPadding),
-            sections.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Metrics.windowPadding),
-            sections.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Metrics.windowPadding),
-            sections.widthAnchor.constraint(equalToConstant: Metrics.content),
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: Metrics.windowPadding),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Metrics.windowPadding),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Metrics.windowPadding),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Metrics.windowPadding),
+            stack.widthAnchor.constraint(equalToConstant: Metrics.content),
         ])
         // A leading-aligned vertical stack sizes each arranged view to its own
         // content; the groups are the full width and only the headings sit at
         // their own.
-        for view in sections.arrangedSubviews where view is NSBox {
-            view.widthAnchor.constraint(equalTo: sections.widthAnchor).isActive = true
+        for view in stack.arrangedSubviews where view is NSBox {
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         return container
     }
@@ -324,9 +472,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.hotkey = combo
         let status = onHotkeyChange()
         if status == 0 {
-            hotkeyCaption.say("Press the combination that summons the panel from any app.", bad: false)
+            hotkeyCaption.say("", bad: false)
         } else {
-            hotkeyCaption.say("macOS refused \(combo.symbols) (status \(status)); another app may own it. Jot has no hotkey until this is fixed.", bad: true)
+            hotkeyCaption.say("macOS refused \(combo.symbols); another app may own it.", bad: true)
         }
         hotkeyRecorder.setCombo(combo)
     }
@@ -485,9 +633,13 @@ final class Caption: NSTextField {
         super.layout()
     }
 
+    /// An empty caption is HIDDEN, not blank: a row whose label says it all
+    /// should be one line tall, and a zero-height label still contributes its
+    /// spacing to the row above and below it.
     func say(_ text: String, bad: Bool) {
         stringValue = text
         textColor = bad ? .systemRed : .secondaryLabelColor
+        isHidden = text.isEmpty
     }
 }
 
