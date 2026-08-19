@@ -191,6 +191,21 @@ export function createDiagramPane(opts: {
 
     const preview = document.createElement("div");
     preview.className = `${px}-preview diagram-preview`;
+    // Load-bearing, and measured to be. The pane sits
+    // inside the contentEditable root, and Blink retargets a touch on an
+    // overlay that does not declare itself to the neighbouring text node for
+    // caret placement, while `elementFromPoint` still returns the overlay. A
+    // mouse retargets nothing, so no mouse test and nothing in jsdom can see
+    // this. Delete this line and `node e2e/run.mjs touchChromeAudit` fails,
+    // naming this preview, its svg container, and the puml and gv twins.
+    //
+    // The pan pad's own declaration is NOT load-bearing: it is a descendant of
+    // this element and inherits it, and removing it leaves the audit green.
+    // Kept anyway, because a control that states its own contract survives
+    // being moved out of this subtree, which is exactly what happened when the
+    // pad was shared with the fullscreen surface. Do not read that redundancy
+    // as evidence that this line is redundant too. The zoom overlay's
+    // declaration was not tested either way (MAR-340).
     preview.contentEditable = "false";
 
     // SVG container (the transform is applied here)
