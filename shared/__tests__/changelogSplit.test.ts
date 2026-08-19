@@ -81,10 +81,14 @@ describe("the changelog split", () => {
         // which silently excluded `---` as well.
         for (const [name, text] of [["CHANGELOG.md", extension], ["jot/CHANGELOG.md", jot]] as const) {
             const lines = text.split("\n");
-            const glued = lines.flatMap((line, i) =>
-                i > 0 && lines[i - 1]!.trim() !== "" && (line === "---" || /^#{2,4} /.test(line))
+            let fenced = false;
+            const glued = lines.flatMap((line, i) => {
+                if (line.startsWith("```")) { fenced = !fenced; return []; }
+                if (fenced) { return []; }
+                return i > 0 && lines[i - 1]!.trim() !== "" && (line === "---" || /^#{2,4} /.test(line))
                     ? [`${name}:${i + 1} ${line.slice(0, 40)}`]
-                    : []);
+                    : [];
+            });
             expect(glued, `structure glued to the line above: ${glued.join(", ")}`).toEqual([]);
             expect(lines.length).toBeGreaterThan(20);
         }

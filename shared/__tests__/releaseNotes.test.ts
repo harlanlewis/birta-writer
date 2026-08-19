@@ -660,8 +660,15 @@ describe("the AI path", () => {
     });
 });
 
-describe("the repository's own CHANGELOG.md", () => {
-    const changelog = readFileSync(path.join(repoRoot, "CHANGELOG.md"), "utf8");
+describe("the repository's own changelogs", () => {
+    // BOTH of them. They are split by product and gen-release-notes.mjs reads
+    // both, so a heading the taxonomy cannot route, or a section the AI path
+    // refuses, breaks a release the same way from either file. A guard naming
+    // one of two files it is written for is a guard with half a subject.
+    const changelog = [
+        readFileSync(path.join(repoRoot, "CHANGELOG.md"), "utf8"),
+        readFileSync(path.join(repoRoot, "jot/CHANGELOG.md"), "utf8"),
+    ].join("\n");
 
     it("every section heading should be one the release notes can route", () => {
         // An invented heading still reaches the notes, under its own name — but
