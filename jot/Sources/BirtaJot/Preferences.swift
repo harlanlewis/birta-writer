@@ -135,12 +135,11 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.autosave) }
     }
 
-    /// Whether the panel stays above other applications' windows. On by
-    /// default: a scratchpad summoned over whatever you were reading is the
-    /// point of the hotkey, and a panel that hides behind the window you were
-    /// copying from would defeat it.
+    /// Whether the panel stays above other applications' windows. Off by
+    /// default: a window that will not go behind anything is a window you
+    /// fight, and the hotkey already brings the panel back in one keystroke.
     static var floatAboveOtherWindows: Bool {
-        get { d.object(forKey: Key.floatAboveOtherWindows) == nil ? true : d.bool(forKey: Key.floatAboveOtherWindows) }
+        get { d.bool(forKey: Key.floatAboveOtherWindows) }
         set { d.set(newValue, forKey: Key.floatAboveOtherWindows) }
     }
 
@@ -191,9 +190,9 @@ enum Prefs {
             fontSize: fontSize,
             contentWidth: contentWidth,
             networkEnabled: networkEnabled,
-            // HOST_PROFILES.jot in shared/hostCapabilities.ts is the source;
+            // HOST_PROFILES.jot in shared/hostProfile.ts is the source;
             // Swift cannot import it, so this literal restates it and
-            // shared/__tests__/hostCapabilities.test.ts parses this file and
+            // shared/__tests__/hostProfile.test.ts parses this file and
             // fails when the two disagree.
             hostCapabilities: ["imageUpload", "appPreferences", "agent"],
             viewStateJSON: viewStateJSON,

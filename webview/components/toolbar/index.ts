@@ -209,7 +209,7 @@ export function initToolbar(
             onGetProjectImages,
         );
     };
-    // Host-gated (shared/hostCapabilities.ts): the image button needs a store
+    // Host-gated (shared/hostProfile.ts): the image button needs a store
     // to upload to, and a host without one gets no button at all. The panel
     // itself stays wired, because `insertImage` is gated at runEditorCommand.
     const imgBtnEl = available.has("image") ? btn(IconImage, t("Insert Image"), openImagePanel) : null;
@@ -361,6 +361,11 @@ export function initToolbar(
     items.settings = wrap("settings", createSettingsMenu({
         startCustomize: () => layout.startCustomize(),
         setToolbarVisible: (visible) => layout.setToolbarVisible(visible),
+        // Empty unless the surface asked for that arrangement, in which case
+        // the fontPreset item above is the empty one instead. The control is
+        // built either way, so `chooseFontPreset` and its siblings reach the
+        // same code from the palette and the slash menu whichever it is.
+        typographyRows: (close) => typography.gearRows(close),
     }));
 
     // ── Placement, overflow, customize mode, whole-bar visibility ──

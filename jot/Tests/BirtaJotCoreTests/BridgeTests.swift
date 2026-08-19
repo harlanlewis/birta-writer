@@ -96,12 +96,17 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(i18n["calcEnabled"] as? Bool, true)
         XCTAssertEqual(i18n["tocVisibility"] as? String, "hidden")
         XCTAssertEqual((i18n["proofread"] as? [String: Bool])?["proofreadingEnabled"], false)
-        XCTAssertEqual((i18n["hostCapabilities"] as? [String]) ?? ["x"], [])
+        // The host's own facts live under one key, not scattered among the
+        // user's settings beside them (shared/hostProfile.ts).
+        let host = i18n["host"] as? [String: Any]
+        XCTAssertEqual((host?["capabilities"] as? [String]) ?? ["x"], [])
+        XCTAssertEqual(host?["arrangements"] as? [String], ["typographyInGearMenu"])
+        XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 
         let script = cfg.userScript(themeClass: "vscode-dark")
         XCTAssertTrue(script.contains(#"window.__i18n = {"#))
-        XCTAssertTrue(script.contains(#""hostCapabilities":[]"#))
+        XCTAssertTrue(script.contains(#""capabilities":[]"#))
         XCTAssertTrue(script.contains(#"var state = {"scrollY":1};"#))
         XCTAssertTrue(script.contains(#"document.body.classList.add("vscode-dark")"#))
         XCTAssertFalse(script.contains("documentElement"), "one theme class, on body, the one the bridge reads")

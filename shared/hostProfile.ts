@@ -1,7 +1,33 @@
 /**
- * shared/hostCapabilities.ts
+ * shared/hostProfile.ts
  *
- * The registry of which features live in which surface (MAR-373, MAR-370).
+ * What the SURFACE is, as one declaration. The single place a host says
+ * anything about itself, and the single place the editor asks (MAR-373,
+ * MAR-370).
+ *
+ * The problem this exists to prevent: the boot blob carries about forty
+ * fields, and almost all of them are the USER'S settings (`birta.*`). A fact
+ * about the host is a different kind of thing, and when host facts are added
+ * as bare fields alongside settings there is no type saying which is which and
+ * no one place to guard. Three had already accumulated in three shapes. They
+ * are one shape now, and a fourth goes here rather than becoming a fourth.
+ *
+ * A profile holds three kinds of fact, and the distinction is the whole
+ * design:
+ *
+ *   capabilities  something the host PROVIDES that chrome can name. Always
+ *                 host-side (a text editor to switch to, a settings window, an
+ *                 agent, an image store), never an editor feature; an editor
+ *                 feature is gated by its own `birta.*` setting, not here.
+ *   arrangements  a LAYOUT choice where two surfaces want the same controls in
+ *                 different places. Not a capability: both arrangements offer
+ *                 the same thing and run the same commands, so gating one on a
+ *                 capability would claim a host cannot do something it can.
+ *   shortcuts     keys the host itself binds, for the cheatsheet to print.
+ *
+ * Consumers ask `hostHas`, `hostArranges`, `hostHasCommand` or `hostShortcuts`
+ * and never read the declaration, so the absent-means-VS-Code rule below has
+ * exactly one home and no call site re-derives it.
  *
  * The contract: Jot ships zero behavior Birta lacks. Every surface runs the
  * same editor from the same bundle, and what differs between them is only the
@@ -11,16 +37,22 @@
  * TOC sidebar, an image store), never an editor feature. An editor feature is
  * gated by its own `birta.*` setting, not here.
  *
- * The host declares its capabilities in `window.__i18n.hostCapabilities`
- * (src/webviewHtml.ts bakes the full list for VS Code). ABSENT MEANS THE VS CODE PROFILE, so
- * an existing page that never heard of the field keeps every item it ever
- * had; an explicit `[]` is a host with none. Consumers ask `hostHas(cap)` or
- * `hostHasCommand(id)` and never read the field directly, so the absent-means-
- * all rule has one home.
+ * The host declares one object, `window.__i18n.host`. ABSENT MEANS THE VS CODE
+ * PROFILE rather than the literal union: a page with no declaration is one
+ * that predates the field, which makes it a VS Code page, and it should not
+ * inherit a capability that names a standalone app's window. An explicit empty
+ * profile is a host with nothing.
+ *
+ * Three declarers restate this by hand, because neither Swift nor an HTML
+ * bootstrap can import TypeScript: `src/webviewHtml.ts` for VS Code,
+ * `Prefs.bootConfig` in jot/Sources/BirtaJot/Preferences.swift for Jot, and
+ * the e2e Jot page. They are not free to drift; `hostProfile.test.ts` reads
+ * all three and fails when they disagree. One key is what makes that guard
+ * possible to write once instead of once per field.
  *
  * Dependency-free (no vscode, no DOM types) so both the extension and the
- * webview import it; the read of the declaration goes through `globalThis`,
- * which is `window` in every webview.
+ * webview import it; the read goes through `globalThis`, which is `window` in
+ * every webview.
  */
 import { EDITOR_COMMANDS } from "./editorCommands";
 
@@ -91,7 +123,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  * window of its own, and keeping it explicit is what stops "vscode declares
  * everything" from quietly meaning "every new capability is a VS Code
  * feature". A member here MUST be declared by some other profile, or it
- * names nothing at all; `hostCapabilities.test.ts` checks both directions.
+ * names nothing at all; `hostProfile.test.ts` checks both directions.
  */
 export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences"];
 
@@ -102,12 +134,75 @@ export const HOST_PROFILES = {
     // The Jot shell (`Prefs.bootConfig` in jot/Sources/BirtaJot/Preferences.swift)
     // and the e2e Jot page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
-    // shared/__tests__/hostCapabilities.test.ts parses both and fails.
+    // shared/__tests__/hostProfile.test.ts parses both and fails.
     jot: ["imageUpload", "appPreferences", "agent"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
+/**
+ * A layout choice a surface makes, where both answers offer the same controls
+ * and run the same commands.
+ *
+ * NOT a capability, and the difference is worth holding onto: a capability
+ * says the host cannot do a thing, so the chrome for it is never built. An
+ * arrangement says the host would rather have the thing somewhere else. Gating
+ * a layout on a capability would claim VS Code cannot show a font menu.
+ */
+export type HostArrangement =
+    /**
+     * The typography rows (width, size, font) live inside the gear menu rather
+     * than in a toolbar item of their own. For a surface whose toolbar is
+     * short, which is Jot's.
+     */
+    | "typographyInGearMenu";
+
+export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = ["typographyInGearMenu"];
+
+/** One key the host binds itself, for the keyboard cheatsheet to print. */
+export interface HostShortcut {
+    /** ProseMirror keymap notation (`Mod-Shift-d`), which `kbd()` parses. */
+    readonly keys: string;
+    /** What it does, in the words the host's own menu uses. */
+    readonly label: string;
+}
+
+/** Everything a host says about itself, in one object. */
+export interface HostProfile {
+    readonly capabilities: readonly HostCapability[];
+    readonly arrangements: readonly HostArrangement[];
+    readonly shortcuts: readonly HostShortcut[];
+}
+
 interface HostDeclaration {
-    __i18n?: { hostCapabilities?: readonly HostCapability[] };
+    __i18n?: { host?: Partial<HostProfile> };
+}
+
+/**
+ * The declared profile, or the VS Code one when nothing is declared.
+ *
+ * Read on every call rather than cached: the declaration is injected before
+ * the bundle evaluates, but a test can replace it between cases, and a cached
+ * first read would make the second case answer for the first.
+ */
+export function hostProfile(): HostProfile {
+    const declared = (globalThis as HostDeclaration).__i18n?.host;
+    if (declared === undefined) {
+        return { capabilities: HOST_PROFILES.vscode, arrangements: [], shortcuts: [] };
+    }
+    return {
+        capabilities: declared.capabilities ?? [],
+        arrangements: declared.arrangements ?? [],
+        shortcuts: declared.shortcuts ?? [],
+    };
+}
+
+/** Whether the host wants layout `arrangement`. */
+export function hostArranges(arrangement: HostArrangement): boolean {
+    return hostProfile().arrangements.includes(arrangement);
+}
+
+/** The host's own fixed keys, for the cheatsheet. Empty where it binds none. */
+export function hostShortcuts(): readonly HostShortcut[] {
+    return hostProfile().shortcuts;
 }
 
 /**
@@ -121,9 +216,7 @@ interface HostDeclaration {
  * standalone app's row on a page that never heard of standalone apps.
  */
 export function hostHas(cap: HostCapability): boolean {
-    const declared = (globalThis as HostDeclaration).__i18n?.hostCapabilities;
-    if (declared === undefined) { return !APP_ONLY_CAPABILITIES.includes(cap); }
-    return declared.includes(cap);
+    return hostProfile().capabilities.includes(cap);
 }
 
 const COMMAND_CAPABILITY: ReadonlyMap<string, HostCapability> = new Map(

@@ -299,7 +299,17 @@ public struct BootConfig: Equatable {
             "translations": [String: String](),
             "isMac": true,
             "toolbar": toolbar,
-            "hostShortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
+            // Everything Jot says about ITSELF, in the one key the editor reads
+            // (shared/hostProfile.ts). `arrangements` is a layout choice rather
+            // than a capability: the panel's toolbar is short and its
+            // right-hand block is always on screen, so the typography rows read
+            // better inside the gear than as a second dropdown beside it. Same
+            // controls, same commands, different holder.
+            "host": [
+                "capabilities": hostCapabilities,
+                "arrangements": ["typographyInGearMenu"],
+                "shortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
+            ],
             "fontPreset": fontPreset,
             "fontSize": fontSize,
             "contentWidth": contentWidth,
@@ -320,7 +330,6 @@ public struct BootConfig: Equatable {
             "pasteUnfurl": networkEnabled,
             "calcEnabled": true,
             "calcBlocksEnabled": true,
-            "hostCapabilities": hostCapabilities,
             // No sidebar in Jot: belt to the `toc` capability's braces.
             "tocVisibility": "hidden",
             // Proofreading is a host capability Jot does not declare, and the

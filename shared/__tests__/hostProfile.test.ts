@@ -1,6 +1,7 @@
 /**
- * The host-capability registry (MAR-373): the absent-means-all rule, the
- * profiles table, and the command predicate every surface reads.
+ * The host profile (MAR-373): the absent-means-the-VS-Code-profile rule, the
+ * profiles table, the command predicate every surface reads, and the drift
+ * guard over the three declarers that restate it by hand.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -11,14 +12,15 @@ import {
     HOST_PROFILES,
     hostHas,
     hostHasCommand,
-    type HostCapability, APP_ONLY_CAPABILITIES } from "../hostCapabilities";
+    type HostCapability, APP_ONLY_CAPABILITIES, ALL_HOST_ARRANGEMENTS } from "../hostProfile";
 import { EDITOR_COMMANDS, TOOLBAR_MENU_COMMANDS } from "../editorCommands";
 
-type Declared = { __i18n?: { hostCapabilities?: readonly HostCapability[] } };
+type Declared = { __i18n?: { host?: { capabilities?: readonly HostCapability[] } } };
 const g = globalThis as Declared;
 
+/** Declare a profile carrying `caps`, or one with no profile at all. */
 function declare(caps: readonly HostCapability[] | undefined): void {
-    g.__i18n = caps === undefined ? { } : { hostCapabilities: caps };
+    g.__i18n = caps === undefined ? {} : { host: { capabilities: caps } };
 }
 
 const GATED = EDITOR_COMMANDS.filter((m) => "hostCapability" in m && m.hostCapability);
@@ -144,11 +146,23 @@ describe("the Jot profile's copies", () => {
     const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
     const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");
 
-    /** The elements of the first `hostCapabilities: [ ... ]` literal in `src`. */
-    function declaredIn(src: string): string[] {
-        const m = /hostCapabilities:\s*\[([^\]]*)\]/.exec(src);
-        if (!m) { throw new Error("no hostCapabilities literal found"); }
+    /** The elements of the first `<key>: [ ... ]` literal in `src`. */
+    function listedUnder(key: string, src: string): string[] {
+        const m = new RegExp(`"?${key}"?:\\s*\\[([^\\]]*)\\]`).exec(src);
+        if (!m) { throw new Error(`no ${key} literal found`); }
         return [...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!);
+    }
+
+    /**
+     * Capabilities, wherever the declarer spells them. Swift names the list
+     * `hostCapabilities` where it builds the BootConfig and the page names it
+     * `capabilities` inside the profile object; both are the same list, and
+     * the point of the guard is that they hold the same entries.
+     */
+    function declaredIn(src: string): string[] {
+        return /hostCapabilities:/.test(src)
+            ? listedUnder("hostCapabilities", src)
+            : listedUnder("capabilities", src);
     }
 
     /** The `window.__i18n = { ... }` bootstrap line, which is the declaration;
@@ -170,7 +184,34 @@ describe("the Jot profile's copies", () => {
         expect(declaredIn(bootstrapLine(read("e2e/jotHost/index.html")))).toEqual([...HOST_PROFILES.jot]);
     });
 
-    it("the e2e control page should declare nothing at all, which is what absent-means-all needs", () => {
-        expect(bootstrapLine(read("e2e/jotHost/control.html"))).not.toContain("hostCapabilities");
+    it("the e2e control page should declare nothing at all, which is what absent-means-the-vscode-profile needs", () => {
+        expect(bootstrapLine(read("e2e/jotHost/control.html"))).not.toContain("host:");
+    });
+
+    /**
+     * The other two thirds of the profile, which had no guard at all before it
+     * became one object. Arrangements and shortcuts were added as separate
+     * bare fields, so Swift could have stopped declaring either and every test
+     * would still have passed: the e2e page carries its own copy and nothing
+     * compared them. One key is what makes one guard possible.
+     */
+    it("both Jot declarers should carry the same arrangements", () => {
+        const swift = read("jot/Sources/BirtaJotCore/Bridge.swift");
+        const page = bootstrapLine(read("e2e/jotHost/index.html"));
+        const fromSwift = listedUnder("arrangements", swift);
+        const fromPage = listedUnder("arrangements", page);
+        expect(fromSwift.length).toBeGreaterThan(0);
+        expect(fromPage).toEqual(fromSwift);
+        for (const a of fromSwift) { expect(ALL_HOST_ARRANGEMENTS).toContain(a); }
+    });
+
+    it("the Jot shell should declare shortcuts, and from its own menu table", () => {
+        // Not a list comparison: the shell builds these from JotMenu, so the
+        // guard is that it declares SOME and that the table is what feeds
+        // them. A literal list here would be a fourth copy to keep in step.
+        const bridge = read("jot/Sources/BirtaJotCore/Bridge.swift");
+        expect(bridge).toContain('"shortcuts"');
+        const prefs = read("jot/Sources/BirtaJot/Preferences.swift");
+        expect(prefs).toContain("JotMenu.shortcuts");
     });
 });

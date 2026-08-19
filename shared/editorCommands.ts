@@ -14,7 +14,7 @@
  * message protocol carries the bare `<id>` as `EditorCommandId`.
  */
 
-import type { HostCapability } from "./hostCapabilities";
+import type { HostCapability } from "./hostProfile";
 
 export type WebviewSection = "editor" | "table" | "link" | "toolbar" | "toolbarTab";
 
@@ -37,7 +37,7 @@ export interface EditorCommandMeta {
      */
     readonly menuGroup?: "layout" | "shortcuts" | "settings";
     /**
-     * The host-provided thing this command needs (shared/hostCapabilities.ts):
+     * The host-provided thing this command needs (shared/hostProfile.ts):
      * a text editor to switch to, a settings UI, a proofreading engine, an
      * image store. Absent on every command the editor answers by itself. A
      * host that does not declare the capability never sees the command: not

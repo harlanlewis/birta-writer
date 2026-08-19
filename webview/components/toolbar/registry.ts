@@ -7,7 +7,7 @@
  */
 import type { ToolbarConfig, ToolbarPlacement, ToolbarZone } from "../../../shared/messages";
 import type { EditorCommandId } from "../../../shared/editorCommands";
-import { hostHas, type HostCapability } from "../../../shared/hostCapabilities";
+import { hostHas, type HostCapability, hostArranges } from "../../../shared/hostProfile";
 
 /**
  * Every toolbar item id, in canonical order. Items render in this order within
@@ -172,7 +172,7 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
 
 /**
  * The host capability each item needs, or null for an item the editor answers
- * by itself (shared/hostCapabilities.ts). A host that does not declare the
+ * by itself (shared/hostProfile.ts). A host that does not declare the
  * capability has no such item: it is not built, and `computeZones` drops it
  * from every zone, the customize tray's hidden set included, so the user is
  * never offered a control that posts to a host that cannot answer.
@@ -209,9 +209,18 @@ export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> 
     settings: null,
 };
 
-/** The items the host can carry: everything whose capability it declares. */
+/**
+ * The items the host can carry: everything whose capability it declares.
+ *
+ * `fontPreset` has a second reason to be absent, and it is a layout choice
+ * rather than a capability: a surface that puts the typography rows inside the
+ * gear menu has no use for an item that would open an empty menu beside it.
+ * The CONTROL still exists either way, so the palette and slash-menu commands
+ * are unaffected; only the item is.
+ */
 export function hostAvailableItems(): ReadonlySet<ToolbarItemId> {
     return new Set(TOOLBAR_ITEM_IDS.filter((id) => {
+        if (id === "fontPreset" && hostArranges("typographyInGearMenu")) { return false; }
         const cap = ITEM_HOST_CAPABILITY[id];
         return cap === null || hostHas(cap);
     }));

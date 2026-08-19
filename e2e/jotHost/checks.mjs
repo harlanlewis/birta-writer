@@ -50,8 +50,14 @@ export async function run({ page, check, baseUrl }) {
     check("jot: no host-bound .tb-item in any zone",
         GATED_ITEMS.every((id) => !jot.items.includes(id)), JSON.stringify(jot.items));
     check("jot: the editor's own items are still on the bar",
-        ["format", "bold", "link", "table", "find", "fontPreset", "settings"].every((id) => jot.items.includes(id)),
+        ["format", "bold", "link", "table", "find", "settings"].every((id) => jot.items.includes(id)),
         JSON.stringify(jot.items));
+    // The typography rows live in the gear here, so the item that would open a
+    // second dropdown beside it is not built. Asserted with the gear rows
+    // below, which is the other half: absent from the bar AND present in the
+    // menu, or this passes on a build that simply lost the controls.
+    check("jot: no separate font item, because its rows are in the gear",
+        !jot.items.includes("fontPreset"), JSON.stringify(jot.items));
     // The other direction of the same rule: a capability the host DOES declare
     // keeps its item. Without this the suite would pass a build that gated
     // everything, which is the failure a gating test is most likely to have.
@@ -68,16 +74,54 @@ export async function run({ page, check, baseUrl }) {
         labels: [...menu.querySelectorAll(".tb-fmt-item")].map((el) => el.textContent),
         kinds: [...menu.children].map((el) =>
             el.classList.contains("tb-menu-sep") ? "sep" : el.classList.contains("tb-fmt-item") ? "item" : el.className),
+        hasSizeRow: !!menu.querySelector(".tb-font-size-row"),
+        hasWidthRow: !!menu.querySelector(".tb-seg-btn"),
     }));
     // The shell has a Settings window (`appPreferences`), so its row belongs;
     // VS Code's own settings and keybindings rows do not, and neither does the
     // release page. This asserts both directions in one list.
-    check("jot: gear menu offers the layout rows, the cheatsheet, and the shell's own Settings",
+    check("jot: gear menu offers the layout rows, the typography presets, the cheatsheet and the shell's own Settings",
         JSON.stringify(gear.labels) === JSON.stringify(
-            ["Customize Toolbar", "Hide Toolbar", "Show Keyboard Shortcuts", "Birta Jot Settings"]),
+            ["Customize Toolbar", "Hide Toolbar", "Sans serif", "Serif", "Monospace",
+             "Show Keyboard Shortcuts", "Birta Jot Settings"]),
         JSON.stringify(gear.labels));
+    // Editor font needs an editor font to inherit and the width segments need
+    // a pane wide enough for a measure to be a choice; the shell declares
+    // neither, so neither row is here even though both would be in VS Code.
+    check("jot: the gear offers no Editor-font row and no width segments",
+        !gear.labels.includes("Editor font") && !gear.hasWidthRow,
+        JSON.stringify({ labels: gear.labels, hasWidthRow: gear.hasWidthRow }));
+    check("jot: the size stepper came with them", gear.hasSizeRow, JSON.stringify(gear.kinds));
+
+    // The point of moving the rows rather than rebuilding them: the palette
+    // and slash-menu commands run the SAME control, so a font pick from a
+    // command still reaches the document. Without this the suite would pass a
+    // build where the gear looks right and `/serif` does nothing.
+    const fontBefore = await page.evaluate(
+        () => document.documentElement.style.getPropertyValue("--content-font-family"));
+    await page.evaluate(() =>
+        window.postMessage({ type: "editorCommand", command: "fontMono" }, "*"));
+    await page.waitForTimeout(250);
+    const fontAfter = await page.evaluate(
+        () => document.documentElement.style.getPropertyValue("--content-font-family"));
+    check("jot: a font command still applies with the rows in the gear",
+        fontAfter !== fontBefore && /mono/i.test(fontAfter), JSON.stringify({ fontBefore, fontAfter }));
+
+    // …and the checkmark in the gear followed it, so the menu and the document
+    // never disagree about which preset is on.
+    await page.hover(gearBtn);
+    await page.waitForTimeout(OPEN_WAIT);
+    const checked = await page.$eval(gearMenu, (menu) =>
+        [...menu.querySelectorAll(".tb-fmt-item")]
+            .filter((el) => el.getAttribute("aria-checked") === "true")
+            .map((el) => el.textContent));
+    check("jot: …and the gear's checkmark moved with it",
+        JSON.stringify(checked) === JSON.stringify(["Monospace"]), JSON.stringify(checked));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
     check("jot: gear menu separates the groups without dangling one",
-        JSON.stringify(gear.kinds) === JSON.stringify(["item", "item", "sep", "item", "sep", "item"]),
+        gear.kinds[0] === "item" && gear.kinds[gear.kinds.length - 1] === "item"
+            && !gear.kinds.join(",").includes("sep,sep"),
         JSON.stringify(gear.kinds));
 
     // Customize mode via the gear row: the hidden tray offers no gated item.

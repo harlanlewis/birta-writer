@@ -46,14 +46,24 @@
   .editor-topbar .tb-zone,
   .editor-topbar .tb-item { transition: opacity 0.15s ease; }
 
-  /* Two choices the window's owner makes, set by the shell as classes for the
+  /* A choice the window's owner makes, set by the shell as a class for the
      same reason jot-resting is one. Hiding the editing cluster leaves the
-     window buttons, find, the font controls and the gear, which is the panel
-     for someone who formats with Markdown syntax and shortcuts. */
-  body.jot-no-format-toolbar .editor-topbar .tb-zone--left { display: none; }
+     window buttons and the utility block, which is the panel for someone who
+     formats with Markdown syntax and shortcuts.
 
-  body.jot-resting .editor-topbar .tb-zone--left,
-  body.jot-resting .editor-topbar .tb-zone--right .tb-item:not([data-item-id="settings"]) {
+     `margin-left: auto` is what keeps that block where it was. The left zone
+     carries `flex: 1` and is what pushes the right one to the trailing edge,
+     so removing it from the layout collapses the whole cluster leftwards into
+     the space it vacated. */
+  body.jot-no-format-toolbar .editor-topbar .tb-zone--left { display: none; }
+  body.jot-no-format-toolbar .editor-topbar .tb-zone--right { margin-left: auto; }
+
+  /* At rest the panel is a page and a cursor: the window buttons in one
+     corner, the utility block in the other, and the editing cluster gone.
+     The block is kept WHOLE rather than reduced to the gear, because it is one
+     thing to the eye and dissolving all but one item of it reads as chrome
+     breaking up rather than as chrome settling down. */
+  body.jot-resting .editor-topbar .tb-zone--left {
     opacity: 0;
     pointer-events: none;
   }

@@ -28,19 +28,25 @@ final class AutosavePolicyTests: XCTestCase {
         }
     }
 
-    /// The enumeration asserts its own size: a new trigger has to be decided
-    /// here rather than inheriting whatever the last `case` happened to be.
+    /// Over `allCases`, not a hand-written list, and that is the whole point.
+    /// A list written here is a list that a fifth trigger never joins, so the
+    /// sweep would go on passing having enumerated four of five. Deriving it
+    /// from the enum makes the count below a real assertion about the type
+    /// rather than a restatement of the line above it.
     func testEveryTriggerShouldBeDecidedUnderBothSettings() {
-        let triggers: [WriteTrigger] = [.edit, .explicitSave, .panelHidden, .terminating]
-        XCTAssertEqual(triggers.count, 4)
+        XCTAssertEqual(WriteTrigger.allCases.count, 4, "a new trigger has to be decided here")
         for enabled in [true, false] {
-            let actions = triggers.map { AutosavePolicy.action(for: $0, autosaveEnabled: enabled) }
-            XCTAssertEqual(actions.count, 4)
             // Only the edit trigger may ever be anything but `.now`, which is
             // what makes the setting safe to expose at all.
-            for (trigger, action) in zip(triggers, actions) where trigger != .edit {
-                XCTAssertEqual(action, .now)
+            var decided = 0
+            for trigger in WriteTrigger.allCases where trigger != .edit {
+                XCTAssertEqual(AutosavePolicy.action(for: trigger, autosaveEnabled: enabled), .now)
+                decided += 1
             }
+            // A floor on what actually returned a verdict. Without it the loop
+            // above passes by running zero times, which is what a filtered
+            // enumeration does when the filter stops matching.
+            XCTAssertEqual(decided, WriteTrigger.allCases.count - 1)
         }
     }
 

@@ -40,6 +40,14 @@
 
 ### Changed
 
+- Birta Writer Jot's Settings is now three panes with a tab bar, in the shape macOS settings windows have, and it scrolls rather than growing past the screen. General holds login, floating, the hotkey, the blank-note choice and the network opt-in; Editor holds autosave and the toolbar and file-path switches; Advanced holds the file paths and the agent command, so the two panes anyone opens are short. Most rows lost their explanatory sentence, which was restating the label.
+
+- Birta Writer Jot's font, size and width controls have moved into the gear menu, and the separate font button is gone from its toolbar. The controls, the commands and the slash-menu rows are unchanged, and so is the editor inside VS Code, where the font button stays where it was.
+
+- Birta Writer Jot's upper-right toolbar controls, find included, now stay visible when the pointer leaves the window. Previously everything but the gear faded out.
+
+- Breaking, in Birta Writer Jot: the panel no longer floats above other applications' windows by default. The setting is still there for anyone who wants it back.
+
 - Breaking, in Birta Writer Jot: saving no longer empties the panel. Jot edits one file the way any editor does. Autosave (a new setting, on by default) writes as you type, Cmd+S writes on demand, and Shift+Cmd+S writes a copy somewhere you choose and leaves the note where it is. The old model, where Save filed the note under a generated name in a destination folder and cleared the buffer, is gone, along with that destination setting, Copy and Delete, Discard, and the one-deep Restore and Reopen items that existed to undo the clearing. Turning autosave off stops writing while you type and nothing else: hiding the panel and quitting still write.
 
 - Birta Writer Jot defaults to a serif font and no longer offers the Editor font option, which named a VS Code editor font it has none of. Its font picker also had no effect at all before this: it moved the checkmark and left the document alone.
@@ -61,6 +69,10 @@
 - The `birta.agent.command` setting now says that the model and reasoning effort are yours to choose there, as your harness's own flags on the same line. Adding `--model haiku --effort low` gives `/ai` a smaller and faster model than your interactive sessions use and changes nothing about them, which is the point: an editing request on a document is a different shape of task from the coding work the same tool does elsewhere. The first-use route picker says the same thing.
 
 ### Fixed
+
+- Hiding Birta Writer Jot's formatting toolbar left the search and settings controls stranded in the middle of the bar instead of at its right edge.
+
+- Hiding Birta Writer Jot left its Settings window open and floating, with no editor behind it to be the settings of.
 
 - Birta Writer Jot's Settings drew every group on a ground the same colour as the window, so the sections ran together as one list. `windowBackgroundColor` and `controlBackgroundColor` are the same colour in both light and dark.
 

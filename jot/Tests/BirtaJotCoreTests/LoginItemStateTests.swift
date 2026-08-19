@@ -37,17 +37,20 @@ final class LoginItemStateTests: XCTestCase {
         XCTAssertTrue(LoginItemState.unavailable.isWarning)
     }
 
-    /// Every state says something, and the two ordinary ones say the same
-    /// thing: the caption describes the setting, and only changes when it has
-    /// a problem to report instead.
-    func testEveryStateShouldCarryACaptionAndOnlyDifferWhenWarning() {
-        let all: [LoginItemState] = [.on, .off, .blocked, .unavailable]
-        for state in all {
-            XCTAssertFalse(state.caption.isEmpty, "\(state) has no caption")
+    /// A caption earns its line by saying something the switch cannot. The two
+    /// ordinary states say nothing, because "Open at login" already does; only
+    /// the two that report a problem speak, and they say different things.
+    func testOnlyTheProblemStatesShouldCarryACaption() {
+        XCTAssertTrue(LoginItemState.on.caption.isEmpty)
+        XCTAssertTrue(LoginItemState.off.caption.isEmpty)
+        XCTAssertFalse(LoginItemState.blocked.caption.isEmpty)
+        XCTAssertFalse(LoginItemState.unavailable.caption.isEmpty)
+        XCTAssertNotEqual(LoginItemState.blocked.caption, LoginItemState.unavailable.caption)
+        // The caption and the warning flag must agree, or a row goes red with
+        // nothing written on it, or explains itself in secondary grey.
+        for state in [LoginItemState.on, .off, .blocked, .unavailable] {
+            XCTAssertEqual(state.isWarning, !state.caption.isEmpty, "\(state)")
         }
-        XCTAssertEqual(LoginItemState.on.caption, LoginItemState.off.caption)
-        XCTAssertNotEqual(LoginItemState.blocked.caption, LoginItemState.on.caption)
-        XCTAssertNotEqual(LoginItemState.unavailable.caption, LoginItemState.blocked.caption)
     }
 
     /// The mapping covers the enum rather than the four cases someone thought

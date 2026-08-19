@@ -12,7 +12,7 @@ import { t } from "@/i18n";
 import { withScrollAnchor } from "@/utils/scrollAnchor";
 import { notifySetFontPreset, notifySetFontSize, notifySetContentWidth } from "@/messaging";
 import { getEditorView } from "@/editor";
-import { hostHas } from "../../../shared/hostCapabilities";
+import { hostHas, hostArranges, type HostCapability } from "../../../shared/hostProfile";
 import { createCheckItem, createMenuTrigger, makeSep, type CheckItem } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import type { FontPreset, FontStacks } from "../../../shared/messages";
@@ -47,6 +47,12 @@ export interface TypographyControl {
     setContentWidth: (mode: ContentWidthMode, fixedCss?: string) => void;
     /** Settings-echo sink for `birta.blockHandles`; see setBlockHandlesActive. */
     setBlockHandles: (mode: BlockHandlesMode) => void;
+    /**
+     * The typography rows for a surface that puts them in the gear menu.
+     * Empty on a surface that keeps the toolbar item, because the rows are
+     * built once and live in whichever holder asked for them.
+     */
+    gearRows: (closeHolder: () => void) => HTMLElement[];
     /** Apply + persist a width, as the segments do (palette and slash menu). */
     chooseContentWidth: (mode: ContentWidthMode) => void;
     /** Apply + persist a preset, as the menu row does (palette and slash menu). */
@@ -205,19 +211,16 @@ export function createTypographyControl(): TypographyControl {
     // the echo contract holds.
     function setBlockHandlesActive(_mode: BlockHandlesMode): void { /* no menu rows to repaint */ }
 
-    function createFontPicker(): HTMLElement {
-        const fontWrap = document.createElement("div");
-        fontWrap.className = "tb-fmt-wrap";
-
-        const fontBtn = createMenuTrigger({
-            html: `<span class="tb-fmt-label tb-fmt-label--font">A</span>${IconChevronDown}`,
-            ariaLabel: t("Font"),
-        });
-        fontLabelEl = fontBtn.querySelector(".tb-fmt-label--font");
-
-        const fontMenu = document.createElement("div");
-        fontMenu.className = "tb-fmt-menu tb-font-menu";
-        fontMenu.style.display = "none";
+    /**
+     * The rows themselves: width segments, size stepper, font presets. Built
+     * ONCE and mounted wherever the surface wants them, because a DOM node has
+     * one parent and two builders would be two behaviours to keep in step.
+     *
+     * `closeHolder` is whatever menu ends up holding them, called after a pick
+     * that should dismiss. The picker below passes its own hover menu's close;
+     * a host that puts these rows in the gear menu passes the gear's.
+     */
+    function buildTypographyRows(closeHolder: () => void): HTMLElement[] {
 
         // ── Content width: Full Width / Fixed segmented control ──
         // Full Width (default) fills the pane; Fixed caps the content at the
@@ -292,14 +295,19 @@ export function createTypographyControl(): TypographyControl {
         // "Editor font" (the default) follows the VS Code editor font; the
         // other presets use their stack, user-customizable via the
         // fontFamilySans/Serif/Mono settings. Each row previews its own font.
-        const choices: { preset: FontPreset; label: string; stack: string }[] = [
-            ...(hostHas("editorFont")
-                ? [{ preset: "editor" as const, label: t("Editor font"), stack: EDITOR_FONT }]
-                : []),
+        // Each choice DECLARES what it needs and the list is filtered once,
+        // rather than each gated one being spread in behind its own ternary.
+        // The next gated preset adds a `needs` and nothing else; the shape of
+        // the list does not change and no new branch appears.
+        type FontChoice = {
+            preset: FontPreset; label: string; stack: string; needs?: HostCapability;
+        };
+        const choices: FontChoice[] = ([
+            { preset: "editor", label: t("Editor font"), stack: EDITOR_FONT, needs: "editorFont" },
             { preset: "sans", label: t("Sans serif"), stack: currentFontStacks.sans },
             { preset: "serif", label: t("Serif"), stack: currentFontStacks.serif },
             { preset: "mono", label: t("Monospace"), stack: currentFontStacks.mono },
-        ];
+        ] satisfies FontChoice[]).filter((c) => c.needs === undefined || hostHas(c.needs));
         const fontItemEls: HTMLElement[] = [];
         for (const { preset, label, stack } of choices) {
             const item = createCheckItem(label);
@@ -313,7 +321,7 @@ export function createTypographyControl(): TypographyControl {
                 // Shared close, never a direct hide: it owns the Escape-layer
                 // unregister (a direct hide leaks the entry and the next
                 // editor-focused Escape dies on it) and the aria state.
-                closeFontMenu();
+                closeHolder();
                 setFontActive(preset);
                 notifySetFontPreset(preset);
             });
@@ -325,36 +333,92 @@ export function createTypographyControl(): TypographyControl {
         // each group separated by a divider (width first — maintainer,
         // 2026-07-28). (Block handles and the font-stack settings live in
         // Settings only — the menu holds the frequent moves.)
-        // The width segments only where a measure is a real choice; without
-        // them the menu opens on the size stepper and needs no leading rule.
-        fontMenu.append(
-            ...(hostHas("contentMeasure") ? [widthRow, makeSep()] : []),
-            sizeRow,
-            makeSep(),
-            ...fontItemEls,
-        );
-
+        // Paint the rows just built. The DOCUMENT-level effects are not here:
+        // they run at construction, below, because a page whose font or width
+        // depends on someone asking for menu rows is a page that is wrong
+        // until a menu is built.
         setFontActive(currentFontPreset);
         setFontSizeActive(currentFontSize);
         setContentWidthActive(currentContentWidth);
-        if (!hostHas("contentMeasure")) {
-            // Nothing will ever call this again on such a host, and the boot
-            // page carries no width style of its own, so full width has to be
-            // put on the document once here.
-            applyContentWidthLive();
-        }
 
-        // The item handlers above close over closeFontMenu; they only ever run
-        // after this wiring (the menu must be open to click a row).
-        const { close: closeFontMenu } = wireHoverMenu(fontWrap, fontBtn, fontMenu);
+        // Same shape for the rows: what each group needs, filtered once. The
+        // width segments only where a measure is a real choice; without them
+        // the list opens on the size stepper and needs no leading rule.
+        const groups: { rows: HTMLElement[]; needs?: HostCapability }[] = [
+            { rows: [widthRow], needs: "contentMeasure" },
+            { rows: [sizeRow] },
+            { rows: fontItemEls },
+        ];
+        return groups
+            .filter((g) => g.needs === undefined || hostHas(g.needs))
+            .flatMap((g, i) => (i === 0 ? g.rows : [makeSep(), ...g.rows]));
+    }
+
+    /** The rows in a toolbar item of their own: an "A" trigger over a hover menu. */
+    function createFontPicker(): HTMLElement {
+        const fontWrap = document.createElement("div");
+        fontWrap.className = "tb-fmt-wrap";
+
+        const fontBtn = createMenuTrigger({
+            html: `<span class="tb-fmt-label tb-fmt-label--font">A</span>${IconChevronDown}`,
+            ariaLabel: t("Font"),
+        });
+        fontLabelEl = fontBtn.querySelector(".tb-fmt-label--font");
+
+        const fontMenu = document.createElement("div");
+        fontMenu.className = "tb-fmt-menu tb-font-menu";
+        fontMenu.style.display = "none";
+        // The rows close over `closeFontMenu`, which wireHoverMenu returns
+        // below; they only ever run after that, since the menu must be open to
+        // click a row.
+        let closeFontMenu = (): void => {};
+        fontMenu.append(...buildTypographyRows(() => closeFontMenu()));
+
+        ({ close: closeFontMenu } = wireHoverMenu(fontWrap, fontBtn, fontMenu));
 
         fontWrap.appendChild(fontBtn);
         fontWrap.appendChild(fontMenu);
         return fontWrap;
     }
 
+    // The document's own state, applied once and independently of any menu.
+    applyFontFamily(currentFontPreset, currentFontStacks);
+    if (!hostHas("contentMeasure")) {
+        // Such a host has no control to set it later and its boot page carries
+        // no width style, so full width has to be put on the document here.
+        applyContentWidthLive();
+    }
+
+    // WHERE the rows live is the surface's choice, and it is exclusive: a DOM
+    // node has one parent, so the item and the gear rows can never both exist.
+    // Everything else about the control is identical either way, which is what
+    // keeps the palette and slash-menu commands working unchanged: they call
+    // the methods below and never touch the DOM.
+    const inGear = hostArranges("typographyInGearMenu");
+    let cachedGearRows: HTMLElement[] = [];
+    const el = inGear
+        ? (() => {
+            const empty = document.createElement("div");
+            empty.className = "tb-fmt-wrap";
+            empty.hidden = true;
+            return empty;
+        })()
+        : createFontPicker();
+
     return {
-        el: createFontPicker(),
+        el,
+        /**
+         * The rows, for a surface that mounts them in the gear menu instead.
+         * Empty otherwise, so a caller that always asks gets nothing rather
+         * than a second copy of the picker's rows.
+         */
+        gearRows(closeHolder: () => void): HTMLElement[] {
+            if (!inGear) { return []; }
+            if (cachedGearRows.length === 0) {
+                cachedGearRows = buildTypographyRows(closeHolder);
+            }
+            return cachedGearRows;
+        },
         setFontPreset: (preset: FontPreset, stacks?: FontStacks): void => {
             setFontActive(preset, stacks);
         },

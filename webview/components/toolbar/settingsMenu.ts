@@ -11,7 +11,7 @@ import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
 import { createMenuTrigger, makeSep } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
-import { hostHasCommand } from "../../../shared/hostCapabilities";
+import { hostHasCommand } from "../../../shared/hostProfile";
 import { RELEASES_URL } from "../../../shared/product";
 
 /**
@@ -22,6 +22,12 @@ import { RELEASES_URL } from "../../../shared/product";
 export interface SettingsMenuDeps {
     startCustomize: () => void;
     setToolbarVisible: (visible: boolean) => void;
+    /**
+     * The typography rows, for a surface that puts them here rather than in a
+     * toolbar item of their own. Empty on every other surface, and the menu is
+     * built the same way in both cases: it appends what it is given.
+     */
+    typographyRows?: (closeHolder: () => void) => HTMLElement[];
 }
 
 /**
@@ -41,7 +47,7 @@ export function setWhatsNewUnread(unread: boolean): void {
     gearTrigger?.classList.toggle("tb-gear--unread", unread);
 }
 
-export function createSettingsMenu({ startCustomize, setToolbarVisible }: SettingsMenuDeps): HTMLElement {
+export function createSettingsMenu({ startCustomize, setToolbarVisible, typographyRows }: SettingsMenuDeps): HTMLElement {
         const wrapEl = document.createElement("div");
         wrapEl.className = "tb-fmt-wrap";
 
@@ -92,6 +98,13 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
             // window, which is every host but that one.
             openHostPreferences: () => notifyOpenHostPreferences(),
         };
+        // The typography rows go in the MIDDLE: after the layout rows, before
+        // the shortcuts and app rows. They are the frequently-changed ones, and
+        // a reader scanning for "make the text bigger" should not have to pass
+        // Customize Toolbar and a keyboard cheatsheet to reach it.
+        const rows = typographyRows?.(() => closeSettingsMenu()) ?? [];
+        let typographyInserted = rows.length === 0;
+
         let prevGroup: string | undefined;
         for (const meta of TOOLBAR_MENU_COMMANDS) {
             const action = menuActions[meta.id];
@@ -100,6 +113,11 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
             if (!action || !hostHasCommand(meta.id)) { continue; }
             if (prevGroup !== undefined && meta.menuGroup !== prevGroup) {
                 menu.appendChild(makeSep());
+                // First group boundary after the layout rows is where they go.
+                if (!typographyInserted) {
+                    menu.append(...rows, makeSep());
+                    typographyInserted = true;
+                }
             }
             prevGroup = meta.menuGroup;
             // The settings row names the product with the RUNTIME display
@@ -108,6 +126,12 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible }: Settin
                 ? settingsMenuTitle(productName)
                 : t(meta.title);
             addEntry(label, action);
+        }
+
+        // A menu with no group boundary after the layout rows would never reach
+        // the insert above; the rows still have to land somewhere.
+        if (!typographyInserted) {
+            menu.append(makeSep(), ...rows);
         }
 
         const { close: closeSettingsMenu } = wireHoverMenu(wrapEl, gearBtn, menu, {
