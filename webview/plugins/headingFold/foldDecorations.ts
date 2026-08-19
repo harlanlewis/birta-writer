@@ -14,7 +14,6 @@ import {
     blockMarkerSpec,
     createBlockGutter,
     leafAnchorName,
-    createHeadingEllipsis,
     createHeadingFoldGutter,
     createStubEllipsis,
     foldKeyPart,
@@ -494,35 +493,31 @@ export function buildHeadingFoldDecorations(
     });
 
     if (collapsedSections.length > 0) {
-        // Hidden-block classes, plus the per-section counts the `…` tooltips
-        // report — one extra pass, only while something is collapsed.
-        const hiddenCounts = new Map<number, number>();
+        // A collapsed heading hides its section's blocks and says so with its
+        // gutter chevron alone. It used to also trail the shared `…` chip; the
+        // chip was removed because beside heading type it read as content
+        // rather than as chrome, and the chevron it sat next to was already
+        // saying the same thing more quietly. The chevron takes a resident,
+        // filled treatment while collapsed (style.css) so it carries the state
+        // on its own.
+        //
+        // Scope, deliberately: this is the HEADING chip only. createStubEllipsis
+        // still serves list items, blockquotes and asides, and the code block,
+        // table, callout and directive NodeViews mount their own - for several
+        // of those the chip is the only collapsed affordance there is, since
+        // they have no gutter chevron to promote.
         doc.forEach((node: any, offset: number) => {
-            let hidden = false;
             for (const section of collapsedSections) {
                 if (offset >= section.range.from && offset < section.range.to) {
-                    hiddenCounts.set(section.pos, (hiddenCounts.get(section.pos) ?? 0) + 1);
-                    hidden = true;
+                    decorations.push(
+                        Decoration.node(offset, offset + node.nodeSize, {
+                            class: "heading-fold-hidden",
+                        }),
+                    );
+                    return;
                 }
             }
-            if (hidden) {
-                decorations.push(
-                    Decoration.node(offset, offset + node.nodeSize, {
-                        class: "heading-fold-hidden",
-                    }),
-                );
-            }
         });
-        for (const section of collapsedSections) {
-            const count = hiddenCounts.get(section.pos) ?? 0;
-            decorations.push(
-                Decoration.widget(
-                    section.pos + section.node.nodeSize - 1,
-                    (view: EditorView) => createHeadingEllipsis(view, count),
-                    { key: `e:${count}`, side: 1 },
-                ),
-            );
-        }
     }
 
     return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;

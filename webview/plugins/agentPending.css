@@ -4,18 +4,22 @@
  * stop square (its one verb: click to stop the run), and an error pill with
  * an exclamation once it fails. Chrome, not content: it sits in the margin on
  * the same geometry contract as the block gutter (see .heading-fold-gutter
- * in style.css), one step further into the margin so it never covers the
- * block's own marker. Filled rather than outlined, in the theme's button and
- * error inks, so it reads at a glance on any theme; the pulse is a gentle
- * breathe of the whole pill, never below a legible opacity.
+ * in style.css), and in the block marker's own column: a block with a run in
+ * flight offers no grab handle, so the pill stands in that slot rather than
+ * beside it. Filled rather than outlined, in the theme's button and error
+ * inks, so it reads at a glance on any theme; the pulse is a gentle breathe
+ * of the whole pill, never below a legible opacity.
  */
 .milkdown .editor .agent-pending {
     position: absolute;
-    /* Inside the gutter box, left of the fold chevron slot: a heading's
-       chevron sits just inside the marker column and is the one clickable
-       thing in that gutter, so the pill stops short of it. The box is right-
-       aligned against the text and this is as far left as it reaches. */
-    left: calc(var(--gutter-left, var(--gutter-column)) - 42px);
+    /* The block's own marker slot - the grab handle's place, right-aligned
+       against the text, exactly where .heading-fold-gutter puts its rightmost
+       item. A run has no grab handle (the marker is suppressed for the block
+       it is anchored to, see the rule at the end of this file), so the pill is
+       not sharing that slot, it is standing in it. It used to sit 42px further
+       into the margin to clear both the marker and the chevron, which put it
+       outside the column every other piece of block chrome lines up on. */
+    left: var(--gutter-left, var(--gutter-column));
     top: var(--gutter-top, 0px);
     height: var(--gutter-height, 1.5em);
     display: inline-flex;
@@ -70,16 +74,6 @@
     border: 1px solid var(--vscode-inputValidation-errorBorder);
 }
 
-/* A narrow pane pulls the gutter column in (style.css sets --gutter-column
-   at this width) and the box no longer has room left of the chevron; the
-   pill then shares the chevron's slot for the run's duration rather than
-   sit past the pane's edge. */
-@media (max-width: 720px) {
-    .milkdown .editor .agent-pending {
-        left: calc(var(--gutter-left, var(--gutter-column)) - 22px);
-    }
-}
-
 @keyframes agent-pending-breathe {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
@@ -89,4 +83,14 @@
    tooltip; the breathe is decoration we can drop. */
 @media (prefers-reduced-motion: reduce) {
     .milkdown .editor .agent-pending__glyph { animation: none; }
+}
+
+/* No grab handle during a run. The pill stands in the marker's slot rather
+   than beside it, so the marker must not appear there on hover and draw over
+   it. This is the one place the run marker reaches outside itself, and it is
+   why it can have that column: the block is announcing a run instead of
+   offering its handle, for the run's duration only. */
+.milkdown .editor .agent-pending-host > .heading-fold-gutter .heading-fold-marker,
+.milkdown .editor .agent-pending-host > .heading-fold-gutter .heading-fold-toggle {
+    display: none;
 }

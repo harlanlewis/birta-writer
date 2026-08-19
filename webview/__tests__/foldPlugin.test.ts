@@ -186,23 +186,37 @@ describe("fold hidden ranges (the one fold-range map)", () => {
 });
 
 describe("collapsed representation", () => {
-    it("a collapsed heading should render a fold-ellipsis whose click expands", async () => {
+    it("a collapsed heading should carry its state on the chevron and no ellipsis", async () => {
         // Arrange
         const editor = await makeEditor("## Title\n\nOne\n\nTwo");
         const v = view(editor);
         const pos = posOf(v, "heading");
         toggle(v, pos);
 
-        // Assert: the `…` sits at the heading line's end, naming the count.
-        const ellipsis = document.querySelector<HTMLButtonElement>("h2 .fold-ellipsis");
-        expect(ellipsis).not.toBeNull();
-        expect(ellipsis!.getAttribute("aria-label")).toContain("2 blocks hidden");
+        // Assert: the heading is collapsed, its section is hidden, and it
+        // trails NO chip. The chip was removed because beside heading type it
+        // read as content; the gutter chevron carries the state instead, and
+        // reverses out while collapsed (style.css) so it can carry it alone.
+        //
+        // Only the HEADING lost its chip. The scope boundary is already pinned
+        // by foldCoverage.test.ts, which asserts a collapsed list item, a
+        // blockquote and an aside each still trail theirs; a copy of that here
+        // would be decoration.
+        expect(folded(v).has(pos)).toBe(true);
+        expect(document.querySelector("h2 .fold-ellipsis")).toBeNull();
+        expect(document.querySelectorAll(".heading-fold-hidden").length).toBe(2);
 
-        // Act: clicking expands (mirrors editor.unfoldOnClickAfterEndOfLine).
-        ellipsis!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        // The chevron is a real control on the collapsed heading, not merely a
+        // class: it is what the user now has to click, so it has to be there.
+        const toggleEl = document.querySelector<HTMLButtonElement>("h2 .heading-fold-toggle");
+        expect(toggleEl).not.toBeNull();
+
+        // Act: the chevron expands, which is the gesture the chip used to own.
+        toggleEl!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
         expect(folded(v).size).toBe(0);
-        expect(document.querySelector(".fold-ellipsis")).toBeNull();
+        expect(document.querySelectorAll(".heading-fold-hidden").length).toBe(0);
     });
+
 
     it("a collapsed callout should carry the collapsed class as a decoration", async () => {
         // Arrange: no NodeView here — the decoration must land on the default

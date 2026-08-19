@@ -570,31 +570,3 @@ export function createStubEllipsis(view: EditorView, hiddenCount: number): HTMLE
     return ellipsis.dom;
 }
 
-/** The heading's collapsed `…` widget (mirrors `editor.unfoldOnClickAfterEndOfLine`):
- * expand is a `set` meta targeting the heading derived at CLICK time. */
-export function createHeadingEllipsis(view: EditorView, hiddenCount: number): HTMLElement {
-    const ellipsis = createFoldEllipsis(hiddenCount, () => {
-        if (!ellipsis.dom.isConnected) {
-            return;
-        }
-        try {
-            const $pos = view.state.doc.resolve(view.posAtDOM(ellipsis.dom, 0));
-            if ($pos.depth < 1 || !isHeadingNode($pos.node(1))) {
-                return;
-            }
-            view.dispatch(
-                view.state.tr
-                    .setMeta(foldPluginKey, {
-                        type: "set",
-                        pos: $pos.before(1),
-                        folded: false,
-                    } satisfies FoldMeta)
-                    .setMeta("addToHistory", false),
-            );
-            view.focus();
-        } catch {
-            /* widget no longer resolvable — nothing to expand */
-        }
-    });
-    return ellipsis.dom;
-}
