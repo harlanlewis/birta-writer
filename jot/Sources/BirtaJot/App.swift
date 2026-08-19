@@ -14,17 +14,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var terminationSignal: DispatchSourceSignal?
     /// The view the overflow menu was opened from, for the sharing picker,
     /// which needs somewhere on screen to point at.
-    private weak var overflowAnchor: NSView?
+
+    /// THE activation-policy rule, with two callers: `Entry.main` at launch
+    /// and the Settings switch when it moves. A Dock icon means Cmd+Tab, an
+    /// app menu of its own, and a Dock click that has to lead somewhere.
+    /// `.accessory` is the default and what `LSUIElement` declares, so a launch
+    /// never flashes an icon it is about to take away.
+    static func applyActivationPolicy() {
+        NSApp.setActivationPolicy(Prefs.showInDock ? .regular : .accessory)
+    }
+
+    /// Clicking the Dock icon summons the panel. Without this the icon is a
+    /// button that does nothing, which is worse than no icon at all.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        coordinator.show()
+        return true
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
-        coordinator.makeOverflowMenu = { [weak self] anchor in
-            self?.overflowAnchor = anchor
-            return self?.buildOverflowMenu() ?? NSMenu()
-        }
         buildStatusItem()
         coordinator.start()
         // A settings window can otherwise only be opened by a person, which
@@ -99,6 +110,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         JotMenu.add(.file, to: fileMenu, target: self)
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
+        // Share is a File-menu verb on macOS, and this is now its only route:
+        // the panel's ··· menu is gone, and the other three rows it carried
+        // were already here.
+        fileMenu.addItem(withTitle: "Share…", action: #selector(shareNote), keyEquivalent: "")
         fileMenu.addItem(withTitle: "Reveal Last Save in Finder", action: #selector(revealLastSave), keyEquivalent: "")
         fileMenu.delegate = self
         // Before Close is added: it goes to the key window through the
@@ -200,33 +215,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = nil
     }
 
-    /// The panel's ··· menu: everything the note can do that the row itself
-    /// does not. Built fresh on each click, so an item that cannot act right
-    /// now is simply absent rather than present and dead.
-    private func buildOverflowMenu() -> NSMenu {
-        let menu = NSMenu()
-
-        menu.addItem(withTitle: "Save a Copy As…", action: #selector(menuSaveAs), keyEquivalent: "")
-            .isEnabled = coordinator.hasContent
-        menu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
-            .isEnabled = coordinator.hasContent
-        menu.addItem(withTitle: "Share…", action: #selector(shareNote), keyEquivalent: "")
-            .isEnabled = coordinator.hasContent
-        if coordinator.lastSavedURL != nil {
-            menu.addItem(withTitle: "Reveal Last Save in Finder", action: #selector(revealLastSave), keyEquivalent: "")
-        }
-
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
-
-        // The menu answers for its own items: automatic validation would ask
-        // the responder chain and re-enable everything disabled above.
-        menu.autoenablesItems = false
-        for item in menu.items where item.action != nil && item.target == nil { item.target = self }
-        AppDelegate.suppressAutomaticIcons(in: menu)
-        return menu
-    }
-
     /// Jot's menus carry no icons.
     ///
     /// macOS 26 draws a symbol of its own beside any item whose action it
@@ -258,10 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuToggleTaskChecked() { coordinator.runEditorCommand("toggleTaskChecked") }
 
 
-    @objc private func shareNote() {
-        guard let anchor = overflowAnchor else { return }
-        coordinator.shareNote(from: anchor)
-    }
+    @objc private func shareNote() { coordinator.shareNote() }
 
     @objc func menuOpenSettings() {
         if settingsWindow == nil {
@@ -291,10 +276,10 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     }
 
     /// Enablement for the main menu and the status menu, which keep their items
-    /// between openings. The overflow menu answers for its own.
+    /// between openings.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(copyEverything), #selector(menuSaveAs):
+        case #selector(copyEverything), #selector(menuSaveAs), #selector(shareNote):
             return coordinator.hasContent
         case #selector(revealLastSave):
             return coordinator.lastSavedURL != nil

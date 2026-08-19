@@ -10,9 +10,25 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Birta Writer Jot names the file in its titlebar, beside the traffic lights, the way macOS names a document window: the file name, and `Edited` after it exactly while there are bytes the file does not have. Click it to reveal the file in Finder; Cmd-click, Ctrl-click or right-click for the path popup, which lists every folder up to the volume and reveals whichever you pick.
+
+- Birta Writer Jot can appear in the Dock. Off by default, which is what it has always been; on, it also joins Cmd+Tab, and clicking its Dock icon summons the panel. Settings, General.
+
 ### Changed
 
+- Birta Writer Jot's editing controls have moved out of the toolbar into a dock at the bottom left. Collapsed it is a single serif T; clicking it opens the whole set, and the choice is remembered. Every control that changes the document is there, including the seven that used to ship hidden and needed a settings change to reach: Strikethrough, Highlight, Inline Code, Horizontal Rule, Inline Math, Footnote and Clear Formatting. The row scrolls sideways when the window is too narrow for it. The toolbar keeps search and the settings gear. This is Jot only; the extension's toolbar is unchanged.
+
+- Birta Writer Jot's gear menu no longer offers Customize Toolbar or Hide Toolbar, and the commands do nothing there. The dock's contents and order are fixed, and the toolbar is the only route to search and settings, so neither question is Jot's to answer. Both are unchanged in the extension.
+
 - The gear menu's row for Jot's settings, and the title of the window it opens, are called Birta Jot Settings again. One release called them Writer Jot Settings, which named the app by a name nothing else uses: the app in Applications and the folder it keeps notes in both say Birta Jot.
+
+### Removed
+
+- Birta Writer Jot's two Chrome settings, one for the formatting half of the toolbar and one for the file path, both shipped one release ago. The dock's own toggle answers the first, and the second named a row that no longer exists: the file is in the titlebar now, where a macOS window title is not something you switch off.
+
+- Birta Writer Jot's ··· menu along the bottom of the panel. Save a Copy As, Copy Everything and Reveal Last Save in Finder were already on the File menu, and Share has moved there beside them.
 
 ---
 

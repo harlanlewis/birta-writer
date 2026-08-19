@@ -31,8 +31,7 @@ enum Prefs {
         static let autosave = "autosave"
         static let floatAboveOtherWindows = "floatAboveOtherWindows"
         static let agentCommand = "agentCommand"
-        static let showFilePath = "showFilePath"
-        static let showFormattingToolbar = "showFormattingToolbar"
+        static let showInDock = "showInDock"
         static let openToBlankNote = "openToBlankNote"
         static let currentNotePath = "currentNotePath"
     }
@@ -152,20 +151,19 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.agentCommand) }
     }
 
-    /// Whether the row along the bottom names the file being edited. On by
-    /// default; off is for someone who knows where their notes go and would
-    /// rather have the pixels.
-    static var showFilePath: Bool {
-        get { d.object(forKey: Key.showFilePath) == nil ? true : d.bool(forKey: Key.showFilePath) }
-        set { d.set(newValue, forKey: Key.showFilePath) }
-    }
-
-    /// Whether the editing half of the toolbar is built at all. Off leaves the
-    /// window buttons, the search and font controls and the gear, which is the
-    /// panel for someone who formats with Markdown syntax and shortcuts.
-    static var showFormattingToolbar: Bool {
-        get { d.object(forKey: Key.showFormattingToolbar) == nil ? true : d.bool(forKey: Key.showFormattingToolbar) }
-        set { d.set(newValue, forKey: Key.showFormattingToolbar) }
+    /// Whether Jot has a Dock icon, and so appears in Cmd+Tab and gets an
+    /// application menu bar of its own.
+    ///
+    /// Off by default, which is what `LSUIElement` in Info.plist declares: a
+    /// scratchpad summoned by a hotkey is a thing you reach past your other
+    /// applications for, not one of them. On makes it an ordinary application,
+    /// which is what someone who leaves the panel open all day wants. The
+    /// plist stays the default so a launch never flashes an icon before this
+    /// is read; `Entry.main` applies it, and `AppDelegate` re-applies it when
+    /// the switch moves.
+    static var showInDock: Bool {
+        get { d.bool(forKey: Key.showInDock) }
+        set { d.set(newValue, forKey: Key.showInDock) }
     }
 
     /// Whether launching starts a new empty note rather than reopening the

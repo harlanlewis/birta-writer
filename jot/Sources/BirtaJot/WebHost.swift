@@ -189,14 +189,28 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
-    /// Whether the page shows the editing half of the toolbar. A class for the
-    /// same reason `jot-resting` is one: the bundle is the extension's, and
-    /// "this window's owner would rather not see the formatting buttons" is a
-    /// fact about this window. The file path is not here because it is not the
-    /// page's: it is a label in the native row along the bottom.
-    func setFormattingToolbarVisible(_ visible: Bool) {
-        let js = "document.body.classList.toggle('jot-no-format-toolbar', \(visible ? "false" : "true"));"
-        webView.evaluateJavaScript(js) { _, _ in }
+    /// Ask the page where its formatting dock is, for `jot/scripts/measure.sh`.
+    ///
+    /// The panel's own page carries CSS the browser harness does not (the
+    /// titlebar carve-out, the at-rest fade), so "the dock renders in WebKit"
+    /// and "the dock renders in THIS window" are different claims. This is how
+    /// the second one gets asked.
+    func reportDockGeometry(_ report: @escaping (String) -> Void) {
+        let js = """
+        (function () {
+          var d = document.querySelector('.tb-dock');
+          if (!d) { return 'absent'; }
+          var r = d.getBoundingClientRect();
+          return ['x=' + Math.round(r.left), 'y=' + Math.round(r.top),
+                  'w=' + Math.round(r.width), 'h=' + Math.round(r.height),
+                  'bottomGap=' + Math.round(window.innerHeight - r.bottom),
+                  'expanded=' + d.dataset.expanded,
+                  'items=' + d.querySelectorAll('.tb-dock-row .tb-item').length].join(' ');
+        })()
+        """
+        webView.evaluateJavaScript(js) { value, _ in
+            report(value as? String ?? "unavailable")
+        }
     }
 
     func focusEditor() {

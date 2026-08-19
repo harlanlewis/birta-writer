@@ -27,43 +27,38 @@
 
   /* The panel's window chrome, which only this host has. The bundle is the
      extension's and knows nothing about a titlebar, traffic lights or a
-     pointer that has left the window, so the three rules that follow are the
-     host page's, exactly as the palette above it is. */
+     pointer that has left the window, so the rules that follow are the host
+     page's, exactly as the palette above it is. */
 
   .editor-topbar {
-    /* The toolbar sits under a transparent full-height titlebar, so the first
-       button would land on the traffic lights. Carve their corner out. */
+    /* The toolbar sits under a transparent full-height titlebar, and that band
+       is the WINDOW'S: the traffic lights and, after them, the native title
+       accessory naming the file (jot/Sources/BirtaJot/TitleBar.swift). Under
+       `formattingInBottomDock` the page puts nothing in the leading half at
+       all, so this is a floor rather than a fit. The native title beside them
+       needs no such number: AppKit places a leading titlebar accessory clear
+       of the buttons itself, and `jot/scripts/measure.sh` checks the live
+       frame rather than trusting either of us to have got it right. */
     padding-left: 78px;
     /* No hairline under it: the toolbar is the top of the page, not a bar
        stuck above it. */
     border-bottom: none;
   }
 
-  /* At rest (the pointer is not over the window, jot-resting is set by the
-     shell) the panel is a page and a cursor: traffic lights in one corner, the
-     settings gear in the other, and nothing else. Opacity rather than display,
-     so nothing reflows and the gear never moves. */
-  .editor-topbar .tb-zone,
-  .editor-topbar .tb-item { transition: opacity 0.15s ease; }
+  /* At rest (the pointer is off the window, `jot-resting` set by the shell)
+     the panel is a page and a cursor. The editing controls are in the dock at
+     the bottom leading corner, so the dock is what settles down, kept WHOLE
+     rather than reduced to its toggle: it is one thing to the eye, and
+     dissolving part of it reads as chrome breaking up rather than as chrome
+     settling down. Opacity rather than display, so nothing reflows.
 
-  /* A choice the window's owner makes, set by the shell as a class for the
-     same reason jot-resting is one. Hiding the editing cluster leaves the
-     window buttons and the utility block, which is the panel for someone who
-     formats with Markdown syntax and shortcuts.
+     The top bar's utility block stays, because it is the only route to search
+     and settings and a window with no way in is not a quieter window. The
+     window's own title stays too: it is native chrome, and macOS does not fade
+     a title when you look away from it. */
+  .tb-dock { transition: opacity 0.15s ease; }
 
-     `margin-left: auto` is what keeps that block where it was. The left zone
-     carries `flex: 1` and is what pushes the right one to the trailing edge,
-     so removing it from the layout collapses the whole cluster leftwards into
-     the space it vacated. */
-  body.jot-no-format-toolbar .editor-topbar .tb-zone--left { display: none; }
-  body.jot-no-format-toolbar .editor-topbar .tb-zone--right { margin-left: auto; }
-
-  /* At rest the panel is a page and a cursor: the window buttons in one
-     corner, the utility block in the other, and the editing cluster gone.
-     The block is kept WHOLE rather than reduced to the gear, because it is one
-     thing to the eye and dissolving all but one item of it reads as chrome
-     breaking up rather than as chrome settling down. */
-  body.jot-resting .editor-topbar .tb-zone--left {
+  body.jot-resting .tb-dock {
     opacity: 0;
     pointer-events: none;
   }

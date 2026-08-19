@@ -5,6 +5,14 @@
  * arrive already built and wrapped, keyed by id, and this module only ever
  * re-parents them.
  *
+ * Under `formattingInBottomDock` there is a SECOND holder, the dock at the
+ * window's bottom leading corner (dock.ts), and the placement question changes
+ * shape rather than gaining a case: the partition is derived from
+ * `ITEM_MUTATES`, so there is no config to resolve, nothing hidden, no overflow
+ * to collapse and no customize mode to enter. Everything below that reads
+ * `latestConfig` is therefore dead under that arrangement, and the render
+ * branch returns before reaching it.
+ *
  * That re-parenting is the load-bearing property: every item is built exactly
  * once, so a layout change moves live DOM and its listeners survive. Rebuilding
  * items on a config change would drop them.
@@ -21,8 +29,10 @@ import { createMenuTrigger } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { createOverflowController } from "./overflow";
 import type { OverflowController, OverflowGroup } from "./overflow";
-import { computeZones, hostAvailableItems } from "./registry";
+import { computeDockPartition, computeZones, hostAvailableItems } from "./registry";
 import type { ToolbarItemId } from "./registry";
+import { createFormattingDock, type FormattingDock } from "./dock";
+import { hostArranges } from "../../../shared/hostProfile";
 import { enterEditMode } from "./dnd";
 import type { ToolbarConfig } from "../../../shared/messages";
 
@@ -122,6 +132,18 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     // The items this host can carry (shared/hostProfile.ts). Read once:
     // the declaration is baked at panel load and a webview is rebuilt on open.
     const available = hostAvailableItems();
+    // The second holder, or null on a surface that keeps everything in the bar.
+    // Read once for the same reason `available` is, and null is the fact every
+    // branch below asks about, so no call site re-reads the declaration.
+    const dock: FormattingDock | null = hostArranges("formattingInBottomDock")
+        ? createFormattingDock({ items })
+        : null;
+    // Whether the arrangement is the user's to change. Read once, and the two
+    // things it withdraws are withdrawn HERE as well as at the menus that offer
+    // them: `hostHasCommand` already keeps the gear row, the slash row and the
+    // palette from reaching these, so this is the layer that makes them inert
+    // rather than the layer that hides them.
+    const layoutIsFixed = hostArranges("fixedToolbarLayout");
 
     // ── Whole-bar visibility (birta.toolbar.visible) ──
     // Hiding slides the fixed topbar up (a body class the CSS keys off) and
@@ -129,21 +151,26 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     // the horizontal axis). The bar is hidden, not destroyed, so its host
     // hooks (link prompt, image panel, find) keep serving the slash menu and
     // command palette while it is off screen.
-    let toolbarVisible = latestConfig?.visible !== false;
+    let toolbarVisible = layoutIsFixed || latestConfig?.visible !== false;
 
-    const showTab = createButton({
-        className: "ui-btn toolbar-toggle-tab",
-        icon: IconChevronDown,
-        title: t("Show toolbar"),
-        onClick: () => setToolbarVisible(true),
-    });
-    // The tab carries its own context section so its right-click menu offers
-    // exactly "Show Toolbar" — the hidden state must never read "Hide Toolbar".
-    showTab.dataset["vscodeContext"] = JSON.stringify({
-        webviewSection: "toolbarTab",
-        preventDefaultContextMenuItems: true,
-    });
-    document.body.appendChild(showTab);
+    // The reveal tab exists only where the bar can go away. Under a fixed
+    // layout it is the one route to search and settings, so it never hides and
+    // a tab to bring it back would be chrome for a state nothing reaches.
+    if (!layoutIsFixed) {
+        const showTab = createButton({
+            className: "ui-btn toolbar-toggle-tab",
+            icon: IconChevronDown,
+            title: t("Show toolbar"),
+            onClick: () => setToolbarVisible(true),
+        });
+        // The tab carries its own context section so its right-click menu offers
+        // exactly "Show Toolbar" — the hidden state must never read "Hide Toolbar".
+        showTab.dataset["vscodeContext"] = JSON.stringify({
+            webviewSection: "toolbarTab",
+            preventDefaultContextMenuItems: true,
+        });
+        document.body.appendChild(showTab);
+    }
 
     function applyVisibility(visible: boolean): void {
         toolbarVisible = visible;
@@ -156,7 +183,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
 
     /** Optimistic write-through; the setting echo arrives as a toolbarConfig. */
     function setToolbarVisible(visible: boolean): void {
-        if (visible === toolbarVisible) {
+        if (layoutIsFixed || visible === toolbarVisible) {
             return;
         }
         applyVisibility(visible);
@@ -165,7 +192,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
 
 
     function startCustomize(): void {
-        if (editing) {
+        if (layoutIsFixed || editing) {
             return;
         }
         editing = true;
@@ -283,6 +310,25 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         resizeObserver?.disconnect();
         resizeObserver = null;
         overflow = null;
+
+        if (dock) {
+            // Two holders, one partition, no config: every item this host can
+            // carry goes to the dock if it edits the document and to the top
+            // bar's right zone if it does not. The left zone stays empty, which
+            // is what leaves the titlebar row to the window (a file name beside
+            // the traffic lights, on the surface that has them).
+            const { dock: docked, topBar } = computeDockPartition(available);
+            leftZone.replaceChildren();
+            rightZone.replaceChildren();
+            moreMenu.replaceChildren();
+            dock.render(docked);
+            for (const id of topBar) {
+                const el = items[id];
+                if (el) { rightZone.appendChild(el); }
+            }
+            renderPinned();
+            return;
+        }
         // Detach every item wrapper (from its zone or the ⋯ panel) plus any
         // stale overflow markers; the persistent moreWrap is re-homed below.
         moreWrap.remove();
@@ -303,6 +349,18 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         // collapsible tail.
         leftZone.appendChild(moreWrap);
 
+        renderPinned();
+
+        setupOverflow();
+    }
+
+    /**
+     * The three items that are pinned rather than placed: the debug dropdown
+     * just before Settings, and the two status badges at the front of the right
+     * zone. None is user-placeable, so both render paths want them and neither
+     * consults the config for them.
+     */
+    function renderPinned(): void {
         // Debug dropdown: pinned just before Settings in the right zone.
         if (dbgItem) {
             const settingsEl = items.settings;
@@ -322,8 +380,6 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         logseqItem.style.display = logseqVisible ? "" : "none";
         rightZone.insertBefore(syncConflictItem, rightZone.firstChild);
         syncConflictItem.style.display = syncConflictVisible ? "" : "none";
-
-        setupOverflow();
     }
 
     render(window.__i18n?.toolbar);
@@ -336,7 +392,13 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         startCustomize,
         setToolbarVisible,
         applyToolbarVisible: (visible: boolean) => {
-            if (visible !== toolbarVisible) { applyVisibility(visible); }
+            // Focus mode's half of the pair, and inert under a fixed layout for
+            // a reason that is about the way BACK rather than about the way
+            // out: there is no reveal tab on this surface, because there is no
+            // hidden-toolbar state for one to answer, so a session-level hide
+            // would leave search and settings unreachable until the mode was
+            // toggled off from somewhere else.
+            if (!layoutIsFixed && visible !== toolbarVisible) { applyVisibility(visible); }
         },
         isVisible: () => toolbarVisible,
         setDebugMode(enabled: boolean): void {
@@ -365,6 +427,10 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             overflow?.update(availableWidth());
         },
         applyConfig(config: ToolbarConfig): void {
+            // A fixed layout has no config to apply: placements are derived and
+            // visibility is settled. Taking the echo would let a stale stored
+            // `visible: false` blank a bar the surface says is permanent.
+            if (layoutIsFixed) { return; }
             latestConfig = config;
             const visible = config.visible !== false;
             if (visible !== toolbarVisible) {

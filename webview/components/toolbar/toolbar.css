@@ -122,6 +122,13 @@
    (the .tb-menu-open class), and only below the button — the top-docked toolbar
    always opens its menus downward (ui/anchoredPlacement's placeMenu never flips
    these up). */
+/* The strip assumes the menu opened DOWNWARD, and may: a bar-mounted trigger
+   has the fixed chrome directly above it, so `computeMenuPlacement` never finds
+   room to flip one up. A trigger mounted low enough to flip is inside a
+   clipping container by construction (the formatting dock), which sends its
+   menu to viewport coordinates and clips this strip away with everything else
+   that leaves the box; `wireHoverMenu` bridges that crossing with a timer
+   instead. */
 .tb-fmt-wrap.tb-menu-open::after {
     content: "";
     position: absolute;

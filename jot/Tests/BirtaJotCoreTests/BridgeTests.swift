@@ -100,7 +100,8 @@ final class BridgeTests: XCTestCase {
         // user's settings beside them (shared/hostProfile.ts).
         let host = i18n["host"] as? [String: Any]
         XCTAssertEqual((host?["capabilities"] as? [String]) ?? ["x"], [])
-        XCTAssertEqual(host?["arrangements"] as? [String], ["typographyInGearMenu"])
+        XCTAssertEqual(host?["arrangements"] as? [String],
+                       ["typographyInGearMenu", "formattingInBottomDock", "fixedToolbarLayout"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

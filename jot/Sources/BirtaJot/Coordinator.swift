@@ -31,7 +31,8 @@ final class Coordinator {
     let hotkey: GlobalHotkey
     private let panel = JotPanel()
     private let contentView = AppearanceObservingView()
-    private let actionBar = ActionBar()
+    private let statusOverlay = StatusOverlay()
+    private let titleBar = TitleBarAccessory()
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
@@ -43,12 +44,17 @@ final class Coordinator {
     private var state: State = .cold
     /// The newest buffer content the host has seen or written.
     private var latest = ""
+    /// Whether `latest` holds bytes the bound file does not.
+    ///
+    /// A flag rather than a comparison, because the comparison is the whole
+    /// buffer and the question is asked on every keystroke. It is set in
+    /// exactly two places and both are unavoidable: an inbound edit raises it,
+    /// and `writeLatest` clears it, which is the only thing that puts the
+    /// file and the buffer back in step. Binding to a new file re-reads from
+    /// disk, so it clears there for the same reason.
+    private var isEdited = false { didSet { refreshTitle() } }
     /// The file the last Save wrote, for "Reveal Last Save in Finder".
     private(set) var lastSavedURL: URL?
-    /// Built by the app delegate on each click, so the items match the state
-    /// the buffer is in right now rather than a state a callback last reported.
-    /// Handed the view the menu is opening from, which the sharing picker needs.
-    var makeOverflowMenu: ((NSView) -> NSMenu)?
     /// Opens the app's Settings window. Owned by the app delegate, which holds
     /// the window; the page asks for it through the gear menu.
     var openPreferences: (() -> Void)?
@@ -78,6 +84,7 @@ final class Coordinator {
         didSet {
             host.schemeHandler.roots =
                 host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
+            refreshTitle()
         }
     }
     private var escMonitor: Any?
@@ -111,37 +118,50 @@ final class Coordinator {
 
         contentView.onAppearanceChange = { [weak self] in self?.applyTheme() }
         contentView.addSubview(host.webView)
-        contentView.addSubview(actionBar)
+        contentView.addSubview(statusOverlay)
         host.webView.translatesAutoresizingMaskIntoConstraints = false
-        actionBar.translatesAutoresizingMaskIntoConstraints = false
+        statusOverlay.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            // The web view fills the window: the status line floats over its
+            // bottom trailing corner rather than taking a row from it.
             host.webView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             host.webView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             host.webView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            host.webView.bottomAnchor.constraint(equalTo: actionBar.topAnchor),
-            actionBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            actionBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            actionBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            host.webView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            statusOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            // Never past the window's midpoint: the formatting dock owns the
+            // other bottom corner, and a long message meeting it would read as
+            // one strip rather than two pieces of chrome.
+            statusOverlay.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.centerXAnchor),
+            statusOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
+            statusOverlay.heightAnchor.constraint(equalToConstant: 20),
         ])
-        actionBar.onOverflow = { [weak self] view in self?.showOverflowMenu(from: view) }
         contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
-        // The path answers "where am I typing", so it follows the window's
-        // focus rather than the pointer. Both notifications are needed: a
-        // panel loses key to another app's window without any pointer event.
-        for (name, focused) in [(NSWindow.didBecomeKeyNotification, true),
-                                (NSWindow.didResignKeyNotification, false)] {
+        panel.addTitlebarAccessoryViewController(titleBar)
+        titleBar.titleView.onReveal = { url in
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+        // Title ink follows the window's key state, as every macOS title does.
+        // Both notifications are needed: a panel loses key to another app's
+        // window without any pointer event.
+        for (name, key) in [(NSWindow.didBecomeKeyNotification, true),
+                            (NSWindow.didResignKeyNotification, false)] {
             NotificationCenter.default.addObserver(
                 forName: name, object: panel, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.actionBar.setWindowFocused(focused) }
+                MainActor.assumeIsolated { self?.titleBar.titleView.setWindowKey(key) }
             }
         }
-        actionBar.setWindowFocused(panel.isKeyWindow, animated: false)
-        actionBar.setPathShown(Prefs.showFilePath)
-        refreshPathLabel()
+        titleBar.titleView.setWindowKey(panel.isKeyWindow)
+        refreshTitle()
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.hide() }
         applyTheme(initial: true)
+
+        // The activation policy the Dock switch decides, as the app actually
+        // took it. A setting whose only evidence is that its own getter
+        // returns what was written to it is a setting nobody has checked.
+        measure.trace("policy \(NSApp.activationPolicy() == .regular ? "regular" : "accessory") showInDock=\(Prefs.showInDock)")
 
         // Prewarm: load and mount now, hidden, so the first summon finds the editor mounted.
         measure.mark("launch")
@@ -349,6 +369,12 @@ final class Coordinator {
         // the window has to ask where the pointer is.
         contentView.syncHoverFromPointer()
         measure.mark("visible")
+        traceTitleBar()
+        if measure.enabled, state == .warm {
+            host.reportDockGeometry { [weak self] line in
+                MainActor.assumeIsolated { self?.measure.trace("dock \(line)") }
+            }
+        }
     }
 
     /// Dismiss first, flush after. Hiding is not a teardown: the page stays
@@ -406,6 +432,11 @@ final class Coordinator {
             if reloadFromDisk {
                 boundURL = Prefs.activeURL
                 latest = readActiveFile()
+                // The disk is the truth on this arm, so nothing is unwritten.
+                // The other arm keeps `isEdited`: after a content-process
+                // death `latest` can be ahead of the file, and saying it is
+                // not would be the one lie this flag must never tell.
+                isEdited = false
                 reloadFromDisk = false
                 hasLoaded = true
             }
@@ -413,14 +444,14 @@ final class Coordinator {
             state = .warm
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
-            refreshPathLabel()
-            host.setFormattingToolbarVisible(Prefs.showFormattingToolbar)
+            refreshTitle()
             host.setChromeResting(!contentView.isHovering)
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
+                isEdited = true
                 write(.edit)
             case .repush:
                 // Re-push authoritative content at the CURRENT version, as
@@ -642,6 +673,10 @@ final class Coordinator {
         guard hasLoaded else { return }
         writer.submit(latest, to: boundURL)
         writer.drain()
+        // The one place the buffer and the file come back into step, so the
+        // one place the title stops saying Edited. Guarded by `hasLoaded`
+        // above: before the first read there is nothing to be behind.
+        isEdited = false
     }
 
     /// The one funnel every write goes through, so the autosave setting is
@@ -700,7 +735,7 @@ final class Coordinator {
         withFlushedContent { [weak self] content in
             guard let self else { return }
             self.writeToPasteboard(content)
-            self.actionBar.flash("Copied the whole note.")
+            self.statusOverlay.flash("Copied the whole note.")
             self.focusEditorIfVisible()
         }
     }
@@ -772,6 +807,7 @@ final class Coordinator {
         let onDisk = readActiveFile()
         guard onDisk != latest else { return }
         latest = onDisk
+        isEdited = false
         if state == .warm {
             host.send(.externalUpdate(content: onDisk, syncVersion: guardState.bumpVersion()))
         }
@@ -793,7 +829,7 @@ final class Coordinator {
             guard let self else { return }
             self.write(.explicitSave)
             guard Prefs.documentURL == nil else {
-                self.actionBar.flash("Jot is set to edit a document; New Note is off while that is on.")
+                self.statusOverlay.flash("Jot is set to edit a document; New Note is off while that is on.")
                 return
             }
             let directory = Prefs.notesDirectory
@@ -801,7 +837,7 @@ final class Coordinator {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             } catch {
                 NSLog("Birta Jot: could not create \(directory.path): \(error)")
-                self.actionBar.flash("Could not make a new note in \(directory.lastPathComponent).")
+                self.statusOverlay.flash("Could not make a new note in \(directory.lastPathComponent).")
                 return
             }
             let target = Coordinator.unusedNoteURL(in: directory)
@@ -811,12 +847,12 @@ final class Coordinator {
                 try AtomicFile.writeString("", to: target)
             } catch {
                 NSLog("Birta Jot: could not write \(target.path): \(error)")
-                self.actionBar.flash("Could not make a new note.")
+                self.statusOverlay.flash("Could not make a new note.")
                 return
             }
             Prefs.currentNoteURL = target
             self.bindTo(target, content: "")
-            self.actionBar.flash("New note.")
+            self.statusOverlay.flash("New note.")
         }
     }
 
@@ -842,7 +878,9 @@ final class Coordinator {
         cancelPendingAutosave()
         boundURL = url
         latest = content
-        refreshPathLabel()
+        // `content` came off disk, so the buffer is the file.
+        isEdited = false
+        refreshTitle()
         if state == .warm {
             host.send(.externalUpdate(content: content, syncVersion: guardState.bumpVersion()))
         }
@@ -871,7 +909,7 @@ final class Coordinator {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
-            self.actionBar.flash("Saved.")
+            self.statusOverlay.flash("Saved.")
             self.focusEditorIfVisible()
         }
     }
@@ -904,7 +942,7 @@ final class Coordinator {
         // The buffer is untouched, always. Save As writes a COPY: the panel
         // goes on showing the note, still bound to the same file, which is
         // what every other editor on the machine does.
-        actionBar.flash("Copy saved to \(target.lastPathComponent).")
+        statusOverlay.flash("Copy saved to \(target.lastPathComponent).")
         focusEditorIfVisible()
     }
 
@@ -915,29 +953,55 @@ final class Coordinator {
 
     /// Hand the note to whatever the system can send it to. The macOS answer to
     /// "pipe it elsewhere" without integrating with anything in particular.
-    func shareNote(from view: NSView) {
-        withFlushedContent { content in
+    /// Anchored on the panel's own content view, because the File menu is
+    /// where Share is reached from now and a menu item is not a view the
+    /// picker can hang off.
+    func shareNote() {
+        withFlushedContent { [weak self] content in
+            guard let self else { return }
             let picker = NSSharingServicePicker(items: [content])
-            picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+            picker.show(relativeTo: self.contentView.bounds, of: self.contentView, preferredEdge: .maxY)
         }
     }
 
-    private func showOverflowMenu(from view: NSView) {
-        guard let menu = makeOverflowMenu?(view) else { return }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY), in: view)
+    /// Where the title accessory actually landed, and what it says.
+    ///
+    /// A titlebar accessory is placed by AppKit, in a band this panel has
+    /// already made transparent and full-height, and neither a unit test nor
+    /// the browser harness can see whether it arrived, arrived empty, or
+    /// arrived under the traffic lights. `jot/scripts/measure.sh` reads this
+    /// line and checks it, which is the same seam and the same reason as every
+    /// other question only a running panel can answer.
+    private func traceTitleBar() {
+        guard measure.enabled else { return }
+        let view = titleBar.titleView
+        let frame = view.convert(view.bounds, to: nil)
+        measure.trace(String(
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f attached=%@ text=%@",
+            frame.origin.x, frame.origin.y, frame.width, frame.height,
+            panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
+            view.accessibilityLabel() ?? ""))
     }
 
-
-    /// The bound file, written the way a person reads a path.
-    private func refreshPathLabel() {
-        actionBar.setRestingText(boundURL.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+    /// Name the bound file in the titlebar, and say whether it is behind the
+    /// buffer. Called from the two `didSet`s that can change either answer, so
+    /// no caller has to remember to.
+    private func refreshTitle() {
+        titleBar.titleView.show(url: boundURL, edited: isEdited)
+        // WHAT the title says, on every change. Separate from the geometry
+        // trace above, which answers a different question at a different
+        // moment: this one is the Edited flag's only end-to-end evidence, and
+        // the flag is a claim about unwritten bytes that no unit test can
+        // check against a real file.
+        measure.trace("titletext \(titleBar.titleView.currentText)")
     }
 
     /// Chrome follows the pointer: everything on while it is over the window,
-    /// and a page with a caret in it when it is not. The page's half is a body
-    /// class its own stylesheet reads.
+    /// and a page with a caret in it when it is not. Wholly the page's now,
+    /// as a body class its own stylesheet reads; the window's own title is not
+    /// part of it, because macOS titles a window whether or not you are
+    /// pointing at it.
     private func applyChromeVisibility(_ hovering: Bool) {
-        actionBar.setChromeVisible(hovering)
         host.setChromeResting(!hovering)
     }
 
@@ -997,6 +1061,9 @@ final class Coordinator {
     private func replaceBuffer(with content: String) {
         latest = content
         writer.submit(content, to: boundURL)
+        // Handed to the writer, so the buffer is no longer ahead of where the
+        // file is going. Same claim `writeLatest` makes at the same moment.
+        isEdited = false
         if state == .warm {
             host.send(.externalUpdate(content: content, syncVersion: guardState.bumpVersion()))
         }
@@ -1039,9 +1106,8 @@ final class Coordinator {
             guard let self else { return }
             self.reloadFromDisk = true
             self.loadPage()
-            // The bound file may have changed; the row names it.
-            self.refreshPathLabel()
-            self.actionBar.setPathShown(Prefs.showFilePath)
+            // The bound file may have changed; the titlebar names it.
+            self.refreshTitle()
             self.panel.applyFloatLevel()
         }
     }

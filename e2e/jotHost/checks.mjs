@@ -1,10 +1,18 @@
 /**
- * Host-capability gating end-to-end (MAR-373): the same bundle mounted with
- * the Jot profile has no TOC panel and none of the toolbar items, tray items,
- * gear rows or slash rows that name something its shell does not provide,
- * keeps a chord bound to such a command inert, and still edits. What the shell
- * DOES provide (`imageUpload`) keeps its item and its row, which is the arm
- * that stops a build gating everything from passing.
+ * The host profile end-to-end (MAR-373): the same bundle mounted with the Jot
+ * profile has no TOC panel and none of the toolbar items, gear rows or slash
+ * rows that name something its shell does not provide, keeps a chord bound to
+ * such a command inert, and still edits. What the shell DOES provide
+ * (`imageUpload`) keeps its item and its row, which is the arm that stops a
+ * build gating everything from passing.
+ *
+ * The two ARRANGEMENTS the profile also declares are checked here rather than
+ * in jsdom, because both are claims about layout: `formattingInBottomDock`
+ * moves every document-editing control into a strip at the bottom leading
+ * corner that scrolls when it does not fit, and `fixedToolbarLayout` takes
+ * away the customize mode and the hide row that would otherwise rearrange it.
+ * jsdom has no layout engine, so it can see the DOM move and not the scroll,
+ * the clipping, or the dropdown that has to escape it.
  *
  * control.html is the same page with the field ABSENT, which must read as the
  * VS Code host, so a build that lost the TOC for everyone fails here rather
@@ -32,8 +40,14 @@ export async function run({ page, check, baseUrl }) {
     const ctl = await page.evaluate(() => ({
         toc: !!document.querySelector(".toc-panel"),
         items: [...document.querySelectorAll(".tb-item")].map((el) => el.dataset.itemId),
+        dock: !!document.querySelector(".tb-dock"),
+        leftZone: [...document.querySelectorAll(".tb-zone--left .tb-item")].map((el) => el.dataset.itemId),
     }));
     check("control: the TOC panel exists when hostCapabilities is absent", ctl.toc);
+    check("control: no formatting dock, because the arrangement is not declared", !ctl.dock);
+    check("control: the editing controls are in the top bar's left zone",
+        ctl.leftZone.includes("bold") && ctl.leftZone.includes("format"),
+        JSON.stringify(ctl.leftZone));
     check("control: viewSource, styleCheck and image are on the bar when hostCapabilities is absent",
         ["viewSource", "styleCheck", "image"].every((id) => ctl.items.includes(id)),
         JSON.stringify(ctl.items));
@@ -44,14 +58,49 @@ export async function run({ page, check, baseUrl }) {
         toc: !!document.querySelector(".toc-panel"),
         tocTab: !!document.querySelector(".toc-toggle-tab"),
         items: [...document.querySelectorAll(".tb-item")].map((el) => el.dataset.itemId),
+        dock: [...document.querySelectorAll(".tb-dock-row .tb-item")].map((el) => el.dataset.itemId),
+        leftZone: [...document.querySelectorAll(".tb-zone--left .tb-item")].map((el) => el.dataset.itemId),
+        // Placeable items only: the two status badges and the dev-only debug
+        // dropdown are PINNED into the right zone by the layout controller and
+        // belong to neither surface of the partition.
+        rightZone: [...document.querySelectorAll(".tb-zone--right .tb-item")]
+            .map((el) => el.dataset.itemId)
+            .filter((id) => !["syncConflict", "logseq", "debug"].includes(id)),
+        showTab: !!document.querySelector(".toolbar-toggle-tab"),
     }));
     check("jot: no .toc-panel in the DOM", !jot.toc);
     check("jot: no TOC reveal tab either", !jot.tocTab);
     check("jot: no host-bound .tb-item in any zone",
         GATED_ITEMS.every((id) => !jot.items.includes(id)), JSON.stringify(jot.items));
-    check("jot: the editor's own items are still on the bar",
+    check("jot: the editor's own items are all still built",
         ["format", "bold", "link", "table", "find", "settings"].every((id) => jot.items.includes(id)),
         JSON.stringify(jot.items));
+
+    // ── formattingInBottomDock ─────────────────────────────────────────
+    // The partition itself is unit-tested (toolbarRegistry.test.ts); what only
+    // a real page can answer is whether the two holders actually received it.
+    check("jot: the top bar's left zone is empty, leaving the titlebar row to the window",
+        jot.leftZone.length === 0, JSON.stringify(jot.leftZone));
+    check("jot: the top bar keeps only the controls that read the document",
+        JSON.stringify(jot.rightZone) === JSON.stringify(["find", "settings"]),
+        JSON.stringify(jot.rightZone));
+    check("jot: every editing control is in the dock instead",
+        ["format", "bold", "italic", "link", "listMenu", "quote", "codeBlock", "table", "image"]
+            .every((id) => jot.dock.includes(id)),
+        JSON.stringify(jot.dock));
+    // The dock takes no placement config, so the controls that ship hidden on
+    // the top bar are here too. This is the half that separates "moved the
+    // bar" from "all the formatting controls".
+    check("jot: the dock also carries the controls that ship hidden on the bar",
+        ["strikethrough", "highlight", "inlineCode", "horizontalRule", "math", "footnote", "clearFormatting"]
+            .every((id) => jot.dock.includes(id)),
+        JSON.stringify(jot.dock));
+    check("jot: no item is on both surfaces",
+        jot.dock.every((id) => !jot.rightZone.includes(id)),
+        JSON.stringify({ dock: jot.dock, right: jot.rightZone }));
+
+    // ── fixedToolbarLayout ─────────────────────────────────────────────
+    check("jot: no reveal tab, because the bar never hides", !jot.showTab);
     // The typography rows live in the gear here, so the item that would open a
     // second dropdown beside it is not built. Asserted with the gear rows
     // below, which is the other half: absent from the bar AND present in the
@@ -64,8 +113,10 @@ export async function run({ page, check, baseUrl }) {
     check("jot: the Image item is present, because the shell declares imageUpload",
         jot.items.includes("image"), JSON.stringify(jot.items));
 
-    // Gear menu: exactly the unconditional rows, in table order, one separator
-    // (layout | shortcuts); the settings group is gone with its rows.
+    // Gear menu: exactly the rows this surface keeps, in table order. The
+    // layout rows are gone because `fixedToolbarLayout` withdraws them, and VS
+    // Code's settings, keybindings and release rows because no capability
+    // names them; the shell's own Settings row stays because it does.
     const gearBtn = '[data-item-id="settings"] .tb-fmt-btn';
     const gearMenu = '[data-item-id="settings"] .tb-settings-menu';
     await page.hover(gearBtn);
@@ -80,10 +131,19 @@ export async function run({ page, check, baseUrl }) {
     // The shell has a Settings window (`appPreferences`), so its row belongs;
     // VS Code's own settings and keybindings rows do not, and neither does the
     // release page. This asserts both directions in one list.
-    check("jot: gear menu offers the layout rows, the typography presets, the cheatsheet and the shell's own Settings",
+    check("jot: gear menu offers the typography presets, the cheatsheet and the shell's own Settings",
         JSON.stringify(gear.labels) === JSON.stringify(
-            ["Customize Toolbar", "Hide Toolbar", "Sans serif", "Serif", "Monospace",
+            ["Sans serif", "Serif", "Monospace",
              "Show Keyboard Shortcuts", "Birta Jot Settings"]),
+        JSON.stringify(gear.labels));
+    // The typography rows stay at the TOP with the layout rows withdrawn. They
+    // are what a reader opens this menu for, and the rule that placed them
+    // ("after the layout rows") has to survive there being none.
+    check("jot: the typography rows are still first, not pushed below the cheatsheet",
+        gear.labels.indexOf("Serif") < gear.labels.indexOf("Show Keyboard Shortcuts"),
+        JSON.stringify(gear.labels));
+    check("jot: and neither layout row, because the arrangement is not the user's",
+        !gear.labels.includes("Customize Toolbar") && !gear.labels.includes("Hide Toolbar"),
         JSON.stringify(gear.labels));
     // Editor font needs an editor font to inherit and the width segments need
     // a pane wide enough for a measure to be a choice; the shell declares
@@ -119,28 +179,41 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(checked) === JSON.stringify(["Monospace"]), JSON.stringify(checked));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
+    // Asserted as what it means rather than through "starts with an item":
+    // with the layout rows withdrawn the menu opens on the size stepper, which
+    // is a row and not a separator, and the proxy would have called that a
+    // dangling one.
     check("jot: gear menu separates the groups without dangling one",
-        gear.kinds[0] === "item" && gear.kinds[gear.kinds.length - 1] === "item"
+        gear.kinds[0] !== "sep" && gear.kinds[gear.kinds.length - 1] !== "sep"
             && !gear.kinds.join(",").includes("sep,sep"),
         JSON.stringify(gear.kinds));
 
-    // Customize mode via the gear row: the hidden tray offers no gated item.
-    await page.locator(`${gearMenu} .tb-fmt-item`, { hasText: "Customize Toolbar" }).dispatchEvent("mousedown");
-    await page.waitForTimeout(200);
-    const tray = await page.evaluate(() => {
-        const t = document.querySelector(".tb-hidden-tray-items");
-        return t ? [...t.querySelectorAll(".tb-item")].map((el) => el.dataset.itemId) : null;
-    });
-    check("jot: customize mode opened its hidden tray", Array.isArray(tray), JSON.stringify(tray));
-    check("jot: the hidden tray offers no host-bound item",
-        Array.isArray(tray) && GATED_ITEMS.every((id) => !tray.includes(id)), JSON.stringify(tray));
-    check("jot: the hidden tray still offers the editor's own hidden items (footnote, math)",
-        Array.isArray(tray) && ["footnote", "math"].every((id) => tray.includes(id)), JSON.stringify(tray));
+    // The withdrawal has to reach the COMMAND, not only the menu that offers
+    // it: a row removed from the gear while the command still ran would leave
+    // customize mode one palette pick away, on a layout with nothing to
+    // customize. Posted the same way the palette posts it.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    await page.evaluate(() =>
+        window.postMessage({ type: "editorCommand", command: "customizeToolbar" }, "*"));
+    await page.evaluate(() =>
+        window.postMessage({ type: "editorCommand", command: "hideToolbar" }, "*"));
+    await page.waitForTimeout(250);
+    const afterWithdrawn = await page.evaluate(() => ({
+        tray: !!document.querySelector(".tb-hidden-tray"),
+        barHidden: document.body.classList.contains("toolbar-hidden"),
+        dock: !!document.querySelector(".tb-dock"),
+    }));
+    check("jot: the customizeToolbar command opens no tray",
+        !afterWithdrawn.tray, JSON.stringify(afterWithdrawn));
+    check("jot: the hideToolbar command leaves the bar alone",
+        !afterWithdrawn.barHidden, JSON.stringify(afterWithdrawn));
+    check("jot: and the dock is still there afterwards",
+        afterWithdrawn.dock, JSON.stringify(afterWithdrawn));
+
     const allItems = await itemIds();
-    check("jot: no host-bound item anywhere in the DOM while customizing",
+    check("jot: no host-bound item anywhere in the DOM",
         GATED_ITEMS.every((id) => !allItems.includes(id)), JSON.stringify(allItems));
-    await page.locator(".tb-edit-done").click();
-    await page.waitForTimeout(200);
 
     // Shortcuts help: the cheatsheet opens, without the Edit Keyboard
     // Shortcuts footer (a keybindings UI the host does not have).
@@ -258,6 +331,224 @@ export async function run({ page, check, baseUrl }) {
     check("jot: editRawMarkdown via editorCommand posts no switchToTextEditor", after.switched === before,
         `before=${before} after=${after.switched}`);
     check("jot: toggleReadOnly via editorCommand leaves the editor editable", !after.readOnly);
+
+    // ── The dock's two states, and the row's geometry ──────────────────
+    // Everything below needs a layout engine: what is drawn, what scrolls,
+    // and whether a dropdown escapes the box that scrolls it.
+    const dockSel = ".tb-dock";
+    const rowSel = ".tb-dock-row";
+    const toggleSel = ".tb-dock-toggle";
+
+    const dockState = () => page.evaluate(() => {
+        const dock = document.querySelector(".tb-dock");
+        const row = document.querySelector(".tb-dock-row");
+        const divider = document.querySelector(".tb-dock-divider");
+        const shown = (el) => !!el && !!el.getClientRects().length;
+        return {
+            expanded: dock?.dataset.expanded,
+            rowShown: shown(row),
+            dividerShown: shown(divider),
+            toggleShown: shown(document.querySelector(".tb-dock-toggle")),
+            glyph: document.querySelector(".tb-dock-glyph")?.textContent,
+            overflows: row ? row.scrollWidth > row.clientWidth + 1 : null,
+            saved: window.__state?.formattingDockExpanded,
+        };
+    });
+
+    const collapsed = await dockState();
+    check("jot: the dock starts collapsed, as a lone T",
+        collapsed.expanded === "false" && collapsed.toggleShown && !collapsed.rowShown
+            && !collapsed.dividerShown && collapsed.glyph === "T",
+        JSON.stringify(collapsed));
+
+    await page.locator(toggleSel).click();
+    await page.waitForTimeout(200);
+    const expanded = await dockState();
+    check("jot: clicking the T shows the row and the divider",
+        expanded.expanded === "true" && expanded.rowShown && expanded.dividerShown,
+        JSON.stringify(expanded));
+    check("jot: and the choice was written to the view-state bag",
+        expanded.saved === true, JSON.stringify(expanded));
+
+    // Narrow enough that the row cannot fit: it must SCROLL rather than wrap,
+    // clip silently, or push the window wider than the viewport.
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: 420, height: viewport?.height ?? 800 });
+    await page.waitForTimeout(250);
+    const narrow = await dockState();
+    const bodyOverflow = await page.evaluate(() =>
+        document.documentElement.scrollWidth <= window.innerWidth + 1);
+    check("jot: a window too narrow for the row makes the row scroll",
+        narrow.overflows === true, JSON.stringify(narrow));
+    check("jot: and never the page itself", bodyOverflow);
+    const scrolled = await page.evaluate(() => {
+        const row = document.querySelector(".tb-dock-row");
+        row.scrollLeft = row.scrollWidth;
+        return row.scrollLeft > 0;
+    });
+    check("jot: the last control can be reached by scrolling", scrolled);
+
+    // The dropdowns open OUT of a box whose `overflow-x: auto` clips both
+    // axes. Escaping that is the whole reason `data-menu-clip` exists, so the
+    // check is geometric: the menu has to be taller than the gap it would have
+    // been clipped to, and sit above the row rather than below the window.
+    await page.evaluate(() => { document.querySelector(".tb-dock-row").scrollLeft = 0; });
+    // The caret has to be somewhere a text-hierarchy change applies, or the
+    // trigger is inert for the right reason and the hover measures nothing.
+    await page.click(".ProseMirror p");
+    await page.waitForTimeout(150);
+    await page.hover(`${rowSel} [data-item-id="format"] .tb-fmt-btn`);
+    await page.waitForTimeout(OPEN_WAIT + 120);
+    const menuBox = await page.evaluate(() => {
+        const menu = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-menu');
+        if (!menu || menu.style.display === "none") { return null; }
+        const m = menu.getBoundingClientRect();
+        const r = document.querySelector(".tb-dock-row").getBoundingClientRect();
+        // Whether the menu is actually THERE, at the pixels it claims. A
+        // clipped element still reports its full rect, so geometry alone
+        // cannot tell a drawn menu from one the scroller cut away; hit-testing
+        // its own centre can.
+        const hit = document.elementFromPoint(m.x + m.width / 2, m.y + m.height / 2);
+        return {
+            position: getComputedStyle(menu).position,
+            height: m.height,
+            aboveRow: m.bottom <= r.top + 1,
+            insideViewport: m.top >= 0 && m.bottom <= window.innerHeight,
+            rowHeight: r.height,
+            reachable: !!hit && menu.contains(hit),
+        };
+    });
+    check("jot: the format dropdown opens at all inside the dock", menuBox !== null);
+    check("jot: it opens upward, above the row",
+        menuBox?.aboveRow === true, JSON.stringify(menuBox));
+    check("jot: it is positioned in viewport coordinates, so the scroller cannot clip it",
+        menuBox?.position === "fixed", JSON.stringify(menuBox));
+    check("jot: and it is drawn at full height inside the viewport",
+        !!menuBox && menuBox.height > menuBox.rowHeight && menuBox.insideViewport,
+        JSON.stringify(menuBox));
+    // The one that a rect cannot answer: a clipped menu reports the same
+    // rect as a drawn one, so the pixels have to be hit-tested.
+    check("jot: and the pixels it claims really are the menu, not the scroller's clip",
+        menuBox?.reachable === true, JSON.stringify(menuBox));
+
+    // The pointer has to be able to CROSS the gap from trigger to menu without
+    // the menu closing under it, and crossing is the whole of the test: the
+    // strip of transparent CSS that bridges that gap elsewhere is clipped away
+    // here, so a timer is what holds the menu open and only real time in the
+    // gap exercises it. `page.hover` teleports, arriving in the same tick it
+    // left, which the timer is not needed for and which therefore proves
+    // nothing.
+    const path = await page.evaluate(() => {
+        const btn = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-btn');
+        const menu = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-menu');
+        const b = btn.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        return {
+            btn: { x: b.x + b.width / 2, y: b.y + b.height / 2 },
+            // Midway through the gap: over the page, over neither element.
+            gap: { x: b.x + b.width / 2, y: (m.bottom + b.top) / 2 },
+            menu: { x: m.x + m.width / 2, y: m.y + m.height / 2 },
+            gapHeight: b.top - m.bottom,
+        };
+    });
+    check("jot: there really is a gap between the trigger and the menu to cross",
+        path.gapHeight > 1, JSON.stringify(path));
+    await page.mouse.move(path.btn.x, path.btn.y);
+    await page.mouse.move(path.gap.x, path.gap.y);
+    await page.waitForTimeout(80);
+    await page.mouse.move(path.menu.x, path.menu.y);
+    await page.waitForTimeout(200);
+    const stillOpen = await page.evaluate(() => {
+        const menu = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-menu');
+        return !!menu && menu.style.display !== "none";
+    });
+    check("jot: the menu survives the pointer resting in the gap on its way in", stillOpen);
+
+    // A row in it still edits the document, which is the point of the dock.
+    await page.locator('.tb-dock-row [data-item-id="format"] .tb-fmt-item', { hasText: /^H3$/ })
+        .dispatchEvent("mousedown");
+    await page.waitForTimeout(250);
+    const becameHeading = await page.evaluate(() =>
+        !!document.querySelector(".ProseMirror h3"));
+    check("jot: a dock dropdown row still edits the document", becameHeading);
+
+    await page.setViewportSize({ width: viewport?.width ?? 1280, height: viewport?.height ?? 800 });
+    await page.waitForTimeout(150);
+
+    // The dock is persistent chrome in a corner transient popups can reach.
+    // The top bar never has this problem: `safeAreaTop` keeps every popup out
+    // of its band by geometry, and there is no such rule for the bottom edge,
+    // so down here the stack is the whole of it. A slash menu the dock paints
+    // over is a menu the user cannot read, and stacking is invisible to every
+    // check that asks whether an element EXISTS.
+    //
+    // Asserted as an ORDER rather than by staging a collision, which is a
+    // weaker check and worth saying so. `computeAnchoredPosition` flips the
+    // slash menu above the caret whenever it does not fit below, so the
+    // overlap needs a caret at one particular height for a given menu, and a
+    // case that has to be aimed that precisely is one a later change moves out
+    // from under without failing. The order holds for every such case at once.
+    //
+    // What makes the proxy sound is the second assertion: both are
+    // `position: fixed` children of <body>, which puts them in one stacking
+    // context with nothing between them, so z-index IS paint order here. The
+    // day that stops being true this check has to be rewritten, and the
+    // assertion is what will say so.
+    await mount("index.html");
+    await page.locator(".tb-dock-toggle").click();
+    await page.waitForTimeout(200);
+    const stack = await page.evaluate(() => {
+        const dock = document.querySelector(".tb-dock");
+        const z = (el) => Number.parseInt(getComputedStyle(el).zIndex, 10);
+        // Every transient surface that can open into the bottom leading
+        // corner. Created on demand, so each is measured from its own rule
+        // rather than from an element that may not exist yet.
+        const probe = (className) => {
+            const el = document.createElement("div");
+            el.className = className;
+            document.body.appendChild(el);
+            const value = z(el);
+            el.remove();
+            return value;
+        };
+        return {
+            dock: z(dock),
+            dockParentIsBody: dock.parentElement === document.body,
+            dockPosition: getComputedStyle(dock).position,
+            popups: {
+                slashMenu: probe("slash-menu"),
+                selectionToolbar: probe("sel-toolbar"),
+                notice: probe("ui-notice"),
+            },
+        };
+    });
+    check("jot: the dock and the popups share one stacking context, so z-index is paint order",
+        stack.dockParentIsBody === true && stack.dockPosition === "fixed",
+        JSON.stringify(stack));
+    // A probe that measured nothing reports agreement, so the count of
+    // popups that answered with a real z-index is asserted before the order is.
+    const measured = Object.entries(stack.popups).filter(([, z]) => Number.isFinite(z));
+    check("jot: every popup probe actually resolved a z-index",
+        measured.length === Object.keys(stack.popups).length, JSON.stringify(stack));
+    check("jot: every transient popup paints over the dock, not under it",
+        measured.length > 0 && measured.every(([, z]) => stack.dock < z), JSON.stringify(stack));
+
+    // Boot from a saved bag. The write was checked above, and a write nothing
+    // reads back is a preference that is not remembered: the shell seeds
+    // `getState` in its document-start script (Bridge.userScript), and the
+    // dock reads it while it is being built, which is before `init` arrives.
+    // Seeded here the same way, so the ORDER is the one the panel has.
+    await page.addInitScript(() => { window.__seedState = { formattingDockExpanded: true }; });
+    await mount("index.html");
+    const booted = await page.evaluate(() => ({
+        expanded: document.querySelector(".tb-dock")?.dataset.expanded,
+        rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
+        seeded: window.__state?.formattingDockExpanded,
+    }));
+    check("jot: a saved expanded flag boots the dock open, without a click",
+        booted.expanded === "true" && booted.rowShown === true, JSON.stringify(booted));
+    check("jot: …and the seed really was in the bag, so that is not a default",
+        booted.seeded === true, JSON.stringify(booted));
 
     // The same message on the control page DOES switch, so the inert check
     // above discriminates.

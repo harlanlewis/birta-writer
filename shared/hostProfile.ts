@@ -23,6 +23,8 @@
  *                 different places. Not a capability: both arrangements offer
  *                 the same thing and run the same commands, so gating one on a
  *                 capability would claim a host cannot do something it can.
+ *                 Where the controls sit, and whether the user may move them,
+ *                 are both layout facts and both live here.
  *   shortcuts     keys the host itself binds, for the cheatsheet to print.
  *
  * Consumers ask `hostHas`, `hostArranges`, `hostHasCommand` or `hostShortcuts`
@@ -153,9 +155,36 @@ export type HostArrangement =
      * than in a toolbar item of their own. For a surface whose toolbar is
      * short, which is Jot's.
      */
-    | "typographyInGearMenu";
+    | "typographyInGearMenu"
+    /**
+     * Every control that edits the document lives in a dock at the bottom
+     * leading corner, not in the top bar's left zone. The top bar keeps the
+     * controls that read rather than write.
+     *
+     * The partition is DERIVED, never listed: an item docks exactly when
+     * `ITEM_MUTATES` says it changes the document, so a new toolbar item lands
+     * on the right surface by answering a question it already had to answer.
+     * `toolbarRegistry.test.ts` holds both halves.
+     */
+    | "formattingInBottomDock"
+    /**
+     * The bar's contents and its visibility belong to the surface, not to the
+     * user: no per-item placement, no Customize Toolbar, no Hide Toolbar.
+     *
+     * A layout fact rather than a capability, because it names nothing the
+     * host provides. It is a separate fact from `formattingInBottomDock` and
+     * has to be, even though one surface currently declares both: the dock
+     * decides WHERE a control sits, and this decides WHOSE the arrangement is.
+     * Deriving the second from the first at a call site is what this file
+     * exists to stop.
+     */
+    | "fixedToolbarLayout";
 
-export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = ["typographyInGearMenu"];
+export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
+    "typographyInGearMenu",
+    "formattingInBottomDock",
+    "fixedToolbarLayout",
+];
 
 /** One key the host binds itself, for the keyboard cheatsheet to print. */
 export interface HostShortcut {
@@ -227,13 +256,33 @@ const COMMAND_CAPABILITY: ReadonlyMap<string, HostCapability> = new Map(
 );
 
 /**
+ * Commands an ARRANGEMENT withdraws, as opposed to a missing capability.
+ *
+ * The two reasons a command can be absent are different in kind and the same
+ * in effect. A capability is missing because the host provides no such thing;
+ * an arrangement withdraws a command because the surface has settled the
+ * question the command exists to reopen (Customize Toolbar under
+ * `fixedToolbarLayout`). They meet here rather than at each call site so
+ * `hostHasCommand` stays the ONE predicate, and every surface that already
+ * filters on it gains the second reason without a line changing.
+ */
+const COMMAND_WITHDRAWN_BY: ReadonlyMap<string, HostArrangement> = new Map(
+    EDITOR_COMMANDS.flatMap((meta) =>
+        "absentUnder" in meta && meta.absentUnder
+            ? [[meta.id, meta.absentUnder as HostArrangement] as const]
+            : []),
+);
+
+/**
  * Whether the host can honour editor command `id`: true for every command
- * that requires no capability, and for a gated one exactly when the host
- * declares its capability. The one predicate every surface that offers or
- * runs a command (toolbar, gear menu, slash menu, `runEditorCommand`) reads,
- * so a chord, a palette pick and a menu row can never disagree.
+ * that requires no capability and that no declared arrangement withdraws.
+ * The one predicate every surface that offers or runs a command (toolbar,
+ * gear menu, slash menu, `runEditorCommand`) reads, so a chord, a palette
+ * pick and a menu row can never disagree.
  */
 export function hostHasCommand(id: string): boolean {
     const cap = COMMAND_CAPABILITY.get(id);
-    return cap === undefined || hostHas(cap);
+    if (cap !== undefined && !hostHas(cap)) { return false; }
+    const withdrawn = COMMAND_WITHDRAWN_BY.get(id);
+    return withdrawn === undefined || !hostArranges(withdrawn);
 }

@@ -144,6 +144,94 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# The window's own title. A titlebar accessory is placed by AppKit inside a
+# band this panel has made transparent and full-height, so whether it arrived,
+# arrived empty, or arrived under the traffic lights is a question no unit test
+# and no browser harness can answer. The app reports its live frame as a
+# `jot-trace titlebar` line (Coordinator.traceTitleBar) and this reads it.
+TITLEBAR="$(grep "^jot-trace titlebar " "$LOG" | tail -1 || true)"
+TB_X="$(echo "$TITLEBAR" | sed -n 's/.*x=\([0-9.-]*\).*/\1/p')"
+TB_W="$(echo "$TITLEBAR" | sed -n 's/.*w=\([0-9.-]*\).*/\1/p')"
+TB_ATTACHED="$(echo "$TITLEBAR" | sed -n 's/.*attached=\([a-z]*\).*/\1/p')"
+TB_TEXT="$(echo "$TITLEBAR" | sed -n 's/.*text=//p')"
+if [ -z "$TITLEBAR" ]; then
+    echo "titlebar             FAILED: the app reported no titlebar trace at all" >&2; exit 1
+fi
+# `attached` is NOT the answer. It says AppKit accepted the accessory, and the
+# question is whether anything is on screen; the two agree often enough that
+# the flag reads like evidence for the second one, and they part company
+# exactly here. A zero width is an accessory that arrived and drew nothing,
+# which looks identical on screen to one that never arrived and identical in
+# the view hierarchy to one that worked. The width is what discriminates.
+#
+# 78 is not a number this repo owns: AppKit places a leading accessory clear of
+# the three window buttons itself, so the check measures the SYSTEM'S placement
+# rather than our arithmetic, and would fail if that inset ever moved. A
+# constant of ours here would have agreed with itself forever.
+if [ "$TB_ATTACHED" = "yes" ] \
+   && awk "BEGIN{exit !($TB_W > 0)}" \
+   && awk "BEGIN{exit !($TB_X >= 78)}" \
+   && [ "$TB_TEXT" = "Scratchpad.md" ]; then
+    echo "titlebar             ok: \"$TB_TEXT\" at x=$TB_X w=$TB_W, clear of the window buttons"
+else
+    echo "titlebar             FAILED: expected an attached accessory naming Scratchpad.md at x>=78 with width>0" >&2
+    echo "$TITLEBAR" >&2; exit 1
+fi
+
+# The formatting dock, in THIS window rather than in a browser. The panel's own
+# page carries CSS the harness does not (the titlebar carve-out, the at-rest
+# fade), so "it renders in WebKit" and "it renders here" are separate claims,
+# and only one of them has a browser that can answer it.
+DOCK="$(grep "^jot-trace dock " "$LOG" | tail -1 | sed 's/^jot-trace dock //')"
+D_X="$(echo "$DOCK" | sed -n 's/.*x=\([0-9-]*\).*/\1/p')"
+D_W="$(echo "$DOCK" | sed -n 's/.*w=\([0-9-]*\).*/\1/p')"
+D_GAP="$(echo "$DOCK" | sed -n 's/.*bottomGap=\([0-9-]*\).*/\1/p')"
+if [ -z "$DOCK" ] || [ "$DOCK" = "absent" ]; then
+    echo "dock                 FAILED: the page reported no formatting dock (\"$DOCK\")" >&2; exit 1
+fi
+# On screen and inside the window on both axes. A dock pushed off the left edge
+# or below the sill is present in the DOM and unreachable with a mouse, which
+# is the failure a presence check cannot tell from a working one.
+if awk "BEGIN{exit !($D_X >= 0)}" && awk "BEGIN{exit !($D_W > 0)}" \
+   && awk "BEGIN{exit !($D_GAP >= 0 && $D_GAP < 200)}"; then
+    echo "dock                 ok: $DOCK"
+else
+    echo "dock                 FAILED: expected it on screen at the bottom leading corner" >&2
+    echo "$DOCK" >&2; exit 1
+fi
+
+# The Edited flag. It claims the buffer holds bytes the file does not, which is
+# a claim about a real file that no unit test can check: `WindowTitle` decides
+# what the suffix says, and this is what decides WHEN. Driven with autosave
+# off, because with it on the flag is a flicker between a keystroke and a write
+# that no observer can be scheduled inside of.
+defaults write "$BIRTA_JOT_DEFAULTS_SUITE" autosave -bool NO
+kill -USR1 $PID; wait_for visible 5; sleep 0.5
+printf '{"type":"__jotKeys","keys":["End","Enter","d","i","r","t","y"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2
+TITLE_DIRTY="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
+# Hiding writes whatever autosave says, so the flag has to clear on the way out.
+kill -USR1 $PID; sleep 1.5
+TITLE_CLEAN="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
+defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" autosave >/dev/null 2>&1 || true
+rm -f "$SCRATCH_DIR/.debug-message.json"
+case "$TITLE_DIRTY" in
+    *Edited) EDITED_ROSE=1 ;;
+    *) EDITED_ROSE=0 ;;
+esac
+case "$TITLE_CLEAN" in
+    *Edited) EDITED_FELL=0 ;;
+    *) EDITED_FELL=1 ;;
+esac
+if [ "$EDITED_ROSE" = 1 ] && [ "$EDITED_FELL" = 1 ]; then
+    echo "edited flag          ok: \"$TITLE_DIRTY\" while unwritten, \"$TITLE_CLEAN\" after the write"
+else
+    echo "edited flag          FAILED: expected the suffix to appear on an edit and go on the write" >&2
+    echo "  after typing: \"$TITLE_DIRTY\"" >&2
+    echo "  after hiding: \"$TITLE_CLEAN\"" >&2
+    exit 1
+fi
+
 # Cold recovery: kill the content process, wait for the remount.
 BEFORE=$(grep -c "^jot-measure ready " "$LOG")
 WC_AFTER="$(pgrep -f com.apple.WebKit.WebContent | sort || true)"

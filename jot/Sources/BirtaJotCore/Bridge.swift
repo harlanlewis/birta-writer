@@ -300,14 +300,22 @@ public struct BootConfig: Equatable {
             "isMac": true,
             "toolbar": toolbar,
             // Everything Jot says about ITSELF, in the one key the editor reads
-            // (shared/hostProfile.ts). `arrangements` is a layout choice rather
-            // than a capability: the panel's toolbar is short and its
-            // right-hand block is always on screen, so the typography rows read
-            // better inside the gear than as a second dropdown beside it. Same
-            // controls, same commands, different holder.
+            // (shared/hostProfile.ts). `arrangements` are layout choices rather
+            // than capabilities: every control named here exists on both
+            // surfaces and runs the same command, and only its holder differs.
+            //
+            //   typographyInGearMenu      the panel's toolbar is short and its
+            //     right-hand block is always on screen, so the typography rows
+            //     read better inside the gear than as a second dropdown.
+            //   formattingInBottomDock    the titlebar row is the window's, so
+            //     the editing controls leave it: the file name sits beside the
+            //     traffic lights and the dock holds the rest.
+            //   fixedToolbarLayout        two controls and a fixed dock is not
+            //     an arrangement worth offering to rearrange, and the bar is
+            //     the only route to search and settings, so it does not hide.
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu"],
+                "arrangements": ["typographyInGearMenu", "formattingInBottomDock", "fixedToolbarLayout"],
                 "shortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
             ],
             "fontPreset": fontPreset,

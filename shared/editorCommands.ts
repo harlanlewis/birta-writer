@@ -14,7 +14,7 @@
  * message protocol carries the bare `<id>` as `EditorCommandId`.
  */
 
-import type { HostCapability } from "./hostProfile";
+import type { HostArrangement, HostCapability } from "./hostProfile";
 
 export type WebviewSection = "editor" | "table" | "link" | "toolbar" | "toolbarTab";
 
@@ -46,6 +46,16 @@ export interface EditorCommandMeta {
      * host that cannot answer.
      */
     readonly hostCapability?: HostCapability;
+    /**
+     * An arrangement that WITHDRAWS this command (shared/hostProfile.ts).
+     * Distinct from `hostCapability`, which says the host cannot answer:
+     * here the host could, and the surface has settled the question the
+     * command exists to reopen. Both are read by `hostHasCommand`, so a
+     * withdrawn command is absent from the toolbar, the gear, the slash menu
+     * and the palette, and `runEditorCommand` ignores it, exactly as a
+     * capability-gated one is.
+     */
+    readonly absentUnder?: HostArrangement;
 }
 
 /**
@@ -184,11 +194,11 @@ export const EDITOR_COMMANDS = [
     // the visible bar (and gear menu) offers "Hide Toolbar", while the
     // collapsed expand tab — stamped with its own "toolbarTab" section —
     // offers only "Show Toolbar".
-    { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"], menuGroup: "layout" },
+    { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"], menuGroup: "layout", absentUnder: "fixedToolbarLayout" },
     // Hide/Show are per-surface labels for the right-click and gear menus (each
     // shows the one that matches its state); the palette and slash menu use the
     // single `toggleToolbar` below instead, so they are palette:false here.
-    { id: "hideToolbar", title: "Hide Toolbar", palette: false, sections: ["toolbar"], menuGroup: "layout" },
+    { id: "hideToolbar", title: "Hide Toolbar", palette: false, sections: ["toolbar"], menuGroup: "layout", absentUnder: "fixedToolbarLayout" },
     // Show/Edit are parallel verb-first labels for the shortcuts pair: "Show"
     // opens the read-only cheatsheet overlay (learn first), "Edit" opens
     // VS Code's native Keyboard Shortcuts UI (rebind second) — see the
@@ -216,7 +226,7 @@ export const EDITOR_COMMANDS = [
     // way the row above expands PRODUCT_NAME, and is drift-guarded against the
     // nls string and Jot's own NSWindow title.
     { id: "openHostPreferences", title: "Birta Jot Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
-    { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
+    { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"], absentUnder: "fixedToolbarLayout" },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a
     // few, the slash menu's bespoke action dispatch); contributed here so the
@@ -248,7 +258,7 @@ export const EDITOR_COMMANDS = [
     // so two idempotent show/hide palette entries would always leave one that
     // does nothing. `toggleToc` (above) covers TOC visibility; these cover the
     // toolbar and the TOC dock side (mirroring the panel's own flip button).
-    { id: "toggleToolbar", title: "Toggle Toolbar", palette: true, sections: [] },
+    { id: "toggleToolbar", title: "Toggle Toolbar", palette: true, sections: [], absentUnder: "fixedToolbarLayout" },
     // Edit / Read-only (MAR-53). A single toggle, like the toolbar and TOC
     // entries above and for the same reason: the state is binary, so two
     // idempotent palette rows would always leave one that does nothing. It
