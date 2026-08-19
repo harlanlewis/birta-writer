@@ -93,11 +93,11 @@ final class TitleBarView: NSView {
     /// The height this view is BUILT at, and nothing else.
     ///
     /// AppKit stretches a titlebar accessory to the titlebar's own height, so
-    /// this number is stale from the moment the accessory is attached: the
-    /// view is made 28 tall and handed 32. Centering the label against it put
-    /// the title (32 - 28) / 2 = 2pt below where macOS draws its own, which is
-    /// what `layout()` below exists to stop. Anything that needs the height
-    /// the view actually HAS reads `bounds`.
+    /// this number is stale from the moment the accessory is attached.
+    /// Centering the label against it therefore puts the title low by half
+    /// the difference between the two, which is what `layout()` below exists
+    /// to stop. Anything that needs the height the view actually HAS reads
+    /// `bounds`.
     static let height: CGFloat = 28
 
     /// Laid out by hand, and that is the whole reason this file was worth
@@ -136,13 +136,13 @@ final class TitleBarView: NSView {
     /// in `resize()` because AppKit stretches the accessory after we size it,
     /// so the only moment the real height is known is a layout pass.
     ///
-    /// What "aligned" means, measured rather than eyeballed: macOS puts a
-    /// window title's vertical centre exactly on the close button's, and it
-    /// does so at every titlebar height and title font the system uses
-    /// (unified, unifiedCompact and expanded all agree to 0.0pt). Centering on
-    /// `bounds` reproduces that, because AppKit gives the accessory the whole
-    /// band. `jot/scripts/measure.sh` asserts the delta against the live
-    /// window rather than trusting this comment.
+    /// What "aligned" means, as a property rather than as a number: macOS puts
+    /// a window title's vertical centre on the close button's, and holds that
+    /// across the titlebar heights and title fonts its own toolbar styles use.
+    /// Centering on `bounds` reproduces it, because AppKit gives the accessory
+    /// the whole band. `jot/scripts/measure.sh` asserts that delta against the
+    /// live window, which is the only place the claim is checked; nothing here
+    /// is a figure to quote.
     override func layout() {
         super.layout()
         let size = label.intrinsicContentSize

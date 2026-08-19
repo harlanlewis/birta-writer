@@ -6,7 +6,7 @@
 
 ### Changed
 
-- Copy Reference for AI Agent copies the selected lines as well as the reference, quoted in a markdown fence, whenever there is a selection. With just a caret it copies the reference alone, as before. The reason is where it gets pasted: an agent running where your file is opens it from `path.md#L12-L20` and ignores the rest, and a chat box in a browser cannot open anything and has only the lines, so sending both means not having to decide first. The two command-palette rows are unchanged and still mean exactly what they say: Copy Reference is the pointer, Copy Context is the pointer and the lines.
+- The BUTTON on the selection palette, Copy Reference for AI Agent, copies the selected lines as well as the reference, quoted in a markdown fence, whenever there is a selection. With just a caret it copies the reference alone, as before. The reason is where it gets pasted: an agent running where your file is opens it from `path.md#L12-L20` and ignores the rest, and a chat box in a browser cannot open anything and has only the lines, so sending both means not having to decide first. The two command-palette rows of the same name are unchanged and still mean exactly what they say: Copy Reference for AI Agent is the pointer, Copy Context for AI Agent is the pointer and the lines.
 
 - Copying a reference now says so in a notification naming the reference, rather than in the status bar. The question it answers is "did that copy", asked in the half-second before pasting somewhere else, and the bottom corner of the window is the one place someone editing prose in the middle of it is not looking.
 

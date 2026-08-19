@@ -9,13 +9,22 @@ import Foundation
 /// `AgentReferenceTests` carries the same cases the TypeScript tests do. A
 /// change to either has to be made in both.
 ///
-/// One thing is deliberately NOT the same, and it is the only difference.
-/// The extension writes a workspace-relative path, which is what a tool
-/// already working in that project resolves. Jot has no project: its file
+/// Two things are deliberately NOT the same, and there are no others.
+///
+/// The PATH. The extension writes a workspace-relative one, which is what a
+/// tool already working in that project resolves. Jot has no project: its file
 /// lives under Application Support, nowhere near any agent's working
 /// directory, so a relative path would name nothing. Jot writes the absolute
-/// path, and the caller is what decides — this type takes whatever path it is
+/// path, and the caller is what decides — this type takes whatever it is
 /// handed.
+///
+/// And the FALLBACK when the span cannot be read. The extension quotes the
+/// selection's stripped plain text, which it has because the page sends it;
+/// this quotes nothing and returns the reference alone. Not an oversight: the
+/// source here is the buffer the page is currently showing, so a span it just
+/// reported and this cannot read is a disagreement with itself rather than the
+/// document-on-disk-has-moved case the extension is guarding. Quoting a
+/// stripped copy to paper over that would hide it.
 public enum AgentReference {
     /// A 1-indexed line and 0-indexed column, as `shared/agentContext.ts`
     /// carries them across the bridge.

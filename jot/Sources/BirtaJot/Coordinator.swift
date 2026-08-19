@@ -1177,8 +1177,8 @@ final class Coordinator {
     /// title font the system uses, so the close button is a reference for
     /// "where a title goes" that lives in this window and needs no other
     /// application to be running. The accessory's own frame is the whole
-    /// titlebar band and says nothing about where the text inside it sits,
-    /// which is how a title 2pt low passed this check for a day.
+    /// titlebar band and says nothing about where the text inside it sits, so
+    /// a title drawn low in that band moves no number the old check read.
     private func traceTitleBar() {
         guard measure.enabled else { return }
         let view = titleBar.titleView
