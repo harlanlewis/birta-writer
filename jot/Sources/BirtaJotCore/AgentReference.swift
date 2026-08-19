@@ -44,10 +44,6 @@ public enum AgentReference {
         }
     }
 
-    /// A selection past this many characters is truncated before it is quoted,
-    /// so one Cmd+A does not put a whole document on the clipboard.
-    static let maxSelectionCharacters = 20_000
-
     /// `start` before `end`, whichever way round the selection was made.
     static func ordered(_ selection: Selection) -> (start: Position, end: Position) {
         let a = selection.anchor, b = selection.active
@@ -106,7 +102,7 @@ public enum AgentReference {
         let span = lineSpan(selection)
         // `components` rather than `split`, which drops the empty strings that
         // blank lines are, and a blank line inside a selection is content.
-        var all = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        let all = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         guard span.startLine >= 1, span.startLine <= all.count else { return nil }
         var lines = Array(all[(span.startLine - 1)..<min(span.endLine, all.count)])
         guard !lines.isEmpty else { return nil }
@@ -119,18 +115,8 @@ public enum AgentReference {
         if start.column > 0 {
             lines[0] = String(lines[0].dropFirst(min(start.column, lines[0].count)))
         }
-        all = []
         let joined = lines.joined(separator: "\n")
         return joined.isEmpty ? nil : joined
-    }
-
-    /// Long selections are cut, with the cut said out loud so nobody reads the
-    /// tail as the end of the passage.
-    static func truncated(_ text: String) -> String {
-        guard text.count > maxSelectionCharacters else { return text }
-        let head = String(text.prefix(maxSelectionCharacters))
-        let dropped = text.count - maxSelectionCharacters
-        return "\(head)\n… [truncated \(dropped) more characters]"
     }
 
     /// What the button copies: the reference alone for a bare caret, or the
@@ -145,6 +131,11 @@ public enum AgentReference {
         let reference = reference(path: path, selection: selection)
         guard !selection.isEmpty else { return reference }
         guard let content = sourceSpan(selection, source: source) else { return reference }
-        return "\(reference)\n\n\(fence(truncated(content)))"
+        // NOT truncated, which the model-facing `describeForModel` on the
+        // other side is and this is not: the clipboard commands there do not
+        // truncate either, and a person who selected a long passage and asked
+        // for it meant it. Jot's own Copy Everything has no ceiling for the
+        // same reason.
+        return "\(reference)\n\n\(fence(content))"
     }
 }

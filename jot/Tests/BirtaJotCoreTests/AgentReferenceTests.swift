@@ -112,11 +112,17 @@ final class AgentReferenceTests: XCTestCase {
             "a.md#L1-L2\n\n```markdown\nalpha\nbeta\n```")
     }
 
-    func testAVeryLongSelectionIsTruncatedWithAMarker() {
-        let long = String(repeating: "a", count: AgentReference.maxSelectionCharacters + 500)
+    func testALongSelectionIsCopiedWhole() {
+        // No ceiling, matching the TypeScript: `buildContextBlock` does not
+        // truncate either, and only the model-facing `describeForModel` does,
+        // which Jot has no equivalent of. Someone who selected a long passage
+        // and asked for it meant it, and Jot's Copy Everything has no ceiling
+        // for the same reason.
+        let long = String(repeating: "a", count: 40_000)
         let out = AgentReference.clipboardPayload(
             path: "a.md", selection: range((1, 0), (1, long.count)), source: long)
-        XCTAssertTrue(out.contains("truncated 500 more characters"), String(out.suffix(80)))
+        XCTAssertTrue(out.contains(long), "the whole selection should be on the clipboard")
+        XCTAssertFalse(out.contains("truncated"), String(out.suffix(80)))
     }
 
     // MARK: the span rule on its own
