@@ -283,6 +283,20 @@ function buildPanel(): HTMLDivElement {
     // (single-chip) pairs and may wrap apart.
     addRow([[keys("Mod-Shift-z")], [keys("Mod-y")]], t("Redo"));
 
+    // The host's own shortcuts, where it has any. Same content policy as
+    // everything above: a key is printed only where it cannot be rebound, so
+    // it cannot lie. Inside VS Code every command chord IS rebindable, which
+    // is why the extension declares none of these and the footer below sends
+    // the reader to the one accurate inventory instead. A standalone app whose
+    // menu IS the binding is the case this exists for.
+    const hostShortcuts = window.__i18n?.hostShortcuts ?? [];
+    if (hostShortcuts.length > 0) {
+        addSection(t("This app"));
+        for (const shortcut of hostShortcuts) {
+            addRow([[keys(shortcut.keys)]], shortcut.label);
+        }
+    }
+
     // Rebindable commands are deliberately NOT inventoried here: a names-only
     // list says nothing about actual keys, and printing defaults could lie.
     // The sticky footer below routes to VS Code's Keyboard Shortcuts — the

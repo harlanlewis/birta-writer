@@ -12,6 +12,7 @@ import { t } from "@/i18n";
 import { withScrollAnchor } from "@/utils/scrollAnchor";
 import { notifySetFontPreset, notifySetFontSize, notifySetContentWidth } from "@/messaging";
 import { getEditorView } from "@/editor";
+import { hostHas } from "../../../shared/hostCapabilities";
 import { createCheckItem, createMenuTrigger, makeSep, type CheckItem } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import type { FontPreset, FontStacks } from "../../../shared/messages";
@@ -23,6 +24,7 @@ import {
     MAX_FONT_SIZE_PERCENT,
     clampFontSizePercent,
     stepFontSizePercent,
+    resolveFontFamily,
 } from "../../../shared/fontPresets";
 import {
     CONTENT_WIDTH_MODES,
@@ -45,6 +47,8 @@ export interface TypographyControl {
     setContentWidth: (mode: ContentWidthMode, fixedCss?: string) => void;
     /** Settings-echo sink for `birta.blockHandles`; see setBlockHandlesActive. */
     setBlockHandles: (mode: BlockHandlesMode) => void;
+    /** Apply + persist a width, as the segments do (palette and slash menu). */
+    chooseContentWidth: (mode: ContentWidthMode) => void;
     /** Apply + persist a preset, as the menu row does (palette and slash menu). */
     chooseFontPreset: (preset: FontPreset) => void;
     /** Step the size one notch, as the stepper does (palette and slash menu). */
@@ -55,7 +59,12 @@ export function createTypographyControl(): TypographyControl {
     // ── Font picker state ──
     // The active preset is echoed back from the extension after a settings
     // write, which updates the checkmark via setFontPreset() on the controller.
-    let currentFontPreset: FontPreset = window.__i18n?.fontPreset ?? DEFAULT_FONT_PRESET;
+    // A host with no editor font of its own cannot honour the "editor" preset,
+    // and a stored one predates the host learning that. Fall back rather than
+    // show a checkmark against a row that is not offered.
+    const storedPreset: FontPreset = window.__i18n?.fontPreset ?? DEFAULT_FONT_PRESET;
+    let currentFontPreset: FontPreset =
+        storedPreset === "editor" && !hostHas("editorFont") ? "serif" : storedPreset;
     // Effective per-preset stacks (user's fontFamilySans/Serif/Mono overrides
     // applied by the extension) — used for the row previews and button glyph.
     let currentFontStacks: FontStacks = window.__i18n?.fontStacks ?? FONT_PRESET_STACKS;
@@ -66,11 +75,36 @@ export function createTypographyControl(): TypographyControl {
     // The "editor" preset has no stack of its own — previews render in the
     // VS Code editor font it inherits.
     const EDITOR_FONT = "var(--vscode-editor-font-family, monospace)";
+    /**
+     * Put the family on the document. Applied here rather than only on the
+     * host's echo: a host that does not answer `setFontPreset` (Jot, which
+     * persists the choice in its own defaults) would otherwise move the
+     * checkmark and change nothing. The echo re-applies the same value, which
+     * is the size stepper's arrangement exactly.
+     *
+     * Anchored: swapping the family changes every glyph's metrics, so the
+     * document rewraps and re-heights. Keep the top visible line stable.
+     */
+    function applyFontFamily(preset: FontPreset, stacks: FontStacks): void {
+        withScrollAnchor(getEditorView(), () => {
+            const root = document.documentElement;
+            const family = resolveFontFamily(preset, stacks);
+            if (family) {
+                root.style.setProperty("--content-font-family", family);
+            } else {
+                // The "editor" preset: unset, so the CSS falls back to the
+                // host's own editor font.
+                root.style.removeProperty("--content-font-family");
+            }
+        });
+    }
+
     function setFontActive(preset: FontPreset, stacks?: FontStacks): void {
         currentFontPreset = preset;
         if (stacks) {
             currentFontStacks = stacks;
         }
+        applyFontFamily(preset, currentFontStacks);
         for (const { preset: p, item } of fontEntries) {
             item.setChecked(p === preset);
             item.label.style.fontFamily = p === "editor" ? EDITOR_FONT : currentFontStacks[p];
@@ -125,9 +159,12 @@ export function createTypographyControl(): TypographyControl {
     // Full Width (fills the pane) / Fixed (capped at the maxContentWidth ch
     // setting), chosen via a segmented control. The active mode echoes back
     // from the extension after the settings write, re-syncing the segments.
-    let currentContentWidth: ContentWidthMode = normalizeContentWidthMode(
-        window.__i18n?.contentWidth ?? DEFAULT_CONTENT_WIDTH_MODE,
-    );
+    // Without a measure to choose, the answer is always full: the host's own
+    // window is the measure, and a stored "fixed" from a host that had the
+    // control would otherwise cap the text at a width nothing can change.
+    let currentContentWidth: ContentWidthMode = hostHas("contentMeasure")
+        ? normalizeContentWidthMode(window.__i18n?.contentWidth ?? DEFAULT_CONTENT_WIDTH_MODE)
+        : "full";
     // Kept in sync with the extension's authoritative resolution so the
     // optimistic apply on a Fixed click never flashes a stale width after the
     // setting changes elsewhere.
@@ -256,7 +293,9 @@ export function createTypographyControl(): TypographyControl {
         // other presets use their stack, user-customizable via the
         // fontFamilySans/Serif/Mono settings. Each row previews its own font.
         const choices: { preset: FontPreset; label: string; stack: string }[] = [
-            { preset: "editor", label: t("Editor font"), stack: EDITOR_FONT },
+            ...(hostHas("editorFont")
+                ? [{ preset: "editor" as const, label: t("Editor font"), stack: EDITOR_FONT }]
+                : []),
             { preset: "sans", label: t("Sans serif"), stack: currentFontStacks.sans },
             { preset: "serif", label: t("Serif"), stack: currentFontStacks.serif },
             { preset: "mono", label: t("Monospace"), stack: currentFontStacks.mono },
@@ -286,9 +325,10 @@ export function createTypographyControl(): TypographyControl {
         // each group separated by a divider (width first — maintainer,
         // 2026-07-28). (Block handles and the font-stack settings live in
         // Settings only — the menu holds the frequent moves.)
+        // The width segments only where a measure is a real choice; without
+        // them the menu opens on the size stepper and needs no leading rule.
         fontMenu.append(
-            widthRow,
-            makeSep(),
+            ...(hostHas("contentMeasure") ? [widthRow, makeSep()] : []),
             sizeRow,
             makeSep(),
             ...fontItemEls,
@@ -297,6 +337,12 @@ export function createTypographyControl(): TypographyControl {
         setFontActive(currentFontPreset);
         setFontSizeActive(currentFontSize);
         setContentWidthActive(currentContentWidth);
+        if (!hostHas("contentMeasure")) {
+            // Nothing will ever call this again on such a host, and the boot
+            // page carries no width style of its own, so full width has to be
+            // put on the document once here.
+            applyContentWidthLive();
+        }
 
         // The item handlers above close over closeFontMenu; they only ever run
         // after this wiring (the menu must be open to click a row).
@@ -321,6 +367,9 @@ export function createTypographyControl(): TypographyControl {
         },
         setBlockHandles: (mode: BlockHandlesMode): void => {
             setBlockHandlesActive(mode);
+        },
+        chooseContentWidth: (mode: ContentWidthMode): void => {
+            pickContentWidth(mode);
         },
         chooseFontPreset: (preset: FontPreset): void => {
             setFontActive(preset);

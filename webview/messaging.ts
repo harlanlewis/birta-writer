@@ -124,6 +124,15 @@ export function notifyOpenUrl(url: string): void {
 }
 
 /**
+ * Open the host application's own preferences window. Only ever sent by a host
+ * that declares `appPreferences`, so a host that has no such window never
+ * receives it.
+ */
+export function notifyOpenHostPreferences(): void {
+    vscode.postMessage({ type: "openHostPreferences" });
+}
+
+/**
  * The settings dropdown opened, so the installed release has been looked at.
  * Fired on OPEN rather than on the What's-new row, because the dot claims only
  * that something is unseen, and the menu is where it is seen.

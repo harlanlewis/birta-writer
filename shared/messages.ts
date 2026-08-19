@@ -230,6 +230,7 @@ export type ToExtensionMessage =
     // stale `update` that would otherwise revert a fresher save-flush.
     | { type: "update"; content: string; baseSyncVersion: number; seq: number }
     | { type: "openUrl"; url: string }
+    | { type: "openHostPreferences" }
     /**
      * The settings dropdown was opened, so the installed release counts as
      * looked at. Opening the menu is the gesture, not clicking the What's-new

@@ -4,14 +4,21 @@ import BirtaJotCore
 import os
 
 /// The one object that knows the whole flow: prewarm → summon → edit →
-/// persist → hide, plus Save As, theme, preferences and cold recovery.
+/// persist → hide, plus saving, theme, settings and cold recovery.
 ///
-/// Persistence model (MAR-375): exactly one buffer, autosaved to a plain
-/// `.md` file the user can find (Preferences names it), on every admitted
-/// `update`, atomically. Hiding, quitting and Save As first ask the page to
+/// Persistence model (MAR-375): exactly one buffer, one plain `.md` file the
+/// user can find (Settings names it), written atomically. WHEN it is written
+/// is `BirtaJotCore.AutosavePolicy`'s answer: an edit is held for a beat and
+/// only written at all with autosave on, and every other reason to write
+/// (Cmd+S, hiding, quitting, New Note, handing the file to an agent) writes
+/// immediately whatever the setting says. Each of those first asks the page to
 /// flush (`flushSave`), bounded by `flushTimeout` like the extension's
-/// will-save participant, then write. Cmd+S is Save As: the buffer goes to a
-/// chosen file and is cleared, with "Reopen Last Saved" as the undo.
+/// will-save participant, then writes.
+///
+/// Nothing empties the buffer. Jot edits a document the way any editor edits
+/// one: Save a Copy As writes a COPY somewhere else while the panel goes on
+/// showing the same note bound to the same file, and New Note leaves the old
+/// note in its own file and binds to a fresh one.
 ///
 /// State machine for the web view: `cold` (nothing loaded, or the content
 /// process died) → `loading` (page requested, `ready` not yet seen) → `warm`
@@ -24,6 +31,7 @@ final class Coordinator {
     let hotkey: GlobalHotkey
     private let panel = JotPanel()
     private let contentView = AppearanceObservingView()
+    private let actionBar = ActionBar()
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
@@ -35,12 +43,22 @@ final class Coordinator {
     private var state: State = .cold
     /// The newest buffer content the host has seen or written.
     private var latest = ""
-    /// (file, content) of the last Save As, for "Reopen Last Saved".
-    private var undoSlot: (url: URL, content: String)? {
-        didSet { onUndoSlotChange?(undoSlot != nil) }
-    }
-    var onUndoSlotChange: ((Bool) -> Void)?
+    /// The file the last Save wrote, for "Reveal Last Save in Finder".
+    private(set) var lastSavedURL: URL?
+    /// Built by the app delegate on each click, so the items match the state
+    /// the buffer is in right now rather than a state a callback last reported.
+    /// Handed the view the menu is opening from, which the sharing picker needs.
+    var makeOverflowMenu: ((NSView) -> NSMenu)?
+    /// Opens the app's Settings window. Owned by the app delegate, which holds
+    /// the window; the page asks for it through the gear menu.
+    var openPreferences: (() -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
+    private let agent = AgentRunner()
+    private var autosaveTimer: Timer?
+    private var autosaveDeadline: Date?
+    /// The typing pause that ends a burst, and the ceiling a burst cannot pass.
+    private let autosaveDebounce: TimeInterval = 0.5
+    private let autosaveMaxWait: TimeInterval = 2
     private var previousApp: NSRunningApplication?
     /// The next `ready` reads the bound file (launch, a changed scratchpad or
     /// document path) rather than re-showing `latest` (a remount after the
@@ -79,19 +97,46 @@ final class Coordinator {
     // MARK: lifecycle
 
     func start() {
+        // "Open to a blank note" is decided before the first page loads, so
+        // the editor mounts against the file it will actually edit rather than
+        // mounting the last one and swapping it out a moment later.
+        if Prefs.openToBlankNote, Prefs.documentURL == nil {
+            startBlank()
+        }
         host.bootConfig = { Prefs.bootConfig() }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }
 
         contentView.onAppearanceChange = { [weak self] in self?.applyTheme() }
         contentView.addSubview(host.webView)
+        contentView.addSubview(actionBar)
         host.webView.translatesAutoresizingMaskIntoConstraints = false
+        actionBar.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             host.webView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             host.webView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             host.webView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            host.webView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            host.webView.bottomAnchor.constraint(equalTo: actionBar.topAnchor),
+            actionBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            actionBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            actionBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
+        actionBar.onOverflow = { [weak self] view in self?.showOverflowMenu(from: view) }
+        contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
+        // The path answers "where am I typing", so it follows the window's
+        // focus rather than the pointer. Both notifications are needed: a
+        // panel loses key to another app's window without any pointer event.
+        for (name, focused) in [(NSWindow.didBecomeKeyNotification, true),
+                                (NSWindow.didResignKeyNotification, false)] {
+            NotificationCenter.default.addObserver(
+                forName: name, object: panel, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.actionBar.setWindowFocused(focused) }
+            }
+        }
+        actionBar.setWindowFocused(panel.isKeyWindow, animated: false)
+        actionBar.setPathShown(Prefs.showFilePath)
+        refreshPathLabel()
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.hide() }
         applyTheme(initial: true)
@@ -292,11 +337,15 @@ final class Coordinator {
             previousApp = front
         }
         panel.placeIfUnplaced()
+        if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeFirstResponder(host.webView)
         if state == .warm { host.focusEditor() }
         if state == .cold { loadPage() }
+        // Summoned under a pointer that never moved: no enter event fires, so
+        // the window has to ask where the pointer is.
+        contentView.syncHoverFromPointer()
         measure.mark("visible")
     }
 
@@ -316,7 +365,7 @@ final class Coordinator {
             NSApp.hide(nil)
         }
         previousApp = nil
-        flushThen {}
+        flushThen { [weak self] in self?.write(.panelHidden) }
     }
 
     /// Double-Esc hides: the first bare Escape belongs to the editor (block
@@ -355,12 +404,17 @@ final class Coordinator {
             }
             host.send(.initDoc(content: latest, syncVersion: guardState.version, viewStateJSON: Prefs.viewStateJSON))
             state = .warm
+            // A fresh page starts with its chrome shown; tell it where the
+            // pointer is, and say which file it is now bound to.
+            refreshPathLabel()
+            host.setFormattingToolbarVisible(Prefs.showFormattingToolbar)
+            host.setChromeResting(!contentView.isHovering)
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
-                writer.submit(content, to: boundURL)
+                write(.edit)
             case .repush:
                 // Re-push authoritative content at the CURRENT version, as
                 // the extension does: bumping here would read the page's next
@@ -374,8 +428,12 @@ final class Coordinator {
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
-                writer.submit(content, to: boundURL)
-                writer.drain()
+                // Not through the policy: a flush only ever happens because
+                // something that always writes asked for one, and its own
+                // `write(...)` follows. Deferring here would put the debounce
+                // in front of a hide or a quit.
+                cancelPendingAutosave()
+                writeLatest()
                 host.send(.flushAck(id: id, applied: true))
                 resolve?(content)
             case .repush:
@@ -390,14 +448,16 @@ final class Coordinator {
             Prefs.viewStateJSON = json
         case let .openUrl(url):
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
-        case let .clipboardWrite(format, data):
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            if format == "html" {
-                pb.setString(data, forType: .html)
-            } else {
-                pb.setString(data, forType: .string)
+        case .openHostPreferences:
+            openPreferences?()
+        case let .askAgent(prompt, requestId, model, effort):
+            runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort)
+        case let .stopAgentRun(requestId):
+            agent.stop(requestId: requestId) { [weak self] status in
+                self?.reportAgent(requestId: requestId, status)
             }
+        case let .clipboardWrite(format, data):
+            writeToPasteboard(data, asHTML: format == "html")
         case let .setToolbarLayout(itemId, placement, order):
             var layout = Prefs.toolbarLayout
             layout.apply(itemId: itemId, placement: placement, order: order)
@@ -557,12 +617,14 @@ final class Coordinator {
 
     func prepareToTerminate(_ done: @escaping () -> Void) {
         hotkey.unregister()
+        // A child process outliving the app is litter nobody can attribute.
+        agent.stopAll()
         flushThen(done)
     }
 
     /// Last-chance synchronous write, idempotent after `prepareToTerminate`.
     func finalWrite() {
-        writeLatest()
+        write(.terminating)
     }
 
     /// Write `latest` to the bound file, synchronously. Nothing is written
@@ -575,18 +637,322 @@ final class Coordinator {
         writer.drain()
     }
 
-    // MARK: Save As / reopen
+    /// The one funnel every write goes through, so the autosave setting is
+    /// asked exactly once per reason rather than at each call site.
+    ///
+    /// An edit is held for `autosaveDebounce` and re-held by the next
+    /// keystroke, with `autosaveMaxWait` as the ceiling so continuous typing
+    /// still reaches disk. That ceiling is the whole crash-safety story: it is
+    /// how far the file is ever allowed to trail the editor.
+    private func write(_ trigger: WriteTrigger) {
+        switch AutosavePolicy.action(for: trigger, autosaveEnabled: Prefs.autosave) {
+        case .now:
+            cancelPendingAutosave()
+            writeLatest()
+        case .deferred:
+            scheduleAutosave()
+        case .skip:
+            cancelPendingAutosave()
+        }
+    }
 
+    private func scheduleAutosave() {
+        autosaveTimer?.invalidate()
+        if autosaveDeadline == nil {
+            autosaveDeadline = Date().addingTimeInterval(autosaveMaxWait)
+        }
+        // Whichever comes first: the typing pause, or the ceiling.
+        let pause = Date().addingTimeInterval(autosaveDebounce)
+        let fireAt = min(pause, autosaveDeadline ?? pause)
+        let timer = Timer(fireAt: fireAt, interval: 0, target: self,
+                          selector: #selector(autosaveFired), userInfo: nil, repeats: false)
+        RunLoop.main.add(timer, forMode: .common)
+        autosaveTimer = timer
+    }
+
+    @objc private func autosaveFired() {
+        autosaveTimer = nil
+        autosaveDeadline = nil
+        writeLatest()
+    }
+
+    private func cancelPendingAutosave() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
+        autosaveDeadline = nil
+    }
+
+    // MARK: the note
+
+    /// Whether the buffer holds anything worth copying or saving.
+    var hasContent: Bool { !latest.isBlank }
+
+    /// Copy the whole note. Nothing leaves the buffer: Jot edits a file, and
+    /// copying out of a file does not empty it.
+    func copyEverything() {
+        withFlushedContent { [weak self] content in
+            guard let self else { return }
+            self.writeToPasteboard(content)
+            self.actionBar.flash("Copied the whole note.")
+            self.focusEditorIfVisible()
+        }
+    }
+
+    // MARK: /ai
+
+    /// Run one `/ai` request against the file on disk.
+    ///
+    /// The buffer is flushed and WRITTEN first, always: the agent edits the
+    /// file, so the bytes it opens have to be the bytes on screen, and the
+    /// `path.md#L1` reference has to name something real. This is the one
+    /// place a write happens regardless of the autosave setting for a reason
+    /// that is not about safety: an agent reading a stale file would rewrite
+    /// the wrong text.
+    private func runAgent(prompt: String?, requestId: String?, model: String?, effort: String?) {
+        let id = requestId ?? UUID().uuidString
+        let request = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !request.isEmpty else {
+            reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
+                                             message: "Nothing was asked."))
+            return
+        }
+        var template = Prefs.agentCommand.trimmingCharacters(in: .whitespaces)
+        guard !template.isEmpty else {
+            reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
+                                             message: "No agent command is set in Settings."))
+            return
+        }
+        // The composer's per-request choices. Added before a trailing
+        // `{prompt}` rather than appended, because a template that ends in the
+        // placeholder hands the prompt positionally and a flag after it is not
+        // the prompt's flag any more (`AgentRequest.adding`).
+        if let model, !model.isEmpty {
+            template = AgentRequest.adding(flag: "--model", value: model, to: template)
+        }
+        if let effort, !effort.isEmpty {
+            template = AgentRequest.adding(flag: "--effort", value: effort, to: template)
+        }
+        let command = template
+
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            let directory = self.boundURL.deletingLastPathComponent()
+            let reference = "\(self.boundURL.lastPathComponent)#L1"
+            let line = AgentRequest.compose(prompt: request, reference: reference)
+            self.agent.run(requestId: id, line: line, template: command,
+                           workingDirectory: directory) { [weak self] status in
+                guard let self else { return }
+                if status.status == "done" {
+                    // The agent edited the file; bring it back into the panel.
+                    // Whatever was typed during the run is the losing side,
+                    // which jot/README.md says out loud.
+                    self.reloadFromDiskIntoBuffer()
+                }
+                self.reportAgent(requestId: id, status)
+            }
+        }
+    }
+
+    private func reportAgent(requestId: String, _ status: AgentRunStatus) {
+        guard state == .warm else { return }
+        host.send(.agentRun(requestId: requestId, status: status.status,
+                            harness: status.harness, text: status.text, message: status.message))
+    }
+
+    /// Take what is on disk as the buffer's new truth.
+    private func reloadFromDiskIntoBuffer() {
+        let onDisk = readActiveFile()
+        guard onDisk != latest else { return }
+        latest = onDisk
+        if state == .warm {
+            host.send(.externalUpdate(content: onDisk, syncVersion: guardState.bumpVersion()))
+        }
+    }
+
+    /// Cmd+N. Put the current note beyond doubt, then start a fresh file.
+    ///
+    /// No Save/Don't Save sheet, and that is the macOS answer rather than a
+    /// shortcut past it: the buffer is written before the switch every time,
+    /// unconditionally and whatever the autosave setting says, so there is
+    /// never an unsaved change to ask about. A prompt here would be asking
+    /// permission to do something already done.
+    ///
+    /// A bound DOCUMENT is left alone. New Note makes a note in Jot's own
+    /// folder; it is not a way to stop editing the file the user pointed Jot
+    /// at, which is what the Document setting is for.
+    func newNote() {
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            guard Prefs.documentURL == nil else {
+                self.actionBar.flash("Jot is set to edit a document; New Note is off while that is on.")
+                return
+            }
+            let directory = Prefs.notesDirectory
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            } catch {
+                NSLog("Birta Jot: could not create \(directory.path): \(error)")
+                self.actionBar.flash("Could not make a new note in \(directory.lastPathComponent).")
+                return
+            }
+            let target = Coordinator.unusedNoteURL(in: directory)
+            do {
+                // Create it now, empty. A note that exists only in memory is
+                // one the next launch cannot find its way back to.
+                try AtomicFile.writeString("", to: target)
+            } catch {
+                NSLog("Birta Jot: could not write \(target.path): \(error)")
+                self.actionBar.flash("Could not make a new note.")
+                return
+            }
+            Prefs.currentNoteURL = target
+            self.bindTo(target, content: "")
+            self.actionBar.flash("New note.")
+        }
+    }
+
+    /// The launch half of New Note: a fresh file, chosen before anything has
+    /// loaded, so there is no buffer to flush and nothing to write first.
+    private func startBlank() {
+        let directory = Prefs.notesDirectory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let target = Coordinator.unusedNoteURL(in: directory)
+            try AtomicFile.writeString("", to: target)
+            Prefs.currentNoteURL = target
+            boundURL = target
+        } catch {
+            // The scratchpad is the fallback, and it is a good one: the setting
+            // says where to START, not that the old note may be lost.
+            NSLog("Birta Jot: could not start a blank note in \(directory.path): \(error)")
+        }
+    }
+
+    /// Point the editor and the file at `url`, with `content` as the truth.
+    private func bindTo(_ url: URL, content: String) {
+        cancelPendingAutosave()
+        boundURL = url
+        latest = content
+        refreshPathLabel()
+        if state == .warm {
+            host.send(.externalUpdate(content: content, syncVersion: guardState.bumpVersion()))
+        }
+    }
+
+    /// `Note 2026-08-18.md`, numbered if that name is taken, so a second note
+    /// on one day never lands on the first.
+    static func unusedNoteURL(in directory: URL) -> URL {
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyy-MM-dd"
+        let base = "Note \(stamp.string(from: Date()))"
+        var candidate = directory.appendingPathComponent("\(base).md")
+        var n = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(base) \(n).md")
+            n += 1
+        }
+        return candidate
+    }
+
+    /// Cmd+S. The buffer is already being written as you type, so this is a
+    /// flush and an acknowledgement rather than news; it earns its place by
+    /// being the key everyone presses, and by being the one write that happens
+    /// when autosave is off.
+    func saveNow() {
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            self.actionBar.flash("Saved.")
+            self.focusEditorIfVisible()
+        }
+    }
+
+    private func writeToPasteboard(_ text: String, asHTML: Bool = false) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: asHTML ? .html : .string)
+    }
+
+    /// Flush the page's freshest bytes, then hand them to `body`. Nothing runs
+    /// for an empty buffer, checked once before the flush and again after it:
+    /// the flush is a round trip, and the note can be gone by the time it lands.
+    private func withFlushedContent(_ body: @escaping (String) -> Void) {
+        guard hasContent else { return }
+        flushThen { [weak self] in
+            guard let self, self.hasContent else { return }
+            body(self.latest)
+        }
+    }
+
+    /// Everything that follows a written copy.
+    private func finishSave(to target: URL, content: String) {
+        // The images travel with the note. Without this the markdown arrives at
+        // its new home with references to a folder it no longer sits beside, so
+        // a note that looked complete on screen is a note of broken images the
+        // moment it is saved.
+        migrateAttachments(markdown: content, from: boundURL, to: target)
+        lastSavedURL = target
+        // The buffer is untouched, always. Save As writes a COPY: the panel
+        // goes on showing the note, still bound to the same file, which is
+        // what every other editor on the machine does.
+        actionBar.flash("Copy saved to \(target.lastPathComponent).")
+        focusEditorIfVisible()
+    }
+
+    func revealLastSave() {
+        guard let url = lastSavedURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    /// Hand the note to whatever the system can send it to. The macOS answer to
+    /// "pipe it elsewhere" without integrating with anything in particular.
+    func shareNote(from view: NSView) {
+        withFlushedContent { content in
+            let picker = NSSharingServicePicker(items: [content])
+            picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+        }
+    }
+
+    private func showOverflowMenu(from view: NSView) {
+        guard let menu = makeOverflowMenu?(view) else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY), in: view)
+    }
+
+
+    /// The bound file, written the way a person reads a path.
+    private func refreshPathLabel() {
+        actionBar.setRestingText(boundURL.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+    }
+
+    /// Chrome follows the pointer: everything on while it is over the window,
+    /// and a page with a caret in it when it is not. The page's half is a body
+    /// class its own stylesheet reads.
+    private func applyChromeVisibility(_ hovering: Bool) {
+        actionBar.setChromeVisible(hovering)
+        host.setChromeResting(!hovering)
+    }
+
+    private func focusEditorIfVisible() {
+        guard panel.isVisible else { return }
+        panel.makeFirstResponder(host.webView)
+        if state == .warm { host.focusEditor() }
+    }
+
+    // MARK: Save As
+
+    /// Write a copy somewhere the user chooses. The buffer is not touched and
+    /// stays bound to the same file: this is "save a copy", not "move".
     func saveAs() {
         NSApp.activate(ignoringOtherApps: true)
         flushThen { [weak self] in
             guard let self else { return }
             let panel = NSSavePanel()
-            panel.title = "Save Jot As"
+            panel.title = "Save a Copy As"
             panel.nameFieldStringValue = Coordinator.suggestedFileName(for: self.latest)
             panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
-            panel.directoryURL = Prefs.saveAsDirectory
-                ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            panel.directoryURL = Prefs.saveAsDirectory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             panel.canCreateDirectories = true
             let respond: (NSApplication.ModalResponse) -> Void = { [weak self] resp in
                 guard resp == .OK, let url = panel.url, let self else { return }
@@ -600,21 +966,7 @@ final class Coordinator {
                     return
                 }
                 Prefs.saveAsDirectory = url.deletingLastPathComponent()
-                // The images travel with the note. Without this the markdown
-                // arrives at its new home with references to a folder it no
-                // longer sits beside, so a note that looked complete on screen
-                // is a note of broken images the moment it is saved.
-                self.migrateAttachments(markdown: content, from: self.boundURL, to: url)
-                // Whether the scratchpad graduates is decided in
-                // BirtaJotCore.SaveAsDecision, which has the tests: every
-                // branch of it can lose bytes when it is decided wrongly.
-                let outcome = SaveAsDecision.outcome(boundURL: self.boundURL,
-                                                     scratchpadURL: Prefs.scratchpadURL,
-                                                     target: url)
-                if outcome == .graduate {
-                    self.undoSlot = (url, content)
-                    self.replaceBuffer(with: "")
-                }
+                self.finishSave(to: url, content: content)
             }
             if self.panel.isVisible {
                 panel.beginSheetModal(for: self.panel, completionHandler: respond)
@@ -630,13 +982,6 @@ final class Coordinator {
         guard state == .warm else { return }
         show()
         host.send(.editorCommand(command))
-    }
-
-    func reopenLastSaved() {
-        guard let slot = undoSlot else { return }
-        undoSlot = nil
-        replaceBuffer(with: slot.content)
-        show()
     }
 
     /// Put `content` in the editor and the file, keeping the mounted editor
@@ -687,6 +1032,10 @@ final class Coordinator {
             guard let self else { return }
             self.reloadFromDisk = true
             self.loadPage()
+            // The bound file may have changed; the row names it.
+            self.refreshPathLabel()
+            self.actionBar.setPathShown(Prefs.showFilePath)
+            self.panel.applyFloatLevel()
         }
     }
 
@@ -720,4 +1069,10 @@ final class Coordinator {
         NSLog("Birta Jot: no web assets found; set BIRTA_JOT_WEB_DIR or run jot/scripts/build-app.sh")
         return URL(fileURLWithPath: "/nonexistent", isDirectory: true)
     }
+}
+
+extension String {
+    /// Nothing but whitespace, so nothing worth copying or saving. Stops at the
+    /// first non-space character, which every real note has near its front.
+    var isBlank: Bool { allSatisfy(\.isWhitespace) }
 }

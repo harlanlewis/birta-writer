@@ -279,6 +279,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.toggleTaskChecked",
+                "title": "%command.editor.toggleTaskChecked.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.toggleBlockquote",
                 "title": "%command.editor.toggleBlockquote.title%",
                 "category": "Birta Writer"
@@ -491,6 +496,21 @@
             {
                 "command": "birta.editor.openWhatsNew",
                 "title": "%command.editor.openWhatsNew.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.openHostPreferences",
+                "title": "%command.editor.openHostPreferences.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.contentWidthFull",
+                "title": "%command.editor.contentWidthFull.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.contentWidthFixed",
+                "title": "%command.editor.contentWidthFixed.title%",
                 "category": "Birta Writer"
             },
             {
@@ -859,6 +879,12 @@
                 "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
+                "command": "birta.editor.toggleTaskChecked",
+                "key": "ctrl+shift+d",
+                "mac": "cmd+shift+d",
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
+            },
+            {
                 "command": "birta.editor.setParagraph",
                 "key": "ctrl+alt+0",
                 "mac": "cmd+alt+0",
@@ -1027,6 +1053,10 @@
                 },
                 {
                     "command": "birta.editor.toggleTaskList",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.toggleTaskChecked",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
@@ -1199,6 +1229,18 @@
                 },
                 {
                     "command": "birta.editor.openWhatsNew",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.openHostPreferences",
+                    "when": "false"
+                },
+                {
+                    "command": "birta.editor.contentWidthFull",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.contentWidthFixed",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
@@ -1539,6 +1581,11 @@
                 },
                 {
                     "command": "birta.editor.openWhatsNew",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
+                    "group": "3_settings@2"
+                },
+                {
+                    "command": "birta.editor.openHostPreferences",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
                     "group": "3_settings@2"
                 },

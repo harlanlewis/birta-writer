@@ -42,6 +42,12 @@ cp "$BIN" "$APP/Contents/MacOS/BirtaJot"
 cp jot/Resources/Info.plist "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 cp jot/Resources/index.html "$APP/Contents/Resources/web/index.html"
+# The icons: AppIcon.icns is what Info.plist's CFBundleIconFile names, and
+# MenuBarTemplate.pdf is what the status item loads. Both are committed rather
+# than generated here, so no build machine needs rsvg-convert; regenerate them
+# with jot/scripts/make-icons.sh.
+cp jot/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp jot/Resources/MenuBarTemplate.pdf "$APP/Contents/Resources/MenuBarTemplate.pdf"
 # The whole webview build: the entry, its stylesheet, the host palette, the
 # lazy chunks and every sibling asset they resolve (katex.css, the harper wasm).
 cp -R dist/. "$APP/Contents/Resources/web/dist/"
