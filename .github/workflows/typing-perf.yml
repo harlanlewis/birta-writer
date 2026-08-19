@@ -84,14 +84,17 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Playwright $VERSION"
 
-      # The browser binary is the slow, third-party half of the step below, and
-      # the half that can stall: `install --with-deps` fetches Chromium from
-      # Playwright's CDN and then installs system packages through apt. Caching
-      # the download removes the CDN from the common path; the apt half still
-      # runs every time, so nothing changes about which system packages are
-      # present. No restore-keys: a miss here means a browser build this cache
-      # has never held, so an approximate hit would restore a stale browser the
-      # install below downloads past anyway, and then keep it forever.
+      # `install --with-deps` has two halves: it fetches Chromium from
+      # Playwright's CDN, then installs system packages through apt. This cache
+      # covers the CDN half only; the apt half runs every time, so nothing
+      # changes about which system packages are present. The apt half is also
+      # the one that stalls, because it pulls fonts from an Ubuntu mirror at
+      # whatever rate that mirror gives, uncached and unbounded, while the CDN
+      # half is a fixed-size zip. So this cache shortens the step; the job's
+      # `timeout-minutes` is what bounds it. No restore-keys: a miss here means
+      # a browser build this cache has never held, so an approximate hit would
+      # restore a stale browser the install below downloads past anyway, and
+      # then keep it forever.
       - name: Cache the Playwright browser
         uses: actions/cache@v4
         with:
