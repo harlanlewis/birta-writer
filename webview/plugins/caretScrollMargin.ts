@@ -108,6 +108,17 @@ let activeView: EditorView | null = null;
  * rule rather than an implementation limit. Extending a selection with the
  * keyboard scrolls by its head; recentering the page on every extension would
  * make a multi-line selection unusable.
+ *
+ * UNMEASURED, and the thing to look at first if the mode ever feels heavy: with
+ * it ON this runs `coordsAtPos`, which forces layout, once per prop read.
+ * ProseMirror reads a side off `scrollThreshold` and again off `scrollMargin`,
+ * and `syncScrollPaddingVars` reads once more per scroll frame, so one gesture
+ * costs several. Nothing caches it, deliberately - a cache keyed on anything
+ * short of the layout itself goes stale on a font or zoom change with no
+ * transaction to invalidate it. With the mode OFF the cost is the boolean above
+ * and nothing else, which is the case every perf gate here actually measures,
+ * since they run at default settings. Measure with `pnpm perf:typing` against a
+ * build whose default is flipped on, not against the shipped one.
  */
 function typewriterInsets(): CaretScrollBand | null {
     if (!isTypewriterMode()) {
