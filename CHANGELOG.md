@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.819.0] - 2026, August 19
+
 ### Added
 
 - Toggle a task item done from the keyboard, with the caret anywhere in its text: Shift+Cmd+D in the editor, and the same chord on Birta Writer Jot's Edit menu. Ticking a box needed the pointer or a fresh `[x] ` marker before this. A caret in a plain list item does nothing, because turning one into a task is a different question with its own command.
