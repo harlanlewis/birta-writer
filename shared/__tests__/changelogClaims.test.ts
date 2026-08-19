@@ -37,7 +37,14 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(__dirname, "../..");
-const CHANGELOG = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8");
+// BOTH changelogs. They are split by product (AGENTS.md, "Writing the CHANGELOG
+// entry"), and a guard that reads only the extension's would quietly stop
+// checking every entry the split moved: 35 of them, citing settings and quoting
+// UI copy exactly as before. Scope has to follow the content it was written for.
+const CHANGELOG = [
+    readFileSync(join(ROOT, "CHANGELOG.md"), "utf8"),
+    readFileSync(join(ROOT, "jot/CHANGELOG.md"), "utf8"),
+].join("\n");
 
 /**
  * Setting keys a CHANGELOG entry names as REMOVED. An entry recording a
@@ -79,14 +86,14 @@ describe("CHANGELOG setting-key citations", () => {
 
 /** Source files a user-visible string could plausibly live in. */
 function sourceText(): string {
-    const roots = ["webview", "src", "shared"];
+    const roots = ["webview", "src", "shared", "jot/Sources"];
     const parts: string[] = [];
     const walk = (dir: string) => {
         for (const name of readdirSync(dir)) {
             if (name === "node_modules" || name === "__tests__" || name.startsWith(".")) continue;
             const full = join(dir, name);
             if (statSync(full).isDirectory()) walk(full);
-            else if (/\.(ts|tsx|json)$/.test(name)) parts.push(readFileSync(full, "utf8"));
+            else if (/\.(ts|tsx|json|swift)$/.test(name)) parts.push(readFileSync(full, "utf8"));
         }
     };
     for (const r of roots) walk(join(ROOT, r));

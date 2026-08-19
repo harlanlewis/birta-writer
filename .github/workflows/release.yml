@@ -59,9 +59,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Bounds, not budgets. Each is set far above what its job needs, because a
+  # release that is merely slow must finish: this job tags, publishes and
+  # attaches, and killing it partway leaves a release half-cut. What it stops is
+  # a wedged step holding the runner and the `release` concurrency group for
+  # GitHub's default of six hours, which would also block the next nightly.
+  # Recovery from a timeout is the documented one for any failed job here, in
+  # docs/RELEASING.md: re-run the failed job alone, since `--skip-duplicate`
+  # makes both publishes idempotent.
   release:
     name: Release
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
       # Both are for the build-provenance attestation below. id-token here is
@@ -199,6 +208,17 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
         run: node scripts/stamp-changelog.mjs
 
+      # Jot's changelog is stamped with the SAME version, so the two files never
+      # disagree about what a release contained. It is a separate file because
+      # the two products have separate readers: this one is not in the VSIX
+      # (`.vscodeignore` excludes `jot/**`), so the Marketplace Changelog tab
+      # carries only what a Marketplace reader can act on.
+      - name: Stamp jot/CHANGELOG.md to the release version
+        if: steps.plan.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: node scripts/stamp-changelog.mjs jot/CHANGELOG.md
+
       - name: Generate release notes
         if: steps.plan.outputs.release == 'true'
         env:
@@ -315,9 +335,9 @@ jobs:
           # tree clean enough for the rebase below.
           git checkout -- package.json
 
-          git add CHANGELOG.md
+          git add CHANGELOG.md jot/CHANGELOG.md
           if git diff --cached --quiet; then
-            echo "CHANGELOG.md unchanged — nothing to commit." >> "$GITHUB_STEP_SUMMARY"
+            echo "Changelogs unchanged — nothing to commit." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -340,6 +360,7 @@ jobs:
   publish:
     name: Publish to VS Code Marketplace
     needs: release
+    timeout-minutes: 15
     if: needs.release.outputs.release == 'true'
     runs-on: ubuntu-latest
     # The federated credential's subject is repo:<owner>/<repo>:environment:<name>,
@@ -426,6 +447,7 @@ jobs:
   # environment is a policy surface worth adding only when something needs it.
   publish-openvsx:
     name: Publish to Open VSX
+    timeout-minutes: 15
     needs: release
     if: needs.release.outputs.release == 'true'
     runs-on: ubuntu-latest
@@ -490,6 +512,7 @@ jobs:
   jot-app:
     name: Attach Birta Jot to the release
     needs: release
+    timeout-minutes: 20
     if: needs.release.outputs.release == 'true'
     runs-on: macos-latest
     permissions:
