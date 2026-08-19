@@ -7,14 +7,6 @@ src/**
 webview/**
 shared/**
 packages/**
-# The Birta Jot macOS app: SwiftPM sources, its tests and its build scripts.
-# Nothing in the packaged extension reaches them. Jot is a separate app that
-# `pnpm jot:install` builds from a checkout, and the only trace of it in either
-# bundle is a capability-profile name string. It is listed here because a
-# deny-list cannot see a directory that did not exist when the list was
-# written, which is how Jot's whole source tree shipped to every extension
-# user (MAR-383).
-jot/**
 # The pre-commit hook. `core.hooksPath` points a CHECKOUT at this; an installed
 # extension has no git repository and nothing that could run it.
 .githooks/**
