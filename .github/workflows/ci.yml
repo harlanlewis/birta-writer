@@ -18,10 +18,18 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every job carries a `timeout-minutes`, and each is set well above what that
+# job needs so it never trims a slow but healthy run. Without one, GitHub's
+# default lets a wedged step hold a REQUIRED check open for hours, which is
+# indistinguishable from a queue and cannot be waited out. A step that stalls
+# should fail fast enough to be re-run, and the browser download below is the
+# one most exposed: it reaches a third-party CDN and an apt mirror, neither of
+# which this repository controls.
 jobs:
   unit-test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +65,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: unit-test
 
     steps:
@@ -104,6 +113,7 @@ jobs:
   perf-bundle:
     name: Eager-Bytes Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -151,6 +161,7 @@ jobs:
   launch-perf:
     name: Launch Perf (A/B)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -202,6 +213,20 @@ jobs:
       - name: Install dependencies
         if: steps.relevant.outputs.value == 'true'
         run: pnpm install --frozen-lockfile
+
+      # The browser binary is the slow, third-party half of the step below, and
+      # the half that can stall: `install --with-deps` fetches Chromium from
+      # Playwright's CDN and then installs system packages through apt. Caching
+      # the download removes the CDN from the common path; the apt half still
+      # runs every time, so nothing changes about which system packages are
+      # present. Keyed on the lockfile, which is what pins the Playwright
+      # version that decides the browser build.
+      - name: Cache the Playwright browser
+        if: steps.relevant.outputs.value == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Chromium for Playwright
         if: steps.relevant.outputs.value == 'true'
