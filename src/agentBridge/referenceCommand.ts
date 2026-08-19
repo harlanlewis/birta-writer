@@ -25,15 +25,12 @@ import { buildReference, buildContextBlock } from "./format";
  */
 export type CopyMode = "reference" | "context" | "auto";
 
-/**
- * Register `birta.copyAgentReference` and `birta.copyAgentContext`, and return
- * the copier so the webview's own button can ask for `auto` without a third
- * command appearing in the palette.
- */
+/** Register `birta.copyAgentReference`, `birta.copyAgentContext` and the
+ * webview button's `birta._copyForAgent`. */
 export function registerReferenceCommands(
     context: vscode.ExtensionContext,
     getActive: ActiveContextResolver,
-): (mode: CopyMode) => Promise<void> {
+): void {
     const copy = async (mode: CopyMode): Promise<void> => {
         const active = await getActive();
         if (!active) {
@@ -92,5 +89,4 @@ export function registerReferenceCommands(
         // beside them would be a third answer to a question that has two.
         vscode.commands.registerCommand("birta._copyForAgent", () => copy("auto")),
     );
-    return copy;
 }

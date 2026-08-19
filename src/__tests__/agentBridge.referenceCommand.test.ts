@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as vscode from "vscode";
-import { registerReferenceCommands, type CopyMode } from "../agentBridge/referenceCommand";
+import { registerReferenceCommands } from "../agentBridge/referenceCommand";
 import type { ActiveEditorContext } from "../agentBridge/api";
 import type { EditorSelectionContext } from "../../shared/agentContext";
 
@@ -25,6 +25,9 @@ const window = vscode.window as unknown as {
 const workspace = vscode.workspace as unknown as {
     openTextDocument: { mockResolvedValue(v: unknown): void };
 };
+const register = (vscode.commands as unknown as {
+    registerCommand: { mock: { calls: unknown[][] } };
+}).registerCommand;
 
 const DOC = "# Title\n\nalpha\nbeta\ngamma\n";
 
@@ -40,21 +43,45 @@ const span = (from: number, to: number, text: string): EditorSelectionContext =>
     isEmpty: false,
 });
 
-/** Register the commands over a fixed active context, and return the copier. */
+/**
+ * Register the commands over a fixed active context, and return a way to run
+ * one BY ITS COMMAND ID.
+ *
+ * Through the registration rather than through a returned function, because
+ * the ids are half of what is under test: `birta._copyForAgent` is what
+ * `MarkdownEditorProvider` executes for the palette button, and a function
+ * handed straight to the test would pin the behaviour while leaving the name
+ * it is reached by unchecked.
+ */
 function setup(
     context: EditorSelectionContext | null,
     doc: { isDirty: boolean; save: () => Promise<boolean>; getText: () => string },
-): (mode: CopyMode) => Promise<void> {
+): (id: string) => Promise<void> {
     workspace.openTextDocument.mockResolvedValue(doc);
     const active: ActiveEditorContext | null = context
         ? { uri: URI.file("/project/note.md") as ActiveEditorContext["uri"], context }
         : null;
     const subscriptions: unknown[] = [];
-    return registerReferenceCommands(
+    registerReferenceCommands(
         { subscriptions } as unknown as vscode.ExtensionContext,
         async () => active,
     );
+    const registered = new Map<string, () => Promise<void>>(
+        register.mock.calls.map(([id, handler]) => [
+            id as string,
+            handler as () => Promise<void>,
+        ]),
+    );
+    return async (id: string) => {
+        const handler = registered.get(id);
+        expect(handler, `no command registered as ${id}`).toBeTruthy();
+        await handler!();
+    };
 }
+
+const AUTO = "birta._copyForAgent";
+const REFERENCE = "birta.copyAgentReference";
+const CONTEXT = "birta.copyAgentContext";
 
 const cleanDoc = () => ({
     isDirty: false,
@@ -72,7 +99,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(caret(3), cleanDoc());
 
         // Act
-        await copy("auto");
+        await copy(AUTO);
 
         // Assert — nothing to quote, so `auto` is the pointer.
         expect(clipboard.writeText.mock.calls.at(-1)?.[0]).toBe("project/note.md#L3");
@@ -83,7 +110,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(span(3, 4, "alpha\nbeta"), cleanDoc());
 
         // Act
-        await copy("auto");
+        await copy(AUTO);
 
         // Assert — the pointer AND the lines, so the payload is useful in a
         // tool that can open the file and in one that cannot.
@@ -98,7 +125,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(span(3, 4, "alpha\nbeta"), cleanDoc());
 
         // Act
-        await copy("reference");
+        await copy(REFERENCE);
 
         // Assert
         expect(clipboard.writeText.mock.calls.at(-1)?.[0]).toBe("project/note.md#L3-L4");
@@ -109,7 +136,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(caret(3), cleanDoc());
 
         // Act
-        await copy("context");
+        await copy(CONTEXT);
 
         // Assert — a caret has nothing to quote, so it degrades to the
         // pointer; what matters is that the MODE did not consult the
@@ -125,7 +152,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(caret(3), { isDirty: true, save, getText: () => DOC });
 
         // Act
-        await copy("auto");
+        await copy(AUTO);
 
         // Assert
         expect(save).toHaveBeenCalledTimes(1);
@@ -137,7 +164,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(caret(3), { isDirty: true, save: vi.fn(async () => false), getText: () => DOC });
 
         // Act
-        await copy("auto");
+        await copy(AUTO);
 
         // Assert — the whole point of the save. Copying anyway would hand an
         // agent a reference the file cannot honour.
@@ -152,7 +179,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(caret(3), doc);
 
         // Act
-        await copy("auto");
+        await copy(AUTO);
 
         // Assert
         expect(doc.save).not.toHaveBeenCalled();
@@ -165,7 +192,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(caret(3), cleanDoc());
 
         // Act
-        await copy("auto");
+        await copy(AUTO);
 
         // Assert
         expect(window.showInformationMessage).toHaveBeenCalledTimes(1);
@@ -179,7 +206,7 @@ describe("the agent clipboard commands", () => {
         const copy = setup(null, cleanDoc());
 
         // Act
-        await copy("auto");
+        await copy(AUTO);
 
         // Assert
         expect(clipboard.writeText).not.toHaveBeenCalled();
