@@ -1,6 +1,8 @@
 import { Plugin } from "../pm";
+import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { getTopbarBottom } from "../utils/headingUtils";
+import { computeTypewriterInsets, isTypewriterMode } from "./typewriterScroll";
 
 // Caret auto-scroll margins (vim-scrolloff style).
 //
@@ -86,6 +88,56 @@ export interface CaretScrollBand {
 }
 
 /**
+ * The live view, for the one measurement the insets cannot take from the DOM
+ * alone: how tall the caret's own rect is. A module singleton in the same way
+ * `stickyTitleEl` above is one - there is a single editor per mount, and the
+ * plugin's own view() owns both ends of its lifetime.
+ */
+let activeView: EditorView | null = null;
+
+/**
+ * Typewriter-mode insets for the caret as it stands now, or null when the mode
+ * is off or does not apply to this selection.
+ *
+ * The caret's height is measured per scroll rather than assumed, because the
+ * band has to be the height of THIS caret: a band sized for body text with the
+ * caret in an H1 would put the taller rect outside it in both directions at
+ * once, which is the jitter typewriterScroll's slack constant describes.
+ *
+ * A non-empty selection declines, and that is the mode's "don't fight the user"
+ * rule rather than an implementation limit. Extending a selection with the
+ * keyboard scrolls by its head; recentering the page on every extension would
+ * make a multi-line selection unusable.
+ */
+function typewriterInsets(): CaretScrollBand | null {
+    if (!isTypewriterMode()) {
+        return null;
+    }
+    const view = activeView;
+    if (!view || !view.state.selection.empty) {
+        return null;
+    }
+    let caretHeight: number;
+    try {
+        const coords = view.coordsAtPos(view.state.selection.head);
+        caretHeight = coords.bottom - coords.top;
+    } catch {
+        // coordsAtPos throws for a position whose DOM is not laid out yet
+        // (mid-reconfigure, a collapsed fold). The ordinary insets are the
+        // right answer for one frame.
+        return null;
+    }
+    if (!(caretHeight > 0)) {
+        caretHeight = bodyLineHeightPx();
+    }
+    return computeTypewriterInsets({
+        viewportHeight: viewportHeight(),
+        caretHeight,
+        topbarBottom: getTopbarBottom(),
+    });
+}
+
+/**
  * Vertical insets for caret auto-scroll. Top: topbar + sticky title + one
  * line of air. Bottom: ~2.5 lines of context while typing.
  *
@@ -97,6 +149,10 @@ export interface CaretScrollBand {
  * inset (real occlusion) is only sacrificed in pathologically short panes.
  */
 export function computeInsets(): CaretScrollBand {
+    const centered = typewriterInsets();
+    if (centered) {
+        return centered;
+    }
     const line = bodyLineHeightPx();
     let top = getTopbarBottom() + measureStickyHeadingHeight() + line;
     let bottom = line * 2.5;
@@ -154,7 +210,8 @@ export function createCaretScrollMarginPlugin(): Plugin {
             scrollThreshold: caretScrollInsets,
             scrollMargin: caretScrollInsets,
         },
-        view() {
+        view(editorView) {
+            activeView = editorView;
             let rafId: number | null = null;
             const update = () => {
                 rafId = null;
@@ -173,6 +230,9 @@ export function createCaretScrollMarginPlugin(): Plugin {
             syncScrollPaddingVars();
             return {
                 destroy() {
+                    if (activeView === editorView) {
+                        activeView = null;
+                    }
                     if (rafId !== null) {
                         cancelAnimationFrame(rafId);
                     }

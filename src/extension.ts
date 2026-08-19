@@ -385,6 +385,13 @@ export function activate(context: vscode.ExtensionContext) {
         "Birta: line numbers off",
     );
     registerGateToggle(
+        "birta.toggleTypewriterMode",
+        "typewriterMode",
+        "typewriterMode",
+        "Birta: typewriter mode on — the line you are editing holds its place and the document scrolls under it",
+        "Birta: typewriter mode off",
+    );
+    registerGateToggle(
         "birta.toggleChecklistSink",
         "checklist.sinkChecked",
         "checklistSinkChecked",
@@ -692,6 +699,12 @@ export function activate(context: vscode.ExtensionContext) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setLineNumbers",
                     enabled: readBirtaSetting("lineNumbers") === true,
+                });
+            }
+            if (e.affectsConfiguration("birta.typewriterMode")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "setTypewriterMode",
+                    enabled: readBirtaSetting("typewriterMode") === true,
                 });
             }
             if (e.affectsConfiguration("birta.mermaid.theme")) {

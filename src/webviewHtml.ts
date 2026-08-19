@@ -292,6 +292,7 @@ export function buildWebviewHtml(
     // Default OFF, and the webview treats anything but `true` as off: the
     // gutter's module is never even fetched unless this is on.
     const lineNumbers = config.lineNumbers === true;
+    const typewriterMode = config.typewriterMode === true;
     const mermaidTheme = normalizeMermaidThemeMode(config.mermaidTheme);
     const plantumlTheme = normalizePlantUmlThemeMode(config.plantumlTheme);
     const folding = readFoldingConfig(document.uri);
@@ -303,7 +304,7 @@ export function buildWebviewHtml(
     // .replace(/</g, "\\u003c"): JSON.stringify leaves "<" intact, so a string
     // setting containing "</script>" would close the inline script element
     // early (no code execution under the nonce CSP, but style injection).
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, readOnly, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, linkCardsEnabled, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri, resourceBaseUri, workspaceBaseUri, host: { capabilities: HOST_PROFILES.vscode, arrangements: [], shortcuts: [] } }).replace(/</g, "\\u003c")};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, readOnly, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, linkCardsEnabled, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, typewriterMode, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri, resourceBaseUri, workspaceBaseUri, host: { capabilities: HOST_PROFILES.vscode, arrangements: [], shortcuts: [] } }).replace(/</g, "\\u003c")};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

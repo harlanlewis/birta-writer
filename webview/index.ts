@@ -74,6 +74,7 @@ import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { createLineNumbersGate } from "./utils/lineNumbersLoader";
+import { setTypewriterMode } from "./plugins/typewriterScroll";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
 import { setupSelectionToolbar } from "./components/selectionToolbar";
@@ -663,6 +664,11 @@ const lineNumbers = createLineNumbersGate({
 });
 lineNumbers.setEnabled(window.__i18n?.lineNumbers === true);
 
+// Typewriter mode (birta.typewriterMode, default OFF). Nothing is loaded or
+// registered by it: the caret-scroll plugin reads the flag when it settles the
+// viewport, so OFF costs one boolean read per scroll and nothing else.
+setTypewriterMode(window.__i18n?.typewriterMode === true);
+
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 // "Edit Raw Markdown" (toolbar button AND right-click menu): same switch path
 // as Cmd+Shift+M, carrying the caret (or the viewport, when the caret is off
@@ -1047,6 +1053,7 @@ const handlers = createMessageHandlers({
         setNotesMarkers: (markers) => toc?.setNotesMarkers(markers),
         setReviewGroupByType: (grouped) => toc?.setReviewGroupByType(grouped),
         setLineNumbers: (enabled) => lineNumbers.setEnabled(enabled),
+        setTypewriterMode: (enabled) => setTypewriterMode(enabled),
     },
     topbarTb,
 });
