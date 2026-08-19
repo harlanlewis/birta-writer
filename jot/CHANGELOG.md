@@ -22,6 +22,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - Birta Writer Jot's gear menu no longer offers Customize Toolbar or Hide Toolbar, and the commands do nothing there. The dock's contents and order are fixed, and the toolbar is the only route to search and settings, so neither question is Jot's to answer. Both are unchanged in the extension.
 
+- The scratchpad Jot starts with is called `Birta Jot.md`, in the `Birta Jot` folder it already used under Application Support. It was `Scratchpad.md`, a word for what the file is for rather than a name, and the window's title bar shows that name, so it is worth being the one you would have given it. A scratchpad you have pointed somewhere else in Settings is untouched, and so is one you renamed; this is the default only. Jot does not move an existing `Scratchpad.md` for you, so if you have one, point Settings at it or rename it in Finder.
+
 - The gear menu's row for Jot's settings, and the title of the window it opens, are called Birta Jot Settings again. One release called them Writer Jot Settings, which named the app by a name nothing else uses: the app in Applications and the folder it keeps notes in both say Birta Jot.
 
 ### Removed
