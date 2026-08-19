@@ -20,4 +20,3 @@ import type { ToWebviewMessage } from "../shared/messages";
 export function postToWebview(webview: vscode.Webview, msg: ToWebviewMessage): void {
     void webview.postMessage(msg);
 }
-
