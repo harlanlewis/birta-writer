@@ -211,7 +211,10 @@ export const EDITOR_COMMANDS = [
     { id: "openWhatsNew", title: "What's New", palette: true, sections: ["toolbar"], menuGroup: "settings", hostCapability: "hostSettings" },
     // The host application's own preferences, for a surface that IS an app
     // (Jot). Shares the `settings` group with the rows above because it names
-    // the same thing they do: the program, rather than this document.
+    // the same thing they do: the program, rather than this document. The
+    // title is the SETTINGS_TITLE_TEMPLATE expansion of JOT_PRODUCT_NAME, the
+    // way the row above expands PRODUCT_NAME, and is drift-guarded against the
+    // nls string and Jot's own NSWindow title.
     { id: "openHostPreferences", title: "Birta Jot Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC

@@ -13,6 +13,21 @@
 export const PRODUCT_NAME = "Birta Writer";
 
 /**
+ * Jot's name, as its own bundle says it: the app in `/Applications`, the
+ * folder it keeps notes in, and the menu it hangs off the menu bar.
+ *
+ * Separate from PRODUCT_NAME because the settings row that names Jot names a
+ * different program from the one that names the extension, and both expand
+ * through SETTINGS_TITLE_TEMPLATE. Three surfaces carry that expansion as a
+ * literal (the command table, package.nls.json and the NSWindow title in
+ * `jot/Sources/BirtaJot/SettingsWindow.swift`), and the drift test in
+ * `shared/__tests__/editorCommandsContributions.test.ts` holds all three to
+ * this constant. The fourth, `e2e/jotHost/checks.mjs`, is an assertion rather
+ * than a declaration, so it fails on its own when the label moves.
+ */
+export const JOT_PRODUCT_NAME = "Birta Jot";
+
+/**
  * The published release history, opened by the gear menu's What's New row.
  *
  * Rung 0b of the network posture (`docs/NETWORK_POSTURE.md`): nothing is

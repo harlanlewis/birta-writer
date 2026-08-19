@@ -6,7 +6,7 @@
 
 ### Changed
 
-- The gear menu's row for Jot's settings, and the title of the window it opens, are called Birta Jot Settings again. One release called them Writer Jot Settings, which named the app by a name nothing else uses: the app in Applications, its menu-bar menu and the folder it keeps notes in all say Birta Jot.
+- The gear menu's row for Jot's settings, and the title of the window it opens, are called Birta Jot Settings again. One release called them Writer Jot Settings, which named the app by a name nothing else uses: the app in Applications and the folder it keeps notes in both say Birta Jot.
 
 ---
 
