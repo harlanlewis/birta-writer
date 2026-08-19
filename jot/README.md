@@ -1,6 +1,6 @@
 # Birta Writer Jot
 
-A hotkey-summoned macOS scratchpad running Birta Writer's real editor: full rendering, slash commands, block drag, inline calc, from the first keystroke. It is a menu-bar agent (no Dock icon) that keeps the editor warm in a floating panel and hides it again on demand. The product decisions live on MAR-370; this file is how to build, run and check it.
+A hotkey-summoned macOS scratchpad running Birta Writer's real editor: full rendering, slash commands, block drag, inline calc, from the first keystroke. It is a menu-bar agent (no Dock icon) that keeps the editor warm in a panel and hides it again on demand. The panel can be told to stay above other applications' windows, and by default does not: a window that will not go behind anything is a window you fight, and the hotkey brings it back in one keystroke. The product decisions live on MAR-370; this file is how to build, run and check it.
 
 Jot ships zero behavior the extension lacks. It loads the same `dist/webview.js`, with `webview/ui/hostPalette.css` in place of the palette VS Code injects and a host-capability profile (`shared/hostCapabilities.ts`) that leaves out what only means something inside VS Code: the raw markdown view, the settings UI, proofreading, the read-only toggle, the TOC sidebar. Images are in, because the shell has its own store for them (see "Images" below).
 
