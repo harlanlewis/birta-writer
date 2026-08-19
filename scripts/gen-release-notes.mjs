@@ -116,7 +116,9 @@ export function mergeByHeading(sections) {
       if (heading) byHeading.get(heading).push(line);
     }
   }
-  if (!order.length) return sections.join("\n\n").trim();
+  // No headings on either side means both are the no-user-visible-changes
+  // marker, and printing it once per product would announce nothing twice.
+  if (!order.length) return [...new Set(sections)].join("\n\n").trim();
   return order
     .map((h) => `${h}\n${byHeading.get(h).join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}`)
     .join("\n\n")

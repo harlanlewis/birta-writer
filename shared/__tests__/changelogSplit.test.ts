@@ -68,6 +68,28 @@ describe("the changelog split", () => {
         expect(entries(jot).length).toBeGreaterThan(10);
     });
 
+    it("neither changelog should have a heading or rule glued to the line above it", () => {
+        // Markdown reads `---` directly beneath a line of text as a setext
+        // heading marker, and a `####` with no blank line above it lands inside
+        // the list item it follows. Both render wrongly on the Marketplace
+        // Changelog tab while looking almost right in a diff.
+        //
+        // The split shipped 16 of the first and 4 dropped `####` headings,
+        // because the migration ran a LINE-level parse that treated `---` and
+        // `####` as continuations of the entry above. Neither the suite nor the
+        // content check caught it: that check filtered lines starting with `-`,
+        // which silently excluded `---` as well.
+        for (const [name, text] of [["CHANGELOG.md", extension], ["jot/CHANGELOG.md", jot]] as const) {
+            const lines = text.split("\n");
+            const glued = lines.flatMap((line, i) =>
+                i > 0 && lines[i - 1]!.trim() !== "" && (line === "---" || /^#{2,4} /.test(line))
+                    ? [`${name}:${i + 1} ${line.slice(0, 40)}`]
+                    : []);
+            expect(glued, `structure glued to the line above: ${glued.join(", ")}`).toEqual([]);
+            expect(lines.length).toBeGreaterThan(20);
+        }
+    });
+
     it("Jot's changelog should be excluded from the VSIX", () => {
         // Via `jot/**` rather than a rule of its own; if that line ever goes,
         // this file starts shipping to the Marketplace again.

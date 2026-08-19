@@ -73,7 +73,6 @@
 - With a run of blocks selected, a covered block that scrolls into view now surfaces its gutter marker like the others; a block whose gutter chrome was built after the selection was made kept its marker hidden.
 
 - Closing the keyboard shortcuts panel by clicking into a text field elsewhere leaves the focus where you clicked, instead of bouncing it back into the editor.
----
 
 ---
 
@@ -130,7 +129,6 @@
 - The AI vocabulary check stops flagging "underscore" and "showcase" used as nouns (the `_` character, a file called showcase.md); the verb forms ("underscores the", "showcasing") are still flagged. Measured over the fidelity corpus, those two nouns were nearly every hit the check produced on human prose.
 
 - The bundled attribution appendix (`licenses/THIRD_PARTY_LICENSES.md`) now records the licenses that live inside packages rather than on their manifests: the KaTeX fonts inlined into the math stylesheet are SIL Open Font License 1.1 and ship with their notice and the license text; cytoscape's two embedded MIT snippets, the ColorBrewer schemes inside d3-scale-chromatic (Apache-2.0) and GeographicLib inside d3-geo (MIT) are named on their packages' entries. Anyone auditing the VSIX for its licenses was told MIT or ISC and nothing else for those four.
----
 
 ---
 
@@ -187,7 +185,6 @@
 - The pinned heading at the top of the screen keeps its collapse chevron hidden until you point at it. Scrolling into a section pins that section's heading under the toolbar, and the pinned copy carried a chevron at all times, while the real heading in the document reveals one only on hover. Both now follow the same rule, and the pinned copy honors `editor.showFoldingControls` in all three of its values rather than only in `never`. It honors it independently of `birta.blockHandles`, which governs the level badge beside it: setting the chevrons to show always no longer leaves them hidden on the pinned heading because block handles were set to hover, which is how the two settings already composed in the document. A folded section keeps its chevron, since that is state rather than a control. Clicking the chevron collapses the section and scrolls its heading back up into place, as before.
 
 - Selecting text inside a `calc` block's ledger no longer loses the selection partway through the drag. Pressing in a ledger row and dragging quickly across it, when the editor did not already have focus, could leave the selection wiped and nothing to copy. Since a ledger click deliberately leaves the editor inert, the unfocused case was the common one: the first drag after opening a document, and every drag after a previous ledger click.
----
 
 ---
 
@@ -238,7 +235,6 @@
 - Adding a paragraph and deleting it again leaves the file exactly as it was. Deleting a paragraph's text used to leave two blank lines where it had been, and those blank lines stayed: they reached the file on a save that landed while the emptied line still existed, and no later save could take them out again, because the editor deliberately preserves your own blank-line spacing and could not tell yours from these. No content was ever lost, but a document you only visited came back with spacing you did not write, and a diff carried noise you did not author.
 
 - Making Birta your default Markdown editor by setting `workbench.editorAssociations` now sticks. Opening the editor used to silently delete a user-authored `*.md` association on activation, assuming the entry was its own leftover, so the standard VS Code way of choosing a default editor quietly undid itself. The editor now removes only entries it wrote itself, and it no longer rewrites your settings file on activation when nothing changed.
----
 
 ---
 
@@ -267,7 +263,6 @@
 ### Security
 
 - The Mermaid diagram renderer is updated to 11.16.1, closing several flaws reachable from diagram text in a Markdown file you open. A crafted XY or radar chart could freeze the editor pane in an infinite loop, and crafted diagram text could tamper with the renderer's configuration objects or apply stray styling to content next to the diagram. None of these could run script, read files, or reach outside the editor pane; a defence already in place blocked the script paths, so the worst outcome was a frozen or misrendered pane, recovered by closing the tab.
----
 
 ---
 
@@ -304,7 +299,6 @@
 - A block taller than the window keeps its controls reachable. A table's column handles sit on its top edge, and the buttons for a picture, a table or a code block sit just outside its top right corner, so scrolling down into a long table or a full-page image carried every one of them off the top of the window: the column you were looking at could not be selected, and the picture filling your screen could not be resized, zoomed or opened full screen. Those controls now travel with the block, staying just below the toolbar and clear of the floating section title, for as long as any of the block is on screen, and leaving with it once it has scrolled past rather than lingering over whatever follows. A code block dragged taller than the window keeps its language pill the same way.
 
 - Nested list items are spaced like every other list item. A sub-item sat about twice as far below its parent line as a sibling item did, because the space under the parent's line and the space above the nested list were both being applied where only one was wanted. A single step now separates every line in a list at any depth, and the same step separates a second paragraph, a quote, a callout or a code block written inside an item, which used to take the wider spacing meant for blocks between paragraphs. A quote or callout keeps its own inner padding, so it still reads as a box rather than as another line.
----
 
 ---
 
@@ -325,7 +319,6 @@
 - The bullet character you type is now honored wherever you type it. Typing `* ` on the line below a `-` list used to continue that list and silently drop the character, even though those same two lines read from a file are two separate lists; it now starts a second list spelled `*`. The ordered delimiter follows the same rule, so `2) ` below a `1.` list keeps its `)`. Typing the character the list above already uses still continues that list, as it did before. Two related cases come with it, because the rule is about the character rather than about typing: deleting the paragraph between a `-` list and a `*` list used to merge them and drop the `*`, and pasting a `*` list directly below a `-` list did the same. Both now keep the two lists. Merging two differently spelled lists is still offered, in the block menu and as a quiet prompt at the cursor, so what changed is that it is no longer done for you unasked.
 
 - The same rule now reaches the head of a list item, which is where the change above left off and the place you are most likely to reach by accident. Typing `* ` at the head of an item in a `-` list used to be written to your file as escaped text, and now splits that item out as a `*` list; `2) ` at the head of an item in a `1.` list keeps its `)` the same way. To type those characters literally there, type them and then press Backspace, which puts them back as text just as it does after a numbered-list shortcut. One case comes with it: typing the character that a neighbouring list already uses now merges into that list, where it used to leave a pair Markdown has no way to spell and rewrite the untouched neighbour's own marker line to keep the two apart.
----
 
 ---
 
@@ -352,7 +345,6 @@
 - A full-screen diagram keeps its pan pad and gains a real fit-to-view. The pad was in the page but not full screen, which is backwards: full screen is where there is most to move around in.
 
 - Images and embedded players still dim the page behind them, and now do it properly. That wash was also mixed from the editor background, so on a dark theme it barely dimmed anything; it is a neutral dark scrim on every theme, the way a photo viewer dims. For a player we deliberately add nothing but Close, and we keep it out of the frame: YouTube and Figma put their own controls in their own corners, and ours should not land on top of them.
----
 
 ---
 
@@ -383,7 +375,6 @@
 - Moving a block could save a code block as ordinary prose. The trigger is narrow and the loss is not: when a file holds a code block written in the indented style, which the editor preserves byte for byte because it cannot re-create it, a move that lands a list item directly above it leaves those bytes reading as part of that list item instead of as code. The file looked correct in the editor and reopened with the code demoted to a paragraph. The editor already checked its saved output against its own rendering, but this damage was present in both, so the check agreed with itself and passed. It now separately confirms that the version it is about to write still holds as much code as its own rendering does, and where it holds less it writes its own version instead. That fallback costs the byte-for-byte preservation for that one save, so a construct the editor cannot re-create exactly may come back re-spelled; this check is deliberately narrow enough that it did not fire once across 285 block moves over our test corpus.
 
 - An ordered list that does not start at 1 could be destroyed by dropping it into a list item. Markdown only lets an ordered list begin in the middle of a paragraph when its first number is 1, so a list starting at 5 written directly beneath a line of text is not a list at all, it is more of that text. Dropped into an item this way, `5. five` reopened as literal text on its own line and the list was gone. Nothing refused the drag and nothing warned. Such a list is now written with a blank line above it, which is all it needs to start a list again. The start number is the whole of it: the same list starting at 1 was always safe, and neither the indentation nor the `.`-versus-`)` spelling ever mattered. The same missing blank line was also found between a link definition and such a list, and is fixed with it.
----
 
 ---
 
@@ -392,7 +383,6 @@
 ### Fixed
 
 - Moving a block within a tab-indented outline could corrupt the saved file in three ways the previous fix did not reach: a moved sublist could nest one level too deep, an unrelated table could degrade into a run of loose text lines, and pulling a paragraph out of a quote inside a list could leave a stray marker that broke the list open on reopen. A tab is resolved by the real Markdown reader at the next four-column stop rather than as a fixed width, and a move can place a line beside a neighbour whose content starts inside the span a tab jumps over. The save now compares the nesting depth of what it is about to write against the editor's own rendering, and where they disagree it falls back to writing the editor's version. Know what that fallback costs: it rewrites the whole file, not the lines you moved, so a tab-indented outline comes back space-indented and table padding is re-spaced. On one of our own outline fixtures it fires on more than half of the block moves the document allows. Your content survives; your indentation style may not. Found by widening the nightly fidelity sweep rather than by any report.
----
 
 ---
 
@@ -411,7 +401,6 @@
 - An invalid Mermaid diagram froze the window on document open. A diagram Mermaid cannot parse (one mistyped bracket is enough) sent the renderer into an endless retry the moment the preview first drew it, on the same thread everything else runs on: the window stopped responding before the first keystroke. A failed render now settles on an error card showing Mermaid's own parse message, and attempts a render again only after the diagram's text or the effective theme changes. The fullscreen view also stops opening on the error card as though it were a diagram.
 
 - Moving a block within a tab-indented outline (the Logseq convention, where indentation is the block tree) could silently flatten the moved list's nesting in the saved file. The moved lines were written with the editor's space indentation while the untouched lines around them kept their tabs, and a tab is four columns against the editor's two, so the file reopened with the moved sublist one level shallower. The document looked right on screen and was wrong on disk. The save now writes moved lines the way the file itself spells that depth, learned from the document's own round trip. Where the file has never spelled that depth, or spells it two ways, the moved lines keep the editor's own indentation rather than a guess at yours. The one gesture known to reach this was the new in-item drop target above, which was withheld until this was fixed, but other block moves in tab outlines could plausibly reach the same splice.
----
 
 ---
 
@@ -458,7 +447,6 @@
 - Splitting a highlight in two keeps both halves highlighted. Pressing Enter inside `==one two==` previously produced `==one ==`, which reopens as ordinary text with the `==` visible, so the highlight was gone from the file.
 
 - The release notes you read when the extension updates carry every kind of change. A Security, Removed, or Deprecated note had no section to land in. Worse, when the notes were generated without an API key the changelog was not read at all, so a reviewed Security note was dropped and a raw commit subject published in its place.
----
 
 ---
 
@@ -491,7 +479,6 @@
 - A spaced-out list inside a blockquote offers to tighten it, rather than to loosen it again. Blockquote lists without a sublist, and lists outside a blockquote, always read correctly.
 
 - Outdenting a bullet by moving it leaves the bullet below it where it was. In a tab-indented outline the moved line previously took the editor's own indent, so the bullet below could be swallowed as a child. Across 2,471 moves over thirteen outline shapes and six test documents, this halves the remaining losses from ten to five.
----
 
 ---
 
@@ -514,7 +501,6 @@
 ### Security
 
 - A crafted diagram can no longer style or deface the editor around it. A `.md` file you opened could use Mermaid `classDef` values to apply arbitrary CSS to the editor surface, or inject DOM that escaped the diagram's SVG: page defacement, tracking pixels via `url()`, and attribute exfiltration through `:has()` selectors. Script execution was already blocked. A gantt chart that excluded every day of the week could also spin the renderer forever, hanging the document. Diagram rendering is updated past all three, and the sanitizer behind inline HTML alongside it.
----
 
 ---
 
@@ -525,6 +511,8 @@
 - Calculator results follow the convention most other calculators use, and where no convention wins Birta declines to answer. `%` is floored modulo, carrying the sign of the divisor, so `-10 % 3` is `2` (as in `MOD` in Excel and Sheets, Python, Ruby and Wolfram) rather than JavaScript's truncating `-1`. `round` sends halves away from zero, so `round(-2.5)` is `-3` and `round(-x)` is always `-round(x)`. A bare `log(...)` computes nothing at all, because it means base 10 in spreadsheets, Desmos and every pocket-calculator LOG key, and the natural log in Python, R, Mathematica and JavaScript; `log(100) =>` offers both readings with the value each gives, and picking one rewrites the equation to `log10(100)` or `ln(100)`. In a ` ```calc ` block that line takes the quiet error dash, and its tooltip says what to write instead. `log10`, `log2`, and `ln` are unchanged, as are the conventions now written down: trig is in radians, `^` is right-associative, and `-2 ^ 2` is `-4`. Answers you already accepted are left exactly as they are, so nothing is rewritten, withdrawn, or flagged behind your back; re-accept the equation if you want the new reading.
 
 ### Fixed
+
+#### Saving and round-trip
 
 - Splitting a paragraph in two now reaches the file. In a paragraph whose source is wrapped across several lines, the ordinary shape of hand-written Markdown, putting the caret mid-paragraph and pressing Enter looked right on screen and then was not saved, and reopening showed one paragraph again with nothing to say an edit had been dropped. Splits now save, in plain paragraphs and inside list items, blockquotes, and tab- or space-indented outlines, and so does the reverse: joining two paragraphs back into one is written back instead of silently reverting. Spacing you wrote yourself is still never rewritten. One related case is not fixed: splitting inside a loose list, one with blank lines between its items, still writes the new item glued to the one above, so that pair comes back tighter than the rest of the list.
 
@@ -539,6 +527,7 @@
 - Moving a bullet whose content is a table keeps the table. In a tab-indented outline, the Logseq shape, dragging or Alt+moving such a bullet brought it back as three lines of literal pipe text. The rows now re-base to the depth the bullet lands at, and the outline's own tabs are untouched.
 
 - Editing near a `$$` math block leaves it where it is. A math block written directly against its neighbouring text had a blank line inserted there the first time you edited anything else in the document, and an empty block was at risk of losing the blank line that is its entire content. An untouched math block now keeps its exact bytes however you edit around it. A line that merely starts with inline math (`$$x$$ ...`) is still ordinary paragraph text.
+
 #### Editor surface
 
 - Clicking a code block's controls parks the editor instead of leaving a live caret in your text. The caret stayed where it had been in your text, so the next Enter split a paragraph somewhere else in the document with nothing on screen to show it. The editor now goes inert when you click a rendered diagram or formula, and when you click any of the block's chrome: the language pill, the copy, preview-toggle, word-wrap, width and fullscreen buttons, and the resize handle. Worst of the set, and also fixed: opening a diagram fullscreen left the editor typing into the document behind the overlay. Clicking the code itself still puts the caret in the code.
@@ -546,7 +535,6 @@
 - A selected horizontal rule shows the same selection ring as anything else. Pressing Arrow onto a `---`, or clicking it, selects it, and the next character you type replaces it; the only cue was previously a one-pixel line changing colour, while a link reference definition showed a full ring for the same state. The behaviour is unchanged, and one undo still brings the rule back.
 
 - Menu group dividers stay visible in a tall menu. In a menu long enough to be capped and scrolled, the one-pixel rule was squeezed to nothing, so the block menu lost the line between its groups and the toolbar's Checks menu had no rule under Highlight note markers. Dividers now hold their line at any menu length.
----
 
 ---
 
@@ -571,7 +559,6 @@ _No user-visible changes; internal work only._
 - The inline calculator answers an expression with an unclosed parenthesis in front of it. `here's the formula (3+7=` offered nothing. An unmatched leading paren is now read as the prose punctuation it is, so the answer arrives and the paren stays where you typed it (`(3+7= 10)`). The same fix covers the `=>` form. Everything refused before still is: an unmatched paren inside the expression (`2*(3+7=`) means you are mid-formula, a run glued to a letter (`f(3+7=`) is a function call, and a trailing unmatched `)` reads as the tail of something larger.
 
 - The inline calculator's `=` works inside a code span. Typing `` `3+7=` `` offered nothing, because the suggestion machinery refused inline code outright. The answer is now offered as usual and lands inside the span. The richer `=>` form deliberately still declines there: its answers are kept alive against definitions elsewhere in the document, and that maintenance cannot see inside a code span. Also unchanged: a fenced code block never computes, and a `name = value` line in backticks is still source, not a variable definition.
----
 
 ---
 
@@ -580,6 +567,8 @@ _No user-visible changes; internal work only._
 The first public release, and Birta Writer's first version on the VS Code Marketplace.
 
 ### Added
+
+#### Fidelity, privacy, and trust
 
 - Byte-faithful round-trips. Untouched lines are preserved exactly, and constructs the editor cannot re-emit byte-for-byte (reference links, wikilinks, callout markers, tight lists, Notion asides) are pinned to their saved bytes, so editing one part of a file never rewrites another.
 
@@ -596,6 +585,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Crashes surface instead of going silent. If the editor's rendering layer hits an unexpected script error, VS Code shows an error notification, deduplicated and capped per session, rather than the editor quietly stopping. Your document and its native save path are unaffected either way.
 
 - Restore Previous Content is a last-resort recovery command. If a single editor update ever removes a large share of a document's lines, the extension quietly keeps the prior text in memory, and the command swaps it back; running it again swaps back the other way. The kept text survives closing the editor tab but not a VS Code restart, and nothing is written anywhere or sent off the machine. VS Code undo and hot exit remain the primary recovery paths.
+
 #### Editing
 
 - WYSIWYG Markdown editing. Open a `.md` file as rich text and save standard Markdown back. The editor is backed by a real VS Code text document, so it carries native dirty state and saves through VS Code's own `files.autoSave` and Cmd+S with no separate save timer. Toggle to Raw Markdown and back at any time.
@@ -621,6 +611,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Browse for a link target with the OS file picker. The link editor's URL field gains a folder button that opens your system's file dialog, anchored at the document's own folder. The picked file lands in the field as a document-relative path, and nothing is written to the document until you confirm with Enter or click away.
 
 - Section links follow a heading rename. Rename a heading and every same-document `[text](#slug)` link pointing at it is repointed automatically, in the same undo step. Only the target slug changes, and duplicate-heading `-N` slugs stay consistent. Moving a heading without changing its text rewrites nothing, and a link to a heading you delete is left exactly as typed and flagged Heading not found in the link popup rather than silently repointed. On by default (`birta.autoUpdateAnchors`).
+
 #### Paste and clipboard
 
 - Paste Markdown as Markdown. Pasting plain text that carries Markdown syntax becomes real nodes: `# Title` is a heading, `- item` a list, a double-asterisk run bold. That text previously landed literally and was escaped back out on save (`\# Title`). Pasting from a browser or word processor is unchanged, and a paste inside a code block is always literal. A lone block pasted mid-sentence still merges as text, and becomes a heading when it lands on an empty line. Paste as Plain Text (⇧⌘V) pastes literally for one paste, and `birta.pasteFormat` set to `plainText` makes every paste literal. Pasting into a table cell keeps the table's shape: pasted blocks land as the cell's lines joined by line breaks instead of widening the table with junk columns or splitting it into fragments.
@@ -638,6 +629,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - A pasted or dropped image shows that it is saving, and says so if it fails. Until the save returned the editor said nothing, and nothing at all if it failed. A quiet inline pill now marks the spot while the save runs, only if it takes long enough to be worth saying, and a failure becomes a dismissable message naming the reason. Both are display only: a failed save leaves your document exactly as it was, with no stray undo step. The image lands where you pasted it rather than wherever the cursor moved to while it saved.
 
 - A dragged-in image shows where it will land. The drag draws the same accent insertion line a block drag draws, snapped to the boundary between blocks nearest the pointer, and the image lands there as a block of its own. Holding near the top or bottom edge scrolls the document. Hold ⇧ while you drag: that requirement is VS Code's, gated on ⇧ for every editor, and an extension has no way to waive it, so without ⇧ the file opens in a new tab. Pasting an image (⌘V) has never needed a modifier.
+
 #### Calculation
 
 - Inline calculator. Type an arithmetic expression with an equals sign at either end (`12 * 4 =` answers after it, `=5+7` answers before it) and the result is offered as a suggestion you confirm with Tab, leaving Return free. An Always insert result row, also the Toggle Calc Auto-Insert command and `birta.calc.autoInsert`, switches to insert-on-`=`. Everything inserts as plain text. It supports `+ - * /`, `%` for modulo, exponents (`^`, a doubled asterisk, or superscript digits), parentheses, decimals, and unary minus, plus the Unicode operator glyphs and a lone `x` between numbers as multiplication (`1024x768 =`). Only pure arithmetic is evaluated, and detection refuses any run that would compute a different question than the visible one. Answers are rounded for display, at most 6 decimals, and refused when they cannot print truthfully. An existing `expr = answer` stays maintained as you edit the expression, and editing the answer is always your override. On by default (`birta.calc.enabled`).
@@ -647,6 +639,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Calculation blocks. A fenced ` ```calc ` block is a live worksheet: every line is computed under one shared, top-to-bottom scope and shown in a two-column ledger, source on the left and value on the right, that recomputes as you type (` ```calculation ` works as an alias). Define variables with `name = value` and reuse them below, convert units offline (`3 km in mi`, `1 GB in MB`), and annotate with `#` or `//` comment lines. A bare number or prose shows no value, while a line that reads as a formula but cannot compute shows a quiet dimmed dash; prose compounds like `T-1000` never trip it. A rounded value offers its full-precision number on hover, and the ledger's text is selectable. The source is never rewritten and results live only in the rendered view, so the block round-trips byte-for-byte as ordinary Markdown. Its switch, `birta.calc.blocks.enabled` (on by default), is independent of the inline `birta.calc.enabled`.
 
 - Stale and broken living-calc answers are visibly flagged. When an accepted `=>` answer stops matching the document and the editor deliberately will not rewrite it (the definition changed in the raw editor or a git checkout, the equation moved above its definition, or the file arrived that way), a faint warning tint on the number means stale, and the same tint with a strikethrough means broken. Click the number for the explanation and the actions: Update rewrites it, Remove answer leaves `expr =>` ready to re-answer, and Ignore silences that equation for the session. Nothing touches the file except those clicks, each a single undo step. Only answers with an outside premise are ever flagged: plain `=` equations and constant-only arrows are yours, and a definition you are mid-way through retyping never flags its dependents. The scan runs on idle after the editor is interactive; with `birta.calc.enabled` off it costs nothing.
+
 #### Blocks and syntax
 
 - Tables. Google-Docs-style overlay chrome (row and column grips, hover insert bars, drag-to-reorder) and per-column alignment with GFM markers that round-trip faithfully.
@@ -668,6 +661,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Paste a bare URL to get a titled link. With nothing selected, pasting a bare URL inserts a link and, when network features are enabled, fetches the page's title and offers it as the link text: take the prompt and the link becomes `[title](url)`, ignore it and the plain link stays. Nothing is written to your document until you accept, because a network reply landing seconds after you paste should not quietly edit your file; `birta.pasteUnfurl.autoApply` (off by default) switches to applying titles the moment they arrive. The fetch requests only the URL you pasted, reads the title from its HTML with no third-party service, and keeps the plain link when the page is offline or untitled. It refuses local and private-network addresses outright (localhost, `192.168.*`-style ranges, cloud metadata endpoints) and re-checks every redirect against the same rule. With `birta.network.enabled` off, the default, the paste makes no request and a dismissable prompt offers to turn network features on. The feature also has its own `birta.pasteUnfurl.enabled` (on by default). A link that renders as an embed card is left to the card.
 
 - Frontmatter panel. YAML metadata edits as a borderless key/value grid, list values become removable chips with workspace-wide autocomplete, and the panel collapses (`birta.frontmatterExpanded`) with full keyboard, undo, and screen-reader support. A document without frontmatter opens with no panel at all by default. Turn on `birta.frontmatterAddButton` and such a document shows a quiet Add metadata button instead: committing the first field inserts the fenced block at the top of the file, while abandoning the empty row leaves the document untouched. The Edit Frontmatter command starts the same flow either way.
+
 #### Layout and appearance
 
 - Customizable toolbar. Show, hide, and reorder every item (`birta.toolbar.items.*`), or hide the whole bar; hidden actions stay reachable from the slash menu. Quote, Lists, and Code dropdowns group related inserts, and the bar highlights whatever the cursor is in.
@@ -693,17 +687,20 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Live theme following. The editor always matches your active VS Code color theme, recoloring on theme and OS light/dark switches, Mermaid diagrams included.
 
 - Keyboard-first. A Keyboard Shortcuts Help cheatsheet, plus command-palette entries for fonts, checks, and view toggles. UI-level actions are contributed VS Code keybindings, rebindable in the Keyboard Shortcuts editor: the list and heading chords, find and its navigation, Replace, Insert/Edit Link (⌘K), Delete Block (⌘⇧K), Fold/Unfold, Open Block Menu (⌘.), Go to Symbol, and the Raw Markdown switch. The typing-level grammar keeps a fixed chord set, including formatting (⌘B, ⌘I, ⌘E, ⌘⇧X), undo and redo, block move and duplicate, block selection, and insert paragraph above or below. Those defaults cannot be reassigned, but each except undo and redo has a palette entry you can bind an additional chord to.
+
 #### Writing assistance
 
 - Proofreading, offline. Spelling, a Harper-backed grammar engine, and style checks (fillers, clichés, wordiness, passive voice, AI-tell vocabulary, em-dash and punctuation, and more) underline issues inline; click one for a popup with a one-click fix, Ignore, or Add to dictionary. A unified Checks menu groups them under a master Proofreading switch (`birta.proofreading.enabled`), and each check toggles individually. It runs entirely offline, is decoration-only, and loads after the editor is interactive, so a check you have turned off costs nothing.
 
 - A review sidebar with Links, Notes, and Proofreading tabs. The table-of-contents drawer is now a review panel, and a review tab appears only while it has entries. Links lists every link in the document (inline, autolink, reference, and wikilink) grouped by destination, with the URL beside the title and an Open action that follows the link from the sidebar. Notes lists the editor-note markers you leave for yourself while drafting, each clickable to jump to; a note is document content, so clearing one means editing the document. Add your own with `birta.notes.customMarkers`, where a plain token like `DRAFT` matches only as a whole word. Proofreading lists every current finding with the same Ignore, and Add to dictionary for spelling, it offers inline. All three lists group by type under collapsible headers by default, with a By type / In order toggle (`birta.review.groupByType`), and jumps land with a couple of lines of lead-in context. The Contents tab's outline is foldable, view only, so it never folds the document. Inside the sidebar everything is keyboard-navigable, and Escape hands focus back to the editor; getting to the sidebar from the text still needs the mouse, because Tab is the editor's own indent key. Only the tab you are viewing does any work, and the has-entries checks run on idle, never while the document is opening or you are typing.
+
 #### Coding-agent integration
 
 - Share your file and selection with AI coding agents. An agent (Copilot, Cursor, the Claude and Codex sidebars, and others) normally cannot see which file you have open or what you have selected while you are in the WYSIWYG editor, because VS Code hides a custom editor from its active-editor API. Three ways to close that gap:
     - A precise clipboard reference, one click away. Select text and the floating palette's AI button puts a `path.md#L12-L20` reference on your clipboard (hide it with `birta.floatingToolbar.items.agentReference`). The same Copy Reference for AI Agent and Copy Selection + Reference for AI Agent commands sit at the top of the right-click menu and in the palette; the second quotes exactly what you selected below the reference as a fenced block of real source markdown, trimmed to your selection's exact start and end even mid-line.
     - A Language Model Tool (`#birtaSelection`) lets Copilot agent mode, and any tool-using agent, pull your current file, caret, and selection on demand. Requires VS Code 1.95+.
     - A public extension API (`getActiveEditorContext()`, returned from `activate()`) lets any cooperating extension read the same live file and selection.
+
 #### Platform
 
 - Remote workspaces. Works in Remote-SSH, WSL, and Codespaces.
@@ -713,6 +710,8 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - A hard fork, in English, source-available under the Functional Source License (FSL-1.1-ALv2). It is free to read, run, modify, and self-host for any non-competing purpose, converting to Apache-2.0 two years after each release. Portions derived from the MIT-licensed project this one forked from remain under that license; see `LICENSE`, `NOTICE`, and `LICENSE-MIT`.
 
 ### Changed
+
+#### Performance
 
 - Selecting blocks costs far less on a long document. Selecting a run of blocks, an image, a horizontal rule, or a range of table cells made the editor restyle the entire document, about 170 ms on a 300 KB file and again when the selection was released; it is now under 5 ms, and the total time the editor spends blocked across a burst of selections dropped by about 75%. The same cost hit every arrow key that lands the caret in the gap beside a table or code block. Nothing looks different.
 
@@ -727,6 +726,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Typing in very large documents is lighter with the outline panel showing. Every keystroke used to recompute the whole table of contents even when the edit could not have changed it. Ordinary typing in body text now skips that recomputation, measured as about a third less total typing stall on a 300 KB document, while edits that touch a heading still update the outline right away.
 
 - Drag auto-scroll holds 60 frames a second on very long documents, and starts where the text does. On a synthetic 15,000-block document, holding a drag near an edge managed about 5 frames a second, so the drop line lurched instead of tracking the pointer; at that size it now holds a steady 60, around eight times the travel for the same gesture. The top scroll band begins at the toolbar's lower edge rather than the very top of the window, so the drag no longer starts creeping upward while the pointer is still well inside the text. Both apply to every drag in the editor.
+
 #### Editing and keyboard
 
 - Backspace at the start of a nested list item joins it onto the previous line. The item break is deleted like a text editor joining lines: the item's text lands at the end of the line above and its sub-items follow one level up, instead of the old outdent-one-level-per-press. Cmd+Backspace on an already-empty item deletes the item and returns the caret to the previous line instead of doing nothing. Top-level items are unchanged: Backspace at their start still removes the bullet. The join only ever targets a paragraph, and an item sitting below a code block outdents instead, so a keystroke can never pour prose into the code.
@@ -742,6 +742,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - `birta.calc.enabled` applies to open editors immediately. Flipping the inline-calculator switch reaches every open editor live, instead of waiting for the file to be reopened.
 
 - Reordering a heading in the outline sets its level to match where you drop it. Drop onto a heading to make the section its child, or on the line between headings to make it a sibling of the heading below. The whole subtree moves with it and shifts by the same amount, and levels that would pass H6 stop there. A drop whose position already matches the section's level leaves it untouched, and the whole thing is one undo step. Dropping onto a collapsed section files it inside and opens the fold to show where it landed. Dragging a heading's gutter handle in the document is unchanged and stays a literal move.
+
 #### Round-trip fidelity
 
 - Nesting one `:::` directive inside another survives a save. Moving a `:::note` or `:::info` admonition into another directive writes the outer fence longer than the inner (`::::` around `:::`, the CommonMark convention), so the inner block reopens as a directive instead of flattening to plain text.
@@ -751,6 +752,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Moving a block between callouts keeps both callouts whole on reopen. Dragging a paragraph out of one callout or blockquote and into another left a stale blank line where the emptied one sat, so on reload the destination callout was split in two and the moved block landed in a plain blockquote.
 
 - Moving a block keeps an escaped `\==highlight==` escaped. A hand-escaped highlight literal kept as plain text re-serializes with its backslash intact, instead of dropping the `==` bytes and turning into a highlight on reopen.
+
 #### Chrome and panels
 
 - The editor chrome shares one visual system. Buttons, menus, popups, and panels across the toolbar, find bar, table of contents, link editor, image and selection toolbars, code-block headers, and the metadata panel draw from a single set of corner radii, text sizes, and hover behaviors, and menu rows and their group headings share one row anatomy. Customize Toolbar joins the system: its Done button matches the standard filled-button style, and the Hidden tray wears a faint diagonal-stripe pattern so "off the bar" reads differently from the two placement areas. Most differences were a pixel of drift; the visible ones are cohesive corners on floating menus and consistent feedback on small icon buttons.
@@ -782,6 +784,8 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Diagrams fit at up to 100% and follow the pane. Fit-to-view no longer enlarges a small Mermaid diagram past its natural size to fill the preview, inline or fullscreen, so zoom in manually when you want it bigger. Diagrams refit when the pane is resized, unless you have panned or zoomed by hand.
 
 ### Fixed
+
+#### Files and saving
 
 - A file written with Windows line endings keeps its CRLF endings throughout. In a `.md` file saved with CRLF endings, typing a single character rewrote the paragraph you edited, and the blank lines around it, with Unix LF endings while the rest of the file kept its CRLF. Every line you do not touch now keeps the exact ending it was written with, an edited line keeps its own, and a line you add takes the ending the rest of the file uses. The same fix restores the other formatting guarantees on these files: a stray `\r` also defeated the checks that recognize a divider or an underlined heading, so a CRLF file's `- - -` divider was rewritten to `---` on an unrelated edit where an identical LF file's was left alone.
 
@@ -816,6 +820,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - A save after a failed editor rebuild writes the document's own current bytes. If rebuilding the editor for an external file change failed partway, the editor showed blank, and a Cmd+S in that state answered the save with the previous document's bytes, quietly reverting the on-disk file. A failed rebuild now leaves the save pipeline inert, and the editor recovers on the next successful open.
 
 - Cmd+S always saves what you just typed. A save could silently do nothing and leave your latest keystrokes unwritten: the editor took about 200 ms to register an edit with VS Code, and typing continuously never registered at all, so saving mid-flow could write nothing no matter how long you had been typing. The same delay bounded how much recent work VS Code's crash backup held. An edit now registers within a frame.
+
 #### Editing and typing
 
 - Typing above or below a table or code block stays outside it. A block that starts the document, ends it, or sits directly against another one had no caret position beside it, so arrowing or clicking toward that gap put the caret inside the neighbouring block and the next thing you typed landed in a table cell or a line of code. Those positions now exist and show a caret, and clicking the empty space above the content reaches the first of them. One related case is not fixed: pressing ↓ onto a horizontal rule still selects the rule, so a keystroke replaces it.
@@ -841,6 +846,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Path suggestions leave an IME's own keys alone. While composing with a Chinese, Japanese, or Korean input method, an open suggestion dropdown took Return and the arrow keys out of the whole editor, so choosing a candidate from the IME's own window either did nothing or picked a file. Composition keys now pass straight through, in every path field.
 
 - Suggestion dropdowns near the bottom of the window stay on screen. The path and image-path lists flip above the field when there is not room below, the way the link and slash menus already did. In the image path list, arrowing to a row while the pointer rested on another painted both as selected; the keyboard highlight is now the only one.
+
 #### Folds
 
 - Changing a heading's level keeps the content below it visible. If a folded section sat above, retyping a heading to a deeper level could pull that heading and its body inside the fold, where they were hidden with no warning. The fold now opens whenever an edit would grow it over content you could see.
@@ -850,6 +856,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Pasting into a collapsed list item's first line keeps the rest of that line where you can see it. Everything after the paste point, plus part of the pasted content, ended up hidden inside the fold. A fold now opens whenever an edit would grow it backward over content you could see, while ordinary edits in a collapsed item's visible line still leave the fold alone.
 
 - Moving a collapsed section leaves the destination's content outside its fold. Dropping a collapsed heading somewhere nothing out-ranks it silently swallowed every following block into the fold. If the fold would hide anything at the destination it did not hide before, it now opens instead.
+
 #### Editors and navigation
 
 - Switching between rich text and Raw Markdown keeps your cursor and your selection. The switch moved the view but never the caret, so arriving in rich text the first thing you typed went in at the very beginning of the file, and going the other way the raw editor opened at whatever line was mid-screen. Cmd+Shift+M, the toolbar's Edit Raw Markdown, and the right-click entry now carry the cursor, column included, in both directions. A selection survives too, drag direction included, even a block selection, which arrives in the raw editor as those blocks' whole source lines. The column holds inside formatted text; only where the two sides cannot be aligned, as with an image or math, does it fall back to the start of the line. Hard-wrapped paragraphs map line by line, tables map row by row with the column inside the right cell's text, and callouts, container directives, and Notion asides map their bodies and titles to the right lines. Both sides scroll the arriving cursor to the center of the view.
@@ -869,6 +876,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Find results stay current as you edit. The find bar computed its matches once per search, so deleting one of 15 matches kept showing 15, Find Next jumped to where matches used to be, and Replace All could rewrite the wrong characters. Anything that acts on a match now re-searches the live document first, and the count and highlights refresh shortly after you pause.
 
 - The outline updates as the document changes. The table of contents refreshed on the save cadence rather than on edits, so it could trail by several hundred milliseconds mid-burst and up to two seconds during continuous typing. It now reflects an edit on the next frame.
+
 #### Diagrams and previews
 
 - A Mermaid diagram you have edited re-renders exactly as it first rendered. Toggling a ` ```mermaid ` block to code, editing the definition, and toggling back often came back mangled whenever the diagram was not resting at exactly 100% zoom: node text clipped, boxes mis-sized, with reopening the file the only cure. Rendering now measures the diagram on a clean off-screen surface instead of inside the zoomed preview.
@@ -878,6 +886,7 @@ The first public release, and Birta Writer's first version on the VS Code Market
 - Switching a preview block between diagram, formula, and calculation languages switches the preview. Changing a ` ```math ` block's language to `mermaid` left the stale formula on screen while the diagram rendered into a hidden pane. Flipping to a previewable language while the block is empty drops to code mode so it stays editable.
 
 - Editing an image's path or caption from its toolbar shows a caret, and shows what you have selected. While the image stayed selected, its fields drew no text cursor and painted no selection highlight, so a select-all looked identical to having selected nothing.
+
 #### Panels and chrome
 
 - The table of contents snaps into place when a document opens. The panel's load-time reveal is meant to snap into place, but when the editor finished mounting inside a single frame it faded and slid in instead. A show or hide you invoke yourself still animates.
