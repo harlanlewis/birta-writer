@@ -11,6 +11,12 @@ import Foundation
 /// into a regular file. Every rule below exists to make the second case behave
 /// like an edit instead of a replacement, and each is at this choke point
 /// rather than at a call site so that a new caller cannot forget it.
+///
+/// One of the three is NOT fixed and cannot be: a real edit still publishes a
+/// new inode, because replacing by rename is what makes the write atomic. So a
+/// hard link to the file still breaks, and so do extended attributes, ACLs and
+/// BSD flags. Only the unchanged-content skip leaves an inode alone, and it
+/// does that by not writing at all.
 public enum AtomicFile {
     public enum WriteError: Error, Equatable {
         case cannotCreateDirectory(String)
@@ -75,10 +81,15 @@ public enum AtomicFile {
             // still a temp file, so the rename publishes a file that already
             // looks like the one it replaces rather than briefly not.
             _ = fchmod(fd, existing.mode)
-            // Best effort: giving a file away needs privilege we usually lack,
-            // and a preserved mode with the caller's ownership still beats
-            // refusing the write.
-            _ = fchown(fd, existing.uid, existing.gid)
+            // Best effort, and only when ownership could actually be read: a
+            // volume that reports none (exFAT, some network mounts) would
+            // otherwise have us ask to give the file to root, since 0 is what
+            // "unknown" would collapse to. Giving a file away needs privilege
+            // we usually lack anyway, and a preserved mode with the caller's
+            // ownership still beats refusing the write.
+            if let uid = existing.uid, let gid = existing.gid {
+                _ = fchown(fd, uid, gid)
+            }
         }
         if ok { ok = fsync(fd) == 0 }
         close(fd)
@@ -102,8 +113,9 @@ public enum AtomicFile {
 
     private struct Existing {
         let mode: mode_t
-        let uid: uid_t
-        let gid: gid_t
+        /// Absent when the volume reports no ownership; see the fchown call.
+        let uid: uid_t?
+        let gid: gid_t?
         let size: Int
         let isRegularFile: Bool
     }
@@ -121,8 +133,8 @@ public enum AtomicFile {
         guard let mode = (a[.posixPermissions] as? NSNumber)?.uint16Value else { return nil }
         return Existing(
             mode: mode_t(mode),
-            uid: uid_t((a[.ownerAccountID] as? NSNumber)?.uint32Value ?? 0),
-            gid: gid_t((a[.groupOwnerAccountID] as? NSNumber)?.uint32Value ?? 0),
+            uid: (a[.ownerAccountID] as? NSNumber).map { uid_t($0.uint32Value) },
+            gid: (a[.groupOwnerAccountID] as? NSNumber).map { gid_t($0.uint32Value) },
             size: (a[.size] as? NSNumber)?.intValue ?? -1,
             isRegularFile: (a[.type] as? FileAttributeType) == .typeRegular,
         )

@@ -83,11 +83,40 @@ export async function resolveBaseContent(
 
     try {
         return { ok: true, text: await run(["show", `HEAD:${relative}`], root), origin: "head" };
-    } catch {
+    } catch (error) {
         // `git show` fails identically for "not in HEAD" and "no commits yet",
         // and both mean the same thing to a reader: there is no earlier version.
+        //
+        // A failure to RUN git is a different thing entirely and must not wear
+        // that answer. Reporting a timeout or an oversized blob as "untracked"
+        // renders the whole document as inserted and puts "not yet in git" in
+        // the header, so the reader is shown a diff that is false with a
+        // caption positively asserting the wrong reason for it. Both are
+        // reachable: a HEAD blob over the buffer cap, and a cold object store
+        // or busy machine over the timeout.
+        const failure = transportFailure(error);
+        if (failure !== null) { return { ok: false, reason: failure }; }
         return { ok: true, text: "", origin: "untracked" };
     }
+}
+
+/**
+ * The reason a git invocation did not RUN, or null when git ran and simply
+ * answered non-zero (which for `git show HEAD:<path>` means the path is not in
+ * HEAD).
+ *
+ * Keyed on the two things `execFile` reports about the child rather than on
+ * stderr text, which is localized and version-dependent.
+ */
+function transportFailure(error: unknown): string | null {
+    const e = error as { killed?: boolean; code?: unknown } | null;
+    if (e?.killed === true) {
+        return "Git did not respond in time, so there is nothing to compare against.";
+    }
+    if (e?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+        return "This file's committed version is too large to compare.";
+    }
+    return null;
 }
 
 /**

@@ -229,13 +229,21 @@ describe("caretScrollMargin under typewriter mode", () => {
         const spec = createCaretScrollMarginPlugin().spec as {
             view?: (v: unknown) => { destroy?: () => void };
         };
-        return spec.view?.(view);
+        mounted = spec.view?.(view);
+        return mounted;
     }
 
     /** The ordinary scrolloff top inset, which every fallback case must return. */
     function standardTop(): number {
         return Math.round(40 + 36 + bodyLineHeightPx());
     }
+
+    // The plugin holds the live view in a module singleton, so a view mounted
+    // by one test is still mounted for the next one. Without this teardown the
+    // "no view mounted" case below runs with the PREVIOUS test's view attached
+    // and takes the non-empty-selection branch instead, which means deleting
+    // the `!view` guard it exists to pin leaves it green.
+    let mounted: { destroy?: () => void } | undefined;
 
     beforeEach(() => {
         document.body.innerHTML = "";
@@ -245,6 +253,8 @@ describe("caretScrollMargin under typewriter mode", () => {
     });
 
     afterEach(() => {
+        mounted?.destroy?.();
+        mounted = undefined;
         setTypewriterMode(false);
     });
 

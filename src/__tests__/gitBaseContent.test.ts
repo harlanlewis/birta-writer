@@ -65,6 +65,31 @@ describe("resolveBaseContent", () => {
         });
     });
 
+    // A git that did not RUN must not be reported as a file git has never seen.
+    // That answer renders the whole document as inserted and captions it "not
+    // yet in git", so the reader gets a false diff with a confident wrong
+    // reason. The test above uses a bare Error, which is what a non-zero git
+    // exit looks like; these two carry what execFile actually reports when the
+    // child was killed or outgrew the buffer, which is the only thing
+    // separating them.
+    it("git timing out should be unavailable rather than an empty base", async () => {
+        const killed = Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" });
+        const run = fakeGit({ toplevel: ROOT, show: killed });
+        const result = await resolveBaseContent(FILE, run);
+        expect(result.ok).toBe(false);
+        expect(result.ok === false && result.reason).toMatch(/did not respond/i);
+    });
+
+    it("a committed version too large for the buffer should be unavailable, not untracked", async () => {
+        const tooBig = Object.assign(new Error("stdout maxBuffer exceeded"), {
+            code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+        });
+        const run = fakeGit({ toplevel: ROOT, show: tooBig });
+        const result = await resolveBaseContent(FILE, run);
+        expect(result.ok).toBe(false);
+        expect(result.ok === false && result.reason).toMatch(/too large/i);
+    });
+
     it("a file in no repository should be unavailable and should never reach git show", async () => {
         const run = fakeGit({ toplevel: new Error("not a git repository") });
         const result = await resolveBaseContent(FILE, run);

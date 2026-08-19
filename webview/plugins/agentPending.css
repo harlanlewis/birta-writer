@@ -89,8 +89,41 @@
    than beside it, so the marker must not appear there on hover and draw over
    it. This is the one place the run marker reaches outside itself, and it is
    why it can have that column: the block is announcing a run instead of
-   offering its handle, for the run's duration only. */
-.milkdown .editor .agent-pending-host > .heading-fold-gutter .heading-fold-marker,
-.milkdown .editor .agent-pending-host > .heading-fold-gutter .heading-fold-toggle {
+   offering its handle, for the run's duration only.
+
+   A COLLAPSED chevron is exempt, and that exemption is load-bearing rather
+   than tidy. Since the heading's `…` chip was removed, that chevron is the
+   only thing saying a section is folded; hiding it for the duration of a run
+   would leave a collapsed heading with its body gone, nothing on screen
+   saying so, and nothing to click. Reachable: `/ai` is not gated to
+   paragraphs, so a run can be anchored to a heading, and the heading can be
+   folded from the keyboard while the run is live. Both spellings of the
+   collapsed state are named because two different builders stamp it.
+
+   The descendant form is for blocks whose gutter a NodeView buries rather
+   than leaving as a direct child (table, code block, callout); the reveal
+   rules in style.css carry the same pair for the same reason. */
+/* Reached from the GUTTER'S OWNER rather than from the marked block, because
+   they are not always the same element. A list item's first line has no gutter
+   of its own - the item's marker is its handle - so the class lands on the
+   inner paragraph while the gutter hangs off the `<li>`, and a rule anchored on
+   the marked block matches nothing at all. e2e/agentGutter drives exactly that
+   case; it was passing on the heading, which is the one shape where the two
+   coincide.
+
+   `:not(:has(.block-gutter-host .agent-pending))` narrows this to the NEAREST
+   owner, so a callout holding a paragraph with a run does not also lose its own
+   handle. It is the same nearest-host idiom the block-hover reveal rules in
+   style.css use. */
+.milkdown .editor .block-gutter-host:has(.agent-pending):not(:has(.block-gutter-host .agent-pending))
+    > .heading-fold-gutter .heading-fold-marker,
+.milkdown .editor .heading-fold-heading:has(.agent-pending)
+    > .heading-fold-gutter .heading-fold-marker,
+.milkdown .editor .block-gutter-host:has(.agent-pending):not(:has(.block-gutter-host .agent-pending))
+    > .heading-fold-gutter:not(.heading-fold-gutter--collapsed) .heading-fold-toggle,
+.milkdown .editor .heading-fold-heading:not(.heading-fold-heading--collapsed):has(.agent-pending)
+    > .heading-fold-gutter .heading-fold-toggle {
     display: none;
 }
+
+

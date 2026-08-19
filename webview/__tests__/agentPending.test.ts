@@ -117,8 +117,12 @@ describe("agent run marker", () => {
         const hosts = [...document.querySelectorAll(".agent-pending-host")];
         expect(hosts).toHaveLength(1);
         expect(hosts[0].textContent).toBe("Second paragraph.");
-        // The marker must be INSIDE the host, or the CSS child selector that
-        // suppresses the gutter is aiming at the wrong element.
+        // The marker is inside the block that carries the class. That is all
+        // this file can say: the editor here composes no gutter plugin, so
+        // there is no `.heading-fold-gutter` to stand in the right or wrong
+        // relationship to. Whether the stylesheet's rule actually reaches a
+        // gutter from this class is a DOM question with a different answer per
+        // block type, and it is answered in e2e/slashMenu against a real one.
         expect(hosts[0].contains(markers()[0])).toBe(true);
 
         settleAgentRun(v, id);
