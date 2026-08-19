@@ -3,6 +3,12 @@
  * directly under the top bar, under the `formattingInSecondRow` arrangement
  * (shared/hostProfile.ts).
  *
+ * This module, its element and its CSS all say "dock", and the prose around it
+ * says "row". They are the same thing. The vocabulary is from when this was a
+ * strip at the window's bottom edge, and it survives in the names that are
+ * expensive to change (a persisted state key) and in the ones that follow them
+ * for consistency.
+ *
  * It is a second HOLDER for the toolbar's items, not a second toolbar. The
  * same `.tb-item` wrappers `index.ts` built once are re-parented into it, so
  * every listener, tooltip and active-state binding survives the move, exactly
@@ -51,7 +57,15 @@ import { applyTooltip } from "@/ui/tooltip";
 import type { ToolbarItemId } from "./registry";
 import "./dock.css";
 
-/** The view-state key the expanded flag rides on. */
+/**
+ * The view-state key the expanded flag rides on.
+ *
+ * Still says "dock" after the arrangement became `formattingInSecondRow`, and
+ * that is deliberate: the bag is persisted, so renaming the key would silently
+ * drop the saved choice of everyone who had opened the row. The name is
+ * historical rather than descriptive, and it stays that way until there is a
+ * migration worth writing for a boolean.
+ */
 const STATE_KEY = "formattingDockExpanded";
 
 export interface FormattingDock {

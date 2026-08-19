@@ -1247,6 +1247,17 @@ final class Coordinator {
     /// changed shape. Cheap, asynchronous, and never on the resize path: the
     /// width does not depend on the window's size, which is what makes a
     /// stored value correct between calls.
+    ///
+    /// The constraint that makes storing it safe: the cluster is right-aligned,
+    /// so its width moves only when the SET of controls does. Two things in the
+    /// page could do that without passing through here, and both are status
+    /// badges pinned to the front of that cluster (`renderPinned` in
+    /// webview/components/toolbar/layout.ts): the drift warning and the Logseq
+    /// indicator. Neither is reachable in this shell, because the messages that
+    /// raise them are the extension's and Jot's bridge does not send them. If
+    /// Jot ever sends one, the strip will still be sized for a cluster that has
+    /// since grown, and it will cover the badge it grew for. That is the day
+    /// this needs the page to push its width rather than be asked.
     func refreshTitlebarControlsWidth() {
         host.reportTitlebarControlsWidth { [weak self] width in
             MainActor.assumeIsolated {
@@ -1307,6 +1318,13 @@ final class Coordinator {
             url: boundURL,
             edited: WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
                                             autosaveEnabled: Prefs.autosave))
+        // The title's width is the drag strip's leading edge, so a title that
+        // just changed leaves the strip starting somewhere the title no longer
+        // ends. Harmless for clicks, because the accessory is in the titlebar's
+        // own hierarchy and wins the hit test over anything in the content
+        // view, and wrong for the geometry the checks read, which is reason
+        // enough not to leave it stale.
+        layoutTitlebarDrag()
         // Traced on every CALL rather than on every change, deliberately. What
         // this line is read for is whether the title holds still across a
         // typing burst, and a trace that fired only on a change could not tell
