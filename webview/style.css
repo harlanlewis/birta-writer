@@ -1341,10 +1341,20 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
         /* A COLLAPSED chevron is state, not chrome, and it is now the only
            thing saying a section is folded: the heading's trailing `…` chip
            was removed because beside heading type it read as content. So it
-           reverses out - the theme's own button inks, the same filled
-           treatment the `/ai` run marker uses (plugins/agentPending.css) -
-           rather than sitting at the resting chevron's descriptionForeground,
-           which a large heading beside it easily out-shouts.
+           takes a ground, rather than sitting at the resting chevron's
+           descriptionForeground on nothing, which a large heading beside it
+           easily out-shouts.
+
+           The ground is deliberately quiet. Collapsing is the user saying this
+           section is not interesting right now, so the mark that says so must
+           not then shout about it; it has to be impossible to overlook and no
+           louder than that. `--vscode-editor-foldBackground` is the editor's
+           own tint for a folded range, which is exactly this meaning, already
+           tuned by the theme to sit just off the ground, and already the ink
+           the `…` chip uses on every construct that kept one - so the two
+           collapsed marks in this editor now share a colour rather than each
+           inventing one. A button ground was tried first and was too loud for
+           what it is saying.
 
            Both collapsed selectors are named because two different builders
            stamp the state: a heading section marks its wrapper, and a block
@@ -1353,14 +1363,14 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
            this is only the folded case. */
         .heading-fold-heading--collapsed > .heading-fold-gutter .heading-fold-toggle,
         .heading-fold-gutter--collapsed .heading-fold-toggle {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            background: var(--vscode-editor-foldBackground);
+            color: var(--vscode-foreground);
         }
 
         .heading-fold-heading--collapsed > .heading-fold-gutter .heading-fold-toggle:hover,
         .heading-fold-gutter--collapsed .heading-fold-toggle:hover {
-            background: var(--vscode-button-hoverBackground);
-            color: var(--vscode-button-foreground);
+            background: var(--vscode-toolbar-hoverBackground);
+            color: var(--vscode-foreground);
         }
 
         .heading-fold-hidden {

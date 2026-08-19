@@ -213,6 +213,18 @@ Both are for navigating long documents, and neither touches the file. You get st
 
 Headings, list items, tables, code blocks, quotes, callouts, `:::` directives and footnote definitions fold from the same gutter chevron, and each collapses to whatever line names what is hidden. A block offers the chevron only where there is something to hide behind a first line, so a two-line quote that is really one paragraph has nothing to fold and shows no control. Levels count nesting rather than heading rank, so a code block or table at the top of a file folds at level 1 alongside the sections, and a document whose headings start at `##` still has a level 1 to fold.
 
+### Reviewing changes without reading the source
+
+`Birta Writer: Compare with HEAD` shows a file against its last committed version as a rendering rather than as a diff of the source. A word edited mid-sentence is marked as that word, not as the whole line; a removed paragraph is drawn where it was; `j`/`k` steps between the changes. Reach it from the command palette, the editor title bar, or a changed file's right-click menu in Source Control.
+
+Reviewing a document is a reading job, and a rewritten table read as pipe syntax is exactly the pop-out this editor exists to remove. This is also the half that was missing from the agent loop: Birta already hands an agent the file you have open, and the agent's answer arrives as a change to it, which until now you could only read as raw text. The comparison follows the open buffer rather than the file on disk, so unsaved edits are part of what you review. VS Code's own diff is untouched and stays the right tool when the source is what you want. Images show as their path and inline HTML as its source rather than rendering.
+
+### Typewriter mode
+
+`birta.typewriterMode` (off by default) holds the line you are editing at a fixed height on screen and scrolls the document under it, so a long drafting session does not leave your eye chasing the active line toward the bottom of the pane.
+
+It moves the viewport and nothing else: the file, the serializer and the rendering are untouched, so it can be switched on and off mid-sentence with nothing to reconcile. It also declines to fight you. A mouse click does not recentre the page, and a selection you are extending with the keyboard is never scrolled out from under you, because the mode is expressed as a bound on where the caret may sit rather than as a scroller that runs on every event.
+
 ### The switch to raw Markdown carries your cursor, and your selection
 
 Cmd+Shift+M opens the other editor at the line you were working at, and at the exact column where the mapping is unambiguous. It works in both directions, so you can switch mid-sentence and keep typing. A selection survives the trip whole, drag direction included, with block selections arriving as whole source lines, and the arriving cursor is centered on screen. Scrolled away from a bare cursor, it takes you to what's on screen instead. Navigation _into_ the editor arrives the same way: click a hit in VS Code's search and the match is selected and centered, as it would be in the raw editor.

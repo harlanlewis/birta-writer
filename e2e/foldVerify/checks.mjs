@@ -157,6 +157,13 @@ export async function run({ page, check, baseUrl }) {
     // presence alone would pass on the treatment this replaced.
     const chev = await clickHeadingChevron(page, "Section A");
     check("hovering a heading reveals its fold chevron", chev !== null, JSON.stringify(chev));
+    // Park the pointer off the heading before measuring. Clicking the chevron
+    // leaves the mouse on it, so the ground read back would be the hover one
+    // and the resting treatment - the thing a reader actually sees - would go
+    // unchecked. A collapsed chevron is resident without hover, so there is
+    // nothing to lose by stepping away.
+    await page.mouse.move(4, 4);
+    await page.waitForTimeout(120);
     const sectionA = await page.evaluate(() => {
         const h = [...document.querySelectorAll(".ProseMirror > h1")]
             .find((e) => e.textContent.includes("Section A"));
@@ -175,6 +182,31 @@ export async function run({ page, check, baseUrl }) {
             toggleInLine: tr ? tr.top >= hr.top - 2 && tr.bottom <= hr.bottom + 2 : false,
             toggleOpacity: cs ? Number(cs.opacity) : 0,
             toggleBg: cs ? cs.backgroundColor : null,
+            // What "muted" is asserted as: a translucent tint rather than a
+            // solid fill, and specifically NOT the button ground this was
+            // first written with. Comparing against a chip was tried and is
+            // wrong - the only chip on the page at this moment belongs to a
+            // callout, and callout.css retints it, so the two disagree by a
+            // couple of points for a reason that has nothing to do with here.
+            toggleAlpha: (() => {
+                const m = /rgba?\(([^)]+)\)/.exec(cs?.backgroundColor ?? "");
+                if (!m) { return null; }
+                const parts = m[1].split(",").map((n) => parseFloat(n));
+                return parts.length === 4 ? parts[3] : 1;
+            })(),
+            buttonBg: (() => {
+                const probe = document.createElement("div");
+                probe.style.backgroundColor = "var(--vscode-button-background)";
+                document.body.appendChild(probe);
+                const v = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return v;
+            })(),
+            toggleMidY: tr ? tr.top + tr.height / 2 : null,
+            gutterMidY: (() => {
+                const g = h.querySelector(".heading-fold-gutter")?.getBoundingClientRect();
+                return g && g.height > 0 ? g.top + g.height / 2 : null;
+            })(),
             ariaLabel: toggle?.getAttribute("aria-label") ?? null,
         };
     });
@@ -185,11 +217,25 @@ export async function run({ page, check, baseUrl }) {
     check("its chevron is resident on the heading's own line",
         sectionA.toggle && sectionA.toggleInLine && sectionA.toggleOpacity === 1,
         JSON.stringify(sectionA));
-    // Transparent is what the RESTING chevron is; a filled one is the whole
-    // point of the change, so a presence check alone would not notice it going.
-    check("and reverses out rather than sitting transparent",
+    // Transparent is what the RESTING chevron is, so a ground is the whole
+    // point of the change and a presence check alone would not notice it
+    // going. It must also stay QUIET: collapsing is the reader saying this
+    // section is not interesting now, and the mark that says so must not
+    // shout. The editor's own folded-range tint is that ground, and it is the
+    // same ink the `…` chip uses, so the two collapsed marks agree.
+    check("the collapsed chevron takes a ground rather than sitting transparent",
         sectionA.toggleBg !== null && !/^rgba\(0, 0, 0, 0\)$|^transparent$/.test(sectionA.toggleBg),
         `background ${sectionA.toggleBg}`);
+    check("and that ground is a muted tint, not a loud fill",
+        sectionA.toggleAlpha !== null && sectionA.toggleAlpha < 0.5 &&
+        sectionA.toggleBg !== sectionA.buttonBg,
+        `chevron ${sectionA.toggleBg} (alpha ${sectionA.toggleAlpha}), button ground ${sectionA.buttonBg}`);
+    // Vertically it sits where a grab handle sits: both centre in the gutter
+    // band, and they are different heights, so this is centre to centre.
+    check("and shares the gutter band's vertical centre, as the badge does",
+        sectionA.toggleMidY !== null && sectionA.gutterMidY !== null &&
+        Math.abs(sectionA.toggleMidY - sectionA.gutterMidY) <= 1.5,
+        `chevron ${sectionA.toggleMidY} vs gutter ${sectionA.gutterMidY}`);
     await shot(page, "03-heading-collapsed");
 
     // Toggle it back and forth once more, then assert ZERO update traffic

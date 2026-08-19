@@ -122,10 +122,15 @@ function buildDecorations(runs: readonly AgentRun[], view: EditorView | null, do
     // what the gutter does about it is the stylesheet's business.
     for (const r of live) {
         const $pos = doc.resolve(Math.min(r.pos, doc.content.size));
+        // The INNERMOST block, not the top-level one. A gutter belongs to the
+        // block that owns it, and the CSS suppresses a direct child, so marking
+        // the outermost ancestor would miss a request typed inside a callout or
+        // a list item: the pill would land in the inner block's column with
+        // that block's handle still free to appear on hover.
         // depth 0 is the doc itself, which has no gutter to suppress.
         if ($pos.depth < 1) { continue; }
-        const from = $pos.before(1);
-        decos.push(Decoration.node(from, from + $pos.node(1).nodeSize, {
+        const from = $pos.before($pos.depth);
+        decos.push(Decoration.node(from, from + $pos.node($pos.depth).nodeSize, {
             class: "agent-pending-host",
         }));
     }

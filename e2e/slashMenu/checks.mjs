@@ -286,6 +286,9 @@ export async function run({ page, check, baseUrl }) {
             .map((el) => el.querySelector(".heading-fold-marker"))
             .filter((el) => el && el.getBoundingClientRect().width > 0)
             .map((el) => el.getBoundingClientRect())[0] ?? null;
+        // Vertical centres, not just tops: the pill and a grab handle are
+        // different heights, so equal tops would mean they are NOT aligned.
+        const h1Rect = h1?.getBoundingClientRect() ?? null;
         return {
             pill: pill && [Math.round(pill.left), Math.round(pill.right)],
             quietMarkerRight: quietMarker ? Math.round(quietMarker.right) : null,
@@ -293,6 +296,14 @@ export async function run({ page, check, baseUrl }) {
             chevronShown: shown(h1?.querySelector(".heading-fold-toggle")),
             badgeShown: shown(h1?.querySelector(".heading-fold-marker")),
             inPane: pill ? pill.left >= 0 : false,
+            pillMidY: pill ? pill.top + pill.height / 2 : null,
+            // The gutter's own band is what a grab handle centres in, and it
+            // is the line the pill has to share.
+            gutterMidY: (() => {
+                const g = h1?.querySelector(".heading-fold-gutter")?.getBoundingClientRect();
+                return g && g.height > 0 ? g.top + g.height / 2 : null;
+            })(),
+            blockTop: h1Rect ? h1Rect.top : null,
         };
     });
     check("a block with a run in flight offers no grab handle or chevron",
@@ -302,6 +313,13 @@ export async function run({ page, check, baseUrl }) {
         geometry.pill !== null && geometry.inPane && geometry.quietMarkerRight !== null &&
         Math.abs(geometry.pill[1] - geometry.quietMarkerRight) <= 6,
         JSON.stringify(geometry));
+    // Same slot means same line, not merely the same column. The pill is a
+    // different height from a grab handle, so this is measured centre to
+    // centre against the gutter band both of them centre in.
+    check("and shares the gutter band's vertical centre, as a grab handle does",
+        geometry.pillMidY !== null && geometry.gutterMidY !== null &&
+        Math.abs(geometry.pillMidY - geometry.gutterMidY) <= 1.5,
+        `pill ${geometry.pillMidY} vs gutter ${geometry.gutterMidY}`);
     await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "done" }, "*"), third);
     await page.waitForTimeout(100);
     check("the marker is a pill wide enough to read, carrying a stop square and naming the harness",
