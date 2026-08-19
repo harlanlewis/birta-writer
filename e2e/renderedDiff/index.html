@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- e2e harness page for e2e/renderedDiff: the rendered-diff panel (MAR-55),
+     driven as the extension drives it. The page links dist/hostPalette.css for
+     the --vscode-* tokens (no workbench here to inject them) and
+     dist/diffView.css for the panel's own skin, then answers `diffReady` with a
+     `diffContent` pair, exactly as src/diffPanel.ts does.
+
+     The pair is switchable from the test: `window.__setPair(base, working)`
+     re-posts, which is also how the panel's refresh path is exercised. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<link rel="stylesheet" href="dist/diffView.css">
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("vscode-light"));
+  window.__i18n = { translations: {}, isMac: true };
+  window.__posted = [];
+
+  const BASE = [
+    "# Release notes",
+    "",
+    "The quick brown fox jumps over the lazy dog.",
+    "",
+    "A paragraph that is going away entirely.",
+    "",
+    "- one",
+    "- two",
+    "",
+  ].join("\n");
+
+  const WORKING = [
+    "# Release notes",
+    "",
+    "The quick red fox jumps over the lazy dog.",
+    "",
+    "- one",
+    "- two",
+    "- three",
+    "",
+  ].join("\n");
+
+  let pair = { base: BASE, working: WORKING, baseOrigin: "head" };
+
+  function post() {
+    window.postMessage({ type: "diffContent", label: "notes.md", ...pair }, "*");
+  }
+
+  window.__setPair = (base, working, baseOrigin) => {
+    pair = { base, working, baseOrigin: baseOrigin || "head" };
+    post();
+  };
+
+  // The full handle VS Code hands a webview, and only ONE of them: the page
+  // shares a single acquisition (webview/vscodeHost.ts), and a stub that
+  // handed out a fresh object per call would hide a second acquirer — which
+  // throws in a real webview and takes the whole entry down with it.
+  const api = {
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "diffReady") { post(); }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  };
+  let acquired = false;
+  window.acquireVsCodeApi = () => {
+    if (acquired) { throw new Error("An instance of the VS Code API has already been acquired"); }
+    acquired = true;
+    return api;
+  };
+</script>
+<div id="diff-root"></div>
+<script type="module" src="dist/diffView.js"></script>

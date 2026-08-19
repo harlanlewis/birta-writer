@@ -204,6 +204,12 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.openDiff",
+                "title": "%command.openDiff.title%",
+                "category": "Birta Writer",
+                "icon": "$(git-compare)"
+            },
+            {
                 "command": "birta.editor.toggleBold",
                 "title": "%command.editor.toggleBold.title%",
                 "category": "Birta Writer"
@@ -977,6 +983,18 @@
                     "command": "birta.debugModeDisable",
                     "group": "9_debug",
                     "when": "activeCustomEditorId == 'birta.editor' && birta.debugModeActive"
+                },
+                {
+                    "command": "birta.openDiff",
+                    "group": "navigation",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                }
+            ],
+            "scm/resourceState/context": [
+                {
+                    "command": "birta.openDiff",
+                    "group": "navigation",
+                    "when": "scmProvider == git && (resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx)"
                 }
             ],
             "commandPalette": [
@@ -995,6 +1013,10 @@
                 {
                     "command": "birta.gotoSymbol",
                     "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.openDiff",
+                    "when": "activeCustomEditorId == 'birta.editor' || resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx"
                 },
                 {
                     "command": "birta.editor.toggleBold",

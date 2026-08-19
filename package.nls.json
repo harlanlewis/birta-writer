@@ -129,6 +129,7 @@
   "command.toggleFrontmatterAddButton.title": "Toggle Add Metadata Button",
   "command.restorePreviousContent.title": "Restore Previous Content",
   "command.gotoSymbol.title": "Go to Heading...",
+  "command.openDiff.title": "Compare with HEAD",
   "command.editor.toggleBold.title": "Bold",
   "command.editor.toggleItalic.title": "Italic",
   "command.editor.toggleStrikethrough.title": "Strikethrough",
