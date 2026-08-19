@@ -420,6 +420,7 @@ fi
 # THROUGH follows them, and the title says the new name. The last one is what
 # proves the editor is still on the file rather than pointing at where it used
 # to be.
+RELOCATES_BEFORE=$(grep -c "^jot-trace relocate " "$LOG" || true)
 printf '{"type":"__jotRename","name":"Renamed by measure.md"}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 2.5
 rm -f "$SCRATCH_DIR/.debug-message.json"
@@ -443,6 +444,20 @@ else
     echo "title rename         FAILED: the renamed file does not hold the typed text" >&2
     cat "$RENAMED" >&2; exit 1
 fi
+# ONE move, not two. Committing a name runs twice for one rename (Return
+# commits it, and the popover closing ends editing and commits it again), and
+# the second one used to ask for the same move while the first was still in
+# flight, find the file already at the destination, and report a name
+# collision with itself. The rename still succeeded, so nothing above could
+# see it; the count is what does.
+RELOCATES="$(grep "^jot-trace relocate " "$LOG" | tail -n +$((RELOCATES_BEFORE + 1)) | sed 's/^jot-trace relocate //')"
+RELOCATE_COUNT="$(printf '%s\n' "$RELOCATES" | grep -c . || true)"
+if [ "$RELOCATE_COUNT" = "1" ] && [ "$RELOCATES" = "ok renamed Renamed by measure.md" ]; then
+    echo "title rename         ok: one move, reported once, with no collision against itself"
+else
+    echo "title rename         FAILED: expected exactly one successful relocate, got $RELOCATE_COUNT" >&2
+    printf '%s\n' "$RELOCATES" | sed 's/^/  /' >&2; exit 1
+fi
 # Everything after this reads the scratchpad by its original name, so put it
 # back the same way it was moved.
 printf '{"type":"__jotRename","name":"Scratchpad.md"}' > "$SCRATCH_DIR/.debug-message.json"
@@ -451,6 +466,37 @@ rm -f "$SCRATCH_DIR/.debug-message.json"
 if [ ! -f "$SCRATCH_DIR/Scratchpad.md" ]; then
     echo "title rename         FAILED: could not rename back, so the checks below would read the wrong file" >&2
     ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+
+# Copy a reference for an agent. Everything about this is the shell's except
+# the click: the page reports where the caret is, and the shell decides what
+# goes on the clipboard, against a real file with a real path.
+#
+# The clipboard is borrowed and put back, the same way the paste check does it.
+CLIP_BACKUP2="$(mktemp -t jot-measure-clip2)"
+pbpaste > "$CLIP_BACKUP2" 2>/dev/null || true
+show_panel
+printf '{"type":"__jotCopyAgentReference"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+COPIED="$(pbpaste 2>/dev/null || true)"
+pbcopy < "$CLIP_BACKUP2" 2>/dev/null || true
+rm -f "$CLIP_BACKUP2"
+# An ABSOLUTE path, which is the whole difference from the extension: Jot's
+# file is under Application Support and a workspace-relative path would name
+# nothing anywhere. Checked against the throwaway scratchpad this run created,
+# so it is the real bound file rather than a shape that merely looks right.
+case "$COPIED" in
+    "$SCRATCH_DIR/Scratchpad.md#L"*) REF_OK=1 ;;
+    *) REF_OK=0 ;;
+esac
+if [ "$REF_OK" = 1 ]; then
+    echo "agent reference      ok: $(printf '%s' "$COPIED" | head -1)"
+else
+    echo "agent reference      FAILED: expected an absolute reference to the bound file on the clipboard" >&2
+    echo "  clipboard: \"$(printf '%s' "$COPIED" | head -3)\"" >&2
+    grep "^jot-trace agentref " "$LOG" | sed 's/^/  /' >&2
+    exit 1
 fi
 
 # Cold recovery: kill the content process, wait for the remount.

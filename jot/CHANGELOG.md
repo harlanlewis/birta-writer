@@ -16,6 +16,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - Clicking that title opens the document popover macOS opens from a document window's title: the file's Name, its Finder Tags, and Where it lives. Renaming it moves the file and keeps the editor on it, so a scratchpad that has become a real note can be named and filed without leaving the panel; the extension is kept when you edit only the stem, and a name already taken is refused rather than written over. The Where menu lists the folder and everything above it up to the volume, with Other… for one you choose. Cmd-click, Ctrl-click or right-click still opens the path popup, whose rows reveal themselves in Finder.
 
+- Copy Reference for AI Agent works in Birta Writer Jot. It posted a message the app did not handle, so the button had never done anything at any selection level. It now writes the note's full path and the line reference (`/Users/you/Library/Application Support/Birta Jot/Birta Jot.md#L12-L20`), and the selected lines quoted in a markdown fence when there is a selection, and says so along the bottom of the panel. The path is absolute where the extension's is relative to your workspace, because Jot's note is not in anybody's project and a relative path would name nothing. The note is written to disk first, whatever autosave says, since the line numbers have to mean something in the file an agent will open.
+
 - Birta Writer Jot can appear in the Dock. Off by default, which is what it has always been; on, it also joins Cmd+Tab, and clicking its Dock icon summons the panel. Settings, General.
 
 ### Changed

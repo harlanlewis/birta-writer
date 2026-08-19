@@ -148,6 +148,7 @@ jot/Sources/BirtaJotCore/ActiveBinding.swift  WHICH of Jot's three file settings
 jot/Sources/BirtaJotCore/DocumentName.swift   What a typed filename means: the extension kept, `/` and `:` refused, an unchanged field not a rename
 jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes: the autosave setting's scope is the edit trigger and nothing else
 jot/Sources/BirtaJotCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
+jot/Sources/BirtaJotCore/AgentReference.swift What Copy Reference puts on the clipboard, a literal port of src/agentBridge/format.ts; same test cases both sides
 jot/scripts/update-jot.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
 ```

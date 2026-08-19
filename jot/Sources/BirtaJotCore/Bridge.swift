@@ -40,6 +40,14 @@ public enum WebviewMessage: Equatable {
     case askAgent(prompt: String?, requestId: String?, model: String?, effort: String?)
     case stopAgentRun(requestId: String)
     case clipboardWrite(format: String, data: String)
+    /// The selection palette's button: put a reference to where the caret is,
+    /// and the selected lines, on the clipboard. Answered by asking the page
+    /// where the selection is (`requestEditorContext`), because only the page
+    /// knows and only the shell knows the file's path.
+    case copyAgentReference
+    /// Reply to `requestEditorContext`. The primary selection's ends, in
+    /// document coordinates, or nil when the page could not place them.
+    case editorContextResult(id: String, selection: AgentReference.Selection?)
     case setToolbarLayout(itemId: String?, placement: String?, order: [String])
     case setToolbarVisible(Bool)
     case setFontPreset(String)
@@ -73,6 +81,26 @@ public enum WebviewMessage: Equatable {
                   let d = try? JSONSerialization.data(withJSONObject: v, options: [.sortedKeys]) else { return nil }
             return String(decoding: d, as: UTF8.self)
         }
+        /// The PRIMARY selection out of an `EditorSelectionContext`
+        /// (shared/agentContext.ts). Only its two ends and whether it is a
+        /// caret are read: the plain text it also carries is the page's
+        /// stripped version, and the shell holds the real source.
+        func selection(from value: Any?) -> AgentReference.Selection? {
+            guard let context = value as? [String: Any],
+                  let selections = context["selections"] as? [Any] else { return nil }
+            let index = (context["primary"] as? NSNumber)?.intValue ?? 0
+            guard let entry = (selections.indices.contains(index) ? selections[index] : selections.first)
+                    as? [String: Any] else { return nil }
+            func position(_ key: String) -> AgentReference.Position? {
+                guard let p = entry[key] as? [String: Any],
+                      let line = (p["line"] as? NSNumber)?.intValue,
+                      let column = (p["column"] as? NSNumber)?.intValue else { return nil }
+                return .init(line: line, column: column)
+            }
+            guard let anchor = position("anchor"), let active = position("active") else { return nil }
+            return .init(anchor: anchor, active: active,
+                         isEmpty: context["isEmpty"] as? Bool ?? false)
+        }
         switch type {
         case "ready": return .ready
         case "update":
@@ -92,6 +120,11 @@ public enum WebviewMessage: Equatable {
         case "clipboardWrite":
             guard let f = str("format"), let d = str("data") else { return .other(type: type) }
             return .clipboardWrite(format: f, data: d)
+        case "copyAgentReference":
+            return .copyAgentReference
+        case "editorContextResult":
+            guard let id = str("id") else { return .other(type: type) }
+            return .editorContextResult(id: id, selection: selection(from: dict["context"]))
         case "setToolbarLayout":
             let item = dict["item"] as? [String: Any]
             let order = (dict["order"] as? [Any])?.compactMap { $0 as? String } ?? []
@@ -151,6 +184,11 @@ public enum HostMessage: Equatable {
     case embedMetaResult(id: String, url: String, title: String?)
     case toolbarConfig(json: String)
     case getPerfMarks(id: String)
+    /// Ask the page where the selection is. Answered with
+    /// `editorContextResult` carrying the same `id`; the page maps its own
+    /// selection onto document lines (webview/agentContext.ts), which is a
+    /// question only it can answer.
+    case requestEditorContext(id: String)
     /// Run one editor command by id (shared/editorCommands.ts), the way a
     /// contributed keybinding reaches the page.
     case editorCommand(String)
@@ -204,6 +242,8 @@ public enum HostMessage: Equatable {
         case let .toolbarConfig(json):
             let config = (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
             return ["type": "toolbarConfig", "config": config]
+        case let .requestEditorContext(id):
+            return ["type": "requestEditorContext", "id": id]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
         case let .editorCommand(command):

@@ -37,6 +37,11 @@ final class TitlePopoverController: NSViewController {
     var onMove: ((URL) -> Void)?
     /// Put exactly these Finder tags on the bound file.
     var onTags: (([String]) -> Void)?
+    /// Close the popover showing this form. Injected, because the popover is
+    /// the caller's: `dismiss(nil)` is for a view controller PRESENTED as a
+    /// popover, and this one is set as an `NSPopover`'s content, where it has
+    /// no presenting controller to ask.
+    var onDismissRequest: (() -> Void)?
 
     private let nameField = NSTextField()
     private let tagsField = NSTokenField()
@@ -47,6 +52,9 @@ final class TitlePopoverController: NSViewController {
     private var whereTargets: [Int: URL] = [:]
 
     private var url: URL?
+    /// The tags the file had when the form was filled, so a close that edited
+    /// nothing writes nothing.
+    private var loadedTags: [String] = []
 
     /// Wide enough for a path row and a name that is not a scratchpad's.
     private static let fieldWidth: CGFloat = 260
@@ -118,7 +126,8 @@ final class TitlePopoverController: NSViewController {
         loadViewIfNeeded()
         self.url = url
         nameField.stringValue = url.lastPathComponent
-        tagsField.objectValue = FinderTags.read(url)
+        loadedTags = FinderTags.read(url)
+        tagsField.objectValue = loadedTags
         buildWhereMenu(for: url.deletingLastPathComponent())
     }
 
@@ -172,6 +181,15 @@ final class TitlePopoverController: NSViewController {
             // shows "Notes.md" once it has been told the extension stayed.
             nameField.stringValue = url.lastPathComponent
         case let .rename(to: name):
+            // Take the new name as ours BEFORE handing it on, because this
+            // runs twice for one rename: Return commits it, and closing the
+            // popover ends editing and commits it again. The second call has
+            // to resolve to `.unchanged`, or it asks for the same move a
+            // second time while the first is still in flight, finds the file
+            // already at the destination, and reports a name collision with
+            // itself.
+            self.url = url.deletingLastPathComponent().appendingPathComponent(name)
+            nameField.stringValue = name
             onRename?(name)
         case let .rejected(reason):
             nameField.stringValue = url.lastPathComponent
@@ -181,7 +199,13 @@ final class TitlePopoverController: NSViewController {
     }
 
     @objc private func commitTags() {
-        onTags?((tagsField.objectValue as? [String]) ?? [])
+        let tags = (tagsField.objectValue as? [String]) ?? []
+        // Only when they differ from what the file had. This runs on every
+        // close, edited or not, and writing the same tags back would touch a
+        // file the reader only looked at.
+        guard tags != loadedTags else { return }
+        loadedTags = tags
+        onTags?(tags)
     }
 
     @objc private func pickWhere() {
@@ -205,7 +229,7 @@ final class TitlePopoverController: NSViewController {
         panel.directoryURL = url?.deletingLastPathComponent()
         // The popover is dismissed first: a modal sheet over a popover leaves
         // the popover to close under it, and the panel then has no parent.
-        dismiss(nil)
+        onDismissRequest?()
         panel.begin { [weak self] response in
             MainActor.assumeIsolated {
                 guard response == .OK, let target = panel.url else { return }

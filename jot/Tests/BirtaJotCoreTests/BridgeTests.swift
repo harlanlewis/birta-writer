@@ -26,6 +26,62 @@ final class BridgeTests: XCTestCase {
             WebviewMessage.parse(#"{"type":"uploadImage","id":"u1","data":{"$bytes":"aGk="},"mimeType":"image/png","altText":"a shot"}"#),
             .uploadImage(id: "u1", data: Data("hi".utf8), mimeType: "image/png", altText: "a shot"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"viewState","state":{"scrollY":12}}"#), .viewState(json: #"{"scrollY":12}"#))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"copyAgentReference"}"#), .copyAgentReference)
+    }
+
+    /// This list is hand-written, and by AGENTS.md's own rule that is a list a
+    /// new case never joins. It is how `copyAgentReference` sat unparsed while
+    /// a live button posted it: unhandled messages fall to `.other`, which is
+    /// traced and dropped, so a dead control and a message the host correctly
+    /// never offers look exactly alike from here.
+    ///
+    /// The durable form is a guard that derives both sides: every outbound type
+    /// in `shared/messages.ts` is either parsed here, or posted only by
+    /// something Jot never offers, with a named allow-list for the third case.
+    /// That is a bigger piece of work than this file and is not built.
+
+    func testAnEditorContextReplyCarriesThePrimarySelection() {
+        let json = #"""
+        {"type":"editorContextResult","id":"c1","context":{"selections":[
+          {"anchor":{"line":3,"column":0},"active":{"line":5,"column":4},"text":"x"}],
+          "primary":0,"isEmpty":false}}
+        """#
+        XCTAssertEqual(
+            WebviewMessage.parse(json),
+            .editorContextResult(id: "c1", selection: .init(
+                anchor: .init(line: 3, column: 0),
+                active: .init(line: 5, column: 4),
+                isEmpty: false)))
+    }
+
+    func testAnEditorContextReplyWithNoContextIsAnAnswerRatherThanAFailureToParse() {
+        // The page answers with null when it cannot place the selection, and
+        // the reply still has to arrive: the caller is holding a closure for
+        // this id, and dropping it as `.other` would leave it pending until
+        // the timeout, reporting the wrong reason.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"editorContextResult","id":"c1","context":null}"#),
+                       .editorContextResult(id: "c1", selection: nil))
+    }
+
+    func testAnEditorContextReplyReadsThePrimaryIndexRatherThanTheFirstEntry() {
+        let json = #"""
+        {"type":"editorContextResult","id":"c1","context":{"selections":[
+          {"anchor":{"line":1,"column":0},"active":{"line":1,"column":0},"text":""},
+          {"anchor":{"line":9,"column":2},"active":{"line":9,"column":7},"text":"y"}],
+          "primary":1,"isEmpty":false}}
+        """#
+        XCTAssertEqual(
+            WebviewMessage.parse(json),
+            .editorContextResult(id: "c1", selection: .init(
+                anchor: .init(line: 9, column: 2),
+                active: .init(line: 9, column: 7),
+                isEmpty: false)))
+    }
+
+    func testAContextRequestNamesTheIdItWillBeAnsweredWith() {
+        let object = HostMessage.requestEditorContext(id: "c1").jsonObject()
+        XCTAssertEqual(object["type"] as? String, "requestEditorContext")
+        XCTAssertEqual(object["id"] as? String, "c1")
     }
 
     func testAnUploadWithNoBytesIsNotAnUpload() {

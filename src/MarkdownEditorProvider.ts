@@ -1604,9 +1604,13 @@ export class MarkdownEditorProvider
                         this._pendingContext.get(message.id)?.(message.context);
                         break;
                     case "copyAgentReference":
-                        // The selection palette's @ button: same command as the
-                        // context menu, so payload and feedback stay identical.
-                        vscode.commands.executeCommand("birta.copyAgentReference");
+                        // The selection palette's button. `auto` rather than
+                        // the named command: with a selection it quotes the
+                        // lines as well as pointing at them, because the tools
+                        // this is pasted into are not all able to open the
+                        // file. The two palette commands keep their exact
+                        // meanings (src/agentBridge/referenceCommand.ts).
+                        vscode.commands.executeCommand("birta._copyForAgent");
                         break;
                     case "askAgent":
                         // `/ai <request>` or the palette's Ask Agent: the

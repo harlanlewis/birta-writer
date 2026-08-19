@@ -4,7 +4,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Copy Reference for AI Agent copies the selected lines as well as the reference, quoted in a markdown fence, whenever there is a selection. With just a caret it copies the reference alone, as before. The reason is where it gets pasted: an agent running where your file is opens it from `path.md#L12-L20` and ignores the rest, and a chat box in a browser cannot open anything and has only the lines, so sending both means not having to decide first. The two command-palette rows are unchanged and still mean exactly what they say: Copy Reference is the pointer, Copy Context is the pointer and the lines.
+
+- Copying a reference now says so in a notification naming the reference, rather than in the status bar. The question it answers is "did that copy", asked in the half-second before pasting somewhere else, and the bottom corner of the window is the one place someone editing prose in the middle of it is not looking.
+
 ### Fixed
+
+- Copying a reference saves the file first. The reference names lines in a file, and with unsaved edits those line numbers were computed against bytes that were not on disk, so an agent following the reference read something else. If the save fails, nothing is copied and it says so, rather than handing over a pointer the file cannot honour.
 
 - Copy Reference for AI Agent is offered on any selection, not only a run of text. Selecting whole blocks or a range of table cells hid the button, so getting a pointer to a section meant selecting its words instead of the blocks you had already picked. A reference taken from a table selection now names every row the selection covers and quotes every cell in it; it named one row and quoted one cell before, so a column dragged down four rows sent an agent to the wrong place.
 

@@ -59,6 +59,7 @@ final class TitleBarView: NSView {
             guard let url = self?.url else { return }
             try? FinderTags.write(tags, to: url)
         }
+        controller.onDismissRequest = { [weak self] in self?.popover?.performClose(nil) }
         return controller
     }()
     private var popover: NSPopover?

@@ -75,6 +75,10 @@ final class Coordinator {
     /// Closes it again, because the panel going away takes it along.
     var hidePreferences: (() -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
+    /// In-flight `requestEditorContext` calls, by id. Bounded the same way the
+    /// flushes are: a page that never answers must not leave a closure holding
+    /// the coordinator for the life of the app.
+    private var pendingContexts: [String: (AgentReference.Selection?) -> Void] = [:]
     private let agent = AgentRunner()
     private var autosaveTimer: Timer?
     private var autosaveDeadline: Date?
@@ -266,6 +270,18 @@ final class Coordinator {
             if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
                 measure.mark("debug-rename")
                 titleBar.titleView.commitNameForMeasurement(name)
+                return
+            }
+            // The selection palette's button, without the palette. The button
+            // lives in the page and needs a selection under the pointer to
+            // appear at all, which a script cannot arrange; what is worth
+            // checking is the half after the click, which is entirely the
+            // shell's: flush, write, ask the page where the caret is, build
+            // the payload against the file's real path, and put it on the
+            // pasteboard.
+            if obj["type"] as? String == "__jotCopyAgentReference" {
+                measure.mark("debug-agentref")
+                copyAgentReference()
                 return
             }
         }
@@ -543,6 +559,10 @@ final class Coordinator {
             }
         case let .clipboardWrite(format, data):
             writeToPasteboard(data, asHTML: format == "html")
+        case .copyAgentReference:
+            copyAgentReference()
+        case let .editorContextResult(id, selection):
+            pendingContexts.removeValue(forKey: id)?(selection)
         case let .setToolbarLayout(itemId, placement, order):
             var layout = Prefs.toolbarLayout
             layout.apply(itemId: itemId, placement: placement, order: order)
@@ -933,6 +953,67 @@ final class Coordinator {
         }
     }
 
+    /// Put a reference to where the caret is on the clipboard, for pasting
+    /// into an agent somewhere else.
+    ///
+    /// Three things have to be true at once, and the order is what makes them
+    /// so.
+    ///
+    /// The reference names LINES IN A FILE, so the file has to hold them: this
+    /// writes first, whatever autosave says, exactly as the `/ai` hand-off
+    /// does and for the same reason. A pointer into bytes that are not on disk
+    /// is worse than no pointer, because it looks like it worked.
+    ///
+    /// The path is ABSOLUTE. The extension writes a workspace-relative one,
+    /// which is what a tool already working in that project resolves; Jot's
+    /// file lives under Application Support, nowhere near any agent's working
+    /// directory, so relative would name nothing anywhere.
+    ///
+    /// And the lines are quoted when there are any, because the tools this
+    /// gets pasted into are not all able to open a file. What decides the
+    /// shape is `BirtaJotCore.AgentReference`, which is the same shape the
+    /// extension's `src/agentBridge/format.ts` produces and is tested against
+    /// the same cases.
+    private func copyAgentReference() {
+        guard state == .warm else { return }
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            self.requestEditorContext { [weak self] selection in
+                guard let self else { return }
+                guard let selection else {
+                    // The page could not place the selection, which happens
+                    // before the first sync. Saying so beats copying a
+                    // reference to line 1 that names somewhere nobody is.
+                    self.statusOverlay.flash("Could not tell where the caret is.")
+                    return
+                }
+                let payload = AgentReference.clipboardPayload(
+                    path: self.boundURL.path, selection: selection, source: self.latest)
+                self.writeToPasteboard(payload)
+                self.measure.trace("agentref \(payload.split(separator: "\n").first ?? "")")
+                self.statusOverlay.flash("Copied \(AgentReference.reference(path: self.boundURL.lastPathComponent, selection: selection))")
+            }
+        }
+    }
+
+    /// Ask the page where the selection is, bounded in time.
+    ///
+    /// Bounded because the answer comes from the web content process, which
+    /// can die between the question and the reply; the flush protocol is
+    /// bounded for the same reason and this reuses its timeout rather than
+    /// inventing a second number.
+    private func requestEditorContext(_ then: @escaping (AgentReference.Selection?) -> Void) {
+        let id = "ctx-\(UUID().uuidString)"
+        pendingContexts[id] = then
+        host.send(.requestEditorContext(id: id))
+        DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
+            guard let self, let pending = self.pendingContexts.removeValue(forKey: id) else { return }
+            NSLog("Birta Jot: the page did not answer requestEditorContext in time")
+            pending(nil)
+        }
+    }
+
     /// Rename or move the file the panel is editing, from the title popover.
     ///
     /// The order is the whole of it, and every step is load-bearing:
@@ -959,12 +1040,18 @@ final class Coordinator {
     /// `bindTo` would push an `externalUpdate` that costs a document swap for
     /// content that did not change.
     func relocateActiveFile(to target: URL) {
-        let source = boundURL
-        guard target.standardizedFileURL != source.standardizedFileURL else { return }
+        guard target.standardizedFileURL != boundURL.standardizedFileURL else { return }
         flushThen { [weak self] in
             guard let self else { return }
+            // Read the bound file HERE, not when the move was asked for. A
+            // second rename arriving while the first is still flushing would
+            // otherwise carry the first one's idea of where the file is, and
+            // move something that has already moved.
+            let source = self.boundURL
+            guard target.standardizedFileURL != source.standardizedFileURL else { return }
             let manager = FileManager.default
             if manager.fileExists(atPath: target.path) {
+                self.measure.trace("relocate refused=taken \(target.lastPathComponent)")
                 self.statusOverlay.flash("There is already a file called \(target.lastPathComponent) there.")
                 return
             }
@@ -980,6 +1067,7 @@ final class Coordinator {
                 }
             } catch {
                 NSLog("Birta Jot: could not move \(source.path) to \(target.path): \(error)")
+                self.measure.trace("relocate failed \(target.lastPathComponent)")
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
             }
@@ -988,6 +1076,7 @@ final class Coordinator {
             if self.lastSavedURL == source { self.lastSavedURL = target }
             let moved = target.deletingLastPathComponent().standardizedFileURL
                 != source.deletingLastPathComponent().standardizedFileURL
+            self.measure.trace("relocate ok \(moved ? "moved" : "renamed") \(target.lastPathComponent)")
             self.statusOverlay.flash(moved
                 ? "Moved to \(WindowTitle.displayName(of: target.deletingLastPathComponent()))."
                 : "Renamed to \(target.lastPathComponent).")
