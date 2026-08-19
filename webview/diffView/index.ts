@@ -184,6 +184,7 @@ function showMessage(text: string): void {
     notice.textContent = text;
     body.appendChild(notice);
     hunks = [];
+    cursor = -1;
     prevBtn.disabled = true;
     nextBtn.disabled = true;
     summary.textContent = "";
@@ -236,7 +237,6 @@ window.addEventListener("message", (event: MessageEvent<ToDiffViewMessage>) => {
             host.postMessage({ type: "diffFailed", message });
         });
     } else if (msg?.type === "diffUnavailable") {
-        title.textContent = "";
         showMessage(msg.reason);
     }
 });

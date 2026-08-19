@@ -152,6 +152,14 @@ class DiffPanel {
             vscode.workspace.onDidSaveTextDocument((doc) => {
                 if (doc.uri.toString() === this.uri.toString()) { this.scheduleRefresh(); }
             }),
+            // The BASE side moves too, and nothing in the workspace reports a
+            // commit or a checkout. Rather than watch `.git`, re-read when the
+            // panel comes back into view: the gesture that changes HEAD always
+            // ends with the reader returning here, and a stale left-hand side
+            // is the one error this panel cannot show its way out of.
+            this.panel.onDidChangeViewState((e) => {
+                if (e.webviewPanel.visible) { this.scheduleRefresh(); }
+            }),
         );
 
         this.panel.onDidDispose(() => this.dispose());
