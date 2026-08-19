@@ -428,7 +428,29 @@ describe("Turn-into from a directive or a Notion callout", () => {
  * Advisory only: the pick still applies on one click, and undo is the safety
  * mechanism (docs/DESIGN_PRINCIPLES, "annotation is advisory and quiet").
  */
-describe("Turn-into rows announce what a pick drops", () => {
+/**
+ * Per-test budget for the Turn-into sweeps below, which build a FRESH editor
+ * for every (source kind, target kind) pair rather than reusing one, so a
+ * conversion cannot inherit the state a previous conversion left behind. That
+ * is the cost: roughly ninety editor constructions in a single test, which
+ * makes it far and away the most expensive one in this file while the rest sit
+ * comfortably under the 5 s default.
+ *
+ * Alone it costs a small fraction of this budget; measure it with
+ * `npx vitest run webview/__tests__/blockMenu.test.ts` rather than trusting a
+ * figure written here. The headroom is sized for the failure this exists to
+ * stop, not for the quiet-machine cost: under a second session's test sweep
+ * this test has been seen inflated about ninefold, and AGENTS.md puts CI
+ * runners at roughly twice a laptop's per-test cost on top of that. A red that
+ * only means "the machine was busy" teaches people to re-run reds, which is
+ * the habit that hides the next real one (MAR-382).
+ *
+ * Scoped to this describe on purpose: the project-wide default stays tight, so
+ * an ordinary test that becomes slow is still caught.
+ */
+const TURN_INTO_SWEEP_TIMEOUT_MS = 20_000;
+
+describe("Turn-into rows announce what a pick drops", { timeout: TURN_INTO_SWEEP_TIMEOUT_MS }, () => {
     /** The hint text on a Turn-into row, and whether it reads as prose. */
     function hintOn(menu: HTMLElement, label: string): { text: string; note: boolean } | null {
         const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
