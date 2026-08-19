@@ -217,13 +217,13 @@ Headings, list items, tables, code blocks, quotes, callouts, `:::` directives an
 
 `Birta Writer: Compare with HEAD` shows a file against its last committed version as a rendering rather than as a diff of the source. A word edited mid-sentence is marked as that word, not as the whole line; a removed paragraph is drawn where it was; `j`/`k` steps between the changes. Reach it from the command palette, the editor title bar, or a changed file's right-click menu in Source Control.
 
-Reviewing a document is a reading job, and a rewritten table read as pipe syntax is exactly the pop-out this editor exists to remove. This is also the half that was missing from the agent loop: Birta already hands an agent the file you have open, and the agent's answer arrives as a change to it, which until now you could only read as raw text. The comparison follows the open buffer rather than the file on disk, so unsaved edits are part of what you review. VS Code's own diff is untouched and stays the right tool when the source is what you want. Images show as their path and inline HTML as its source rather than rendering.
+Reviewing a document is a reading job, and a rewritten table read as pipe syntax is exactly the pop-out this editor exists to remove. This is also the half that was missing from the agent loop: Birta already hands an agent the file you have open, and its edit already arrives rendered, but until now the only way to see what it had changed was a source diff. The comparison follows the open buffer rather than the file on disk, so unsaved edits are part of what you review. VS Code's own diff is untouched and stays the right tool when the source is what you want. Constructs the editor draws with chrome of their own are shown plainly here: images as their path, inline HTML and math as their source, and code blocks and diagrams as code.
 
 ### Typewriter mode
 
 `birta.typewriterMode` (off by default) holds the line you are editing at a fixed height on screen and scrolls the document under it, so a long drafting session does not leave your eye chasing the active line toward the bottom of the pane.
 
-It moves the viewport and nothing else: the file, the serializer and the rendering are untouched, so it can be switched on and off mid-sentence with nothing to reconcile. It also declines to fight you. A mouse click does not recentre the page, and a selection you are extending with the keyboard is never scrolled out from under you, because the mode is expressed as a bound on where the caret may sit rather than as a scroller that runs on every event.
+It moves the viewport and nothing else: the file, the serializer and the rendering are untouched, so it can be switched on and off mid-sentence with nothing to reconcile. It also declines to fight you. A mouse click does not recentre the page, and a selection you are extending with the keyboard scrolls the ordinary way rather than recentring on every keystroke, because the mode is expressed as a bound on where the caret may sit rather than as a scroller that runs on every event.
 
 ### The switch to raw Markdown carries your cursor, and your selection
 

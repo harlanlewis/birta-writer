@@ -2502,9 +2502,12 @@ body.fold-controls-always .heading-sticky-toggle {
     pointer-events: auto;
 }
 
-/* "never": no chevrons anywhere — existing folds keep their `…` (state,
-   not control) and the fold commands still work, VS Code's semantics. The
-   sticky heading's toggle mirrors VS Code sticky scroll and hides too. */
+/* "never": no chevron on an EXPANDED block, and the fold commands still work,
+   which is VS Code's semantics. It used to be no chevron anywhere, because a
+   collapsed heading kept a `…` chip that said the fold was there; that chip is
+   gone, so the collapsed chevron is now what carries it and the rule below has
+   an override right after it. The sticky heading's toggle mirrors VS Code
+   sticky scroll and hides on the same terms. */
 body.fold-controls-never .milkdown .editor .heading-fold-toggle,
 body.fold-controls-never .heading-sticky-toggle {
     display: none;

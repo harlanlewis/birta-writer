@@ -994,7 +994,7 @@
                 {
                     "command": "birta.openDiff",
                     "group": "navigation",
-                    "when": "scmProvider == git && (resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx)"
+                    "when": "scmProvider == git && (scmResourceGroup == workingTree || scmResourceGroup == index || scmResourceGroup == untracked)"
                 }
             ],
             "commandPalette": [
