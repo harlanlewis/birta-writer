@@ -212,7 +212,7 @@ export const EDITOR_COMMANDS = [
     // The host application's own preferences, for a surface that IS an app
     // (Jot). Shares the `settings` group with the rows above because it names
     // the same thing they do: the program, rather than this document.
-    { id: "openHostPreferences", title: "Birta Jot Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
+    { id: "openHostPreferences", title: "Writer Jot Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a

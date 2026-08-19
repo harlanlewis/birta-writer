@@ -160,8 +160,6 @@ export interface EditorActions {
      * layer from the DOM.
      */
     setLineNumbers: (enabled: boolean) => void;
-    /** Applies a birta.typewriterMode change; takes effect on the next caret scroll. */
-    setTypewriterMode: (enabled: boolean) => void;
 }
 
 /** Message-handler dependencies. */
@@ -509,9 +507,6 @@ export function createMessageHandlers(
         },
         setLineNumbers(msg) {
             actions.setLineNumbers(msg.enabled);
-        },
-        setTypewriterMode(msg) {
-            actions.setTypewriterMode(msg.enabled);
         },
         setReadOnly(msg) {
             // Straight through to the mode's one owner, which announces to

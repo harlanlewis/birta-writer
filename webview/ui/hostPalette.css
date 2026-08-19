@@ -129,15 +129,6 @@
     --vscode-textPreformat-foreground: #c41a16;
     --vscode-symbolIcon-keywordForeground: #8944ab;
 
-    /* Diff (webview/diffView). Read only by the rendered-diff panel, which is
-       a VS Code surface, so these have no consumer in Jot today. They are here
-       because hostPalette.test.ts requires the palette and the code to name
-       the same set, and because a host that later shows a diff should get the
-       colours rather than nothing. */
-    --vscode-diffEditor-insertedTextBackground: rgba(52, 199, 89, 0.2);
-    --vscode-diffEditor-removedTextBackground: rgba(255, 59, 48, 0.2);
-    --vscode-diffEditor-removedLineBackground: rgba(255, 59, 48, 0.08);
-
     /* Accents: callouts and syntax */
     --vscode-charts-red: #ff3b30;
     --vscode-charts-orange: #ff9500;
@@ -218,11 +209,6 @@
     --vscode-textCodeBlock-background: rgba(255, 255, 255, 0.07);
     --vscode-textPreformat-foreground: #ff7b72;
     --vscode-symbolIcon-keywordForeground: #bf5af2;
-
-    /* Diff */
-    --vscode-diffEditor-insertedTextBackground: rgba(46, 160, 67, 0.3);
-    --vscode-diffEditor-removedTextBackground: rgba(248, 81, 73, 0.3);
-    --vscode-diffEditor-removedLineBackground: rgba(248, 81, 73, 0.12);
 
     /* Accents */
     --vscode-charts-red: #ff453a;

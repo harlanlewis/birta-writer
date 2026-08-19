@@ -56,13 +56,6 @@ declare global {
              * loaded at all; live changes arrive as `setLineNumbers`.
              */
             lineNumbers?: boolean;
-            /**
-             * Typewriter mode (birta.typewriterMode), default OFF: hold the
-             * edited line at a fixed height and scroll the document under it.
-             * Read once at panel load; live changes arrive as
-             * `setTypewriterMode`.
-             */
-            typewriterMode?: boolean;
             /** Extra literal markers surfaced in the Notes review tab (birta.notes.customMarkers). */
             notesCustomMarkers?: string[];
             /** Highlight note markers in the text (birta.notes.highlightMarkers); default on. */
