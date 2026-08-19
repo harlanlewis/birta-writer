@@ -88,6 +88,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             contentRect: NSRect(x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: 300),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        // The app's name, not the pane's. A multi-pane settings window titles
+        // itself after the selected pane, and that rule assumes the app is
+        // named somewhere else on screen; Jot is an accessory app with no Dock
+        // icon, so "General" alone belongs to nothing the user can see. The
+        // toolbar below the title already names and highlights the pane.
+        window.title = "Birta Jot Settings"
         // The panel floats, so a settings window at the ordinary level opens
         // BEHIND the window it was opened from. Match the panel's level, which
         // is the setting's level, so turning floating off lowers both together
@@ -131,7 +137,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// past which the pane scrolls instead.
     private func show(_ tab: Tab, animated: Bool) {
         guard let window else { return }
-        window.title = tab.title
         let pane = panes[tab] ?? {
             let built = buildPane(tab)
             panes[tab] = built
@@ -238,6 +243,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (blankSwitch, Prefs.openToBlankNote, #selector(toggleOpenToBlank)),
             (loginSwitch, false, #selector(toggleLoginItem)),
         ] {
+            // The size a settings row uses. A regular NSSwitch is drawn for a
+            // control that is the point of its own view; in a list of rows it
+            // is the loudest thing on the pane. `NSSwitchControlSizeTests`
+            // pins that the system still draws `.small` smaller, and the trap
+            // it also pins: the switch keeps reporting the regular size until
+            // it has been laid out in a view hierarchy.
+            control.controlSize = .small
             control.state = on ? .on : .off
             control.target = self
             control.action = action
@@ -343,7 +355,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     ///
     /// A translucent lift instead, which composites over whatever the window
     /// ground is: it settles into a light window and lifts off a dark one,
-    /// which is the direction System Settings' own cards go in each.
+    /// which is the direction System Settings' own cards go in each. The group
+    /// draws no border, so this fill is the whole of what bounds a card.
     static let settingsCard = NSColor(name: "birtaJotSettingsCard") { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor(white: 1, alpha: 0.06)
@@ -372,8 +385,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
         let box = NSBox()
         box.boxType = .custom
-        box.borderWidth = 1
-        box.borderColor = .separatorColor
+        // No stroke. A settings group is grouped by its fill and the space
+        // around it; an outline as well draws a box around something already
+        // bounded, and three of them down a pane read as a form.
+        box.borderWidth = 0
         box.cornerRadius = 10
         box.fillColor = SettingsWindowController.settingsCard
         box.contentViewMargins = .zero

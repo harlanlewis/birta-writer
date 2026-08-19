@@ -86,7 +86,11 @@ final class HotkeyRecorderView: NSView {
             widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
-            row.trailingAnchor.constraint(lessThanOrEqualTo: clearButton.leadingAnchor, constant: -8),
+            // Equal, not at most: the field's width is its content's, the way
+            // a settings row's control is sized to what it holds. Under an
+            // inequality nothing here fixes the width, and the row stretches
+            // it across the whole card.
+            row.trailingAnchor.constraint(equalTo: clearButton.leadingAnchor, constant: -8),
             clearButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             clearButton.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
