@@ -992,7 +992,17 @@ final class Coordinator {
                     path: self.boundURL.path, selection: selection, source: self.latest)
                 self.writeToPasteboard(payload)
                 self.measure.trace("agentref \(payload.split(separator: "\n").first ?? "")")
-                self.statusOverlay.flash("Copied \(AgentReference.reference(path: self.boundURL.lastPathComponent, selection: selection))")
+                // "a reference to X" rather than "Copied X": the clipboard
+                // holds the ABSOLUTE path and this names the file, which is
+                // all the width there is down here. Saying "Copied <name>"
+                // would name something narrower than what was copied, and the
+                // whole job of this line is to be checkable against what you
+                // are about to paste.
+                let named = AgentReference.reference(
+                    path: self.boundURL.lastPathComponent, selection: selection)
+                self.statusOverlay.flash(selection.isEmpty
+                    ? "Copied a reference to \(named)"
+                    : "Copied a reference to \(named) and the selected lines")
             }
         }
     }

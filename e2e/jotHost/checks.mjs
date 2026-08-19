@@ -568,6 +568,10 @@ export async function run({ page, check, baseUrl }) {
             background: style.backgroundColor,
             editorBackground: getComputedStyle(document.body).backgroundColor,
             borderTopWidth: style.borderTopWidth,
+            borderTopColor: style.borderTopColor,
+            // What `currentColor` would resolve to, which is what an
+            // unresolved `var()` in a border falls back to.
+            ink: style.color,
             borderBottomWidth: style.borderBottomWidth,
             radius: style.borderTopLeftRadius,
             shadow: style.boxShadow,
@@ -604,6 +608,18 @@ export async function run({ page, check, baseUrl }) {
     check("jot: it spans the window's bottom edge, separated by a hairline above",
         stack.left === 0 && stack.right === 0 && stack.bottom === 0
             && stack.borderTopWidth === "1px" && stack.borderBottomWidth === "0px",
+        JSON.stringify(stack));
+    // The hairline's COLOUR, which the width says nothing about. A border
+    // whose `var()` resolves to nothing keeps its 1px and falls back to
+    // `currentColor`, so a rule naming a variable this host does not define
+    // reads as a perfect hairline here and draws an invisible one, or an ink
+    // one, in the panel. `hostPalette.test.ts` catches an undefined variable
+    // by name; this catches a defined one that resolves to the ground it is
+    // supposed to separate from.
+    check("jot: and the hairline is a colour of its own, not the ground and not the ink",
+        stack.borderTopColor !== stack.background
+            && stack.borderTopColor !== "rgba(0, 0, 0, 0)"
+            && stack.borderTopColor !== stack.ink,
         JSON.stringify(stack));
 
     // Boot from a saved bag. The write was checked above, and a write nothing
