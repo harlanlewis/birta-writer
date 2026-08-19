@@ -335,11 +335,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// The ground a settings group sits on.
     ///
-    /// NOT `controlBackgroundColor`, which is the obvious choice and is
-    /// measurably the SAME colour as `windowBackgroundColor` in both
-    /// appearances (white on white, and 0.118 on 0.118), so a card painted
-    /// with it is invisible and the groups read as one long list. This is a
-    /// translucent lift instead, which composites over whatever the window
+    /// NOT `controlBackgroundColor`, which is the obvious choice and resolves
+    /// to the SAME colour as `windowBackgroundColor` in both appearances, so a
+    /// card painted with it is invisible and the groups read as one long list.
+    /// `SettingsCardTests` pins that, and is what would tell us if a future
+    /// macOS separated the two and made the obvious colour right again.
+    ///
+    /// A translucent lift instead, which composites over whatever the window
     /// ground is: it settles into a light window and lifts off a dark one,
     /// which is the direction System Settings' own cards go in each.
     static let settingsCard = NSColor(name: "birtaJotSettingsCard") { appearance in
