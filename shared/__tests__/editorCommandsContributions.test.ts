@@ -135,6 +135,43 @@ describe("editor command contributions", () => {
         expect(titles[0]).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
     });
 
+    it("Jot's own name in Swift should be the shared constant's spelling", () => {
+        // The default scratchpad is `<name>/<name>.md` under Application
+        // Support, so Jot's name reaches the filesystem and not only a label:
+        // the folder it keeps things in and the note the window titles itself
+        // with. Swift cannot import product.ts, and this is the read that
+        // relates the two — the same technique as the window-title guard
+        // above.
+        //
+        // Asserted on the CONSTANT rather than on the path expression, and the
+        // count is asserted first. A regex over the path would pass a file
+        // that had gone back to two separate literals as long as both happened
+        // to read "Birta Jot", which is exactly the drift a rename causes and
+        // exactly what this is here to catch.
+        const swift = fs.readFileSync(
+            path.join(root, "jot/Sources/BirtaJot/Preferences.swift"), "utf8");
+        const code = swift
+            .split("\n")
+            .filter((line) => !line.trimStart().startsWith("//"))
+            .join("\n");
+        const names = [...code.matchAll(/\bstatic let productName\s*=\s*"([^"]+)"/g)].map((m) => m[1]!);
+        expect(names, "Preferences.swift should declare productName exactly once").toHaveLength(1);
+        expect(names[0]).toBe(JOT_PRODUCT_NAME);
+
+        // And that the constant is what the default path is built from, in
+        // both positions. A constant nothing reads is a constant that agrees
+        // with the test and not with the app.
+        const path_ = code.match(
+            /defaultScratchpadURL: URL \{[\s\S]*?\n {4}\}/,
+        )?.[0];
+        expect(path_, "defaultScratchpadURL should still be readable here").toBeTruthy();
+        expect(path_).not.toMatch(/"[^"]*Birta[^"]*"/);
+        expect(
+            [...path_!.matchAll(/\bproductName\b/g)],
+            "the folder and the file should both come from productName",
+        ).toHaveLength(2);
+    });
+
     it("the native toolbar context menu order should match the shared table order", () => {
         // The gear dropdown is built straight from TOOLBAR_MENU_COMMANDS; the
         // native right-click menu orders by group name, then by the `@N`

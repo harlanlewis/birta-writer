@@ -518,19 +518,6 @@ export function setupSelectionToolbar(
     );
     toolbar.appendChild(clearFmtBtn);
 
-    // ── Agent group: copy a reference for an AI agent ──
-    // The one-click path for "tell my coding agent what I'm looking at": puts
-    // `path.md#L12-L20` on the clipboard via the same extension-side command as
-    // the context menu, so payload and feedback are identical. It reads the
-    // document and writes nothing — separated from the formatting groups.
-    const agentSep = sSep();
-    toolbar.appendChild(agentSep);
-    const agentRefBtn = sBtn(IconAgentChat, t("Copy Reference for AI Agent"), () =>
-        notifyCopyAgentReference(),
-    );
-    agentRefBtn.classList.add("sel-tb-agent-btn");
-    toolbar.appendChild(agentRefBtn);
-
     // ── Block-selection elements (shown only for a whole-block range) ──
     // A multi-block BlockRangeSelection has no gutter-menu surface (that menu
     // targets one block); these reuse the keyboard layer's range commands so
@@ -782,6 +769,28 @@ export function setupSelectionToolbar(
     deleteColBtn.style.display = "none";
     toolbar.appendChild(deleteColBtn);
 
+    // ── Agent group: copy a reference for an AI agent ──
+    // The one-click path for "tell my coding agent what I'm looking at": puts
+    // `path.md#L12-L20` on the clipboard via the same extension-side command as
+    // the context menu, so payload and feedback are identical.
+    //
+    // Built LAST, and the position is the point. Every other group belongs to
+    // one mode, so it is the trailing group in all three: a reference is a READ
+    // of whatever is selected, and the source mapping already answers for a
+    // block range and a cell range as well as a text run
+    // (webview/agentContext.ts), so there is no selection level where the
+    // question "where is this?" stops having an answer. Appended after the
+    // block and table elements, a hidden group takes no flex space, so text
+    // mode looks exactly as it did while block and cell mode gain the button
+    // at the same end of the bar.
+    const agentSep = sSep();
+    toolbar.appendChild(agentSep);
+    const agentRefBtn = sBtn(IconAgentChat, t("Copy Reference for AI Agent"), () =>
+        notifyCopyAgentReference(),
+    );
+    agentRefBtn.classList.add("sel-tb-agent-btn");
+    toolbar.appendChild(agentRefBtn);
+
     // ── Click outside the toolbar to close it ──────────────────────────
     // Deliberately NOT ui/outsideClick: this surface's "inside" region is not
     // its own DOM but the whole editor — a click anywhere in `.milkdown`
@@ -837,8 +846,20 @@ export function setupSelectionToolbar(
         insertSep.style.display = "none";
         clearFmtBtn.style.display = "none";
         mathBtn.style.display = "none";
-        agentSep.style.display = "none";
-        agentRefBtn.style.display = "none";
+    }
+    /**
+     * The agent group, which belongs to no single mode: every branch calls this
+     * exactly once, so the button can never be left over from the mode before.
+     *
+     * `precededBy` is whether the mode drew anything to its left, which is all
+     * the separator needs to know. Returns whether the button is showing, so a
+     * branch deciding it has nothing worth a bar can count it.
+     */
+    function showAgentGroup(precededBy: boolean): boolean {
+        const show = visible.has("agentReference");
+        agentRefBtn.style.display = show ? "" : "none";
+        agentSep.style.display = show && precededBy ? "" : "none";
+        return show;
     }
     function hideAllTable(): void {
         tableSep.style.display = "none";
@@ -1071,7 +1092,7 @@ export function setupSelectionToolbar(
         // A multi-block BlockRangeSelection has no gutter-menu surface (that
         // menu targets a single block), so the floating bar is its mouse
         // affordance: the grab menu (turn-into + all block actions), then move,
-        // duplicate, delete the whole run.
+        // duplicate, delete the whole run, then the agent reference.
         if (selection instanceof BlockRangeSelection) {
             hideAllInline();
             hideAllTable();
@@ -1092,6 +1113,9 @@ export function setupSelectionToolbar(
             moveDownBtn.style.display = "";
             dupBlockBtn.style.display = "";
             delBlockBtn.style.display = "";
+            // The block group is never empty, so the separator always earns its
+            // place here.
+            showAgentGroup(true);
             toolbar.style.visibility = "hidden";
             toolbar.style.display = "flex";
             positionToolbar(view, selection.from, selection.to);
@@ -1118,15 +1142,15 @@ export function setupSelectionToolbar(
             // Link: hidden in cell-selection mode — the link prompt replaces
             // a flat text range, which would corrupt the table structure
             // when the selection spans cells. Clear-formatting / math / block
-            // ops are not offered in cell mode either.
+            // ops are not offered in cell mode either. The agent reference is,
+            // and is placed after the table controls below: it writes nothing,
+            // so none of those structural reasons reach it.
             linkSep.style.display = "none";
             linkBtn.style.display = "none";
             sectionLinkBtn.style.display = "none";
             insertSep.style.display = "none";
             clearFmtBtn.style.display = "none";
             mathBtn.style.display = "none";
-            agentSep.style.display = "none";
-            agentRefBtn.style.display = "none";
             hideBlockButtons();
 
             // Alignment: shown when a whole column is selected (and not the whole table)
@@ -1156,15 +1180,18 @@ export function setupSelectionToolbar(
             setActive(codeBtn, cellActive.marks.inlineCode);
             setActive(highlightBtn, cellActive.marks.highlight);
 
-            // A single-cell selection with every inline mark opted out has no
-            // structure controls either → don't flash an empty bar.
             const hasCellMarks =
                 visible.has("bold") ||
                 visible.has("italic") ||
                 visible.has("strikethrough") ||
                 visible.has("inlineCode") ||
                 visible.has("highlight");
-            if (!hasCellMarks && !isEntireTable && !isRow && !isCol) {
+            const hasCellStructure = isEntireTable || isRow || isCol;
+            const showAgentRef = showAgentGroup(hasCellMarks || hasCellStructure);
+
+            // A single-cell selection with every inline mark opted out has no
+            // structure controls either → don't flash an empty bar.
+            if (!hasCellMarks && !hasCellStructure && !showAgentRef) {
                 hideToolbar();
                 return;
             }
@@ -1225,7 +1252,6 @@ export function setupSelectionToolbar(
         const showSectionLink = visible.has("sectionLink");
         const showClear = visible.has("clearFormatting");
         const showMath = visible.has("math");
-        const showAgentRef = visible.has("agentReference");
         fmtWrap.style.display = showFormat ? "" : "none";
         boldBtn.style.display = showBold ? "" : "none";
         italicBtn.style.display = showItalic ? "" : "none";
@@ -1236,7 +1262,6 @@ export function setupSelectionToolbar(
         sectionLinkBtn.style.display = showSectionLink ? "" : "none";
         clearFmtBtn.style.display = showClear ? "" : "none";
         mathBtn.style.display = showMath ? "" : "none";
-        agentRefBtn.style.display = showAgentRef ? "" : "none";
 
         // A separator only appears between two non-empty groups, so hiding items
         // by config never leaves a leading, trailing, or doubled separator.
@@ -1248,8 +1273,7 @@ export function setupSelectionToolbar(
         textFmtSep.style.display = showFormat && (hasMarks || hasLinks || hasInsert) ? "" : "none";
         linkSep.style.display = hasLinks && (showFormat || hasMarks) ? "" : "none";
         insertSep.style.display = hasInsert && (showFormat || hasMarks || hasLinks) ? "" : "none";
-        agentSep.style.display =
-            showAgentRef && (showFormat || hasMarks || hasLinks || hasInsert) ? "" : "none";
+        const showAgentRef = showAgentGroup(showFormat || hasMarks || hasLinks || hasInsert);
 
         // Nothing to show (every inline item opted out) → don't flash an empty bar.
         if (!showFormat && !hasMarks && !hasLinks && !hasInsert && !showAgentRef) {

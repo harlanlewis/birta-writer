@@ -591,6 +591,16 @@ export const window = {
 
 export const commands = {
     executeCommand: vi.fn(),
+    /**
+     * Returns a disposable, because every caller pushes the result straight
+     * into `context.subscriptions` and a bare `vi.fn()` would put `undefined`
+     * in there. The registration itself is not modelled: nothing here dispatches
+     * `executeCommand` to a registered handler, so a test that wants to watch a
+     * command run should call the function the registrar returns.
+     */
+    registerCommand: vi.fn((_id: string, _handler: (...args: unknown[]) => unknown) => ({
+        dispose: vi.fn(),
+    })),
 };
 
 // No extensions installed in tests: theme discovery (themeManager.getAllThemes)

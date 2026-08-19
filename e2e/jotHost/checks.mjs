@@ -367,6 +367,51 @@ export async function run({ page, check, baseUrl }) {
     check("jot: clicking the T shows the row and the divider",
         expanded.expanded === "true" && expanded.rowShown && expanded.dividerShown,
         JSON.stringify(expanded));
+
+    // The chevron used to animate its WIDTH in from zero on hover, which moved
+    // the toggle's own box and shoved the whole row sideways as the pointer
+    // crossed it: a control you can miss by arriving at it, pushing the
+    // controls you were reaching for. Measured as a geometry invariant rather
+    // than as a CSS property, because the property is one way to break it and
+    // the geometry is the thing that was wrong.
+    //
+    // AFTER the row is open, deliberately. Collapsed there are no items to be
+    // pushed, so `firstItemLeft` would be null on both sides and the
+    // stillness assertion would hold over nothing at all.
+    //
+    // The first check is that the probe MOVED the pointer onto the button:
+    // without it a hover that silently missed reports perfect stillness.
+    const hoverShift = await (async () => {
+        const boxOf = () => page.evaluate(() => {
+            const t = document.querySelector(".tb-dock-toggle");
+            const c = document.querySelector(".tb-dock-chevron");
+            const first = document.querySelector(".tb-dock-row .tb-item");
+            return {
+                toggle: Math.round(t.getBoundingClientRect().width),
+                chevron: Math.round(c.getBoundingClientRect().width),
+                chevronInk: Number(getComputedStyle(c).opacity),
+                firstItemLeft: first ? Math.round(first.getBoundingClientRect().left) : null,
+            };
+        });
+        await page.mouse.move(5, 5);
+        await page.waitForTimeout(250);
+        const away = await boxOf();
+        await page.locator(toggleSel).hover();
+        await page.waitForTimeout(300);
+        const over = await boxOf();
+        return { away, over };
+    })();
+    check("jot: the hover probe actually reached the toggle",
+        hoverShift.over.chevronInk > hoverShift.away.chevronInk, JSON.stringify(hoverShift));
+    check("jot: the row it could push is really there to be pushed",
+        hoverShift.away.firstItemLeft !== null, JSON.stringify(hoverShift));
+    check("jot: the chevron is drawn whether or not the pointer is on it",
+        hoverShift.away.chevron > 0 && hoverShift.over.chevron === hoverShift.away.chevron,
+        JSON.stringify(hoverShift));
+    check("jot: so hovering the toggle moves nothing in the row",
+        hoverShift.over.toggle === hoverShift.away.toggle
+            && hoverShift.over.firstItemLeft === hoverShift.away.firstItemLeft,
+        JSON.stringify(hoverShift));
     check("jot: and the choice was written to the view-state bag",
         expanded.saved === true, JSON.stringify(expanded));
 
@@ -511,10 +556,28 @@ export async function run({ page, check, baseUrl }) {
             el.remove();
             return value;
         };
+        const style = getComputedStyle(dock);
+        const box = dock.getBoundingClientRect();
         return {
             dock: z(dock),
             dockParentIsBody: dock.parentElement === document.body,
-            dockPosition: getComputedStyle(dock).position,
+            dockPosition: style.position,
+            // What makes it a docked bar rather than a card: the page's own
+            // ground, a hairline on top, square corners, no shadow, and the
+            // full width of the window with no inset.
+            background: style.backgroundColor,
+            editorBackground: getComputedStyle(document.body).backgroundColor,
+            borderTopWidth: style.borderTopWidth,
+            borderTopColor: style.borderTopColor,
+            // What `currentColor` would resolve to, which is what an
+            // unresolved `var()` in a border falls back to.
+            ink: style.color,
+            borderBottomWidth: style.borderBottomWidth,
+            radius: style.borderTopLeftRadius,
+            shadow: style.boxShadow,
+            left: Math.round(box.left),
+            right: Math.round(window.innerWidth - box.right),
+            bottom: Math.round(window.innerHeight - box.bottom),
             popups: {
                 slashMenu: probe("slash-menu"),
                 selectionToolbar: probe("sel-toolbar"),
@@ -530,8 +593,34 @@ export async function run({ page, check, baseUrl }) {
     const measured = Object.entries(stack.popups).filter(([, z]) => Number.isFinite(z));
     check("jot: every popup probe actually resolved a z-index",
         measured.length === Object.keys(stack.popups).length, JSON.stringify(stack));
+    // The order matters MORE than it did when the dock was a small pill in a
+    // corner: an opaque strip across the whole width hides whatever it paints
+    // over entirely, where a pill hid a corner of it. The two claims below are
+    // what make that sentence true, and they are asserted rather than assumed
+    // for the same reason the stacking context is.
     check("jot: every transient popup paints over the dock, not under it",
         measured.length > 0 && measured.every(([, z]) => stack.dock < z), JSON.stringify(stack));
+    check("jot: the dock is the page's own ground, not a floating card",
+        stack.background === stack.editorBackground
+            && stack.shadow === "none"
+            && stack.radius === "0px",
+        JSON.stringify(stack));
+    check("jot: it spans the window's bottom edge, separated by a hairline above",
+        stack.left === 0 && stack.right === 0 && stack.bottom === 0
+            && stack.borderTopWidth === "1px" && stack.borderBottomWidth === "0px",
+        JSON.stringify(stack));
+    // The hairline's COLOUR, which the width says nothing about. A border
+    // whose `var()` resolves to nothing keeps its 1px and falls back to
+    // `currentColor`, so a rule naming a variable this host does not define
+    // reads as a perfect hairline here and draws an invisible one, or an ink
+    // one, in the panel. `hostPalette.test.ts` catches an undefined variable
+    // by name; this catches a defined one that resolves to the ground it is
+    // supposed to separate from.
+    check("jot: and the hairline is a colour of its own, not the ground and not the ink",
+        stack.borderTopColor !== stack.background
+            && stack.borderTopColor !== "rgba(0, 0, 0, 0)"
+            && stack.borderTopColor !== stack.ink,
+        JSON.stringify(stack));
 
     // Boot from a saved bag. The write was checked above, and a write nothing
     // reads back is a preference that is not remembered: the shell seeds

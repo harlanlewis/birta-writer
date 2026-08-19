@@ -19,6 +19,10 @@ import AppKit
 /// want to ACT on belongs in the menu bar, where a person looks for it.
 @MainActor
 final class StatusOverlay: NSView {
+    /// Tall enough for one line of the small system font. The caller places it
+    /// against the formatting bar, so the two numbers travel together.
+    static let height: CGFloat = 20
+
     private let status = NSTextField(labelWithString: "")
     private var clear: DispatchWorkItem?
 

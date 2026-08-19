@@ -141,10 +141,14 @@ shared/hostProfile.ts                         What the surface IS: the one profi
 jot/                                          Birta Writer Jot, the macOS menu-bar scratchpad shell (SwiftPM) around dist/webview.js; jot/README.md
 jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
-jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: the Edited suffix and the path popup's walk
-jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory, and hangs the reveal and path-popup gestures off it
+jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
+jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory; why the label centres on `bounds` and not on the height it was built at
+jot/Sources/BirtaJot/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
+jot/Sources/BirtaJotCore/ActiveBinding.swift  WHICH of Jot's three file settings is in force, so a rename writes back to the one it was read from
+jot/Sources/BirtaJotCore/DocumentName.swift   What a typed filename means: the extension kept, `/` and `:` refused, an unchanged field not a rename
 jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes: the autosave setting's scope is the edit trigger and nothing else
 jot/Sources/BirtaJotCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
+jot/Sources/BirtaJotCore/AgentReference.swift What Copy Reference puts on the clipboard, a port of src/agentBridge/format.ts; mirrored test cases, and its header names the two places the two deliberately differ
 jot/scripts/update-jot.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
 ```

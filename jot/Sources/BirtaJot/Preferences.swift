@@ -44,7 +44,18 @@ enum Prefs {
         set { d.set(newValue.spelling, forKey: Key.hotkey) }
     }
 
-    /// The scratchpad file. Default: ~/Library/Application Support/Birta Jot/Scratchpad.md.
+    /// The app's own name, and the only spelling of it in this file.
+    ///
+    /// `JOT_PRODUCT_NAME` in shared/product.ts is the source; Swift cannot
+    /// import TypeScript, so this restates it and the drift test in
+    /// `shared/__tests__/editorCommandsContributions.test.ts` reads this file
+    /// and fails when the two disagree. It is a constant rather than two
+    /// literals because the folder and the file inside it are the same name,
+    /// and a rename that moved one of them would leave the app keeping
+    /// "Birta Jot.md" in a folder called something else.
+    static let productName = "Birta Jot"
+
+    /// The scratchpad file. Default: ~/Library/Application Support/Birta Jot/Birta Jot.md.
     /// `BIRTA_JOT_SCRATCHPAD` overrides it for a run, so jot/scripts/measure.sh
     /// can type into a throwaway file and never touch the real one.
     static var scratchpadURL: URL {
@@ -56,10 +67,20 @@ enum Prefs {
         set { d.set(newValue.path, forKey: Key.scratchpadPath) }
     }
 
+    /// The app's name, twice: the folder Jot keeps its things in, and the note
+    /// inside it.
+    ///
+    /// The file is named after the app rather than after what it is for. It is
+    /// the one document a person who has changed no settings ever sees, its
+    /// name is what the window titles itself with, and "Birta Jot" is what
+    /// they would call the thing that window is. A description of the file's
+    /// role is a word they never chose and would have to learn.
     static var defaultScratchpadURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Birta Jot/Scratchpad.md")
+        return base
+            .appendingPathComponent(productName, isDirectory: true)
+            .appendingPathComponent("\(productName).md")
     }
 
     /// When set, Jot edits this document instead of the scratchpad.
@@ -86,7 +107,31 @@ enum Prefs {
     }
 
     /// The file the editor is bound to right now.
-    static var activeURL: URL { documentURL ?? currentNoteURL ?? scratchpadURL }
+    ///
+    /// The precedence lives in `BirtaJotCore.ActiveBinding`, which also
+    /// answers WHICH of the three settings supplied it. Renaming or moving the
+    /// file from the title popover has to write back to that same setting, and
+    /// a `??` chain says nothing about which one it took.
+    static var activeURL: URL {
+        ActiveBinding.url(document: documentURL, currentNote: currentNoteURL, scratchpad: scratchpadURL)
+    }
+
+    /// Which setting `activeURL` just read from, so a move updates it and not
+    /// one of the others.
+    static var activeSlot: ActiveBinding.Slot {
+        ActiveBinding.slot(hasDocument: documentURL != nil, hasCurrentNote: currentNoteURL != nil)
+    }
+
+    /// Point the setting the panel is currently bound through at `url`. The
+    /// one write-back a rename or a move makes, so it cannot pick the wrong
+    /// one of the three.
+    static func rebindActive(to url: URL) {
+        switch activeSlot {
+        case .document: documentURL = url
+        case .currentNote: currentNoteURL = url
+        case .scratchpad: scratchpadURL = url
+        }
+    }
 
     static var networkEnabled: Bool {
         get { d.bool(forKey: Key.networkEnabled) }

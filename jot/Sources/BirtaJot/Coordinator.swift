@@ -28,6 +28,20 @@ import os
 final class Coordinator {
     enum State { case cold, loading, warm }
 
+    /// How far the status line sits above the window's bottom edge, so it
+    /// centres on the formatting bar rather than floating beside it.
+    ///
+    /// Derived rather than chosen: `webview/components/toolbar/dock.css` gives
+    /// the bar a 1px top border and `--ui-space-2` (4px) of padding around a
+    /// 24px `.tb-btn`, so its controls are centred 17pt up, and a 20pt-tall
+    /// label centres there when its bottom sits 7pt up.
+    ///
+    /// A number on this side of the bridge that follows one on the other, so
+    /// it can go stale. What it costs when it does is a status line a few
+    /// points off centre, and `jot/scripts/measure.sh` prints the bar's real
+    /// height in its `dock` line, which is where to check it.
+    private static let statusBaseline: CGFloat = 7
+
     let hotkey: GlobalHotkey
     private let panel = JotPanel()
     private let contentView = AppearanceObservingView()
@@ -61,6 +75,10 @@ final class Coordinator {
     /// Closes it again, because the panel going away takes it along.
     var hidePreferences: (() -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
+    /// In-flight `requestEditorContext` calls, by id. Bounded the same way the
+    /// flushes are: a page that never answers must not leave a closure holding
+    /// the coordinator for the life of the app.
+    private var pendingContexts: [String: (AgentReference.Selection?) -> Void] = [:]
     private let agent = AgentRunner()
     private var autosaveTimer: Timer?
     private var autosaveDeadline: Date?
@@ -129,17 +147,21 @@ final class Coordinator {
             host.webView.topAnchor.constraint(equalTo: contentView.topAnchor),
             host.webView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             statusOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
-            // Never past the window's midpoint: the formatting dock owns the
-            // other bottom corner, and a long message meeting it would read as
-            // one strip rather than two pieces of chrome.
+            // Never past the window's midpoint: the formatting dock is a bar
+            // across the whole bottom edge, and a message long enough to reach
+            // its controls would read as one crowded strip.
             statusOverlay.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.centerXAnchor),
-            statusOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
-            statusOverlay.heightAnchor.constraint(equalToConstant: 20),
+            statusOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor,
+                                                  constant: -Coordinator.statusBaseline),
+            statusOverlay.heightAnchor.constraint(equalToConstant: StatusOverlay.height),
         ])
         contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
         panel.addTitlebarAccessoryViewController(titleBar)
         titleBar.titleView.onReveal = { url in
             NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+        titleBar.titleView.onRelocate = { [weak self] target in
+            MainActor.assumeIsolated { self?.relocateActiveFile(to: target) }
         }
         // Title ink follows the window's key state, as every macOS title does.
         // Both notifications are needed: a panel loses key to another app's
@@ -202,7 +224,8 @@ final class Coordinator {
 
     /// SIGURG: post the JSON object in `<scratchpad dir>/.debug-message.json`
     /// to the page verbatim (the test-only `__testInsertText` is the use), or,
-    /// for `{"type":"__jotKeys","keys":[...]}`, synthesize those keystrokes
+    /// for `{"type":"__jotKeys","keys":[...]}` or `{"type":"__jotSave"}`,
+    /// synthesize those keystrokes
     /// into the panel as NSEvents. The keys path is what makes real WebKit
     /// typing reachable from a script without an Accessibility grant: the
     /// events are the app's own, delivered through the same responder chain a
@@ -215,12 +238,52 @@ final class Coordinator {
             return
         }
         if let data = json.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           obj["type"] as? String == "__jotKeys",
-           let keys = obj["keys"] as? [String] {
-            measure.mark("debug-keys")
-            typeKeys(keys)
-            return
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if obj["type"] as? String == "__jotKeys", let keys = obj["keys"] as? [String] {
+                measure.mark("debug-keys")
+                typeKeys(keys)
+                return
+            }
+            // Cmd+S, from a script that cannot press it. The menu is where Save
+            // lives, and a menu key equivalent needs a key window, which an
+            // accessory app driven from a shell frequently cannot get (the same
+            // limitation `typeKeys` documents for editing chords). Without this
+            // the only way a script could make the app write with autosave OFF
+            // is to hide the panel, and hiding is exactly what stops working
+            // once the app has been hidden once and cannot come forward again.
+            if obj["type"] as? String == "__jotSave" {
+                measure.mark("debug-save")
+                saveNow()
+                return
+            }
+            // The title's own gestures, which nothing else can reach: a click
+            // on a titlebar accessory is not something a script can synthesize
+            // (`typeKeys` reaches the web view, and the title is native chrome
+            // beside it), and the popover it opens builds a form from the file
+            // on disk. Without these the whole of it would ship on the
+            // strength of its unit-tested halves and a reading of the wiring.
+            if obj["type"] as? String == "__jotTitleClick" {
+                measure.mark("debug-title-click")
+                measure.trace("titlepopover \(titleBar.titleView.openPopoverForMeasurement())")
+                return
+            }
+            if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
+                measure.mark("debug-rename")
+                titleBar.titleView.commitNameForMeasurement(name)
+                return
+            }
+            // The selection palette's button, without the palette. The button
+            // lives in the page and needs a selection under the pointer to
+            // appear at all, which a script cannot arrange; what is worth
+            // checking is the half after the click, which is entirely the
+            // shell's: flush, write, ask the page where the caret is, build
+            // the payload against the file's real path, and put it on the
+            // pasteboard.
+            if obj["type"] as? String == "__jotCopyAgentReference" {
+                measure.mark("debug-agentref")
+                copyAgentReference()
+                return
+            }
         }
         measure.mark("debug-post")
         host.send(.raw(json: json))
@@ -496,6 +559,10 @@ final class Coordinator {
             }
         case let .clipboardWrite(format, data):
             writeToPasteboard(data, asHTML: format == "html")
+        case .copyAgentReference:
+            copyAgentReference()
+        case let .editorContextResult(id, selection):
+            pendingContexts.removeValue(forKey: id)?(selection)
         case let .setToolbarLayout(itemId, placement, order):
             var layout = Prefs.toolbarLayout
             layout.apply(itemId: itemId, placement: placement, order: order)
@@ -886,6 +953,146 @@ final class Coordinator {
         }
     }
 
+    /// Put a reference to where the caret is on the clipboard, for pasting
+    /// into an agent somewhere else.
+    ///
+    /// Three things have to be true at once, and the order is what makes them
+    /// so.
+    ///
+    /// The reference names LINES IN A FILE, so the file has to hold them: this
+    /// writes first, whatever autosave says, exactly as the `/ai` hand-off
+    /// does and for the same reason. A pointer into bytes that are not on disk
+    /// is worse than no pointer, because it looks like it worked.
+    ///
+    /// The path is ABSOLUTE. The extension writes a workspace-relative one,
+    /// which is what a tool already working in that project resolves; Jot's
+    /// file lives under Application Support, nowhere near any agent's working
+    /// directory, so relative would name nothing anywhere.
+    ///
+    /// And the lines are quoted when there are any, because the tools this
+    /// gets pasted into are not all able to open a file. What decides the
+    /// shape is `BirtaJotCore.AgentReference`, which is the same shape the
+    /// extension's `src/agentBridge/format.ts` produces and is tested against
+    /// the same cases.
+    private func copyAgentReference() {
+        guard state == .warm else { return }
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            self.requestEditorContext { [weak self] selection in
+                guard let self else { return }
+                guard let selection else {
+                    // The page could not place the selection, which happens
+                    // before the first sync. Saying so beats copying a
+                    // reference to line 1 that names somewhere nobody is.
+                    self.statusOverlay.flash("Could not tell where the caret is.")
+                    return
+                }
+                let payload = AgentReference.clipboardPayload(
+                    path: self.boundURL.path, selection: selection, source: self.latest)
+                self.writeToPasteboard(payload)
+                self.measure.trace("agentref \(payload.split(separator: "\n").first ?? "")")
+                // "a reference to X" rather than "Copied X": the clipboard
+                // holds the ABSOLUTE path and this names the file, which is
+                // all the width there is down here. Saying "Copied <name>"
+                // would name something narrower than what was copied, and the
+                // whole job of this line is to be checkable against what you
+                // are about to paste.
+                let named = AgentReference.reference(
+                    path: self.boundURL.lastPathComponent, selection: selection)
+                self.statusOverlay.flash(selection.isEmpty
+                    ? "Copied a reference to \(named)"
+                    : "Copied a reference to \(named) and the selected lines")
+            }
+        }
+    }
+
+    /// Ask the page where the selection is, bounded in time.
+    ///
+    /// Bounded because the answer comes from the web content process, which
+    /// can die between the question and the reply; the flush protocol is
+    /// bounded for the same reason and this reuses its timeout rather than
+    /// inventing a second number.
+    private func requestEditorContext(_ then: @escaping (AgentReference.Selection?) -> Void) {
+        let id = "ctx-\(UUID().uuidString)"
+        pendingContexts[id] = then
+        host.send(.requestEditorContext(id: id))
+        DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
+            guard let self, let pending = self.pendingContexts.removeValue(forKey: id) else { return }
+            NSLog("Birta Jot: the page did not answer requestEditorContext in time")
+            pending(nil)
+        }
+    }
+
+    /// Rename or move the file the panel is editing, from the title popover.
+    ///
+    /// The order is the whole of it, and every step is load-bearing:
+    ///
+    ///   1. flush, so the bytes on disk are the bytes on screen. Moving first
+    ///      would leave the next write landing on the OLD path, because the
+    ///      writer is handed a URL per submission.
+    ///   2. refuse a name already taken, rather than replacing what is there.
+    ///      A rename field is not a place to lose somebody's other file, and
+    ///      macOS refuses this too.
+    ///   3. move, or WRITE when there is nothing to move. A scratchpad that
+    ///      has never been typed into has no file yet, and a rename that
+    ///      failed for that reason would be a rename that silently did not
+    ///      happen.
+    ///   4. point the setting the panel is bound THROUGH at the new path
+    ///      (`Prefs.rebindActive`), which is the one that was read to get
+    ///      here. Writing any of the other two would leave the next launch
+    ///      opening a file that never moved.
+    ///   5. rebind, which re-roots the attachment scheme handler and renames
+    ///      the title, both through `boundURL`'s `didSet`.
+    ///
+    /// The buffer is never re-read. This moves the file the editor is already
+    /// showing, so the bytes on screen are already the right ones, and
+    /// `bindTo` would push an `externalUpdate` that costs a document swap for
+    /// content that did not change.
+    func relocateActiveFile(to target: URL) {
+        guard target.standardizedFileURL != boundURL.standardizedFileURL else { return }
+        flushThen { [weak self] in
+            guard let self else { return }
+            // Read the bound file HERE, not when the move was asked for. A
+            // second rename arriving while the first is still flushing would
+            // otherwise carry the first one's idea of where the file is, and
+            // move something that has already moved.
+            let source = self.boundURL
+            guard target.standardizedFileURL != source.standardizedFileURL else { return }
+            let manager = FileManager.default
+            if manager.fileExists(atPath: target.path) {
+                self.measure.trace("relocate refused=taken \(target.lastPathComponent)")
+                self.statusOverlay.flash("There is already a file called \(target.lastPathComponent) there.")
+                return
+            }
+            do {
+                try manager.createDirectory(at: target.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+                if manager.fileExists(atPath: source.path) {
+                    try manager.moveItem(at: source, to: target)
+                } else {
+                    // Never typed into, so there is nothing on disk to move.
+                    // Writing is what makes the new name real.
+                    try AtomicFile.writeString(self.latest, to: target)
+                }
+            } catch {
+                NSLog("Birta Jot: could not move \(source.path) to \(target.path): \(error)")
+                self.measure.trace("relocate failed \(target.lastPathComponent)")
+                self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
+                return
+            }
+            Prefs.rebindActive(to: target)
+            self.boundURL = target
+            if self.lastSavedURL == source { self.lastSavedURL = target }
+            let moved = target.deletingLastPathComponent().standardizedFileURL
+                != source.deletingLastPathComponent().standardizedFileURL
+            self.measure.trace("relocate ok \(moved ? "moved" : "renamed") \(target.lastPathComponent)")
+            self.statusOverlay.flash(moved
+                ? "Moved to \(WindowTitle.displayName(of: target.deletingLastPathComponent()))."
+                : "Renamed to \(target.lastPathComponent).")
+        }
+    }
+
     /// `Note 2026-08-18.md`, numbered if that name is taken, so a second note
     /// on one day never lands on the first.
     static func unusedNoteURL(in directory: URL) -> URL {
@@ -972,28 +1179,51 @@ final class Coordinator {
     /// arrived under the traffic lights. `jot/scripts/measure.sh` reads this
     /// line and checks it, which is the same seam and the same reason as every
     /// other question only a running panel can answer.
+    /// The label's own box and the close button's, both in window coordinates,
+    /// so the check can compare them.
+    ///
+    /// The comparison is the point. macOS puts a window title's vertical
+    /// centre exactly on the close button's, at every titlebar height and
+    /// title font the system uses, so the close button is a reference for
+    /// "where a title goes" that lives in this window and needs no other
+    /// application to be running. The accessory's own frame is the whole
+    /// titlebar band and says nothing about where the text inside it sits, so
+    /// a title drawn low in that band moves no number the old check read.
     private func traceTitleBar() {
         guard measure.enabled else { return }
         let view = titleBar.titleView
         let frame = view.convert(view.bounds, to: nil)
+        let text = view.labelFrameInWindow()
+        let close = panel.standardWindowButton(.closeButton)
+            .map { $0.convert($0.bounds, to: nil) } ?? .zero
         measure.trace(String(
-            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f attached=%@ text=%@",
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
             frame.origin.x, frame.origin.y, frame.width, frame.height,
+            text.midY, close.midY,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
             view.accessibilityLabel() ?? ""))
     }
 
-    /// Name the bound file in the titlebar, and say whether it is behind the
-    /// buffer. Called from the two `didSet`s that can change either answer, so
-    /// no caller has to remember to.
+    /// Name the bound file in the titlebar, and say whether the reader has
+    /// something to do about it. Called from the two `didSet`s that can change
+    /// either answer, so no caller has to remember to.
+    ///
+    /// `Prefs.autosave` is read HERE, on every paint, and must stay that way.
+    /// The setting can move while the app runs, and `isEdited` does not change
+    /// at that moment, so a captured value would leave the title answering for
+    /// a setting that is no longer in force until the next keystroke.
     private func refreshTitle() {
-        titleBar.titleView.show(url: boundURL, edited: isEdited)
-        // WHAT the title says, on every change. Separate from the geometry
-        // trace above, which answers a different question at a different
-        // moment: this one is the Edited flag's only end-to-end evidence, and
-        // the flag is a claim about unwritten bytes that no unit test can
-        // check against a real file.
-        measure.trace("titletext \(titleBar.titleView.currentText)")
+        titleBar.titleView.show(
+            url: boundURL,
+            edited: WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
+                                            autosaveEnabled: Prefs.autosave))
+        // Traced on every CALL rather than on every change, deliberately. What
+        // this line is read for is whether the title holds still across a
+        // typing burst, and a trace that fired only on a change could not tell
+        // a title that never moved from one nothing ever asked about. Guarded
+        // so the string is not built when nothing is reading: with autosave on
+        // this runs on the keystroke path.
+        if measure.enabled { measure.trace("titletext \(titleBar.titleView.currentText)") }
     }
 
     /// Chrome follows the pointer: everything on while it is over the window,

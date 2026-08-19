@@ -67,6 +67,46 @@ wait_for() { # wait_for <mark> <timeout-s>
 }
 last() { grep "^jot-measure $1 " "$LOG" | tail -1 | awk '{print $3}'; }
 delta() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f", b - a }'; }
+marks() { grep -c "^jot-measure $1 " "$LOG"; }
+
+# SIGUSR1 toggles the panel, and a toggle is not a direction. An accessory app
+# driven from a shell frequently cannot take activation (the paste check below
+# has the same warning for its own reason), and a panel whose app never came
+# forward reads as not visible, so the NEXT toggle shows it again instead of
+# hiding it. Two shows in a row, and every check after that is measuring a
+# panel in the state it was told to leave behind.
+#
+# Detected rather than assumed, because the app already says which way it went:
+# `show` marks `visible` and `hide` marks nothing at all. A new mark after a
+# toggle means the toggle went the wrong way, and one more takes it back.
+#
+# This is what made the edited-flag check below fail about one run in four: the
+# hide that was supposed to write the buffer showed the panel instead, so the
+# title still said Edited and the failure read exactly like the title being
+# broken.
+hide_panel() { # hide_panel <settle-seconds>
+    local before after
+    before=$(marks visible)
+    kill -USR1 $PID; sleep "${1:-1.5}"
+    after=$(marks visible)
+    if [ "$after" -gt "$before" ]; then
+        kill -USR1 $PID; sleep "${1:-1.5}"
+    fi
+}
+
+show_panel() { # show_panel <settle-seconds>
+    local before
+    before=$(marks visible)
+    kill -USR1 $PID
+    local n=0
+    while [ "$(marks visible)" -le "$before" ]; do
+        sleep 0.1; n=$((n+1))
+        # A toggle that hid instead of showing leaves the count where it was.
+        if [ $n = 15 ]; then kill -USR1 $PID; fi
+        if [ $n -gt 60 ]; then echo "panel never became visible" >&2; cat "$LOG" >&2; exit 1; fi
+    done
+    sleep "${1:-0.5}"
+}
 
 wait_for ready 20
 echo "launch→ready         $(delta "$(last launch)" "$(last ready)") ms   (prewarm; the first cold mount)"
@@ -81,7 +121,7 @@ echo "hotkey→caret-ready   $(delta "$(last hotkey)" "$(last caret-ready)") ms 
 STAMP="probe-$(date +%s)"
 printf '{"type":"__testInsertText","text":"%s\\n"}' "$STAMP" > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 0.5
-kill -USR1 $PID   # hide: flushSave → write → orderOut
+hide_panel 0.7      # hide: flushSave → write → orderOut
 sleep 1.5
 if grep -q "$STAMP" "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null; then
     echo "persistence          ok: '$STAMP' is in Scratchpad.md after hide"
@@ -94,10 +134,10 @@ rm -f "$SCRATCH_DIR/.debug-message.json"
 # characters must land there. Playwright's WebKit build gets this wrong through
 # its own key injection (text stays on the previous line), the app's NSEvent
 # path does not, so this is the check that speaks for the panel.
-kill -USR1 $PID; wait_for visible 5; sleep 0.5
+show_panel
 printf '{"type":"__jotKeys","keys":["End","Enter","Enter","N","e","x","t","Enter","l","i","n","e"]}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 2
-kill -USR1 $PID; sleep 1.5
+hide_panel
 if grep -q "^Next$" "$SCRATCH_DIR/Scratchpad.md" && grep -q "^line$" "$SCRATCH_DIR/Scratchpad.md"; then
     echo "typing               ok: Return moves to a new paragraph in the panel's WebKit"
 else
@@ -126,11 +166,11 @@ printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/
 # The typing check above left the panel hidden, so one press is a fresh
 # summon. Truncating the file here would prove nothing: the buffer in the app
 # is the authority and writes over it on the next flush.
-kill -USR1 $PID; wait_for visible 5; sleep 0.5
+show_panel
 osascript -e "set the clipboard to (read (POSIX file \"$PNG\") as «class PNGf»)" >/dev/null
 printf '{"type":"__jotKeys","keys":["cmd+v"]}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 2.5
-kill -USR1 $PID; sleep 1.5
+hide_panel
 pbcopy < "$CLIP_BACKUP" 2>/dev/null || true
 rm -f "$CLIP_BACKUP"
 PASTED_REF="$(grep -o 'Attachments/[A-Za-z0-9.]*' "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null | head -1 || true)"
@@ -154,6 +194,8 @@ TB_X="$(echo "$TITLEBAR" | sed -n 's/.*x=\([0-9.-]*\).*/\1/p')"
 TB_W="$(echo "$TITLEBAR" | sed -n 's/.*w=\([0-9.-]*\).*/\1/p')"
 TB_ATTACHED="$(echo "$TITLEBAR" | sed -n 's/.*attached=\([a-z]*\).*/\1/p')"
 TB_TEXT="$(echo "$TITLEBAR" | sed -n 's/.*text=//p')"
+TB_TEXT_MID="$(echo "$TITLEBAR" | sed -n 's/.*textMidY=\([0-9.-]*\).*/\1/p')"
+TB_CLOSE_MID="$(echo "$TITLEBAR" | sed -n 's/.*closeMidY=\([0-9.-]*\).*/\1/p')"
 if [ -z "$TITLEBAR" ]; then
     echo "titlebar             FAILED: the app reported no titlebar trace at all" >&2; exit 1
 fi
@@ -175,6 +217,35 @@ if [ "$TB_ATTACHED" = "yes" ] \
     echo "titlebar             ok: \"$TB_TEXT\" at x=$TB_X w=$TB_W, clear of the window buttons"
 else
     echo "titlebar             FAILED: expected an attached accessory naming Scratchpad.md at x>=78 with width>0" >&2
+    echo "$TITLEBAR" >&2; exit 1
+fi
+
+# WHERE the title sits vertically, which the check above says nothing about: it
+# reads the accessory's frame, and the accessory is the whole titlebar band, so
+# a title drawn 2pt low passed it exactly as a correct one did. It did, for a
+# day.
+#
+# The close button is the reference, and it is a property of the system rather
+# than of a screenshot: macOS puts a window title's vertical centre exactly on
+# the close button's, and does so at every titlebar height and title font it
+# uses. Measured against a probe window: unified (52pt bar), unifiedCompact
+# (76pt) and expanded (84pt) all agree to 0.0pt, at 13pt and 15pt titles. So
+# "the title is where macOS would put it" is answerable inside our own window,
+# with no second application running and no reference image.
+#
+# One point of tolerance, for the rounding a half-point font metric can leave.
+if [ -z "$TB_TEXT_MID" ] || [ -z "$TB_CLOSE_MID" ]; then
+    echo "title baseline       FAILED: the trace carried no textMidY/closeMidY to compare" >&2
+    echo "$TITLEBAR" >&2; exit 1
+fi
+# A zero on either side is a frame that was never resolved, and two zeros agree
+# with each other perfectly. Asserted before the delta, for that reason.
+if awk "BEGIN{exit !($TB_CLOSE_MID > 0 && $TB_TEXT_MID > 0)}" \
+   && awk "BEGIN{exit !(($TB_TEXT_MID - $TB_CLOSE_MID) <= 1 && ($TB_CLOSE_MID - $TB_TEXT_MID) <= 1)}"; then
+    echo "title baseline       ok: title centred on the window buttons (text=$TB_TEXT_MID close=$TB_CLOSE_MID)"
+else
+    echo "title baseline       FAILED: macOS centres a title on the close button; ours is off" >&2
+    echo "  textMidY=$TB_TEXT_MID closeMidY=$TB_CLOSE_MID" >&2
     echo "$TITLEBAR" >&2; exit 1
 fi
 
@@ -202,19 +273,38 @@ fi
 
 # The Edited flag. It claims the buffer holds bytes the file does not, which is
 # a claim about a real file that no unit test can check: `WindowTitle` decides
-# what the suffix says, and this is what decides WHEN. Driven with autosave
-# off, because with it on the flag is a flicker between a keystroke and a write
-# that no observer can be scheduled inside of.
+# what the suffix says, and this is what decides WHEN.
+#
+# Driven with autosave OFF, which is the only setting the suffix is drawn
+# under. With it on the flag still rises and falls between a keystroke and a
+# write, and the title deliberately says nothing about it; the stability check
+# below is what covers that case.
+#
+# The write is a SAVE, not a hide, and the difference cost an afternoon. The
+# hide this used to rely on stops working partway through a run: `hide()` calls
+# `NSApp.hide`, and an accessory app driven from a shell often cannot come
+# forward again, so every window reports `isVisible == false` from then on and
+# the toggle shows instead of hiding, forever. The earlier checks kept passing
+# because autosave was writing for them; this one was the only check whose
+# claim actually needed the hide, so it was the only one that failed, and it
+# failed looking exactly like a broken title.
 defaults write "$BIRTA_JOT_DEFAULTS_SUITE" autosave -bool NO
-kill -USR1 $PID; wait_for visible 5; sleep 0.5
+show_panel
 printf '{"type":"__jotKeys","keys":["End","Enter","d","i","r","t","y"]}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 2
 TITLE_DIRTY="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
-# Hiding writes whatever autosave says, so the flag has to clear on the way out.
-kill -USR1 $PID; sleep 1.5
+printf '{"type":"__jotSave"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2
 TITLE_CLEAN="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
 defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" autosave >/dev/null 2>&1 || true
 rm -f "$SCRATCH_DIR/.debug-message.json"
+# The save has to have HAPPENED. Without this a `__jotSave` the app ignored
+# would leave the title untouched, and "untouched" is indistinguishable from
+# "cleared" when the check only reads the last line.
+if [ "$(marks debug-save)" -lt 1 ]; then
+    echo "edited flag          FAILED: the app never acted on __jotSave, so nothing was written" >&2
+    exit 1
+fi
 case "$TITLE_DIRTY" in
     *Edited) EDITED_ROSE=1 ;;
     *) EDITED_ROSE=0 ;;
@@ -224,11 +314,188 @@ case "$TITLE_CLEAN" in
     *) EDITED_FELL=1 ;;
 esac
 if [ "$EDITED_ROSE" = 1 ] && [ "$EDITED_FELL" = 1 ]; then
-    echo "edited flag          ok: \"$TITLE_DIRTY\" while unwritten, \"$TITLE_CLEAN\" after the write"
+    echo "edited flag          ok: \"$TITLE_DIRTY\" while unwritten, \"$TITLE_CLEAN\" after Save"
 else
     echo "edited flag          FAILED: expected the suffix to appear on an edit and go on the write" >&2
     echo "  after typing: \"$TITLE_DIRTY\"" >&2
     echo "  after hiding: \"$TITLE_CLEAN\"" >&2
+    # Every repaint, in order. The two samples above say WHAT the title reads
+    # at two moments and nothing about how it got there, and the difference
+    # between "it never cleared" and "it cleared and something set it again"
+    # is the whole diagnosis.
+    echo "  every title repaint this run:" >&2
+    grep "^jot-trace titletext " "$LOG" | sed 's/^jot-trace titletext /    /' >&2
+    echo "  app log: $LOG" >&2
+    exit 1
+fi
+
+# The title holds still while you type, which is the case the check above
+# cannot reach: it drives autosave OFF, where the flag rises once and stays.
+#
+# With autosave ON the flag goes up on every admitted update and down on every
+# write, several times a sentence, and drawing it would put a word in the
+# titlebar that appears and vanishes while you look at it. The title is not
+# supposed to change at all here, so this is asserted over a BURST rather than
+# from a sample: a single reading catches one side of a flicker and passes
+# about half the time. `Coordinator.refreshTitle` traces on every call, not
+# every change, precisely so this can count.
+#
+# Autosave is the default, so the setting is simply left alone.
+show_panel
+BURST_START=$(grep -c "^jot-trace titletext " "$LOG")
+BURST_WORDS=""
+# Two groups with a pause between them, rather than one long burst. The pause
+# is longer than the autosave debounce, so the flag is guaranteed to rise and
+# fall at least twice inside the window being measured. One group could be
+# coalesced into a single update and a single write, and a window holding one
+# rise has nothing to alternate BETWEEN: it would hold still under the old
+# behaviour too, and report success for a title that flickers.
+for group in 1 2; do
+    printf '{"type":"__jotKeys","keys":["End","Enter","s","t","e","a","d","y"]}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 2.5
+    BURST_WORDS="$BURST_WORDS steady"
+done
+rm -f "$SCRATCH_DIR/.debug-message.json"
+BURST="$(grep "^jot-trace titletext " "$LOG" | tail -n +$((BURST_START + 1)) | sed 's/^jot-trace titletext //')"
+BURST_LINES="$(printf '%s\n' "$BURST" | grep -c . || true)"
+BURST_DISTINCT="$(printf '%s\n' "$BURST" | grep . | sort -u)"
+BURST_COUNT="$(printf '%s\n' "$BURST_DISTINCT" | grep -c . || true)"
+# Three arms, because "one distinct value" is what a broken title and a
+# title nobody asked about report alike.
+#
+# 1. the title was ASKED more than once, or there is nothing to be stable
+#    across.
+if [ "${BURST_LINES:-0}" -lt 2 ]; then
+    echo "title stability      FAILED: only $BURST_LINES title repaints during a typing burst; the trace is not reaching this" >&2
+    exit 1
+fi
+# 2. a WRITE really landed inside the window. Without one the flag only ever
+#    rose, and a title that never had to come back down holds still under the
+#    old behaviour too. The file gaining the typed text is the evidence, and
+#    it is the same evidence the persistence check trusts.
+if [ "$(grep -c "^steady$" "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null || echo 0)" -lt 2 ]; then
+    echo "title stability      FAILED: the burst never reached the file, so no write happened to hold still across" >&2
+    cat "$SCRATCH_DIR/Scratchpad.md" >&2; exit 1
+fi
+# 3. and it said one thing the whole time.
+if [ "$BURST_COUNT" = "1" ]; then
+    echo "title stability      ok: $BURST_LINES repaints across a typing burst, all saying \"$BURST_DISTINCT\""
+else
+    echo "title stability      FAILED: the title changed $BURST_COUNT ways while typing with autosave on" >&2
+    printf '%s\n' "$BURST_DISTINCT" | sed 's/^/  /' >&2
+    exit 1
+fi
+
+# The document popover, and the rename it exists for.
+#
+# A click on the title cannot be synthesized from a script: the title is native
+# chrome and the debug key path reaches the web view, so `__jotTitleClick` and
+# `__jotRename` are the only way this form is ever built against a real window
+# and a real file. Everything decidable without one is already unit tested
+# (`DocumentName`, `FinderTags`, `ActiveBinding`); what is left is exactly what
+# needs a panel, which is the line this script is drawn along.
+show_panel
+printf '{"type":"__jotTitleClick"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+POPOVER="$(grep "^jot-trace titlepopover " "$LOG" | tail -1 | sed 's/^jot-trace titlepopover //')"
+rm -f "$SCRATCH_DIR/.debug-message.json"
+P_SHOWN="$(echo "$POPOVER" | sed -n 's/.*shown=\([a-z]*\).*/\1/p')"
+P_NAME="$(echo "$POPOVER" | sed -n 's/.*name=\([^ ]*\).*/\1/p')"
+P_FOLDERS="$(echo "$POPOVER" | sed -n 's/.*folders=\([0-9]*\).*/\1/p')"
+P_ROWS="$(echo "$POPOVER" | sed -n 's/.*rows=\([0-9]*\).*/\1/p')"
+# Every row, not just "it opened". A popover that appeared with an empty Name
+# and a Where menu of one entry is a popover that drew nothing useful, and a
+# presence check cannot tell it from a working one. `folders` counts the real
+# directories; `rows` counts them plus the separator and Other…, so rows must
+# exceed folders or the menu lost its escape hatch.
+if [ "$P_SHOWN" = "yes" ] && [ "$P_NAME" = "Scratchpad.md" ] \
+   && [ "${P_FOLDERS:-0}" -ge 2 ] && [ "${P_ROWS:-0}" -gt "${P_FOLDERS:-0}" ]; then
+    echo "title popover        ok: $POPOVER"
+else
+    echo "title popover        FAILED: expected an open popover naming the file, with a Where menu" >&2
+    echo "  $POPOVER" >&2; exit 1
+fi
+
+# The rename, end to end: the bytes move, the setting the panel was bound
+# THROUGH follows them, and the title says the new name. The last one is what
+# proves the editor is still on the file rather than pointing at where it used
+# to be.
+RELOCATES_BEFORE=$(grep -c "^jot-trace relocate " "$LOG" || true)
+printf '{"type":"__jotRename","name":"Renamed by measure.md"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+RENAMED="$SCRATCH_DIR/Renamed by measure.md"
+TITLE_AFTER="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
+if [ -f "$RENAMED" ] && [ ! -f "$SCRATCH_DIR/Scratchpad.md" ] \
+   && [ "$TITLE_AFTER" = "Renamed by measure.md" ]; then
+    echo "title rename         ok: the file moved and the title followed it"
+else
+    echo "title rename         FAILED: expected the file renamed and the title to follow" >&2
+    echo "  renamed exists: $([ -f "$RENAMED" ] && echo yes || echo no)" >&2
+    echo "  old still there: $([ -f "$SCRATCH_DIR/Scratchpad.md" ] && echo yes || echo no)" >&2
+    echo "  title now: \"$TITLE_AFTER\"" >&2
+    ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+# The buffer went WITH it. A rename that moved an empty file and left the note
+# behind would satisfy every assertion above.
+if grep -q "^steady$" "$RENAMED"; then
+    echo "title rename         ok: and the note's text went with it"
+else
+    echo "title rename         FAILED: the renamed file does not hold the typed text" >&2
+    cat "$RENAMED" >&2; exit 1
+fi
+# ONE move, not two. Committing a name runs twice for one rename (Return
+# commits it, and the popover closing ends editing and commits it again), and
+# the second one used to ask for the same move while the first was still in
+# flight, find the file already at the destination, and report a name
+# collision with itself. The rename still succeeded, so nothing above could
+# see it; the count is what does.
+RELOCATES="$(grep "^jot-trace relocate " "$LOG" | tail -n +$((RELOCATES_BEFORE + 1)) | sed 's/^jot-trace relocate //')"
+RELOCATE_COUNT="$(printf '%s\n' "$RELOCATES" | grep -c . || true)"
+if [ "$RELOCATE_COUNT" = "1" ] && [ "$RELOCATES" = "ok renamed Renamed by measure.md" ]; then
+    echo "title rename         ok: one move, reported once, with no collision against itself"
+else
+    echo "title rename         FAILED: expected exactly one successful relocate, got $RELOCATE_COUNT" >&2
+    printf '%s\n' "$RELOCATES" | sed 's/^/  /' >&2; exit 1
+fi
+# Everything after this reads the scratchpad by its original name, so put it
+# back the same way it was moved.
+printf '{"type":"__jotRename","name":"Scratchpad.md"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ ! -f "$SCRATCH_DIR/Scratchpad.md" ]; then
+    echo "title rename         FAILED: could not rename back, so the checks below would read the wrong file" >&2
+    ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+
+# Copy a reference for an agent. Everything about this is the shell's except
+# the click: the page reports where the caret is, and the shell decides what
+# goes on the clipboard, against a real file with a real path.
+#
+# The clipboard is borrowed and put back, the same way the paste check does it.
+CLIP_BACKUP2="$(mktemp -t jot-measure-clip2)"
+pbpaste > "$CLIP_BACKUP2" 2>/dev/null || true
+show_panel
+printf '{"type":"__jotCopyAgentReference"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+COPIED="$(pbpaste 2>/dev/null || true)"
+pbcopy < "$CLIP_BACKUP2" 2>/dev/null || true
+rm -f "$CLIP_BACKUP2"
+# An ABSOLUTE path, which is the whole difference from the extension: Jot's
+# file is under Application Support and a workspace-relative path would name
+# nothing anywhere. Checked against the throwaway scratchpad this run created,
+# so it is the real bound file rather than a shape that merely looks right.
+case "$COPIED" in
+    "$SCRATCH_DIR/Scratchpad.md#L"*) REF_OK=1 ;;
+    *) REF_OK=0 ;;
+esac
+if [ "$REF_OK" = 1 ]; then
+    echo "agent reference      ok: $(printf '%s' "$COPIED" | head -1)"
+else
+    echo "agent reference      FAILED: expected an absolute reference to the bound file on the clipboard" >&2
+    echo "  clipboard: \"$(printf '%s' "$COPIED" | head -3)\"" >&2
+    grep "^jot-trace agentref " "$LOG" | sed 's/^/  /' >&2
     exit 1
 fi
 

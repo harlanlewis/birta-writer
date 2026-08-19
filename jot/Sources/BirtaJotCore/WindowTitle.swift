@@ -44,6 +44,27 @@ public enum WindowTitle {
         return runs
     }
 
+    /// Whether a title should carry the suffix at all, given the buffer's
+    /// state and the autosave setting.
+    ///
+    /// Autosave OFF, unwritten bytes: yes, and it is the only case. There the
+    /// word is a fact the reader can act on, and the action is Cmd+S.
+    ///
+    /// Autosave ON: never. macOS says the same thing about its own documents
+    /// and for the same reason: a file that is always being written has no
+    /// unwritten state worth a word. Jot's flag does still go up and down as
+    /// you type, between the keystroke that raises it and the write that
+    /// clears it, so drawing it would put a word in the titlebar that appears
+    /// and vanishes several times a sentence and names nothing anybody can
+    /// do. Not a repaint to make cheaper: a claim not worth making.
+    ///
+    /// Read at PAINT time, never captured. The setting can be changed while
+    /// the app is running, and turning it off with the buffer already dirty
+    /// has to show the suffix immediately rather than at the next keystroke.
+    public static func showsEdited(hasUnwrittenBytes: Bool, autosaveEnabled: Bool) -> Bool {
+        hasUnwrittenBytes && !autosaveEnabled
+    }
+
     /// `url` and every directory above it, nearest first, ending at the volume.
     ///
     /// This is the list the Cmd-click popup shows, in the order it shows them.
