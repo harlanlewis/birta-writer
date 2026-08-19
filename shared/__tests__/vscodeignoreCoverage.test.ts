@@ -50,18 +50,40 @@ function trackedTopLevelDirectories(): string[] {
     return [...dirs].sort();
 }
 
-/** Directory names denied wholesale, from a `<dir>/**` or a bare `<dir>` line. */
-function deniedDirectories(): Set<string> {
-    const lines = readFileSync(path.join(REPO_ROOT, ".vscodeignore"), "utf8").split("\n");
+/** The top-level directory a `.vscodeignore` line denies wholesale, or null. */
+function wholesaleTarget(line: string): string | null {
+    // A partial rule (`media/*.svg`, `dist/hostPalette.css`) denies files
+    // inside a directory, never the directory, so it must NOT count.
+    const target = line.endsWith("/**") ? line.slice(0, -3) : line;
+    if (target === "" || target.includes("/") || target.includes("*")) return null;
+    return target;
+}
+
+/**
+ * Directory names denied wholesale, from a `<dir>/**` or a bare `<dir>` line.
+ *
+ * `!` re-includes, and it has to be subtracted rather than ignored. Reading
+ * `!jot/**` as a directory named `!jot` would leave the `jot/**` above it still
+ * counted as denied, so this guard would pass while the directory shipped,
+ * which is the exact failure it exists to catch.
+ */
+function deniedDirectories(text?: string): Set<string> {
+    const source = text ?? readFileSync(path.join(REPO_ROOT, ".vscodeignore"), "utf8");
+    const lines = source.split("\n");
     const denied = new Set<string>();
     for (const raw of lines) {
         const line = raw.trim();
         if (line === "" || line.startsWith("#")) continue;
-        // A partial rule (`media/*.svg`, `dist/hostPalette.css`) denies files
-        // inside a directory, never the directory, so it must NOT count here.
-        const wholesale = line.endsWith("/**") ? line.slice(0, -3) : line;
-        if (wholesale.includes("/") || wholesale.includes("*")) continue;
-        denied.add(wholesale);
+        if (line.startsWith("!")) {
+            // A re-include of anything under a directory means the directory is
+            // no longer wholly denied, so the whole subtree stops counting.
+            const reincluded = line.slice(1).trim();
+            const top = reincluded.split("/")[0];
+            if (top !== "" && !top.includes("*")) denied.delete(top);
+            continue;
+        }
+        const target = wholesaleTarget(line);
+        if (target !== null) denied.add(target);
     }
     return denied;
 }
@@ -96,6 +118,18 @@ describe("vscodeignore coverage", () => {
         // justification claims, and the justification is the thing people read.
         const contradictory = Object.keys(SHIPPED_ON_PURPOSE).filter((dir) => denied.has(dir));
         expect(contradictory).toEqual([]);
+    });
+
+    it("a re-include should stop its directory counting as denied", () => {
+        // The failure this rules out: reading `!jot/**` as a directory named
+        // `!jot` leaves the `jot/**` above it counted, so the guard passes
+        // while the directory ships. Each case below is a different way that
+        // could go wrong, and the last two must NOT be treated as re-includes.
+        expect(deniedDirectories("jot/**").has("jot")).toBe(true);
+        expect(deniedDirectories("jot/**\n!jot/**").has("jot")).toBe(false);
+        expect(deniedDirectories("jot/**\n!jot/Resources/**").has("jot")).toBe(false);
+        expect(deniedDirectories("jot/**\n# !jot/**").has("jot")).toBe(true);
+        expect(deniedDirectories("jot/**\nmedia/*.svg").has("media")).toBe(false);
     });
 
     it("a directory justified as shipped should still exist", () => {
