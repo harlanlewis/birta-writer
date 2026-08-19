@@ -72,8 +72,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build (production)
-        run: pnpm run vscode:prepublish
+      # Packaging is the only thing that reaches scripts/check-vsix.mjs, and
+      # until this step nothing in CI ran it. Two pull requests could each be
+      # green, each sit within the guard's limits alone, and leave the default
+      # branch unpackageable once both had landed, with the nightly Release job
+      # as the first detector (MAR-383).
+      #
+      # It runs on every pull request rather than behind a `paths` filter,
+      # because the archive is built from a deny-list and the mistake this
+      # catches is a top-level directory that did not exist before. No filter
+      # can name that path in advance, which is exactly how Jot's source tree
+      # shipped. The cost is a zip and an `unzip -l` on a build this job was
+      # already doing: `vsce package` runs `vscode:prepublish` itself, so this
+      # REPLACES the explicit build step rather than adding a second build.
+      - name: Package (production build, then the packaging guard)
+        run: pnpm run package
 
       - name: Verify output files
         run: |

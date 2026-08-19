@@ -7,6 +7,9 @@ src/**
 webview/**
 shared/**
 packages/**
+# The pre-commit hook. `core.hooksPath` points a CHECKOUT at this; an installed
+# extension has no git repository and nothing that could run it.
+.githooks/**
 pnpm-workspace.yaml
 out/**
 coverage/**
