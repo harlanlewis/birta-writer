@@ -93,7 +93,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // named somewhere else on screen; Jot is an accessory app with no Dock
         // icon, so "General" alone belongs to nothing the user can see. The
         // toolbar below the title already names and highlights the pane.
-        window.title = "Birta Jot Settings"
+        window.title = "Writer Jot Settings"
         // The panel floats, so a settings window at the ordinary level opens
         // BEHIND the window it was opened from. Match the panel's level, which
         // is the setting's level, so turning floating off lowers both together

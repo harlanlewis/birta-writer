@@ -53,11 +53,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const OUT_FILE = path.join(repoRoot, "licenses", "THIRD_PARTY_LICENSES.md");
 // Every bundle we SHIP, because the appendix's claim is that it reports what
-// the bundles inline. dist/diffView.js is a third entry point (the rendered
-// diff panel) and was outside this list when it landed, which is a hole in
-// that claim rather than a wrong answer: what it inlines is a subset of the
-// webview's today, and nothing was checking that.
-const METAFILES = ["dist/webview.meta.json", "dist/extension.meta.json", "dist/diffView.meta.json"];
+// the bundles inline. A new entry point in esbuild.mjs has to join this list,
+// or the claim quietly narrows to the bundles that happen to be named here.
+const METAFILES = ["dist/webview.meta.json", "dist/extension.meta.json"];
 
 /**
  * Licenses that let us ship a bundled binary at all. Anything outside this set

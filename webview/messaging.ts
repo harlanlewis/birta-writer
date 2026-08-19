@@ -1,21 +1,30 @@
 import type { ToExtensionMessage, ToWebviewMessage, ProjectImage, TextCount } from "../shared/messages";
 import { isReadOnly } from "./readOnly";
-import { vscodeHost } from "./vscodeHost";
 
 export type { ProjectImage };
 
 // Re-exported so existing consumers (webview/index.ts, etc.) can keep referencing IncomingMessage unchanged
 export type IncomingMessage = ToWebviewMessage;
 
-// acquireVsCodeApi can only be called once per PAGE, and the editor is no
-// longer the only page: the rendered-diff panel pulls this module in
-// transitively through the presets. The single call therefore lives in
-// webview/vscodeHost.ts, and this stays the typed funnel over it - every
-// send below is still checked against ToExtensionMessage.
+/** What VS Code's webview API provides, as the webview sees it. */
+interface VsCodeHost {
+    postMessage(message: unknown): void;
+    getState(): unknown;
+    setState(state: unknown): void;
+}
+
+declare function acquireVsCodeApi(): VsCodeHost;
+
+// THE `acquireVsCodeApi()` call. VS Code hands a webview its API exactly once
+// and the second call in a page throws, so it happens here and nowhere else;
+// the extension ships one page, and a second one would have to import this
+// module rather than write the call again. `vscode` below is the typed funnel
+// over that handle - every send is checked against ToExtensionMessage.
+const host: VsCodeHost = acquireVsCodeApi();
 const vscode = {
-    postMessage: (message: ToExtensionMessage): void => vscodeHost.postMessage(message),
-    getState: (): unknown => vscodeHost.getState(),
-    setState: (state: unknown): void => vscodeHost.setState(state),
+    postMessage: (message: ToExtensionMessage): void => host.postMessage(message),
+    getState: (): unknown => host.getState(),
+    setState: (state: unknown): void => host.setState(state),
 };
 
 // The syncVersion of the last init/externalUpdate the webview applied. Echoed

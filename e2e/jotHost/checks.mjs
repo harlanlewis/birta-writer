@@ -83,7 +83,7 @@ export async function run({ page, check, baseUrl }) {
     check("jot: gear menu offers the layout rows, the typography presets, the cheatsheet and the shell's own Settings",
         JSON.stringify(gear.labels) === JSON.stringify(
             ["Customize Toolbar", "Hide Toolbar", "Sans serif", "Serif", "Monospace",
-             "Show Keyboard Shortcuts", "Birta Jot Settings"]),
+             "Show Keyboard Shortcuts", "Writer Jot Settings"]),
         JSON.stringify(gear.labels));
     // Editor font needs an editor font to inherit and the width segments need
     // a pane wide enough for a measure to be a choice; the shell declares
