@@ -57,8 +57,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     private let scrollView = NSScrollView()
+    /// Built on first visit and kept, so switching back does not rebuild the
+    /// controls and lose the state they are showing.
     private var panes: [Tab: NSView] = [:]
-    private var current: Tab = .general
 
     private let hotkeyRecorder = HotkeyRecorderView(combo: Prefs.hotkey)
     private let hotkeyCaption = Caption("")
@@ -130,7 +131,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// past which the pane scrolls instead.
     private func show(_ tab: Tab, animated: Bool) {
         guard let window else { return }
-        current = tab
         window.title = tab.title
         let pane = panes[tab] ?? {
             let built = buildPane(tab)
@@ -138,6 +138,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             return built
         }()
         scrollView.documentView = pane
+        // Re-pinned on every show, which is correct rather than wasteful:
+        // setting `documentView` takes the previous pane out of the view
+        // hierarchy, and AppKit drops the constraints that referenced it, so a
+        // pane pinned only when it was built comes back unpinned. Measured:
+        // after cycling every pane twice, the scroll view holds three
+        // constraints, the ones for the pane actually on screen.
         pane.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             pane.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
