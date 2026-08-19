@@ -853,3 +853,154 @@ describe("selection toolbar block-range mode", () => {
         expect(md(editor)).toBe("three");
     });
 });
+
+/**
+ * The agent reference is offered at EVERY selection level, not only a text run.
+ *
+ * "Where is this?" has an answer for a block range and a table cell range as
+ * much as for a phrase — webview/agentContext.ts maps all three onto source
+ * lines — so a mode that hides the button is a mode that has decided the
+ * question is unanswerable there, which it is not. The bar had exactly that
+ * shape: the button lived in the inline group and every non-text mode called
+ * hideAllInline.
+ *
+ * The cases are checked against the modes the component itself branches on
+ * rather than a list written here, so a fourth selection mode cannot arrive
+ * with the button quietly missing from it.
+ */
+describe("selection toolbar agent reference across selection modes", () => {
+    let editor: Editor | null = null;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    afterEach(async () => {
+        if (editor) {
+            await editor.destroy();
+            editor = null;
+        }
+    });
+
+    function agentButton(): HTMLButtonElement {
+        const btn = selToolbar().querySelector<HTMLButtonElement>(
+            ".sel-tb-agent-btn",
+        );
+        expect(btn, "agent reference button").not.toBeNull();
+        return btn!;
+    }
+
+    /** Every control currently drawn in the bar, in DOM order. */
+    function visibleControls(): HTMLElement[] {
+        return Array.from(
+            selToolbar().querySelectorAll<HTMLElement>(":scope > *"),
+        ).filter((el) => el.style.display !== "none" && !el.classList.contains("sel-tb-menu"));
+    }
+
+    /**
+     * One selection mode: a document, and a way to put the mode's selection on
+     * it. `mode` names the ProseMirror selection class the component branches
+     * on, which is what the coverage assertion below is written against.
+     */
+    const MODES: ReadonlyArray<{
+        mode: string;
+        markdown: string;
+        select: (v: EditorView) => void;
+    }> = [
+        {
+            mode: "TextSelection",
+            markdown: "hello world\n",
+            select: (v) =>
+                v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6))),
+        },
+        {
+            mode: "BlockRangeSelection",
+            markdown: "one\n\ntwo\n\nthree\n",
+            select: (v) => {
+                const range = BlockRangeSelection.tryCreate(
+                    v.state.doc,
+                    0,
+                    v.state.doc.child(0).nodeSize + 1,
+                );
+                expect(range, "block range").toBeTruthy();
+                v.dispatch(v.state.tr.setSelection(range!));
+            },
+        },
+        {
+            mode: "CellSelection",
+            markdown: "| a | b |\n| --- | --- |\n| c | d |\n",
+            select: (v) => {
+                const cells: number[] = [];
+                v.state.doc.descendants((node, pos) => {
+                    const name = node.type.name;
+                    if (name === "table_cell" || name === "table_header") { cells.push(pos); }
+                });
+                expect(cells.length, "table cells").toBeGreaterThanOrEqual(2);
+                v.dispatch(
+                    v.state.tr.setSelection(
+                        CellSelection.create(v.state.doc, cells[0], cells[1]),
+                    ),
+                );
+            },
+        },
+    ];
+
+    async function showFor(
+        spec: (typeof MODES)[number],
+        items?: Record<string, boolean>,
+    ): Promise<void> {
+        editor = await makeEditor(spec.markdown);
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn(), items);
+        spec.select(v);
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+    }
+
+    for (const spec of MODES) {
+        it(`a ${spec.mode} should offer the agent reference, as the bar's last control`, async () => {
+            // Arrange + Act
+            await showFor(spec);
+
+            // Assert — shown, and trailing: a read of the selection belongs at
+            // the end of every mode's row, never inside its action group.
+            expect(selToolbar().style.display).toBe("flex");
+            expect(agentButton().style.display).not.toBe("none");
+            const drawn = visibleControls();
+            expect(drawn.at(-1), `${spec.mode} last control`).toBe(agentButton());
+        });
+
+        it(`a ${spec.mode} should honour agentReference: false`, async () => {
+            // Arrange + Act — the one opt-out, which must reach every mode
+            await showFor(spec, { agentReference: false });
+
+            // Assert — the button is gone and takes its separator with it, so
+            // no mode is left with a rule against nothing.
+            expect(agentButton().style.display).toBe("none");
+            const drawn = visibleControls();
+            expect(drawn.length, `${spec.mode} still has controls`).toBeGreaterThan(0);
+            expect(drawn.at(-1)?.classList.contains("sel-tb-sep")).toBe(false);
+        });
+    }
+
+    it("the cases above should cover every selection mode the bar branches on", async () => {
+        // Arrange — the component's own source is the enumeration; a
+        // hand-written list is a list a fourth mode never joins.
+        const fs = await import("fs");
+        const path = await import("path");
+        const source = fs.readFileSync(
+            path.join(__dirname, "..", "components", "selectionToolbar", "index.ts"),
+            "utf8",
+        );
+
+        // Act
+        const branched = new Set(
+            Array.from(source.matchAll(/selection instanceof (\w+)/g), (m) => m[1]),
+        );
+
+        // Assert — the sweep reached something, and the cases are exactly it.
+        expect(branched.size, "modes found in source").toBeGreaterThanOrEqual(3);
+        expect([...branched].sort()).toEqual(MODES.map((m) => m.mode).sort());
+    });
+});

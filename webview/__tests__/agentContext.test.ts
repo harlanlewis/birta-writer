@@ -5,9 +5,11 @@
  * we pin the context shape, the frontmatter line offset, and the caret/range
  * distinction.
  */
-import { describe, it, expect } from "vitest";
-import { Schema } from "../pm";
-import type { Node } from "../pm";
+import { describe, it, expect, afterEach } from "vitest";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import { CellSelection, Schema } from "../pm";
+import type { EditorView, Node } from "../pm";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { computeLineMap } from "../../shared/lineMap";
 import { buildSelectionContext } from "../agentContext";
 
@@ -31,12 +33,33 @@ const inBlock = (d: Node, index: number, offset: number): number => {
     return pos + 1 + offset;
 };
 
-/** A minimal EditorView stand-in: buildSelectionContext only reads state.doc/selection. */
+/**
+ * A minimal EditorView stand-in: buildSelectionContext only reads
+ * state.doc/selection.
+ *
+ * `ranges` is not decoration. A real `Selection` carries one range per
+ * selected span and buildSelectionContext reads them to find the outer span;
+ * a stand-in without them would take a fallback path no editor produces and
+ * pin nothing. One range is what every selection this schema can express has,
+ * and the multi-range case (a table CellSelection) is checked against a real
+ * editor at the bottom of this file, because this schema has no table to
+ * select cells in.
+ */
 const view = (d: Node, anchor: number, head: number) => {
     const from = Math.min(anchor, head);
     const to = Math.max(anchor, head);
     return {
-        state: { doc: d, selection: { anchor, head, from, to, empty: from === to } },
+        state: {
+            doc: d,
+            selection: {
+                anchor,
+                head,
+                from,
+                to,
+                empty: from === to,
+                ranges: [{ $from: { pos: from }, $to: { pos: to } }],
+            },
+        },
     } as unknown as Parameters<typeof buildSelectionContext>[0];
 };
 
@@ -133,5 +156,90 @@ describe("buildSelectionContext", () => {
     it("should return null when the line map is empty (pre-first-sync)", () => {
         const d = doc(p("x"));
         expect(buildSelectionContext(view(d, 1, 1), [], [], 0)).toBeNull();
+    });
+});
+
+/**
+ * A table CellSelection, against a real editor, because it is the one
+ * selection that holds MORE THAN ONE range and the schema above has no table
+ * to make one in.
+ *
+ * A `Selection`'s `from`/`to` are its first range's, so reading them named a
+ * single cell: a column dragged down four rows referenced one row, and the
+ * quoted text was one cell's. The reference is what an agent is pointed at, so
+ * the span has to be the whole of what the writer selected.
+ */
+describe("buildSelectionContext over a table cell selection", () => {
+    let editor: Editor | null = null;
+
+    afterEach(async () => {
+        if (editor) {
+            await editor.destroy();
+            editor = null;
+        }
+    });
+
+    // A table whose body rows sit on known source lines: `| c | d |` is line 5
+    // and each later row is one line further down.
+    const SOURCE = "intro\n\n| a | b |\n| --- | --- |\n| c | d |\n| e | f |\n| g | h |\n\nafter\n";
+
+    /** The document positions of every cell, in document order. */
+    async function tableCells(): Promise<{ v: EditorView; cells: number[] }> {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, SOURCE);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .create();
+        const v = editor.action((ctx) => ctx.get(editorViewCtx));
+        const cells: number[] = [];
+        v.state.doc.descendants((node, pos) => {
+            const name = node.type.name;
+            if (name === "table_cell" || name === "table_header") { cells.push(pos); }
+        });
+        // 4 rows of 2: the header, then c/d, e/f, g/h.
+        expect(cells.length, "cells found").toBe(8);
+        return { v, cells };
+    }
+
+    function contextFor(v: EditorView) {
+        return buildSelectionContext(v, computeLineMap(SOURCE), SOURCE.split("\n"), 0)!;
+    }
+
+    it("a selection across one row's cells should report that row's line and both cells' text", async () => {
+        // Arrange
+        const { v, cells } = await tableCells();
+
+        // Act
+        v.dispatch(v.state.tr.setSelection(CellSelection.create(v.state.doc, cells[2], cells[3])));
+        const ctx = contextFor(v);
+
+        // Assert — `| c | d |` is source line 5, and the quote is the row, not
+        // whichever cell happened to be range zero.
+        expect(ctx.selections[0].anchor.line).toBe(5);
+        expect(ctx.selections[0].active.line).toBe(5);
+        expect(ctx.selections[0].text).toContain("c");
+        expect(ctx.selections[0].text).toContain("d");
+    });
+
+    it("a selection down a column should span every row it covers, not just the first", async () => {
+        // Arrange — the whole first column: header (line 3) down to `g` (line 7)
+        const { v, cells } = await tableCells();
+
+        // Act
+        v.dispatch(v.state.tr.setSelection(CellSelection.create(v.state.doc, cells[0], cells[6])));
+        const ctx = contextFor(v);
+
+        // Assert — a four-row drag references four rows. Reading the first
+        // range alone collapsed this to a single line.
+        const { anchor, active } = ctx.selections[0];
+        expect(Math.min(anchor.line, active.line)).toBe(3);
+        expect(Math.max(anchor.line, active.line)).toBe(7);
+        expect(ctx.isEmpty).toBe(false);
     });
 });

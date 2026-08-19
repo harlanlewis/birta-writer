@@ -36,23 +36,61 @@ export function buildSelectionContext(
     lineOffset: number,
 ): EditorSelectionContext | null {
     const { doc, selection } = view.state;
+    const span = outerSpan(selection);
     const ends = emptyParagraphCaret(view, lineMap, sourceLines)
-        ?? sourceSelectionEnds(doc, lineMap, sourceLines, selection);
+        ?? sourceSelectionEnds(doc, lineMap, sourceLines, span);
     if (!ends) { return null; }
     const { anchor, head: active } = ends;
 
     // Plain text of the selection (markup stripped, same extraction as the word
     // counter); the line span carries the precise source pointer.
-    const text = selection.empty
+    const text = span.empty
         ? ""
-        : doc.textBetween(selection.from, selection.to, "\n", "\n");
+        : doc.textBetween(span.from, span.to, "\n", "\n");
 
     const sel: DocSelection = {
         anchor: { line: anchor.line + lineOffset, column: anchor.column },
         active: { line: active.line + lineOffset, column: active.column },
         text,
     };
-    return { selections: [sel], primary: 0, isEmpty: selection.empty };
+    return { selections: [sel], primary: 0, isEmpty: span.empty };
+}
+
+/**
+ * The selection's OUTER span: the lowest start and the highest end across
+ * every range it holds, with `anchor`/`head` kept so direction survives.
+ *
+ * A `Selection`'s own `from`/`to` are its FIRST range's. For a text run or a
+ * block range that IS the whole selection, so this is the identity. A table
+ * `CellSelection` holds one range PER CELL, and a reference to it answered
+ * with the first range names a single cell: a column dragged down four rows
+ * reported one row, and the quoted text was one cell's. What the writer
+ * selected is what the agent has to be pointed at.
+ */
+function outerSpan(selection: {
+    ranges: readonly { $from: { pos: number }; $to: { pos: number } }[];
+    anchor: number;
+    head: number;
+}): { from: number; to: number; anchor: number; head: number; empty: boolean } {
+    let from = Infinity;
+    let to = -Infinity;
+    for (const range of selection.ranges) {
+        from = Math.min(from, range.$from.pos);
+        to = Math.max(to, range.$to.pos);
+    }
+    // A selection always has at least one range; the guard is for a stand-in
+    // with none rather than for anything the editor produces.
+    if (from > to) { return { from: selection.anchor, to: selection.head, anchor: selection.anchor, head: selection.head, empty: true }; }
+    // Direction is the selection's own, not the span's: which END the caret is
+    // at is what tells a consumer where the writer was reading from.
+    const forward = selection.head >= selection.anchor;
+    return {
+        from,
+        to,
+        anchor: forward ? from : to,
+        head: forward ? to : from,
+        empty: from === to,
+    };
 }
 
 /**
