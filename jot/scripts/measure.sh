@@ -386,6 +386,73 @@ else
     exit 1
 fi
 
+# The document popover, and the rename it exists for.
+#
+# A click on the title cannot be synthesized from a script: the title is native
+# chrome and the debug key path reaches the web view, so `__jotTitleClick` and
+# `__jotRename` are the only way this form is ever built against a real window
+# and a real file. Everything decidable without one is already unit tested
+# (`DocumentName`, `FinderTags`, `ActiveBinding`); what is left is exactly what
+# needs a panel, which is the line this script is drawn along.
+show_panel
+printf '{"type":"__jotTitleClick"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+POPOVER="$(grep "^jot-trace titlepopover " "$LOG" | tail -1 | sed 's/^jot-trace titlepopover //')"
+rm -f "$SCRATCH_DIR/.debug-message.json"
+P_SHOWN="$(echo "$POPOVER" | sed -n 's/.*shown=\([a-z]*\).*/\1/p')"
+P_NAME="$(echo "$POPOVER" | sed -n 's/.*name=\([^ ]*\).*/\1/p')"
+P_FOLDERS="$(echo "$POPOVER" | sed -n 's/.*folders=\([0-9]*\).*/\1/p')"
+P_ROWS="$(echo "$POPOVER" | sed -n 's/.*rows=\([0-9]*\).*/\1/p')"
+# Every row, not just "it opened". A popover that appeared with an empty Name
+# and a Where menu of one entry is a popover that drew nothing useful, and a
+# presence check cannot tell it from a working one. `folders` counts the real
+# directories; `rows` counts them plus the separator and Other…, so rows must
+# exceed folders or the menu lost its escape hatch.
+if [ "$P_SHOWN" = "yes" ] && [ "$P_NAME" = "Scratchpad.md" ] \
+   && [ "${P_FOLDERS:-0}" -ge 2 ] && [ "${P_ROWS:-0}" -gt "${P_FOLDERS:-0}" ]; then
+    echo "title popover        ok: $POPOVER"
+else
+    echo "title popover        FAILED: expected an open popover naming the file, with a Where menu" >&2
+    echo "  $POPOVER" >&2; exit 1
+fi
+
+# The rename, end to end: the bytes move, the setting the panel was bound
+# THROUGH follows them, and the title says the new name. The last one is what
+# proves the editor is still on the file rather than pointing at where it used
+# to be.
+printf '{"type":"__jotRename","name":"Renamed by measure.md"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+RENAMED="$SCRATCH_DIR/Renamed by measure.md"
+TITLE_AFTER="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
+if [ -f "$RENAMED" ] && [ ! -f "$SCRATCH_DIR/Scratchpad.md" ] \
+   && [ "$TITLE_AFTER" = "Renamed by measure.md" ]; then
+    echo "title rename         ok: the file moved and the title followed it"
+else
+    echo "title rename         FAILED: expected the file renamed and the title to follow" >&2
+    echo "  renamed exists: $([ -f "$RENAMED" ] && echo yes || echo no)" >&2
+    echo "  old still there: $([ -f "$SCRATCH_DIR/Scratchpad.md" ] && echo yes || echo no)" >&2
+    echo "  title now: \"$TITLE_AFTER\"" >&2
+    ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+# The buffer went WITH it. A rename that moved an empty file and left the note
+# behind would satisfy every assertion above.
+if grep -q "^steady$" "$RENAMED"; then
+    echo "title rename         ok: and the note's text went with it"
+else
+    echo "title rename         FAILED: the renamed file does not hold the typed text" >&2
+    cat "$RENAMED" >&2; exit 1
+fi
+# Everything after this reads the scratchpad by its original name, so put it
+# back the same way it was moved.
+printf '{"type":"__jotRename","name":"Scratchpad.md"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ ! -f "$SCRATCH_DIR/Scratchpad.md" ]; then
+    echo "title rename         FAILED: could not rename back, so the checks below would read the wrong file" >&2
+    ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+
 # Cold recovery: kill the content process, wait for the remount.
 BEFORE=$(grep -c "^jot-measure ready " "$LOG")
 WC_AFTER="$(pgrep -f com.apple.WebKit.WebContent | sort || true)"

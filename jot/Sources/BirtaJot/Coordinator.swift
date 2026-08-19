@@ -252,6 +252,22 @@ final class Coordinator {
                 saveNow()
                 return
             }
+            // The title's own gestures, which nothing else can reach: a click
+            // on a titlebar accessory is not something a script can synthesize
+            // (`typeKeys` reaches the web view, and the title is native chrome
+            // beside it), and the popover it opens builds a form from the file
+            // on disk. Without these the whole of it would ship on the
+            // strength of its unit-tested halves and a reading of the wiring.
+            if obj["type"] as? String == "__jotTitleClick" {
+                measure.mark("debug-title-click")
+                measure.trace("titlepopover \(titleBar.titleView.openPopoverForMeasurement())")
+                return
+            }
+            if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
+                measure.mark("debug-rename")
+                titleBar.titleView.commitNameForMeasurement(name)
+                return
+            }
         }
         measure.mark("debug-post")
         host.send(.raw(json: json))

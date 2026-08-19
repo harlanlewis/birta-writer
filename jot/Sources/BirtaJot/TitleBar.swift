@@ -156,6 +156,26 @@ final class TitleBarView: NSView {
     /// What the title reads right now, for `jot/scripts/measure.sh`.
     var currentText: String { label.stringValue }
 
+    /// Open the popover as a click would, and describe what it drew, for
+    /// `jot/scripts/measure.sh`. The click itself is unreachable from a script
+    /// (the title is native chrome, and the debug key path reaches the web
+    /// view), so this is the only way the form is ever built against a real
+    /// window and a real file rather than reasoned about.
+    func openPopoverForMeasurement() -> String {
+        guard let url else { return "no url" }
+        showDocumentPopover(for: url)
+        return popoverController.describeForMeasurement(shown: popover?.isShown == true)
+    }
+
+    /// Commit `name` in the popover's Name field, as typing it and pressing
+    /// Return would. Goes through the field so the rules that field applies
+    /// (`DocumentName`) are the ones under test, rather than around them.
+    func commitNameForMeasurement(_ name: String) {
+        guard let url else { return }
+        showDocumentPopover(for: url)
+        popoverController.commitNameForMeasurement(name)
+    }
+
     /// Where the TEXT sits, in window coordinates, for the same script. The
     /// accessory's own frame is the whole titlebar band, so it answers whether
     /// the accessory arrived and nothing about where the title is drawn in it.

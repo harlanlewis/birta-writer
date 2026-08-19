@@ -143,6 +143,25 @@ final class TitlePopoverController: NSViewController {
         wherePopUp.selectItem(at: 0)
     }
 
+    // MARK: measurement
+
+    /// What the form is showing, for `jot/scripts/measure.sh`. Every row, so a
+    /// popover that opened with an empty Name or a Where menu of one entry is
+    /// visibly different from one that filled itself in; "it opened" is the
+    /// claim a presence check makes and not the one worth making.
+    func describeForMeasurement(shown: Bool) -> String {
+        let tags = (tagsField.objectValue as? [String]) ?? []
+        return "shown=\(shown ? "yes" : "no") name=\(nameField.stringValue)"
+            + " where=\(wherePopUp.titleOfSelectedItem ?? "") folders=\(whereTargets.count)"
+            + " rows=\(wherePopUp.numberOfItems) tags=\(tags.count)"
+    }
+
+    /// Type `name` into the Name field and commit it, as Return would.
+    func commitNameForMeasurement(_ name: String) {
+        nameField.stringValue = name
+        commitName()
+    }
+
     // MARK: actions
 
     @objc private func commitName() {
