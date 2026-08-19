@@ -178,6 +178,28 @@ else
     echo "$TITLEBAR" >&2; exit 1
 fi
 
+# The formatting dock, in THIS window rather than in a browser. The panel's own
+# page carries CSS the harness does not (the titlebar carve-out, the at-rest
+# fade), so "it renders in WebKit" and "it renders here" are separate claims,
+# and only one of them has a browser that can answer it.
+DOCK="$(grep "^jot-trace dock " "$LOG" | tail -1 | sed 's/^jot-trace dock //')"
+D_X="$(echo "$DOCK" | sed -n 's/.*x=\([0-9-]*\).*/\1/p')"
+D_W="$(echo "$DOCK" | sed -n 's/.*w=\([0-9-]*\).*/\1/p')"
+D_GAP="$(echo "$DOCK" | sed -n 's/.*bottomGap=\([0-9-]*\).*/\1/p')"
+if [ -z "$DOCK" ] || [ "$DOCK" = "absent" ]; then
+    echo "dock                 FAILED: the page reported no formatting dock (\"$DOCK\")" >&2; exit 1
+fi
+# On screen and inside the window on both axes. A dock pushed off the left edge
+# or below the sill is present in the DOM and unreachable with a mouse, which
+# is the failure a presence check cannot tell from a working one.
+if awk "BEGIN{exit !($D_X >= 0)}" && awk "BEGIN{exit !($D_W > 0)}" \
+   && awk "BEGIN{exit !($D_GAP >= 0 && $D_GAP < 200)}"; then
+    echo "dock                 ok: $DOCK"
+else
+    echo "dock                 FAILED: expected it on screen at the bottom leading corner" >&2
+    echo "$DOCK" >&2; exit 1
+fi
+
 # The Edited flag. It claims the buffer holds bytes the file does not, which is
 # a claim about a real file that no unit test can check: `WindowTitle` decides
 # what the suffix says, and this is what decides WHEN. Driven with autosave

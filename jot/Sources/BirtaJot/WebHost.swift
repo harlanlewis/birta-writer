@@ -189,6 +189,30 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
+    /// Ask the page where its formatting dock is, for `jot/scripts/measure.sh`.
+    ///
+    /// The panel's own page carries CSS the browser harness does not (the
+    /// titlebar carve-out, the at-rest fade), so "the dock renders in WebKit"
+    /// and "the dock renders in THIS window" are different claims. This is how
+    /// the second one gets asked.
+    func reportDockGeometry(_ report: @escaping (String) -> Void) {
+        let js = """
+        (function () {
+          var d = document.querySelector('.tb-dock');
+          if (!d) { return 'absent'; }
+          var r = d.getBoundingClientRect();
+          return ['x=' + Math.round(r.left), 'y=' + Math.round(r.top),
+                  'w=' + Math.round(r.width), 'h=' + Math.round(r.height),
+                  'bottomGap=' + Math.round(window.innerHeight - r.bottom),
+                  'expanded=' + d.dataset.expanded,
+                  'items=' + d.querySelectorAll('.tb-dock-row .tb-item').length].join(' ');
+        })()
+        """
+        webView.evaluateJavaScript(js) { value, _ in
+            report(value as? String ?? "unavailable")
+        }
+    }
+
     func focusEditor() {
         webView.evaluateJavaScript("(function(){var e=document.querySelector('.ProseMirror'); if(e){e.focus();} return !!e;})()") { _, _ in }
     }

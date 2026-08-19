@@ -368,6 +368,11 @@ final class Coordinator {
         contentView.syncHoverFromPointer()
         measure.mark("visible")
         traceTitleBar()
+        if measure.enabled, state == .warm {
+            host.reportDockGeometry { [weak self] line in
+                MainActor.assumeIsolated { self?.measure.trace("dock \(line)") }
+            }
+        }
     }
 
     /// Dismiss first, flush after. Hiding is not a teardown: the page stays
