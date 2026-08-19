@@ -31,18 +31,26 @@
      page's, exactly as the palette above it is. */
 
   .editor-topbar {
-    /* The toolbar sits under a transparent full-height titlebar, and that band
-       is the WINDOW'S: the traffic lights and, after them, the native title
-       accessory naming the file (jot/Sources/BirtaJot/TitleBar.swift). Under
-       `formattingInSecondRow` the page puts nothing in the leading half at
-       all, so this is a floor rather than a fit. The native title beside them
-       needs no such number: AppKit places a leading titlebar accessory clear
-       of the buttons itself, and `jot/scripts/measure.sh` checks the live
-       frame rather than trusting either of us to have got it right. */
-    padding-left: 78px;
     /* No hairline under it: the toolbar is the top of the page, not a bar
        stuck above it. */
     border-bottom: none;
+  }
+
+  /* The inset belongs to the FIRST row, not to the bar. That row sits under a
+     transparent full-height titlebar, and that band is the WINDOW'S: the
+     traffic lights and, after them, the native title accessory naming the file
+     (jot/Sources/BirtaJot/TitleBar.swift). Under `formattingInSecondRow` the
+     page puts nothing in the leading half at all, so this is a floor rather
+     than a fit. The native title beside them needs no such number: AppKit
+     places a leading titlebar accessory clear of the buttons itself, and
+     `jot/scripts/measure.sh` checks the live frame rather than trusting either
+     of us to have got it right.
+
+     On the bar it would indent every row, and the second row is below the band
+     with nothing to clear: its controls would start three quarters of an inch
+     in, lined up against nothing, with the window's own left edge empty. */
+  .editor-topbar .toolbar {
+    padding-left: 78px;
   }
 
   /* At rest (the pointer is off the window, `jot-resting` set by the shell)

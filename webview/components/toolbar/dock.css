@@ -34,10 +34,16 @@
     align-items: center;
     gap: var(--ui-space-2);
     padding: var(--ui-space-2) var(--ui-space-1);
-    /* A hairline between the two rows, so the bar reads as two rows of one
-       piece of chrome rather than as one tall bar. The bar's own bottom border
-       is what separates the whole of it from the text. */
-    border-top: 1px solid var(--vscode-panel-border);
+    /* No border between the rows. They are one piece of chrome, and a rule
+       across the window drawn between two rows of it reads as two bars.
+
+       The leading edge is the WINDOW'S, not the first row's. The bar's leading
+       inset clears the traffic lights, which sit in the titlebar band above
+       this row and have nothing to do with it; a row indented to miss them
+       starts three quarters of an inch in, lined up against nothing, with the
+       window's own left edge empty. The host page therefore puts that inset on
+       `.toolbar` rather than on the bar (jot/Resources/index.html). */
+    position: relative;
 }
 
 /* The bar becomes a column when it has a second row to hold. Scoped to this
@@ -137,3 +143,56 @@
 /* Collapsed, the row is `hidden` (dock.ts) rather than styled away: the bar
    measures its own height, so a row that still occupied one would hold the
    content down with nothing drawn in the space. */
+
+
+/* ─── Edge chevrons ───
+   Shown only while the row has somewhere to scroll that way (dock.ts sets
+   `hidden`), so a row that fits carries none of this.
+
+   Overlaid on the row rather than placed beside it, and that is the whole
+   reason they can exist: a button that took its own column would narrow the
+   row on the day it appears, which is exactly the day the row is already too
+   narrow, and the last control would be pushed out by the control that exists
+   to reach it.
+
+   Each carries a short fade of the bar's own ground on its inner side, so the
+   item passing underneath goes out on a gradient instead of being cut in half
+   by an opaque square. */
+.tb-dock-scroll {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    width: 22px;
+    padding: 0;
+    border-radius: 0;
+
+    &[hidden] {
+        display: none;
+    }
+
+    svg {
+        width: 14px;
+        height: 14px;
+    }
+}
+
+.tb-dock-scroll--start {
+    left: 0;
+    justify-content: flex-start;
+    background: linear-gradient(
+        to right,
+        var(--vscode-editor-background) 55%,
+        transparent 100%);
+}
+
+.tb-dock-scroll--end {
+    right: 0;
+    justify-content: flex-end;
+    background: linear-gradient(
+        to left,
+        var(--vscode-editor-background) 55%,
+        transparent 100%);
+}

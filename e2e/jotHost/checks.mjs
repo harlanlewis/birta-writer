@@ -482,6 +482,54 @@ export async function run({ page, check, baseUrl }) {
         row.scrollLeft = row.scrollWidth;
         return row.scrollLeft > 0;
     });
+    // The chevrons. They exist because the scroll is otherwise discoverable
+    // only by trying it: the scrollbar is hidden, so a row that overflows looks
+    // like a row that ends at the window's edge.
+    //
+    // Asserted in three parts, because each is a different way to get this
+    // wrong: whether they appear at all when there is somewhere to go, whether
+    // the one pointing nowhere stays away, and whether clicking one actually
+    // moves the row. A pair that is simply always visible passes the first on
+    // its own.
+    // Back to the start first: the check above scrolls the row to its end to
+    // prove the last control is reachable, so without this the "at the start"
+    // claim below is made about a row that is at its end, and is false for the
+    // right reason. `instant` rather than smooth, so the assertion that follows
+    // is not racing an animation.
+    await page.evaluate(() => {
+        document.querySelector(".tb-dock-row").scrollTo({ left: 0, behavior: "instant" });
+    });
+    await page.waitForTimeout(150);
+    const chevronsNarrow = await page.evaluate(() => {
+        const row = document.querySelector(".tb-dock-row");
+        const start = document.querySelector(".tb-dock-scroll--start");
+        const end = document.querySelector(".tb-dock-scroll--end");
+        const shown = (el) => !!el && !!el.getClientRects().length;
+        return {
+            overflows: row.scrollWidth > row.clientWidth + 1,
+            scrollLeft: row.scrollLeft,
+            startShown: shown(start),
+            endShown: shown(end),
+        };
+    });
+    check("jot: at the start of an overflowing row, only the forward chevron shows",
+        chevronsNarrow.overflows && chevronsNarrow.endShown && !chevronsNarrow.startShown,
+        JSON.stringify(chevronsNarrow));
+
+    await page.locator(".tb-dock-scroll--end").click();
+    await page.waitForTimeout(500);
+    const chevronsScrolled = await page.evaluate(() => {
+        const row = document.querySelector(".tb-dock-row");
+        const start = document.querySelector(".tb-dock-scroll--start");
+        const shown = (el) => !!el && !!el.getClientRects().length;
+        return { scrollLeft: row.scrollLeft, startShown: shown(start) };
+    });
+    check("jot: clicking it scrolls the row",
+        chevronsScrolled.scrollLeft > chevronsNarrow.scrollLeft,
+        JSON.stringify({ before: chevronsNarrow.scrollLeft, after: chevronsScrolled.scrollLeft }));
+    check("jot: and the back chevron appears once there is something behind you",
+        chevronsScrolled.startShown, JSON.stringify(chevronsScrolled));
+
     check("jot: the last control can be reached by scrolling", scrolled);
 
     // The dropdowns open OUT of a box whose `overflow-x: auto` clips both
@@ -634,6 +682,8 @@ export async function run({ page, check, baseUrl }) {
             barBackground: getComputedStyle(bar).backgroundColor,
             editorBackground: getComputedStyle(document.body).backgroundColor,
             borderTopWidth: style.borderTopWidth,
+            borderLeftWidth: style.borderLeftWidth,
+            borderRightWidth: style.borderRightWidth,
             borderTopColor: style.borderTopColor,
             // What `currentColor` would resolve to, which is what an
             // unresolved `var()` in a border falls back to.
@@ -657,8 +707,15 @@ export async function run({ page, check, baseUrl }) {
     // could open into that corner. Nothing paints into the bar's band, because
     // `safeAreaTop()` keeps popups below it by geometry, so a row inside the
     // bar inherits that protection instead of arguing with it.
-    check("jot: the formatting row is in the bar's flow, not a fixed strip of its own",
-        stack.dockParentIsBar === true && stack.dockPosition === "static",
+    // In FLOW is the claim, not any one keyword. `relative` is what the row
+    // carries, because the edge chevrons are absolutely positioned against it,
+    // and a relatively positioned box still takes up its space in the bar. The
+    // two that would break this are `fixed` and `absolute`, which are the two
+    // that take the row out of the bar's height and put the old z-index
+    // argument back.
+    check("jot: the formatting row is in the bar's flow, not a strip of its own",
+        stack.dockParentIsBar === true
+            && stack.dockPosition !== "fixed" && stack.dockPosition !== "absolute",
         JSON.stringify(stack));
     // A probe that measured nothing reports agreement, so the count of
     // popups that answered with a real z-index is asserted before anything is
@@ -688,22 +745,21 @@ export async function run({ page, check, baseUrl }) {
             && stack.shadow === "none"
             && stack.radius === "0px",
         JSON.stringify(stack));
-    check("jot: it spans the bar's full width, at its bottom, under a hairline",
+    // No rule between the rows. They are one piece of chrome, and a line drawn
+    // across the window between two rows of it reads as two bars. Asserted on
+    // all four sides rather than on the one that used to carry it, because
+    // "no border" is the claim and any one of them would break it.
+    check("jot: it spans the bar's full width, at its bottom, with no border of its own",
         stack.left === 0 && stack.right === 0 && stack.sitsAtBarBottom
-            && stack.borderTopWidth === "1px" && stack.borderBottomWidth === "0px",
+            && stack.borderTopWidth === "0px" && stack.borderBottomWidth === "0px"
+            && stack.borderLeftWidth === "0px" && stack.borderRightWidth === "0px",
         JSON.stringify(stack));
-    // The hairline's COLOUR, which the width says nothing about. A border
-    // whose `var()` resolves to nothing keeps its 1px and falls back to
-    // `currentColor`, so a rule naming a variable this host does not define
-    // reads as a perfect hairline here and draws an invisible one, or an ink
-    // one, in the panel. `hostPalette.test.ts` catches an undefined variable
-    // by name; this catches a defined one that resolves to the ground it is
-    // supposed to separate from.
-    check("jot: and the hairline is a colour of its own, not the ground and not the ink",
-        stack.borderTopColor !== stack.background
-            && stack.borderTopColor !== "rgba(0, 0, 0, 0)"
-            && stack.borderTopColor !== stack.ink,
-        JSON.stringify(stack));
+    // The check that used to sit here asserted the hairline's COLOUR, because a
+    // border whose `var()` resolves to the ground keeps its perfect 1px and
+    // draws nothing. It is gone with the hairline itself rather than repointed:
+    // with no border drawn, `borderTopColor` computes to `currentColor`, so the
+    // old assertion would fail on a row that is exactly right. The rule it was
+    // guarding against is still guarded where a border is still drawn.
 
     // Boot from a saved bag. The write was checked above, and a write nothing
     // reads back is a preference that is not remembered: the shell seeds

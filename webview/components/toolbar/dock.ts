@@ -47,8 +47,16 @@
  * well, so the row would clip the four dropdowns that open out of it;
  * `MENU_CLIP_ATTR` is the declaration that sends them to viewport coordinates
  * instead, and `placeMenu` is the one reader.
+ *
+ * Two chevrons overlay the row's edges when it has somewhere to scroll, and
+ * each is shown only while there is room to move that way, so a row that fits
+ * carries no chrome at all. They exist because the scroll is otherwise
+ * discoverable only by trying it: a trackpad user swipes and finds out, and a
+ * mouse user sees a row that appears to end at the window's edge. The
+ * scrollbar that would have said so is hidden, deliberately, since a
+ * permanent one across a row of chrome is louder than the controls in it.
  */
-import { IconChevronRight } from "@/ui/icons";
+import { IconChevronLeft, IconChevronRight } from "@/ui/icons";
 import { t } from "@/i18n";
 import { MENU_CLIP_ATTR } from "@/ui/anchoredPlacement";
 import { getWebviewState, setWebviewState } from "@/messaging";
@@ -132,7 +140,58 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
     // (webview/ui/anchoredPlacement.ts). It belongs to the box that clips.
     row.setAttribute(MENU_CLIP_ATTR, "");
 
-    el.appendChild(row);
+    /** One edge chevron: shown only while the row can move that way. */
+    function makeScroller(direction: "start" | "end"): HTMLButtonElement {
+        const btn = document.createElement("button");
+        btn.className = `ui-btn tb-btn tb-dock-scroll tb-dock-scroll--${direction}`;
+        btn.innerHTML = direction === "start" ? IconChevronLeft : IconChevronRight;
+        btn.setAttribute("aria-label", direction === "start"
+            ? t("Scroll the formatting controls left")
+            : t("Scroll the formatting controls right"));
+        // Out of the tab order and hidden from assistive tech: these move a
+        // viewport, they do not reach anything. Every control they scroll to is
+        // already focusable and already reachable by tabbing, which scrolls it
+        // into view on its own, so a keyboard or screen-reader user gains
+        // nothing here and would have two extra stops to pass.
+        btn.tabIndex = -1;
+        btn.setAttribute("aria-hidden", "true");
+        bindActivate(btn, () => {
+            // Just under a full pane, so something that was at the edge stays
+            // on screen and the jump has an anchor in what was already there.
+            const step = Math.max(40, row.clientWidth * 0.8);
+            row.scrollBy({ left: direction === "start" ? -step : step, behavior: "smooth" });
+        });
+        return btn;
+    }
+
+    const scrollStart = makeScroller("start");
+    const scrollEnd = makeScroller("end");
+
+    /**
+     * Show each chevron only while the row can move that way.
+     *
+     * A tolerance rather than an equality: `scrollLeft` is fractional under
+     * display scaling and after a smooth scroll settles, so `scrollLeft === 0`
+     * and `scrollLeft + clientWidth === scrollWidth` both fail at rest by a
+     * fraction of a pixel and leave a chevron pointing at nothing.
+     */
+    function paintScrollers(): void {
+        const slack = row.scrollWidth - row.clientWidth;
+        const atStart = row.scrollLeft <= 1;
+        const atEnd = row.scrollLeft >= slack - 1;
+        scrollStart.hidden = slack <= 1 || atStart;
+        scrollEnd.hidden = slack <= 1 || atEnd;
+    }
+
+    el.append(row, scrollStart, scrollEnd);
+    row.addEventListener("scroll", paintScrollers, { passive: true });
+    // The row's own box changes with the window, and its content's width
+    // changes when the items are rendered into it. Both move the answer, and
+    // neither fires a scroll event.
+    const rowResize = typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => paintScrollers())
+        : null;
+    rowResize?.observe(row);
 
     let expanded = readExpanded();
 
@@ -144,6 +203,9 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         el.hidden = !expanded;
         toggle.dataset["expanded"] = String(expanded);
         toggle.setAttribute("aria-expanded", String(expanded));
+        // A hidden row measures zero, so the chevrons have to be recomputed on
+        // the way back rather than trusted from when it was closed.
+        paintScrollers();
         // The label says what the click DOES, which is the opposite of the
         // state; the glyph and the chevron already say which state it is in.
         const label = expanded ? t("Hide formatting controls") : t("Show formatting controls");
@@ -169,8 +231,14 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
                 const item = items[id];
                 if (item) { row.appendChild(item); }
             }
+            paintScrollers();
         },
         isExpanded: () => expanded,
-        dispose(): void { el.remove(); toggle.remove(); },
+        dispose(): void {
+            rowResize?.disconnect();
+            row.removeEventListener("scroll", paintScrollers);
+            el.remove();
+            toggle.remove();
+        },
     };
 }
