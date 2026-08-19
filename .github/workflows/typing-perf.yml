@@ -45,6 +45,11 @@ jobs:
   typing-perf:
     name: Typing Perf (A/B)
     runs-on: ubuntu-latest
+    # Set well above what a healthy run needs, including a slow runner: this
+    # bounds a wedged step, and must never trim a real measurement. This job is
+    # advisory rather than required, so a stall here does not hold a PR open the
+    # way launch-perf's does, but it burns a runner for hours just the same.
+    timeout-minutes: 25
     permissions:
       contents: read
       pull-requests: write # to upsert the result comment
@@ -65,6 +70,33 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Key the cache on the Playwright version itself rather than on the
+      # lockfile. The lockfile is what PINS that version, but it also moves for
+      # every unrelated dependency, and each of those would otherwise throw away
+      # a browser that never changed. Fails loudly rather than emitting an empty
+      # key, which would quietly collapse every version onto one cache entry.
+      - name: Resolve the Playwright version
+        id: playwright
+        run: |
+          VERSION=$(node -p "require('playwright/package.json').version")
+          test -n "$VERSION" || { echo "could not resolve the Playwright version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Playwright $VERSION"
+
+      # The browser binary is the slow, third-party half of the step below, and
+      # the half that can stall: `install --with-deps` fetches Chromium from
+      # Playwright's CDN and then installs system packages through apt. Caching
+      # the download removes the CDN from the common path; the apt half still
+      # runs every time, so nothing changes about which system packages are
+      # present. No restore-keys: a miss here means a browser build this cache
+      # has never held, so an approximate hit would restore a stale browser the
+      # install below downloads past anyway, and then keep it forever.
+      - name: Cache the Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Install Chromium for Playwright
         run: pnpm exec playwright install --with-deps chromium
