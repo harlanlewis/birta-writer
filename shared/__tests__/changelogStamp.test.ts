@@ -165,8 +165,12 @@ describe("stamp", () => {
     });
 });
 
-describe("the repository's own CHANGELOG.md", () => {
-    const changelog = readFileSync(path.join(repoRoot, "CHANGELOG.md"), "utf8");
+// Both changelogs, because the release job stamps both. A file that lost its
+// `## [Unreleased]` heading makes stamp-changelog.mjs throw, at 04:00, in the
+// job that cuts the release; proving that of one of the two files it is run
+// against is half a guard.
+describe.each([["CHANGELOG.md"], ["jot/CHANGELOG.md"]])("the repository's own %s", (file) => {
+    const changelog = readFileSync(path.join(repoRoot, file), "utf8");
 
     it("every version heading should be CalVer", () => {
         // The pre-Marketplace semver releases were never publicly installable

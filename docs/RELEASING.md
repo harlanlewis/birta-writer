@@ -34,9 +34,9 @@ The `Release` workflow (`.github/workflows/release.yml`) runs nightly at 04:00 P
 1. If nothing has landed since the last tag, it stops. No empty releases.
 2. It runs `pnpm typecheck && pnpm test`. `vsce package` only runs a build, and the release cron fires on its own schedule whether or not CI for the newest commit has finished, or finished green. The job proves the commit for itself rather than trusting a status lookup that may be pending or absent.
 3. It runs the integration suite (`pnpm test:integration`, under xvfb) twice: once against the `engines.vscode` floor read from `package.json`, once against stable. This is the only place the floor is ever launched (the claim is otherwise unverifiable), and the suite includes opening a real-shaped document (invalid mermaid diagram included) in the real custom editor and failing if the webview stops answering after paint. The first run of this step found two floor-only bugs that had shipped in every prior release.
-4. It rolls `CHANGELOG.md` (see below), writes end-user highlights, packages the `.vsix`, tags the commit, and publishes a GitHub Release with the `.vsix` attached.
+4. It rolls both changelogs (see below), writes end-user highlights, packages the `.vsix`, tags the commit, and publishes a GitHub Release with the `.vsix` attached.
 5. Two further jobs, `publish` and `publish-openvsx`, push that same `.vsix` to the VS Code Marketplace and to Open VSX. They run in parallel and fail independently.
-6. Finally it commits the rolled `CHANGELOG.md` back to `main`.
+6. Finally it commits both rolled changelogs back to `main`.
 
 That is the whole loop, and it is fully automatic. The one thing it writes to `main` is that changelog commit. It is the last step, so it can never fail a release that has already shipped.
 
@@ -78,7 +78,7 @@ The semver releases up to `0.2.3` were never publicly installable. They live in 
 
 ## Release notes
 
-`scripts/gen-release-notes.mjs` reads this version's section of `CHANGELOG.md` and condenses it into [cursor.com/changelog](https://cursor.com/changelog)-style notes. Run by hand against an unstamped tree, it falls back to `[Unreleased]`.
+`scripts/gen-release-notes.mjs` reads this version's section of both changelogs, merges them by heading so each Keep a Changelog section appears once, and condenses the result into [cursor.com/changelog](https://cursor.com/changelog)-style notes. Run by hand against an unstamped tree, it falls back to `[Unreleased]`.
 
 It reads the stamped section for a reason. Reading `[Unreleased]` unconditionally is what made four consecutive nightly releases re-announce the entire product, because nothing ever rolled that section and it had accumulated every entry ever written.
 
@@ -145,7 +145,7 @@ Set these in the repo, under Settings → Secrets and variables → Actions.
 | `AZURE_CLIENT_ID`   | Also publishes to the VS Code Marketplace         | set to publish   |
 | `AZURE_TENANT_ID`   | Required alongside `AZURE_CLIENT_ID`              | set to publish   |
 | `OVSX_PAT`          | Also publishes to Open VSX                        | set to publish   |
-| `RELEASE_TOKEN`     | Commits the rolled `CHANGELOG.md` back to `main`  | needed to stamp  |
+| `RELEASE_TOKEN`     | Commits the rolled changelogs back to `main`      | needed to stamp  |
 
 With neither `AZURE_CLIENT_ID` nor `OVSX_PAT`, a release builds the downloadable `.vsix` and stops. That is the "build it, don't publish yet" phase. The two registry secrets are independent, so either can be added on its own.
 
