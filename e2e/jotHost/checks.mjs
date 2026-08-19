@@ -475,6 +475,81 @@ export async function run({ page, check, baseUrl }) {
     await page.setViewportSize({ width: viewport?.width ?? 1280, height: viewport?.height ?? 800 });
     await page.waitForTimeout(150);
 
+    // The dock is persistent chrome in a corner transient popups can reach.
+    // The top bar never has this problem: `safeAreaTop` keeps every popup out
+    // of its band by geometry, and there is no such rule for the bottom edge,
+    // so down here the stack is the whole of it. A slash menu the dock paints
+    // over is a menu the user cannot read, and stacking is invisible to every
+    // check that asks whether an element EXISTS.
+    //
+    // Asserted as an ORDER rather than by staging a collision, which is a
+    // weaker check and worth saying so. `computeAnchoredPosition` flips the
+    // slash menu above the caret whenever it does not fit below, so the
+    // overlap needs a caret at one particular height for a given menu, and a
+    // case that has to be aimed that precisely is one a later change moves out
+    // from under without failing. The order holds for every such case at once.
+    //
+    // What makes the proxy sound is the second assertion: both are
+    // `position: fixed` children of <body>, which puts them in one stacking
+    // context with nothing between them, so z-index IS paint order here. The
+    // day that stops being true this check has to be rewritten, and the
+    // assertion is what will say so.
+    await mount("index.html");
+    await page.locator(".tb-dock-toggle").click();
+    await page.waitForTimeout(200);
+    const stack = await page.evaluate(() => {
+        const dock = document.querySelector(".tb-dock");
+        const z = (el) => Number.parseInt(getComputedStyle(el).zIndex, 10);
+        // Every transient surface that can open into the bottom leading
+        // corner. Created on demand, so each is measured from its own rule
+        // rather than from an element that may not exist yet.
+        const probe = (className) => {
+            const el = document.createElement("div");
+            el.className = className;
+            document.body.appendChild(el);
+            const value = z(el);
+            el.remove();
+            return value;
+        };
+        return {
+            dock: z(dock),
+            dockParentIsBody: dock.parentElement === document.body,
+            dockPosition: getComputedStyle(dock).position,
+            popups: {
+                slashMenu: probe("slash-menu"),
+                selectionToolbar: probe("sel-toolbar"),
+                notice: probe("ui-notice"),
+            },
+        };
+    });
+    check("jot: the dock and the popups share one stacking context, so z-index is paint order",
+        stack.dockParentIsBody === true && stack.dockPosition === "fixed",
+        JSON.stringify(stack));
+    // A probe that measured nothing reports agreement, so the count of
+    // popups that answered with a real z-index is asserted before the order is.
+    const measured = Object.entries(stack.popups).filter(([, z]) => Number.isFinite(z));
+    check("jot: every popup probe actually resolved a z-index",
+        measured.length === Object.keys(stack.popups).length, JSON.stringify(stack));
+    check("jot: every transient popup paints over the dock, not under it",
+        measured.length > 0 && measured.every(([, z]) => stack.dock < z), JSON.stringify(stack));
+
+    // Boot from a saved bag. The write was checked above, and a write nothing
+    // reads back is a preference that is not remembered: the shell seeds
+    // `getState` in its document-start script (Bridge.userScript), and the
+    // dock reads it while it is being built, which is before `init` arrives.
+    // Seeded here the same way, so the ORDER is the one the panel has.
+    await page.addInitScript(() => { window.__seedState = { formattingDockExpanded: true }; });
+    await mount("index.html");
+    const booted = await page.evaluate(() => ({
+        expanded: document.querySelector(".tb-dock")?.dataset.expanded,
+        rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
+        seeded: window.__state?.formattingDockExpanded,
+    }));
+    check("jot: a saved expanded flag boots the dock open, without a click",
+        booted.expanded === "true" && booted.rowShown === true, JSON.stringify(booted));
+    check("jot: …and the seed really was in the bag, so that is not a default",
+        booted.seeded === true, JSON.stringify(booted));
+
     // The same message on the control page DOES switch, so the inert check
     // above discriminates.
     await mount("control.html");

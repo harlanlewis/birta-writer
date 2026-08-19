@@ -8,14 +8,28 @@
    last block, so the strip never traps a line under itself and this needs no
    padding of its own.
 
-   Same z-index as .editor-topbar, and for the same reason: its dropdowns must
-   sit above every piece of content-area chrome. The two are siblings on
-   opposite edges, so they never overlap each other. */
+   Below every transient popup and above the document, which is the precedence
+   a persistent piece of chrome wants: a slash menu or a selection toolbar that
+   opened into this corner has to be readable, and the dock is what the user
+   was not looking at.
+
+   The top bar can afford to sit above them all, because nothing ever paints
+   into its band: `safeAreaTop` keeps every popup below it by geometry. There
+   is no such rule for the bottom edge, so down here the stack is the whole of
+   it. `e2e/jotHost` asserts the order against the popups' own rules rather
+   than against a number written here.
+
+   `position: fixed` creates a stacking context whatever the z-index, so this
+   number governs the dock's own dropdowns too. That is a real trade and the
+   cheaper side of it: a dock dropdown and a slash menu are never open at once,
+   and the case this loses (a selection toolbar over an open dock menu) needs a
+   selection at the bottom edge AND a tall menu, where the case it wins is the
+   panel's primary command surface. */
 .tb-dock {
     position: fixed;
     left: var(--ui-space-5);
     bottom: var(--ui-space-5);
-    z-index: 10002;
+    z-index: 999;
     display: flex;
     align-items: center;
     gap: var(--ui-space-2);

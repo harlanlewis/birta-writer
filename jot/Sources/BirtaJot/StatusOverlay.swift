@@ -32,7 +32,9 @@ final class StatusOverlay: NSView {
     private func build() {
         status.textColor = .tertiaryLabelColor
         status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        status.lineBreakMode = .byTruncatingTail
+        // Middle, not tail: these messages end in the thing worth reading
+        // ("Copy saved to Notes.md."), so a tail truncation cuts the answer off.
+        status.lineBreakMode = .byTruncatingMiddle
         status.alphaValue = 0
         status.translatesAutoresizingMaskIntoConstraints = false
         addSubview(status)
