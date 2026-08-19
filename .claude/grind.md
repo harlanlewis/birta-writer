@@ -6,6 +6,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 - Linear team `MAR`.
 - Derive the queue from Linear at the start of every session: the groomed union of `Todo`, `In Progress` and `Backlog`, ordered by the doctrine below. A stored ordering is a cache, and a stale one reads exactly like a considered one.
+- `git fetch` BEFORE you groom, not just before you open the PR. Grooming reads the tree to decide what has silently shipped, and an unfetched `main` answers that question about a tree hours old. 2026-08-18: a session picked a ticket, measured `main` unpackageable, and wrote the fix, while the same fix had already landed upstream as #356; the collision surfaced only at merge. `git log` looked authoritative and was local.
 - Maintainer-only kinds: none.
 
 ## Findings
@@ -33,7 +34,7 @@ A war story is not a finding. The finding is the sentence that changes what the 
 
 - The default shape; ceiling 2, because the harness lock is machine-wide, refuses rather than queues (the loser exits 2 naming the holder), and a lane's gates are the bulk of its wall clock: a third lane spends its time failing gates and retrying. The ceiling prices the machine, not the session, so a live peer session's lanes (`ListAgents`) count against it. Integration branch `lewish/<slug>`.
 - Brief a lane to commit BEFORE its `pnpm test:e2e` sweep, not after: the sweep is a seven-minute call and a lane that stops mid-sweep leaves nothing on its branch (2026-08-18, resumed with "commit what you have, first").
-- Session target: 7 to 9 tickets. The ceiling is on concurrency, never throughput: two lanes refilled four times is the shape of a session, not a budget of two tickets.
+- Session target: 7 to 9 tickets.
 - Hot files: `webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins.
 - Orchestrator-only files: `CHANGELOG.md`, `docs/BENEFITS.md`, written once over the reconciled diff, plus BENEFITS only if a capability's story changed.
 - Exclusive resources: browser perf captures (`perf:*`). The machine is idle exactly twice, at the start and at reconciliation; `perf:bundle` is browser-free and fine, node-level micro-measurement survives.
