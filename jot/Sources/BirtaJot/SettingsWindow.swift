@@ -245,10 +245,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         ] {
             // The size a settings row uses. A regular NSSwitch is drawn for a
             // control that is the point of its own view; in a list of rows it
-            // is the loudest thing on the pane. `NSSwitchControlSizeTests`
-            // pins that the system still draws `.small` smaller, and the trap
-            // it also pins: the switch keeps reporting the regular size until
-            // it has been laid out in a view hierarchy.
+            // is the loudest thing on the pane. `SettingsSwitchTests` pins
+            // that the system still draws `.small` smaller, and holds the trap
+            // in checking it: a switch reports the regular size until it has
+            // been laid out in a view hierarchy.
             control.controlSize = .small
             control.state = on ? .on : .off
             control.target = self
