@@ -84,6 +84,31 @@ export function notifyAskAgent(prompt: string | undefined, requestId: string): v
         : { type: "askAgent", prompt, requestId });
 }
 
+/**
+ * The advanced composer's send. `model` and `effort` apply to this request
+ * only; the extension writes them into the command it runs and never into
+ * the setting. `attachments` are paths the extension itself wrote.
+ */
+export function notifyAskAgentAdvanced(request: {
+    prompt: string;
+    requestId: string;
+    model?: string;
+    effort?: string;
+    attachments: readonly string[];
+}): void {
+    vscode.postMessage({ type: "askAgentAdvanced", ...request });
+}
+
+/** Hand one attachment's bytes over to be written; the reply carries its path. */
+export function notifyAgentAttachment(id: string, name: string, bytes: string): void {
+    vscode.postMessage({ type: "agentAttachment", id, name, bytes });
+}
+
+/** Ask what the configured harness accepts (usually already cached). */
+export function requestAgentCapabilities(): void {
+    vscode.postMessage({ type: "requestAgentCapabilities" });
+}
+
 /** Cancel a background agent run from its gutter marker. */
 export function notifyAgentCancel(requestId: string): void {
     vscode.postMessage({ type: "agentCancel", requestId });
@@ -96,6 +121,15 @@ export function notifyAgentMergeResult(requestId: string, outcome: string): void
 
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
+}
+
+/**
+ * Open the host application's own preferences window. Only ever sent by a host
+ * that declares `appPreferences`, so a host that has no such window never
+ * receives it.
+ */
+export function notifyOpenHostPreferences(): void {
+    vscode.postMessage({ type: "openHostPreferences" });
 }
 
 /**

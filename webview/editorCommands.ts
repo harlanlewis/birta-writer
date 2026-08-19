@@ -83,7 +83,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@/pm";
 import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
-import { notifyAskAgent, notifyClipboardWrite, notifyOpenUrl } from "@/messaging";
+import { notifyAskAgent, notifyClipboardWrite, notifyOpenUrl, notifyOpenHostPreferences } from "@/messaging";
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { isFocusMode, setFocusMode } from "@/focusMode";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
@@ -102,6 +102,8 @@ export type GetEditor = () => Editor | null;
 export interface EditorCommandHost {
     openLinkPrompt(): void;
     openImagePanel(): void;
+    /** The `/ai` composer, optionally prefilled with the text typed after the row. */
+    openAgentPanel(initial: string | undefined): void;
     openFind(): void;
     openFindReplace(): void;
     findNext(): void;
@@ -120,6 +122,7 @@ export interface EditorCommandHost {
     // way as the toolbar's own hooks, so the palette reaches the exact code
     // paths the toolbar and slash menu use — and they work with the bar hidden.
     chooseFontPreset(preset: FontPreset): void;
+    chooseContentWidth(mode: import("../shared/contentWidth").ContentWidthMode): void;
     stepFontSize(delta: 1 | -1): void;
     toggleProofread(key: ProofreadOptionKey): void;
     /** The in-text editor-note highlight (birta.notes.highlightMarkers) — not a
@@ -342,6 +345,41 @@ function demoteHeadingsInSelection(view: EditorView): void {
  *   - caret not in a list → demote any heading the selection covers, then
  *     wrap it (the stock commands).
  */
+/**
+ * Tick or untick the task the caret is in.
+ *
+ * The checkbox has always been clickable and typeable (`[x] ` as an input
+ * rule), and neither reaches a keyboard user with their hands on the text.
+ * This walks OUT from the caret to the nearest ancestor list item that carries
+ * a `checked` attr, which is what makes a task item a task item, so a caret
+ * anywhere in the item's text works and a nested task ticks the item it is in
+ * rather than the outer one.
+ *
+ * A caret in a plain list item does nothing. Turning one INTO a task is
+ * `toggleTaskList`, a different question with its own command; silently
+ * converting here would make one key mean two things depending on where it
+ * landed.
+ */
+function toggleTaskChecked(getEditor: GetEditor): void {
+    const editor = getEditor();
+    if (!editor) { return; }
+    editor.action((ctx) => {
+        const view = getView(ctx);
+        const $from = view.state.selection.$from;
+        for (let depth = $from.depth; depth > 0; depth--) {
+            const node = $from.node(depth);
+            const checked = node.attrs["checked"];
+            if (checked === undefined || checked === null) { continue; }
+            const tr = view.state.tr.setNodeMarkup($from.before(depth), undefined, {
+                ...node.attrs,
+                checked: !checked,
+            });
+            view.dispatch(tr);
+            return;
+        }
+    });
+}
+
 function toggleList(getEditor: GetEditor, kind: ListKind): void {
     const editor = getEditor();
     if (!editor) { return; }
@@ -708,6 +746,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleBulletList: (getEditor) => toggleList(getEditor, "bulletList"),
     toggleOrderedList: (getEditor) => toggleList(getEditor, "orderedList"),
     toggleTaskList: (getEditor) => toggleList(getEditor, "taskList"),
+    toggleTaskChecked: (getEditor) => toggleTaskChecked(getEditor),
     toggleBlockquote: (getEditor) => toggleBlockquote(getEditor),
     // Optional string arg = fence language ("mermaid" from the slash menu).
     // Retypes the caret's line, so a list line lifts out of its list first —
@@ -779,12 +818,25 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // can be saved first so the reference names what is on disk.
     askAgent: (getEditor, args) => {
         const prompt = (args as { prompt?: unknown } | undefined)?.prompt;
+        // Nothing typed is not an empty request: it is someone who reached
+        // for `/ai` and has more to say than a line. That used to open a
+        // native input box; it opens the composer now, which is the same
+        // question with somewhere to put a file and a model.
+        if (typeof prompt !== "string" || prompt.trim() === "") {
+            host.openAgentPanel?.(undefined);
+            return;
+        }
         // Register the request at the caret first (a gutter marker while a
         // background run lives; nothing shows until the extension confirms
         // one), then hand off with its id.
         let requestId = "";
         runProse(getEditor, (view) => { requestId = beginAgentRun(view); });
-        notifyAskAgent(typeof prompt === "string" ? prompt : undefined, requestId);
+        notifyAskAgent(prompt, requestId);
+    },
+    // Always the composer, prefilled with whatever was typed after the row.
+    askAgentAdvanced: (_getEditor, args) => {
+        const prompt = (args as { prompt?: unknown } | undefined)?.prompt;
+        host.openAgentPanel?.(typeof prompt === "string" && prompt.trim() ? prompt : undefined);
     },
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
@@ -823,7 +875,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // same host handoff the link popup uses. The extension scheme-checks the
     // URL and calls env.openExternal.
     openWhatsNew: () => notifyOpenUrl(RELEASES_URL),
+    // No host hook either: the shell owns the window, and the webview's whole
+    // part is asking for it.
+    openHostPreferences: () => notifyOpenHostPreferences(),
     openKeyboardShortcuts: () => host.openKeyboardShortcuts?.(),
+    contentWidthFull: () => host.chooseContentWidth?.("full"),
+    contentWidthFixed: () => host.chooseContentWidth?.("fixed"),
     fontEditor: () => host.chooseFontPreset?.("editor"),
     fontSans: () => host.chooseFontPreset?.("sans"),
     fontSerif: () => host.chooseFontPreset?.("serif"),

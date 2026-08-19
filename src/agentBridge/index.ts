@@ -30,6 +30,8 @@ import { registerEditorContextTool } from "./languageModelTool";
 import { createBirtaApi } from "./publicApi";
 
 export type { BirtaApi, BirtaEditorContext, BirtaPosition } from "./api";
+/** What `/ai` would run right now, for the webview's hint (and its broadcast). */
+export { currentAgentRoute } from "./askAgent";
 
 /**
  * Wire every agent-bridge adapter to the neutral resolver and return the

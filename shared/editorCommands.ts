@@ -80,6 +80,10 @@ export const EDITOR_COMMANDS = [
     { id: "toggleBulletList", title: "Bullet List", palette: true, sections: [] },
     { id: "toggleOrderedList", title: "Ordered List", palette: true, sections: [] },
     { id: "toggleTaskList", title: "Task List", palette: true, sections: [] },
+    // Ticking the task the caret is in, which the checkbox and the `[x] `
+    // marker could already do with a pointer or a fresh line and neither could
+    // do from inside the text.
+    { id: "toggleTaskChecked", title: "Toggle Task Done", palette: true, sections: [] },
     { id: "toggleBlockquote", title: "Blockquote", palette: true, sections: [] },
     { id: "insertCodeBlock", title: "Code Block", palette: true, sections: [] },
     { id: "insertHorizontalRule", title: "Horizontal Rule", palette: true, sections: [] },
@@ -104,6 +108,10 @@ export const EDITOR_COMMANDS = [
     // the extension, which composes the caret's line reference in and routes
     // it per `birta.agent.command` (src/agentBridge/askAgent.ts).
     { id: "askAgent", title: "Ask Agent", palette: true, sections: [], hostCapability: "agent" },
+    // The composer in front of the same hand-off: files, and the model and
+    // effort for one request. What it may OFFER is read from the harness's
+    // own `--help`, so it needs no capability of its own beyond `agent`.
+    { id: "askAgentAdvanced", title: "Ask Agent (advanced)", palette: true, sections: [], hostCapability: "agent" },
     { id: "editBlockSource", title: "Edit Block as Markdown", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [], hostCapability: "imageUpload" },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
@@ -201,6 +209,10 @@ export const EDITOR_COMMANDS = [
     // Settings and Keyboard Shortcuts commands, and no command of its own
     // reaches OUR release notes.
     { id: "openWhatsNew", title: "What's New", palette: true, sections: ["toolbar"], menuGroup: "settings", hostCapability: "hostSettings" },
+    // The host application's own preferences, for a surface that IS an app
+    // (Jot). Shares the `settings` group with the rows above because it names
+    // the same thing they do: the program, rather than this document.
+    { id: "openHostPreferences", title: "Birta Jot Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a
@@ -208,7 +220,11 @@ export const EDITOR_COMMANDS = [
     // command palette — the standard surface for editor-chrome actions — can
     // reach them too. Each preset/direction is its own id because a palette
     // entry carries no argument.
-    { id: "fontEditor", title: "Editor Font", palette: true, sections: [] },
+    // The reading measure, offered only where the host's editor area is wide
+    // enough for it to be a choice (see `contentMeasure`).
+    { id: "contentWidthFull", title: "Full Width", palette: true, sections: [], hostCapability: "contentMeasure" },
+    { id: "contentWidthFixed", title: "Fixed Width", palette: true, sections: [], hostCapability: "contentMeasure" },
+    { id: "fontEditor", title: "Editor Font", palette: true, sections: [], hostCapability: "editorFont" },
     { id: "fontSans", title: "Sans-Serif Font", palette: true, sections: [] },
     { id: "fontSerif", title: "Serif Font", palette: true, sections: [] },
     { id: "fontMono", title: "Monospace Font", palette: true, sections: [] },

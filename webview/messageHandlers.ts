@@ -55,6 +55,8 @@ import { handleLinkCardResult } from "./linkCardMeta";
 import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
+import { setAgentRoute } from "./agentRoute";
+import { resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -566,15 +568,29 @@ export function createMessageHandlers(
             // focus mode hides the toolbar without writing it.
             topbarTb?.applyConfig(maskToolbarConfigUnderFocus(msg.config));
         },
+        agentRoute(msg) {
+            // Display only: it feeds the `/ai` caret hint and nothing else.
+            setAgentRoute(msg.route);
+        },
+        agentCapabilities(msg) {
+            // What the harness's own --help says it accepts. Undefined means
+            // the probe found nothing, and the composer then offers no model
+            // or effort control rather than guessing at either.
+            setAgentCapabilities(msg.capabilities);
+        },
+        agentAttachmentSaved(msg) {
+            resolveAgentAttachment(msg.id, msg.path);
+        },
         whatsNewUnread(msg) {
             setWhatsNewUnread(msg.unread);
         },
         setFontFamily(msg) {
             // Anchored: swapping the family changes every glyph's metrics, so
             // the whole document rewraps and re-heights. Keep the top visible
-            // line stable, exactly as a width flip does. This is the only apply
-            // path for a preset change, wherever it came from (the menu posts
-            // and waits for this echo).
+            // line stable, exactly as a width flip does. The toolbar applies
+            // its own pick optimistically, so this echo usually re-applies the
+            // same value; it is still the apply path for a change made
+            // anywhere else, such as the host's settings UI.
             withScrollAnchor(getEditorView(), () => {
                 const root = document.documentElement;
                 if (msg.fontFamily) {

@@ -51,10 +51,22 @@ public struct HotkeyCombo: Equatable, Sendable {
     /// Parse "cmd+alt+ctrl+j". Tokens are case-insensitive and separated by
     /// `+`, `-` or whitespace; modifier synonyms are accepted and the spelling
     /// is normalised to cmd/alt/ctrl/shift in that order.
+    ///
+    /// `-` is both a separator and a key, so a trailing one is taken as the key
+    /// before anything is split. Without that, "cmd+-" tokenises to ["cmd"] and
+    /// the minus key is unbindable while `keyCodes` still lists it, which makes
+    /// `from(keyCode:)` return nil for a key the user really did press.
     public static func parse(_ text: String) -> Result<HotkeyCombo, ParseError> {
-        let tokens = text.lowercased()
+        var body = text.lowercased()
+        var trailingMinus: String? = nil
+        if body.count > 1, body.hasSuffix("-") {
+            body = String(body.dropLast())
+            trailingMinus = "-"
+        }
+        var tokens = body
             .split(whereSeparator: { $0 == "+" || $0 == "-" || $0.isWhitespace })
             .map(String.init)
+        if let minus = trailingMinus { tokens.append(minus) }
         guard !tokens.isEmpty else { return .failure(.empty) }
         var mods: UInt32 = 0
         var key: (name: String, code: UInt32)?
@@ -77,6 +89,27 @@ public struct HotkeyCombo: Equatable, Sendable {
         if mods & shiftKey != 0 { parts.append("shift") }
         parts.append(k.name)
         return .success(HotkeyCombo(keyCode: k.code, modifiers: mods, spelling: parts.joined(separator: "+")))
+    }
+
+    /// The key on its own, as `parse` spells it ("j", "space", "f5").
+    public var keyName: String { spelling.split(separator: "+").last.map(String.init) ?? "" }
+
+    /// The combo a pressed key describes: a virtual key code and the Carbon
+    /// modifier bits, which is what both `RegisterEventHotKey` and a recorder
+    /// control have in hand.
+    ///
+    /// Nil for a key this vocabulary cannot spell, and nil when no modifier is
+    /// held, because a global hotkey without one would take that key away from
+    /// every app on the machine.
+    public static func from(keyCode: UInt32, modifiers: UInt32) -> HotkeyCombo? {
+        guard let name = canonicalKeyNames[keyCode] else { return nil }
+        var parts: [String] = []
+        if modifiers & cmdKey != 0 { parts.append("cmd") }
+        if modifiers & optionKey != 0 { parts.append("alt") }
+        if modifiers & controlKey != 0 { parts.append("ctrl") }
+        if modifiers & shiftKey != 0 { parts.append("shift") }
+        parts.append(name)
+        return try? parse(parts.joined(separator: "+")).get()
     }
 
     /// The symbol form for menus: ⌘⌥⌃J.
@@ -110,4 +143,18 @@ public struct HotkeyCombo: Equatable, Sendable {
         "f9": 101, "f10": 109, "f11": 103, "f12": 111,
         "left": 123, "right": 124, "down": 125, "up": 126,
     ]
+
+    /// One name per key code, for spelling a code back out. `keyCodes` holds
+    /// synonyms (enter/return, backspace/delete), so the choice has to be made
+    /// somewhere rather than left to dictionary order, which is not stable.
+    static let canonicalKeyNames: [UInt32: String] = {
+        let preferred: Set<String> = ["return", "delete", "escape", "space", "tab"]
+        var out: [UInt32: String] = [:]
+        for (name, code) in keyCodes {
+            guard let existing = out[code] else { out[code] = name; continue }
+            if preferred.contains(existing) { continue }
+            if preferred.contains(name) || name < existing { out[code] = name }
+        }
+        return out
+    }()
 }

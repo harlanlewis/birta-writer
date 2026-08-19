@@ -166,8 +166,8 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
     viewSource: ["editRawMarkdown"],
     find: ["openFind"],
     styleCheck: ["toggleSpellCheck", "toggleGrammarCheck", "toggleStyleCheck", "toggleNoteHighlights"],
-    fontPreset: ["fontEditor", "fontSans", "fontSerif", "fontMono", "increaseFontSize", "decreaseFontSize"],
-    settings: ["openExtensionSettings", "customizeToolbar", "hideToolbar", "openKeyboardShortcuts", "openWhatsNew"],
+    fontPreset: ["contentWidthFull", "contentWidthFixed", "fontEditor", "fontSans", "fontSerif", "fontMono", "increaseFontSize", "decreaseFontSize"],
+    settings: ["openExtensionSettings", "openHostPreferences", "customizeToolbar", "hideToolbar", "openKeyboardShortcuts", "openWhatsNew"],
 };
 
 /**

@@ -142,11 +142,29 @@ describe("createSlashMenu", () => {
         expect(ev.defaultPrevented).toBe(true);
     });
 
-    it("hovering a row should move the highlight and report it", () => {
+    it("pointing at a row should move the highlight and report it", () => {
         const row = document.getElementById(slashRowDomId("math"))!;
-        row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        // `mousemove` with coordinates, not `mouseover`: the guard in
+        // ui/hoverSelection.ts honours hover only on real pointer motion, and
+        // mouseover fires when a row arrives under a pointer that has not
+        // moved (a scroll, a re-render), which is how the keyboard's highlight
+        // used to be taken back.
+        row.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 20 }));
         expect(focusedRow()?.id).toBe(slashRowDomId("math"));
         expect(onActiveChange).toHaveBeenLastCalledWith(slashRowDomId("math"));
+    });
+
+    it("a row arriving under a still pointer after a keyboard move should not steal the highlight", () => {
+        const first = document.getElementById(slashRowDomId("math"))!;
+        first.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 20 }));
+        expect(focusedRow()?.id).toBe(slashRowDomId("math"));
+        // The keyboard moves, then the row under the unmoved pointer reports
+        // itself again at the SAME coordinates, which is what a scroll does.
+        menu.moveActive(1);
+        const moved = focusedRow()?.id;
+        expect(moved).not.toBe(slashRowDomId("math"));
+        first.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 20 }));
+        expect(focusedRow()?.id).toBe(moved);
     });
 
     it("a menu placed near the viewport bottom should flip above the anchor", () => {

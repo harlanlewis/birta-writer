@@ -24,6 +24,13 @@
  * setting is application-scoped by contribution: a workspace that could set
  * a shell template could run a command on the user's machine.
  *
+ * The template is also where the MODEL lives, as the harness's own flag
+ * (`--model haiku`), which is why there is no `birta.agent.model`: a
+ * structured setting would need per-harness flag grammar, the vendor list
+ * this design exists to avoid. `describeAgentRoute` reads the template back
+ * as display facts so the webview can say what a request is about to run
+ * before it runs; the raw template never crosses that boundary.
+ *
  * The document is SAVED before the hand-off when dirty. The reference names
  * lines, and an agent reads the file from disk, so the bytes on disk have to
  * be the ones the reference was computed against. That is the one moment
@@ -40,15 +47,22 @@
 
 import * as vscode from "vscode";
 import { spawn, type ChildProcess } from "node:child_process";
+import { tmpdir } from "node:os";
 import type { ActiveContextResolver } from "./api";
 import { buildReference } from "./format";
 import { getBirtaConfiguration, readBirtaSetting } from "../config";
 import { BIRTA_SETTING_KEYS } from "../../shared/config";
 import { reportError, reportErrorWithNotification } from "../errorSink";
-import type { AgentRunMessage } from "../../shared/messages";
+import { EFFORT_FLAGS, harnessName, MODEL_FLAGS } from "./harnessCapabilities";
+/** Re-exported: the dispatcher is where callers and tests expect to find it. */
+export { harnessName };
+import { cachedCapabilities } from "./harnessProbe";
+import type { AgentRouteSummary, AgentRunMessage } from "../../shared/messages";
 
 /** Internal command the webview's `askAgent` message runs (not contributed). */
 export const ASK_AGENT_COMMAND = "birta.askAgent";
+/** Internal command the webview's `askAgentAdvanced` message runs. */
+export const ASK_AGENT_ADVANCED_COMMAND = "birta.askAgentAdvanced";
 /** Internal command the webview's `agentCancel` message runs. */
 export const CANCEL_AGENT_COMMAND = "birta.cancelAgent";
 /** Internal command the webview's `agentMergeResult` message runs. */
@@ -67,16 +81,88 @@ export const CHAT_OPEN_COMMAND = "workbench.action.chat.open";
 export const TERMINAL_NAME = "Birta AI";
 /** Stderr tail carried into a failure report; stdout tail shown when a run changes nothing. */
 const OUTPUT_TAIL = 400;
+/** Largest attachment written to disk. Mirrors the panel's own pre-read cap. */
+const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024;
 
 /**
- * The harness a template runs, for the marker's tooltip and the finish
- * report: the first word of the command (`claude`, `codex`), which is the
- * one thing about it the editor can know. Which MODEL answered is the
- * harness's own business and no CLI reports it in a form worth parsing.
+ * The model a template NAMES, or undefined. Only the unambiguous long forms
+ * (`--model sonnet`, `--model=sonnet`) count: `-m` is a different flag in
+ * enough tools to be a guess, and a guess here would put a wrong model name
+ * in front of the user at the moment they are deciding whether to send.
+ *
+ * This reads the user's OWN template, which is why it is not the vendor list
+ * this module refuses to carry: nothing is inferred about a harness, and a
+ * template with no `--model` reports nothing rather than a default. What the
+ * CLI then resolves an alias to is still its own business.
  */
-export function harnessName(template: string): string {
-    const first = template.trim().split(/\s+/)[0] ?? "";
-    return first.replace(/^.*[\\/]/, "") || "agent";
+export function agentModelName(template: string): string | undefined {
+    return templateFlagValue(template, MODEL_FLAGS);
+}
+
+/**
+ * The value a template gives the first of `flags` it carries, or undefined.
+ *
+ * Reads the same spellings the probe looks for, so a template written for a
+ * harness that says `--thinking` is read back correctly rather than reported
+ * as having no effort at all. Only the unambiguous long forms count: `-m` is
+ * a different flag in enough tools to be a guess, and a guess here would put
+ * a wrong name in front of the user at the moment they are deciding whether
+ * to send.
+ */
+export function templateFlagValue(
+    template: string,
+    flags: readonly string[],
+): string | undefined {
+    for (const flag of flags) {
+        const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const m = new RegExp(`(?:^|\\s)${escaped}[=\\s]+("[^"]*"|'[^']*'|\\S+)`).exec(template);
+        const raw = m?.[1];
+        if (raw === undefined) { continue; }
+        const unquoted = /^(["'])(.*)\1$/.exec(raw);
+        const value = (unquoted ? unquoted[2] : raw) || undefined;
+        if (value !== undefined) { return value; }
+    }
+    return undefined;
+}
+
+/**
+ * The effort a template NAMES, or undefined. Same rule as the model: the
+ * long form only, and nothing inferred. Unlike the model this IS a closed
+ * set, because the flag documents its own values (`claude --help`: low,
+ * medium, high, xhigh, max), so an unrecognized value is reported as typed
+ * rather than dropped: the user wrote it, and hiding it would be a lie about
+ * what is configured.
+ */
+export function agentEffortName(template: string): string | undefined {
+    return templateFlagValue(template, EFFORT_FLAGS);
+}
+
+/**
+ * The configured route as display facts, for the webview's `/ai` hint. An
+ * empty setting is `configured: false`: the first `/ai` will ask, and the
+ * hint has to say so rather than name a route nobody chose.
+ */
+export function describeAgentRoute(command: string, mode: AgentMode): AgentRouteSummary {
+    const template = command.trim();
+    if (!template) { return { configured: false, kind: "shell" }; }
+    if (template === AGENT_ROUTE_CHAT) { return { configured: true, kind: "chat" }; }
+    if (template === AGENT_ROUTE_CLIPBOARD) { return { configured: true, kind: "clipboard" }; }
+    return {
+        configured: true,
+        kind: "shell",
+        harness: harnessName(template),
+        model: agentModelName(template),
+        effort: agentEffortName(template),
+        mode,
+    };
+}
+
+/** The current route, read fresh from settings (the config seam's contract). */
+export function currentAgentRoute(): AgentRouteSummary {
+    return describeAgentRoute(
+        readBirtaSetting("agentCommand"),
+        normalizeAgentMode(readBirtaSetting("agentMode")),
+    );
 }
 
 /**
@@ -113,6 +199,46 @@ export function expandCommandTemplate(template: string, quotedPrompt: string): s
         : `${trimmed} ${quotedPrompt}`;
 }
 
+/**
+ * Set `flag` to `value` in a command template, replacing the value it
+ * already carries or appending the flag when it carries none. `undefined`
+ * REMOVES the flag, which is how "let the harness decide" is expressed:
+ * there is no value meaning "default", and inventing one would send a
+ * literal `default` to the CLI.
+ *
+ * Appending goes before a trailing `{prompt}` when the template ends with
+ * one, so the prompt stays the last argument. A CLI that takes the prompt
+ * positionally would otherwise read the flag's value as the prompt.
+ *
+ * Lives here rather than beside the help parser because it is about the
+ * template, which this module owns, and because the parser must stay free of
+ * any dependency on this one: it is the piece that has to be testable with
+ * nothing spawned.
+ */
+export function setTemplateFlag(
+    template: string,
+    flag: string,
+    value: string | undefined,
+): string {
+    const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // The same shape agentModelName reads, so what the panel sets is exactly
+    // what the hint reads back: `--flag v`, `--flag=v`, and quoted forms.
+    const existing = new RegExp(`(^|\\s)${escaped}[=\\s]+("[^"]*"|'[^']*'|\\S+)`);
+    const trimmed = template.trim();
+    if (existing.test(trimmed)) {
+        return value === undefined
+            ? trimmed.replace(existing, "").replace(/\s{2,}/g, " ").trim()
+            : trimmed.replace(existing, `$1${flag} ${value}`);
+    }
+    if (value === undefined) {
+        return trimmed;
+    }
+    const addition = `${flag} ${value}`;
+    return trimmed.endsWith(PROMPT_PLACEHOLDER)
+        ? `${trimmed.slice(0, -PROMPT_PLACEHOLDER.length).trim()} ${addition} ${PROMPT_PLACEHOLDER}`
+        : `${trimmed} ${addition}`;
+}
+
 export type AgentMode = "background" | "terminal";
 
 /** A settings.json typo (the enum constrains only the Settings UI) → the default. */
@@ -146,7 +272,10 @@ async function pickRoute(): Promise<{ command: string; mode: AgentMode } | undef
     ];
     const pick = await vscode.window.showQuickPick(picks, {
         title: vscode.l10n.t("Where should Birta send your request?"),
-        placeHolder: vscode.l10n.t("Stored in birta.agent.command; change it any time in Settings"),
+        // The placeholder is where the model question gets answered, rather
+        // than a second pair of rows per CLI: a route is chosen once, and
+        // model aliases rot faster than binary names do.
+        placeHolder: vscode.l10n.t("Stored in birta.agent.command; add your harness's own flags there (--model, --effort) to choose what runs"),
         ignoreFocusOut: true,
     });
     if (!pick) { return undefined; }
@@ -495,6 +624,13 @@ export async function askAgent(
     report: AgentRunReporter,
     prompt: string | undefined,
     requestId: string | undefined,
+    /**
+     * The command to run instead of `birta.agent.command`, for one request.
+     * The advanced panel passes the setting with its model and effort
+     * written in. An override never reaches settings and never triggers the
+     * first-use picker, because a caller with a template has a route.
+     */
+    templateOverride?: string,
 ): Promise<void> {
     const active = await getActive();
     const handedOff = (): void => {
@@ -516,7 +652,7 @@ export async function askAgent(
         }))?.trim();
         if (!request) { handedOff(); return; }
     }
-    let route = readBirtaSetting("agentCommand").trim();
+    let route = (templateOverride ?? readBirtaSetting("agentCommand")).trim();
     let mode = normalizeAgentMode(readBirtaSetting("agentMode"));
     if (!route) {
         const picked = await pickRoute();
@@ -554,6 +690,108 @@ export async function askAgent(
     }
 }
 
+/**
+ * Write one attachment's bytes somewhere the agent can read them, and return
+ * the path.
+ *
+ * A session temp directory, never the document's own image folder: an
+ * attachment is context for one request, and a screenshot dropped to ask a
+ * question about it has no business becoming a file in the user's repository
+ * that they then have to notice and delete.
+ *
+ * The name is reduced to its basename and stripped of anything that is not a
+ * plain filename character, so a name arriving from the webview cannot walk
+ * out of the directory it is being written into.
+ */
+export async function saveAgentAttachment(name: string, bytes: Uint8Array): Promise<vscode.Uri> {
+    // The panel refuses an oversized file before reading it, which is the
+    // bound that matters. This one is the floor under that: it is the side
+    // that touches the user's disk, and it should not depend on the caller
+    // having checked. Cheap, because by here the bytes are already decoded.
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+        throw new Error(`attachment exceeds ${MAX_ATTACHMENT_BYTES} bytes`);
+    }
+    const base = (name.split(/[\\/]/).pop() ?? "file").replace(/[^\w.\-]/g, "_").slice(-64);
+    const safe = base.replace(/^\.+/, "") || "file";
+    const dir = vscode.Uri.joinPath(
+        vscode.Uri.file(tmpdir()),
+        `birta-ai-${process.pid}`,
+    );
+    await vscode.workspace.fs.createDirectory(dir);
+    // Prefixed with a counter so two files of the same name in one request
+    // do not overwrite each other.
+    const target = vscode.Uri.joinPath(dir, `${attachmentSeq++}-${safe}`);
+    await vscode.workspace.fs.writeFile(target, bytes);
+    return target;
+}
+let attachmentSeq = 0;
+
+/**
+ * The advanced panel's send: the same hand-off, with the model and effort it
+ * chose written into the template for this one request.
+ *
+ * The setting is NOT updated. A model picked for one edit is a choice about
+ * that edit, and silently rewriting `birta.agent.command` would turn it into
+ * a preference the user never asked to change.
+ */
+export async function askAgentAdvanced(
+    getActive: ActiveContextResolver,
+    report: AgentRunReporter,
+    request: {
+        prompt: string;
+        requestId?: string;
+        model?: string;
+        effort?: string;
+        attachments?: readonly string[];
+    },
+): Promise<void> {
+    const base = readBirtaSetting("agentCommand").trim();
+    // Composed BEFORE the route branch. The Chat view and the clipboard have
+    // no flags to write, but they still carry the request, and dropping the
+    // attachments there would send someone's "describe this screenshot" with
+    // no screenshot in it and no sign that anything went missing.
+    //
+    // The paths ride IN the prompt, because there is no attachment channel to
+    // a shell command and a path is the one thing every agent reads. Each is
+    // double-quoted and they are joined with spaces rather than newlines,
+    // because composeAgentRequest collapses every run of whitespace to keep
+    // the hand-off a single line: newlines would not survive it, and an
+    // unquoted path would stop being one token the moment a temp directory
+    // had a space in it, which is the normal shape of `%TEMP%` under a
+    // Windows user name. The quotes are literal inside the shell-quoted
+    // argument, so the agent sees them and reads one path.
+    const files = request.attachments ?? [];
+    const prompt = files.length > 0
+        ? `${request.prompt} Attached files: ${files.map((f) => `"${f}"`).join(" ")}`
+        : request.prompt;
+    if (!base || base === AGENT_ROUTE_CHAT || base === AGENT_ROUTE_CLIPBOARD) {
+        // Nothing to write a model or effort into. The plain path still
+        // works, and asks for a route when there is none.
+        await askAgent(getActive, report, prompt, request.requestId);
+        return;
+    }
+    // The flag SPELLINGS come from the probe, not from here: the panel offered
+    // whatever this harness documents, and the command has to be written in
+    // that harness's own words. Falling back to the commonest spelling only
+    // when the probe never ran, which is also the only case where the panel
+    // could not have offered the control in the first place.
+    const caps = cachedCapabilities(base);
+    // A probe that ran is the authority, including when it says a harness has
+    // no such flag: undefined there means "documents none", and writing one
+    // anyway is a command that fails. Only an absent probe falls back, and
+    // that is also the case where the panel showed no control to use.
+    const modelFlag = caps ? caps.modelFlag : "--model";
+    const effortFlag = caps ? caps.effortFlag : "--effort";
+    let template = base;
+    if (request.model !== undefined && modelFlag) {
+        template = setTemplateFlag(template, modelFlag, request.model || undefined);
+    }
+    if (request.effort !== undefined && effortFlag) {
+        template = setTemplateFlag(template, effortFlag, request.effort || undefined);
+    }
+    await askAgent(getActive, report, prompt, request.requestId, template);
+}
+
 /** Register the internal `birta.askAgent` and `birta.cancelAgent` commands. */
 export function registerAskAgent(
     context: vscode.ExtensionContext,
@@ -569,6 +807,18 @@ export function registerAskAgent(
                 typeof requestId === "string" ? requestId : undefined,
             ),
         ),
+        vscode.commands.registerCommand(ASK_AGENT_ADVANCED_COMMAND, (req?: unknown) => {
+            const r = (req ?? {}) as Record<string, unknown>;
+            return askAgentAdvanced(getActive, report, {
+                prompt: typeof r.prompt === "string" ? r.prompt : "",
+                requestId: typeof r.requestId === "string" ? r.requestId : undefined,
+                model: typeof r.model === "string" ? r.model : undefined,
+                effort: typeof r.effort === "string" ? r.effort : undefined,
+                attachments: Array.isArray(r.attachments)
+                    ? r.attachments.filter((a): a is string => typeof a === "string")
+                    : undefined,
+            });
+        }),
         vscode.commands.registerCommand(CANCEL_AGENT_COMMAND, (requestId?: unknown) => {
             if (typeof requestId === "string") { cancelAgentRun(requestId); }
         }),

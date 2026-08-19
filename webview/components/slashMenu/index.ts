@@ -13,6 +13,7 @@
  */
 import { t } from "@/i18n";
 import { clampLeft, computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
+import { createHoverSelection } from "@/ui/hoverSelection";
 import {
     filterSlashItems,
     SLASH_GROUPS,
@@ -155,6 +156,10 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         if (lastAnchor) { positionMenu(lastAnchor); }
     });
 
+    // Hover and the arrows move the same highlight; the guard keeps a still
+    // pointer from taking it straight back. See ui/hoverSelection.ts.
+    const hover = createHoverSelection(root);
+
     function setActive(index: number): void {
         activeIndex = index;
         rows.forEach((row, i) => {
@@ -194,16 +199,35 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         label.textContent = opts.labelFor?.(item) ?? item.label;
         row.appendChild(label);
 
-        const hintValue = hintText ?? item.hint;
+        // The trailing slot holds one of three things, in this order: what
+        // argument mode is waiting for, the markdown syntax, or what the row
+        // inserts. Syntax outranks the description because a reader who
+        // knows the syntax stops needing the menu.
+        const hintValue = hintText ?? item.hint ?? item.detail;
         if (hintValue) {
             const hint = document.createElement("span");
-            hint.className = "slash-menu-item-hint";
+            // The description is prose, not something to type, so it takes
+            // the UI font and italic; the other two are literal syntax.
+            const isDetail = hintText === undefined && item.hint === undefined;
+            hint.className = isDetail
+                ? "slash-menu-item-hint slash-menu-item-hint--detail"
+                : "slash-menu-item-hint";
             hint.textContent = hintValue;
             row.appendChild(hint);
         }
 
         row.addEventListener("mousedown", () => opts.onPick(item));
-        row.addEventListener("mouseover", () => setActive(index));
+        // `mousemove`, not `mouseover`: entering a row fires mouseover BEFORE
+        // the mousemove that proves the pointer moved, so a guard on mouseover
+        // ignores exactly the arrival it should honour. The root's capture
+        // listener runs first and marks the pointer live, so by the time this
+        // one fires the answer is already right. Cheap because it does nothing
+        // when the row is already the active one.
+        row.addEventListener("mousemove", () => {
+            if (hover.pointerIsLive() && activeIndex !== index) {
+                setActive(index);
+            }
+        });
         return row;
     }
 
@@ -333,6 +357,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
             if (rows.length === 0) {
                 return;
             }
+            hover.keyboardMoved();
             setActive(
                 delta > 0
                     ? (activeIndex >= rows.length - 1 ? 0 : activeIndex + 1)

@@ -96,6 +96,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     toggleBulletList: { effect: "retype", type: "bullet_list" },
     toggleOrderedList: { effect: "retype", type: "ordered_list" },
     toggleTaskList: { effect: "retype", type: "bullet_list" },
+    toggleTaskChecked: { effect: "none" },
     // The fence rows (plain, Mermaid, Math Block, Calculation Block) all run
     // insertCodeBlock with a different language arg; the placement question is
     // the same for every one of them.
@@ -118,6 +119,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     insertFootnote: NONE,
     openLink: NONE,
     askAgent: NONE,
+    askAgentAdvanced: NONE,
     editBlockSource: NONE,
 
     // ── Find ────────────────────────────────────────────────────────────────
@@ -162,6 +164,9 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     openKeyboardShortcuts: NONE,
     openExtensionSettings: NONE,
     openWhatsNew: NONE,
+    openHostPreferences: NONE,
+    contentWidthFull: NONE,
+    contentWidthFixed: NONE,
     toggleReadOnly: NONE,
     toggleFocusMode: NONE,
 

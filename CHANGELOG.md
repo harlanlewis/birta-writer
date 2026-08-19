@@ -6,15 +6,69 @@
 
 ### Added
 
+- Toggle a task item done from the keyboard, with the caret anywhere in its text: Shift+Cmd+D in the editor, and the same chord on Birta Writer Jot's Edit menu. Ticking a box needed the pointer or a fresh `[x] ` marker before this. A caret in a plain list item does nothing, because turning one into a task is a different question with its own command.
+
+- Birta Writer Jot: New Note (⌘N) starts a fresh file beside the scratchpad, and Settings can make that the launch behavior instead of reopening the last note. Nothing is asked before the switch because nothing is unsaved: the note is written first every time, whatever autosave says.
+
+- Birta Writer Jot's Settings can hide the formatting half of the toolbar, and the file path along the bottom.
+
+- Birta Writer Jot's keyboard cheatsheet lists the app's own shortcuts, which are fixed by its menu and so can be printed without the risk of naming a key that has been rebound.
+
+- `/ai` works in Birta Writer Jot. Settings holds the command it runs, in the same shape as the extension's `birta.agent.command`, so one tuned there can be pasted in unchanged. Jot writes the note to disk before the run, whatever autosave says, because the agent edits the file and the reference has to name something real. One difference from the extension: there is no merge, so an edit typed in the panel while a run is in flight is replaced when the run finishes.
+
+- Birta Writer Jot's Settings can be opened from the gear in its toolbar, not only from the menu bar and Cmd+Comma.
+
+- Whether Birta Writer Jot floats above other applications' windows is now a setting, on by default.
+
+- Birta Writer Jot can open at login, from a switch in Settings. macOS may hold the request until you allow Birta Jot under General and then Login Items in System Settings, and the switch says so with a button that opens that pane rather than leaving you to find it. Only the installed copy can register, so install it to Applications first.
+
+- Birta Writer Jot has a way out for a finished note. A row along the bottom of the panel offers Copy and Delete (⌥⌘C), which puts the whole note on the clipboard, clears the panel and hides it so the paste lands in the app you were in, and Save (⌘S), which files it in the folder Settings names, under a name taken from the note's first heading or the date, and clears the panel the same way. Neither can lose the note: whichever acted last is offered back from the ··· menu as Restore Deleted Note or Reopen Last Saved, one note deep, and Save never writes over a file that is already there. The ··· menu also holds Save As, Save to a folder you used recently, Copy Everything, Share, Discard, and Reveal Last Save in Finder. When Settings have Jot editing a document instead of the scratchpad, nothing empties it: Copy and Delete becomes Copy and Discard is not offered.
+
+- Where Save files a note is a setting, defaulting to a Jot folder in your Documents, which is created the first time a note lands in it.
+
+- Birta Writer Jot is now a download. Every release carries the app, and `bash jot/scripts/update-jot.sh` on any Mac fetches the newest one, checks it against its published checksum, and installs it, quitting and relaunching a running copy. The app is ad-hoc signed rather than notarized, so the script clears the download quarantine macOS would otherwise stop it with: that is a reasonable trade on your own machines and not one to ask of anyone else, which is why Jot still is not offered to other people. `jot/README.md` says what changes that.
+
 - Link cards and pasted-link titles in Birta Writer Jot, under its network preference along with embeds. A link alone on its own line can show the page's own title and description as a card, and pasting a bare URL offers you the page's title as the link text, which stays an offer until you take it. Still off by default, and with it off Jot makes no outbound request at all. Only the page a link names is contacted, and where it redirects, each hop checked the same way: http(s) only, never a private or local address, bounded in time and bytes. An embed card's caption is the one piece not fetched, because recognizing a provider needs a table that lives in the editor rather than the shell.
 
 - Images in Birta Writer Jot. Paste or drop one and it is saved beside the document in an `Attachments` folder, named by a hash of its bytes so the same screenshot twice writes one file, and referenced relatively so the note stays portable and carries no path from your machine. Save As copies the images that note actually uses into an `Attachments` folder beside the file you chose, leaving the rest of the folder behind, and tells you if any could not be copied rather than saving a note of broken images quietly.
 
-### Added
+- A composer for `/ai`, reached by `/ai-advanced` or by `/ai` and Enter with nothing typed. It replaces the input box that opened before, which could hold a line of text and nothing else. It has a textarea that grows (Enter sends, Shift+Enter breaks the line), file attachments by paste, drag and drop, or the paperclip, each with a thumbnail and a remove button, and controls for the model and the effort of this one request. `/ai-advanced write a summary of the section above` opens it with that text already in place. Attachments are written to a temporary directory and their paths added to the request, so a screenshot you drop in to ask about never becomes a file in your project. The model and effort apply to that request only: `birta.agent.command` is never rewritten, because a choice made for one edit is not a preference. Everything else is unchanged, including `/ai <request>` and Enter, which stays one line and one keystroke.
 
-- Birta Writer Jot is now a download. Every release carries the app, and `bash jot/scripts/update-jot.sh` on any Mac fetches the newest one, checks it against its published checksum, and installs it, quitting and relaunching a running copy. The app is ad-hoc signed rather than notarized, so the script clears the download quarantine macOS would otherwise stop it with: that is a reasonable trade on your own machines and not one to ask of anyone else, which is why Jot still is not offered to other people. `jot/README.md` says what changes that.
+- The model and effort a request can use are read from your own agent, so Birta ships no list of models and needs no update when one is added or retired. It runs your configured command's `--help` once per version, in the background when a document opens, and offers what that help documents: the levels it lists, and any model names it gives, with free text always available because a name it does not mention usually still works. Verified against Claude Code, Codex and pi, which disagree about all of it. Your agent's own word for the reasoning control is used, so a tool that calls it `--thinking` is sent `--thinking`; a tool that has no such flag, as Codex does not, gets no effort control rather than a broken one; and a tool that documents no model flag gets no model control, with your command running exactly as it does today.
+
+- `/ai` says what it is about to run, before you type the request. Once Space commits the pill, a quiet line at the caret names where the request goes: the harness (`claude`, `codex`), and the model when `birta.agent.command` names one with `--model`, so `claude -p {prompt} --permission-mode acceptEdits --model haiku --effort low` reads as "edit with claude (Haiku Low)", with what will run in bold and a note that Enter opens the composer. A command set to run in a terminal says so, the Chat view and clipboard routes name themselves, and before you have chosen a route at all it says Enter will ask. It disappears at the first character you type and is never part of your file. Nothing is guessed: a command with no `--model` names the harness alone, because which model an alias resolves to is decided inside the CLI where the editor cannot see it.
+
+### Changed
+
+- Breaking, in Birta Writer Jot: saving no longer empties the panel. Jot edits one file the way any editor does. Autosave (a new setting, on by default) writes as you type, Cmd+S writes on demand, and Shift+Cmd+S writes a copy somewhere you choose and leaves the note where it is. The old model, where Save filed the note under a generated name in a destination folder and cleared the buffer, is gone, along with that destination setting, Copy and Delete, Discard, and the one-deep Restore and Reopen items that existed to undo the clearing. Turning autosave off stops writing while you type and nothing else: hiding the panel and quitting still write.
+
+- Birta Writer Jot defaults to a serif font and no longer offers the Editor font option, which named a VS Code editor font it has none of. Its font picker also had no effect at all before this: it moved the checkmark and left the document alone.
+
+- Birta Writer Jot's text is always full width. The full and fixed control is gone there, because the panel is already its own reading measure. In the editor inside VS Code the control is unchanged, and Full Width and Fixed Width are now also in the command palette.
+
+- The file being edited is named in Birta Writer Jot's bottom left only while its window has focus.
+
+- Birta Writer Jot has its own icons: the Birta Writer Jot mark in the menu bar in place of the stock pencil, and an app icon in Finder, Login Items and the Settings window where it previously showed the blank default.
+
+- Birta Writer Jot's panel is quiet until you point at it. The toolbar's buttons and the action row fade in while the pointer is over the window and back out when it leaves, leaving the page, the window buttons and the settings gear. The panel also has all three window buttons now instead of a lone close button, its toolbar no longer runs under them or draws a line beneath itself, and the file the note is being written to is named in the bottom left. Summoning and dismissing use the system's own window animation rather than a chosen one.
+
+- Breaking, in Birta Writer Jot: Cmd+S is now Save, which files the note in your default destination without asking, and Save As moves to ⇧⌘S.
+
+- Birta Writer Jot's menu-bar item now toggles the panel when you click it, the way the hotkey does; its menu is on Control-click or right-click. That menu is down to the panel toggle, Settings and Quit, with the toggle's shortcut drawn where a menu draws a shortcut. Where a note goes is a question about the note, so it is answered in the window that holds it and no longer from the menu bar.
+
+- Birta Writer Jot's Preferences window is now Settings, laid out as grouped sections in the shape macOS uses, and its hotkey is set by pressing the combination rather than by typing `cmd+alt+ctrl+j` as text. The field shows the modifier keys lighting up as you hold them, and a clear button starts a new recording, so a stray keystroke cannot rebind the hotkey while the field happens to have focus.
+
+- The `birta.agent.command` setting now says that the model and reasoning effort are yours to choose there, as your harness's own flags on the same line. Adding `--model haiku --effort low` gives `/ai` a smaller and faster model than your interactive sessions use and changes nothing about them, which is the point: an editing request on a document is a different shape of task from the coding work the same tool does elsewhere. The first-use route picker says the same thing.
 
 ### Fixed
+
+- Birta Writer Jot's Settings drew every group on a ground the same colour as the window, so the sections ran together as one list. `windowBackgroundColor` and `controlBackgroundColor` are the same colour in both light and dark.
+
+- Arrow keys could not move the highlight past the row the mouse pointer happened to be resting on, in the slash menu, the block menu and the frontmatter suggestion menu. Pointing at a row and using the arrows still moves one highlight, which is the intent; what was wrong is that a list scrolling under a still pointer counted as pointing, so the selection sprang back and the rows beyond the pointer could not be reached from the keyboard at all.
+
+- In Birta Writer Jot, the toolbar slid away from the top edge when a scroll ran past either end of the document, and sprang back.
+
+- In Birta Writer Jot, the minus key could not be used in the summon hotkey. Typing `cmd+-` into the old Preferences hotkey field was refused as naming no key, and the new Settings recorder registered nothing when that key was pressed, because the parser reads `-` as a separator between the parts of a combination and so never saw it as the key itself. Every other key was unaffected.
 
 - In Birta Writer Jot, pressing Return at the end of a block left the caret in the block above, so the next thing typed joined the previous line instead of starting the new one. Splitting a block from the middle was unaffected. The editor inside VS Code never had this: it renders in a different engine, which tolerated the arrangement that caused it.
 
