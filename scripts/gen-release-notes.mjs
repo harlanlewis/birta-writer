@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Generate end-user release notes for a Birta Writer release.
 //
-// Reads this version's CHANGELOG section and condenses it into
+// Reads this version's section of BOTH changelogs (the extension's and Jot's,
+// which are split by product) and condenses them into
 // cursor.com/changelog-style notes: a few tentpole items described for the
 // benefit they deliver, followed by smaller improvements and fixes.
 //
@@ -76,13 +77,50 @@ function commits() {
  * (MAR-282).
  */
 function releaseChangelog() {
-  let text;
-  try {
-    text = readFileSync("CHANGELOG.md", "utf8");
-  } catch {
-    return "";
+  const sections = [];
+  for (const file of ["CHANGELOG.md", "jot/CHANGELOG.md"]) {
+    let text;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    const body = extractSection(text, VERSION) ?? extractSection(text, "Unreleased") ?? "";
+    if (body.trim()) sections.push(body.trim());
   }
-  return extractSection(text, VERSION) ?? extractSection(text, "Unreleased") ?? "";
+  return mergeByHeading(sections);
+}
+
+/**
+ * Both changelogs, merged so each Keep a Changelog heading appears once with
+ * every entry under it.
+ *
+ * The two files are split by PRODUCT, because the Marketplace renders only the
+ * extension's. A GitHub Release carries both the VSIX and the Jot app, so its
+ * notes cover both, and concatenating the files whole would hand the notes two
+ * `### Added` headings and let the section table sort the same heading twice.
+ * Order follows the first file that used a heading, so the extension's sections
+ * lead.
+ */
+export function mergeByHeading(sections) {
+  const order = [];
+  const byHeading = new Map();
+  for (const section of sections) {
+    let heading = null;
+    for (const line of section.split("\n")) {
+      if (line.startsWith("### ")) {
+        heading = line.trim();
+        if (!byHeading.has(heading)) { byHeading.set(heading, []); order.push(heading); }
+        continue;
+      }
+      if (heading) byHeading.get(heading).push(line);
+    }
+  }
+  if (!order.length) return sections.join("\n\n").trim();
+  return order
+    .map((h) => `${h}\n${byHeading.get(h).join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}`)
+    .join("\n\n")
+    .trim();
 }
 
 /**

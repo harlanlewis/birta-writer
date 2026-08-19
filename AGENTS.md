@@ -57,6 +57,16 @@ Don't touch `package.json`'s version to mark a build. It stays `0.0.0`, and real
 
 ### Writing the CHANGELOG entry
 
+There are two changelogs, split by product, and the first question is which file the entry belongs in.
+
+`CHANGELOG.md` is the editor and the extension. It ships inside the VSIX and is what the VS Code Marketplace and Open VSX render on their Changelog tabs.
+
+`jot/CHANGELOG.md` is Birta Jot, the app: its panel and window, menu bar, settings, file handling, packaging and install. `.vscodeignore`'s `jot/**` keeps it out of the VSIX, which is the whole point. Jot is installable from neither registry, so a Jot entry on a Marketplace tab reaches a reader who cannot act on it, and spends the attention the actionable entries need.
+
+The test is whose behavior changed, not which names appear. An entry that changes Jot and mentions VS Code only to say the extension is unaffected is a Jot entry. An editor change goes in `CHANGELOG.md` alone, even though Jot runs the same `dist/webview.js` and therefore gets it too: Jot's file would otherwise be a copy of the whole log. A Jot user reads both, and `jot/CHANGELOG.md` says so at the top.
+
+Both files are stamped with the same version by the same release job, and a version appears in Jot's only when something about the app changed in it. `shared/__tests__/changelogSplit.test.ts` holds the version headings in step and fails on an entry written as a Jot entry in the extension's file.
+
 Add or amend an entry under `## [Unreleased]`, in the right Keep a Changelog section: `Added`, `Changed`, `Removed`, `Fixed`, plus `Deprecated` and `Security` when they apply.
 
 - Never write a version heading by hand. The nightly `Release` job rolls `[Unreleased]` into one and commits it back (`scripts/stamp-changelog.mjs`, `docs/RELEASING.md`), so `[Unreleased]` holds only what has not shipped.
