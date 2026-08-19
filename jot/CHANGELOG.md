@@ -12,19 +12,25 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
-- Birta Writer Jot names the file in its titlebar, beside the traffic lights, the way macOS names a document window: the file name, and `Edited` after it exactly while there are bytes the file does not have. Click it to reveal the file in Finder; Cmd-click, Ctrl-click or right-click for the path popup, which lists every folder up to the volume and reveals whichever you pick.
+- Birta Writer Jot names the file in its titlebar, beside the traffic lights, the way macOS names a document window, and centred on the window buttons where macOS puts a title. With autosave off it adds `Edited` while there are bytes the file does not have, which is your cue to press Cmd+S; with autosave on it does not, because a file that is always being written has no unwritten state worth a word, and the flag rises and falls several times a sentence.
+
+- Clicking that title opens the document popover macOS opens from a document window's title: the file's Name, its Finder Tags, and Where it lives. Renaming it moves the file and keeps the editor on it, so a scratchpad that has become a real note can be named and filed without leaving the panel; the extension is kept when you edit only the stem, and a name already taken is refused rather than written over. The Where menu lists the folder and everything above it up to the volume, with Other… for one you choose. Cmd-click, Ctrl-click or right-click still opens the path popup, whose rows reveal themselves in Finder.
 
 - Birta Writer Jot can appear in the Dock. Off by default, which is what it has always been; on, it also joins Cmd+Tab, and clicking its Dock icon summons the panel. Settings, General.
 
 ### Changed
 
-- Birta Writer Jot's editing controls have moved out of the toolbar into a dock at the bottom left. Collapsed it is a single serif T; clicking it opens the whole set, and the choice is remembered. Every control that changes the document is there, including the seven that used to ship hidden and needed a settings change to reach: Strikethrough, Highlight, Inline Code, Horizontal Rule, Inline Math, Footnote and Clear Formatting. The row scrolls sideways when the window is too narrow for it. The toolbar keeps search and the settings gear. This is Jot only; the extension's toolbar is unchanged.
+- Birta Writer Jot's editing controls have moved out of the toolbar into a bar along the bottom of the window, on the page's own ground with a hairline above it rather than floating over the text. Collapsed it is a single serif T; clicking it opens the whole set, and the choice is remembered. Every control that changes the document is there, including the seven that used to ship hidden and needed a settings change to reach: Strikethrough, Highlight, Inline Code, Horizontal Rule, Inline Math, Footnote and Clear Formatting. The row scrolls sideways when the window is too narrow for it. The toolbar keeps search and the settings gear. This is Jot only; the extension's toolbar is unchanged.
 
 - Birta Writer Jot's gear menu no longer offers Customize Toolbar or Hide Toolbar, and the commands do nothing there. The dock's contents and order are fixed, and the toolbar is the only route to search and settings, so neither question is Jot's to answer. Both are unchanged in the extension.
 
 - The scratchpad Jot starts with is called `Birta Jot.md`, in the `Birta Jot` folder it already used under Application Support. It was `Scratchpad.md`, a word for what the file is for rather than a name, and the window's title bar shows that name, so it is worth being the one you would have given it. A scratchpad you have pointed somewhere else in Settings is untouched, and so is one you renamed; this is the default only. Jot does not move an existing `Scratchpad.md` for you, so if you have one, point Settings at it or rename it in Finder.
 
 - The gear menu's row for Jot's settings, and the title of the window it opens, are called Birta Jot Settings again. One release called them Writer Jot Settings, which named the app by a name nothing else uses: the app in Applications and the folder it keeps notes in both say Birta Jot.
+
+### Fixed
+
+- The chevron beside the formatting bar's T is drawn all the time. It used to appear on hover and grow from nothing, which pushed every control in the row 4px sideways as the pointer crossed it, so the button you were reaching for moved as you arrived at it.
 
 ### Removed
 

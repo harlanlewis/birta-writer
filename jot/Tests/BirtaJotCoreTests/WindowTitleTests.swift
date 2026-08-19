@@ -91,6 +91,37 @@ final class WindowTitleTests: XCTestCase {
         XCTAssertTrue(silent.asked, "the fallback must be reached THROUGH the manager, not instead of it")
     }
 
+    // MARK: whether the suffix is drawn at all
+
+    func testTheSuffixIsForUnwrittenBytesWithAutosaveOff() {
+        // The only case. There the word is a fact with an action behind it,
+        // and the action is Cmd+S.
+        XCTAssertTrue(WindowTitle.showsEdited(hasUnwrittenBytes: true, autosaveEnabled: false))
+    }
+
+    func testAutosaveOnNeverDrawsTheSuffix() {
+        // Not "draws it less often". The flag still rises on a keystroke and
+        // falls on the write, several times a sentence, and a word that
+        // appears and vanishes on that schedule names nothing anybody can do.
+        XCTAssertFalse(WindowTitle.showsEdited(hasUnwrittenBytes: true, autosaveEnabled: true))
+    }
+
+    func testACleanBufferNeverDrawsTheSuffix() {
+        XCTAssertFalse(WindowTitle.showsEdited(hasUnwrittenBytes: false, autosaveEnabled: false))
+        XCTAssertFalse(WindowTitle.showsEdited(hasUnwrittenBytes: false, autosaveEnabled: true))
+    }
+
+    func testTheSuffixIsDecidedByBothInputsAndNotOne() {
+        // A predicate that ignored an input would agree with itself across the
+        // whole table. Both must be able to change the answer on their own.
+        let all = [true, false].flatMap { bytes in
+            [true, false].map { auto in
+                WindowTitle.showsEdited(hasUnwrittenBytes: bytes, autosaveEnabled: auto)
+            }
+        }
+        XCTAssertEqual(all.filter { $0 }.count, 1, "exactly one of the four cases shows it")
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("WindowTitleTests-\(UUID().uuidString)")

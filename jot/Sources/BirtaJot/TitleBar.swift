@@ -36,11 +36,45 @@ final class TitleBarView: NSView {
     /// Reveal `url` in Finder. Injected so the popup and the click share one
     /// path out, and so a test can watch it without opening a window.
     var onReveal: ((URL) -> Void)?
+    /// Move the bound file to this URL, keeping the editor on it. Handles both
+    /// the popover's rows: a rename is a move within the same folder.
+    var onRelocate: ((URL) -> Void)?
+
+    /// Built once and refilled on every open, never per click: a popover whose
+    /// controller is rebuilt loses the field being edited if the same one is
+    /// reopened, and `show(url:)` re-reads the file anyway.
+    private lazy var popoverController: TitlePopoverController = {
+        let controller = TitlePopoverController()
+        controller.onRename = { [weak self] name in
+            guard let url = self?.url else { return }
+            self?.popover?.performClose(nil)
+            self?.onRelocate?(url.deletingLastPathComponent().appendingPathComponent(name))
+        }
+        controller.onMove = { [weak self] directory in
+            guard let url = self?.url else { return }
+            self?.popover?.performClose(nil)
+            self?.onRelocate?(directory.appendingPathComponent(url.lastPathComponent))
+        }
+        controller.onTags = { [weak self] tags in
+            guard let url = self?.url else { return }
+            try? FinderTags.write(tags, to: url)
+        }
+        return controller
+    }()
+    private var popover: NSPopover?
 
     private let label = NSTextField(labelWithString: "")
     private var url: URL?
     private var edited = false
     private var isKey = true
+
+    /// What the label was last painted with, so an identical repaint is not
+    /// one. Both fields, because both change what is on screen.
+    private struct Rendered: Equatable {
+        let text: String
+        let key: Bool
+    }
+    private var lastRendered: Rendered?
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 0, height: TitleBarView.height))
@@ -55,6 +89,14 @@ final class TitleBarView: NSView {
     /// A ceiling on the name, so a long one cannot push the title across the
     /// window into the page's own toolbar. The label truncates instead.
     private static let maxTextWidth: CGFloat = 320
+    /// The height this view is BUILT at, and nothing else.
+    ///
+    /// AppKit stretches a titlebar accessory to the titlebar's own height, so
+    /// this number is stale from the moment the accessory is attached: the
+    /// view is made 28 tall and handed 32. Centering the label against it put
+    /// the title (32 - 28) / 2 = 2pt below where macOS draws its own, which is
+    /// what `layout()` below exists to stop. Anything that needs the height
+    /// the view actually HAS reads `bounds`.
     static let height: CGFloat = 28
 
     /// Laid out by hand, and that is the whole reason this file was worth
@@ -79,21 +121,45 @@ final class TitleBarView: NSView {
         resize()
     }
 
-    /// Fit the view to its text, within the ceiling, and place the label in it.
+    /// Fit the view to its text, within the ceiling. The label's own placement
+    /// inside it is `layout()`'s, which runs again after AppKit has resized us.
     private func resize() {
         let text = min(label.intrinsicContentSize.width, Self.maxTextWidth)
-        label.frame = NSRect(x: Self.leadingGap,
-                             y: (Self.height - label.intrinsicContentSize.height) / 2,
-                             width: text,
-                             height: label.intrinsicContentSize.height)
-        setFrameSize(NSSize(width: Self.leadingGap + text, height: Self.height))
+        setFrameSize(NSSize(width: Self.leadingGap + text, height: bounds.height))
         invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    /// Centre the label on the height this view HAS, not the one it was built
+    /// with. The whole of the alignment fix, and it has to be here rather than
+    /// in `resize()` because AppKit stretches the accessory after we size it,
+    /// so the only moment the real height is known is a layout pass.
+    ///
+    /// What "aligned" means, measured rather than eyeballed: macOS puts a
+    /// window title's vertical centre exactly on the close button's, and it
+    /// does so at every titlebar height and title font the system uses
+    /// (unified, unifiedCompact and expanded all agree to 0.0pt). Centering on
+    /// `bounds` reproduces that, because AppKit gives the accessory the whole
+    /// band. `jot/scripts/measure.sh` asserts the delta against the live
+    /// window rather than trusting this comment.
+    override func layout() {
+        super.layout()
+        let size = label.intrinsicContentSize
+        label.frame = NSRect(x: Self.leadingGap,
+                             y: ((bounds.height - size.height) / 2).rounded(),
+                             width: min(size.width, Self.maxTextWidth),
+                             height: size.height)
     }
 
     // MARK: state
 
     /// What the title reads right now, for `jot/scripts/measure.sh`.
     var currentText: String { label.stringValue }
+
+    /// Where the TEXT sits, in window coordinates, for the same script. The
+    /// accessory's own frame is the whole titlebar band, so it answers whether
+    /// the accessory arrived and nothing about where the title is drawn in it.
+    func labelFrameInWindow() -> NSRect { label.convert(label.bounds, to: nil) }
 
     /// Name `url`, and say whether the buffer has bytes the file does not.
     func show(url: URL, edited: Bool) {
@@ -113,6 +179,9 @@ final class TitleBarView: NSView {
     private func paint() {
         guard let url else {
             label.attributedStringValue = NSAttributedString(string: "")
+            // Forget what was drawn, or re-binding the same file afterwards
+            // would match the cache and leave the label blank.
+            lastRendered = nil
             return
         }
         // WHAT it says is BirtaJotCore.WindowTitle's, which is testable
@@ -128,6 +197,15 @@ final class TitleBarView: NSView {
                 string: run.text,
                 attributes: [.foregroundColor: ink[run.secondary] as Any]))
         }
+        // Nothing to do when the title already says this, which under autosave
+        // is almost every call: `isEdited`'s `didSet` fires on every admitted
+        // update and again on every write. Keyed on the RENDERED STRING and
+        // the ink, never on `edited`: `refreshTitle` also runs from
+        // `boundURL`'s didSet, so New Note and a document switch change the
+        // title without changing that flag.
+        let rendered = Rendered(text: text.string, key: isKey)
+        guard rendered != lastRendered else { return }
+        lastRendered = rendered
         label.attributedStringValue = text
         label.toolTip = url.path
         setAccessibilityLabel(text.string)
@@ -157,7 +235,7 @@ final class TitleBarView: NSView {
         if wantsPath {
             showPathMenu(for: url)
         } else {
-            onReveal?(url)
+            showDocumentPopover(for: url)
         }
     }
 
@@ -166,6 +244,22 @@ final class TitleBarView: NSView {
     override func rightMouseDown(with event: NSEvent) {
         guard let url else { return }
         showPathMenu(for: url)
+    }
+
+    /// The document popover: the file's name, its tags and the folder it is
+    /// in, which is what clicking a document window's title opens on macOS.
+    ///
+    /// Anchored on the LABEL rather than on this view, so the popover's arrow
+    /// points at the words rather than at the middle of a box whose width is
+    /// whatever the name happens to need.
+    private func showDocumentPopover(for url: URL) {
+        let controller = popoverController
+        controller.show(url: url)
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        popover.show(relativeTo: label.frame, of: self, preferredEdge: .maxY)
+        self.popover = popover
     }
 
     /// The file, then each folder above it up to the volume, top to bottom,
