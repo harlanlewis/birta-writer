@@ -392,6 +392,12 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         startCustomize,
         setToolbarVisible,
         applyToolbarVisible: (visible: boolean) => {
+            // Focus mode's half of the pair, and inert under a fixed layout for
+            // a reason that is about the way BACK rather than about the way
+            // out: there is no reveal tab on this surface, because there is no
+            // hidden-toolbar state for one to answer, so a session-level hide
+            // would leave search and settings unreachable until the mode was
+            // toggled off from somewhere else.
             if (!layoutIsFixed && visible !== toolbarVisible) { applyVisibility(visible); }
         },
         isVisible: () => toolbarVisible,

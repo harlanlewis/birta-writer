@@ -35,8 +35,10 @@
        is the WINDOW'S: the traffic lights and, after them, the native title
        accessory naming the file (jot/Sources/BirtaJot/TitleBar.swift). Under
        `formattingInBottomDock` the page puts nothing in the leading half at
-       all, so this is a floor rather than a fit. `JotPanel.trafficLightInset`
-       is the same number in Swift; neither can import the other. */
+       all, so this is a floor rather than a fit. The native title beside them
+       needs no such number: AppKit places a leading titlebar accessory clear
+       of the buttons itself, and `jot/scripts/measure.sh` checks the live
+       frame rather than trusting either of us to have got it right. */
     padding-left: 78px;
     /* No hairline under it: the toolbar is the top of the page, not a bar
        stuck above it. */

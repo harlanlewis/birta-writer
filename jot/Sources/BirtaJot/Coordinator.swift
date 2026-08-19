@@ -32,7 +32,7 @@ final class Coordinator {
     private let panel = JotPanel()
     private let contentView = AppearanceObservingView()
     private let statusOverlay = StatusOverlay()
-    private let titleBar = TitleBarAccessory(leadingInset: JotPanel.trafficLightInset)
+    private let titleBar = TitleBarAccessory()
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
@@ -132,6 +132,10 @@ final class Coordinator {
             host.webView.topAnchor.constraint(equalTo: contentView.topAnchor),
             host.webView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             statusOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            // Never past the window's midpoint: the formatting dock owns the
+            // other bottom corner, and a long message meeting it would read as
+            // one strip rather than two pieces of chrome.
+            statusOverlay.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.centerXAnchor),
             statusOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
             statusOverlay.heightAnchor.constraint(equalToConstant: 20),
         ])
@@ -363,6 +367,7 @@ final class Coordinator {
         // the window has to ask where the pointer is.
         contentView.syncHoverFromPointer()
         measure.mark("visible")
+        traceTitleBar()
     }
 
     /// Dismiss first, flush after. Hiding is not a teardown: the page stays
@@ -948,8 +953,27 @@ final class Coordinator {
         withFlushedContent { [weak self] content in
             guard let self else { return }
             let picker = NSSharingServicePicker(items: [content])
-            picker.show(relativeTo: .zero, of: self.contentView, preferredEdge: .minY)
+            picker.show(relativeTo: self.contentView.bounds, of: self.contentView, preferredEdge: .maxY)
         }
+    }
+
+    /// Where the title accessory actually landed, and what it says.
+    ///
+    /// A titlebar accessory is placed by AppKit, in a band this panel has
+    /// already made transparent and full-height, and neither a unit test nor
+    /// the browser harness can see whether it arrived, arrived empty, or
+    /// arrived under the traffic lights. `jot/scripts/measure.sh` reads this
+    /// line and checks it, which is the same seam and the same reason as every
+    /// other question only a running panel can answer.
+    private func traceTitleBar() {
+        guard measure.enabled else { return }
+        let view = titleBar.titleView
+        let frame = view.convert(view.bounds, to: nil)
+        measure.trace(String(
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f attached=%@ text=%@",
+            frame.origin.x, frame.origin.y, frame.width, frame.height,
+            panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
+            view.accessibilityLabel() ?? ""))
     }
 
     /// Name the bound file in the titlebar, and say whether it is behind the
@@ -957,6 +981,12 @@ final class Coordinator {
     /// no caller has to remember to.
     private func refreshTitle() {
         titleBar.titleView.show(url: boundURL, edited: isEdited)
+        // WHAT the title says, on every change. Separate from the geometry
+        // trace above, which answers a different question at a different
+        // moment: this one is the Edited flag's only end-to-end evidence, and
+        // the flag is a claim about unwritten bytes that no unit test can
+        // check against a real file.
+        measure.trace("titletext \(titleBar.titleView.currentText)")
     }
 
     /// Chrome follows the pointer: everything on while it is over the window,

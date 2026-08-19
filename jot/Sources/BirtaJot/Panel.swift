@@ -9,15 +9,6 @@ import AppKit
 /// gain from staying inactive.
 @MainActor
 final class JotPanel: NSPanel {
-    /// How far in from the window's leading edge anything in the titlebar has
-    /// to start, to clear the three window buttons and leave them air.
-    ///
-    /// One constant with two consumers that must agree: the native title
-    /// accessory (TitleBar.swift) and the page's own toolbar padding
-    /// (jot/Resources/index.html), which cannot import it and states the same
-    /// number with a comment pointing here.
-    static let trafficLightInset: CGFloat = 78
-
     var onHideRequest: (() -> Void)?
 
     init() {

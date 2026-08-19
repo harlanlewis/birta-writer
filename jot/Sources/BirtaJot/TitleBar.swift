@@ -43,30 +43,57 @@ final class TitleBarView: NSView {
     private var isKey = true
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 28))
+        super.init(frame: NSRect(x: 0, y: 0, width: 0, height: TitleBarView.height))
         build()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// Air between the traffic lights and the title. NOT an inset past the
+    /// buttons: AppKit places a `.leading` accessory after them already.
+    private static let leadingGap: CGFloat = 8
+    /// A ceiling on the name, so a long one cannot push the title across the
+    /// window into the page's own toolbar. The label truncates instead.
+    private static let maxTextWidth: CGFloat = 320
+    static let height: CGFloat = 28
+
+    /// Laid out by hand, and that is the whole reason this file was worth
+    /// getting wrong once.
+    ///
+    /// A titlebar accessory's view is a view controller's root view, so its
+    /// `translatesAutoresizingMaskIntoConstraints` is on and AppKit turns its
+    /// frame into required constraints. A view built by constraints alone
+    /// therefore starts at a zero frame and STAYS there: the accessory
+    /// attaches, reports a plausible height, and draws nothing, which on
+    /// screen is indistinguishable from never having arrived and in the view
+    /// hierarchy is indistinguishable from having worked. Sizing this view's
+    /// own frame from its content is what makes the width real.
     private func build() {
         // `titleBarFont` is the face macOS titles itself with, asked for by
         // name rather than reproduced as a size and a weight, so it follows the
         // system rather than a guess about it.
         label.font = NSFont.titleBarFont(ofSize: NSFont.systemFontSize)
         label.lineBreakMode = .byTruncatingTail
-        label.translatesAutoresizingMaskIntoConstraints = false
         label.setAccessibilityRole(.staticText)
         addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 28),
-        ])
+        resize()
+    }
+
+    /// Fit the view to its text, within the ceiling, and place the label in it.
+    private func resize() {
+        let text = min(label.intrinsicContentSize.width, Self.maxTextWidth)
+        label.frame = NSRect(x: Self.leadingGap,
+                             y: (Self.height - label.intrinsicContentSize.height) / 2,
+                             width: text,
+                             height: label.intrinsicContentSize.height)
+        setFrameSize(NSSize(width: Self.leadingGap + text, height: Self.height))
+        invalidateIntrinsicContentSize()
     }
 
     // MARK: state
+
+    /// What the title reads right now, for `jot/scripts/measure.sh`.
+    var currentText: String { label.stringValue }
 
     /// Name `url`, and say whether the buffer has bytes the file does not.
     func show(url: URL, edited: Bool) {
@@ -104,11 +131,21 @@ final class TitleBarView: NSView {
         label.attributedStringValue = text
         label.toolTip = url.path
         setAccessibilityLabel(text.string)
-        invalidateIntrinsicContentSize()
+        resize()
     }
 
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: label.intrinsicContentSize.width, height: 28)
+    override var intrinsicContentSize: NSSize { frame.size }
+
+    /// The whole control takes the click, never the label inside it.
+    ///
+    /// An `NSTextField` answers `hitTest` with itself even as a label, so the
+    /// mouse events below would go to a field that ignores them and the title
+    /// would be inert everywhere the text actually is, which is everywhere
+    /// worth clicking. Points outside the text still fall through, so the
+    /// titlebar keeps its own drag and double-click behaviour beside us.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        return bounds.contains(local) && label.frame.width > 0 ? self : nil
     }
 
     // MARK: gestures
@@ -159,26 +196,18 @@ final class TitleBarView: NSView {
 }
 
 /// Hosts `TitleBarView` in the panel's titlebar, after the traffic lights.
+///
+/// The view is the title itself rather than a container around it. A container
+/// would be a second root view with its own autoresized zero frame, which is
+/// the trap `TitleBarView.build` documents, one level up and harder to see.
 @MainActor
 final class TitleBarAccessory: NSTitlebarAccessoryViewController {
     let titleView = TitleBarView()
 
-    init(leadingInset: CGFloat) {
+    init() {
         super.init(nibName: nil, bundle: nil)
         layoutAttribute = .leading
-        let container = NSView()
-        container.addSubview(titleView)
-        titleView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            // The inset is measured from the traffic lights, not guessed: the
-            // accessory starts at the window's leading edge, so the buttons'
-            // own width plus their trailing air is what has to be cleared.
-            titleView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: leadingInset),
-            titleView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            titleView.topAnchor.constraint(equalTo: container.topAnchor),
-            titleView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-        view = container
+        view = titleView
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

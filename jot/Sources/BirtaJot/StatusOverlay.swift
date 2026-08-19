@@ -36,6 +36,11 @@ final class StatusOverlay: NSView {
         status.alphaValue = 0
         status.translatesAutoresizingMaskIntoConstraints = false
         addSubview(status)
+        // The label sizes the overlay, which grows leftward from the window's
+        // trailing edge. A long message is truncated at the head rather than
+        // allowed to reach the dock in the opposite corner; the caller bounds
+        // it (Coordinator pins the leading edge).
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
             status.leadingAnchor.constraint(equalTo: leadingAnchor),
             status.trailingAnchor.constraint(equalTo: trailingAnchor),

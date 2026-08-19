@@ -27,8 +27,10 @@
         window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
       }
     },
-    getState: () => undefined,
-    setState: () => {},
+    // Matching index.html's real store rather than a stub: this page is the
+    // CONTROL, so the profile has to be the only difference between them.
+    getState: () => window.__state,
+    setState: (s) => { window.__state = s; },
   });
 </script>
 <link rel="stylesheet" href="dist/webview.css">
