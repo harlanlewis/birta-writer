@@ -408,42 +408,64 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// A settings row: the name on the left, the control on the right, and an
     /// optional sentence under both.
-    private static func row(_ title: String, control: NSView, caption: NSTextField? = nil) -> NSView {
+    /// A settings row: the name on the left, the control on the right, and an
+    /// optional sentence under both.
+    ///
+    /// The vertical axis is an NSStackView rather than constraints, and that is
+    /// the whole reason it is one: NSStackView is the only thing here that
+    /// takes a hidden view OUT of the layout. A caption that is empty right now
+    /// but may fill later (the login row goes from silent to a warning) has to
+    /// collapse to nothing meanwhile, and under plain constraints a hidden
+    /// NSTextField keeps its line height and leaves a blank gap.
+    private static func row(_ title: String, control: NSView, caption: Caption? = nil) -> NSView {
         let label = NSTextField(labelWithString: title)
-        let row = NSView()
+        let line = NSView()
         for view in [label, control] {
             view.translatesAutoresizingMaskIntoConstraints = false
-            row.addSubview(view)
+            line.addSubview(view)
         }
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
-
-        var constraints: [NSLayoutConstraint] = [
-            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: Metrics.rowInset),
-            label.topAnchor.constraint(equalTo: row.topAnchor, constant: 10),
-            control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -Metrics.rowInset),
-            control.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: line.leadingAnchor, constant: Metrics.rowInset),
+            label.topAnchor.constraint(greaterThanOrEqualTo: line.topAnchor),
+            label.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+            control.trailingAnchor.constraint(equalTo: line.trailingAnchor, constant: -Metrics.rowInset),
+            control.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+            control.topAnchor.constraint(greaterThanOrEqualTo: line.topAnchor),
+            control.bottomAnchor.constraint(lessThanOrEqualTo: line.bottomAnchor),
             control.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
-            control.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 8),
-        ]
+            line.bottomAnchor.constraint(greaterThanOrEqualTo: label.bottomAnchor),
+        ])
+
+        var arranged: [NSView] = [line]
         if let caption {
             caption.translatesAutoresizingMaskIntoConstraints = false
-            row.addSubview(caption)
-            constraints += [
-                caption.leadingAnchor.constraint(equalTo: label.leadingAnchor),
-                caption.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -Metrics.rowInset),
-                caption.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
-                row.bottomAnchor.constraint(equalTo: caption.bottomAnchor, constant: 10),
-                row.bottomAnchor.constraint(greaterThanOrEqualTo: control.bottomAnchor, constant: 8),
-            ]
-        } else {
-            constraints += [
-                row.bottomAnchor.constraint(equalTo: label.bottomAnchor, constant: 10),
-                row.bottomAnchor.constraint(greaterThanOrEqualTo: control.bottomAnchor, constant: 8),
-            ]
+            // Inset to the label's leading edge, so the sentence starts under
+            // the name it belongs to rather than at the card's edge.
+            let holder = NSView()
+            holder.addSubview(caption)
+            NSLayoutConstraint.activate([
+                caption.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: Metrics.rowInset),
+                caption.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: -Metrics.rowInset),
+                caption.topAnchor.constraint(equalTo: holder.topAnchor),
+                caption.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+            ])
+            // The HOLDER follows the caption's own hidden state, because it is
+            // the holder the stack is arranging.
+            caption.holder = holder
+            holder.isHidden = caption.isHidden
+            arranged.append(holder)
         }
-        NSLayoutConstraint.activate(constraints)
-        return row
+
+        let stack = NSStackView(views: arranged)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        stack.edgeInsets = NSEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        for view in arranged { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        return stack
     }
 
     /// A path and the button that changes it, as one trailing control.
@@ -642,10 +664,18 @@ final class Caption: NSTextField {
     /// An empty caption is HIDDEN, not blank: a row whose label says it all
     /// should be one line tall, and a zero-height label still contributes its
     /// spacing to the row above and below it.
+    /// The view the row's stack is arranging, so hiding an empty caption takes
+    /// its inset holder out of the layout too. Weak: the holder owns it.
+    weak var holder: NSView?
+
+    /// An empty caption is HIDDEN, not blank, and hiding it collapses the row
+    /// because the row's vertical axis is a stack. Both this and the holder
+    /// have to go, or the stack keeps arranging an empty box.
     func say(_ text: String, bad: Bool) {
         stringValue = text
         textColor = bad ? .systemRed : .secondaryLabelColor
         isHidden = text.isEmpty
+        holder?.isHidden = isHidden
     }
 }
 

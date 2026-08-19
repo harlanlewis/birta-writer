@@ -328,15 +328,13 @@ export function createTypographyControl(): TypographyControl {
         // each group separated by a divider (width first — maintainer,
         // 2026-07-28). (Block handles and the font-stack settings live in
         // Settings only — the menu holds the frequent moves.)
+        // Paint the rows just built. The DOCUMENT-level effects are not here:
+        // they run at construction, below, because a page whose font or width
+        // depends on someone asking for menu rows is a page that is wrong
+        // until a menu is built.
         setFontActive(currentFontPreset);
         setFontSizeActive(currentFontSize);
         setContentWidthActive(currentContentWidth);
-        if (!hostHas("contentMeasure")) {
-            // Nothing will ever call this again on such a host, and the boot
-            // page carries no width style of its own, so full width has to be
-            // put on the document once here.
-            applyContentWidthLive();
-        }
 
         // The width segments only where a measure is a real choice; without
         // them the list opens on the size stepper and needs no leading rule.
@@ -375,13 +373,21 @@ export function createTypographyControl(): TypographyControl {
         return fontWrap;
     }
 
+    // The document's own state, applied once and independently of any menu.
+    applyFontFamily(currentFontPreset, currentFontStacks);
+    if (!hostHas("contentMeasure")) {
+        // Such a host has no control to set it later and its boot page carries
+        // no width style, so full width has to be put on the document here.
+        applyContentWidthLive();
+    }
+
     // WHERE the rows live is the surface's choice, and it is exclusive: a DOM
     // node has one parent, so the item and the gear rows can never both exist.
     // Everything else about the control is identical either way, which is what
     // keeps the palette and slash-menu commands working unchanged: they call
     // the methods below and never touch the DOM.
     const inGear = window.__i18n?.typographyInGearMenu === true;
-    let gearRows: HTMLElement[] = [];
+    let cachedGearRows: HTMLElement[] = [];
     const el = inGear
         ? (() => {
             const empty = document.createElement("div");
@@ -400,8 +406,10 @@ export function createTypographyControl(): TypographyControl {
          */
         gearRows(closeHolder: () => void): HTMLElement[] {
             if (!inGear) { return []; }
-            if (gearRows.length === 0) { gearRows = buildTypographyRows(closeHolder); }
-            return gearRows;
+            if (cachedGearRows.length === 0) {
+                cachedGearRows = buildTypographyRows(closeHolder);
+            }
+            return cachedGearRows;
         },
         setFontPreset: (preset: FontPreset, stacks?: FontStacks): void => {
             setFontActive(preset, stacks);
