@@ -115,11 +115,24 @@ describe("editor command contributions", () => {
         // nothing but a read of the file relates it to the row. Same technique
         // as the Jot-profile guard in hostProfile.test.ts, and the same reason:
         // a copy that agrees by luck is not one declaration.
+        //
+        // EVERY assignment, asserted to be exactly one, rather than the first
+        // that matches. A first-match read reports on whichever assignment is
+        // highest in the file, so a correct one sitting above a regressed one
+        // keeps this green while the window is titled wrongly. Ambiguity is
+        // the failure here, not something to break with a rule.
+        //
+        // Commented-out lines go first: a line the compiler never sees is not
+        // an assignment, and counting one would fail a file that is correct.
         const swift = fs.readFileSync(
             path.join(root, "jot/Sources/BirtaJot/SettingsWindow.swift"), "utf8");
-        const assigned = /window\.title\s*=\s*"([^"]+)"/.exec(swift);
-        expect(assigned, "no window.title assignment in SettingsWindow.swift").not.toBeNull();
-        expect(assigned![1]).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
+        const code = swift
+            .split("\n")
+            .filter((line) => !line.trimStart().startsWith("//"))
+            .join("\n");
+        const titles = [...code.matchAll(/\bwindow\.title\s*=\s*"([^"]+)"/g)].map((m) => m[1]!);
+        expect(titles, "SettingsWindow.swift should set window.title exactly once").toHaveLength(1);
+        expect(titles[0]).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
     });
 
     it("the native toolbar context menu order should match the shared table order", () => {
