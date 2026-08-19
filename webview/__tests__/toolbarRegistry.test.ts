@@ -10,7 +10,7 @@ import {
 } from "../components/toolbar/registry";
 import type { ToolbarConfig, ToolbarPlacements } from "../../shared/messages";
 import { EDITOR_COMMANDS } from "../../shared/editorCommands";
-import type { HostCapability } from "../../shared/hostCapabilities";
+import type { HostCapability } from "../../shared/hostProfile";
 import { commandMutates } from "../readOnly";
 
 /** Build a config from a placements map (order defaults to empty). */
@@ -306,7 +306,7 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
     it("hostAvailableItems should read the host declaration through hostHas", () => {
         const prior = window.__i18n;
         try {
-            window.__i18n = { translations: {}, isMac: true, hostCapabilities: [] };
+            window.__i18n = { translations: {}, isMac: true, host: { capabilities: [] } };
             const none = hostAvailableItems();
             expect(none.has("viewSource")).toBe(false);
             expect(none.has("image")).toBe(false);

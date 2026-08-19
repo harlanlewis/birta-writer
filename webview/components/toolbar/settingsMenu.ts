@@ -11,7 +11,7 @@ import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
 import { createMenuTrigger, makeSep } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
-import { hostHasCommand } from "../../../shared/hostCapabilities";
+import { hostHasCommand } from "../../../shared/hostProfile";
 import { RELEASES_URL } from "../../../shared/product";
 
 /**

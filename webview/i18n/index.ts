@@ -85,21 +85,13 @@ declare global {
             floatingToolbar?: { enabled?: boolean; items?: Record<string, boolean> };
             /** Editor content font preset (drives the toolbar font picker). */
             /**
-             * Shortcuts the HOST binds itself, for the cheatsheet to print.
-             * Only a host that truly fixes a key declares one: inside VS Code
-             * these are rebindable, so it declares none and the panel links to
-             * the Keyboard Shortcuts UI instead of printing a default that
-             * could be a lie.
+             * What the SURFACE is: capabilities, layout arrangements and the host's
+             * own shortcuts, in one object (shared/hostProfile.ts). Everything else
+             * in this blob is the USER'S settings, which is why the host's facts are
+             * gathered under one key rather than scattered among them: one thing to
+             * declare, one reader, one drift guard.
              */
-            hostShortcuts?: { keys: string; label: string }[];
-            /**
-             * Put the typography rows (width, size, font) inside the gear
-             * menu rather than in a toolbar item of their own. A LAYOUT
-             * choice, not a capability: both arrangements offer the same
-             * controls and run the same commands, and which reads better
-             * depends on how much room the surface's toolbar has.
-             */
-            typographyInGearMenu?: boolean;
+            host?: Partial<import("../../shared/hostProfile").HostProfile>;
             fontPreset?: FontPreset;
             /** Effective per-preset font stacks (user overrides applied). */
             fontStacks?: FontStacks;
@@ -124,11 +116,6 @@ declare global {
             resourceBaseUri?: string;
             /** The same, for the workspace root, which the `@/` alias names. */
             workspaceBaseUri?: string;
-            /**
-             * What the host provides beyond the editor (shared/hostCapabilities.ts).
-             * ABSENT MEANS ALL; read it through `hostHas`, never directly.
-             */
-            hostCapabilities?: readonly import("../../shared/hostCapabilities").HostCapability[];
         };
     }
 }

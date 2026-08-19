@@ -119,7 +119,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     // they don't tear down the drag state mid-session.
     let latestConfig: ToolbarConfig | undefined = window.__i18n?.toolbar;
     let editing = false;
-    // The items this host can carry (shared/hostCapabilities.ts). Read once:
+    // The items this host can carry (shared/hostProfile.ts). Read once:
     // the declaration is baked at panel load and a webview is rebuilt on open.
     const available = hostAvailableItems();
 

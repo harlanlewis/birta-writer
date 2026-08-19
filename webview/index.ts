@@ -43,7 +43,7 @@ import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { setFocusSurfaces, TOC_COLLAPSED } from "./focusMode";
-import { hostHas } from "../shared/hostCapabilities";
+import { hostHas } from "../shared/hostProfile";
 import { isReadOnly } from "./readOnly";
 import { getProofreadConfig, setProofreadConfig } from "./plugins";
 import { bankOpenHtmlPanel } from "./components/htmlView";
@@ -642,7 +642,7 @@ const eventManager = createEventManager();
 
 // ── UI component initialization ────────────────────────────
 // The TOC / review sidebar exists only for a host that declares it
-// (shared/hostCapabilities.ts); a Jot window has none, and every use below is
+// (shared/hostProfile.ts); a Jot window has none, and every use below is
 // null-safe so the toc-bound commands and echoes are quiet no-ops there.
 mark("toc-start");
 const toc = hostHas("toc") ? initToc(eventManager, () => getEditorView()) : null;

@@ -12,7 +12,7 @@ import { t } from "@/i18n";
 import { withScrollAnchor } from "@/utils/scrollAnchor";
 import { notifySetFontPreset, notifySetFontSize, notifySetContentWidth } from "@/messaging";
 import { getEditorView } from "@/editor";
-import { hostHas } from "../../../shared/hostCapabilities";
+import { hostHas, hostArranges, type HostCapability } from "../../../shared/hostProfile";
 import { createCheckItem, createMenuTrigger, makeSep, type CheckItem } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import type { FontPreset, FontStacks } from "../../../shared/messages";
@@ -295,14 +295,19 @@ export function createTypographyControl(): TypographyControl {
         // "Editor font" (the default) follows the VS Code editor font; the
         // other presets use their stack, user-customizable via the
         // fontFamilySans/Serif/Mono settings. Each row previews its own font.
-        const choices: { preset: FontPreset; label: string; stack: string }[] = [
-            ...(hostHas("editorFont")
-                ? [{ preset: "editor" as const, label: t("Editor font"), stack: EDITOR_FONT }]
-                : []),
+        // Each choice DECLARES what it needs and the list is filtered once,
+        // rather than each gated one being spread in behind its own ternary.
+        // The next gated preset adds a `needs` and nothing else; the shape of
+        // the list does not change and no new branch appears.
+        type FontChoice = {
+            preset: FontPreset; label: string; stack: string; needs?: HostCapability;
+        };
+        const choices: FontChoice[] = ([
+            { preset: "editor", label: t("Editor font"), stack: EDITOR_FONT, needs: "editorFont" },
             { preset: "sans", label: t("Sans serif"), stack: currentFontStacks.sans },
             { preset: "serif", label: t("Serif"), stack: currentFontStacks.serif },
             { preset: "mono", label: t("Monospace"), stack: currentFontStacks.mono },
-        ];
+        ] satisfies FontChoice[]).filter((c) => c.needs === undefined || hostHas(c.needs));
         const fontItemEls: HTMLElement[] = [];
         for (const { preset, label, stack } of choices) {
             const item = createCheckItem(label);
@@ -336,14 +341,17 @@ export function createTypographyControl(): TypographyControl {
         setFontSizeActive(currentFontSize);
         setContentWidthActive(currentContentWidth);
 
-        // The width segments only where a measure is a real choice; without
-        // them the list opens on the size stepper and needs no leading rule.
-        return [
-            ...(hostHas("contentMeasure") ? [widthRow, makeSep()] : []),
-            sizeRow,
-            makeSep(),
-            ...fontItemEls,
+        // Same shape for the rows: what each group needs, filtered once. The
+        // width segments only where a measure is a real choice; without them
+        // the list opens on the size stepper and needs no leading rule.
+        const groups: { rows: HTMLElement[]; needs?: HostCapability }[] = [
+            { rows: [widthRow], needs: "contentMeasure" },
+            { rows: [sizeRow] },
+            { rows: fontItemEls },
         ];
+        return groups
+            .filter((g) => g.needs === undefined || hostHas(g.needs))
+            .flatMap((g, i) => (i === 0 ? g.rows : [makeSep(), ...g.rows]));
     }
 
     /** The rows in a toolbar item of their own: an "A" trigger over a hover menu. */
@@ -386,7 +394,7 @@ export function createTypographyControl(): TypographyControl {
     // Everything else about the control is identical either way, which is what
     // keeps the palette and slash-menu commands working unchanged: they call
     // the methods below and never touch the DOM.
-    const inGear = window.__i18n?.typographyInGearMenu === true;
+    const inGear = hostArranges("typographyInGearMenu");
     let cachedGearRows: HTMLElement[] = [];
     const el = inGear
         ? (() => {

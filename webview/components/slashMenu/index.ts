@@ -20,7 +20,7 @@ import {
     SLASH_MENU_ITEMS,
     type SlashMenuItem,
 } from "./registry";
-import { hostHasCommand } from "../../../shared/hostCapabilities";
+import { hostHasCommand } from "../../../shared/hostProfile";
 
 /** Viewport anchor, in the shape createLinkSuggestMenu uses. */
 export interface SlashMenuAnchor {
@@ -81,7 +81,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
     // Feature-gated rows drop out entirely at build (visibleWhen), so a
     // disabled feature's command is unreachable even by search. So does a row
     // whose command needs a host capability this host does not declare
-    // (shared/hostCapabilities.ts): the same predicate the gear menu and
+    // (shared/hostProfile.ts): the same predicate the gear menu and
     // runEditorCommand read.
     const items = (opts.items ?? SLASH_MENU_ITEMS).filter(
         (item) => (item.visibleWhen?.() ?? true) && hostHasCommand(item.commandId),

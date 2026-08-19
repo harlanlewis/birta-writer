@@ -209,7 +209,7 @@ export function initToolbar(
             onGetProjectImages,
         );
     };
-    // Host-gated (shared/hostCapabilities.ts): the image button needs a store
+    // Host-gated (shared/hostProfile.ts): the image button needs a store
     // to upload to, and a host without one gets no button at all. The panel
     // itself stays wired, because `insertImage` is gated at runEditorCommand.
     const imgBtnEl = available.has("image") ? btn(IconImage, t("Insert Image"), openImagePanel) : null;

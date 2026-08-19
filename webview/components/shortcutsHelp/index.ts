@@ -39,7 +39,7 @@ import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { notifyOpenKeybindings } from "@/messaging";
-import { hostHasCommand } from "../../../shared/hostCapabilities";
+import { hostHasCommand, hostShortcuts } from "../../../shared/hostProfile";
 
 /**
  * kbd() output post-processing: kbd() upper-cases the final key segment
@@ -289,10 +289,10 @@ function buildPanel(): HTMLDivElement {
     // is why the extension declares none of these and the footer below sends
     // the reader to the one accurate inventory instead. A standalone app whose
     // menu IS the binding is the case this exists for.
-    const hostShortcuts = window.__i18n?.hostShortcuts ?? [];
-    if (hostShortcuts.length > 0) {
+    const shortcuts = hostShortcuts();
+    if (shortcuts.length > 0) {
         addSection(t("This app"));
-        for (const shortcut of hostShortcuts) {
+        for (const shortcut of shortcuts) {
             addRow([[keys(shortcut.keys)]], shortcut.label);
         }
     }
@@ -302,7 +302,7 @@ function buildPanel(): HTMLDivElement {
     // The sticky footer below routes to VS Code's Keyboard Shortcuts — the
     // one accurate inventory of everything rebindable. It is the same action
     // as the `openKeyboardShortcuts` command, so it goes with that command on
-    // a host that has no keybindings UI (shared/hostCapabilities.ts).
+    // a host that has no keybindings UI (shared/hostProfile.ts).
     if (hostHasCommand("openKeyboardShortcuts")) {
         const footer = document.createElement("div");
         footer.className = "shortcuts-help__footer";
