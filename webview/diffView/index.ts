@@ -34,6 +34,7 @@ import { DecorationSet, Plugin, PluginKey } from "../pm";
 import type { EditorView, Node as ProseNode, NodeViewConstructor } from "../pm";
 import { gfmFidelity, pureCommonmark } from "../serialization";
 import { t } from "../i18n";
+import { vscodeHost } from "../vscodeHost";
 import { buildDiffDecorations } from "./decorations";
 import { planDiffHunks, type DiffHunk } from "./diffPlan";
 import type {
@@ -43,9 +44,15 @@ import type {
 } from "../../shared/diffMessages";
 import "./diffView.css";
 
-declare function acquireVsCodeApi(): { postMessage(msg: FromDiffViewMessage): void };
+/**
+ * This page's typed funnel over the shared handle (webview/vscodeHost.ts).
+ * The diff panel speaks its own protocol, so it must not post through
+ * webview/messaging.ts, whose sends are typed as the EDITOR's messages.
+ */
+function post(msg: FromDiffViewMessage): void {
+    vscodeHost.postMessage(msg);
+}
 
-const host = acquireVsCodeApi();
 const diffKey = new PluginKey<DecorationSet>("birta-diff");
 
 /** Supplies the decoration set, replaced wholesale by a meta transaction. */
@@ -150,8 +157,26 @@ async function render(msg: Extract<ToDiffViewMessage, { type: "diffContent" }>):
 
     editor.action((ctx) => {
         const view: EditorView = ctx.get(editorViewCtx);
-        const baseDoc: ProseNode = ctx.get(parserCtx)(msg.base) as ProseNode;
-        hunks = planDiffHunks(view.state.doc, computeDocDiff(baseDoc, view.state.doc));
+        const parse = ctx.get(parserCtx);
+        // BOTH sides are raw parses, and that symmetry is the whole point.
+        // The view's document is this same parse with the editor's plugins
+        // having run over it, and several of them write attributes a parse
+        // does not have — a heading gets its slug id, a list its numbering.
+        // Diffing the view against a parse therefore reports a change for
+        // every heading in a file nobody touched. Comparing parse to parse
+        // makes attribute drift structurally impossible rather than
+        // enumerating the attributes to forgive, which is a list that grows
+        // silently every time a plugin learns a new one.
+        const baseDoc: ProseNode = parse(msg.base) as ProseNode;
+        const workingDoc: ProseNode = parse(msg.working) as ProseNode;
+        // Those plugins change attributes, never structure, so the parse and
+        // the view agree on every position. If that ever stops being true the
+        // decorations would land in the wrong places and nothing would say so,
+        // hence the check rather than the assumption.
+        if (workingDoc.content.size !== view.state.doc.content.size) {
+            throw new Error("the rendered document does not match its own parse");
+        }
+        hunks = planDiffHunks(workingDoc, computeDocDiff(baseDoc, workingDoc));
         view.dispatch(
             view.state.tr.setMeta(diffKey, buildDiffDecorations(baseDoc, view.state.doc, hunks)),
         );
@@ -234,11 +259,11 @@ window.addEventListener("message", (event: MessageEvent<ToDiffViewMessage>) => {
         void render(msg).catch((err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
             showMessage(t("This file could not be rendered as a diff."));
-            host.postMessage({ type: "diffFailed", message });
+            post({ type: "diffFailed", message });
         });
     } else if (msg?.type === "diffUnavailable") {
         showMessage(msg.reason);
     }
 });
 
-host.postMessage({ type: "diffReady" });
+post({ type: "diffReady" });

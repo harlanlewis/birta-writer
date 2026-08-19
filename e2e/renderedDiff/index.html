@@ -49,12 +49,24 @@
     post();
   };
 
-  window.acquireVsCodeApi = () => ({
+  // The full handle VS Code hands a webview, and only ONE of them: the page
+  // shares a single acquisition (webview/vscodeHost.ts), and a stub that
+  // handed out a fresh object per call would hide a second acquirer — which
+  // throws in a real webview and takes the whole entry down with it.
+  const api = {
     postMessage: (msg) => {
       window.__posted.push(msg);
       if (msg.type === "diffReady") { post(); }
     },
-  });
+    getState: () => undefined,
+    setState: () => {},
+  };
+  let acquired = false;
+  window.acquireVsCodeApi = () => {
+    if (acquired) { throw new Error("An instance of the VS Code API has already been acquired"); }
+    acquired = true;
+    return api;
+  };
 </script>
 <div id="diff-root"></div>
 <script type="module" src="dist/diffView.js"></script>
