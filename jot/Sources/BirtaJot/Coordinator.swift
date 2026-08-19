@@ -60,9 +60,6 @@ final class Coordinator {
     var openPreferences: (() -> Void)?
     /// Closes it again, because the panel going away takes it along.
     var hidePreferences: (() -> Void)?
-    /// Re-reads the Dock-icon setting. Owned by the app delegate, because an
-    /// activation policy belongs to the application rather than to a window.
-    var applyActivationPolicy: (() -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
     private let agent = AgentRunner()
     private var autosaveTimer: Timer?
@@ -160,6 +157,11 @@ final class Coordinator {
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.hide() }
         applyTheme(initial: true)
+
+        // The activation policy the Dock switch decides, as the app actually
+        // took it. A setting whose only evidence is that its own getter
+        // returns what was written to it is a setting nobody has checked.
+        measure.trace("policy \(NSApp.activationPolicy() == .regular ? "regular" : "accessory") showInDock=\(Prefs.showInDock)")
 
         // Prewarm: load and mount now, hidden, so the first summon finds the editor mounted.
         measure.mark("launch")
@@ -1107,7 +1109,6 @@ final class Coordinator {
             // The bound file may have changed; the titlebar names it.
             self.refreshTitle()
             self.panel.applyFloatLevel()
-            self.applyActivationPolicy?()
         }
     }
 

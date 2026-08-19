@@ -10,7 +10,7 @@ import AppKit
 enum Entry {
     static func main() {
         let app = NSApplication.shared
-        app.setActivationPolicy(Prefs.showInDock ? .regular : .accessory)
+        AppDelegate.applyActivationPolicy()
         let delegate = AppDelegate()
         app.delegate = delegate
         app.run()

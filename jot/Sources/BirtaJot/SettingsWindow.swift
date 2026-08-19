@@ -613,12 +613,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.agentCommand = agentField.stringValue
     }
 
-    /// The Dock icon, and Cmd+Tab with it. Applied by the app delegate rather
-    /// than here: the activation policy belongs to the application, and this
-    /// window is one of the things it changes the behaviour of.
+    /// The Dock icon, and Cmd+Tab with it. Applied HERE and now, the way the
+    /// float switch applies its window level: `onChange` flushes the buffer and
+    /// reloads the page, so routing this through it would leave the user
+    /// watching a switch they moved with nothing happening for a round trip.
+    /// Nothing else about the app needs re-reading for it, so it does not go
+    /// through `onChange` at all.
     @objc private func toggleShowInDock() {
         Prefs.showInDock = dockSwitch.state == .on
-        onChange()
+        AppDelegate.applyActivationPolicy()
     }
 
     @objc private func toggleOpenToBlank() {

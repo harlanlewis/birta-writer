@@ -15,10 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The view the overflow menu was opened from, for the sharing picker,
     /// which needs somewhere on screen to point at.
 
-    /// A Dock icon means Cmd+Tab, an app menu of its own, and a Dock click
-    /// that has to lead somewhere. `.accessory` is the default and what
-    /// `LSUIElement` declares, so a launch never flashes an icon it is about
-    /// to take away.
+    /// THE activation-policy rule, with two callers: `Entry.main` at launch
+    /// and the Settings switch when it moves. A Dock icon means Cmd+Tab, an
+    /// app menu of its own, and a Dock click that has to lead somewhere.
+    /// `.accessory` is the default and what `LSUIElement` declares, so a launch
+    /// never flashes an icon it is about to take away.
     static func applyActivationPolicy() {
         NSApp.setActivationPolicy(Prefs.showInDock ? .regular : .accessory)
     }
@@ -35,7 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
-        coordinator.applyActivationPolicy = { AppDelegate.applyActivationPolicy() }
         buildStatusItem()
         coordinator.start()
         // A settings window can otherwise only be opened by a person, which
