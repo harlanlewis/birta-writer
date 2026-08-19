@@ -984,6 +984,29 @@ describe("selection toolbar agent reference across selection modes", () => {
         });
     }
 
+    it("the button the modes show should be the one that asks the host to copy", async () => {
+        // Once, not once per mode. All three show the SAME element with the
+        // same handler bound at construction, so three presses could not fail
+        // independently and asserting each would be decoration. What this does
+        // pin is that the element `.sel-tb-agent-btn` selects — the one the
+        // mode tests assert the position of — is the one carrying the handler,
+        // which a mode that rebuilt its own copy would break.
+        await showFor(MODES.find((m) => m.mode === "BlockRangeSelection")!);
+        const api = (globalThis as unknown as {
+            acquireVsCodeApi: () => { postMessage: { mock: { calls: unknown[][] } } };
+        }).acquireVsCodeApi();
+        const before = api.postMessage.mock.calls.length;
+
+        // Act
+        mousedown(agentButton());
+
+        // Assert
+        const sent = api.postMessage.mock.calls
+            .slice(before)
+            .map(([message]) => (message as { type?: string })?.type);
+        expect(sent).toContain("copyAgentReference");
+    });
+
     it("the cases above should cover every selection mode the bar branches on", async () => {
         // Arrange — the component's own source is the enumeration; a
         // hand-written list is a list a fourth mode never joins.
