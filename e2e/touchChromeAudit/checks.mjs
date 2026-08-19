@@ -23,6 +23,14 @@
  * and nothing that could carry the attribute. It is covered by behaviour
  * instead, at the end of this file, and that check is the reason the blind
  * spot is not merely acknowledged.
+ *
+ * Both axes are bounded by the same thing: chrome that is never built cannot be
+ * audited, and most of this editor's chrome is built on reveal and torn down
+ * again. So the attribute sweep runs once per reveal state and unions its
+ * passes, and the subject list below carries the gesture each control needs.
+ * Where a control ACTS when it is tapped, the subject order is what keeps the
+ * next one reachable: the source toggle swaps a diagram for its source, and the
+ * fold controls take the rest of the document off screen, so both go last.
  */
 
 /** Constructs whose chrome this audit is about. All must render, or the sweep
@@ -30,6 +38,7 @@
 const CONSTRUCTS = [
     "table", "codeBlock", "mermaid", "calc", "image", "callout", "directive",
     "footnote", "math", "wikiLink", "html", "headingFold", "list", "task",
+    "blockquote", "orderedList", "rule", "linkDefinition", "imageRef",
 ];
 
 /**
@@ -57,27 +66,27 @@ const IMPLICIT_ONLY = [
 ];
 
 /**
- * A floor, so a sweep that reached almost nothing cannot read as a clean one.
+ * Floors, so a sweep that reached almost nothing cannot read as a clean one.
+ * Both are below what the suite currently reaches, with room for the slack a
+ * browser engine's own markup introduces; run `node e2e/run.mjs
+ * touchChromeAudit` for the live figures rather than trusting a number here.
  *
- * It was 60, set against a count of 79 that included 35 SVG and MathML interior
- * nodes. Those are not HTMLElement, so `isContentEditable` read `undefined` on
- * every one of them, and `!undefined` counted each as compliant. Roughly half
- * the reached population was answering no question at all. The sweep now skips
- * them and reports them separately; run `node e2e/run.mjs touchChromeAudit` for
- * the live figures rather than trusting this comment.
+ * The kinds floor was 35, against a population keyed on each element's FIRST
+ * class. That is a chrome primitive on many of these controls (`ui-btn`,
+ * `bc-btn`), so the code block's whole rail was one kind, the mermaid pan pad
+ * and its zoom overlay were another, and one representative of each was what
+ * got audited. Keying on the element's own class is what the two floors are
+ * now set against.
  */
-const MIN_CHROME_KINDS = 35;
+const MIN_CHROME_KINDS = 50;
+const MIN_TOUCHED_SUBJECTS = 25;
 
 /**
  * Chrome this fixture cannot bring on screen, each with the reason it is
- * absent rather than broken. Listed so the count below is checkable and a
- * future run that silently stops reaching things fails instead of passing.
+ * absent rather than broken. Empty: every subject below is currently reached,
+ * so an unreached one is a finding rather than a footnote.
  */
-const KNOWN_UNREACHED = {
-    "mermaid pan button":
-        "the pan pad is drawn only where the content actually pans " +
-        "(docs/DESIGN_PRINCIPLES.md, fullscreen geography); a two-node graph does not",
-};
+const KNOWN_UNREACHED = {};
 
 async function touchOn(page) {
     const cdp = await page.context().newCDPSession(page);
@@ -103,40 +112,39 @@ async function touchOn(page) {
     return { enable, disable, tap };
 }
 
-/** Hover every block and its gutter: chrome that is never built cannot be audited. */
-async function revealEverything(page) {
-    const blocks = await page.evaluate(() =>
-        [...document.querySelectorAll(".ProseMirror > *")].map((el) => {
-            const r = el.getBoundingClientRect();
-            return { x: r.x + Math.min(40, r.width / 2), y: r.y + Math.min(20, r.height / 2), left: r.x };
-        }));
-    for (const b of blocks) {
-        await page.mouse.move(b.left - 10, b.y);
-        await page.mouse.move(b.x, b.y);
-        await page.waitForTimeout(40);
-    }
-    const cell = await page.evaluate(() => {
-        const c = document.querySelector(".ProseMirror table td");
-        if (!c) return null;
-        const r = c.getBoundingClientRect();
-        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    });
-    if (cell) { await page.mouse.click(cell.x, cell.y); await page.waitForTimeout(150); }
-}
+/**
+ * One pass of the attribute sweep over whatever is on screen RIGHT NOW.
+ *
+ * A single pass can only see chrome that exists at that instant, and much of
+ * this editor's chrome is built on reveal and torn down again: a menu closes,
+ * a hover ends, a selection moves. The caller therefore runs this repeatedly
+ * across reveal states and unions the results (`collector` below), so the
+ * population is everything that was ever built rather than everything that
+ * survived to the end.
+ *
+ * A kind is named by its OWN class, not by the first class in the attribute.
+ * The chrome primitives (`ui-btn`, `bc-btn`, and the menu-row family) are the
+ * first class on many different buttons, so keying on `className.split(" ")[0]`
+ * collapsed the code block's five rail buttons, the mermaid pan pad and the
+ * zoom controls into two kinds and audited one representative of each.
+ */
+const PRIMITIVES = new Set([
+    "ui-btn", "bc-btn", "ui-menu-row", "ui-heading", "ui-menu-heading", "ui-notice",
+]);
 
-const sweep = (page) => page.evaluate(() => {
+const sweepOnce = (page) => page.evaluate((primitives) => {
     const root = document.querySelector(".ProseMirror");
-    if (!root) return { rows: [], error: "no .ProseMirror" };
+    if (!root) return { rows: [], foreign: [], error: "no .ProseMirror" };
     const INTERACTIVE = new Set(["pointer", "grab", "grabbing", "col-resize", "row-resize", "ew-resize", "ns-resize", "move"]);
     const rows = [];
     const foreign = [];
-    const seen = new Set();
     for (const el of root.querySelectorAll("*")) {
         const cs = getComputedStyle(el);
         if (el.tagName !== "BUTTON" && !INTERACTIVE.has(cs.cursor)) continue;
         if (cs.pointerEvents === "none") continue;
-        const cls = String(el.className?.baseVal ?? el.className ?? "").trim();
-        const sel = `${el.tagName.toLowerCase()}.${cls.split(" ")[0]}`;
+        const classes = String(el.className?.baseVal ?? el.className ?? "").trim().split(/\s+/).filter(Boolean);
+        const own = classes.filter((c) => !primitives.includes(c) && !c.startsWith("ui-btn--"));
+        const sel = `${el.tagName.toLowerCase()}.${own[0] ?? classes[0] ?? ""}`;
         // `isContentEditable` is an HTMLElement property. SVG and MathML nodes
         // are Element but not HTMLElement, so it reads `undefined` on every
         // interior node of a rendered mermaid diagram or KaTeX formula. Those
@@ -148,16 +156,95 @@ const sweep = (page) => page.evaluate(() => {
         // retargeted is a diagram's own container, which IS an HTMLElement and
         // is still swept. Counted separately so the exclusion stays visible.
         if (!(el instanceof HTMLElement)) {
-            if (!seen.has(`foreign|${sel}`)) { seen.add(`foreign|${sel}`); foreign.push(sel); }
+            foreign.push(sel);
             continue;
         }
-        const key = `${sel}|${el.isContentEditable}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
         rows.push({ sel, editable: el.isContentEditable });
     }
     return { rows, foreign };
-});
+}, [...PRIMITIVES]);
+
+/** Unions the passes. Keyed on sel AND verdict, so one kind that is editable in
+ *  one state and not in another is two rows and neither hides the other. */
+function collector(page) {
+    const rows = new Map();
+    const foreign = new Set();
+    return {
+        async take() {
+            const pass = await sweepOnce(page);
+            for (const r of pass.rows) rows.set(`${r.sel}|${r.editable}`, r);
+            for (const f of pass.foreign) foreign.add(f);
+            return pass;
+        },
+        get rows() { return [...rows.values()]; },
+        get foreign() { return [...foreign]; },
+    };
+}
+
+/**
+ * Bring chrome on screen, sweeping after every state so nothing that is torn
+ * down on the next gesture is missed.
+ *
+ * Three kinds of reveal, each needed for chrome the others never build:
+ *   - hovering every top-level block and its left gutter (the block strip);
+ *   - putting the caret in a table cell (the table overlay's grips and bars);
+ *   - opening the menus that only exist while open (the callout's kind menu,
+ *     the code block's language picker), and selecting the image, whose
+ *     toolbar is built by `selectNode`.
+ */
+async function revealEverything(page, collect) {
+    const blocks = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror > *")].map((el) => {
+            const r = el.getBoundingClientRect();
+            return { x: r.x + Math.min(40, r.width / 2), y: r.y + Math.min(20, r.height / 2), left: r.x };
+        }));
+    for (const b of blocks) {
+        await page.mouse.move(b.left - 10, b.y);
+        await page.mouse.move(b.x, b.y);
+        await page.waitForTimeout(40);
+        await collect.take();
+    }
+    const cell = await page.evaluate(() => {
+        const c = document.querySelector(".ProseMirror table td");
+        if (!c) return null;
+        const r = c.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    if (cell) { await page.mouse.click(cell.x, cell.y); await page.waitForTimeout(150); await collect.take(); }
+
+    // Chrome that exists only while something is open or selected. Each entry
+    // is [what to click first, what that builds INSIDE the root]; the second
+    // selector is asserted, so a construct this fixture stops rendering shows
+    // up as an unreached reveal rather than as a silently smaller sweep.
+    //
+    // The code block's language dropdown is deliberately not here: it mounts on
+    // `document.body`, outside the contentEditable root, so no contact on it can
+    // be retargeted and it is not this audit's subject. Its trigger button is,
+    // and the trigger is swept and tapped like the rest of the rail.
+    const ON_DEMAND = [
+        [".ProseMirror .callout-kind", ".callout-menu"],
+        [".ProseMirror .image-wrapper img", ".image-toolbar"],
+    ];
+    const built = [];
+    for (const [trigger, opened] of ON_DEMAND) {
+        const box = await page.evaluate((s) => {
+            const el = document.querySelector(s);
+            if (!el) return null;
+            el.scrollIntoView({ block: "center" });
+            const r = el.getBoundingClientRect();
+            return r.width && r.height ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+        }, trigger);
+        if (!box) continue;
+        await page.mouse.move(box.x, box.y);
+        await page.mouse.click(box.x, box.y);
+        await page.waitForTimeout(250);
+        await collect.take();
+        built.push([opened, await page.evaluate((s) => !!document.querySelector(`.ProseMirror ${s}`), opened)]);
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(120);
+    }
+    return built;
+}
 
 export async function run({ page, check, baseUrl }) {
     const touch = await touchOn(page);
@@ -182,18 +269,28 @@ export async function run({ page, check, baseUrl }) {
         headingFold: !!document.querySelector(".ProseMirror .heading-fold-marker"),
         list: !!document.querySelector(".ProseMirror ul li"),
         task: !!document.querySelector('.ProseMirror li[data-item-type="task"]'),
+        blockquote: !!document.querySelector(".ProseMirror blockquote"),
+        orderedList: !!document.querySelector(".ProseMirror ol li"),
+        rule: !!document.querySelector(".ProseMirror hr"),
+        linkDefinition: !!document.querySelector(".ProseMirror .link-definition"),
+        imageRef: !!document.querySelector(".ProseMirror .image-ref"),
     }));
     const missing = CONSTRUCTS.filter((c) => !present[c]);
     check("every construct this audit covers actually rendered",
         missing.length === 0, `missing: ${missing.join(", ") || "none"}`);
 
-    await revealEverything(page);
+    const collect = collector(page);
+    await collect.take();
+    const opened = await revealEverything(page, collect);
     await page.waitForTimeout(400);
+    await collect.take();
+    check("the on-demand chrome this audit opens actually opened",
+        opened.length === 2 && opened.every(([, ok]) => ok), JSON.stringify(opened));
 
     // ── 2. The attribute sweep, with both counts asserted.
-    const { rows, foreign } = await sweep(page);
+    const rows = collect.rows;
+    const foreign = collect.foreign;
     const editable = rows.filter((r) => r.editable).map((r) => r.sel).sort();
-    const declared = rows.filter((r) => !r.editable);
     check("the sweep reached a substantial amount of chrome",
         rows.length >= MIN_CHROME_KINDS, `${rows.length} kinds, floor ${MIN_CHROME_KINDS}`);
     check("all interactive chrome declares itself non-editable, bar the wikilink's own source",
@@ -225,6 +322,11 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 4. Behaviour: does a real touch land on the chrome, or on the text?
     await touch.enable();
+    // The task checkbox (section 5, hoisted) runs BEFORE the subject sweep: the
+    // sweep's last subjects fold a heading, which takes the task list off
+    // screen, and a zero-sized rect there would read as a touch failure.
+    await taskCheckboxProbe();
+    await touch.enable(); // the probe's mouse control turns emulation off
     const tapTarget = async (x, y) => {
         await page.evaluate(() => {
             window.__tt = null;
@@ -256,24 +358,59 @@ export async function run({ page, check, baseUrl }) {
     const show = (t) => (t ? `${t.tag}.${t.cls}` : "nothing");
     // `reveal` is [selector, "hover"|"click"] where chrome appears only once
     // its block has been reached.
+    //
+    // Order is load-bearing at the end only: a tap ACTS, so the two fold
+    // subjects come last. Folding a heading takes the rest of the document off
+    // screen, and a subject after them would be reported unreached for a
+    // reason that has nothing to do with touch.
     const SUBJECTS = [
         ["table row grip", ".mw-grip--row", [".ProseMirror table td", "hover"]],
         ["table insert +", ".mw-insert-btn", [".ProseMirror table td", "hover"]],
-        ["heading fold marker", ".heading-fold-marker", null],
+        ["table width control", ".mw-bc-width", [".ProseMirror table td", "hover"]],
+        // Before the code-block rail: the rail's source toggle swaps the
+        // mermaid block from its preview to its source, and the pan pad and
+        // zoom overlay live on the preview.
+        ["mermaid pan button", ".mermaid-pan-btn", [".ProseMirror .mermaid-preview", "hover"]],
+        ["mermaid zoom button", ".mermaid-zoom-btn", [".ProseMirror .mermaid-preview", "hover"]],
         ["code block lang picker", ".lang-picker-btn", [".ProseMirror .code-float-rail", "hover"]],
+        ["code block copy", ".copy-btn", [".ProseMirror .code-float-rail", "hover"]],
+        ["code block word wrap", ".code-wrap-toggle-btn", [".ProseMirror .code-float-rail", "hover"]],
+        ["code block width", ".code-width-toggle-btn", [".ProseMirror .code-float-rail", "hover"]],
+        ["code block fullscreen", ".code-block-fullscreen-btn", [".ProseMirror .code-float-rail", "hover"]],
+        ["code block source toggle", ".code-view-toggle-btn", [".ProseMirror .code-float-rail", "hover"]],
         ["code block resize handle", ".code-block-resize-handle", null],
         ["callout kind button", ".callout-kind", null],
+        ["callout kind menu item", ".callout-menu button", [".ProseMirror .callout-kind", "click"]],
         ["block width control", ".bc-btn", null],
-        ["mermaid pan button", ".mermaid-pan-btn", [".ProseMirror .mermaid-preview", "hover"]],
         ["image toolbar button", ".img-tb-btn", [".ProseMirror .image-wrapper img", "click"]],
+        ["image width control", ".img-tb-width", [".ProseMirror .image-wrapper img", "click"]],
+        ["image zoom control", ".img-bc-zoom", [".ProseMirror .image-wrapper img", "click"]],
         ["footnote backlink", ".footnote-def-backlink", null],
         ["footnote ref", ".footnote-ref", null],
         ["wiki link", ".wiki-link", null],
         ["regular link", ".ProseMirror a:not(.wiki-link)", null],
+        ["image reference chip", ".image-ref", null],
+        // Selectable as a block, so tapping it raises the floating selection
+        // toolbar; anything after it is aimed under that toolbar.
+        ["link definition", ".link-definition", null],
+        ["heading fold marker", ".heading-fold-marker", null],
+        // Only drawn once something IS folded, which the subject above does.
+        ["fold ellipsis", ".fold-ellipsis", null],
+        ["heading fold toggle", ".heading-fold-toggle", null],
     ];
+    // The FIRST match with a box, not the first match. Several of these classes
+    // are on a control that every code block builds and only some show (the
+    // source/preview toggle belongs to the diagram languages), so aiming at
+    // `querySelector` alone reported a control the fixture renders perfectly
+    // well as one it could not reach.
     const centre = (sel) => page.evaluate((s) => {
-        const el = document.querySelector(s);
-        if (!el) return null;
+        const els = [...document.querySelectorAll(s)];
+        if (els.length === 0) return null;
+        const el = els.find((e) => {
+            const r = e.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        });
+        if (!el) return { zero: true };
         el.scrollIntoView({ block: "center" });
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) return { zero: true };
@@ -288,7 +425,11 @@ export async function run({ page, check, baseUrl }) {
     const unreached = [];
     for (const [name, sel, reveal] of SUBJECTS) {
         await page.keyboard.press("Escape"); // drop anything a previous subject opened
-        await page.waitForTimeout(120);
+        // …and collapse the selection a previous subject left behind, which the
+        // floating selection toolbar follows. That toolbar is not this audit's
+        // subject and it covers the text under it.
+        await page.keyboard.press("ArrowRight");
+        await page.waitForTimeout(300);
         if (reveal) {
             const [hostSel, how] = reveal;
             const h = await centre(hostSel);
@@ -306,6 +447,25 @@ export async function run({ page, check, baseUrl }) {
         const box2 = await centre(sel);
         if (!box2 || box2.zero) { unreached.push([name, "lost its box after scrolling"]); continue; }
         if (!box2.inView) { unreached.push([name, "could not be brought into the viewport"]); continue; }
+        // What is actually at the aim. A subject the floating selection toolbar
+        // happens to be covering would otherwise report a clean landing on that
+        // toolbar and be counted as driven, which is the "instrument measured
+        // nothing" failure: the toolbar is outside the editable root, so its
+        // verdict is trivially correct and says nothing about the subject.
+        const obstruction = await page.evaluate(([s, x, y]) => {
+            const target = [...document.querySelectorAll(s)].find((e) => {
+                const r = e.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+            });
+            const hit = document.elementFromPoint(x, y);
+            if (!target || !hit) return "nothing is at the aim";
+            // `closest` as well as containment: two instances of one kind of
+            // chrome can overlap (the table's insert bars do at a corner), and
+            // landing on the other instance is still landing on that chrome.
+            if (target.contains(hit) || hit.contains(target) || hit.closest(s)) return null;
+            return `${hit.tagName.toLowerCase()}.${String(hit.className?.baseVal ?? hit.className ?? "").split(" ")[0]}`;
+        }, [sel.startsWith(".ProseMirror") ? sel : `.ProseMirror ${sel}`, box2.x, box2.y]);
+        if (obstruction) { unreached.push([name, `obscured by ${obstruction}`]); continue; }
         const got = await tapTarget(box2.x, box2.y);
         (isRetargeted(got) ? retargeted : landed).push(`${name} -> ${show(got)}`);
     }
@@ -313,7 +473,7 @@ export async function run({ page, check, baseUrl }) {
         retargeted.length === 0, `retargeted: ${JSON.stringify(retargeted)}`);
     check("the touch sweep drove the subjects it claims to have driven",
         landed.length + retargeted.length + unreached.length === SUBJECTS.length &&
-        landed.length + retargeted.length >= 12,
+        landed.length + retargeted.length >= MIN_TOUCHED_SUBJECTS,
         `${landed.length} landed, ${retargeted.length} retargeted, ${unreached.length} unreached, ` +
         `${SUBJECTS.length} total: ${JSON.stringify(landed)}`);
     const unexpected = unreached.filter(([n]) => !(n in KNOWN_UNREACHED));
@@ -328,6 +488,11 @@ export async function run({ page, check, baseUrl }) {
     //       from a tap, so this is the one place the class could bite with no
     //       element anywhere to carry contentEditable. The arriving clientX is
     //       reported either way: a pass with no margin is worth seeing.
+    //
+    //       Declared here and called from section 4, which is where it has to
+    //       run: it needs the task list on screen, and the subject sweep folds
+    //       a heading away at its end.
+    async function taskCheckboxProbe() {
     await page.keyboard.press("Escape");
     // Two task items, because a checkbox TOGGLES: the mouse control below must
     // tick its own, or it clicks the one the finger just ticked and reads the
@@ -383,5 +548,6 @@ export async function run({ page, check, baseUrl }) {
             checked(afterMouse) === checked(beforeMouse) + 1,
             `arrived ${JSON.stringify(mouseClicks)}, ` +
             `checked ${checked(beforeMouse)} -> ${checked(afterMouse)}`);
+    }
     }
 }
