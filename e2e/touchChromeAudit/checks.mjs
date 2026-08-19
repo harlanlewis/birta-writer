@@ -498,8 +498,14 @@ export async function run({ page, check, baseUrl }) {
     }
     check("a finger's contact lands on the chrome it was aimed at, never the text beside it",
         retargeted.length === 0, `retargeted: ${JSON.stringify(retargeted)}`);
+    // The floor is the whole assertion. Every subject leaves the loop above
+    // through exactly one of the three arrays, so `landed + retargeted +
+    // unreached === SUBJECTS.length` is a partition identity: it holds for any
+    // values and no change to production code could turn it red. That exact
+    // shape passed here once already while the sweep was half-populated with
+    // items that could not answer, so it is reported in the message below and
+    // asserted nowhere.
     check("the touch sweep drove the subjects it claims to have driven",
-        landed.length + retargeted.length + unreached.length === SUBJECTS.length &&
         landed.length + retargeted.length >= MIN_TOUCHED_SUBJECTS,
         `${landed.length} landed, ${retargeted.length} retargeted, ${unreached.length} unreached, ` +
         `${SUBJECTS.length} total: ${JSON.stringify(landed)}`);

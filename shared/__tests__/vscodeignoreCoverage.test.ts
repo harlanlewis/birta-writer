@@ -15,6 +15,12 @@
  *
  * Adding a top-level directory therefore fails here until you either deny it in
  * `.vscodeignore` or add it below with the reason it belongs in the archive.
+ *
+ * KNOWN BLIND SPOT, and the reason this does not replace `check-vsix.mjs`: the
+ * population is what git TRACKS, so build output that is gitignored and still
+ * packaged is invisible here. `dist/` is exactly that, and is why the archive's
+ * other guard keeps a `banned` list of directory names rather than relying on
+ * this one. A new gitignored directory is still that list's job.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -61,6 +67,10 @@ function wholesaleTarget(line: string): string | null {
 
 /**
  * Directory names denied wholesale, from a `<dir>/**` or a bare `<dir>` line.
+ *
+ * A bare line naming a FILE (`pnpm-workspace.yaml`, `esbuild.mjs`) lands in
+ * this set too, because nothing here can tell a file from a directory by name
+ * alone. Harmless: the set is only ever asked about directory names.
  *
  * `!` re-includes, and it has to be subtracted rather than ignored. Reading
  * `!jot/**` as a directory named `!jot` would leave the `jot/**` above it still
