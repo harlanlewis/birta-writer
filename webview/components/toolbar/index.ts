@@ -361,6 +361,11 @@ export function initToolbar(
     items.settings = wrap("settings", createSettingsMenu({
         startCustomize: () => layout.startCustomize(),
         setToolbarVisible: (visible) => layout.setToolbarVisible(visible),
+        // Empty unless the surface asked for that arrangement, in which case
+        // the fontPreset item above is the empty one instead. The control is
+        // built either way, so `chooseFontPreset` and its siblings reach the
+        // same code from the palette and the slash menu whichever it is.
+        typographyRows: (close) => typography.gearRows(close),
     }));
 
     // ── Placement, overflow, customize mode, whole-bar visibility ──

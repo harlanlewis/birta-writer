@@ -52,6 +52,8 @@ final class Coordinator {
     /// Opens the app's Settings window. Owned by the app delegate, which holds
     /// the window; the page asks for it through the gear menu.
     var openPreferences: (() -> Void)?
+    /// Closes it again, because the panel going away takes it along.
+    var hidePreferences: (() -> Void)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
     private let agent = AgentRunner()
     private var autosaveTimer: Timer?
@@ -358,6 +360,11 @@ final class Coordinator {
     /// and quitting flushes again.
     func hide() {
         guard panel.isVisible else { return }
+        // Settings belongs to the panel, not to the app. Left behind it is a
+        // window with no editor to change the settings OF, floating over
+        // whatever the user went back to; and with the app hidden below it
+        // reads as a stray dialog from nowhere.
+        hidePreferences?()
         panel.orderOut(nil)
         if let prev = previousApp, prev.isTerminated == false {
             prev.activate()

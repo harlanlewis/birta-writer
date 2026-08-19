@@ -209,9 +209,20 @@ export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> 
     settings: null,
 };
 
-/** The items the host can carry: everything whose capability it declares. */
+/**
+ * The items the host can carry: everything whose capability it declares.
+ *
+ * `fontPreset` has a second reason to be absent, and it is a layout choice
+ * rather than a capability: a surface that puts the typography rows inside the
+ * gear menu has no use for an item that would open an empty menu beside it.
+ * The CONTROL still exists either way, so the palette and slash-menu commands
+ * are unaffected; only the item is.
+ */
 export function hostAvailableItems(): ReadonlySet<ToolbarItemId> {
+    const typographyInGear = (globalThis as { __i18n?: { typographyInGearMenu?: boolean } })
+        .__i18n?.typographyInGearMenu === true;
     return new Set(TOOLBAR_ITEM_IDS.filter((id) => {
+        if (id === "fontPreset" && typographyInGear) { return false; }
         const cap = ITEM_HOST_CAPABILITY[id];
         return cap === null || hostHas(cap);
     }));

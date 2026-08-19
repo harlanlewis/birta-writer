@@ -300,6 +300,11 @@ public struct BootConfig: Equatable {
             "isMac": true,
             "toolbar": toolbar,
             "hostShortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
+            // The panel's toolbar is short and its right-hand block is always
+            // on screen, so the typography rows read better inside the gear
+            // than as a second dropdown beside it. A layout choice: the same
+            // controls, the same commands, a different holder.
+            "typographyInGearMenu": true,
             "fontPreset": fontPreset,
             "fontSize": fontSize,
             "contentWidth": contentWidth,

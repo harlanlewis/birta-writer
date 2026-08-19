@@ -92,6 +92,14 @@ declare global {
              * could be a lie.
              */
             hostShortcuts?: { keys: string; label: string }[];
+            /**
+             * Put the typography rows (width, size, font) inside the gear
+             * menu rather than in a toolbar item of their own. A LAYOUT
+             * choice, not a capability: both arrangements offer the same
+             * controls and run the same commands, and which reads better
+             * depends on how much room the surface's toolbar has.
+             */
+            typographyInGearMenu?: boolean;
             fontPreset?: FontPreset;
             /** Effective per-preset font stacks (user overrides applied). */
             fontStacks?: FontStacks;

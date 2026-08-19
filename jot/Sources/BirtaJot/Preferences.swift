@@ -135,12 +135,11 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.autosave) }
     }
 
-    /// Whether the panel stays above other applications' windows. On by
-    /// default: a scratchpad summoned over whatever you were reading is the
-    /// point of the hotkey, and a panel that hides behind the window you were
-    /// copying from would defeat it.
+    /// Whether the panel stays above other applications' windows. Off by
+    /// default: a window that will not go behind anything is a window you
+    /// fight, and the hotkey already brings the panel back in one keystroke.
     static var floatAboveOtherWindows: Bool {
-        get { d.object(forKey: Key.floatAboveOtherWindows) == nil ? true : d.bool(forKey: Key.floatAboveOtherWindows) }
+        get { d.bool(forKey: Key.floatAboveOtherWindows) }
         set { d.set(newValue, forKey: Key.floatAboveOtherWindows) }
     }
 

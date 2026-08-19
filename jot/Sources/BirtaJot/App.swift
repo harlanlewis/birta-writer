@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMainMenu()
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
+        coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         coordinator.makeOverflowMenu = { [weak self] anchor in
             self?.overflowAnchor = anchor
             return self?.buildOverflowMenu() ?? NSMenu()
