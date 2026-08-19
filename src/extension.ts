@@ -17,6 +17,7 @@ import { refreshUnread } from "./whatsNew";
 import { ConnectorService } from "./connectors/connectorService";
 import { registerConnectorCommands } from "./connectors/commands";
 import { captureNavTarget } from "./searchNavigation";
+import { diffTargetFromArg, openDiffPanel } from "./diffPanel";
 import {
     getBirtaConfiguration,
     readBirtaSetting,
@@ -950,6 +951,27 @@ export function activate(context: vscode.ExtensionContext) {
                 quickPick.show();
             },
         ),
+    );
+
+    // Rendered diff (MAR-55). Three invokers, three argument shapes: the
+    // palette passes nothing and falls back to whichever surface is focused
+    // (the custom editor's tab, or a plain text editor), the editor title bar
+    // passes a URI, and the SCM context menu passes a resource state.
+    // `diffTargetFromArg` is the one place that reconciles them.
+    context.subscriptions.push(
+        vscode.commands.registerCommand("birta.openDiff", async (arg?: unknown) => {
+            const target = diffTargetFromArg(
+                arg,
+                activeCustomEditorUri() ?? vscode.window.activeTextEditor?.document.uri,
+            );
+            if (!target) {
+                void vscode.window.showInformationMessage(
+                    vscode.l10n.t("Open a Markdown file to compare it with HEAD."),
+                );
+                return;
+            }
+            await openDiffPanel(context, target);
+        }),
     );
 
     // The public API other extensions consume via `await ext.activate()`.
