@@ -13,7 +13,7 @@ const isWatch = process.argv.includes('--watch');
 if (isProduction && !isWatch) {
     fs.rmSync('dist', { recursive: true, force: true });
 }
-// `--metafile` writes dist/webview.meta.json and dist/extension.meta.json.
+// `--metafile` writes one dist/<entry>.meta.json per shipped bundle.
 // The webview one drives bundle analysis (see e2e/perf-bundle.mjs); both drive
 // the third-party attribution generator (scripts/generate-third-party-notices.mjs),
 // which needs the union of what BOTH bundles inline to know what actually ships.
@@ -162,19 +162,47 @@ const webviewBuild = {
     metafile: withMetafile,
 };
 
+// The rendered-diff panel (MAR-55): its own page, and deliberately its own
+// build rather than a fourth entry of webviewBuild. Sharing that build would
+// mean sharing its `splitting: true`, which redistributes common modules into
+// chunks and so changes how many resources the EDITOR fetches at launch - the
+// one number this repository gates on every PR. A separate pass keeps
+// dist/webview.js and its chunk graph identical whether or not this panel
+// exists; the cost is that the ProseMirror and markdown presets it
+// needs are its own copy, paid only by a panel the user opened.
+const diffViewBuild = {
+    // A shipped bundle with no metafile is invisible to the third-party
+    // notices generator, whose whole claim is that it reports what the
+    // bundles inline. Same reason perf-bundle reads metafiles rather than
+    // the dependency tree.
+    metafile: withMetafile,
+    ...commonOptions,
+    entryPoints: { diffView: 'webview/diffView/index.ts' },
+    outdir: 'dist',
+    platform: 'browser',
+    target: 'es2020',
+    format: 'esm',
+    splitting: false,
+    alias: {
+        '@': path.resolve('./webview'),
+    },
+};
+
 copyHarperWasm();
 
 if (isWatch) {
-    const [ctx1, ctx2] = await Promise.all([
+    const [ctx1, ctx2, ctx3] = await Promise.all([
         esbuild.context(extensionBuild),
         esbuild.context(webviewBuild),
+        esbuild.context(diffViewBuild),
     ]);
-    await Promise.all([ctx1.watch(), ctx2.watch()]);
+    await Promise.all([ctx1.watch(), ctx2.watch(), ctx3.watch()]);
     console.log('Watching for changes...');
 } else {
-    const [extensionResult, webviewResult] = await Promise.all([
+    const [extensionResult, webviewResult, diffViewResult] = await Promise.all([
         esbuild.build(extensionBuild),
         esbuild.build(webviewBuild),
+        esbuild.build(diffViewBuild),
     ]);
     if (withMetafile && webviewResult.metafile) {
         fs.writeFileSync(
@@ -186,6 +214,12 @@ if (isWatch) {
         fs.writeFileSync(
             path.resolve('./dist/extension.meta.json'),
             JSON.stringify(extensionResult.metafile),
+        );
+    }
+    if (withMetafile && diffViewResult.metafile) {
+        fs.writeFileSync(
+            path.resolve('./dist/diffView.meta.json'),
+            JSON.stringify(diffViewResult.metafile),
         );
     }
 }

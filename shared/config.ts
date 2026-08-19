@@ -80,6 +80,16 @@ export interface BirtaConfig extends ProofreadConfig {
      * block's own gutter. See webview/components/lineNumbers/.
      */
     lineNumbers: boolean;
+    /**
+     * Hold the line being edited at a fixed vertical anchor, so the document
+     * scrolls under a stationary caret (birta.typewriterMode). Default OFF.
+     *
+     * Purely a viewport behavior: it changes where a scroll settles and touches
+     * neither the document, the serializer, nor rendering. See
+     * webview/plugins/typewriterScroll.ts, which implements it as the extreme
+     * case of the caret-scroll bands rather than as a scroller of its own.
+     */
+    typewriterMode: boolean;
     /** Raw `mermaid.theme` value; normalize with normalizeMermaidThemeMode. */
     mermaidTheme: string;
     /** Raw `plantuml.theme` value; normalize with normalizePlantUmlThemeMode. */
@@ -336,6 +346,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     codeBlockWordWrap: "codeBlockWordWrap",
     blockHandles: "blockHandles",
     lineNumbers: "lineNumbers",
+    typewriterMode: "typewriterMode",
     mermaidTheme: "mermaid.theme",
     plantumlTheme: "plantuml.theme",
     contentWidth: "contentWidth",
@@ -421,6 +432,7 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     codeBlockWordWrap: "inherit",
     blockHandles: DEFAULT_BLOCK_HANDLES_MODE,
     lineNumbers: false,
+    typewriterMode: false,
     mermaidTheme: DEFAULT_MERMAID_THEME_MODE,
     plantumlTheme: DEFAULT_PLANTUML_THEME_MODE,
     contentWidth: DEFAULT_CONTENT_WIDTH_MODE,

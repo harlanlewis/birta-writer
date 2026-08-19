@@ -102,6 +102,63 @@ describe("agent run marker", () => {
         expect(markers()[0].closest("p")?.textContent).toBe("Second paragraph.");
     });
 
+    // The pill stands in the block marker's own column, so the block it is
+    // anchored to has to stand its gutter down for the run's duration or a
+    // grab handle appears over it on hover. The class is how that reaches the
+    // stylesheet, and WHICH node carries it is the part worth pinning: the
+    // gutter belongs to the innermost block, and the CSS suppresses a direct
+    // child, so marking an outer ancestor would silently miss every nested
+    // case while passing every top-level one.
+    it("a running run should mark its own block as the pill's host", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id);
+
+        const hosts = [...document.querySelectorAll(".agent-pending-host")];
+        expect(hosts).toHaveLength(1);
+        expect(hosts[0].textContent).toBe("Second paragraph.");
+        // The marker is inside the block that carries the class. That is all
+        // this file can say: the editor here composes no gutter plugin, so
+        // there is no `.heading-fold-gutter` to stand in the right or wrong
+        // relationship to. Whether the stylesheet's rule actually reaches a
+        // gutter from this class is a DOM question with a different answer per
+        // block type, and it is answered in e2e/slashMenu against a real one.
+        expect(hosts[0].contains(markers()[0])).toBe(true);
+
+        settleAgentRun(v, id);
+        expect(document.querySelectorAll(".agent-pending-host")).toHaveLength(0);
+    });
+
+    it("a run inside a nested block should mark that block, not its container", async () => {
+        await editor.destroy();
+        // A nested list, because it is the construct where the inner block and
+        // its container hold visibly different text. The first draft of this
+        // used a callout and did not discriminate: marking the container
+        // passed it too, which a mutation run caught and reading the tree
+        // explained. The assertion below is written so that cannot recur.
+        editor = await makeEditor("- Item\n  - Child line.\n");
+        v = view(editor);
+
+        let inner = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (inner < 0 && node.isTextblock && node.textContent === "Child line.") { inner = pos + 1; }
+            return true;
+        });
+        expect(inner, "the fixture has no nested paragraph to test with").toBeGreaterThan(0);
+        // The container really does read differently from the inner block, or
+        // the two assertions below could not tell them apart.
+        expect(v.state.doc.firstChild?.textContent).toBe("ItemChild line.");
+
+        placeCaret(v, inner);
+        markAgentRunning(v, beginAgentRun(v));
+
+        const hosts = [...document.querySelectorAll(".agent-pending-host")];
+        expect(hosts).toHaveLength(1);
+        expect(hosts[0].textContent).toBe("Child line.");
+        expect(hosts[0].textContent).not.toBe("ItemChild line.");
+        expect(hosts[0].querySelector(".agent-pending")).not.toBeNull();
+    });
+
     it("the marker should ride its block as the user types above it, and settle away", () => {
         placeCaret(v, endOfBlock(v, 1));
         const id = beginAgentRun(v);

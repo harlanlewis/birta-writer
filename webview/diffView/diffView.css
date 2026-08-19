@@ -1,0 +1,157 @@
+/*
+ * webview/diffView/diffView.css - the rendered-diff panel's skin (MAR-55).
+ *
+ * chrome.css comes first, exactly as it does in the editor entry: the panel's
+ * buttons compose `.ui-btn`, and the radius and type scales it defines are
+ * where every measurement below comes from. This page is a separate bundle, so
+ * it links the primitives itself rather than inheriting them.
+ *
+ * Strikethrough on removed content is the delete-this vocabulary in
+ * docs/DESIGN_PRINCIPLES.md used literally rather than as advice: in a diff the
+ * text HAS been cut, so the mark states what happened instead of suggesting it.
+ * The hue is the theme's own diff colour, so a reader who has tuned their diff
+ * editor sees the same two colours here.
+ */
+@import "../ui/chrome.css";
+
+body {
+    margin: 0;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family);
+}
+
+#diff-root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.diff-header {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-5);
+    padding: var(--ui-space-4) var(--ui-space-6);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    flex: none;
+}
+
+.diff-title {
+    font-size: var(--ui-fs-l);
+    font-weight: 600;
+}
+
+.diff-summary {
+    font-size: var(--ui-fs-m);
+    color: var(--vscode-descriptionForeground);
+}
+
+.diff-position {
+    font-size: var(--ui-fs-m);
+    color: var(--vscode-descriptionForeground);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+}
+
+.diff-nav {
+    display: flex;
+    gap: var(--ui-space-2);
+    margin-left: var(--ui-space-4);
+}
+
+.diff-nav-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+
+.diff-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--ui-space-6);
+}
+
+.diff-doc {
+    max-width: 46em;
+    margin: 0 auto;
+    line-height: 1.6;
+
+    & .ProseMirror:focus {
+        outline: none;
+    }
+
+    & pre {
+        background: var(--vscode-textCodeBlock-background);
+        border-radius: var(--ui-radius-m);
+        padding: var(--ui-space-4);
+        overflow-x: auto;
+        font-family: var(--vscode-editor-font-family);
+    }
+
+    & code {
+        font-family: var(--vscode-editor-font-family);
+    }
+
+    & blockquote {
+        border-left: 2px solid var(--vscode-textBlockQuote-border);
+        background: var(--vscode-textBlockQuote-background);
+        margin-left: 0;
+        padding-left: var(--ui-space-5);
+    }
+
+    & table {
+        border-collapse: collapse;
+    }
+
+    & th,
+    & td {
+        border: 1px solid var(--vscode-panel-border);
+        padding: var(--ui-space-2) var(--ui-space-4);
+    }
+
+    & a {
+        color: var(--vscode-textLink-foreground);
+    }
+}
+
+.diff-notice {
+    color: var(--vscode-descriptionForeground);
+    font-size: var(--ui-fs-l);
+    text-align: center;
+    margin-top: var(--ui-space-6);
+}
+
+/* ── The diff itself ────────────────────────────────────────────────────── */
+
+.diff-ins {
+    background: var(--vscode-diffEditor-insertedTextBackground);
+    border-radius: var(--ui-radius-s);
+}
+
+.diff-del {
+    background: var(--vscode-diffEditor-removedTextBackground);
+    border-radius: var(--ui-radius-s);
+    text-decoration: line-through;
+}
+
+.diff-del-block {
+    background: var(--vscode-diffEditor-removedLineBackground);
+    border-left: 2px solid var(--vscode-diffEditor-removedTextBackground);
+    border-radius: var(--ui-radius-s);
+    padding: var(--ui-space-1) var(--ui-space-4);
+    text-decoration: line-through;
+}
+
+/* Placeholders for the two nodes this page renders as text rather than as
+   themselves: an image it will not fetch, and HTML it will not run. */
+.diff-image-ref,
+.diff-html-source {
+    font-family: var(--vscode-editor-font-family);
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-textCodeBlock-background);
+    border-radius: var(--ui-radius-s);
+    padding: 0 var(--ui-space-2);
+}

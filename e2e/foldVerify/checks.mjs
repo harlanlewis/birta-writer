@@ -147,31 +147,95 @@ export async function run({ page, check, baseUrl }) {
     check("clicking the gutter chevron re-collapses the callout", recollapsed);
     await shot(page, "02-callout-recollapsed");
 
-    // ── 2. Heading fold: section hides, `…` at line end, doc untouched ──
+    // ── 2. Heading fold: section hides, the chevron says so, doc untouched ──
+    //
+    // A collapsed heading carries no `…` chip: the chevron is the whole signal,
+    // and it reverses out of the theme's button ink so it can be. What is
+    // asserted here is therefore the chevron's, not a chip's - that it is on
+    // the heading's own line, and that it is actually FILLED rather than
+    // merely present, since the resting chevron is transparent and a check for
+    // presence alone would pass on the treatment this replaced.
     const chev = await clickHeadingChevron(page, "Section A");
     check("hovering a heading reveals its fold chevron", chev !== null, JSON.stringify(chev));
+    // Park the pointer off the heading before measuring. Clicking the chevron
+    // leaves the mouse on it, so the ground read back would be the hover one
+    // and the resting treatment - the thing a reader actually sees - would go
+    // unchecked. A collapsed chevron is resident without hover, so there is
+    // nothing to lose by stepping away.
+    await page.mouse.move(4, 4);
+    await page.waitForTimeout(120);
     const sectionA = await page.evaluate(() => {
         const h = [...document.querySelectorAll(".ProseMirror > h1")]
             .find((e) => e.textContent.includes("Section A"));
         const hiddenPs = [...document.querySelectorAll(".ProseMirror > *")]
             .filter((el) => /alpha one|alpha nested|Sub A1/.test(el.textContent) && el !== h);
-        const ellipsis = h.querySelector(".fold-ellipsis");
+        const toggle = h.querySelector(".heading-fold-toggle");
         const hr = h.getBoundingClientRect();
-        const er = ellipsis?.getBoundingClientRect() ?? null;
+        const tr = toggle?.getBoundingClientRect() ?? null;
+        const cs = toggle && getComputedStyle(toggle);
         return {
             collapsed: h.classList.contains("heading-fold-heading--collapsed"),
             allHidden: hiddenPs.length >= 3 &&
                 hiddenPs.every((el) => getComputedStyle(el).display === "none"),
-            ellipsis: !!ellipsis,
-            ellipsisInLine: er ? er.top >= hr.top - 2 && er.bottom <= hr.bottom + 2 : false,
-            ariaLabel: ellipsis?.getAttribute("aria-label") ?? null,
+            chip: !!h.querySelector(".fold-ellipsis"),
+            toggle: !!toggle,
+            toggleInLine: tr ? tr.top >= hr.top - 2 && tr.bottom <= hr.bottom + 2 : false,
+            toggleOpacity: cs ? Number(cs.opacity) : 0,
+            toggleBg: cs ? cs.backgroundColor : null,
+            // What "muted" is asserted as: a translucent tint rather than a
+            // solid fill, and specifically NOT the button ground this was
+            // first written with. Comparing against a chip was tried and is
+            // wrong - the only chip on the page at this moment belongs to a
+            // callout, and callout.css retints it, so the two disagree by a
+            // couple of points for a reason that has nothing to do with here.
+            toggleAlpha: (() => {
+                const m = /rgba?\(([^)]+)\)/.exec(cs?.backgroundColor ?? "");
+                if (!m) { return null; }
+                const parts = m[1].split(",").map((n) => parseFloat(n));
+                return parts.length === 4 ? parts[3] : 1;
+            })(),
+            buttonBg: (() => {
+                const probe = document.createElement("div");
+                probe.style.backgroundColor = "var(--vscode-button-background)";
+                document.body.appendChild(probe);
+                const v = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return v;
+            })(),
+            toggleMidY: tr ? tr.top + tr.height / 2 : null,
+            gutterMidY: (() => {
+                const g = h.querySelector(".heading-fold-gutter")?.getBoundingClientRect();
+                return g && g.height > 0 ? g.top + g.height / 2 : null;
+            })(),
+            ariaLabel: toggle?.getAttribute("aria-label") ?? null,
         };
     });
     check("collapsing a heading hides its whole section (incl. nested H2)",
         sectionA.collapsed && sectionA.allHidden, JSON.stringify(sectionA));
-    check("… chip sits on the collapsed heading's own line",
-        sectionA.ellipsis && sectionA.ellipsisInLine,
-        `aria=${sectionA.ariaLabel}`);
+    check("the collapsed heading carries no … chip",
+        !sectionA.chip, JSON.stringify(sectionA));
+    check("its chevron is resident on the heading's own line",
+        sectionA.toggle && sectionA.toggleInLine && sectionA.toggleOpacity === 1,
+        JSON.stringify(sectionA));
+    // Transparent is what the RESTING chevron is, so a ground is the whole
+    // point of the change and a presence check alone would not notice it
+    // going. It must also stay QUIET: collapsing is the reader saying this
+    // section is not interesting now, and the mark that says so must not
+    // shout. The editor's own folded-range tint is that ground, and it is the
+    // same ink the `…` chip uses, so the two collapsed marks agree.
+    check("the collapsed chevron takes a ground rather than sitting transparent",
+        sectionA.toggleBg !== null && !/^rgba\(0, 0, 0, 0\)$|^transparent$/.test(sectionA.toggleBg),
+        `background ${sectionA.toggleBg}`);
+    check("and that ground is a muted tint, not a loud fill",
+        sectionA.toggleAlpha !== null && sectionA.toggleAlpha < 0.5 &&
+        sectionA.toggleBg !== sectionA.buttonBg,
+        `chevron ${sectionA.toggleBg} (alpha ${sectionA.toggleAlpha}), button ground ${sectionA.buttonBg}`);
+    // Vertically it sits where a grab handle sits: both centre in the gutter
+    // band, and they are different heights, so this is centre to centre.
+    check("and shares the gutter band's vertical centre, as the badge does",
+        sectionA.toggleMidY !== null && sectionA.gutterMidY !== null &&
+        Math.abs(sectionA.toggleMidY - sectionA.gutterMidY) <= 1.5,
+        `chevron ${sectionA.toggleMidY} vs gutter ${sectionA.gutterMidY}`);
     await shot(page, "03-heading-collapsed");
 
     // Toggle it back and forth once more, then assert ZERO update traffic
@@ -190,22 +254,26 @@ export async function run({ page, check, baseUrl }) {
     const lastSection = await page.evaluate(() => {
         const h = [...document.querySelectorAll(".ProseMirror > h1")]
             .find((e) => e.textContent.includes("Last Section"));
-        const ellipsis = h?.querySelector(".fold-ellipsis");
-        if (!h || !ellipsis) return null;
+        const toggle = h?.querySelector(".heading-fold-toggle");
+        if (!h || !toggle) return null;
         const hr = h.getBoundingClientRect();
-        const er = ellipsis.getBoundingClientRect();
+        const er = toggle.getBoundingClientRect();
         const hidden = [...document.querySelectorAll(".ProseMirror > p")]
             .filter((el) => /last content/.test(el.textContent));
         return {
             collapsed: h.classList.contains("heading-fold-heading--collapsed"),
             inLine: er.top >= hr.top - 2 && er.bottom <= hr.bottom + 2,
-            rightOfText: er.left > hr.left,
+            // The gutter sits in the margin, LEFT of the text, which is where
+            // the chip did not: it trailed the text. The rewritten assertion
+            // says where the chevron actually belongs rather than carrying the
+            // chip's geometry forward and quietly inverting.
+            inGutter: er.left < hr.left,
             hidden: hidden.length === 2 && hidden.every((el) => getComputedStyle(el).display === "none"),
         };
     });
-    check("last-node heading: collapse works and … stays on the heading line",
+    check("last-node heading: collapse works and its chevron stays on that line",
         lastSection !== null && lastSection.collapsed && lastSection.inLine &&
-        lastSection.rightOfText && lastSection.hidden,
+        lastSection.inGutter && lastSection.hidden,
         JSON.stringify(lastSection));
     await shot(page, "04-last-heading-collapsed");
     await clickHeadingChevron(page, "Last Section"); // expand again
@@ -373,26 +441,41 @@ export async function run({ page, check, baseUrl }) {
     check("no duplicate chevrons; chevrons never overlap gutter markers",
         overlaps.length === 0, overlaps.join(" | "));
 
-    // "never": no chevrons anywhere; existing folds keep their `…`.
+    // "never" hides the fold AFFORDANCE, not the fold's own state.
+    //
+    // This distinction became load-bearing when the collapsed heading stopped
+    // trailing a `…` chip. The chip used to be the fallback that kept a folded
+    // section reachable with every chevron hidden; with it gone, hiding the
+    // collapsed chevron too would leave a section whose body is hidden with
+    // nothing on screen saying so and no way to get it back. So: every
+    // EXPANDED chevron goes, every COLLAPSED one stays.
     await page.evaluate(() => window.postMessage(
         { type: "setFoldingControls", controls: "never", enabled: true }, "*"));
     await page.waitForTimeout(200);
     const neverMode = await page.evaluate(() => {
+        const shown = (el) => getComputedStyle(el).display !== "none";
+        const collapsedToggle = (el) =>
+            el.closest(".heading-fold-heading--collapsed, .heading-fold-gutter--collapsed") !== null;
         const toggles = [...document.querySelectorAll(".milkdown .heading-fold-toggle")];
         const collapsedHeading = [...document.querySelectorAll(".ProseMirror > h1")]
             .find((e) => e.textContent.includes("Section A"));
-        const chip = collapsedHeading?.querySelector(".fold-ellipsis");
         return {
             bodyClass: document.body.className,
-            allChevronsHidden: toggles.every((el) => getComputedStyle(el).display === "none"),
+            expandedChevronsHidden: toggles.filter((el) => !collapsedToggle(el)).every((el) => !shown(el)),
+            collapsedChevrons: toggles.filter(collapsedToggle).length,
+            collapsedChevronsShown: toggles.filter(collapsedToggle).every(shown),
             foldKept: collapsedHeading?.classList.contains("heading-fold-heading--collapsed") ?? false,
-            chipStillVisible: chip ? getComputedStyle(chip).display !== "none" : false,
+            // The chip is gone from headings entirely; if one comes back this
+            // check should be reconsidered rather than quietly still passing.
+            headingChips: document.querySelectorAll(".ProseMirror > h1 .fold-ellipsis, .ProseMirror > h2 .fold-ellipsis").length,
         };
     });
-    check("fold-controls-never: chevrons hidden, existing folds keep their …",
-        neverMode.bodyClass.includes("fold-controls-never") && neverMode.allChevronsHidden &&
-        neverMode.foldKept && neverMode.chipStillVisible,
+    check("fold-controls-never: expanded chevrons hidden, collapsed ones stay",
+        neverMode.bodyClass.includes("fold-controls-never") && neverMode.expandedChevronsHidden &&
+        neverMode.foldKept && neverMode.collapsedChevrons > 0 && neverMode.collapsedChevronsShown,
         JSON.stringify(neverMode));
+    check("a collapsed heading no longer trails a … chip",
+        neverMode.headingChips === 0, `${neverMode.headingChips} chips`);
 
     // folding disabled: folds expand, zero fold chrome.
     await page.evaluate(() => window.postMessage(
@@ -403,7 +486,6 @@ export async function run({ page, check, baseUrl }) {
         chevrons: document.querySelectorAll(".milkdown .heading-fold-toggle").length,
         hiddenBlocks: document.querySelectorAll(".milkdown .heading-fold-hidden").length,
         collapsedAnything: document.querySelectorAll(".milkdown .collapsed, .milkdown .heading-fold-heading--collapsed").length,
-        headingEllipses: document.querySelectorAll(".ProseMirror h1 .fold-ellipsis, .ProseMirror h2 .fold-ellipsis").length,
         alphaVisible: [...document.querySelectorAll(".ProseMirror > p")]
             .filter((el) => /alpha/.test(el.textContent))
             .every((el) => el.getBoundingClientRect().height > 0),
@@ -418,7 +500,7 @@ export async function run({ page, check, baseUrl }) {
     check("folding-disabled: existing folds expand and zero fold chrome remains",
         disabledMode.bodyClass.includes("folding-disabled") && disabledMode.chevrons === 0 &&
         disabledMode.hiddenBlocks === 0 && disabledMode.collapsedAnything === 0 &&
-        disabledMode.headingEllipses === 0 && disabledMode.alphaVisible && disabledMode.noteBodyVisible,
+        disabledMode.alphaVisible && disabledMode.noteBodyVisible,
         JSON.stringify(disabledMode));
     await shot(page, "06-folding-disabled");
 

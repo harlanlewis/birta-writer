@@ -38,6 +38,10 @@
 
 - `/ai` says what it is about to run, before you type the request. Once Space commits the pill, a quiet line at the caret names where the request goes: the harness (`claude`, `codex`), and the model when `birta.agent.command` names one with `--model`, so `claude -p {prompt} --permission-mode acceptEdits --model haiku --effort low` reads as "edit with claude (Haiku Low)", with what will run in bold and a note that Enter opens the composer. A command set to run in a terminal says so, the Chat view and clipboard routes name themselves, and before you have chosen a route at all it says Enter will ask. It disappears at the first character you type and is never part of your file. Nothing is guessed: a command with no `--model` names the harness alone, because which model an alias resolves to is decided inside the CLI where the editor cannot see it.
 
+- Compare a Markdown file with its last committed version as a rendering rather than as source. `Birta Writer: Compare with HEAD` opens a panel beside the document showing it rendered: a word edited mid-sentence is marked as that word rather than the whole line, a removed paragraph is shown where it was, and `j`/`k` or the header arrows step between changes against a count. Reach it from the command palette, the editor title bar, or by right-clicking a changed file in Source Control. It follows the open buffer rather than the file on disk, so unsaved edits are part of what you review, and it re-reads when you come back to the panel after committing. VS Code's own diff is unchanged and is still the right tool when you want the source. Constructs the editor draws with chrome of their own are shown plainly here: images as their path, inline HTML and math as their source, and code blocks and diagrams as code.
+
+- Typewriter mode holds the line you are editing at a fixed height on screen and scrolls the document under it, instead of letting the active line drift toward the bottom of the pane. `birta.typewriterMode`, off by default, with `Birta Writer: Toggle Typewriter Mode` to flip it. It moves the view for typing, keyboard navigation and find-in-page: clicking somewhere else leaves the view where it is, and a selection you are extending scrolls the ordinary way rather than recentring on every keystroke. Nothing about the file or how it renders changes.
+
 ### Changed
 
 - Birta Writer Jot's Settings is now three panes with a tab bar, in the shape macOS settings windows have, and it scrolls rather than growing past the screen. General holds login, floating, the hotkey, the blank-note choice and the network opt-in; Editor holds autosave and the toolbar and file-path switches; Advanced holds the file paths and the agent command, so the two panes anyone opens are short. Most rows lost their explanatory sentence, which was restating the label.
@@ -68,6 +72,10 @@
 
 - The `birta.agent.command` setting now says that the model and reasoning effort are yours to choose there, as your harness's own flags on the same line. Adding `--model haiku --effort low` gives `/ai` a smaller and faster model than your interactive sessions use and changes nothing about them, which is the point: an editing request on a document is a different shape of task from the coding work the same tool does elsewhere. The first-use route picker says the same thing.
 
+- A collapsed heading no longer trails a `...` chip. Its fold chevron carries the state instead, taking the editor's own folded-range tint while collapsed so it cannot be overlooked without drawing attention to a section you have just said you are done with. One consequence is worth knowing if you set `editor.showFoldingControls` to `never`: that setting now hides the chevrons of expanded sections only, and a collapsed section keeps its chevron, because the chip it used to fall back on is gone and without either a folded section would have nothing on screen saying so. Collapsed list items, quotes, code blocks, tables and callouts keep their chip, which for several of them is the only mark there is.
+
+- Birta Writer Jot's Settings window is titled for the app rather than for the pane you are on, so a window from an app with no Dock icon says which app it belongs to.
+
 ### Fixed
 
 - Hiding Birta Writer Jot's formatting toolbar left the search and settings controls stranded in the middle of the bar instead of at its right edge.
@@ -83,6 +91,8 @@
 - In Birta Writer Jot, the minus key could not be used in the summon hotkey. Typing `cmd+-` into the old Preferences hotkey field was refused as naming no key, and the new Settings recorder registered nothing when that key was pressed, because the parser reads `-` as a separator between the parts of a combination and so never saw it as the key itself. Every other key was unaffected.
 
 - In Birta Writer Jot, pressing Return at the end of a block left the caret in the block above, so the next thing typed joined the previous line instead of starting the new one. Splitting a block from the middle was unaffected. The editor inside VS Code never had this: it renders in a different engine, which tolerated the arrangement that caused it.
+
+- Birta Writer Jot no longer rewrites a document you pointed it at when you changed nothing. Opening a file through Settings, summoning it, typing nothing and dismissing used to replace it: a new inode, a fresh timestamp, and permissions narrowed to 0600 whatever they had been, which also turned a symlink into a regular file. Jot now writes a file you already had the way an edit does, keeping its permissions, writing through a symlink to the file it points at, and not writing at all when the bytes on disk already match what it would write. A file Jot creates is still private by default. One part of this it cannot fix: a real edit still gives the file a new inode, so a hard link to it is still broken, which is the price of replacing a file atomically rather than writing over it in place.
 
 ---
 

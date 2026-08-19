@@ -4,18 +4,22 @@
  * stop square (its one verb: click to stop the run), and an error pill with
  * an exclamation once it fails. Chrome, not content: it sits in the margin on
  * the same geometry contract as the block gutter (see .heading-fold-gutter
- * in style.css), one step further into the margin so it never covers the
- * block's own marker. Filled rather than outlined, in the theme's button and
- * error inks, so it reads at a glance on any theme; the pulse is a gentle
- * breathe of the whole pill, never below a legible opacity.
+ * in style.css), and in the block marker's own column: a block with a run in
+ * flight offers no grab handle, so the pill stands in that slot rather than
+ * beside it. Filled rather than outlined, in the theme's button and error
+ * inks, so it reads at a glance on any theme; the pulse is a gentle breathe
+ * of the whole pill, never below a legible opacity.
  */
 .milkdown .editor .agent-pending {
     position: absolute;
-    /* Inside the gutter box, left of the fold chevron slot: a heading's
-       chevron sits just inside the marker column and is the one clickable
-       thing in that gutter, so the pill stops short of it. The box is right-
-       aligned against the text and this is as far left as it reaches. */
-    left: calc(var(--gutter-left, var(--gutter-column)) - 42px);
+    /* The block's own marker slot - the grab handle's place, right-aligned
+       against the text, exactly where .heading-fold-gutter puts its rightmost
+       item. A run has no grab handle (the marker is suppressed for the block
+       it is anchored to, see the rule at the end of this file), so the pill is
+       not sharing that slot, it is standing in it. It used to sit 42px further
+       into the margin to clear both the marker and the chevron, which put it
+       outside the column every other piece of block chrome lines up on. */
+    left: var(--gutter-left, var(--gutter-column));
     top: var(--gutter-top, 0px);
     height: var(--gutter-height, 1.5em);
     display: inline-flex;
@@ -70,16 +74,6 @@
     border: 1px solid var(--vscode-inputValidation-errorBorder);
 }
 
-/* A narrow pane pulls the gutter column in (style.css sets --gutter-column
-   at this width) and the box no longer has room left of the chevron; the
-   pill then shares the chevron's slot for the run's duration rather than
-   sit past the pane's edge. */
-@media (max-width: 720px) {
-    .milkdown .editor .agent-pending {
-        left: calc(var(--gutter-left, var(--gutter-column)) - 22px);
-    }
-}
-
 @keyframes agent-pending-breathe {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
@@ -90,3 +84,46 @@
 @media (prefers-reduced-motion: reduce) {
     .milkdown .editor .agent-pending__glyph { animation: none; }
 }
+
+/* No grab handle during a run. The pill stands in the marker's slot rather
+   than beside it, so the marker must not appear there on hover and draw over
+   it. This is the one place the run marker reaches outside itself, and it is
+   why it can have that column: the block is announcing a run instead of
+   offering its handle, for the run's duration only.
+
+   A COLLAPSED chevron is exempt, and that exemption is load-bearing rather
+   than tidy. Since the heading's `…` chip was removed, that chevron is the
+   only thing saying a section is folded; hiding it for the duration of a run
+   would leave a collapsed heading with its body gone, nothing on screen
+   saying so, and nothing to click. Reachable: `/ai` is not gated to
+   paragraphs, so a run can be anchored to a heading, and the heading can be
+   folded from the keyboard while the run is live. Both spellings of the
+   collapsed state are named because two different builders stamp it.
+
+   The descendant form is for blocks whose gutter a NodeView buries rather
+   than leaving as a direct child (table, code block, callout); the reveal
+   rules in style.css carry the same pair for the same reason. */
+/* Reached from the GUTTER'S OWNER rather than from the marked block, because
+   they are not always the same element. A list item's first line has no gutter
+   of its own - the item's marker is its handle - so the class lands on the
+   inner paragraph while the gutter hangs off the `<li>`, and a rule anchored on
+   the marked block matches nothing at all. e2e/agentGutter drives exactly that
+   case; it was passing on the heading, which is the one shape where the two
+   coincide.
+
+   `:not(:has(.block-gutter-host .agent-pending))` narrows this to the NEAREST
+   owner, so a callout holding a paragraph with a run does not also lose its own
+   handle. It is the same nearest-host idiom the block-hover reveal rules in
+   style.css use. */
+.milkdown .editor .block-gutter-host:has(.agent-pending):not(:has(.block-gutter-host .agent-pending))
+    > .heading-fold-gutter .heading-fold-marker,
+.milkdown .editor .heading-fold-heading:has(.agent-pending)
+    > .heading-fold-gutter .heading-fold-marker,
+.milkdown .editor .block-gutter-host:has(.agent-pending):not(:has(.block-gutter-host .agent-pending))
+    > .heading-fold-gutter:not(.heading-fold-gutter--collapsed) .heading-fold-toggle,
+.milkdown .editor .heading-fold-heading:not(.heading-fold-heading--collapsed):has(.agent-pending)
+    > .heading-fold-gutter .heading-fold-toggle {
+    display: none;
+}
+
+

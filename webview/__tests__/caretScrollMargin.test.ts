@@ -12,6 +12,7 @@ import {
     measureStickyHeadingHeight,
     syncScrollPaddingVars,
 } from "../plugins/caretScrollMargin";
+import { setTypewriterMode } from "../plugins/typewriterScroll";
 
 function mountRect(element: HTMLElement, rect: Partial<DOMRect>): void {
     element.getBoundingClientRect = () =>
@@ -202,5 +203,102 @@ describe("caretScrollMargin plugin wiring", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+describe("caretScrollMargin under typewriter mode", () => {
+    /**
+     * A stand-in for the live view supplying only what the insets read: the
+     * selection's emptiness and head, and the caret rect at that head. Anything
+     * else the plugin reached for would surface here as a missing property
+     * rather than as a silently wrong number.
+     */
+    function fakeView(options: { caretHeight: number; empty?: boolean; throws?: boolean }): unknown {
+        return {
+            state: { selection: { empty: options.empty !== false, head: 1 } },
+            coordsAtPos: () => {
+                if (options.throws) {
+                    throw new RangeError("no position found");
+                }
+                return { top: 0, bottom: options.caretHeight, left: 0, right: 1 };
+            },
+        };
+    }
+
+    function mountView(view: unknown): { destroy?: () => void } | undefined {
+        const spec = createCaretScrollMarginPlugin().spec as {
+            view?: (v: unknown) => { destroy?: () => void };
+        };
+        mounted = spec.view?.(view);
+        return mounted;
+    }
+
+    /** The ordinary scrolloff top inset, which every fallback case must return. */
+    function standardTop(): number {
+        return Math.round(40 + 36 + bodyLineHeightPx());
+    }
+
+    // The plugin holds the live view in a module singleton, so a view mounted
+    // by one test is still mounted for the next one. Without this teardown the
+    // "no view mounted" case below runs with the PREVIOUS test's view attached
+    // and takes the non-empty-selection branch instead, which means deleting
+    // the `!view` guard it exists to pin leaves it green.
+    let mounted: { destroy?: () => void } | undefined;
+
+    beforeEach(() => {
+        document.body.innerHTML = "";
+        setTypewriterMode(false);
+        addTopbar(40);
+        addSticky(36);
+    });
+
+    afterEach(() => {
+        mounted?.destroy?.();
+        mounted = undefined;
+        setTypewriterMode(false);
+    });
+
+    it("the mode off with a view mounted should return the ordinary scrolloff insets", () => {
+        mountView(fakeView({ caretHeight: 20 }));
+        expect(computeInsets().top).toBe(standardTop());
+    });
+
+    it("the mode on should center the caret instead of reserving the header stack", () => {
+        mountView(fakeView({ caretHeight: 20 }));
+        setTypewriterMode(true);
+        const viewport = document.documentElement.clientHeight || window.innerHeight;
+        const { top, bottom } = computeInsets();
+        expect(top).toBe(Math.floor((viewport - 20) / 2));
+        expect(viewport - top - bottom).toBeGreaterThanOrEqual(20);
+        // If this equalled the ordinary stack the branch never ran and the rest
+        // of the assertions would be measuring the wrong code path.
+        expect(top).not.toBe(standardTop());
+    });
+
+    it("the mode on with a selection being extended should fall back rather than chase the head", () => {
+        mountView(fakeView({ caretHeight: 20, empty: false }));
+        setTypewriterMode(true);
+        expect(computeInsets().top).toBe(standardTop());
+    });
+
+    it("the mode on with no view mounted should fall back rather than throw", () => {
+        setTypewriterMode(true);
+        expect(computeInsets().top).toBe(standardTop());
+    });
+
+    it("the mode on with an unlaid-out caret position should fall back rather than throw", () => {
+        mountView(fakeView({ caretHeight: 20, throws: true }));
+        setTypewriterMode(true);
+        expect(() => computeInsets()).not.toThrow();
+        expect(computeInsets().top).toBe(standardTop());
+    });
+
+    it("destroying the plugin view should release the view the insets read", () => {
+        const pluginView = mountView(fakeView({ caretHeight: 20 }));
+        setTypewriterMode(true);
+        const centered = computeInsets().top;
+        expect(centered).not.toBe(standardTop());
+        pluginView?.destroy?.();
+        expect(computeInsets().top).toBe(standardTop());
     });
 });

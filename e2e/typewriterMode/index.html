@@ -1,0 +1,73 @@
+<!doctype html>
+<!-- e2e harness page for typewriter mode (birta.typewriterMode). Mirrors the
+     provider template (src/MarkdownEditorProvider.ts) with acquireVsCodeApi
+     stubbed. `?typewriter=1` boots with the mode ON; without it the page is the
+     control, and every check that asserts centering has a partner asserting the
+     control does NOT centre.
+
+     The document is one-line paragraphs on purpose: a block's rect is then the
+     caret's LINE, which is what the anchor is measured against. A wrapped
+     paragraph would make the two different and the measurement would quietly
+     stop meaning what it says. The mid-document H1 is the taller-caret case,
+     where a band sized for body text would oscillate. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-border: #454545;
+    --vscode-widget-border: rgba(128, 128, 128, 0.25);
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-activeSelectionBackground: #094771;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-textLink-foreground: #3794ff;
+    --vscode-editor-font-family: monospace;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-textPreformat-foreground: #d7ba7d;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  const typewriter = new URLSearchParams(location.search).get("typewriter") === "1";
+  window.__i18n = {
+    translations: {},
+    isMac: true,
+    toolbar: { placements: {}, order: [] },
+    typewriterMode: typewriter,
+  };
+  window.__posted = [];
+  const lines = [];
+  for (let i = 1; i <= 90; i++) {
+    // One H1 well inside the document: the taller caret rect, reached by the
+    // same ArrowDown walk as everything around it.
+    lines.push(i === 45 ? `# Heading at ${i}` : `paragraph ${i}.`);
+  }
+  const body = lines.join("\n\n") + "\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: `# Typewriter\n\n${body}`, syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

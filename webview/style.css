@@ -1338,6 +1338,41 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             opacity: 0.75;
         }
 
+        /* A COLLAPSED chevron is state, not chrome, and it is now the only
+           thing saying a section is folded: the heading's trailing `…` chip
+           was removed because beside heading type it read as content. So it
+           takes a ground, rather than sitting at the resting chevron's
+           descriptionForeground on nothing, which a large heading beside it
+           easily out-shouts.
+
+           The ground is deliberately quiet. Collapsing is the user saying this
+           section is not interesting right now, so the mark that says so must
+           not then shout about it; it has to be impossible to overlook and no
+           louder than that. `--vscode-editor-foldBackground` is the editor's
+           own tint for a folded range, which is exactly this meaning, already
+           tuned by the theme to sit just off the ground, and already the ink
+           the `…` chip uses on every construct that kept one - so the two
+           collapsed marks in this editor now share a colour rather than each
+           inventing one. A button ground was tried first and was too loud for
+           what it is saying.
+
+           Both collapsed selectors are named because two different builders
+           stamp the state: a heading section marks its wrapper, and a block
+           gutter marks the gutter itself (see the --collapsed rule further
+           down this file). The expanded chevron is untouched and stays quiet;
+           this is only the folded case. */
+        .heading-fold-heading--collapsed > .heading-fold-gutter .heading-fold-toggle,
+        .heading-fold-gutter--collapsed .heading-fold-toggle {
+            background: var(--vscode-editor-foldBackground);
+            color: var(--vscode-foreground);
+        }
+
+        .heading-fold-heading--collapsed > .heading-fold-gutter .heading-fold-toggle:hover,
+        .heading-fold-gutter--collapsed .heading-fold-toggle:hover {
+            background: var(--vscode-toolbar-hoverBackground);
+            color: var(--vscode-foreground);
+        }
+
         .heading-fold-hidden {
             display: none !important;
         }
@@ -2467,12 +2502,39 @@ body.fold-controls-always .heading-sticky-toggle {
     pointer-events: auto;
 }
 
-/* "never": no chevrons anywhere — existing folds keep their `…` (state,
-   not control) and the fold commands still work, VS Code's semantics. The
-   sticky heading's toggle mirrors VS Code sticky scroll and hides too. */
+/* "never": no chevron on an EXPANDED block, and the fold commands still work,
+   which is VS Code's semantics. It used to be no chevron anywhere, because a
+   collapsed heading kept a `…` chip that said the fold was there; that chip is
+   gone, so the collapsed chevron is now what carries it and the rule below has
+   an override right after it. The sticky heading's toggle mirrors VS Code
+   sticky scroll and hides on the same terms. */
 body.fold-controls-never .milkdown .editor .heading-fold-toggle,
 body.fold-controls-never .heading-sticky-toggle {
     display: none;
+}
+
+/* "never" hides the fold AFFORDANCE, not the fold's own state, so a COLLAPSED
+   chevron comes back.
+
+   This became load-bearing when the collapsed heading stopped trailing a `…`
+   chip. The chip was the fallback that kept a folded section reachable while
+   every chevron was hidden; without it, hiding the collapsed chevron too
+   leaves a section whose body is gone, with nothing on screen saying so and
+   no way to get it back.
+
+   Written as an override after the rule rather than as a `:not()` carve-out
+   inside it. The carve-out was tried first and did not work: it correctly
+   stopped hiding the collapsed chevrons and they stayed down anyway, so
+   something else in the cascade was still reaching them, and a negation that
+   has to out-argue an unknown rule is the wrong shape. This states the
+   intended end state instead, and wins on order and specificity together.
+   e2e/foldVerify pins both halves: expanded hidden, collapsed shown. */
+body.fold-controls-never .milkdown .editor .heading-fold-heading--collapsed > .heading-fold-gutter .heading-fold-toggle,
+body.fold-controls-never .milkdown .editor .heading-fold-gutter--collapsed .heading-fold-toggle,
+body.fold-controls-never .heading-sticky-title[data-collapsed="true"] .heading-sticky-toggle {
+    display: inline-flex;
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* Resting block handles (`birta.blockHandles`). The baseline —
