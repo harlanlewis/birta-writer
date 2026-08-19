@@ -42,8 +42,10 @@ const banned =
     /^extension\/(\.vscode-test|\.vscode-test-web|\.e2e-shots|dist-base|dist-head|releases|node_modules|coverage|out|packages)\//;
 const offenders = entries.filter((name) => banned.test(name));
 
-// A clean package is 96 files (2026-07). Headroom for legitimate growth;
-// a leaked directory of any size trips this long before it doubles.
+// Headroom over a clean package, so legitimate growth passes and a leaked
+// directory of any size trips this long before the archive doubles. Read the
+// current count off the `check-vsix: OK` line rather than trusting a figure
+// written here, which goes stale on the next feature that adds an asset.
 //
 // Naming the directory beats tripping only on the count: `dist-base`/`dist-head`
 // (left behind by `pnpm perf:ab`) failed this as a bare "entry count 318 exceeds
