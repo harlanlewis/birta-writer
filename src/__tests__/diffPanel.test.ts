@@ -5,7 +5,7 @@
  * and the shape it must NOT be strict about is the SCM one: a resource state
  * is built by the git extension, so the only thing this side can rely on is
  * that it carries a `resourceUri`. Testing it with a real `vscode.Uri` would
- * hide that, because an `instanceof` check would pass too — so the fixtures
+ * hide that, because an `instanceof` check would pass too - so the fixtures
  * here are plain objects, which is what actually arrives.
  *
  * `readWorkingContent` decides what "the working side" even means. Preferring

@@ -1,5 +1,5 @@
 /**
- * src/diffPanel.ts — the rendered-diff panel (MAR-55).
+ * src/diffPanel.ts - the rendered-diff panel (MAR-55).
  *
  * Reviewing a change to a `.md` file is a reading job, and VS Code's diff
  * editor can only offer it as source. That is a live reason to leave the
@@ -10,7 +10,7 @@
  * against its own history rather than editing anything, it must survive the
  * file's tab being closed, and it is opened by a command rather than by
  * opening a file. `vscode.window.createWebviewPanel` is the shape for that,
- * and this is the first one in the extension — `MarkdownEditorProvider` is
+ * and this is the first one in the extension - `MarkdownEditorProvider` is
  * the reference for webview options and teardown, not for lifecycle.
  *
  * It runs its own page (`dist/diffView.js`), not the editor bundle, and speaks
@@ -48,7 +48,7 @@ const open = new Map<string, DiffPanel>();
  * Three callers with three shapes: the palette passes nothing, the editor
  * title bar passes the active resource's URI, and the SCM context menu passes
  * a resource state object. The check is structural rather than
- * `instanceof vscode.Uri` on purpose — an SCM resource state is built by
+ * `instanceof vscode.Uri` on purpose - an SCM resource state is built by
  * another extension, so the only thing we can rely on is its shape.
  */
 export function diffTargetFromArg(arg: unknown, fallback?: vscode.Uri): vscode.Uri | undefined {
@@ -71,7 +71,7 @@ function asUri(value: unknown): vscode.Uri | undefined {
  *
  * The buffer is what makes the diff live. Under the custom editor the webview
  * syncs into the backing `TextDocument` on a typing pause, so reading the
- * document here shows unsaved work — which is the state a writer most wants to
+ * document here shows unsaved work - which is the state a writer most wants to
  * review, and the reason this does not simply read the file.
  */
 export async function readWorkingContent(uri: vscode.Uri): Promise<string> {

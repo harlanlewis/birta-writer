@@ -12,7 +12,7 @@
  * document's `hunk.working`, applying in reverse so earlier positions stay
  * valid. If the plan describes the change honestly the result IS the working
  * document, node for node. Nothing about the author's expectations enters it,
- * and it fails the moment a position indexes the wrong side — which is exactly
+ * and it fails the moment a position indexes the wrong side - which is exactly
  * the mutation the suite below replays.
  *
  * This is the same property `webview/externalSync.ts` already relies on in

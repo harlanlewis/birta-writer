@@ -51,7 +51,7 @@
 
   // The full handle VS Code hands a webview, and only ONE of them: the page
   // shares a single acquisition (webview/vscodeHost.ts), and a stub that
-  // handed out a fresh object per call would hide a second acquirer — which
+  // handed out a fresh object per call would hide a second acquirer - which
   // throws in a real webview and takes the whole entry down with it.
   const api = {
     postMessage: (msg) => {

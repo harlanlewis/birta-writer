@@ -1,5 +1,5 @@
 /**
- * webview/diffView/index.ts — the rendered-diff page (MAR-55).
+ * webview/diffView/index.ts - the rendered-diff page (MAR-55).
  *
  * A second, much smaller webview entry (`dist/diffView.js`), built by its own
  * esbuild pass rather than as a fourth entry of the editor's. That is a build
@@ -15,7 +15,7 @@
  * the schema that owns it. What it deliberately does NOT reuse is the
  * editor's NodeViews: those are editing chrome, and they carry the lazy
  * loaders for maths, diagrams and syntax highlighting. Two nodes get a
- * placeholder instead — an image renders as its path (the panel has no image
+ * placeholder instead - an image renders as its path (the panel has no image
  * URI map, and fetching one would put a review surface on the network), and an
  * `html` node renders as its source (nothing here sanitizes, and a diff of raw
  * HTML is more useful read as source anyway).
@@ -163,7 +163,7 @@ async function render(msg: Extract<ToDiffViewMessage, { type: "diffContent" }>):
         // BOTH sides are raw parses, and that symmetry is the whole point.
         // The view's document is this same parse with the editor's plugins
         // having run over it, and several of them write attributes a parse
-        // does not have — a heading gets its slug id, a list its numbering.
+        // does not have - a heading gets its slug id, a list its numbering.
         // Diffing the view against a parse therefore reports a change for
         // every heading in a file nobody touched. Comparing parse to parse
         // makes attribute drift structurally impossible rather than
@@ -225,7 +225,7 @@ function showMessage(text: string): void {
  * Where the reader is in the run of changes, once they have started stepping.
  *
  * Without it, j and k only scroll, and a document whose changes all fit on one
- * screen gives no sign that anything happened — the reader cannot tell a step
+ * screen gives no sign that anything happened - the reader cannot tell a step
  * from a key that did nothing, nor that they have reached the last change.
  * Blank until the first step, because "1 of 3" before anyone has moved would
  * claim a position the reader has not taken.

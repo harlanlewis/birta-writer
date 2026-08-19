@@ -100,7 +100,7 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
         "webview/components/pathLink/index.ts":
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
         "webview/diffView/index.ts":
-            "bails out when modifiers are held — j/k step through hunks on the read-only diff " +
+            "bails out when modifiers are held - j/k step through hunks on the read-only diff " +
             "page, which is not the editor and contributes no commands; the modifier read exists " +
             "to LEAVE Cmd/Ctrl/Alt+J to the workbench rather than to claim a chord",
         "webview/plugins/embed.ts":

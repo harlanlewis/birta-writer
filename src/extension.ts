@@ -389,7 +389,7 @@ export function activate(context: vscode.ExtensionContext) {
         "birta.toggleTypewriterMode",
         "typewriterMode",
         "typewriterMode",
-        "Birta: typewriter mode on — the line you are editing holds its place and the document scrolls under it",
+        "Birta: typewriter mode on - the line you are editing holds its place and the document scrolls under it",
         "Birta: typewriter mode off",
     );
     registerGateToggle(

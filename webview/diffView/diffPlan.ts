@@ -1,11 +1,11 @@
 /**
- * webview/diffView/diffPlan.ts — turning document changes into hunks (MAR-55).
+ * webview/diffView/diffPlan.ts - turning document changes into hunks (MAR-55).
  *
  * `computeDocDiff` (@milkdown/plugin-diff, already load-bearing for external
  * sync and agent landing) does the hard half: a structural LCS across blocks
  * and a character-level changeset inside matched textblocks, expressed as
  * ProseMirror positions in BOTH documents. What it does not do is decide
- * anything visual — its own plugin creates no decorations at all.
+ * anything visual - its own plugin creates no decorations at all.
  *
  * This module is that decision, and it is separated from the rendering so the
  * part with the invariants is testable without a view. A hunk keeps both
@@ -100,7 +100,7 @@ export function planDiffHunks(
  *
  * Wrapping is refused deliberately. A reader stepping through a review needs
  * "there are no more" to be a fact they can feel, and a silent jump back to
- * the top reads as no movement at all — worse, it reads as a change they have
+ * the top reads as no movement at all - worse, it reads as a change they have
  * already seen being presented as a new one.
  *
  * `-1` is "not started": the first step lands on whichever end the direction

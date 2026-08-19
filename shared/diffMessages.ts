@@ -1,5 +1,5 @@
 /**
- * shared/diffMessages.ts — the protocol for the rendered-diff panel (MAR-55).
+ * shared/diffMessages.ts - the protocol for the rendered-diff panel (MAR-55).
  *
  * Deliberately NOT part of `shared/messages.ts`. That union is the editor's
  * protocol, spoken by the custom editor's webview; the diff panel is a
@@ -11,7 +11,7 @@
  *
  * The extension side sends these through `postToDiffView`
  * (src/webviewMessaging.ts), which is what keeps the payloads compile-checked
- * — see the guard in src/__tests__/typedWebviewSends.test.ts.
+ * - see the guard in src/__tests__/typedWebviewSends.test.ts.
  */
 
 /**

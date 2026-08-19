@@ -1,5 +1,5 @@
 /*
- * webview/diffView/diffView.css — the rendered-diff panel's skin (MAR-55).
+ * webview/diffView/diffView.css - the rendered-diff panel's skin (MAR-55).
  *
  * chrome.css comes first, exactly as it does in the editor entry: the panel's
  * buttons compose `.ui-btn`, and the radius and type scales it defines are

@@ -2,9 +2,9 @@
  * Resolving the left-hand side of the rendered diff (MAR-55).
  *
  * The interesting assertion here is not what comes back, it is what was ASKED.
- * `git show` will happily answer a differently-shaped question — an absolute
+ * `git show` will happily answer a differently-shaped question - an absolute
  * path run from the wrong directory resolves for most repositories, and a
- * backslashed path resolves for none — and in both cases a test that only
+ * backslashed path resolves for none - and in both cases a test that only
  * checked the returned text would stay green while the panel showed the wrong
  * file or no file. So the fake runner records every invocation and the
  * assertions are about the argv and the cwd.

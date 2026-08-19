@@ -2,7 +2,7 @@
  * The rendered diff has to be a rendering (MAR-55).
  *
  * Everything this suite asserts is invisible to jsdom, which is why it lives
- * here rather than beside diffPlan.test.ts. The unit tests own the arithmetic —
+ * here rather than beside diffPlan.test.ts. The unit tests own the arithmetic:
  * that positions index the document they claim to, that a plan reconstructs
  * the working document from the base. What only a browser can answer is
  * whether the plan reaches the DOM as a rendering: that a word-level change

@@ -10,7 +10,7 @@ export type IncomingMessage = ToWebviewMessage;
 // acquireVsCodeApi can only be called once per PAGE, and the editor is no
 // longer the only page: the rendered-diff panel pulls this module in
 // transitively through the presets. The single call therefore lives in
-// webview/vscodeHost.ts, and this stays the typed funnel over it — every
+// webview/vscodeHost.ts, and this stays the typed funnel over it - every
 // send below is still checked against ToExtensionMessage.
 const vscode = {
     postMessage: (message: ToExtensionMessage): void => vscodeHost.postMessage(message),

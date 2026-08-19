@@ -165,7 +165,7 @@ const webviewBuild = {
 // The rendered-diff panel (MAR-55): its own page, and deliberately its own
 // build rather than a fourth entry of webviewBuild. Sharing that build would
 // mean sharing its `splitting: true`, which redistributes common modules into
-// chunks and so changes how many resources the EDITOR fetches at launch — the
+// chunks and so changes how many resources the EDITOR fetches at launch - the
 // one number this repository gates on every PR. A separate pass keeps
 // dist/webview.js and its chunk graph identical whether or not this panel
 // exists; the cost is that the ~0.5 MB of ProseMirror and markdown presets it

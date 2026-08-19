@@ -1,5 +1,5 @@
 /**
- * src/gitBaseContent.ts — the left-hand side of the rendered diff (MAR-55).
+ * src/gitBaseContent.ts - the left-hand side of the rendered diff (MAR-55).
  *
  * Resolving "what did this file look like at HEAD" is two `git` calls and a
  * path normalization, and every interesting case is a failure case, so the

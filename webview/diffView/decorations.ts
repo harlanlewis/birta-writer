@@ -1,9 +1,9 @@
 /**
- * webview/diffView/decorations.ts — drawing a plan (MAR-55).
+ * webview/diffView/decorations.ts - drawing a plan (MAR-55).
  *
  * Insertions are the easy half: the content is in the document being rendered,
  * so an inline decoration over its range is enough. Deletions are not in that
- * document at all, so they have to be carried in from the base as widgets —
+ * document at all, so they have to be carried in from the base as widgets,
  * which is why a hunk knows both where the run lives (the base doc) and where
  * to draw it (the working doc).
  *
