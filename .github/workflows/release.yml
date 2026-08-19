@@ -59,9 +59,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Bounds, not budgets. Each is set far above what its job needs, because a
+  # release that is merely slow must finish: this job tags, publishes and
+  # attaches, and killing it partway leaves a release half-cut. What it stops is
+  # a wedged step holding the runner and the `release` concurrency group for
+  # GitHub's default of six hours, which would also block the next nightly.
+  # Recovery from a timeout is the documented one for any failed job here, in
+  # docs/RELEASING.md: re-run the failed job alone, since `--skip-duplicate`
+  # makes both publishes idempotent.
   release:
     name: Release
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
       # Both are for the build-provenance attestation below. id-token here is
@@ -340,6 +349,7 @@ jobs:
   publish:
     name: Publish to VS Code Marketplace
     needs: release
+    timeout-minutes: 15
     if: needs.release.outputs.release == 'true'
     runs-on: ubuntu-latest
     # The federated credential's subject is repo:<owner>/<repo>:environment:<name>,
@@ -426,6 +436,7 @@ jobs:
   # environment is a policy surface worth adding only when something needs it.
   publish-openvsx:
     name: Publish to Open VSX
+    timeout-minutes: 15
     needs: release
     if: needs.release.outputs.release == 'true'
     runs-on: ubuntu-latest
@@ -490,6 +501,7 @@ jobs:
   jot-app:
     name: Attach Birta Jot to the release
     needs: release
+    timeout-minutes: 20
     if: needs.release.outputs.release == 'true'
     runs-on: macos-latest
     permissions:

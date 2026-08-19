@@ -37,6 +37,7 @@ jobs:
   deep-move-sampling:
     name: Deep move sampling
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
