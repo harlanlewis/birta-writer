@@ -36,7 +36,7 @@ import { gfmFidelity, pureCommonmark } from "../serialization";
 import { t } from "../i18n";
 import { vscodeHost } from "../vscodeHost";
 import { buildDiffDecorations } from "./decorations";
-import { planDiffHunks, type DiffHunk } from "./diffPlan";
+import { planDiffHunks, stepHunk, type DiffHunk } from "./diffPlan";
 import type {
     DiffBaseOrigin,
     FromDiffViewMessage,
@@ -100,12 +100,14 @@ const title = document.createElement("span");
 title.className = "diff-title";
 const summary = document.createElement("span");
 summary.className = "diff-summary";
+const position = document.createElement("span");
+position.className = "diff-position";
 const nav = document.createElement("span");
 nav.className = "diff-nav";
 const prevBtn = navButton(t("Previous change"), "↑");
 const nextBtn = navButton(t("Next change"), "↓");
 nav.append(prevBtn, nextBtn);
-header.append(title, summary, nav);
+header.append(title, summary, position, nav);
 const body = document.createElement("div");
 body.className = "diff-body";
 root.append(header, body);
@@ -183,6 +185,7 @@ async function render(msg: Extract<ToDiffViewMessage, { type: "diffContent" }>):
     });
 
     cursor = -1;
+    paintPosition();
     body.scrollTop = scrollTop;
     summary.textContent = summaryText(msg.baseOrigin, hunks.length);
     const empty = hunks.length === 0;
@@ -195,7 +198,7 @@ async function render(msg: Extract<ToDiffViewMessage, { type: "diffContent" }>):
  * and "nothing changed" look alike to a reader who does not know whether git
  * has ever seen the file.
  */
-export function summaryText(origin: DiffBaseOrigin, count: number): string {
+function summaryText(origin: DiffBaseOrigin, count: number): string {
     const changes = count === 1 ? t("1 change") : `${count} ${t("changes")}`;
     return origin === "untracked"
         ? `${changes} · ${t("not yet in git")}`
@@ -210,6 +213,7 @@ function showMessage(text: string): void {
     body.appendChild(notice);
     hunks = [];
     cursor = -1;
+    paintPosition();
     prevBtn.disabled = true;
     nextBtn.disabled = true;
     summary.textContent = "";
@@ -218,22 +222,24 @@ function showMessage(text: string): void {
 // ── Hunk navigation ─────────────────────────────────────────────────────────
 
 /**
- * The next hunk index in `direction`, clamped at both ends.
+ * Where the reader is in the run of changes, once they have started stepping.
  *
- * Wrapping is refused deliberately: a reader stepping through a review needs
- * "there are no more" to be a fact they can feel, and a silent jump back to
- * the top reads as no movement at all.
+ * Without it, j and k only scroll, and a document whose changes all fit on one
+ * screen gives no sign that anything happened — the reader cannot tell a step
+ * from a key that did nothing, nor that they have reached the last change.
+ * Blank until the first step, because "1 of 3" before anyone has moved would
+ * claim a position the reader has not taken.
  */
-export function stepHunk(current: number, direction: 1 | -1, count: number): number {
-    if (count === 0) { return -1; }
-    if (current === -1) { return direction === 1 ? 0 : count - 1; }
-    return Math.min(count - 1, Math.max(0, current + direction));
+function paintPosition(): void {
+    position.textContent =
+        cursor === -1 ? "" : `${cursor + 1} / ${hunks.length}`;
 }
 
 function goToHunk(direction: 1 | -1): void {
     const next = stepHunk(cursor, direction, hunks.length);
     if (next === -1 || next === cursor) { return; }
     cursor = next;
+    paintPosition();
     editor?.action((ctx) => {
         const view: EditorView = ctx.get(editorViewCtx);
         const node = view.domAtPos(hunks[cursor].working.from).node;

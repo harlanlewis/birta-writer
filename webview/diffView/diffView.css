@@ -48,10 +48,17 @@ body {
     color: var(--vscode-descriptionForeground);
 }
 
+.diff-position {
+    font-size: var(--ui-fs-m);
+    color: var(--vscode-descriptionForeground);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+}
+
 .diff-nav {
     display: flex;
     gap: var(--ui-space-2);
-    margin-left: auto;
+    margin-left: var(--ui-space-4);
 }
 
 .diff-nav-btn:disabled {

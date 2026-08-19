@@ -96,6 +96,24 @@ export function planDiffHunks(
 }
 
 /**
+ * The next hunk index in `direction`, clamped at both ends.
+ *
+ * Wrapping is refused deliberately. A reader stepping through a review needs
+ * "there are no more" to be a fact they can feel, and a silent jump back to
+ * the top reads as no movement at all — worse, it reads as a change they have
+ * already seen being presented as a new one.
+ *
+ * `-1` is "not started": the first step lands on whichever end the direction
+ * comes from, so pressing k before j opens at the last change rather than
+ * refusing.
+ */
+export function stepHunk(current: number, direction: 1 | -1, count: number): number {
+    if (count === 0) { return -1; }
+    if (current === -1) { return direction === 1 ? 0 : count - 1; }
+    return Math.min(count - 1, Math.max(0, current + direction));
+}
+
+/**
  * Whether `pos` in `doc` can hold inline content.
  *
  * `resolve` throws for a position outside the document, and that throw is

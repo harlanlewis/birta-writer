@@ -79,6 +79,28 @@ export async function run({ page, check, baseUrl }) {
     const nextDisabled = await page.$eval(".diff-nav-btn:last-of-type", (el) => el.disabled);
     check("navigation is offered when there are changes", nextDisabled === false, `disabled=${nextDisabled}`);
 
+    // Stepping, driven by real key events rather than by calling the handler:
+    // the page listens on `window`, and a handler called directly would pass
+    // whatever the listener registration does.
+    const position = () => page.$eval(".diff-position", (el) => el.textContent);
+    check("no position is claimed before the reader steps", (await position()) === "", await position());
+    await page.keyboard.press("j");
+    const first = await position();
+    await page.keyboard.press("j");
+    const second = await position();
+    check("j advances through the changes", first === "1 / 3" && second === "2 / 3", `${first} then ${second}`);
+    await page.keyboard.press("k");
+    check("k goes back", (await position()) === "1 / 3", await position());
+    // The end must be a fact the reader can feel. Modular stepping would send
+    // them back to the first change here, and every "it moved" check above
+    // would still pass.
+    for (let i = 0; i < 5; i++) { await page.keyboard.press("j"); }
+    check("stepping stops at the last change rather than wrapping", (await position()) === "3 / 3", await position());
+    // A modified j must stay the workbench's: the page reads modifiers only so
+    // it can decline them.
+    await page.keyboard.press("Meta+j");
+    check("Cmd+J is left to the workbench", (await position()) === "3 / 3", await position());
+
     // ── The unchanged case ──────────────────────────────────────────────────
     // Same bytes both sides: no marks, and navigation says so rather than
     // stepping through nothing.

@@ -36,6 +36,7 @@ import {
     hasDeletion,
     hasInsertion,
     planDiffHunks,
+    stepHunk,
     type DiffHunk,
 } from "../diffView/diffPlan";
 
@@ -119,6 +120,32 @@ describe("planDiffHunks", () => {
         // Not a partition of the loop's own output: `planDiffHunks` maps every
         // change through unfiltered, so an empty change WOULD show up here.
         expect(hunks.filter((h) => !hasInsertion(h) && !hasDeletion(h))).toEqual([]);
+    });
+});
+
+describe("stepHunk", () => {
+    it("stepping should stop at both ends rather than wrap", () => {
+        // The claim is specifically NOT modular arithmetic. `(i + 1) % count`
+        // passes every "it moves" assertion and silently sends a reader who
+        // has reached the last change back to the first, which reads as a
+        // change they already reviewed being offered as a new one.
+        expect(stepHunk(2, 1, 3)).toBe(2);
+        expect(stepHunk(0, -1, 3)).toBe(0);
+    });
+
+    it("the first step should enter from the end the direction comes from", () => {
+        expect(stepHunk(-1, 1, 3)).toBe(0);
+        expect(stepHunk(-1, -1, 3)).toBe(2);
+    });
+
+    it("stepping should move one at a time in the middle", () => {
+        expect(stepHunk(1, 1, 3)).toBe(2);
+        expect(stepHunk(1, -1, 3)).toBe(0);
+    });
+
+    it("no hunks should have no position to step to, in either direction", () => {
+        expect(stepHunk(-1, 1, 0)).toBe(-1);
+        expect(stepHunk(-1, -1, 0)).toBe(-1);
     });
 });
 
