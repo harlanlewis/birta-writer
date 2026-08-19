@@ -170,9 +170,14 @@ export async function run({ page, check, baseUrl }) {
     // The overwhelming majority are not merely within tolerance but on the
     // anchor to the pixel, which a tolerance-only check would not distinguish
     // from a mode that centres loosely.
-    const exact = on.filter((r) => Math.abs(r.offCentre) <= 1).length;
+    // Two pixels rather than one: the anchor is computed from a floored
+    // half-viewport against a fractional caret rect, and how that rounds is an
+    // engine's business - WebKit lands several steps at 1.2px where Blink lands
+    // them at 0.2px. Both are on the anchor; a 1px bar would be asserting a
+    // rounding mode rather than the behavior.
+    const exact = on.filter((r) => Math.abs(r.offCentre) <= 2).length;
     check("almost every step lands on the anchor to the pixel",
-        exact >= on.length - 2, `${exact}/${on.length} within 1px`);
+        exact >= on.length - 2, `${exact}/${on.length} within 2px`);
     // The control: ordinary scrolloff parks the caret near the BOTTOM of the
     // pane, nowhere near the anchor. If this ever passed the centring bar, the
     // checks above would be measuring the editor's default behavior.
@@ -200,12 +205,12 @@ export async function run({ page, check, baseUrl }) {
     await boot(true);
     await caretToParagraph(40);
     await settle();
-    const beforeTyping = (await reading()).scrollY;
+    const beforeTyping = (await settledReading()).scrollY;
     const scrolls = [];
     for (let i = 0; i < 12; i++) {
         await page.keyboard.type("x");
         await page.waitForTimeout(40);
-        scrolls.push((await reading()).scrollY);
+        scrolls.push((await settledReading()).scrollY);
     }
     const drift = Math.max(...scrolls.map((y) => Math.abs(y - beforeTyping)));
     check("typing along one line never moves the viewport",
@@ -217,19 +222,34 @@ export async function run({ page, check, baseUrl }) {
     // ── 3. Reversibility: down then up returns to the same place ──
     // A fixed point in both directions. An anchor that only settles going one
     // way would still pass the walk above.
+    //
+    // Deliberately on plain lines, well away from the mid-document heading.
+    // Crossing into a taller line legitimately moves the anchor, so a scroll
+    // round trip across that boundary is not the invariant and asserting it
+    // there would be asserting something false: WebKit returns 33px short over
+    // the heading while landing the caret back on the anchor exactly.
     await boot(true);
-    await caretToParagraph(40);
+    await caretToParagraph(50);
     await settle();
-    const start = (await reading()).scrollY;
+    const startReading = await settledReading();
     await page.keyboard.press("ArrowDown");
-    await page.waitForTimeout(120);
-    const stepped = (await reading()).scrollY;
+    const steppedReading = await settledReading();
     await page.keyboard.press("ArrowUp");
-    await page.waitForTimeout(150);
-    const returned = (await reading()).scrollY;
-    check("moving down a line scrolls the document", stepped > start, `${start} → ${stepped}`);
+    const backReading = await settledReading();
+    check("moving down a line scrolls the document",
+        steppedReading.scrollY > startReading.scrollY,
+        `${startReading.scrollY} → ${steppedReading.scrollY}`);
     check("moving back up returns to the same scroll position",
-        Math.abs(returned - start) <= 1, `${start} → ${stepped} → ${returned}`);
+        Math.abs(backReading.scrollY - startReading.scrollY) <= 1,
+        `${startReading.scrollY} → ${steppedReading.scrollY} → ${backReading.scrollY}`);
+    check("moving back up returns to the same line",
+        backReading.text === startReading.text,
+        `"${startReading.text.trim()}" → "${backReading.text.trim()}"`);
+    // The property that survives a heading boundary, and the one a user feels:
+    // wherever the round trip lands the page, the caret is on the anchor.
+    check("the caret is back on the anchor after the round trip",
+        Math.abs(backReading.offCentre) <= ANCHOR_TOLERANCE_PX,
+        `${backReading.offCentre.toFixed(1)}px off centre`);
 
     // ── 4. A mouse click must not yank the page ──────────────
     // ProseMirror applies these props only to transaction-driven scrolls, so
@@ -239,7 +259,7 @@ export async function run({ page, check, baseUrl }) {
     await boot(true);
     await caretToParagraph(40);
     await settle();
-    const beforeClick = (await reading()).scrollY;
+    const beforeClick = (await settledReading()).scrollY;
     const target = await page.evaluate(() => {
         // A line high in the viewport, well away from the anchor.
         const hit = [...document.querySelectorAll(".ProseMirror > *")].find((b) => {
@@ -251,7 +271,7 @@ export async function run({ page, check, baseUrl }) {
     });
     await page.mouse.click(target.x, target.y);
     await page.waitForTimeout(200);
-    const afterClick = (await reading()).scrollY;
+    const afterClick = (await settledReading()).scrollY;
     check("clicking another line leaves the viewport where it is",
         Math.abs(afterClick - beforeClick) <= 1, `${beforeClick} → ${afterClick}`);
 
