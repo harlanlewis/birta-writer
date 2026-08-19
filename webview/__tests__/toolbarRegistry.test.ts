@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+    computeDockPartition,
     computeZones,
     DEFAULT_PLACEMENTS,
     hostAvailableItems,
@@ -320,5 +321,80 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
         } finally {
             window.__i18n = prior;
         }
+    });
+});
+
+/**
+ * The `formattingInBottomDock` partition.
+ *
+ * The point of every case here is that the split is DERIVED. A hand-written
+ * list of "the formatting ones" would be a list a new toolbar item never joins,
+ * and it would pass this file forever while the item sat on the wrong surface.
+ * So nothing below names an item unless it is naming the derivation itself.
+ */
+describe("computeDockPartition", () => {
+    it("every item the host can carry should appear on exactly one surface", () => {
+        // Arrange
+        const available = hostAvailableItems();
+
+        // Act
+        const { dock, topBar } = computeDockPartition(available);
+
+        // Assert: a floor on the sweep first, because a partition of nothing
+        // satisfies every property below it.
+        expect(available.size).toBeGreaterThan(10);
+        expect(dock.length).toBeGreaterThan(0);
+        expect(topBar.length).toBeGreaterThan(0);
+        expect(dock.length + topBar.length).toBe(available.size);
+        expect(new Set([...dock, ...topBar])).toEqual(available);
+        expect(dock.filter((id) => topBar.includes(id))).toEqual([]);
+    });
+
+    it("an item should dock exactly when it changes the document", () => {
+        // `ITEM_MUTATES` is already tied to `COMMAND_EFFECTS` by the tests
+        // above, so tying the dock to it is what makes "the formatting
+        // controls" a derivation rather than an opinion restated here.
+        const { dock, topBar } = computeDockPartition();
+        for (const id of dock) { expect(ITEM_MUTATES[id], id).toBe(true); }
+        for (const id of topBar) { expect(ITEM_MUTATES[id], id).toBe(false); }
+        // Both arms have to discriminate, or one of the loops above is empty
+        // and proves nothing.
+        expect(dock.length).toBeGreaterThan(0);
+        expect(topBar.length).toBeGreaterThan(0);
+    });
+
+    it("the dock should carry the items that ship hidden on the top bar, not only the visible ones", () => {
+        // The dock takes no placement config at all, which is the difference
+        // between "all the formatting controls" and "the ones the bar happens
+        // to show". Derived from DEFAULT_PLACEMENTS rather than listed, so a
+        // default that changes cannot leave this case asserting nothing.
+        const { dock } = computeDockPartition();
+        const hiddenByDefault = TOOLBAR_ITEM_IDS.filter(
+            (id) => DEFAULT_PLACEMENTS[id] === "hidden" && ITEM_MUTATES[id]);
+        expect(hiddenByDefault.length).toBeGreaterThan(0);
+        for (const id of hiddenByDefault) { expect(dock, id).toContain(id); }
+    });
+
+    it("the dock should be in canonical registry order", () => {
+        const { dock, topBar } = computeDockPartition();
+        const rank = (id: (typeof TOOLBAR_ITEM_IDS)[number]): number => TOOLBAR_ITEM_IDS.indexOf(id);
+        expect(dock.map(rank)).toEqual([...dock.map(rank)].sort((a, b) => a - b));
+        expect(topBar.map(rank)).toEqual([...topBar.map(rank)].sort((a, b) => a - b));
+    });
+
+    it("an item the host cannot carry should reach neither surface", () => {
+        // Arrange: `image` needs an image store, and is the mutating item a
+        // host is most likely to lack.
+        const available = new Set(TOOLBAR_ITEM_IDS.filter((id) => id !== "image" && id !== "find"));
+
+        // Act
+        const { dock, topBar } = computeDockPartition(available);
+
+        // Assert
+        expect(dock).not.toContain("image");
+        expect(topBar).not.toContain("find");
+        // …and the rest still arrived, or "not contains" would hold vacuously.
+        expect(dock).toContain("bold");
+        expect(topBar).toContain("settings");
     });
 });

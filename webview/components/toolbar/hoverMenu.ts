@@ -6,7 +6,7 @@
  * identically and a new one is correct by construction — the gap-bridge bug that
  * once affected only the Debug menu can't recur, because there's one code path.
  */
-import { placeMenu, MENU_GAP } from "@/ui/anchoredPlacement";
+import { placeMenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 
 export interface HoverMenuOptions {
@@ -60,7 +60,24 @@ export function wireHoverMenu(
     menu: HTMLElement,
     options: HoverMenuOptions = {},
 ): HoverMenuHandle {
-    const hideDelay = options.hideDelayMs ?? 0;
+    /**
+     * How long a hide waits, so the pointer can cross the gap to the menu.
+     *
+     * Zero for a menu whose wrap can carry the CSS bridge, which is every menu
+     * in the top bar. Inside a clipping container the menu is positioned in
+     * viewport coordinates (`placeMenu`, `MENU_CLIP_ATTR`) and the bridge is
+     * clipped away with everything else that leaves the box, so the pointer
+     * really does leave the wrap on the way in and a timer is what holds the
+     * menu. `menu.mouseenter` cancels the hide, so the delay only has to
+     * outlast the crossing, never the reading.
+     *
+     * Asked at hide time and NOT at construction, which is the trap: every
+     * item is built before it is parented into its holder, so a `closest` call
+     * here in the body runs against an element with no ancestors at all and
+     * answers "not clipped" for every menu there is.
+     */
+    const hideDelayMs = (): number =>
+        options.hideDelayMs ?? (button.closest(`[${MENU_CLIP_ATTR}]`) ? 160 : 0);
     const openDelay = options.openDelayMs ?? 140;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let openTimer: ReturnType<typeof setTimeout> | null = null;
@@ -106,7 +123,7 @@ export function wireHoverMenu(
     const scheduleHide = (): void => {
         cancelOpen(); // a pending hover-open is abandoned when the pointer leaves
         cancelHide();
-        hideTimer = setTimeout(close, hideDelay);
+        hideTimer = setTimeout(close, hideDelayMs());
     };
     // Hover open, gated by an intent delay so a cursor sweeping across the bar
     // doesn't flash menus. Already-open (from an adjacent switch) opens at once.

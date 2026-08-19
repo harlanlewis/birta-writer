@@ -128,6 +128,7 @@ webview/ui/hoverSelection.ts                  Hover and the arrows share one men
 webview/ui/icons.ts                           SVG icons
 webview/ui/tooltip.ts                         Tooltip component
 webview/components/toolbar/index.ts           Top main toolbar: composition root over the sibling modules (layout, menus, typography, image panel)
+webview/components/toolbar/dock.ts            The formatting dock: the second holder for toolbar items, under the formattingInBottomDock arrangement
 webview/components/selectionToolbar/index.ts  Floating selection toolbar
 webview/components/table/tableView.ts         Table NodeView (overlay chrome: grips, insert bars, drag-reorder)
 webview/components/table/reorder.ts           Pure row/column block-reorder + drop-index helpers
@@ -140,6 +141,8 @@ shared/hostProfile.ts                         What the surface IS: the one profi
 jot/                                          Birta Writer Jot, the macOS menu-bar scratchpad shell (SwiftPM) around dist/webview.js; jot/README.md
 jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
+jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: the Edited suffix and the path popup's walk
+jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory, and hangs the reveal and path-popup gestures off it
 jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes: the autosave setting's scope is the edit trigger and nothing else
 jot/Sources/BirtaJotCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
 jot/scripts/update-jot.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)

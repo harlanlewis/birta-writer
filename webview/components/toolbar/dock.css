@@ -1,0 +1,106 @@
+/* ─── Formatting dock ───
+   The bottom leading strip under `formattingInBottomDock` (dock.ts). Absent on
+   every other surface: nothing builds the element, so none of this matches.
+
+   Fixed to the viewport rather than flowed with the document, because the row
+   answers "what can I do to this text" and must not scroll away from the text
+   it acts on. #editor already carries half a viewport of overscroll past the
+   last block, so the strip never traps a line under itself and this needs no
+   padding of its own.
+
+   Same z-index as .editor-topbar, and for the same reason: its dropdowns must
+   sit above every piece of content-area chrome. The two are siblings on
+   opposite edges, so they never overlap each other. */
+.tb-dock {
+    position: fixed;
+    left: var(--ui-space-5);
+    bottom: var(--ui-space-5);
+    z-index: 10002;
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-2);
+    max-width: calc(100vw - 2 * var(--ui-space-5));
+    padding: var(--ui-space-1) var(--ui-space-2);
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-xl);
+    box-shadow: var(--ui-card-shadow);
+}
+
+/* The T. A serif face against the sans chrome around it, which is what makes
+   one letter read as a specimen rather than as a label.
+
+   Deliberately NOT the serif reading preset (shared/fontPresets.ts): the
+   letter means "text formatting", and drawing it in the face that preset
+   selects would say the button sets that preset instead. */
+.tb-dock-glyph {
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: var(--ui-fs-l);
+    font-weight: 500;
+    line-height: 1;
+}
+
+/* Shown on hover and on keyboard focus, pointing the way the click goes. An
+   affordance rather than a state: the row beside it already says which state
+   the dock is in, so the chevron is not drawn until you reach for it. */
+.tb-dock-chevron {
+    display: inline-flex;
+    width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: width 0.12s ease, opacity 0.12s ease;
+
+    svg {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+.tb-dock-toggle {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--ui-space-2);
+
+    &:hover .tb-dock-chevron,
+    &:focus-visible .tb-dock-chevron {
+        width: 12px;
+        opacity: 0.7;
+    }
+}
+
+/* Expanded, the chevron reverses: the click now closes the row. */
+.tb-dock[data-expanded="true"] .tb-dock-chevron {
+    transform: rotate(180deg);
+}
+
+.tb-dock-divider {
+    flex: none;
+    width: 1px;
+    align-self: stretch;
+    margin: var(--ui-space-1);
+    background: var(--ui-card-border);
+}
+
+.tb-dock-row {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-1);
+    /* The set is fixed and opinionated, so a narrow window scrolls to the last
+       control rather than demoting a tail into an overflow menu that would
+       have to decide which controls matter least. The `data-menu-clip`
+       attribute dock.ts stamps here is what sends the dropdowns opening out of
+       this box to viewport coordinates instead of being clipped by it. */
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+.tb-dock[data-expanded="false"] {
+    .tb-dock-divider,
+    .tb-dock-row {
+        display: none;
+    }
+}

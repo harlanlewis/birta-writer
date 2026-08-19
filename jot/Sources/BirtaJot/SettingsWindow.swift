@@ -69,8 +69,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let documentChoose = NSButton(title: "Choose…", target: nil, action: nil)
     private let networkSwitch = NSSwitch()
     private let agentField = NSTextField(string: Prefs.agentCommand)
-    private let pathSwitch = NSSwitch()
-    private let formatToolbarSwitch = NSSwitch()
+    private let dockSwitch = NSSwitch()
     private let blankSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
     private let floatSwitch = NSSwitch()
@@ -238,8 +237,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (floatSwitch, Prefs.floatAboveOtherWindows, #selector(toggleFloat)),
-            (pathSwitch, Prefs.showFilePath, #selector(togglePath)),
-            (formatToolbarSwitch, Prefs.showFormattingToolbar, #selector(toggleFormatToolbar)),
+            (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
             (blankSwitch, Prefs.openToBlankNote, #selector(toggleOpenToBlank)),
             (loginSwitch, false, #selector(toggleLoginItem)),
         ] {
@@ -272,6 +270,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 Self.heading("Panel"),
                 Self.group([
                     Self.row("Float above other windows", control: floatSwitch),
+                    Self.row("Show in Dock", control: dockSwitch,
+                             caption: Caption("Off keeps Jot in the menu bar only, out of the Dock and out of Cmd+Tab.")),
                     Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
                 ]),
                 Self.heading("Network"),
@@ -286,11 +286,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 Self.group([
                     Self.row("Autosave", control: autosaveSwitch,
                              caption: Caption("Cmd+S, hiding and quitting write either way.")),
-                ]),
-                Self.heading("Chrome"),
-                Self.group([
-                    Self.row("Show formatting toolbar", control: formatToolbarSwitch),
-                    Self.row("Show file path", control: pathSwitch),
                 ]),
             ]
         case .advanced:
@@ -618,13 +613,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.agentCommand = agentField.stringValue
     }
 
-    @objc private func togglePath() {
-        Prefs.showFilePath = pathSwitch.state == .on
-        onChange()
-    }
-
-    @objc private func toggleFormatToolbar() {
-        Prefs.showFormattingToolbar = formatToolbarSwitch.state == .on
+    /// The Dock icon, and Cmd+Tab with it. Applied by the app delegate rather
+    /// than here: the activation policy belongs to the application, and this
+    /// window is one of the things it changes the behaviour of.
+    @objc private func toggleShowInDock() {
+        Prefs.showInDock = dockSwitch.state == .on
         onChange()
     }
 

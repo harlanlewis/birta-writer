@@ -98,10 +98,16 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
             // window, which is every host but that one.
             openHostPreferences: () => notifyOpenHostPreferences(),
         };
-        // The typography rows go in the MIDDLE: after the layout rows, before
-        // the shortcuts and app rows. They are the frequently-changed ones, and
-        // a reader scanning for "make the text bigger" should not have to pass
-        // Customize Toolbar and a keyboard cheatsheet to reach it.
+        // The typography rows go after the LAYOUT group and before everything
+        // else. They are the frequently-changed ones, and a reader scanning for
+        // "make the text bigger" should not have to pass a keyboard cheatsheet
+        // to reach it.
+        //
+        // Anchored to the first row that is NOT a layout row, rather than to
+        // the first group boundary: a surface whose layout is fixed
+        // (`fixedToolbarLayout`) has no layout rows and therefore no such
+        // boundary, and anchoring to one put the typography rows at the bottom
+        // of that menu instead of the top.
         const rows = typographyRows?.(() => closeSettingsMenu()) ?? [];
         let typographyInserted = rows.length === 0;
 
@@ -109,15 +115,15 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
         for (const meta of TOOLBAR_MENU_COMMANDS) {
             const action = menuActions[meta.id];
             // A row the host cannot answer (its settings UI, its keybindings
-            // UI, our release page) is not offered; the layout rows stay.
+            // UI, our release page) or an arrangement withdraws (the layout
+            // rows, where the layout is not the user's) is not offered.
             if (!action || !hostHasCommand(meta.id)) { continue; }
             if (prevGroup !== undefined && meta.menuGroup !== prevGroup) {
                 menu.appendChild(makeSep());
-                // First group boundary after the layout rows is where they go.
-                if (!typographyInserted) {
-                    menu.append(...rows, makeSep());
-                    typographyInserted = true;
-                }
+            }
+            if (!typographyInserted && meta.menuGroup !== "layout") {
+                menu.append(...rows, makeSep());
+                typographyInserted = true;
             }
             prevGroup = meta.menuGroup;
             // The settings row names the product with the RUNTIME display

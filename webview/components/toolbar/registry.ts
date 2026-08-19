@@ -226,6 +226,35 @@ export function hostAvailableItems(): ReadonlySet<ToolbarItemId> {
     }));
 }
 
+/**
+ * The two surfaces under `formattingInBottomDock`, as one partition of the
+ * items this host can carry.
+ *
+ * The split is `ITEM_MUTATES` and nothing else: a control that changes the
+ * document docks, and one that only reads stays on the top bar. That table is
+ * exhaustive by type and already tied to `COMMAND_EFFECTS` by
+ * `toolbarRegistry.test.ts`, so a new item cannot join the wrong surface
+ * without failing to compile first and failing that test second. A hand-kept
+ * list of "the formatting ones" is exactly the list a new item never joins.
+ *
+ * `dock` is in canonical `TOOLBAR_ITEM_IDS` order and takes no config: this
+ * arrangement travels with `fixedToolbarLayout`, so there is no placement to
+ * consult, nothing hidden, and no order to override. Every item the host can
+ * carry appears on exactly one of the two, which is the property the test
+ * asserts rather than the two lists themselves.
+ */
+export function computeDockPartition(
+    available: ReadonlySet<ToolbarItemId> = new Set(TOOLBAR_ITEM_IDS),
+): { dock: ToolbarItemId[]; topBar: ToolbarItemId[] } {
+    const dock: ToolbarItemId[] = [];
+    const topBar: ToolbarItemId[] = [];
+    for (const id of TOOLBAR_ITEM_IDS) {
+        if (!available.has(id)) { continue; }
+        (ITEM_MUTATES[id] ? dock : topBar).push(id);
+    }
+    return { dock, topBar };
+}
+
 // "center" is intentionally NOT valid: the zone was removed, and persisted
 // "center" placements from older builds fall back to the item's default.
 function isValidPlacement(value: unknown): value is ToolbarPlacement {

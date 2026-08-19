@@ -12,7 +12,8 @@ import {
     HOST_PROFILES,
     hostHas,
     hostHasCommand,
-    type HostCapability, APP_ONLY_CAPABILITIES, ALL_HOST_ARRANGEMENTS } from "../hostProfile";
+    type HostCapability,
+    type HostArrangement, APP_ONLY_CAPABILITIES, ALL_HOST_ARRANGEMENTS } from "../hostProfile";
 import { EDITOR_COMMANDS, TOOLBAR_MENU_COMMANDS } from "../editorCommands";
 
 type Declared = { __i18n?: { host?: { capabilities?: readonly HostCapability[] } } };
@@ -22,6 +23,16 @@ const g = globalThis as Declared;
 function declare(caps: readonly HostCapability[] | undefined): void {
     g.__i18n = caps === undefined ? {} : { host: { capabilities: caps } };
 }
+
+/** Declare a profile carrying every capability and the given arrangements. */
+function declareArrangements(arrangements: readonly HostArrangement[]): void {
+    g.__i18n = { host: { capabilities: ALL_HOST_CAPABILITIES, arrangements } };
+}
+
+/** Commands an arrangement withdraws, derived from the command table itself. */
+const WITHDRAWN = EDITOR_COMMANDS.filter(
+    (m): m is typeof m & { absentUnder: HostArrangement } =>
+        "absentUnder" in m && !!m.absentUnder);
 
 const GATED = EDITOR_COMMANDS.filter((m) => "hostCapability" in m && m.hostCapability);
 const UNGATED = EDITOR_COMMANDS.filter((m) => !("hostCapability" in m) || !m.hostCapability);
@@ -133,6 +144,61 @@ describe("hostHasCommand", () => {
         declare([]);
         const kept = TOOLBAR_MENU_COMMANDS.filter((m) => hostHasCommand(m.id)).map((m) => m.id);
         expect(kept).toEqual(["customizeToolbar", "hideToolbar", "openShortcutsHelp"]);
+    });
+
+    /**
+     * The second reason a command can be absent: an arrangement withdraws it.
+     * Different in kind from a missing capability (the host COULD answer; the
+     * surface has settled the question), identical in effect, and routed
+     * through the same predicate so every surface that filters on it is
+     * covered without a line of its own.
+     */
+    it("a withdrawn command should run until its arrangement is declared", () => {
+        expect(WITHDRAWN.length).toBeGreaterThan(0);
+        for (const m of WITHDRAWN) {
+            declareArrangements([]);
+            expect(hostHasCommand(m.id), `${m.id} with no arrangement`).toBe(true);
+            declareArrangements([m.absentUnder]);
+            expect(hostHasCommand(m.id), `${m.id} under ${m.absentUnder}`).toBe(false);
+            // A DIFFERENT arrangement must not withdraw it, or the predicate is
+            // answering "any arrangement at all" rather than the named one.
+            const other = ALL_HOST_ARRANGEMENTS.filter((a) => a !== m.absentUnder);
+            expect(other.length).toBeGreaterThan(0);
+            declareArrangements(other);
+            expect(hostHasCommand(m.id), `${m.id} under the others`).toBe(true);
+        }
+    });
+
+    it("every absentUnder should name a real arrangement", () => {
+        for (const m of WITHDRAWN) {
+            expect(ALL_HOST_ARRANGEMENTS, m.id).toContain(m.absentUnder);
+        }
+    });
+
+    it("an arrangement should withdraw nothing a capability already gates", () => {
+        // The two reasons must stay separable: a command carrying both would
+        // make "why is this absent" unanswerable from the declaration.
+        for (const m of WITHDRAWN) {
+            expect("hostCapability" in m && m.hostCapability, m.id).toBeFalsy();
+        }
+    });
+
+    it("the gear should lose its layout rows under a fixed toolbar layout", () => {
+        // The observable half of the withdrawal, at the surface a Jot user
+        // actually reads. Asserted against the same host WITHOUT the
+        // arrangement, so the case discriminates rather than describing a
+        // menu that was short anyway.
+        declareArrangements([]);
+        const before = TOOLBAR_MENU_COMMANDS.filter((m) => hostHasCommand(m.id)).map((m) => m.id);
+        declareArrangements(["fixedToolbarLayout"]);
+        const after = TOOLBAR_MENU_COMMANDS.filter((m) => hostHasCommand(m.id)).map((m) => m.id);
+        expect(before).toContain("customizeToolbar");
+        expect(before).toContain("hideToolbar");
+        expect(after).not.toContain("customizeToolbar");
+        expect(after).not.toContain("hideToolbar");
+        // Everything else survives: this withdraws two rows, not a menu.
+        expect(after).toEqual(before.filter((id) => id !== "customizeToolbar" && id !== "hideToolbar"));
+        expect(after.length).toBeGreaterThan(0);
     });
 });
 

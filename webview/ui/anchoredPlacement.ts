@@ -226,6 +226,20 @@ export function computeMenuPlacement(
     return { alignRight, flipUp };
 }
 
+/**
+ * The attribute a scrolling container stamps on itself to say that a menu
+ * opened inside it would be CLIPPED, and must be positioned in viewport
+ * coordinates instead of against its wrap.
+ *
+ * A declaration by the container rather than an option threaded through every
+ * dropdown factory: the fact belongs to the box that clips, and `placeMenu` is
+ * the one reader. `overflow-x: auto` computes `overflow-y` to `auto` too, so a
+ * horizontally scrolling strip of controls clips its dropdowns on the vertical
+ * axis as well; a `position: fixed` menu escapes that, and escapes it while
+ * staying a DOM child of its wrap, so the hover lifecycle is untouched.
+ */
+export const MENU_CLIP_ATTR = "data-menu-clip";
+
 /** Measure the live button + menu and set the menu's edges to fit the viewport. */
 export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
     const r = anchor.getBoundingClientRect();
@@ -233,11 +247,21 @@ export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
     // shows it first. Fall back to the CSS min-width if it hasn't painted yet.
     const width = menu.offsetWidth || parseFloat(getComputedStyle(menu).minWidth) || 160;
     const height = menu.offsetHeight || 0;
-    const { alignRight, flipUp } = computeMenuPlacement(
-        { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
-        { width, height },
-        viewportSize(),
-    );
+    const viewport = viewportSize();
+    const rect = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    const { alignRight, flipUp } = computeMenuPlacement(rect, { width, height }, viewport);
+
+    if (anchor.closest(`[${MENU_CLIP_ATTR}]`)) {
+        const pos = computeAnchoredPosition(rect, { width, height }, viewport);
+        menu.style.position = "fixed";
+        menu.style.left = `${pos.left}px`;
+        menu.style.right = "auto";
+        menu.style.top = `${pos.top}px`;
+        menu.style.bottom = "auto";
+        menu.style.maxHeight = `${pos.maxHeight}px`;
+        return;
+    }
+
     menu.style.left = alignRight ? "auto" : "0";
     menu.style.right = alignRight ? "0" : "auto";
     menu.style.top = flipUp ? "auto" : `calc(100% + ${MENU_GAP}px)`;
