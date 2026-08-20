@@ -1297,9 +1297,16 @@ final class Coordinator {
         let close = panel.standardWindowButton(.closeButton)
             .map { $0.convert($0.bounds, to: nil) } ?? .zero
         measure.trace(String(
-            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f textW=%.1f textNeeds=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
             frame.origin.x, frame.origin.y, frame.width, frame.height,
-            text.width, view.textWidthNeeded(),
+            // What an ANCESTOR leaves of us. Every other number here is a
+            // frame this code set, so they agree with each other by
+            // construction and none of them can see a container that clips.
+            view.visibleRect.width, view.visibleLabelWidth(),
+            // What the glyphs need, what they got, and whether they fit on
+            // one line in it. The only numbers here about the DRAWING; see
+            // TitleBar.titleFit.
+            view.titleFit().needed, view.titleFit().given, view.drawnInkWidth(),
             text.midY, close.midY,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
             view.accessibilityLabel() ?? ""))
