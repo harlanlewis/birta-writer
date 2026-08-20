@@ -23,7 +23,12 @@ import BirtaJotCore
 /// not shown the switch.
 ///
 /// It composes `SettingsWindowController`'s row, group and caption pieces, so
-/// a row that exists in both places is the same row, drawn the same way.
+/// a row that exists in both places is the same row, drawn the same way and
+/// worded the same. It is a SUBSET of what Settings shows: the questions
+/// somebody cannot answer later without going looking, which is how to summon
+/// it, where the notes go, and whether it is an app in the Dock. Everything
+/// else has a default worth keeping and a row in Settings, and a screen that
+/// listed all of them would be a form rather than a welcome.
 @MainActor
 final class WelcomeView: NSView {
     var onContinue: (() -> Void)?
@@ -37,11 +42,9 @@ final class WelcomeView: NSView {
     private let iCloudSwitch = NSSwitch()
     private let iCloudCaption = Caption("")
     private let locationPath = PathLabel(Prefs.scratchpadURL)
-    private let autosaveSwitch = NSSwitch()
     private let dockSwitch = NSSwitch()
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption("")
-    private let networkSwitch = NSSwitch()
     private var locationGroup: NSView?
     private var column: NSStackView?
 
@@ -61,16 +64,37 @@ final class WelcomeView: NSView {
     /// row pinned to the top would sit under the traffic lights.
     private static let topInset: CGFloat = 44
 
+    /// The brand's paper, and the one literal colour in this app.
+    ///
+    /// It is the ground the mark itself is drawn on (`birta-writer-jot-logo-light.svg`),
+    /// so the squircle above sits on the same paper rather than on a card
+    /// floating over a different one. Fixed rather than theme-derived, and in
+    /// both appearances: this is a brand moment on first run, the way a splash
+    /// screen is, and a paper that changed with the system would not be the
+    /// mark's paper any more. Everything after this screen is the system's
+    /// colours, which is why there is exactly one of these.
+    private static let brandPaper = NSColor(srgbRed: 0xF3 / 255.0,
+                                            green: 0xEF / 255.0,
+                                            blue: 0xE3 / 255.0,
+                                            alpha: 1)
+
+    /// Painted rather than set on the layer.
+    ///
+    /// A layer colour is not part of the view's drawing, so anything that asks
+    /// this hierarchy to draw itself gets the ground missing: the snapshot the
+    /// panel can take of itself is the case that matters here, and a screen
+    /// that photographs white while looking right is a screen nobody can check.
+    override func draw(_ dirtyRect: NSRect) {
+        Self.brandPaper.setFill()
+        dirtyRect.fill()
+    }
+
     private func build() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
 
         for (control, on, action) in [
             (iCloudSwitch, Prefs.noteHome == .iCloud, #selector(toggleICloud)),
-            (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (dockSwitch, Prefs.showInDock, #selector(toggleDock)),
             (loginSwitch, false, #selector(toggleLogin)),
-            (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
         ] {
             control.controlSize = .small
             control.state = on ? .on : .off
@@ -79,11 +103,11 @@ final class WelcomeView: NSView {
         }
         hotkeyRecorder.onCombo = { [weak self] combo in self?.hotkeyChosen(combo) }
 
-        // The app's own icon rather than the logo drawn again here. It is the
-        // same artwork, and `make-icons.sh` has already cut it to the squircle
-        // macOS does not apply for you, so reading it back means the hero can
-        // never disagree with the icon in the Dock beside it.
         let hero = NSImageView()
+        // The app's own icon, which `make-icons.sh` has already cut to the
+        // squircle macOS does not apply for you. Nothing is added over it: a
+        // shadow or a border would be chrome around a mark that is drawn on
+        // the same paper this screen is, and the join should not be visible.
         hero.image = NSApp.applicationIconImage
         hero.imageScaling = .scaleProportionallyUpOrDown
         hero.translatesAutoresizingMaskIntoConstraints = false
@@ -97,7 +121,7 @@ final class WelcomeView: NSView {
         title.alignment = .center
 
         let location = SettingsWindowController.group([
-            SettingsWindowController.row("Store files in iCloud Drive",
+            SettingsWindowController.row("Store in iCloud Drive",
                                          control: iCloudSwitch, caption: iCloudCaption),
             SettingsWindowController.row("Location",
                                          control: SettingsWindowController.pathControl(
@@ -110,22 +134,24 @@ final class WelcomeView: NSView {
         // The rows, as their own column. Leading-aligned and pinned to one
         // width, because a vertical stack sizes an arranged view to its own
         // content otherwise: each card would be as wide as the longest label
-        // in it, and three cards down a screen would step in and out at the
-        // edges like a ransom note.
+        // in it, and cards down a screen would step in and out at the edges
+        // like a ransom note.
+        //
+        // No headings, and fewer rows than Settings has. A first run asks the
+        // few questions somebody cannot answer later without going looking:
+        // how to summon it, where the notes go, and whether it is an app in
+        // the Dock. Everything else has a sensible default and a row in
+        // Settings, and a screen that lists all of them is a form rather than
+        // a welcome.
         let form = NSStackView(views: [
-            SettingsWindowController.heading("Show and hide Jot"),
             SettingsWindowController.group([
-                SettingsWindowController.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
+                SettingsWindowController.row("Show and hide Jot", control: hotkeyRecorder,
+                                             caption: hotkeyCaption),
             ]),
-            SettingsWindowController.heading("Where your notes live"),
             location,
-            SettingsWindowController.heading("How Jot works"),
             SettingsWindowController.group([
-                SettingsWindowController.row("Autosave", control: autosaveSwitch),
                 SettingsWindowController.row("Show in Dock", control: dockSwitch),
                 SettingsWindowController.row("Start at login", control: loginSwitch, caption: loginCaption),
-                SettingsWindowController.row("Rich link previews and embeds", control: networkSwitch,
-                                             caption: Caption("Off means no outbound request at all.")),
             ]),
         ])
         form.orientation = .vertical
@@ -189,7 +215,7 @@ final class WelcomeView: NSView {
     private func buildButtons() -> NSView {
         let settings = NSButton(title: "All Settings", target: self, action: #selector(allSettings))
         settings.bezelStyle = .rounded
-        let cont = NSButton(title: "Continue", target: self, action: #selector(cont))
+        let cont = NSButton(title: "Start Writing", target: self, action: #selector(cont))
         cont.bezelStyle = .rounded
         // The default button, so Return finishes the screen. It is also what
         // makes it the loud one: `keyEquivalent` is what tints a rounded
@@ -217,9 +243,7 @@ final class WelcomeView: NSView {
         hotkeyRecorder.setCombo(Prefs.hotkey)
         iCloudSwitch.state = Prefs.noteHome == .iCloud ? .on : .off
         iCloudSwitch.isEnabled = Prefs.iCloudAvailable
-        autosaveSwitch.state = Prefs.autosave ? .on : .off
         dockSwitch.state = Prefs.showInDock ? .on : .off
-        networkSwitch.state = Prefs.networkEnabled ? .on : .off
         showLoginItem(LoginItem.state)
         showLocation()
     }
@@ -278,16 +302,9 @@ final class WelcomeView: NSView {
         onChange?()
     }
 
-    @objc private func toggleAutosave() { Prefs.autosave = autosaveSwitch.state == .on }
-
     @objc private func toggleDock() {
         Prefs.showInDock = dockSwitch.state == .on
         AppDelegate.applyActivationPolicy()
-    }
-
-    @objc private func toggleNetwork() {
-        Prefs.networkEnabled = networkSwitch.state == .on
-        onChange?()
     }
 
     /// macOS can refuse the registration, and the switch has to follow what the

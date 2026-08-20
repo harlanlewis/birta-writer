@@ -167,7 +167,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// window does: the window is as tall as the pane needs, up to a ceiling
     /// past which the pane scrolls instead.
     private func show(_ tab: Tab, animated: Bool) {
-        guard let window else { return }
+        // The window is `fitWindowToPane`'s to find; this only needs the pane.
         let pane = panes[tab] ?? {
             let built = buildPane(tab)
             panes[tab] = built
@@ -186,10 +186,42 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             pane.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
             pane.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
         ])
+        shown = tab
+        fitWindowToPane(animated: animated)
+    }
+
+    /// Which pane is on screen, so `fitWindowToPane` knows what to measure.
+    private var shown: Tab?
+
+    /// Size the window to the pane on screen.
+    ///
+    /// Separate from `show` because a pane's height is not fixed once it is
+    /// built: a row that comes and goes with the answer above it (Location,
+    /// under Store in iCloud Drive) changes what the pane needs while somebody
+    /// is looking at it. Without this the window keeps the height it was first
+    /// sized to and a scroller appears over two rows of settings, which reads
+    /// as a pane too big for its window rather than a window that did not
+    /// follow.
+    ///
+    /// The ceiling is the smaller of `maxPaneHeight` and the screen.
+    /// `maxPaneHeight` is what a pane may take before scrolling is the lesser
+    /// evil; a display that cannot show even that is the only case where the
+    /// scroller earns its keep.
+    private func fitWindowToPane(animated: Bool) {
+        guard let window, let pane = shown.flatMap({ panes[$0] }) else { return }
         pane.layoutSubtreeIfNeeded()
-        let wanted = min(pane.fittingSize.height, Metrics.maxPaneHeight)
+        let screenHeight = (window.screen ?? NSScreen.main)?.visibleFrame.height ?? Metrics.maxPaneHeight
+        let wanted = min(pane.fittingSize.height, Metrics.maxPaneHeight, screenHeight)
         let frame = window.frameRect(forContentRect: NSRect(
             x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: wanted))
+        guard abs(frame.height - window.frame.height) > 0.5 else { return }
+        // Traced because the failure is a window that simply does not follow,
+        // which looks like a pane too tall rather than a resize that did not
+        // happen. `jot/scripts/measure.sh` reads it.
+        if ProcessInfo.processInfo.environment["BIRTA_JOT_MEASURE"] == "1" {
+            FileHandle.standardError.write(Data(
+                "jot-trace settingsfit from=\(Int(window.frame.height)) to=\(Int(frame.height)) pane=\(Int(pane.fittingSize.height))\n".utf8))
+        }
         var target = window.frame
         // Grow downward from the title bar, which is where a settings window
         // grows: the top edge is what the eye is anchored to.
@@ -345,6 +377,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // it off the folder is a real choice, and this is where it is made.
         if let filesGroup {
             SettingsWindowController.setRowHidden(filesGroup, row: 1, hidden: Prefs.noteHome == .iCloud)
+            // The pane just got shorter or taller, so the window follows it.
+            // Not animated: this is the consequence of a switch somebody just
+            // moved, and a window sliding after every toggle draws attention
+            // to the chrome rather than to the answer.
+            fitWindowToPane(animated: false)
         }
         iCloudCaption.say(Prefs.iCloudAvailable
                           ? ""
@@ -357,7 +394,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private func locationGroup() -> NSView {
         if let filesGroup { return filesGroup }
         let group = Self.group([
-            Self.row("Store files in iCloud Drive", control: iCloudSwitch, caption: iCloudCaption),
+            Self.row("Store in iCloud Drive", control: iCloudSwitch, caption: iCloudCaption),
             Self.row("Location", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
         ])
         filesGroup = group
@@ -408,10 +445,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         switch tab {
         case .general:
             sections = [
-                // The same three groups the welcome screen shows, in the same
-                // order and with the same titles. A setting a person answered
-                // on first run is found again by looking where they answered
-                // it, which only works if the two screens are one layout.
+                // The same subjects the first-run screen asks about, in the
+                // same order and the same words, plus the ones it does not
+                // ask. A setting somebody answered on first run is found
+                // again by looking where they answered it, and that survives
+                // the screen being a SUBSET: what it shows must appear here,
+                // in this order, worded the same. What it leaves out is the
+                // rows with a default worth keeping and no first-run
+                // consequence.
                 Self.heading("Show and hide Jot"),
                 Self.group([
                     Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),

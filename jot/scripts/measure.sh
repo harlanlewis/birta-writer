@@ -1170,22 +1170,68 @@ done
 # shipping off, and the failure is silent in the direction that matters: an
 # install that predates this screen having outbound requests switched on
 # without anybody clicking anything.
-onboarding_defaults() { # onboarding_defaults <suite>; echoes the stored keys
-    local dir; dir="$(mktemp -d -t jot-onboard)"
+# Sets ONBOARD_KEYS to what the run stored, and ONBOARD_ALIVE to whether the
+# app actually got as far as mounting its editor.
+#
+# The liveness signal is the app's own `ready` mark rather than the presence of
+# any stored key, and that is not a detail: the checks below assert an ABSENCE,
+# and an absence over a run that never started is not evidence. It used to lean
+# on the run writing SOMETHING, which stopped being true the moment the
+# first-run screen stopped writing preferences, and the arm said so rather than
+# passing, which is the whole point of having it.
+onboarding_run() { # onboarding_run <suite>
+    local dir log pid
+    dir="$(mktemp -d -t jot-onboard)"
+    log="$(mktemp -t jot-onboard)"
     BIRTA_JOT_MEASURE=1 BIRTA_JOT_SCRATCHPAD="$dir/Onboard.md" \
-        BIRTA_JOT_DEFAULTS_SUITE="$1" BIRTA_JOT_OPEN_WELCOME=1 "$APP" 2>/dev/null &
-    local pid=$!
+        BIRTA_JOT_DEFAULTS_SUITE="$1" BIRTA_JOT_OPEN_WELCOME=1 "$APP" 2>"$log" &
+    pid=$!
     sleep 3; kill -USR1 $pid; sleep 2
-    defaults read "$1" 2>/dev/null || true
+    ONBOARD_KEYS="$(defaults read "$1" 2>/dev/null || true)"
+    ONBOARD_ALIVE=0
+    grep -q "^jot-measure ready " "$log" && ONBOARD_ALIVE=1
     kill $pid 2>/dev/null; wait $pid 2>/dev/null || true
-    rm -rf "$dir"
+    rm -rf "$dir" "$log"
 }
 
+
+# The settings window is as tall as its pane, and follows it.
+#
+# A pane's height is not fixed once built: the Location row comes and goes with
+# the answer above it. A window that keeps its first height puts a scroller
+# over two rows of settings, which reads as a pane too big rather than a window
+# that did not follow, so the trace says which happened.
+SETTINGS_SUITE="com.birtalabs.jot.measure.settings.$$"
+SETTINGS_DIR="$(mktemp -d -t jot-settings)"
+SETTINGS_LOG="$(mktemp -t jot-settings)"
+BIRTA_JOT_MEASURE=1 BIRTA_JOT_SCRATCHPAD="$SETTINGS_DIR/S.md" \
+    BIRTA_JOT_DEFAULTS_SUITE="$SETTINGS_SUITE" BIRTA_JOT_OPEN_SETTINGS=general "$APP" 2>"$SETTINGS_LOG" &
+SETTINGS_PID=$!
+sleep 4
+SETTINGS_FIT="$(grep "^jot-trace settingsfit " "$SETTINGS_LOG" | tail -1 || true)"
+kill $SETTINGS_PID 2>/dev/null; wait $SETTINGS_PID 2>/dev/null || true
+rm -rf "$SETTINGS_DIR" "$SETTINGS_LOG"
+EXTRA_SUITES="$EXTRA_SUITES $SETTINGS_SUITE"
+if [ -z "$SETTINGS_FIT" ]; then
+    echo "settings fit         FAILED: the settings window never sized itself to its pane" >&2; exit 1
+fi
+FIT_TO="$(echo "$SETTINGS_FIT" | sed -n 's/.* to=\([0-9]*\).*/\1/p')"
+FIT_PANE="$(echo "$SETTINGS_FIT" | sed -n 's/.*pane=\([0-9]*\).*/\1/p')"
+# The window is at least as tall as the pane wants. Compared against the PANE
+# rather than against a constant: the pane's height is what changes, and a
+# check written against a number would pass a window that stopped following.
+if [ -n "$FIT_TO" ] && [ -n "$FIT_PANE" ] && [ "$FIT_TO" -ge "$FIT_PANE" ]; then
+    echo "settings fit         ok: the window sized itself to the pane (${FIT_PANE}pt of rows in a ${FIT_TO}pt window)"
+else
+    echo "settings fit         FAILED: the window is shorter than its pane, so the pane scrolls" >&2
+    echo "  $SETTINGS_FIT" >&2; exit 1
+fi
 
 ONBOARD_FRESH_SUITE="com.birtalabs.jot.measure.fresh.$$"
 ONBOARD_USED_SUITE="com.birtalabs.jot.measure.used.$$"
 EXTRA_SUITES="$EXTRA_SUITES $ONBOARD_FRESH_SUITE $ONBOARD_USED_SUITE"
-FRESH_KEYS="$(onboarding_defaults "$ONBOARD_FRESH_SUITE")"
+onboarding_run "$ONBOARD_FRESH_SUITE"
+FRESH_KEYS="$ONBOARD_KEYS"; FRESH_ALIVE="$ONBOARD_ALIVE"
 # An install that has been used, seeded with `hasSeenWelcome` specifically.
 # Any key would do for "not fresh", and this is the one worth choosing: it is
 # the key a reset leaves behind and the key most likely to be special-cased out
@@ -1193,18 +1239,22 @@ FRESH_KEYS="$(onboarding_defaults "$ONBOARD_FRESH_SUITE")"
 # Seeded false, because the setter stores it either way and false is what
 # Settings writes when it re-shows the screen.
 defaults write "$ONBOARD_USED_SUITE" hasSeenWelcome -bool false
-USED_KEYS="$(onboarding_defaults "$ONBOARD_USED_SUITE")"
+onboarding_run "$ONBOARD_USED_SUITE"
+USED_KEYS="$ONBOARD_KEYS"; USED_ALIVE="$ONBOARD_ALIVE"
 
-if ! echo "$FRESH_KEYS" | grep -q "networkEnabled = 1"; then
-    echo "onboarding           FAILED: a first launch did not take the onboarding defaults" >&2
-    echo "  (something wrote a preference before the screen appeared, so nothing applies)" >&2
+# Neither a first launch nor an existing install may end up with the network
+# switched on. That is the posture claim, and it is worth two launches because
+# the failure is silent in the direction that matters: an app making outbound
+# requests that nobody asked it to make.
+#
+# Asserted as an ABSENCE, which needs the launches to have done something or
+# it passes on a pair of empty domains. `FRESH_KEYS` carrying the app's own
+# writes is what says the app ran at all.
+if echo "$FRESH_KEYS" | grep -q "networkEnabled = 1"; then
+    echo "onboarding           FAILED: a first launch switched the network on" >&2
     echo "$FRESH_KEYS" >&2; exit 1
 fi
-if ! echo "$FRESH_KEYS" | grep -q "showInDock = 1"; then
-    echo "onboarding           FAILED: a first launch did not take the Dock default" >&2
-    echo "$FRESH_KEYS" >&2; exit 1
-fi
-if echo "$USED_KEYS" | grep -q "networkEnabled"; then
+if echo "$USED_KEYS" | grep -q "networkEnabled = 1"; then
     echo "onboarding           FAILED: an install that already had settings had the network switched on for it" >&2
     echo "$USED_KEYS" >&2; exit 1
 fi
@@ -1212,7 +1262,13 @@ if echo "$USED_KEYS" | grep -q "showInDock"; then
     echo "onboarding           FAILED: an install that already had settings was given a Dock icon" >&2
     echo "$USED_KEYS" >&2; exit 1
 fi
-echo "onboarding           ok: a first launch takes the defaults, an install that has settings is left alone"
+# Both launches have to have HAPPENED. The two checks above assert an absence,
+# which a run that never started satisfies perfectly.
+if [ "$FRESH_ALIVE" != 1 ] || [ "$USED_ALIVE" != 1 ]; then
+    echo "onboarding           FAILED: a launch never reached ready, so the checks proved nothing" >&2
+    echo "  (fresh alive=$FRESH_ALIVE, used alive=$USED_ALIVE)" >&2; exit 1
+fi
+echo "onboarding           ok: neither a first launch nor an existing install turns the network on"
 
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"

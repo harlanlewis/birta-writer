@@ -41,7 +41,7 @@ APP_NAME="Birta Writer Jot"
 BUNDLE_ID="com.birtalabs.jot"
 EXEC_NAME="BirtaJot"
 if [ "$FLAVOR" = dev ]; then
-    APP_NAME="Birta Writer Jot Dev"
+    APP_NAME="Birta Writer Jot [DEV]"
     BUNDLE_ID="com.birtalabs.jotdev"
     # The EXECUTABLE differs too, and it is not cosmetic. `install-app.sh` and
     # anything else that asks a running copy to quit selects it by process

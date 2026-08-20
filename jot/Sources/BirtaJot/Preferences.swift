@@ -372,31 +372,28 @@ enum Prefs {
         Key.allCases.allSatisfy { d.object(forKey: $0.rawValue) == nil }
     }
 
-    /// Write the answers the welcome screen is about to SHOW, before it draws.
+    /// Make true what the first-run screen is about to SHOW, before it draws.
     ///
     /// The screen presents live settings, so anything it displays as on has to
-    /// be on. Writing them here rather than flipping `showInDock`'s and
-    /// `networkEnabled`'s accessor defaults is what keeps two different things
-    /// apart: an onboarding default is a value somebody was shown and can
-    /// refuse in the same gesture, and an accessor default is what applies to
-    /// somebody who was never shown anything.
+    /// be on. Almost nothing is left to do here, and that is the point rather
+    /// than an omission: every switch it shows now agrees with the accessor
+    /// default beside it, so the two cannot disagree by construction. Only the
+    /// login item is not a preference, and a system registration has no
+    /// default to agree with.
     ///
-    /// FIRST LAUNCH ONLY, and that is the whole of the rule. An existing
-    /// install reaches this screen too, because `hasSeenWelcome` is absent for
-    /// everybody who had Jot before the screen existed, and writing onboarding
-    /// answers there would reach into settings they have been living with: a
-    /// Dock icon would appear on an app that never had one, and rich link
-    /// previews would start making requests, both before a single click.
-    /// Somebody already running Jot has answered these by leaving them alone.
+    /// Rich link previews are the row this function must never grow back. It
+    /// is the only setting that reaches the network, it ships off, and the
+    /// first-run screen does not ask about it, so nothing here may switch it
+    /// on. That is the whole of the claim in `docs/NETWORK_POSTURE.md`.
     ///
-    /// So an existing install sees the screen showing what it already does,
-    /// which is the right thing for it to say.
+    /// FIRST LAUNCH ONLY. An existing install reaches this screen too, because
+    /// `hasSeenWelcome` is absent for everybody who had Jot before it existed,
+    /// and registering a login item for them would be reaching into something
+    /// they have been living with.
     static func applyOnboardingDefaults() {
         guard isFirstLaunch else { return }
-        showInDock = true
-        autosave = true
-        storeInICloud = true
-        networkEnabled = true
+        // Shown on, so it is on. macOS can refuse, and the row says so.
+        _ = try? LoginItem.set(true)
     }
 
     /// Whether Jot checks for a newer release on its own.

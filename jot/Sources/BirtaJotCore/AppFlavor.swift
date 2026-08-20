@@ -67,13 +67,20 @@ public enum AppFlavor: String, CaseIterable, Sendable {
         ScratchpadLocation.productName + nameSuffix
     }
 
-    /// Appended to the note's folder and file names, so the two builds never
-    /// open the same file. Empty for the release, which is what keeps every
-    /// existing install exactly where it was.
+    /// Appended to the app's name, its note's name, and the folder holding
+    /// that note in iCloud Drive, so the two builds never collide.
+    ///
+    /// Bracketed and shouted, because it is a WARNING rather than a variant
+    /// name: everything it is attached to looks like the real thing, and the
+    /// point of the suffix is that somebody glancing at a menu bar, a window
+    /// title or a file in Finder can tell at once which they are looking at.
+    ///
+    /// Empty for the release, which is what keeps every existing install
+    /// exactly where it was.
     public var nameSuffix: String {
         switch self {
         case .release: return ""
-        case .dev: return " Dev"
+        case .dev: return " [DEV]"
         }
     }
 

@@ -35,7 +35,7 @@ done
 APP_NAME="Birta Writer Jot"
 EXEC_NAME="BirtaJot"
 if [ "$FLAVOR" = dev ]; then
-    APP_NAME="Birta Writer Jot Dev"
+    APP_NAME="Birta Writer Jot [DEV]"
     EXEC_NAME="BirtaJotDev"
 fi
 SRC="jot/build/$APP_NAME.app"
