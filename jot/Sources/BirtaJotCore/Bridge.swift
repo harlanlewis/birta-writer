@@ -355,7 +355,7 @@ public struct BootConfig: Equatable {
             //     the only route to search and settings, so it does not hide.
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick"],
                 "shortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
             ],
             "fontPreset": fontPreset,

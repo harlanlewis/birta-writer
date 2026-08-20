@@ -34,8 +34,10 @@
     align-items: center;
     gap: var(--ui-space-2);
     padding: var(--ui-space-2) var(--ui-space-1);
-    /* No border between the rows. They are one piece of chrome, and a rule
-       across the window drawn between two rows of it reads as two bars.
+    /* No border BETWEEN the rows: they are one piece of chrome, and a rule
+       drawn across the window between two rows of it reads as two bars. The
+       hairline goes UNDER the whole thing, where chrome meets text, and it
+       spans the window rather than the controls.
 
        The leading edge is the WINDOW'S, not the first row's. The bar's leading
        inset clears the traffic lights, which sit in the titlebar band above
@@ -43,6 +45,7 @@
        starts three quarters of an inch in, lined up against nothing, with the
        window's own left edge empty. The host page therefore puts that inset on
        `.toolbar` rather than on the bar (jot/Resources/index.html). */
+    border-bottom: 1px solid var(--vscode-panel-border);
     position: relative;
 }
 
@@ -78,55 +81,35 @@
     line-height: 1;
 }
 
-/* Always drawn, pointing the way the click goes.
-
-   It used to appear on hover and animate its WIDTH from zero, which moved the
-   toggle's own box and shoved every control in the row sideways as the pointer
-   crossed it. A control that changes size under the pointer is a control you
-   can miss by arriving at it, and the row it pushes is the thing you were
-   reaching for. Reserving the width is the fix, and once the space is
-   permanent there is nothing left for the fade to buy: the chevron is either
-   part of the button or it is not.
-
-   Quiet rather than absent. It sits at reduced opacity so the T stays the
-   thing you read, and reaches full ink on hover and keyboard focus, which is
-   the same affordance the old rule wanted without the geometry. */
-.tb-dock-chevron {
-    display: inline-flex;
-    flex: none;
-    width: 12px;
-    opacity: 0.55;
-    transition: opacity 0.12s ease;
-
-    svg {
-        width: 12px;
-        height: 12px;
-    }
-}
-
 .tb-dock-toggle {
     display: inline-flex;
     align-items: center;
-    gap: var(--ui-space-1);
     padding: 0 var(--ui-space-2);
-
-    &:hover .tb-dock-chevron,
-    &:focus-visible .tb-dock-chevron {
-        opacity: 1;
-    }
 }
 
-/* Expanded, the chevron reverses: the click now closes the row. Keyed off the
-   BUTTON rather than off the row, because the button no longer sits inside the
-   thing whose state it names. */
-.tb-dock-toggle[data-expanded="true"] .tb-dock-chevron {
-    transform: rotate(90deg);
+/* Open, the letter takes the pressed treatment every toggle in this bar takes.
+   The row's presence below the bar is the other half of the answer, and
+   between them there is nothing a chevron would add. */
+.tb-dock-toggle[data-expanded="true"] {
+    /* Chained, not bare: `toolbar.activeBackground` has a null default outside
+       high-contrast themes, so a bare `var()` resolves to the property's
+       initial value and the pressed state simply does not paint. The same
+       chain `chrome.css` uses for the primitive's active state. */
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
 .tb-dock-row {
     display: flex;
     align-items: center;
     gap: var(--ui-space-1);
+    /* Centred in the window, and `safe` is the whole reason this is one
+       declaration rather than a resize listener: centring a flex row that
+       overflows its box pushes the overflow out of BOTH ends, and the start of
+       it becomes unreachable because there is no negative scroll position to
+       scroll back to. `safe` falls back to start alignment exactly when the
+       row stops fitting, which is exactly when the chevrons appear. */
+    justify-content: safe center;
+    flex: 1;
     /* The set is fixed and opinionated, so a narrow window scrolls to the last
        control rather than demoting a tail into an overflow menu that would
        have to decide which controls matter least. The `data-menu-clip`
@@ -195,4 +178,17 @@
         to left,
         var(--vscode-editor-background) 55%,
         transparent 100%);
+}
+
+
+/* The first row's dropdowns paint OVER the formatting row.
+
+   Both rows are children of the bar, and the row comes second in the DOM, so
+   without this it paints above a menu opened from the row above it: the menu
+   appears, and the strip of chrome below the button covers its top. A
+   z-index on the row cannot fix that, because a later sibling wins by
+   document order; raising the FIRST row is what puts its menus back on top. */
+.editor-topbar--stacked .toolbar {
+    position: relative;
+    z-index: 1;
 }
