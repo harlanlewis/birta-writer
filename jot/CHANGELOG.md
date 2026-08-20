@@ -26,6 +26,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- Birta Jot has a new app icon and a new menu-bar mark, both drawn from the Jot script mark. The app icon was a two-line Writer Jot wordmark whose top line was unreadable at the sizes the Dock and Cmd+Tab draw it at; the new one is a single word at the canvas's own scale. The menu-bar mark is still a template image, so it still inverts for a dark menu bar. The Birta Writer extension's icon is unchanged.
+
 - Birta Writer Jot's editing controls have moved out of the titlebar row onto a second row of the toolbar, directly below it and above the text, on the page's own ground with no rule between the two rows. The row is closed to start with, and the serif T that opens it sits in the toolbar itself next to search; the choice is remembered. Every control that changes the document is there, including the seven that used to ship hidden and needed a settings change to reach: Strikethrough, Highlight, Inline Code, Horizontal Rule, Inline Math, Footnote and Clear Formatting. It starts at the window's left edge, and the text moves down to make room for it rather than being covered. When the window is too narrow for the whole set, the row scrolls sideways and a chevron appears at whichever edge you can still move toward; clicking one scrolls the row. The titlebar row keeps search and the settings gear. This is Jot only; the extension's toolbar is unchanged.
 
 - Birta Writer Jot's gear menu no longer offers Customize Toolbar or Hide Toolbar, and the commands do nothing there. The formatting row's contents and order are fixed, and the toolbar is the only route to search and settings, so neither question is Jot's to answer. Both are unchanged in the extension.

@@ -35,7 +35,7 @@ trap 'rm -rf "$WORK"' EXIT
 # radius 185.4, with the 100px margin all round that the system's own drop
 # shadow is drawn into. Shipping the flat square instead reads as a tile that
 # forgot to be an icon next to everything else in the Dock.
-rsvg-convert -w 824 -h 824 "$RES/birta-writer-jot-logo-light.svg" -o "$WORK/art.png"
+rsvg-convert -w 824 -h 824 "$RES/birta-jot-logo-light.svg" -o "$WORK/art.png"
 magick -size 824x824 xc:none -draw 'roundrectangle 0,0 823,823 185.4,185.4' -alpha extract "$WORK/mask.png"
 magick "$WORK/art.png" "$WORK/mask.png" -alpha off -compose CopyOpacity -composite "$WORK/rounded.png"
 magick "$WORK/rounded.png" -background none -gravity center -extent 1024x1024 "$WORK/icon1024.png"
@@ -66,6 +66,6 @@ iconutil -c icns "$ICONSET" -o "$OUT_ICNS"
 # creation date into the PDF otherwise, so regenerating an unchanged mark
 # produced a diff every time and a real change to the artwork was
 # indistinguishable from the timestamp moving. The .icns needs no such help.
-SOURCE_DATE_EPOCH=0 rsvg-convert -f pdf -w 16 -h 16 "$RES/birta-writer-jot-icon.svg" -o "$OUT_PDF"
+SOURCE_DATE_EPOCH=0 rsvg-convert -f pdf -w 16 -h 16 "$RES/birta-jot-icon.svg" -o "$OUT_PDF"
 
 echo "wrote $OUT_ICNS and $OUT_PDF"
