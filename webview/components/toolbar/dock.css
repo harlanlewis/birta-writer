@@ -34,10 +34,12 @@
     align-items: center;
     gap: var(--ui-space-2);
     padding: var(--ui-space-2) var(--ui-space-1);
-    /* No border BETWEEN the rows: they are one piece of chrome, and a rule
-       drawn across the window between two rows of it reads as two bars. The
-       hairline goes UNDER the whole thing, where chrome meets text, and it
-       spans the window rather than the controls.
+    /* No border of its own, in either direction. Between the rows a rule reads
+       as two bars where there is one piece of chrome; below the row it would
+       land against the BAR's own hairline, which is already there and already
+       the bottom edge, and two 1px lines with nothing between them draw as a
+       2px one. Where the hairline goes and when it is drawn at all is
+       `.editor-topbar`'s, at the end of this file.
 
        The leading edge is the WINDOW'S, not the first row's. The bar's leading
        inset clears the traffic lights, which sit in the titlebar band above
@@ -45,7 +47,6 @@
        starts three quarters of an inch in, lined up against nothing, with the
        window's own left edge empty. The host page therefore puts that inset on
        `.toolbar` rather than on the bar (jot/Resources/index.html). */
-    border-bottom: 1px solid var(--vscode-panel-border);
     position: relative;
 }
 
@@ -102,13 +103,6 @@
     display: flex;
     align-items: center;
     gap: var(--ui-space-1);
-    /* Centred in the window, and `safe` is the whole reason this is one
-       declaration rather than a resize listener: centring a flex row that
-       overflows its box pushes the overflow out of BOTH ends, and the start of
-       it becomes unreachable because there is no negative scroll position to
-       scroll back to. `safe` falls back to start alignment exactly when the
-       row stops fitting, which is exactly when the chevrons appear. */
-    justify-content: safe center;
     flex: 1;
     /* The set is fixed and opinionated, so a narrow window scrolls to the last
        control rather than demoting a tail into an overflow menu that would
@@ -180,15 +174,23 @@
         transparent 100%);
 }
 
+/* WHERE the hairline goes, and WHEN there is one.
 
-/* The first row's dropdowns paint OVER the formatting row.
+   The bar carries its own bottom border (`.editor-topbar`, style.css), and
+   with the row open that edge is already below the row: the row is the bar's
+   last child and the stacked bar has no padding under it. So the open state
+   needs nothing here, which is the point of putting the line on the bar rather
+   than on the row.
 
-   Both rows are children of the bar, and the row comes second in the DOM, so
-   without this it paints above a menu opened from the row above it: the menu
-   appears, and the strip of chrome below the button covers its top. A
-   z-index on the row cannot fix that, because a later sibling wins by
-   document order; raising the FIRST row is what puts its menus back on top. */
-.editor-topbar--stacked .toolbar {
-    position: relative;
-    z-index: 1;
+   Closed is the case that does. A single row of chrome over the text does not
+   need a rule to say where it ends, and the line reads as the top edge of a
+   panel that is not there. Colour rather than `border: none`, because the bar's
+   height is measured and published as `--editor-topbar-height`, and every
+   consumer of it (content padding, heading scroll margins, the find bar) would
+   move by a pixel each time the row opened.
+
+   Scoped to the stacked bar, so the surface with no second row keeps the
+   hairline it has always had. */
+.editor-topbar--stacked:has(.tb-dock[hidden]) {
+    border-bottom-color: transparent;
 }

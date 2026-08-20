@@ -785,14 +785,15 @@ export async function run({ page, check, baseUrl }) {
             && stack.shadow === "none"
             && stack.radius === "0px",
         JSON.stringify(stack));
-    // No rule BETWEEN the rows, and one UNDER the bar. The two rows are one
-    // piece of chrome, so a line drawn across the window between them reads as
-    // two bars; the hairline belongs where chrome meets text. Asserted on all
-    // four sides, because "a bottom border and nothing else" is the claim and
-    // any other side would break it.
-    check("jot: it spans the bar's full width, at its bottom, with a hairline under it only",
+    // The row draws NO rule, on any side. Between the rows a line reads as two
+    // bars where there is one piece of chrome, and below the row it would land
+    // against the bar's own hairline with nothing between them and draw as a
+    // 2px one. The bar owns that edge; whether it is painted at all is checked
+    // in both states at the end of this file. All four sides, because "no
+    // border anywhere" is the claim and any one side would break it.
+    check("jot: it spans the bar's full width, at its bottom, and draws no rule of its own",
         stack.left === 0 && stack.right === 0 && stack.sitsAtBarBottom
-            && stack.borderTopWidth === "0px" && stack.borderBottomWidth === "1px"
+            && stack.borderTopWidth === "0px" && stack.borderBottomWidth === "0px"
             && stack.borderLeftWidth === "0px" && stack.borderRightWidth === "0px",
         JSON.stringify(stack));
     // The check that used to sit here asserted the hairline's COLOUR, because a
@@ -826,4 +827,110 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(200);
     const ctlSwitched = await page.evaluate(() => window.__posted.filter((m) => m.type === "switchToTextEditor").length);
     check("control: editRawMarkdown via editorCommand posts switchToTextEditor", ctlSwitched === 1, `count=${ctlSwitched}`);
+
+    // ── The bar's hairline, and the row's alignment ────────────────────────
+    //
+    // Both are DIFFERENCES between the two states, so both are measured in
+    // each. A rule that never draws and one that always draws report the same
+    // single number if you only look once.
+    //
+    // Last in the file on purpose: it drives the row to both states and leaves
+    // it open, and the sections above assume the state they were handed.
+    await mount("index.html");
+    const hlState = async () => page.evaluate(() => {
+        const bar = document.querySelector(".editor-topbar");
+        const dock = document.querySelector(".tb-dock");
+        const row = document.querySelector(".tb-dock-row");
+        const firstItem = document.querySelector(".tb-dock-row .tb-item");
+        const cs = getComputedStyle(bar);
+        return {
+            expanded: dock?.dataset.expanded,
+            borderWidth: cs.borderBottomWidth,
+            borderColor: cs.borderBottomColor,
+            barBottom: Math.round(bar.getBoundingClientRect().bottom),
+            dockBottom: dock && !dock.hidden ? Math.round(dock.getBoundingClientRect().bottom) : null,
+            dockOwnBorder: dock ? getComputedStyle(dock).borderBottomWidth : null,
+            rowJustify: row ? getComputedStyle(row).justifyContent : null,
+            itemLeft: firstItem ? Math.round(firstItem.getBoundingClientRect().left) : null,
+            rowLeft: row ? Math.round(row.getBoundingClientRect().left) : null,
+        };
+    });
+    const hlDrive = async (want) => {
+        for (let i = 0; i < 3; i++) {
+            const isOpen = await page.evaluate(
+                () => document.querySelector(".tb-dock")?.dataset.expanded === "true");
+            if (isOpen === want) return;
+            await page.locator(".tb-dock-toggle").click();
+            await page.waitForTimeout(250);
+        }
+    };
+    const isTransparent = (c) => c.includes("rgba(0, 0, 0, 0)") || c.includes("transparent");
+
+    await hlDrive(false);
+    const hlShut = await hlState();
+    await hlDrive(true);
+    const hlOpen = await hlState();
+
+    check("jot: the hairline probe reached both states",
+        hlShut.expanded === "false" && hlOpen.expanded === "true",
+        JSON.stringify({ shut: hlShut.expanded, open: hlOpen.expanded }));
+    check("jot: closed, the bar draws no hairline",
+        isTransparent(hlShut.borderColor), JSON.stringify(hlShut));
+    check("jot: open, the hairline is drawn",
+        !isTransparent(hlOpen.borderColor), JSON.stringify(hlOpen));
+    // Colour rather than width, so the measured bar height every consumer
+    // reads does not move by a pixel as the row opens.
+    check("jot: and the bar's border box is the same in both, so nothing below shifts",
+        hlShut.borderWidth === hlOpen.borderWidth,
+        JSON.stringify({ shut: hlShut.borderWidth, open: hlOpen.borderWidth }));
+    check("jot: the hairline sits below the formatting row, not between the rows",
+        hlOpen.dockBottom !== null && hlOpen.barBottom >= hlOpen.dockBottom,
+        JSON.stringify({ barBottom: hlOpen.barBottom, dockBottom: hlOpen.dockBottom }));
+    check("jot: and the row carries no rule of its own to double it",
+        hlOpen.dockOwnBorder === "0px", JSON.stringify({ dockOwnBorder: hlOpen.dockOwnBorder }));
+    // A menu opened from the FIRST row paints over the second one.
+    //
+    // This guards a fix that is NOT here. The row and the bar's first row are
+    // siblings and the row comes later in the DOM, which is the shape where a
+    // later sibling covers an earlier one's menu, and the borrowed commit
+    // raised the first row to stop it. Measured against this tree the menu is
+    // already on top: it carries a positive z-index and the row's is auto, and
+    // a positive z-index wins inside a stacking context whatever the document
+    // order. So the raise was dropped, and this is what says dropping it was
+    // safe. Asked of paint order rather than of z-index values, via the point
+    // where the two boxes actually overlap.
+    await hlDrive(true);
+    await page.locator('[data-item-id="settings"]').first().click();
+    await page.waitForTimeout(300);
+    const zOrder = await page.evaluate(() => {
+        const dock = document.querySelector(".tb-dock");
+        const menu = [...document.querySelectorAll("[class*='menu']")]
+            .filter((el) => el.getClientRects().length && !el.classList.contains("tb-dock"))
+            .sort((a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height)[0];
+        if (!dock || !menu) return { reached: false, menus: 0 };
+        const d = dock.getBoundingClientRect(), m = menu.getBoundingClientRect();
+        const overlapY = Math.min(d.bottom, m.bottom) - Math.max(d.top, m.top);
+        const overlapX = Math.min(d.right, m.right) - Math.max(d.left, m.left);
+        if (overlapY <= 2 || overlapX <= 2) return { reached: false, overlapY, overlapX };
+        const x = Math.max(d.left, m.left) + Math.min(overlapX, 20) / 2;
+        const y = Math.max(d.top, m.top) + Math.min(overlapY, 20) / 2;
+        const hit = document.elementFromPoint(x, y);
+        return {
+            reached: true, overlapY: Math.round(overlapY),
+            menuOnTop: !!(hit && menu.contains(hit)),
+            dockOnTop: !!(hit && dock.contains(hit)),
+        };
+    });
+    // Without this arm a menu that never opened, or one that missed the row
+    // entirely, would report "the row is not on top" and read as a pass.
+    check("jot: the gear's menu really does overlap the formatting row",
+        zOrder.reached && zOrder.overlapY > 2, JSON.stringify(zOrder));
+    check("jot: and it paints over the row rather than under it",
+        zOrder.menuOnTop && !zOrder.dockOnTop, JSON.stringify(zOrder));
+
+    check("jot: the row's controls start at the leading edge rather than centred",
+        hlOpen.rowJustify !== "center" && hlOpen.rowJustify !== "safe center"
+            && hlOpen.itemLeft !== null && hlOpen.itemLeft - hlOpen.rowLeft <= 4,
+        JSON.stringify(hlOpen));
+
 }

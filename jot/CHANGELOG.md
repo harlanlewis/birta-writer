@@ -34,6 +34,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - Birta Writer Jot's menus open when you click them, not when the pointer passes over them, and their buttons no longer carry a chevron. A menu that opens on hover needs the chevron to say that resting there will do something; where the click is what opens it, the click is the whole of the affordance. This is Jot only: the extension's toolbar menus still open on hover, with their chevrons.
 
+- The hairline under Birta Writer Jot's toolbar is drawn only when the formatting row is open, and it sits below that row rather than between the two. One row of chrome over the text does not need a rule to say where it ends, and the line read as the top edge of a panel that was not there. Nothing below the bar moves as the row opens and closes.
+
 - Birta Writer Jot's gear menu no longer offers Customize Toolbar or Hide Toolbar, and the commands do nothing there. The formatting row's contents and order are fixed, and the toolbar is the only route to search and settings, so neither question is Jot's to answer. Both are unchanged in the extension.
 
 - The scratchpad Jot starts with is called `Birta Jot.md`, in the `Birta Jot` folder it already used under Application Support. It was `Scratchpad.md`, a word for what the file is for rather than a name, and the window's title bar shows that name, so it is worth being the one you would have given it. A scratchpad you have pointed somewhere else in Settings is untouched, and so is one you renamed; this is the default only. Jot does not move an existing `Scratchpad.md` for you, so if you have one, point Settings at it or rename it in Finder.
