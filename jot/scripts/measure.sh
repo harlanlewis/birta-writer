@@ -50,7 +50,6 @@ export BIRTA_JOT_SCRATCHPAD="$SCRATCH_DIR/Scratch pad.md"
 # ...and a throwaway defaults domain, so the run never rewrites the user's
 # toolbar layout, view state or panel frame.
 export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
-trap 'defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" >/dev/null 2>&1 || true' EXIT
 # The formatting row ships closed, and what this script has to look at is an
 # open one. Seeded through the view-state bag the app really restores from,
 # rather than through a debug message: the restore path is itself part of what
@@ -313,15 +312,36 @@ fi
 # near the top of the panel to the bottom of the window. The popover opens
 # either way, which is why this is a number rather than a look.
 show_panel
-# Two batches, because the slash menu renders asynchronously: Return sent in
-# the same burst as the query arrives before there is a row to choose.
-printf '{"type":"__jotKeys","keys":["End","Enter","/","d","a","t","e"]}' > "$SCRATCH_DIR/.debug-message.json"
-kill -URG $PID; sleep 1.5
-rm -f "$SCRATCH_DIR/.debug-message.json"
-printf '{"type":"__jotKeys","keys":["Enter"]}' > "$SCRATCH_DIR/.debug-message.json"
-kill -URG $PID; sleep 1.5
-rm -f "$SCRATCH_DIR/.debug-message.json"
-DATEPICK="$(grep "^jot-trace datepicker " "$LOG" | tail -1 || true)"
+# Retried, because the gesture can be dropped for a reason that is not the
+# thing under test. An accessory app driven from a shell frequently cannot
+# take activation (the paste check above carries the same warning), and a
+# burst of keys sent while the panel is not key reaches nothing at all. That
+# made this arm fail about one run in several, and an arm people learn to
+# re-run past is an arm that will be re-run past on the day it is right.
+#
+# Two batches per attempt, because the slash menu renders asynchronously:
+# Return sent in the same burst as the query arrives before there is a row to
+# choose. Escape first, so a previous attempt that got half way leaves no menu
+# open for this one to type into.
+DATEPICK=""
+for attempt in 1 2 3; do
+    printf '{"type":"__jotKeys","keys":["Escape","End","Enter","/","d","a","t","e"]}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    printf '{"type":"__jotKeys","keys":["Enter"]}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    DATEPICK="$(grep "^jot-trace datepicker " "$LOG" | tail -1 || true)"
+    [ -n "$DATEPICK" ] && break
+    # Dismiss whatever did land, and ask for the window again.
+    printf '{"type":"__jotKeys","keys":["Escape"]}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 0.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    show_panel
+done
+if [ -n "$DATEPICK" ] && [ "$attempt" -gt 1 ]; then
+    echo "date picker          (took $attempt attempts; the panel was slow to take key focus)"
+fi
 DP_PAGE_TOP="$(echo "$DATEPICK" | sed -n 's/.*pageTop=\([0-9.-]*\).*/\1/p')"
 DP_ANCHOR_Y="$(echo "$DATEPICK" | sed -n 's/.*anchorY=\([0-9.-]*\).*/\1/p')"
 DP_FLIPPED="$(echo "$DATEPICK" | sed -n 's/.*flipped=\([a-z]*\).*/\1/p')"

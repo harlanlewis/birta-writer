@@ -139,6 +139,7 @@ webview/components/imageView/index.ts         Image NodeView (selection/lightbox
 webview/ui/hostPalette.css                    The --vscode-* palette a non-VS-Code host links (Jot, the e2e harness); guarded by hostPalette.test.ts
 shared/hostProfile.ts                         What the surface IS: the one profile a page declares in window.__i18n.host (capabilities, arrangements, shortcuts) and the only reader of it
 jot/                                          Birta Writer Jot, the macOS menu-bar scratchpad shell (SwiftPM) around dist/webview.js; jot/README.md
+jot/scripts/reap.sh                           Clears what a run leaves outside every repo: development-build processes and throwaway defaults domains; fired by a SessionEnd hook
 jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
 jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
@@ -326,21 +327,19 @@ Running a suite inside a `git worktree` needs care with `node_modules`. Symlinki
 
 ### Leaving the machine as you found it
 
-A session that launches Birta Writer Jot owns processes and files outside every repo, and the harness lock can see none of them. Account for them before you finish: what you started is stopped, and what you wrote outside a repo is gone.
+A session that launches Birta Writer Jot owns processes and files outside every repo, and the harness lock can see none of them: WebKit helper processes, and a throwaway defaults domain per run. Both outlive the session that made them.
 
-The check is `pgrep -f "jot/build/Birta Writer Jot"`, which must come back empty, and `ls ~/Library/Preferences/com.birtalabs.jot.*.plist`, which must not have grown. `bash jot/scripts/measure.sh` asserts both for itself and fails rather than reporting them, so a run that leaks says so. The manual check is for everything it does not run, which is every ad-hoc probe.
+`bash jot/scripts/reap.sh` reports what is there and `--reap` clears it, and a `SessionEnd` hook runs it for you, so this is not something to remember. `--check` exits nonzero on litter, for a gate. `jot/scripts/measure.sh` asserts its own teardown and fails rather than reporting, and `shared/__tests__/sessionTeardownHook.test.ts` holds the hook's registration and the reaper's safety together, because a teardown that silently stops running is the failure this whole path is about.
 
-Three ways this leaks, each of which has happened here.
+That script is where the reasoning lives; three things in it are worth knowing before you write a probe of your own.
 
-A hard kill orphans WebKit. The helpers (GPU, Networking, WebContent) are XPC services rather than children of the app, so nothing reaps them: they exit because the app asks them to, which only happens on SIGTERM through its own handler. SIGKILL on the app, or on the shell that owns it, leaves a set per launch sitting at a fraction of a core until the machine restarts. They belong to no session anybody can name, which is how a red suite becomes nobody's fault. End a Jot you launched with `kill <pid>`, never `kill -9`, and never by pattern.
+A hard kill orphans WebKit. The helpers are XPC services rather than children of the app, so nothing reaps them: they exit because the app asks them to, on SIGTERM through its own handler. End a Jot you launched with `kill <pid>`, never `kill -9`, and never by pattern. A probe that builds a `WKWebView` starts the same three helpers a whole app does.
 
-A second `trap ... EXIT` REPLACES the first rather than adding to it. A cleanup registered its own way switches off everything the earlier trap did, and the failure is invisible: the script still passes, and the litter is somewhere nobody is looking. One trap per script, and everything that needs cleaning registers with it.
+A second `trap ... EXIT` REPLACES the first rather than adding to it, so a cleanup registered its own way switches off everything the earlier trap did, silently, while the script still passes.
 
-`defaults delete` on a throwaway domain leaves the plist. It empties the domain and `cfprefsd` writes the file back, so one file per run accumulates in `~/Library/Preferences` indefinitely. Remove the file too, by exact name. Never by a glob over `com.birtalabs.jot.*`: the app's own domain is a prefix of every throwaway one, and a glob there takes the user's real settings.
+`defaults delete` on a throwaway domain leaves the plist, because `cfprefsd` writes it back. Remove the file too, and never by a glob over `com.birtalabs.jot.*`: the app's own domain is a prefix of every throwaway one, so a glob there takes the user's real settings.
 
-An ad-hoc probe is where this bites. None of it is visible from outside, and `jot/scripts/measure.sh`'s own header was the only place it was written down, which is not where somebody writing ten lines of Swift to answer one question will read it. A probe that builds a `WKWebView` starts the same three helpers a whole app does.
-
-Foreign load is the other half, and it is not yours to clean. The process table is machine-wide, so an orphan may belong to a session in another repo or to the user; `ListAgents` names the live peers and asking costs a message. What is yours is what you started.
+Foreign load is the other half and is not yours to clean. The process table is machine-wide, so an orphan may belong to a session in another repo or to the user; `ListAgents` names the live peers and asking costs a message. What is yours is what you started, which is what the reaper scopes itself to.
 
 ### Layout and naming
 
