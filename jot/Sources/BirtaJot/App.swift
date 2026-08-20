@@ -40,6 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         buildStatusItem()
         coordinator.start()
+        // Asked once a launch, in the background, and silent unless there is
+        // something. `Updater` refuses for a development build, when the
+        // setting is off, and under a throwaway defaults domain.
+        updater.onStatus = { [weak self] message in self?.coordinator.flashStatus(message) }
+        updater.onUpdateAvailable = { [weak self] tag in self?.offerUpdate(tag) }
+        updater.checkInBackground()
         // First launch only, and after the panel exists, so the screen has a
         // window to take over.
         // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, so a
@@ -50,13 +56,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // screen is proven to construct without a person and without a first
         // launch: the gate below deliberately never fires under a throwaway
         // domain, so nothing else would ever build it.
-        // Asked once a launch, in the background, and silent unless there is
-        // something. `Updater` refuses for a development build and when the
-        // setting is off.
-        updater.onStatus = { [weak self] message in self?.coordinator.flashStatus(message) }
-        updater.onUpdateAvailable = { [weak self] tag in self?.offerUpdate(tag) }
-        updater.checkInBackground()
-
         if ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1"
             || (Prefs.isUserStore && !Prefs.hasSeenWelcome) {
             showWelcome()
@@ -307,9 +306,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Install and Restart")
         alert.addButton(withTitle: "Later")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        // The buffer goes to disk before anything replaces the app.
-        coordinator.prepareToTerminate { [weak self] in
-            self?.updater.install(release) { _ in }
+        updater.install(release) { ok in
+            // Quitting is what performs the swap: the staged script waits for
+            // this process to go. Through `NSApp.terminate`, so the ordinary
+            // `applicationShouldTerminate` path runs and the buffer is flushed
+            // and written on the way out.
+            //
+            // NOT `prepareToTerminate` here. Calling that and then failing to
+            // quit unregisters the hotkey and stops the agent for the rest of
+            // the session, silently, and leaves a script spinning until the
+            // user quits days later, at which point the app relaunches itself
+            // and reads as refusing to quit.
+            guard ok else { return }
+            NSApp.terminate(nil)
         }
     }
 

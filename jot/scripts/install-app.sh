@@ -112,8 +112,14 @@ echo "→ installing to $DEST"
 # The old copy is moved aside rather than deleted first, and only removed once
 # the new one is in place. Deleting first leaves a window where a failed `mv`
 # means no app at all, which is a worse state than either version of it.
-STAGE="$DEST_DIR/.Birta Writer Jot.app.incoming"
-OLD="$DEST_DIR/.Birta Writer Jot.app.previous"
+# Flavoured, like everything else here. Two sessions installing different
+# flavours at once share this directory, and hardcoded names mean one run's
+# `rm -rf` destroys the other's staged bundle mid-copy; in the worst
+# interleaving the `mv` below moves the OTHER flavour's bundle into this
+# destination, which is the user's hotkey, note and settings changing under
+# them without a word.
+STAGE="$DEST_DIR/.$APP_NAME.app.incoming"
+OLD="$DEST_DIR/.$APP_NAME.app.previous"
 rm -rf "$STAGE" "$OLD"
 ditto "$SRC" "$STAGE"
 if [ -d "$DEST" ]; then mv "$DEST" "$OLD"; fi
@@ -135,13 +141,22 @@ rm -rf "$OLD"
 # Both directories are swept for the old name, not just the one being installed
 # into: the rename is what makes the old bundle a stranger, and it can be
 # sitting in either place from an earlier install.
+#
+# Scoped to THIS FLAVOUR, which is the whole point of there being two. The
+# sweep used to name the release bundle literally, so a development install
+# deleted `~/Applications/Birta Writer Jot.app`: the release copy, removed by
+# the flavour that exists so the release is never touched.
+#
+# The legacy names belong to the release alone. A development build has no
+# predecessor, so there is nothing of its own to clean up under an old name,
+# and reaching for one would be reaching at somebody else's app again.
 OTHER_DIR=/Applications
 [ "$DEST_DIR" = /Applications ] && OTHER_DIR="$HOME/Applications"
-for stale in \
-    "$OTHER_DIR/Birta Writer Jot.app" \
-    "$DEST_DIR/Birta Jot.app" \
-    "$OTHER_DIR/Birta Jot.app"
-do
+STALE=("$OTHER_DIR/$APP_NAME.app")
+if [ "$FLAVOR" = release ]; then
+    STALE+=("$DEST_DIR/Birta Jot.app" "$OTHER_DIR/Birta Jot.app")
+fi
+for stale in "${STALE[@]}"; do
     if [ -d "$stale" ]; then
         echo "→ removing the other copy at $stale"
         rm -rf "$stale"

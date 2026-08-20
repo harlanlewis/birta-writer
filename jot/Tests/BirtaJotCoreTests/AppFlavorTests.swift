@@ -53,12 +53,29 @@ final class AppFlavorTests: XCTestCase {
 
     /// The two builds must not open one file, which is two writers autosaving
     /// over somebody's writing.
-    func testTheTwoFlavoursShouldResolveToDifferentNotes() {
+    func testTheTwoFlavoursShouldResolveToDifferentNotesInBothHomes() {
         let root = URL(fileURLWithPath: "/tmp/root")
-        let release = ScratchpadLocation.local.url(root: root, nameSuffix: AppFlavor.release.nameSuffix)
-        let dev = ScratchpadLocation.local.url(root: root, nameSuffix: AppFlavor.dev.nameSuffix)
-        XCTAssertNotEqual(release, dev)
-        XCTAssertNotEqual(release.deletingLastPathComponent(), dev.deletingLastPathComponent())
+        for home in [ScratchpadLocation.local, .iCloud] {
+            let release = home.url(root: root, nameSuffix: AppFlavor.release.nameSuffix)
+            let dev = home.url(root: root, nameSuffix: AppFlavor.dev.nameSuffix)
+            XCTAssertNotEqual(release, dev, String(describing: home))
+        }
+    }
+
+    /// The suffix reaches the folder in iCloud Drive and not in Documents, and
+    /// the asymmetry is deliberate: the iCloud folder is named after the APP,
+    /// so a second app wants a second folder, and the local one is named after
+    /// the product line, where a suffix would claim a whole development suite.
+    func testOnlyTheICloudFolderShouldCarryTheFlavourSuffix() {
+        let root = URL(fileURLWithPath: "/tmp/root")
+        let localFolder = { (f: AppFlavor) in
+            ScratchpadLocation.local.url(root: root, nameSuffix: f.nameSuffix).deletingLastPathComponent()
+        }
+        XCTAssertEqual(localFolder(.release), localFolder(.dev))
+        let iCloudFolder = { (f: AppFlavor) in
+            ScratchpadLocation.iCloud.url(root: root, nameSuffix: f.nameSuffix).deletingLastPathComponent()
+        }
+        XCTAssertNotEqual(iCloudFolder(.release), iCloudFolder(.dev))
     }
 
     /// A development build replacing itself would delete the change somebody

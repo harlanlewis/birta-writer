@@ -60,13 +60,26 @@ public enum ScratchpadLocation: String, CaseIterable, Sendable {
 
     /// The note's path under `root`.
     ///
-    /// `nameSuffix` is the build flavour's (`AppFlavor.nameSuffix`), appended
-    /// to the folder AND the file so a development build never opens the note
-    /// somebody is using. Empty by default, which is the release, so every
-    /// existing install stays exactly where it is.
+    /// `nameSuffix` is the build flavour's (`AppFlavor.nameSuffix`), and it is
+    /// what keeps a development build from opening the note somebody is using.
+    /// Empty by default, which is the release, so every existing install stays
+    /// exactly where it is.
+    ///
+    /// It reaches the FILE always and the folder only in iCloud Drive, which
+    /// is the difference between what the two folders are named after. The
+    /// iCloud one is the app's, so a second app belongs in a second folder
+    /// beside it. The local one is the product LINE's, where the note sits
+    /// with anything else Birta Writer keeps, and suffixing that would claim
+    /// there is a development version of the whole suite. The file name alone
+    /// separates the two notes there, which is all that was needed.
     public func url(root: URL, nameSuffix: String = "") -> URL {
-        root
-            .appendingPathComponent(folderName + nameSuffix, isDirectory: true)
+        let folder: String
+        switch self {
+        case .iCloud: folder = folderName + nameSuffix
+        case .local: folder = folderName
+        }
+        return root
+            .appendingPathComponent(folder, isDirectory: true)
             .appendingPathComponent("\(Self.productName)\(nameSuffix).md")
     }
 

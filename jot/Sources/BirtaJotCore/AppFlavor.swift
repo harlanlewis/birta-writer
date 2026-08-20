@@ -38,9 +38,15 @@ public enum AppFlavor: String, CaseIterable, Sendable {
     public static let devBundleID = "com.birtalabs.jotdev"
     public static let releaseBundleID = "com.birtalabs.jot"
 
-    /// The flavour a bundle id names. Anything that is not the development id
-    /// is the release, so an unexpected id fails towards the safe behaviour:
-    /// its own note, its own settings, and no self-update.
+    /// The flavour a bundle id names.
+    ///
+    /// Anything that is not the development id is the release, because the
+    /// release id is the only one that ships. It is NOT the cautious branch,
+    /// and saying so would be worse than saying nothing: release is the
+    /// flavour that opens the user's note, claims the release hotkey and
+    /// replaces itself. A build stamped with an id this does not recognise
+    /// therefore behaves as the release, which is why the ids are held across
+    /// Swift and the build script by `shared/__tests__/appFlavor.test.ts`.
     public static func forBundle(_ identifier: String?) -> AppFlavor {
         identifier == devBundleID ? .dev : .release
     }

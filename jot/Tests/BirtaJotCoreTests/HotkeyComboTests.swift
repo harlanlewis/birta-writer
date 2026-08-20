@@ -4,7 +4,7 @@ import XCTest
 final class HotkeyComboTests: XCTestCase {
     func testDefaultSpellingParsesToItself() {
         let parsed = try? HotkeyCombo.parse("cmd+alt+ctrl+j").get()
-        XCTAssertEqual(parsed, HotkeyCombo.default)
+        XCTAssertEqual(parsed, HotkeyCombo.release)
         XCTAssertEqual(parsed?.keyCode, 38)
         XCTAssertEqual(parsed?.modifiers, HotkeyCombo.cmdKey | HotkeyCombo.optionKey | HotkeyCombo.controlKey)
     }
@@ -26,7 +26,7 @@ final class HotkeyComboTests: XCTestCase {
         // What the recorder control has in hand: the code and the Carbon bits.
         let combo = HotkeyCombo.from(keyCode: 38, modifiers: HotkeyCombo.cmdKey | HotkeyCombo.optionKey | HotkeyCombo.controlKey)
 
-        XCTAssertEqual(combo, HotkeyCombo.default)
+        XCTAssertEqual(combo, HotkeyCombo.release)
         XCTAssertEqual(combo?.spelling, "cmd+alt+ctrl+j")
         XCTAssertEqual(combo?.keyName, "j")
     }

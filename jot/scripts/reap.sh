@@ -7,11 +7,10 @@
 # them, and neither belongs to anybody a later reader can name, which is how a
 # red suite becomes nobody's fault.
 #
-# This exists because the rule was prose. It lived in `measure.sh`'s header,
-# which is not where somebody writing ten lines of Swift to answer one question
-# reads it, and the litter accumulated for days under three separate sessions.
-# Where guidance is broken repeatedly, the rule becomes code: the same
-# tradition as `.claude/hooks/no-piped-gate.sh` and `.claude/prose-guard`.
+# A script rather than a rule in a header, which is not where somebody writing
+# ten lines of Swift to answer one question will read it. Where guidance is
+# broken repeatedly the rule becomes code: the same tradition as
+# `.claude/hooks/no-piped-gate.sh` and `.claude/prose-guard`.
 #
 #   bash jot/scripts/reap.sh            report what is there, change nothing
 #   bash jot/scripts/reap.sh --reap     also remove it
@@ -56,23 +55,43 @@ CLEARED=0
 # Selected by pattern and acted on by pid, which is the shape that keeps a
 # pattern from acting on a set nobody has looked at: every match is printed
 # with the directory it was started from before anything is sent to it.
-# Both flavours: the development build is "Birta Writer Jot Dev.app", so a
-# pattern anchored on ".app" would match the release name and miss the one a
-# session is most likely to have left running.
-for pid in $(pgrep -f "jot/build/Birta Writer Jot" || true); do
+#
+# Anchored on the EXECUTABLE inside the bundle, which is what makes it a
+# running app rather than a mention. Both flavours match, since the
+# development bundle is "Birta Writer Jot Dev.app"; a build command does not,
+# and `codesign --force --deep --sign - ".../Birta Writer Jot Dev.app"` and
+# `ditto ".../Birta Writer Jot Dev.app" ...` both carry that bundle path in
+# argv and both run from inside the checkout, so a looser pattern reaches
+# them: a signature or a staged bundle killed half way through.
+for pid in $(pgrep -f "jot/build/Birta Writer Jot[^/]*\.app/Contents/MacOS/" || true); do
     cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
     if [ -z "$cwd" ]; then
         echo "  process $pid: cannot tell which checkout started it, leaving it alone"
         continue
     fi
+    # This checkout, and NOT a worktree nested inside it. Worktrees live under
+    # `.claude/worktrees/`, so a hook fired from the main checkout has every
+    # peer's build inside its own `$ROOT` and would end a process another
+    # session is using. A run started from inside a worktree keeps its own,
+    # because `$ROOT` is then that worktree.
     case "$cwd" in
         "$ROOT"|"$ROOT"/*) ;;
         *) echo "  process $pid: started from $cwd, another checkout's, leaving it alone"; continue ;;
+    esac
+    case "$ROOT" in
+        *"/.claude/worktrees/"*) ;;
+        *)
+            case "$cwd" in
+                "$ROOT"/.claude/worktrees/*)
+                    echo "  process $pid: started from a worktree ($cwd), another session's, leaving it alone"
+                    continue ;;
+            esac ;;
     esac
     FOUND=$((FOUND + 1))
     if [ "$MODE" = "reap" ]; then
         echo "  process $pid: ending (started from $cwd)"
         kill "$pid" 2>/dev/null || true
+        CLEARED=$((CLEARED + 1))
     else
         echo "  process $pid: a development build of this checkout is still running"
     fi
@@ -92,11 +111,19 @@ for plist in "$HOME"/Library/Preferences/com.birtalabs.jot.*.plist; do
     # checking run never writes the person's own settings. So a sub-domain is
     # a run's scratch space by construction, whatever it was called.
     #
-    # An earlier version of this matched a trailing process id, which is the
-    # shape the committed scripts use. It left `policy.22286.NO` and
-    # `seedtest` behind, both from ad-hoc probes, which are precisely the
-    # thing this is for.
+    # Deliberately not a match on the shape the committed scripts happen to
+    # use (a trailing process id): an ad-hoc probe names its domain whatever
+    # it likes, and those are the ones nothing else will ever clean up.
     if [ "$name" = "com.birtalabs.jot" ]; then continue; fi
+    # Not one somebody is using right now. A peer's `measure.sh` writes to its
+    # own throwaway domain for the length of its run, and taking that out from
+    # under it fails their checks in a way they cannot attribute to anything.
+    # Modified within the last hour is left for the next sweep; litter is
+    # permanent and waiting costs nothing.
+    if [ -n "$(find "$plist" -mmin -60 2>/dev/null)" ]; then
+        [ "$MODE" = report ] && echo "  $name: written within the hour, leaving it for later"
+        continue
+    fi
     FOUND=$((FOUND + 1))
     if [ "$MODE" = "reap" ]; then
         defaults delete "$name" >/dev/null 2>&1 || true

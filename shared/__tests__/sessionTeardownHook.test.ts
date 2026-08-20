@@ -3,10 +3,10 @@
  * names stays runnable.
  *
  * The hook clears what a Birta Writer Jot run leaves on the machine, and its
- * failure mode is the one that has already happened twice here: a teardown
- * that silently stops running. Nothing goes red, no run reports anything, and
- * the litter accumulates somewhere nobody is looking until a person notices
- * three menu-bar icons or 220 stale plists.
+ * failure mode is a teardown that silently stops running. Nothing goes red, no
+ * run reports anything, and the litter accumulates somewhere nobody is looking
+ * until a person notices a row of menu-bar icons or a directory of stale
+ * plists.
  *
  * A hook is registration plus a file, and either half can go without the other
  * noticing. Deleting the `SessionEnd` entry from `settings.json` leaves the
@@ -55,6 +55,12 @@ describe("session teardown hook", () => {
         // Executable by its owner. A hook runner invokes it directly, and a
         // file without the bit is a registration pointing at nothing.
         expect(statSync(reaper!).mode & 0o100).toBe(0o100);
+        // And the script the hook SHELLS OUT TO, which is the half that can
+        // switch the whole thing off in silence: the hook's own body is
+        // `[ -x .../reap.sh ] || exit 0`, so clearing that bit makes every
+        // session end quietly do nothing, which is precisely the failure this
+        // file exists to catch.
+        expect(statSync(join(REPO, "jot", "scripts", "reap.sh")).mode & 0o100).toBe(0o100);
     });
 
     it("the reaper it calls should refuse to touch the app's own settings domain", () => {
@@ -70,12 +76,14 @@ describe("session teardown hook", () => {
             .split("\n")
             .filter((line) => !line.trimStart().startsWith("#"))
             .join("\n");
-        // It selects development builds by path, and never the installed copy.
-        // Without the `.app`, deliberately: the development flavour's bundle
-        // is "Birta Writer Jot Dev.app", so a pattern anchored on the
-        // extension matches only the release name and misses the build a
-        // session is most likely to have left running.
-        expect(code).toContain('pgrep -f "jot/build/Birta Writer Jot"');
+        // It selects a RUNNING development build, by the executable inside the
+        // bundle. Both flavours match, since the development bundle is
+        // "Birta Writer Jot Dev.app"; a build command does not, and both
+        // `codesign` and `ditto` carry that bundle path in argv while running
+        // from inside the checkout, so a looser pattern reaches them.
+        expect(code).toContain('jot/build/Birta Writer Jot[^/]*\\.app/Contents/MacOS/');
+        // Only one branch may delete, and it is the one the caller asked for.
+        expect(code).not.toMatch(/^\s*rm -rf(?!.*MODE)/m);
         expect(code).not.toContain("/Applications");
         // SIGTERM only: WebKit's helpers are not children of the app and only
         // exit because the app asks them to, so a hard kill orphans a set per
