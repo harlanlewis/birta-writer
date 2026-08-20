@@ -269,6 +269,76 @@ else
     echo "$TITLEBAR" >&2; exit 1
 fi
 
+# The title's two width measurements must AGREE, and that is a different claim
+# from either of them being right.
+#
+# `needW` asks the attributed string and `fieldW` asks the field. The string
+# answers in whatever font it carries; the field knows its own. So they agree
+# only while `paint` puts the font on the string, and diverge by about a fifth
+# the moment it does not.
+#
+# This exists because the ink check above CANNOT see that failure. Sized off a
+# font-blind string the label comes out short, the cell truncates the name into
+# it, and the ink then reaches the short width it was given, so ink against
+# needs passes on a visibly cut title. It did: 83.0 of ink against 84.0 of
+# need, on a name whose glyphs want 102.7.
+TB_FIELD_W="$(echo "$TITLEBAR" | sed -n 's/.*fieldW=\([0-9.-]*\).*/\1/p')"
+if [ -n "$TB_FIELD_W" ] \
+   && awk "BEGIN{exit !($TB_FIELD_W > 0)}" \
+   && awk "BEGIN{d = $TB_NEED_W - $TB_FIELD_W; if (d < 0) d = -d; exit !(d <= 1.5)}"; then
+    echo "title measure        ok: the string and the field report the same width ($TB_NEED_W, $TB_FIELD_W)"
+else
+    echo "title measure        FAILED: the title's two width measurements disagree, so one of them is not about the drawing" >&2
+    echo "  needW=$TB_NEED_W fieldW=$TB_FIELD_W" >&2
+    echo "$TITLEBAR" >&2; exit 1
+fi
+
+# The hover chevron beside the title, which says the name opens something.
+#
+# Four numbers, and the DIFFERENCE between two of them is the claim. An image
+# view that never draws and one that never hides both report a single alpha
+# quite happily, so `restAlpha` against `overAlpha` is what says the affordance
+# appears at all, and `restInk` against `overInk` is what says the appearing is
+# pixels rather than a frame nobody fills.
+#
+# `hasImage` is the arm that stops the rest reporting healthily about nothing:
+# NSImage(systemSymbolName:) answers nil for a name the system does not carry,
+# and an image view holding nil draws nothing and raises nothing.
+#
+# `x` against the name's own trailing edge is what keeps it AFTER the title
+# rather than over it. The width is reserved whether or not the chevron is
+# drawn, so this holds in both states and the title never moves under the
+# pointer.
+#
+# Not covered: that the tracking area fires. A script has no pointer without an
+# Accessibility grant, so the hover state is set rather than performed, and
+# whether a real mouse reaches this view is the one part of it only a person
+# can see.
+CHEV="$(grep "^jot-trace chevron " "$LOG" | tail -1 || true)"
+CH_IMG="$(echo "$CHEV" | sed -n 's/.*hasImage=\([a-z]*\).*/\1/p')"
+CH_X="$(echo "$CHEV" | sed -n 's/.*chevron hasImage=[a-z]* x=\([0-9.-]*\).*/\1/p')"
+CH_W="$(echo "$CHEV" | sed -n 's/.* w=\([0-9.-]*\).*/\1/p')"
+CH_REST="$(echo "$CHEV" | sed -n 's/.*restAlpha=\([0-9.-]*\).*/\1/p')"
+CH_OVER="$(echo "$CHEV" | sed -n 's/.*overAlpha=\([0-9.-]*\).*/\1/p')"
+CH_REST_INK="$(echo "$CHEV" | sed -n 's/.*restInk=\([0-9.-]*\).*/\1/p')"
+CH_OVER_INK="$(echo "$CHEV" | sed -n 's/.*overInk=\([0-9.-]*\).*/\1/p')"
+CH_TEXT_MAX="$(echo "$CHEV" | sed -n 's/.*textMaxX=\([0-9.-]*\).*/\1/p')"
+if [ -z "$CHEV" ]; then
+    echo "title chevron        FAILED: the app reported no chevron trace at all" >&2; exit 1
+fi
+if [ "$CH_IMG" = "yes" ] \
+   && awk "BEGIN{exit !($CH_W > 0)}" \
+   && awk "BEGIN{exit !($CH_REST == 0)}" \
+   && awk "BEGIN{exit !($CH_OVER == 1)}" \
+   && awk "BEGIN{exit !($CH_REST_INK == 0)}" \
+   && awk "BEGIN{exit !($CH_OVER_INK > 0)}" \
+   && awk "BEGIN{exit !($CH_X >= $CH_TEXT_MAX)}"; then
+    echo "title chevron        ok: hidden at rest, drawn on hover (ink $CH_REST_INK -> $CH_OVER_INK), after the name at x=$CH_X"
+else
+    echo "title chevron        FAILED: the hover affordance is not there, not drawn, or not after the name" >&2
+    echo "$CHEV" >&2; exit 1
+fi
+
 # WHERE the title sits vertically, which the check above says nothing about: it
 # reads the accessory's frame, and the accessory is the whole titlebar band, so
 # a title drawn 2pt low passed it exactly as a correct one did. It did, for a

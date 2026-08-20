@@ -1297,7 +1297,7 @@ final class Coordinator {
         let close = panel.standardWindowButton(.closeButton)
             .map { $0.convert($0.bounds, to: nil) } ?? .zero
         measure.trace(String(
-            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f fieldW=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
             frame.origin.x, frame.origin.y, frame.width, frame.height,
             // What an ANCESTOR leaves of us. Every other number here is a
             // frame this code set, so they agree with each other by
@@ -1307,9 +1307,35 @@ final class Coordinator {
             // one line in it. The only numbers here about the DRAWING; see
             // TitleBar.titleFit.
             view.titleFit().needed, view.titleFit().given, view.drawnInkWidth(),
+            view.titleFieldWidth(),
             text.midY, close.midY,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
             view.accessibilityLabel() ?? ""))
+        traceChevron()
+    }
+
+    /// The title's hover affordance, at rest and hovered.
+    ///
+    /// Both states in one line, because the claim is a DIFFERENCE: an image
+    /// view that never draws and one that never hides report the same single
+    /// number, and only the pair says the affordance appears. The ink is what
+    /// separates "positioned" from "drawn"; `x` against the title's own box is
+    /// what says it sits after the name rather than on it.
+    private func traceChevron() {
+        // Guarded here as well as in the caller, because what this calls sets
+        // hover state on a live view. A measurement that writes is one a
+        // second caller must not be able to reach by accident.
+        guard measure.enabled else { return }
+        let view = titleBar.titleView
+        let rest = view.chevronForMeasurement(hovered: false)
+        let over = view.chevronForMeasurement(hovered: true)
+        _ = view.chevronForMeasurement(hovered: false)   // leave it as we found it
+        measure.trace(String(
+            format: "chevron hasImage=%@ x=%.1f w=%.1f h=%.1f restAlpha=%.2f overAlpha=%.2f restInk=%.1f overInk=%.1f textMaxX=%.1f",
+            over.hasImage ? "yes" : "no",
+            over.frame.origin.x, over.frame.width, over.frame.height,
+            rest.alpha, over.alpha, rest.ink, over.ink,
+            view.labelFrameInWindow().width + 8))
     }
 
     /// Name the bound file in the titlebar, and say whether the reader has

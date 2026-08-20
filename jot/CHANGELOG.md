@@ -12,6 +12,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
+- The file name in Birta Writer Jot's titlebar shows a chevron when you point at it, the way a document window does on macOS, so the name reads as something you can open rather than as a label. Clicking it still opens the same Name, Tags and Where popover; the chevron only says that it will. It stays while the popover is open, and the space it occupies is reserved whether or not it is drawn, so the title never shifts as the pointer arrives.
+
 - Birta Writer Jot names the file in its titlebar, beside the traffic lights, the way macOS names a document window, and centred on the window buttons where macOS puts a title. With autosave off it adds `Edited` while there are bytes the file does not have, which is your cue to press Cmd+S; with autosave on it does not, because a file that is always being written has no unwritten state worth a word, and the flag rises and falls several times a sentence.
 
 - Clicking that title opens the document popover macOS opens from a document window's title: the file's Name, its Finder Tags, and Where it lives. Renaming it moves the file and keeps the editor on it, so a scratchpad that has become a real note can be named and filed without leaving the panel; the extension is kept when you edit only the stem, and a name already taken is refused rather than written over. The Where menu lists the folder and everything above it up to the volume, with Other… for one you choose. Cmd-click, Ctrl-click or right-click still opens the path popup, whose rows reveal themselves in Finder.
@@ -34,7 +36,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
-- Birta Writer Jot's titlebar draws the whole file name. The title was given a box narrower than the name needs, and what that costs is a whole word rather than a letter, with no ellipsis to say anything was dropped: a note called `Birta Jot.md` titled itself with a shorter name, which reads as the name of the file rather than as damage. A name genuinely too long for the titlebar now ends in an ellipsis, which it did not do before either.
+- Birta Writer Jot's titlebar draws the whole file name. A label that is told to truncate is still free to wrap first, and it wraps at a space, so a name with one in it laid out on two lines inside a box one line tall: the first line drew, the rest was clipped away, and nothing said so. A note called `Birta Jot.md` titled itself `Birta`, which reads as the name of the file rather than as damage. The previous release narrowed the gap without closing it. A name genuinely too long for the titlebar now ends in an ellipsis.
 
 - A tooltip in Birta Writer Jot's toolbar sits under the button it names. With the formatting row open it was pushed below both rows and out over the text, pointing at nothing.
 

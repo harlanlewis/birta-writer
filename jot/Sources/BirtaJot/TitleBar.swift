@@ -65,6 +65,19 @@ final class TitleBarView: NSView {
     private var popover: NSPopover?
 
     private let label = NSTextField(labelWithString: "")
+    /// The affordance that says the title opens something, drawn the way macOS
+    /// draws it on a document window: a small chevron after the name, on
+    /// hover.
+    ///
+    /// Ours to draw, because the platform's belongs to `NSDocument`. A window
+    /// gets the system's title menu and its Name/Tags/Where popover by being a
+    /// document window, and the class behind it is not API; AppKit's headers
+    /// carry no `titleMenu` anything, and `representedURL` buys only the
+    /// cmd-click path popup, which this view already implements itself. Jot
+    /// edits one file from a panel and is not an `NSDocument` app, so the
+    /// choice is to draw the affordance or to have none.
+    private let chevron = NSImageView()
+    private var isHovered = false
     private var url: URL?
     private var edited = false
     private var isKey = true
@@ -90,6 +103,20 @@ final class TitleBarView: NSView {
     /// A ceiling on the name, so a long one cannot push the title across the
     /// window into the page's own toolbar. The label truncates instead.
     private static let maxTextWidth: CGFloat = 320
+    /// Air between the name and the chevron, and the box the chevron sits in.
+    ///
+    /// Reserved WHETHER OR NOT the chevron is drawn, which is the whole of why
+    /// the title does not move under the pointer. A chevron that takes its
+    /// width on hover shifts everything after it at the moment you arrive,
+    /// including the drag strip whose start is this view's `maxX`, so hover
+    /// changes opacity here and never geometry. The formatting row's own
+    /// chevron was built the other way once and pushed its whole row sideways.
+    private static let chevronGap: CGFloat = 4
+    private static let chevronWidth: CGFloat = 11
+    /// The room the chevron holds, drawn or not. One expression, because
+    /// `resize` adds it and `layout` subtracts it, and the two disagreeing is
+    /// how the title ends up a few points wider or narrower than its own box.
+    private static let chevronRoom: CGFloat = chevronGap + chevronWidth
     /// The height this view is BUILT at, and nothing else.
     ///
     /// AppKit stretches a titlebar accessory to the titlebar's own height, so
@@ -144,14 +171,71 @@ final class TitleBarView: NSView {
         label.lineBreakMode = .byTruncatingTail
         label.setAccessibilityRole(.staticText)
         addSubview(label)
+        // Template so it inks itself from the control tint and follows the
+        // appearance, rather than carrying a colour this file would have to
+        // keep in step with the two the title already uses.
+        chevron.image = NSImage(systemSymbolName: "chevron.down",
+                                accessibilityDescription: nil)
+        chevron.image?.isTemplate = true
+        chevron.symbolConfiguration = .init(pointSize: 9, weight: .semibold)
+        chevron.contentTintColor = .secondaryLabelColor
+        chevron.alphaValue = 0
+        // It is a picture of what a click does, and the click is this view's.
+        // Announcing it separately would put a second, unlabelled element in
+        // front of the title for anyone reading the window by keyboard.
+        chevron.setAccessibilityElement(false)
+        addSubview(chevron)
         resize()
+    }
+
+    /// Show the chevron while the pointer is over the title, and keep it while
+    /// the popover it opened is still up, which is what macOS does: the
+    /// affordance stays as long as the thing it points at is open, even after
+    /// the pointer has left to use it.
+    /// `animated` is false only for the measurement below, and it exists so
+    /// that probe can read this decision rather than restate it. The fade is
+    /// the only reason a caller would ever want the value late.
+    private func syncChevron(animated: Bool = true) {
+        // No file, no affordance: an empty title has nothing to open.
+        let wanted: CGFloat = (url != nil && (isHovered || popover?.isShown == true)) ? 1 : 0
+        guard chevron.alphaValue != wanted else { return }
+        guard animated else {
+            chevron.alphaValue = wanted
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            chevron.animator().alphaValue = wanted
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero,
+                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        syncChevron()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        syncChevron()
     }
 
     /// Fit the view to its text, within the ceiling. The label's own placement
     /// inside it is `layout()`'s, which runs again after AppKit has resized us.
     private func resize() {
         let text = min(drawnTextWidth(), Self.maxTextWidth)
-        setFrameSize(NSSize(width: Self.leadingGap + text, height: bounds.height))
+        // Nothing to open, nothing to point at: an empty title reserves no
+        // room, which is also what keeps `hitTest` from claiming a strip of
+        // window beside the traffic lights that answers a click with nothing.
+        let trailing = text > 0 ? Self.chevronRoom : 0
+        setFrameSize(NSSize(width: Self.leadingGap + text + trailing, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
     }
@@ -180,11 +264,16 @@ final class TitleBarView: NSView {
         // a truncated title is indistinguishable from a file that is really
         // called that. Bounded here, the label truncates itself and says it
         // did.
-        let room = max(0, bounds.width - Self.leadingGap)
+        let room = max(0, bounds.width - Self.leadingGap - Self.chevronRoom)
+        let textWidth = min(drawnTextWidth(), Self.maxTextWidth, room)
         label.frame = NSRect(x: Self.leadingGap,
                              y: ((bounds.height - size.height) / 2).rounded(),
-                             width: min(drawnTextWidth(), Self.maxTextWidth, room),
+                             width: textWidth,
                              height: size.height)
+        chevron.frame = NSRect(x: label.frame.maxX + Self.chevronGap,
+                               y: ((bounds.height - Self.chevronWidth) / 2).rounded(),
+                               width: Self.chevronWidth,
+                               height: Self.chevronWidth)
     }
 
     // MARK: state
@@ -246,11 +335,14 @@ final class TitleBarView: NSView {
     /// Measure-mode only in practice: it costs a bitmap and a scan of a box
     /// about 130 pixels wide, which is nothing once, and pointless on a path
     /// nobody is checking.
-    func drawnInkWidth() -> CGFloat {
-        let box = label.bounds
+    func drawnInkWidth() -> CGFloat { inkWidth(of: label) }
+
+    /// The shared pixel probe: the rightmost column of `view` carrying alpha.
+    private func inkWidth(of view: NSView) -> CGFloat {
+        let box = view.bounds
         guard box.width > 0, box.height > 0,
-              let rep = label.bitmapImageRepForCachingDisplay(in: box) else { return -1 }
-        label.cacheDisplay(in: box, to: rep)
+              let rep = view.bitmapImageRepForCachingDisplay(in: box) else { return -1 }
+        view.cacheDisplay(in: box, to: rep)
         let wide = rep.pixelsWide, high = rep.pixelsHigh
         guard wide > 0, high > 0 else { return -1 }
         for x in stride(from: wide - 1, through: 0, by: -1) {
@@ -272,6 +364,47 @@ final class TitleBarView: NSView {
     /// than no number.
     func titleFit() -> (needed: CGFloat, given: CGFloat) {
         (label.attributedStringValue.size().width, label.bounds.width)
+    }
+
+    /// The same width, asked of the FIELD instead of the string.
+    ///
+    /// Its whole job is to disagree. `titleFit().needed` measures the
+    /// attributed string, which answers in whatever font that string carries;
+    /// this measures the field, which knows its own. So the two agree only
+    /// while `paint` puts the font ON the string, and part company by about a
+    /// fifth the moment it stops.
+    ///
+    /// Without this pair the font is unguarded, and unguarded is not
+    /// theoretical here: sized off a font-blind string the label comes out
+    /// short, the cell truncates into it, and the INK check then compares that
+    /// ink against the same short number and passes. Two measurements from one
+    /// source agree whatever is wrong with them; these come from two.
+    func titleFieldWidth() -> CGFloat { label.intrinsicContentSize.width }
+
+    /// The chevron, for `jot/scripts/measure.sh`: whether its image resolved,
+    /// where it sits, and how much ink it puts down when shown.
+    ///
+    /// `NSImage(systemSymbolName:)` returns nil for a name the system does not
+    /// have, and an image view holding nil draws nothing and says nothing, so
+    /// `hasImage` is the arm that stops the rest of this reporting healthily
+    /// about an affordance that is not there. `ink` is measured the way the
+    /// title's is, because the same lesson applies: a frame is where a thing
+    /// would be drawn if it were drawn.
+    ///
+    /// Hover cannot be reached from a script (no pointer without an
+    /// Accessibility grant), so the state is set here rather than performed.
+    /// What that does NOT cover is the tracking area actually firing, which
+    /// only a real pointer can show.
+    ///
+    /// It sets `isHovered` and then READS what `syncChevron` decided. Writing
+    /// the alpha here instead, to skip the fade, is a probe that reports its
+    /// own argument: a chevron wired to ignore hover entirely passed this
+    /// check, because the check was answering itself.
+    func chevronForMeasurement(hovered: Bool) -> (hasImage: Bool, frame: NSRect, alpha: CGFloat, ink: CGFloat) {
+        isHovered = hovered
+        syncChevron(animated: false)
+        layoutSubtreeIfNeeded()
+        return (chevron.image != nil, chevron.frame, chevron.alphaValue, inkWidth(of: chevron))
     }
 
     /// How much of the LABEL survives its ancestors' clipping.
@@ -336,6 +469,7 @@ final class TitleBarView: NSView {
         lastRendered = rendered
         label.attributedStringValue = text
         label.toolTip = url.path
+        syncChevron()
         setAccessibilityLabel(text.string)
         resize()
     }
@@ -386,8 +520,10 @@ final class TitleBarView: NSView {
         let popover = NSPopover()
         popover.contentViewController = controller
         popover.behavior = .transient
+        popover.delegate = self
         popover.show(relativeTo: label.frame, of: self, preferredEdge: .maxY)
         self.popover = popover
+        syncChevron()
     }
 
     /// The file, then each folder above it up to the volume, top to bottom,
@@ -433,4 +569,14 @@ final class TitleBarAccessory: NSTitlebarAccessoryViewController {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+}
+
+/// The chevron follows the popover down as well as up. `transient` means the
+/// popover closes on a click anywhere else, which is a path this view never
+/// hears about otherwise, so the affordance would stay lit over a popover that
+/// had gone.
+extension TitleBarView: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        syncChevron()
+    }
 }
