@@ -45,12 +45,16 @@
  * inherit a capability that names a standalone app's window. An explicit empty
  * profile is a host with nothing.
  *
- * Three declarers restate this by hand, because neither Swift nor an HTML
- * bootstrap can import TypeScript: `src/webviewHtml.ts` for VS Code,
- * `Prefs.bootConfig` in jot/Sources/BirtaJot/Preferences.swift for Jot, and
- * the e2e Jot page. They are not free to drift; `hostProfile.test.ts` reads
- * all three and fails when they disagree. One key is what makes that guard
- * possible to write once instead of once per field.
+ * TWO declarers restate this by hand, because neither Swift nor an HTML
+ * bootstrap can import TypeScript: Jot's Swift, split across `Prefs.bootConfig`
+ * and `Bridge.i18nObject`, and the e2e Jot page. They are not free to drift;
+ * `hostProfile.test.ts` reads both and fails when they disagree. One key is
+ * what makes that guard possible to write once instead of once per field.
+ *
+ * `src/webviewHtml.ts` is not one of them: it imports `HOST_PROFILES.vscode`,
+ * so its capabilities cannot drift at all. Its `arrangements` and `shortcuts`
+ * are bare empty literals rather than an import, and that pair is what the
+ * guard checks there.
  *
  * Dependency-free (no vscode, no DOM types) so both the extension and the
  * webview import it; the read goes through `globalThis`, which is `window` in

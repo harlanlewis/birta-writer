@@ -1188,6 +1188,7 @@ onboarding_run() { # onboarding_run <suite>
     pid=$!
     sleep 3; kill -USR1 $pid; sleep 2
     ONBOARD_KEYS="$(defaults read "$1" 2>/dev/null || true)"
+    ONBOARD_LOGIN="$(grep "^jot-trace onboarding " "$log" | tail -1 || true)"
     ONBOARD_ALIVE=0
     grep -q "^jot-measure ready " "$log" && ONBOARD_ALIVE=1
     kill $pid 2>/dev/null; wait $pid 2>/dev/null || true
@@ -1195,43 +1196,78 @@ onboarding_run() { # onboarding_run <suite>
 }
 
 
-# The settings window is as tall as its pane, and follows it.
+# The settings window is as tall as its pane, and FOLLOWS it.
 #
 # A pane's height is not fixed once built: the Location row comes and goes with
 # the answer above it. A window that keeps its first height puts a scroller
 # over two rows of settings, which reads as a pane too big rather than a window
 # that did not follow, so the trace says which happened.
+#
+# The arm therefore MOVES that switch (`BIRTA_JOT_TOGGLE_ICLOUD`) and requires
+# two traces at different pane heights. Reading one trace would read the
+# initial sizing, which happens whether or not the following works: delete the
+# whole fix and a one-trace check still passes.
+#
+# Compared as content against pane, never frame against pane. A frame carries
+# the titlebar and the preference toolbar, so a frame taller than the pane says
+# nothing about whether the pane fits inside it.
 SETTINGS_SUITE="com.birtalabs.jot.measure.settings.$$"
 SETTINGS_DIR="$(mktemp -d -t jot-settings)"
 SETTINGS_LOG="$(mktemp -t jot-settings)"
 BIRTA_JOT_MEASURE=1 BIRTA_JOT_SCRATCHPAD="$SETTINGS_DIR/S.md" \
-    BIRTA_JOT_DEFAULTS_SUITE="$SETTINGS_SUITE" BIRTA_JOT_OPEN_SETTINGS=general "$APP" 2>"$SETTINGS_LOG" &
+    BIRTA_JOT_DEFAULTS_SUITE="$SETTINGS_SUITE" BIRTA_JOT_OPEN_SETTINGS=general \
+    BIRTA_JOT_TOGGLE_ICLOUD=1 "$APP" 2>"$SETTINGS_LOG" &
 SETTINGS_PID=$!
-sleep 4
-SETTINGS_FIT="$(grep "^jot-trace settingsfit " "$SETTINGS_LOG" | tail -1 || true)"
+sleep 5
+SETTINGS_FITS="$(grep "^jot-trace settingsfit " "$SETTINGS_LOG" || true)"
 kill $SETTINGS_PID 2>/dev/null; wait $SETTINGS_PID 2>/dev/null || true
 rm -rf "$SETTINGS_DIR" "$SETTINGS_LOG"
 EXTRA_SUITES="$EXTRA_SUITES $SETTINGS_SUITE"
-if [ -z "$SETTINGS_FIT" ]; then
-    echo "settings fit         FAILED: the settings window never sized itself to its pane" >&2; exit 1
+
+SETTINGS_COUNT="$(printf '%s\n' "$SETTINGS_FITS" | grep -c settingsfit || true)"
+if [ "${SETTINGS_COUNT:-0}" -lt 2 ]; then
+    echo "settings fit         FAILED: the window sized itself $SETTINGS_COUNT time(s); the pane changed height and it did not follow" >&2
+    printf '%s\n' "$SETTINGS_FITS" >&2; exit 1
 fi
-FIT_TO="$(echo "$SETTINGS_FIT" | sed -n 's/.* to=\([0-9]*\).*/\1/p')"
-FIT_PANE="$(echo "$SETTINGS_FIT" | sed -n 's/.*pane=\([0-9]*\).*/\1/p')"
-# The window is at least as tall as the pane wants. Compared against the PANE
-# rather than against a constant: the pane's height is what changes, and a
-# check written against a number would pass a window that stopped following.
-if [ -n "$FIT_TO" ] && [ -n "$FIT_PANE" ] && [ "$FIT_TO" -ge "$FIT_PANE" ]; then
-    echo "settings fit         ok: the window sized itself to the pane (${FIT_PANE}pt of rows in a ${FIT_TO}pt window)"
-else
-    echo "settings fit         FAILED: the window is shorter than its pane, so the pane scrolls" >&2
-    echo "  $SETTINGS_FIT" >&2; exit 1
+
+# Every fit gave the pane at least what it asked for, or the cap if it asked
+# for more than a window may take.
+SETTINGS_PANES=""
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    FIT_CONTENT="$(printf '%s' "$line" | sed -n 's/.* content=\([0-9]*\).*/\1/p')"
+    FIT_PANE="$(printf '%s' "$line" | sed -n 's/.* pane=\([0-9]*\).*/\1/p')"
+    FIT_CAP="$(printf '%s' "$line" | sed -n 's/.* cap=\([0-9]*\).*/\1/p')"
+    if [ -z "$FIT_CONTENT" ] || [ -z "$FIT_PANE" ] || [ -z "$FIT_CAP" ]; then
+        echo "settings fit         FAILED: a trace line is missing a figure" >&2
+        echo "  $line" >&2; exit 1
+    fi
+    WANT="$FIT_PANE"
+    if [ "$WANT" -gt "$FIT_CAP" ]; then WANT="$FIT_CAP"; fi
+    if [ "$FIT_CONTENT" -lt "$WANT" ]; then
+        echo "settings fit         FAILED: the pane is given ${FIT_CONTENT}pt and needs ${WANT}pt, so it scrolls" >&2
+        echo "  $line" >&2; exit 1
+    fi
+    SETTINGS_PANES="$SETTINGS_PANES $FIT_PANE"
+done <<EOF
+$SETTINGS_FITS
+EOF
+
+# And the two fits were for DIFFERENT panes. Equal heights would mean the
+# window resized twice for the same content, which is not what the switch does
+# and would let the count above pass on a repeat of the first sizing.
+SETTINGS_DISTINCT="$(printf '%s\n' $SETTINGS_PANES | sort -u | wc -l | tr -d ' ')"
+if [ "$SETTINGS_DISTINCT" -lt 2 ]; then
+    echo "settings fit         FAILED: every fit was for the same pane height, so nothing followed a change" >&2
+    printf '%s\n' "$SETTINGS_FITS" >&2; exit 1
 fi
+echo "settings fit         ok: the window followed its pane across $SETTINGS_COUNT sizings (pane heights:$SETTINGS_PANES)"
 
 ONBOARD_FRESH_SUITE="com.birtalabs.jot.measure.fresh.$$"
 ONBOARD_USED_SUITE="com.birtalabs.jot.measure.used.$$"
 EXTRA_SUITES="$EXTRA_SUITES $ONBOARD_FRESH_SUITE $ONBOARD_USED_SUITE"
 onboarding_run "$ONBOARD_FRESH_SUITE"
-FRESH_KEYS="$ONBOARD_KEYS"; FRESH_ALIVE="$ONBOARD_ALIVE"
+FRESH_KEYS="$ONBOARD_KEYS"; FRESH_ALIVE="$ONBOARD_ALIVE"; FRESH_LOGIN="$ONBOARD_LOGIN"
 # An install that has been used, seeded with `hasSeenWelcome` specifically.
 # Any key would do for "not fresh", and this is the one worth choosing: it is
 # the key a reset leaves behind and the key most likely to be special-cased out
@@ -1240,7 +1276,7 @@ FRESH_KEYS="$ONBOARD_KEYS"; FRESH_ALIVE="$ONBOARD_ALIVE"
 # Settings writes when it re-shows the screen.
 defaults write "$ONBOARD_USED_SUITE" hasSeenWelcome -bool false
 onboarding_run "$ONBOARD_USED_SUITE"
-USED_KEYS="$ONBOARD_KEYS"; USED_ALIVE="$ONBOARD_ALIVE"
+USED_KEYS="$ONBOARD_KEYS"; USED_ALIVE="$ONBOARD_ALIVE"; USED_LOGIN="$ONBOARD_LOGIN"
 
 # Neither a first launch nor an existing install may end up with the network
 # switched on. That is the posture claim, and it is worth two launches because
@@ -1268,7 +1304,23 @@ if [ "$FRESH_ALIVE" != 1 ] || [ "$USED_ALIVE" != 1 ]; then
     echo "onboarding           FAILED: a launch never reached ready, so the checks proved nothing" >&2
     echo "  (fresh alive=$FRESH_ALIVE, used alive=$USED_ALIVE)" >&2; exit 1
 fi
-echo "onboarding           ok: neither a first launch nor an existing install turns the network on"
+# And no run registered a login item. That is the ONE thing the first-run
+# defaults still do, so it is the one thing worth pinning, and it is asserted
+# as an absence because a login item lives in BTM rather than under our
+# defaults domain: nothing here can see it having been written, only the
+# decision not to. Without the store gate every one of these runs registers a
+# login item pointing at `jot/build`, which the next checkout replaces, and
+# `reap.sh` cannot reach it.
+for pair in "fresh:$FRESH_LOGIN" "used:$USED_LOGIN"; do
+    which="${pair%%:*}"; line="${pair#*:}"
+    case "$line" in
+        *loginitem=skipped) ;;
+        "") echo "onboarding           FAILED: the $which launch never reached the onboarding defaults" >&2; exit 1 ;;
+        *) echo "onboarding           FAILED: the $which launch registered a login item for a build directory" >&2
+           echo "  $line" >&2; exit 1 ;;
+    esac
+done
+echo "onboarding           ok: no network switched on, and no login item taken, on either launch"
 
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"

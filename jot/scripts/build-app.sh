@@ -4,7 +4,7 @@
 #   pnpm jot:build            # production esbuild, then this
 #   bash jot/scripts/build-app.sh [--debug] [--dev] [--out DIR]
 #
-# `--dev` builds the DEVELOPMENT flavour: "Birta Writer Jot Dev.app", bundle id
+# `--dev` builds the DEVELOPMENT flavour: "Birta Writer Jot [DEV].app", bundle id
 # `com.birtalabs.jotdev`. It is meant to sit in /Applications beside the
 # release rather than replace it, so a change can be looked at without taking
 # away the app somebody keeps their notes in. Everything that would make the

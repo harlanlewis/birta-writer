@@ -37,12 +37,21 @@ final class MissingFileBar: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    private func build() {
-        wantsLayer = true
-        // The system's own warning ground, so it follows the theme and reads
-        // as a warning without this file choosing a colour.
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+    /// The system's own ground, so the bar follows the theme without this file
+    /// choosing a colour.
+    ///
+    /// Drawn rather than set on the layer. `NSColor.controlBackgroundColor` is
+    /// dynamic and `.cgColor` resolves it once, so a layer fill is frozen at
+    /// whichever appearance was current when the bar was built and keeps the
+    /// old ground across a light/dark switch. Drawing also puts the bar into
+    /// `Coordinator.writeSnapshot`, whose PDF path runs `draw(_:)` and copies
+    /// no layer.
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.controlBackgroundColor.setFill()
+        dirtyRect.fill()
+    }
 
+    private func build() {
         label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

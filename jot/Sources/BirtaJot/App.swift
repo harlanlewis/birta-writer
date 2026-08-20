@@ -80,6 +80,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Panes are built on first show, so naming one is what proves it
             // constructs. "1" opens the window on whichever pane is default.
             settingsWindow?.selectTabForTesting(tab)
+            // And then move the one control that changes a pane's height after
+            // it is built, so a check on the window following its pane has a
+            // second sizing to read. Deferred, or the two fits collapse into
+            // one and the trace cannot tell them apart.
+            if ProcessInfo.processInfo.environment["BIRTA_JOT_TOGGLE_ICLOUD"] == "1" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    self?.settingsWindow?.toggleICloudForTesting()
+                }
+            }
         }
         installTerminationSignal()
     }

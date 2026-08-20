@@ -36,7 +36,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     /// The panes, in toolbar order.
-    /// The panes, and their order.
     ///
     /// Two, not three. General holds the questions the welcome screen asks, in
     /// the same groups and the same words, so a row a person met on first run
@@ -218,9 +217,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // Traced because the failure is a window that simply does not follow,
         // which looks like a pane too tall rather than a resize that did not
         // happen. `jot/scripts/measure.sh` reads it.
+        //
+        // `content` and `pane` are the pair worth comparing, and `to` is not:
+        // a frame height carries the titlebar and the toolbar as well, so a
+        // window whose CONTENT is shorter than its pane still reads as taller
+        // than it by that much. `content` is the height the pane is actually
+        // given, capped, and `wanted` is what it asked for uncapped.
         if ProcessInfo.processInfo.environment["BIRTA_JOT_MEASURE"] == "1" {
             FileHandle.standardError.write(Data(
-                "jot-trace settingsfit from=\(Int(window.frame.height)) to=\(Int(frame.height)) pane=\(Int(pane.fittingSize.height))\n".utf8))
+                ("jot-trace settingsfit from=\(Int(window.frame.height)) to=\(Int(frame.height))"
+                 + " content=\(Int(wanted)) pane=\(Int(pane.fittingSize.height))"
+                 + " cap=\(Int(min(Metrics.maxPaneHeight, screenHeight)))\n").utf8))
         }
         var target = window.frame
         // Grow downward from the title bar, which is where a settings window
@@ -266,6 +273,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let tab = Tab(rawValue: name) else { return }
         window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(tab.rawValue)
         show(tab, animated: false)
+    }
+
+    /// Move the iCloud switch the way a click does, for `BIRTA_JOT_TOGGLE_ICLOUD`.
+    ///
+    /// The Location row under it comes and goes with this answer, which is the
+    /// one thing that changes a pane's height after it is built. Without a way
+    /// to drive it, a check on the window following its pane can only ever see
+    /// the FIRST sizing, which happens whether or not the following works.
+    func toggleICloudForTesting() {
+        guard iCloudSwitch.isEnabled else { return }
+        iCloudSwitch.state = iCloudSwitch.state == .on ? .off : .on
+        NSApp.sendAction(iCloudSwitch.action!, to: iCloudSwitch.target, from: iCloudSwitch)
     }
 
     @objc private func selectTab(_ sender: NSToolbarItem) {
@@ -376,7 +395,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // same place on every Mac, so the row would be a read-only fact; with
         // it off the folder is a real choice, and this is where it is made.
         if let filesGroup {
-            SettingsWindowController.setRowHidden(filesGroup, row: 1, hidden: Prefs.noteHome == .iCloud)
+            SettingsWindowController.setRowHidden(
+                filesGroup,
+                row: SettingsForm.index(of: .location, inGroupOf: SettingsForm.general) ?? 1,
+                hidden: Prefs.noteHome == .iCloud)
             // The pane just got shorter or taller, so the window follows it.
             // Not animated: this is the consequence of a switch somebody just
             // moved, and a window sliding after every toggle draws attention
@@ -387,18 +409,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                           ? ""
                           : "iCloud Drive is off in System Settings, so notes stay on this Mac.",
                           bad: false)
-    }
-
-    /// The Where-your-notes-live card, built once and remembered so its second
-    /// row can be shown and hidden.
-    private func locationGroup() -> NSView {
-        if let filesGroup { return filesGroup }
-        let group = Self.group([
-            Self.row("Store in iCloud Drive", control: iCloudSwitch, caption: iCloudCaption),
-            Self.row("Location", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
-        ])
-        filesGroup = group
-        return group
     }
 
     /// Show which preset the stored command came from, or Custom.
@@ -439,61 +449,61 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// The row that means "whatever is in the field below".
     private static let customPresetTitle = "Custom"
 
+    /// Draw a screen from its declaration.
+    ///
+    /// `SettingsForm` says which rows a pane holds and in what order; this says
+    /// what each row is wired to. Splitting them is what lets the first-run
+    /// screen show a SUBSET under the same words without a second layout to
+    /// keep in step: `WelcomeView` renders the same declaration with its own
+    /// controls, and `SettingsFormTests` compares the two lists.
+    private func render(_ groups: [SettingsGroup]) -> [NSView] {
+        var sections: [NSView] = []
+        for group in groups {
+            if let heading = group.heading { sections.append(Self.heading(heading)) }
+            let box = Self.group(group.rows.map { row in
+                let (control, caption) = wiring(for: row)
+                return Self.row(row, control: control, caption: caption)
+            })
+            // Remembered, because its Location row is shown and hidden by the
+            // answer above it and the card has to be reachable to do that.
+            if group.rows.contains(.location) { filesGroup = box }
+            sections.append(box)
+        }
+        return sections
+    }
+
+    /// What each row is wired to. A switch over the enum, so a row added to
+    /// `SettingsForm` fails to compile until it has a control.
+    private func wiring(for row: SettingsRow) -> (NSView, Caption?) {
+        switch row {
+        case .summon: return (hotkeyRecorder, hotkeyCaption)
+        case .storeInICloud: return (iCloudSwitch, iCloudCaption)
+        case .location:
+            return (Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad)), nil)
+        case .autosave: return (autosaveSwitch, nil)
+        case .showInDock: return (dockSwitch, nil)
+        case .startAtLogin:
+            return (Self.pairedControl(loginSettingsButton, loginSwitch), loginCaption)
+        case .richLinks: return (networkSwitch, networkCaption)
+        case .opens: return (opensPopup, nil)
+        case .agentPreset: return (agentPresetPopup, nil)
+        case .agentCommand:
+            return (agentField, Caption("What /ai runs. {prompt} is replaced by the request."))
+        case .checkForUpdates:
+            return (Self.pairedControl(updateButton, updateSwitch), updateCaption)
+        case .resetSettings:
+            return (resetButton, Caption("Back to defaults. Your notes are left where they are."))
+        case .welcomeScreen:
+            return (welcomeButton, Caption("The questions Jot asks the first time it runs."))
+        }
+    }
+
     private func buildPane(_ tab: Tab) -> NSView {
         if panes.isEmpty { wireControls() }
         let sections: [NSView]
         switch tab {
-        case .general:
-            sections = [
-                // The same subjects the first-run screen asks about, in the
-                // same order and the same words, plus the ones it does not
-                // ask. A setting somebody answered on first run is found
-                // again by looking where they answered it, and that survives
-                // the screen being a SUBSET: what it shows must appear here,
-                // in this order, worded the same. What it leaves out is the
-                // rows with a default worth keeping and no first-run
-                // consequence.
-                Self.heading("Show and hide Jot"),
-                Self.group([
-                    Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
-                ]),
-                Self.heading("Where your notes live"),
-                locationGroup(),
-                Self.heading("How Jot works"),
-                Self.group([
-                    Self.row("Autosave", control: autosaveSwitch),
-                    Self.row("Show in Dock", control: dockSwitch),
-                    Self.row("Start at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
-                             caption: loginCaption),
-                    Self.row("Rich link previews and embeds", control: networkSwitch,
-                             caption: networkCaption),
-                ]),
-            ]
-        case .advanced:
-            sections = [
-                Self.heading("Notes"),
-                Self.group([
-                    Self.row("Opens", control: opensPopup),
-                ]),
-                Self.heading("Agent"),
-                Self.group([
-                    Self.row("Agent", control: agentPresetPopup),
-                    Self.row("Command", control: agentField,
-                             caption: Caption("What /ai runs. {prompt} is replaced by the request.")),
-                ]),
-                Self.heading("Updates"),
-                Self.group([
-                    Self.row("Check for updates", control: Self.pairedControl(updateButton, updateSwitch),
-                             caption: updateCaption),
-                ]),
-                Self.heading("Reset"),
-                Self.group([
-                    Self.row("All settings", control: resetButton,
-                             caption: Caption("Back to defaults. Your notes are left where they are.")),
-                    Self.row("Welcome screen", control: welcomeButton,
-                             caption: Caption("The questions Jot asks the first time it runs.")),
-                ]),
-            ]
+        case .general: sections = render(SettingsForm.general)
+        case .advanced: sections = render(SettingsForm.advanced)
         }
         // After the sections exist, not before. `wireControls` runs at the top
         // of this method and `showFiles` hides a row of a card that this
@@ -645,6 +655,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// but may fill later (the login row goes from silent to a warning) has to
     /// collapse to nothing meanwhile, and under plain constraints a hidden
     /// NSTextField keeps its line height and leaves a blank gap.
+    /// The same row, labelled from the shared vocabulary. Every row on either
+    /// screen goes through here, so a label has one spelling.
+    static func row(_ row: SettingsRow, control: NSView, caption: Caption? = nil) -> NSView {
+        self.row(row.rawValue, control: control, caption: caption)
+    }
+
     static func row(_ title: String, control: NSView, caption: Caption? = nil) -> NSView {
         let label = NSTextField(labelWithString: title)
         let line = NSView()

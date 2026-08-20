@@ -18,6 +18,13 @@ public enum ReleaseFeed {
         }
     }
 
+    /// What the release job names the app archive, before the version.
+    ///
+    /// The one thing three places have to agree about: this, the `grep` in
+    /// `jot/scripts/update-jot.sh`, and the `ditto` in `.github/workflows/
+    /// release.yml` that produces the name. Nothing but a test relates them.
+    public static let assetPrefix = "BirtaJot-"
+
     /// Read the newest release out of the API's JSON.
     ///
     /// Parsed with `JSONSerialization` rather than by pattern, which is what
@@ -43,8 +50,16 @@ public enum ReleaseFeed {
         // The app archive, and the checksum published beside it by the same
         // job. `.sha256` is checked FIRST when excluding, or the archive
         // predicate matches the checksum's name too.
-        guard let app = url(named: { $0.hasSuffix(".zip") && !$0.hasSuffix(".sha256") }) else { return nil }
-        let checksum = url(named: { $0.hasSuffix(".zip.sha256") })
+        //
+        // Named by PREFIX as well, and not simply "the first .zip that is not
+        // a checksum": a release is free to carry a second archive, and the
+        // loose predicate would download whichever the API listed first and
+        // then verify it against a checksum for the other. `update-jot.sh`
+        // already selects by this prefix, and `appFlavor.test.ts` holds the
+        // two and the release job that produces the name together.
+        guard let app = url(named: { $0.hasPrefix(assetPrefix) && $0.hasSuffix(".zip")
+                                     && !$0.hasSuffix(".sha256") }) else { return nil }
+        let checksum = url(named: { $0.hasPrefix(assetPrefix) && $0.hasSuffix(".zip.sha256") })
         return Release(tag: tag, appURL: app, checksumURL: checksum)
     }
 

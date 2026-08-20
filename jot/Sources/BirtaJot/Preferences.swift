@@ -340,14 +340,11 @@ enum Prefs {
     /// Whether Jot has a Dock icon, and so appears in Cmd+Tab and gets an
     /// application menu bar of its own.
     ///
-    /// Whether Jot has a Dock icon, and so appears in Cmd+Tab and gets an
-    /// application menu bar of its own.
-    ///
-    /// OFF here, and ON in the welcome screen, and the two do not disagree:
-    /// `applyOnboardingDefaults` writes the welcome's answer before that
-    /// screen draws, so the switch and the setting are the same thing from the
-    /// first frame. What this default governs is the case where the screen is
-    /// never shown, and there the accessory app is what Jot has always been.
+    /// OFF, which is what the first-run screen therefore shows, because that
+    /// screen draws live settings and nothing writes this one before it. A
+    /// menu-bar accessory is what Jot is; the Dock icon is for somebody who
+    /// wants it in Cmd+Tab, and it is one switch away on the first screen they
+    /// see.
     ///
     /// `LSUIElement` in Info.plist matches this, so a launch never flashes an
     /// icon before the value is read; `Entry.main` applies it, and
@@ -390,8 +387,26 @@ enum Prefs {
     /// `hasSeenWelcome` is absent for everybody who had Jot before it existed,
     /// and registering a login item for them would be reaching into something
     /// they have been living with.
+    ///
+    /// AND THE PERSON'S OWN STORE ONLY, which is the same gate `Updater`
+    /// keeps and for the same reason: `jot/scripts/measure.sh` launches a
+    /// bundle out of `jot/build/` against a throwaway domain, so every run is
+    /// a first launch, and without this each one registers a login item
+    /// pointing into a build directory that the next checkout replaces. That
+    /// is the hazard `LoginItem`'s own header names, and it is machine-wide
+    /// litter that `jot/scripts/reap.sh` cannot see: a login item lives in
+    /// BTM, not in a plist under our domain.
     static func applyOnboardingDefaults() {
-        guard isFirstLaunch else { return }
+        let apply = isFirstLaunch && isUserStore
+        // Traced because the interesting outcome is the one that does NOTHING,
+        // and an absence is invisible: a login item lives in BTM rather than
+        // in a plist, so a checking run cannot observe it having been written.
+        // `jot/scripts/measure.sh` reads this.
+        if ProcessInfo.processInfo.environment["BIRTA_JOT_MEASURE"] == "1" {
+            FileHandle.standardError.write(Data(
+                "jot-trace onboarding loginitem=\(apply ? "registered" : "skipped")\n".utf8))
+        }
+        guard apply else { return }
         // Shown on, so it is on. macOS can refuse, and the row says so.
         _ = try? LoginItem.set(true)
     }

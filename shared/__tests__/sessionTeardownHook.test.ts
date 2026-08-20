@@ -78,7 +78,7 @@ describe("session teardown hook", () => {
             .join("\n");
         // It selects a RUNNING development build, by the executable inside the
         // bundle. Both flavours match, since the development bundle is
-        // "Birta Writer Jot Dev.app"; a build command does not, and both
+        // "Birta Writer Jot [DEV].app"; a build command does not, and both
         // `codesign` and `ditto` carry that bundle path in argv while running
         // from inside the checkout, so a looser pattern reaches them.
         expect(code).toContain('jot/build/Birta Writer Jot[^/]*\\.app/Contents/MacOS/');

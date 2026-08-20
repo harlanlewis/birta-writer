@@ -99,4 +99,27 @@ final class ReleaseFeedTests: XCTestCase {
             XCTAssertFalse(ReleaseFeed.isNewer("2026.821.0", than: bad), bad)
         }
     }
+
+    func testAnUnrelatedArchiveListedFirstShouldNotBeTakenForTheApp() {
+        // A release is free to carry a second .zip. Selecting "the first zip
+        // that is not a checksum" would download that one and then verify it
+        // against the app's checksum, which fails on a good release and is
+        // indistinguishable from a corrupt download.
+        let release = ReleaseFeed.parse(json(tag: "v2026.820.0",
+                                             assets: ["source-bundle.zip",
+                                                      "BirtaJot-2026.820.0.zip",
+                                                      "BirtaJot-2026.820.0.zip.sha256"]))
+        XCTAssertEqual(release?.appURL.lastPathComponent, "BirtaJot-2026.820.0.zip")
+        XCTAssertEqual(release?.checksumURL?.lastPathComponent, "BirtaJot-2026.820.0.zip.sha256")
+    }
+
+    func testAReleaseCarryingNoAppArchiveShouldNotResolveToSomeOtherZip() {
+        XCTAssertNil(ReleaseFeed.parse(json(tag: "v1.0.0", assets: ["source-bundle.zip"])))
+    }
+
+    func testTheAssetPrefixShouldBeTheOneEveryAssetNameStartsWith() {
+        // The floor for the two above: they prove nothing if the prefix is
+        // empty, because every name starts with "".
+        XCTAssertFalse(ReleaseFeed.assetPrefix.isEmpty)
+    }
 }

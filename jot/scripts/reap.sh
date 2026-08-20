@@ -59,9 +59,9 @@ CLEARED=0
 #
 # Anchored on the EXECUTABLE inside the bundle, which is what makes it a
 # running app rather than a mention. Both flavours match, since the
-# development bundle is "Birta Writer Jot Dev.app"; a build command does not,
-# and `codesign --force --deep --sign - ".../Birta Writer Jot Dev.app"` and
-# `ditto ".../Birta Writer Jot Dev.app" ...` both carry that bundle path in
+# development bundle is "Birta Writer Jot [DEV].app"; a build command does not,
+# and `codesign --force --deep --sign - ".../Birta Writer Jot [DEV].app"` and
+# `ditto ".../Birta Writer Jot [DEV].app" ...` both carry that bundle path in
 # argv and both run from inside the checkout, so a looser pattern reaches
 # them: a signature or a staged bundle killed half way through.
 for pid in $(pgrep -f "jot/build/Birta Writer Jot[^/]*\.app/Contents/MacOS/" || true); do

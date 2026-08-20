@@ -137,7 +137,11 @@ final class Updater {
             case .found: break                      // the offer says it
             case .upToDate: self?.onStatus?("\(AppFlavor.current.displayName) is up to date.")
             case .failed: self?.onStatus?("Could not check for updates.")
-            case .refused: break
+            // A refusal is the flavour gate or a check already running. The
+            // button must still say something: the status line above it reads
+            // "Checking for updates…" until it is replaced, so falling through
+            // silently leaves the row claiming a check that is not happening.
+            case .refused: self?.onStatus?("Nothing to check right now.")
             }
         }
     }

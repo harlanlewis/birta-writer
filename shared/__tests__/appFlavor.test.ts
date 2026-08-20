@@ -28,6 +28,12 @@ const REPO = join(__dirname, "..", "..");
 const swift = readFileSync(join(REPO, "jot/Sources/BirtaJotCore/AppFlavor.swift"), "utf8");
 const buildScript = readFileSync(join(REPO, "jot/scripts/build-app.sh"), "utf8");
 const installScript = readFileSync(join(REPO, "jot/scripts/install-app.sh"), "utf8");
+const updateScript = readFileSync(join(REPO, "jot/scripts/update-jot.sh"), "utf8");
+const handoff = readFileSync(join(REPO, "scripts/install-local.mjs"), "utf8");
+const releaseWorkflow = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
+const feed = readFileSync(join(REPO, "jot/Sources/BirtaJotCore/ReleaseFeed.swift"), "utf8");
+const product = readFileSync(join(REPO, "shared/product.ts"), "utf8")
+    .match(/JOT_PRODUCT_NAME\s*=\s*"([^"]+)"/)![1]!;
 
 /** Every `NAME="value"` assignment in a shell script, by name. */
 function shellAssignments(text: string, name: string): string[] {
@@ -71,15 +77,12 @@ describe("app flavours", () => {
     it("the app names should agree across Swift and both scripts", () => {
         // Swift composes the names rather than spelling them, so the expected
         // pair is derived the same way the app derives them.
-        const product = readFileSync(join(REPO, "shared/product.ts"), "utf8")
-            .match(/JOT_PRODUCT_NAME\s*=\s*"([^"]+)"/)?.[1];
-        expect(product).toBeDefined();
         const suffix = swift.match(/case \.dev: return "([^"]+)"/)?.[1];
         expect(suffix, "AppFlavor should carry a dev name suffix").toBeDefined();
         for (const script of [buildScript, installScript]) {
             const names = byFlavour(script, "APP_NAME");
             expect(names.release).toBe(product);
-            expect(names.dev).toBe(product! + suffix!);
+            expect(names.dev).toBe(product + suffix!);
         }
     });
 
@@ -115,5 +118,51 @@ describe("app flavours", () => {
             expect(id.startsWith(release + "."), `${id} is inside the namespace reap.sh clears`)
                 .toBe(false);
         }
+    });
+
+    it("the handoff should print the name of the app it actually installs", () => {
+        // `install-local.mjs` names the development build in what it prints,
+        // and nothing related that string to the bundle. A rename left six
+        // messages naming an app that no longer existed, all of them
+        // user-facing, and every gate stayed green.
+        const suffix = swift.match(/case \.dev: return "([^"]+)"/)?.[1];
+        const printed = handoff.match(/JOT_APP_NAME\s*=\s*"([^"]+)"/)?.[1];
+        expect(printed, "install-local.mjs should name the app in one constant").toBeDefined();
+        expect(printed).toBe(product + suffix!);
+        // And it should be the only spelling in that file, or the constant is
+        // decoration standing beside literals nothing checks.
+        const strays = [...handoff.matchAll(new RegExp(`${product}[^\\s\`"']`, "g"))];
+        expect(strays.map((m) => m[0])).toEqual([]);
+    });
+
+    it("the by-hand updater should only ever name the release app", () => {
+        // `update-jot.sh` installs the RELEASE and has no flavour branch, so
+        // every bundle it names is the plain product name. A flavour suffix
+        // reaching this file would point the by-hand update path at the wrong
+        // bundle, and `byFlavour` above cannot see a file with no branch.
+        //
+        // Matched up to `.app`, capturing what sits BETWEEN the product name
+        // and the extension, which is where a suffix would land. Matching the
+        // product name alone cannot discriminate: a suffix begins with a
+        // space, so `Birta Writer Jot [DEV].app` would be read as the release
+        // name followed by text the pattern never sees.
+        const named = [...updateScript.matchAll(new RegExp(`${product}([^"\\n]*?)\\.app`, "g"))];
+        expect(named.length).toBeGreaterThan(3);
+        for (const [whole, between] of named) {
+            expect(between, `${whole} is not the release app`).toBe("");
+        }
+    });
+
+    it("the release asset name should be the one both updaters look for", () => {
+        // Three places produce or select this name and nothing related any
+        // two: the release job's `ditto`, the shell updater's `grep`, and
+        // `ReleaseFeed.assetPrefix`. Attach a second .zip to a release and a
+        // loose predicate downloads the wrong one, then verifies it against
+        // the right one's checksum.
+        const prefix = feed.match(/assetPrefix\s*=\s*"([^"]+)"/)?.[1];
+        expect(prefix, "ReleaseFeed should name the asset prefix").toBeDefined();
+        expect(releaseWorkflow).toContain(`"${prefix}$VERSION.zip"`);
+        expect(releaseWorkflow).toContain(`"${prefix}$VERSION.zip.sha256"`);
+        expect(updateScript).toContain(prefix!);
     });
 });

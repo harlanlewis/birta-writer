@@ -101,6 +101,7 @@ final class WelcomeView: NSView {
             control.target = self
             control.action = action
         }
+
         hotkeyRecorder.onCombo = { [weak self] combo in self?.hotkeyChosen(combo) }
 
         let hero = NSImageView()
@@ -120,15 +121,6 @@ final class WelcomeView: NSView {
         title.font = .systemFont(ofSize: 22, weight: .semibold)
         title.alignment = .center
 
-        let location = SettingsWindowController.group([
-            SettingsWindowController.row("Store in iCloud Drive",
-                                         control: iCloudSwitch, caption: iCloudCaption),
-            SettingsWindowController.row("Location",
-                                         control: SettingsWindowController.pathControl(
-                                            locationPath, self, #selector(chooseLocation))),
-        ])
-        locationGroup = location
-
         let buttons = buildButtons()
 
         // The rows, as their own column. Leading-aligned and pinned to one
@@ -137,23 +129,21 @@ final class WelcomeView: NSView {
         // in it, and cards down a screen would step in and out at the edges
         // like a ransom note.
         //
-        // No headings, and fewer rows than Settings has. A first run asks the
-        // few questions somebody cannot answer later without going looking:
-        // how to summon it, where the notes go, and whether it is an app in
-        // the Dock. Everything else has a sensible default and a row in
-        // Settings, and a screen that lists all of them is a form rather than
-        // a welcome.
-        let form = NSStackView(views: [
-            SettingsWindowController.group([
-                SettingsWindowController.row("Show and hide Jot", control: hotkeyRecorder,
-                                             caption: hotkeyCaption),
-            ]),
-            location,
-            SettingsWindowController.group([
-                SettingsWindowController.row("Show in Dock", control: dockSwitch),
-                SettingsWindowController.row("Start at login", control: loginSwitch, caption: loginCaption),
-            ]),
-        ])
+        // Fewer rows than Settings, and no headings. A first run asks the few
+        // questions somebody cannot answer later without going looking: how to
+        // summon it, where the notes go, and whether it is an app in the Dock.
+        // WHICH rows those are is `SettingsForm.welcome` rather than a list
+        // here, because the same declaration draws Settings' General pane and
+        // the two must not drift apart; this file only says what each row is
+        // wired to.
+        let form = NSStackView(views: SettingsForm.welcome.map { group in
+            SettingsWindowController.group(group.rows.map { row in
+                let (control, caption) = wiring(for: row)
+                return SettingsWindowController.row(row, control: control, caption: caption)
+            })
+        })
+        locationGroup = form.arrangedSubviews[
+            SettingsForm.welcome.firstIndex(where: { $0.rows.contains(.location) }) ?? 1]
         form.orientation = .vertical
         form.alignment = .leading
         form.spacing = 8
@@ -210,6 +200,27 @@ final class WelcomeView: NSView {
         ])
 
         sync()
+    }
+
+    /// What each first-run row is wired to. Its own map rather than Settings',
+    /// because the controls differ (no Settings button beside Start at login
+    /// here); what may NOT differ is which rows appear and how they are
+    /// worded, and that is `SettingsForm`'s to say.
+    private func wiring(for row: SettingsRow) -> (NSView, Caption?) {
+        switch row {
+        case .summon: return (hotkeyRecorder, hotkeyCaption)
+        case .storeInICloud: return (iCloudSwitch, iCloudCaption)
+        case .location:
+            return (SettingsWindowController.pathControl(locationPath, self, #selector(chooseLocation)), nil)
+        case .showInDock: return (dockSwitch, nil)
+        case .startAtLogin: return (loginSwitch, loginCaption)
+        // Settings' rows. `SettingsFormTests` holds that the first run is a
+        // subset, so reaching one of these here means the declaration moved.
+        case .autosave, .richLinks, .opens, .agentPreset, .agentCommand,
+             .checkForUpdates, .resetSettings, .welcomeScreen:
+            assertionFailure("\(row.rawValue) is not a first-run question")
+            return (NSView(), nil)
+        }
     }
 
     private func buildButtons() -> NSView {

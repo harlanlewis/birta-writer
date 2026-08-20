@@ -250,6 +250,16 @@ describe("the Jot profile's copies", () => {
         expect(declaredIn(bootstrapLine(read("e2e/jotHost/index.html")))).toEqual([...HOST_PROFILES.jot]);
     });
 
+    it("the VS Code page should import its capabilities and declare the other two empty", () => {
+        // The one declarer that does NOT restate the profile: it imports
+        // `HOST_PROFILES.vscode`, so its capabilities cannot drift. The pair
+        // beside them are bare literals and had nothing reading them, which is
+        // the shape of an absent guard rather than a wrong one.
+        const html = read("src/webviewHtml.ts");
+        expect(html).toContain("HOST_PROFILES.vscode");
+        expect(html).toContain("arrangements: [], shortcuts: []");
+    });
+
     it("the e2e control page should declare nothing at all, which is what absent-means-the-vscode-profile needs", () => {
         expect(bootstrapLine(read("e2e/jotHost/control.html"))).not.toContain("host:");
     });
@@ -272,12 +282,27 @@ describe("the Jot profile's copies", () => {
     });
 
     it("the Jot shell should declare shortcuts, and from its own menu table", () => {
-        // Not a list comparison: the shell builds these from JotMenu, so the
-        // guard is that it declares SOME and that the table is what feeds
-        // them. A literal list here would be a fourth copy to keep in step.
+        // Not a list comparison against a literal: the shell builds these from
+        // JotMenu, so the guard is that it declares SOME and that the table is
+        // what feeds them. A literal list here would be a fourth copy.
         const bridge = read("jot/Sources/BirtaJotCore/Bridge.swift");
         expect(bridge).toContain('"shortcuts"');
         const prefs = read("jot/Sources/BirtaJot/Preferences.swift");
         expect(prefs).toContain("JotMenu.shortcuts");
+    });
+
+    it("the e2e page should declare the shortcuts the app actually binds", () => {
+        // The comparison the check above cannot make, made against the SOURCE
+        // rather than a literal, so it is still not a fourth copy. Without it
+        // the harness measures a cheatsheet the app never ships: the page
+        // carried two rows while `JotMenu` bound seven, and everything the
+        // suite asserted about the panel's shortcut list was true of neither.
+        const menu = read("jot/Sources/BirtaJot/JotMenu.swift");
+        const bound = [...menu.matchAll(/\.init\(title: "([^"]+)"/g)].map((m) => m[1]!);
+        expect(bound.length).toBeGreaterThan(2);
+
+        const page = bootstrapLine(read("e2e/jotHost/index.html"));
+        const declared = [...page.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]!);
+        expect(declared).toEqual(bound);
     });
 });
