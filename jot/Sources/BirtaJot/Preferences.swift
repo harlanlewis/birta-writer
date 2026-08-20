@@ -98,7 +98,10 @@ enum Prefs {
         for key in Key.allCases { d.removeObject(forKey: key.rawValue) }
         sweepRetiredKeys()
         UserDefaults.standard.removeObject(forKey: panelFrameAutosaveDefaultsKey)
-        try? LoginItem.set(false)
+        // Deliberately discarded: the caller re-reads `LoginItem.state` to
+        // redraw its row, and a reset that stopped because macOS declined to
+        // deregister would leave every other setting half-reset.
+        _ = try? LoginItem.set(false)
     }
 
     /// Where AppKit keeps `setFrameAutosaveName("JotPanel")`'s frame. Spelled

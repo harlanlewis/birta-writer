@@ -138,8 +138,15 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     /// system actually did rather than what was asked for, or it sits on
     /// claiming a registration that does not exist.
     @objc private func toggleLogin() {
-        try? LoginItem.set(loginSwitch.state == .on)
-        showLoginItem(LoginItem.state)
+        do {
+            showLoginItem(try LoginItem.set(loginSwitch.state == .on))
+        } catch {
+            // Put the switch back where the system still has it and say so,
+            // the way the Settings row does. A switch left where it was pushed
+            // claims a registration that does not exist.
+            showLoginItem(LoginItem.state)
+            loginCaption.say("macOS refused: \(error.localizedDescription)", bad: true)
+        }
     }
 
     @objc private func chooseLocation() {
