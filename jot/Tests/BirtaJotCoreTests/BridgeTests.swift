@@ -156,8 +156,15 @@ final class BridgeTests: XCTestCase {
         // user's settings beside them (shared/hostProfile.ts).
         let host = i18n["host"] as? [String: Any]
         XCTAssertEqual((host?["capabilities"] as? [String]) ?? ["x"], [])
+        // Spelled out rather than derived, and it has to stay that way: this is
+        // the check that a NEW arrangement was declared here deliberately, so a
+        // list built from the thing under test would agree with any change at
+        // all. The cost is that adding one means editing this line, which is
+        // the point of it. It went red exactly once, for a commit that added
+        // `barMenusOnClick` to the bridge and never ran `swift test`.
         XCTAssertEqual(host?["arrangements"] as? [String],
-                       ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout"])
+                       ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout",
+                        "barMenusOnClick"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

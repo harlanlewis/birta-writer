@@ -164,7 +164,7 @@ export async function run({ page, check, baseUrl }) {
     // names them; the shell's own Settings row stays because it does.
     const gearBtn = '[data-item-id="settings"] .tb-fmt-btn';
     const gearMenu = '[data-item-id="settings"] .tb-settings-menu';
-    await page.hover(gearBtn);
+    await page.locator(gearBtn).click();
     await page.waitForTimeout(OPEN_WAIT);
     const gear = await page.$eval(gearMenu, (menu) => ({
         labels: [...menu.querySelectorAll(".tb-fmt-item")].map((el) => el.textContent),
@@ -214,7 +214,7 @@ export async function run({ page, check, baseUrl }) {
 
     // …and the checkmark in the gear followed it, so the menu and the document
     // never disagree about which preset is on.
-    await page.hover(gearBtn);
+    await page.locator(gearBtn).click();
     await page.waitForTimeout(OPEN_WAIT);
     const checked = await page.$eval(gearMenu, (menu) =>
         [...menu.querySelectorAll(".tb-fmt-item")]
@@ -262,7 +262,7 @@ export async function run({ page, check, baseUrl }) {
 
     // Shortcuts help: the cheatsheet opens, without the Edit Keyboard
     // Shortcuts footer (a keybindings UI the host does not have).
-    await page.hover(gearBtn);
+    await page.locator(gearBtn).click();
     await page.waitForTimeout(OPEN_WAIT);
     await page.locator(`${gearMenu} .tb-fmt-item`, { hasText: "Show Keyboard Shortcuts" }).dispatchEvent("mousedown");
     await page.waitForTimeout(400);
@@ -419,28 +419,22 @@ export async function run({ page, check, baseUrl }) {
         expanded.barHeight > collapsed.barHeight,
         JSON.stringify({ collapsed: collapsed.barHeight, expanded: expanded.barHeight }));
 
-    // The chevron used to animate its WIDTH in from zero on hover, which moved
-    // the toggle's own box and shoved the whole row sideways as the pointer
-    // crossed it: a control you can miss by arriving at it, pushing the
-    // controls you were reaching for. Measured as a geometry invariant rather
-    // than as a CSS property, because the property is one way to break it and
-    // the geometry is the thing that was wrong.
+    // The four checks that stood here measured the toggle's chevron: that it
+    // was drawn at rest, that hovering did not change its width, and that the
+    // row therefore did not shift sideways under the pointer. The chevron is
+    // gone, so they are gone with it rather than repointed at something else.
     //
-    // AFTER the row is open, deliberately. Collapsed there are no items to be
-    // pushed, so `firstItemLeft` would be null on both sides and the
-    // stillness assertion would hold over nothing at all.
-    //
-    // The first check is that the probe MOVED the pointer onto the button:
-    // without it a hover that silently missed reports perfect stillness.
+    // What replaces the geometry half is cheaper and holds the same property:
+    // the toggle's box does not change when the pointer arrives on it. That is
+    // still worth asserting, because it is a button whose contents could grow
+    // again, and a control that resizes under the pointer is one you can miss
+    // by arriving at it.
     const hoverShift = await (async () => {
         const boxOf = () => page.evaluate(() => {
             const t = document.querySelector(".tb-dock-toggle");
-            const c = document.querySelector(".tb-dock-chevron");
             const first = document.querySelector(".tb-dock-row .tb-item");
             return {
                 toggle: Math.round(t.getBoundingClientRect().width),
-                chevron: Math.round(c.getBoundingClientRect().width),
-                chevronInk: Number(getComputedStyle(c).opacity),
                 firstItemLeft: first ? Math.round(first.getBoundingClientRect().left) : null,
             };
         });
@@ -452,17 +446,15 @@ export async function run({ page, check, baseUrl }) {
         const over = await boxOf();
         return { away, over };
     })();
-    check("jot: the hover probe actually reached the toggle",
-        hoverShift.over.chevronInk > hoverShift.away.chevronInk, JSON.stringify(hoverShift));
     check("jot: the row it could push is really there to be pushed",
         hoverShift.away.firstItemLeft !== null, JSON.stringify(hoverShift));
-    check("jot: the chevron is drawn whether or not the pointer is on it",
-        hoverShift.away.chevron > 0 && hoverShift.over.chevron === hoverShift.away.chevron,
-        JSON.stringify(hoverShift));
-    check("jot: so hovering the toggle moves nothing in the row",
+    check("jot: hovering the toggle moves nothing in the row",
         hoverShift.over.toggle === hoverShift.away.toggle
             && hoverShift.over.firstItemLeft === hoverShift.away.firstItemLeft,
         JSON.stringify(hoverShift));
+    check("jot: and the toggle carries no chevron beside the letter",
+        (await page.evaluate(() => !document.querySelector(".tb-dock-chevron"))),
+        "a chevron is present");
     check("jot: and the choice was written to the view-state bag",
         expanded.saved === true, JSON.stringify(expanded));
 
@@ -593,7 +585,7 @@ export async function run({ page, check, baseUrl }) {
     // trigger is inert for the right reason and the hover measures nothing.
     await page.click(".ProseMirror p");
     await page.waitForTimeout(150);
-    await page.hover(`${rowSel} [data-item-id="format"] .tb-fmt-btn`);
+    await page.locator(`${rowSel} [data-item-id="format"] .tb-fmt-btn`).click();
     await page.waitForTimeout(OPEN_WAIT + 120);
     const menuBox = await page.evaluate(() => {
         const menu = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-menu');
@@ -631,38 +623,34 @@ export async function run({ page, check, baseUrl }) {
     check("jot: and the pixels it claims really are the menu, not the scroller's clip",
         menuBox?.reachable === true, JSON.stringify(menuBox));
 
-    // The pointer has to be able to CROSS the gap from trigger to menu without
-    // the menu closing under it, and crossing is the whole of the test: the
-    // strip of transparent CSS that bridges that gap elsewhere is clipped away
-    // here, so a timer is what holds the menu open and only real time in the
-    // gap exercises it. `page.hover` teleports, arriving in the same tick it
-    // left, which the timer is not needed for and which therefore proves
-    // nothing.
-    const path = await page.evaluate(() => {
-        const btn = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-btn');
-        const menu = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-menu');
-        const b = btn.getBoundingClientRect();
-        const m = menu.getBoundingClientRect();
-        return {
-            btn: { x: b.x + b.width / 2, y: b.y + b.height / 2 },
-            // Midway through the gap: over the page, over neither element.
-            gap: { x: b.x + b.width / 2, y: (b.bottom + m.top) / 2 },
-            menu: { x: m.x + m.width / 2, y: m.y + m.height / 2 },
-            gapHeight: m.top - b.bottom,
-        };
-    });
-    check("jot: there really is a gap between the trigger and the menu to cross",
-        path.gapHeight > 1, JSON.stringify(path));
-    await page.mouse.move(path.btn.x, path.btn.y);
-    await page.mouse.move(path.gap.x, path.gap.y);
-    await page.waitForTimeout(80);
-    await page.mouse.move(path.menu.x, path.menu.y);
-    await page.waitForTimeout(200);
-    const stillOpen = await page.evaluate(() => {
+    // The pair that stood here drove the pointer from the trigger, through the
+    // gap, into the menu, and asserted the menu was still open when it
+    // arrived. That was a HOVER property: the menu closed when the pointer
+    // left the trigger, and a timer had to hold it across the gap.
+    //
+    // On this surface the menus open on click (`barMenusOnClick`), so nothing
+    // closes when the pointer moves and the crossing has nothing left to
+    // exercise. What replaces it is the property that now matters: an open
+    // menu stays open while the pointer wanders off it, and the trigger closes
+    // it again.
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(300);
+    const survivesPointerLeaving = await page.evaluate(() => {
         const menu = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-menu');
         return !!menu && menu.style.display !== "none";
     });
-    check("jot: the menu survives the pointer resting in the gap on its way in", stillOpen);
+    check("jot: a click-opened menu stays open when the pointer leaves it",
+        survivesPointerLeaving);
+    await page.locator(`${rowSel} [data-item-id="format"] .tb-fmt-btn`).click();
+    await page.waitForTimeout(250);
+    const closedByTrigger = await page.evaluate(() => {
+        const menu = document.querySelector('.tb-dock-row [data-item-id="format"] .tb-fmt-menu');
+        return !menu || menu.style.display === "none";
+    });
+    check("jot: and clicking the trigger again closes it", closedByTrigger);
+    // Reopened, because the checks below act on a row of it.
+    await page.locator(`${rowSel} [data-item-id="format"] .tb-fmt-btn`).click();
+    await page.waitForTimeout(250);
 
     // A row in it still edits the document, which is the point of the dock.
     await page.locator('.tb-dock-row [data-item-id="format"] .tb-fmt-item', { hasText: /^H3$/ })
@@ -797,11 +785,13 @@ export async function run({ page, check, baseUrl }) {
             && stack.shadow === "none"
             && stack.radius === "0px",
         JSON.stringify(stack));
-    // No rule between the rows. They are one piece of chrome, and a line drawn
-    // across the window between two rows of it reads as two bars. Asserted on
-    // all four sides rather than on the one that used to carry it, because
-    // "no border" is the claim and any one of them would break it.
-    check("jot: it spans the bar's full width, at its bottom, with no border of its own",
+    // The row draws NO rule, on any side. Between the rows a line reads as two
+    // bars where there is one piece of chrome, and below the row it would land
+    // against the bar's own hairline with nothing between them and draw as a
+    // 2px one. The bar owns that edge; whether it is painted at all is checked
+    // in both states at the end of this file. All four sides, because "no
+    // border anywhere" is the claim and any one side would break it.
+    check("jot: it spans the bar's full width, at its bottom, and draws no rule of its own",
         stack.left === 0 && stack.right === 0 && stack.sitsAtBarBottom
             && stack.borderTopWidth === "0px" && stack.borderBottomWidth === "0px"
             && stack.borderLeftWidth === "0px" && stack.borderRightWidth === "0px",
@@ -837,4 +827,138 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(200);
     const ctlSwitched = await page.evaluate(() => window.__posted.filter((m) => m.type === "switchToTextEditor").length);
     check("control: editRawMarkdown via editorCommand posts switchToTextEditor", ctlSwitched === 1, `count=${ctlSwitched}`);
+
+    // ── The bar's hairline, and the row's alignment ────────────────────────
+    //
+    // Both are DIFFERENCES between the two states, so both are measured in
+    // each. A rule that never draws and one that always draws report the same
+    // single number if you only look once.
+    //
+    // Last in the file on purpose: it drives the row to both states and leaves
+    // it open, and the sections above assume the state they were handed.
+    await mount("index.html");
+    const hlState = async () => page.evaluate(() => {
+        const bar = document.querySelector(".editor-topbar");
+        const dock = document.querySelector(".tb-dock");
+        const row = document.querySelector(".tb-dock-row");
+        const firstItem = document.querySelector(".tb-dock-row .tb-item");
+        const cs = getComputedStyle(bar);
+        return {
+            expanded: dock?.dataset.expanded,
+            borderWidth: cs.borderBottomWidth,
+            borderColor: cs.borderBottomColor,
+            barBottom: Math.round(bar.getBoundingClientRect().bottom),
+            dockBottom: dock && !dock.hidden ? Math.round(dock.getBoundingClientRect().bottom) : null,
+            dockOwnBorder: dock ? getComputedStyle(dock).borderBottomWidth : null,
+            rowJustify: row ? getComputedStyle(row).justifyContent : null,
+            itemLeft: firstItem ? Math.round(firstItem.getBoundingClientRect().left) : null,
+            rowLeft: row ? Math.round(row.getBoundingClientRect().left) : null,
+        };
+    });
+    const hlDrive = async (want) => {
+        for (let i = 0; i < 3; i++) {
+            const isOpen = await page.evaluate(
+                () => document.querySelector(".tb-dock")?.dataset.expanded === "true");
+            if (isOpen === want) return;
+            await page.locator(".tb-dock-toggle").click();
+            await page.waitForTimeout(250);
+        }
+    };
+    const isTransparent = (c) => c.includes("rgba(0, 0, 0, 0)") || c.includes("transparent");
+
+    await hlDrive(false);
+    const hlShut = await hlState();
+    await hlDrive(true);
+    const hlOpen = await hlState();
+
+    check("jot: the hairline probe reached both states",
+        hlShut.expanded === "false" && hlOpen.expanded === "true",
+        JSON.stringify({ shut: hlShut.expanded, open: hlOpen.expanded }));
+    check("jot: closed, the bar draws no hairline",
+        isTransparent(hlShut.borderColor), JSON.stringify(hlShut));
+    check("jot: open, the hairline is drawn",
+        !isTransparent(hlOpen.borderColor), JSON.stringify(hlOpen));
+    // Colour rather than width, so the measured bar height every consumer
+    // reads does not move by a pixel as the row opens.
+    check("jot: and the bar's border box is the same in both, so nothing below shifts",
+        hlShut.borderWidth === hlOpen.borderWidth,
+        JSON.stringify({ shut: hlShut.borderWidth, open: hlOpen.borderWidth }));
+    check("jot: the hairline sits below the formatting row, not between the rows",
+        hlOpen.dockBottom !== null && hlOpen.barBottom >= hlOpen.dockBottom,
+        JSON.stringify({ barBottom: hlOpen.barBottom, dockBottom: hlOpen.dockBottom }));
+    check("jot: and the row carries no rule of its own to double it",
+        hlOpen.dockOwnBorder === "0px", JSON.stringify({ dockOwnBorder: hlOpen.dockOwnBorder }));
+
+    // A menu opened from the FIRST row paints over the second one.
+    //
+    // This guards a fix that is NOT here. The row and the bar's first row are
+    // siblings and the row comes later in the DOM, which is the shape where a
+    // later sibling covers an earlier one's menu, and the borrowed commit
+    // raised the first row to stop it. Measured against this tree the menu is
+    // already on top: it carries a positive z-index and the row's is auto, and
+    // a positive z-index wins inside a stacking context whatever the document
+    // order. So the raise was dropped, and this is what says dropping it was
+    // safe. Asked of paint order rather than of z-index values, via the point
+    // where the two boxes actually overlap.
+    await hlDrive(true);
+    await page.locator('[data-item-id="settings"]').first().click();
+    await page.waitForTimeout(300);
+    const zOrder = await page.evaluate(() => {
+        const dock = document.querySelector(".tb-dock");
+        const menu = [...document.querySelectorAll("[class*='menu']")]
+            .filter((el) => el.getClientRects().length && !el.classList.contains("tb-dock"))
+            .sort((a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height)[0];
+        if (!dock || !menu) return { reached: false, menus: 0 };
+        const d = dock.getBoundingClientRect(), m = menu.getBoundingClientRect();
+        const overlapY = Math.min(d.bottom, m.bottom) - Math.max(d.top, m.top);
+        const overlapX = Math.min(d.right, m.right) - Math.max(d.left, m.left);
+        if (overlapY <= 2 || overlapX <= 2) return { reached: false, overlapY, overlapX };
+        const x = Math.max(d.left, m.left) + Math.min(overlapX, 20) / 2;
+        const y = Math.max(d.top, m.top) + Math.min(overlapY, 20) / 2;
+        const hit = document.elementFromPoint(x, y);
+        return {
+            reached: true, overlapY: Math.round(overlapY),
+            menuOnTop: !!(hit && menu.contains(hit)),
+            dockOnTop: !!(hit && dock.contains(hit)),
+        };
+    });
+    // Without this arm a menu that never opened, or one that missed the row
+    // entirely, would report "the row is not on top" and read as a pass.
+    check("jot: the gear's menu really does overlap the formatting row",
+        zOrder.reached && zOrder.overlapY > 2, JSON.stringify(zOrder));
+    check("jot: and it paints over the row rather than under it",
+        zOrder.menuOnTop && !zOrder.dockOnTop, JSON.stringify(zOrder));
+
+    check("jot: the row's controls start at the leading edge rather than centred",
+        hlOpen.rowJustify !== "center" && hlOpen.rowJustify !== "safe center"
+            && hlOpen.itemLeft !== null && hlOpen.itemLeft - hlOpen.rowLeft <= 4,
+        JSON.stringify(hlOpen));
+
+
+    // The OTHER side of `barMenusOnClick`, on the page that does not declare it.
+    //
+    // Everything above measures the arrangement being ON. Nothing measured it
+    // being off, which is the half the changelog actually promises ("the
+    // extension's toolbar menus still open on hover"). Wire `hostArranges` to
+    // return true unconditionally and every check above still passes, because
+    // none of them ever mounts the control page and points at a trigger.
+    //
+    // The hover is performed rather than dispatched: `mouseenter` is what the
+    // menu listens for, and Playwright's hover fires the real sequence.
+    await mount("control.html");
+    const ctlHover = await (async () => {
+        const trigger = page.locator('.tb-item[data-item-id="format"] .tb-fmt-btn').first();
+        const before = await page.evaluate(() =>
+            !!document.querySelector('.tb-item[data-item-id="format"] .tb-fmt-menu')?.getClientRects().length);
+        await trigger.hover();
+        await page.waitForTimeout(OPEN_WAIT);
+        const after = await page.evaluate(() =>
+            !!document.querySelector('.tb-item[data-item-id="format"] .tb-fmt-menu')?.getClientRects().length);
+        return { before, after };
+    })();
+    check("control: the menu is shut before the pointer arrives", !ctlHover.before,
+        JSON.stringify(ctlHover));
+    check("control: hovering a bar trigger still opens its menu where the arrangement is absent",
+        ctlHover.after, JSON.stringify(ctlHover));
+
 }

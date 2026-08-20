@@ -36,9 +36,10 @@
  * height to hold one button and the row would never really be gone.
  *
  * A serif T because the row is about text, and because a letter survives being
- * drawn at chrome size where a glyph for "formatting" would not. The chevron
- * points the way the click goes, which is the only thing about the state a
- * first-time reader has to be told.
+ * drawn at chrome size where a glyph for "formatting" would not. No chevron
+ * beside it: the row either is or is not below the bar, which says more about
+ * the state than a mark next to the letter, and the bar's other controls are
+ * single glyphs.
  *
  * The row scrolls horizontally rather than collapsing into an overflow menu:
  * the set is fixed and opinionated, so there is no tail to demote, and a
@@ -129,10 +130,10 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
     const glyph = document.createElement("span");
     glyph.className = "tb-dock-glyph";
     glyph.textContent = "T";
-    const chevron = document.createElement("span");
-    chevron.className = "tb-dock-chevron";
-    chevron.innerHTML = IconChevronRight;
-    toggle.append(glyph, chevron);
+    // The letter alone. A chevron beside it drew a second mark for the same
+    // fact the pressed state already carries, in a bar whose other controls
+    // are single glyphs.
+    toggle.appendChild(glyph);
 
     const row = document.createElement("div");
     row.className = "tb-dock-row tb-zone";

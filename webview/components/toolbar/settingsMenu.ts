@@ -11,7 +11,7 @@ import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
 import { createMenuTrigger, makeSep } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
-import { hostHasCommand } from "../../../shared/hostProfile";
+import { hostArranges, hostHasCommand } from "../../../shared/hostProfile";
 import { RELEASES_URL } from "../../../shared/product";
 
 /**
@@ -52,7 +52,10 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
         wrapEl.className = "tb-fmt-wrap";
 
         const gearBtn = createMenuTrigger({
-            html: IconSettings + IconChevronDown,
+            // The chevron is the hover affordance: it says resting here will
+            // open something. Where the menu waits for a click, the click is
+            // the affordance and the mark promises nothing extra.
+            html: IconSettings + (hostArranges("barMenusOnClick") ? "" : IconChevronDown),
             ariaLabel: t("Settings"),
         });
         gearTrigger = gearBtn;

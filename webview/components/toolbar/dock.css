@@ -34,8 +34,12 @@
     align-items: center;
     gap: var(--ui-space-2);
     padding: var(--ui-space-2) var(--ui-space-1);
-    /* No border between the rows. They are one piece of chrome, and a rule
-       across the window drawn between two rows of it reads as two bars.
+    /* No border of its own, in either direction. Between the rows a rule reads
+       as two bars where there is one piece of chrome; below the row it would
+       land against the BAR's own hairline, which is already there and already
+       the bottom edge, and two 1px lines with nothing between them draw as a
+       2px one. Where the hairline goes and when it is drawn at all is
+       `.editor-topbar`'s, at the end of this file.
 
        The leading edge is the WINDOW'S, not the first row's. The bar's leading
        inset clears the traffic lights, which sit in the titlebar band above
@@ -78,55 +82,28 @@
     line-height: 1;
 }
 
-/* Always drawn, pointing the way the click goes.
-
-   It used to appear on hover and animate its WIDTH from zero, which moved the
-   toggle's own box and shoved every control in the row sideways as the pointer
-   crossed it. A control that changes size under the pointer is a control you
-   can miss by arriving at it, and the row it pushes is the thing you were
-   reaching for. Reserving the width is the fix, and once the space is
-   permanent there is nothing left for the fade to buy: the chevron is either
-   part of the button or it is not.
-
-   Quiet rather than absent. It sits at reduced opacity so the T stays the
-   thing you read, and reaches full ink on hover and keyboard focus, which is
-   the same affordance the old rule wanted without the geometry. */
-.tb-dock-chevron {
-    display: inline-flex;
-    flex: none;
-    width: 12px;
-    opacity: 0.55;
-    transition: opacity 0.12s ease;
-
-    svg {
-        width: 12px;
-        height: 12px;
-    }
-}
-
 .tb-dock-toggle {
     display: inline-flex;
     align-items: center;
-    gap: var(--ui-space-1);
     padding: 0 var(--ui-space-2);
-
-    &:hover .tb-dock-chevron,
-    &:focus-visible .tb-dock-chevron {
-        opacity: 1;
-    }
 }
 
-/* Expanded, the chevron reverses: the click now closes the row. Keyed off the
-   BUTTON rather than off the row, because the button no longer sits inside the
-   thing whose state it names. */
-.tb-dock-toggle[data-expanded="true"] .tb-dock-chevron {
-    transform: rotate(90deg);
+/* Open, the letter takes the pressed treatment every toggle in this bar takes.
+   The row's presence below the bar is the other half of the answer, and
+   between them there is nothing a chevron would add. */
+.tb-dock-toggle[data-expanded="true"] {
+    /* Chained, not bare: `toolbar.activeBackground` has a null default outside
+       high-contrast themes, so a bare `var()` resolves to the property's
+       initial value and the pressed state simply does not paint. The same
+       chain `chrome.css` uses for the primitive's active state. */
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
 .tb-dock-row {
     display: flex;
     align-items: center;
     gap: var(--ui-space-1);
+    flex: 1;
     /* The set is fixed and opinionated, so a narrow window scrolls to the last
        control rather than demoting a tail into an overflow menu that would
        have to decide which controls matter least. The `data-menu-clip`
@@ -195,4 +172,25 @@
         to left,
         var(--vscode-editor-background) 55%,
         transparent 100%);
+}
+
+/* WHERE the hairline goes, and WHEN there is one.
+
+   The bar carries its own bottom border (`.editor-topbar`, style.css), and
+   with the row open that edge is already below the row: the row is the bar's
+   last child and the stacked bar has no padding under it. So the open state
+   needs nothing here, which is the point of putting the line on the bar rather
+   than on the row.
+
+   Closed is the case that does. A single row of chrome over the text does not
+   need a rule to say where it ends, and the line reads as the top edge of a
+   panel that is not there. Colour rather than `border: none`, because the bar's
+   height is measured and published as `--editor-topbar-height`, and every
+   consumer of it (content padding, heading scroll margins, the find bar) would
+   move by a pixel each time the row opened.
+
+   Scoped to the stacked bar, so the surface with no second row keeps the
+   hairline it has always had. */
+.editor-topbar--stacked:has(.tb-dock[hidden]) {
+    border-bottom-color: transparent;
 }

@@ -182,12 +182,28 @@ export type HostArrangement =
      * Deriving the second from the first at a call site is what this file
      * exists to stop.
      */
-    | "fixedToolbarLayout";
+    | "fixedToolbarLayout"
+    /**
+     * The bar's dropdowns open on CLICK rather than on hover, and their
+     * triggers are drawn without a disclosure chevron.
+     *
+     * One arrangement rather than two, because the chevron is the hover
+     * affordance: it exists to tell you that resting there will open
+     * something. Where the menu waits for a click, the click is the
+     * affordance and the chevron is a mark that promises nothing extra.
+     * Separating them would let a surface declare a hover menu with no hint
+     * that it opens, which is the state neither is worth having on its own.
+     *
+     * A layout fact, not a capability: both surfaces can do either, and the
+     * same commands run from the same menus whichever way they are opened.
+     */
+    | "barMenusOnClick";
 
 export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "typographyInGearMenu",
     "formattingInSecondRow",
     "fixedToolbarLayout",
+    "barMenusOnClick",
 ];
 
 /** One key the host binds itself, for the keyboard cheatsheet to print. */
