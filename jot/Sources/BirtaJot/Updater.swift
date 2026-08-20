@@ -35,6 +35,11 @@ final class Updater {
         case found(String)
         case upToDate
         case failed
+        /// Not attempted: a build that does not update itself, a throwaway
+        /// defaults domain, or a check already in flight. Separate from
+        /// `failed` because "could not check" about a check that never
+        /// happened is the same false statement this type exists to remove.
+        case refused
     }
 
     /// Something newer exists, with the tag to name it.
@@ -44,6 +49,13 @@ final class Updater {
 
     private(set) var available: ReleaseFeed.Release?
     private var checking = false
+    /// A swap is being fetched or is already armed.
+    ///
+    /// The app stays responsive through a download, so without this a second
+    /// trip through Settings arms a second script, and the two wake on the
+    /// same pid and race each other over one destination. That is the hazard
+    /// `install-app.sh` flavours its staging paths to avoid, one layer up.
+    private var installing = false
 
     private let repo = ProcessInfo.processInfo.environment["BIRTA_JOT_REPO"] ?? "harlanlewis/birta-writer"
 
@@ -75,7 +87,7 @@ final class Updater {
     /// somebody who turned it off, if anything goes wrong in between.
     func check(force: Bool = false, then done: ((CheckResult) -> Void)? = nil) {
         guard mayCheck, force || Prefs.autoUpdate, !checking else {
-            done?(.failed)
+            done?(.refused)
             return
         }
         guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else {
@@ -125,6 +137,7 @@ final class Updater {
             case .found: break                      // the offer says it
             case .upToDate: self?.onStatus?("\(AppFlavor.current.displayName) is up to date.")
             case .failed: self?.onStatus?("Could not check for updates.")
+            case .refused: break
             }
         }
     }
@@ -139,6 +152,8 @@ final class Updater {
     /// `done(true)` means the swap is armed, NOT that it has happened. The
     /// caller has to quit for it to run.
     func install(_ release: ReleaseFeed.Release, then done: @escaping (Bool) -> Void) {
+        guard !installing else { return done(false) }
+        installing = true
         onStatus?("Downloading \(release.tag)…")
         // A release with no checksum is REFUSED rather than installed
         // unverified. The checksum proves the archive arrived intact and
@@ -148,6 +163,7 @@ final class Updater {
         // it in a step that can fail on its own, so this state is reachable.
         guard let checksumURL = release.checksumURL else {
             onStatus?("That release published no checksum, so it was not installed.")
+            installing = false
             return done(false)
         }
         let session = URLSession.shared
@@ -156,6 +172,7 @@ final class Updater {
                 guard let self else { return }
                 guard let data, error == nil else {
                     self.onStatus?("Could not download the update.")
+                    self.installing = false
                     return done(false)
                 }
                 session.dataTask(with: checksumURL) { sumData, _, _ in
@@ -168,6 +185,7 @@ final class Updater {
                             // did not arrive whole, and installing it anyway is
                             // the one failure worth refusing loudly.
                             self.onStatus?("The update did not arrive intact. Nothing was installed.")
+                            self.installing = false
                             return done(false)
                         }
                         self.stageSwap(archive: data, release: release, then: done)
@@ -191,6 +209,7 @@ final class Updater {
             let staged = unpacked.appendingPathComponent(name)
             guard FileManager.default.fileExists(atPath: staged.path) else {
                 onStatus?("The update did not contain \(name).")
+                installing = false
                 return done(false)
             }
             // Ad-hoc signed, so Gatekeeper cannot attribute it to anyone and
@@ -212,13 +231,26 @@ final class Updater {
             let script = """
             while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done
             staged="$1"; dest="$2"; work="$3"
-            rm -rf "$dest.incoming" "$dest.previous"
-            /usr/bin/ditto "$staged" "$dest.incoming" || exit 1
-            if [ -d "$dest" ]; then mv "$dest" "$dest.previous" || exit 1; fi
-            if ! mv "$dest.incoming" "$dest"; then
-                [ -d "$dest.previous" ] && mv "$dest.previous" "$dest"
+            # Refuse rather than build a path out of nothing. Every `rm -rf`
+            # below is rooted at "$dest", so an empty one turns them into
+            # relative deletes in whatever directory this happens to inherit.
+            [ -n "$staged" ] && [ -n "$dest" ] && [ -n "$work" ] || exit 1
+            [ -d "$staged" ] || exit 1
+            # Every failure below puts the app back on screen and takes its
+            # own litter with it. This runs AFTER the app has quit, so a bare
+            # exit leaves the user with no Jot, no message, and a part-written
+            # bundle beside the one that should be there.
+            give_up() {
+                rm -rf "$dest.incoming" "$work"
+                [ -d "$dest" ] || { [ -d "$dest.previous" ] && mv "$dest.previous" "$dest"; }
+                rm -rf "$dest.previous"
+                [ -d "$dest" ] && /usr/bin/open "$dest"
                 exit 1
-            fi
+            }
+            rm -rf "$dest.incoming" "$dest.previous"
+            /usr/bin/ditto "$staged" "$dest.incoming" || give_up
+            if [ -d "$dest" ]; then mv "$dest" "$dest.previous" || give_up; fi
+            mv "$dest.incoming" "$dest" || give_up
             rm -rf "$dest.previous" "$work"
             /usr/bin/open "$dest"
             """
@@ -231,6 +263,7 @@ final class Updater {
         } catch {
             NSLog("Birta Writer Jot: update failed: \(error)")
             onStatus?("Could not install the update.")
+            installing = false
             done(false)
         }
     }

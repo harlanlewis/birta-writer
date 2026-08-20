@@ -20,9 +20,10 @@
 #
 # What it will NOT touch, and these are the whole of its safety:
 #
-#   - `/Applications/Birta Writer Jot.app`. That is the user's installed copy,
-#     not a development build, and a session that killed it would take away a
-#     running app somebody is using.
+#   - Anything in `/Applications`, which is where BOTH installed copies live:
+#     the release, and the development build the handoff puts beside it. A
+#     session that killed either takes away an app somebody is using. Only a
+#     build running out of a checkout's `jot/build/` is in scope.
 #   - `com.birtalabs.jot.plist`. That is the app's REAL settings domain: a
 #     person's hotkey, their note location, their agent command. It is also a
 #     prefix of every throwaway one, so the rule is that a domain strictly

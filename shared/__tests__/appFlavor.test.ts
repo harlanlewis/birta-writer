@@ -34,6 +34,24 @@ function shellAssignments(text: string, name: string): string[] {
     return [...text.matchAll(new RegExp(`^\\s*${name}="([^"]*)"`, "gm"))].map((m) => m[1]!);
 }
 
+/**
+ * The same, split by which side of the flavour branch it is on.
+ *
+ * Both scripts set the release value at the top level and overwrite it inside
+ * `if [ "$FLAVOR" = dev ]; then … fi`, so WHICH value belongs to which flavour
+ * is a fact about position. Comparing the two as a set cannot see them
+ * swapped, and a swap is the catastrophe this file's header describes: a dev
+ * build stamped with the release id opens the user's note, claims their hotkey
+ * and offers to replace itself.
+ */
+function byFlavour(text: string, name: string): { release?: string; dev?: string } {
+    const branch = text.match(/if \[ "\$FLAVOR" = dev \]; then\n([\s\S]*?)\nfi/);
+    const inside = branch?.[1] ?? "";
+    const all = shellAssignments(text, name);
+    const dev = shellAssignments(inside, name);
+    return { release: all.find((v) => !dev.includes(v)), dev: dev[0] };
+}
+
 /** A `static let name = "value"` in Swift. */
 function swiftConstant(name: string): string | undefined {
     return swift.match(new RegExp(`static let ${name}\\s*=\\s*"([^"]+)"`))?.[1];
@@ -45,9 +63,9 @@ describe("app flavours", () => {
         const dev = swiftConstant("devBundleID");
         expect(release).toBeDefined();
         expect(dev).toBeDefined();
-        // Asserted as a SET, so the two cannot be swapped and still pass.
-        expect(new Set(shellAssignments(buildScript, "BUNDLE_ID")))
-            .toEqual(new Set([release, dev]));
+        const stamped = byFlavour(buildScript, "BUNDLE_ID");
+        expect(stamped.release).toBe(release);
+        expect(stamped.dev).toBe(dev);
     });
 
     it("the app names should agree across Swift and both scripts", () => {
@@ -58,9 +76,11 @@ describe("app flavours", () => {
         expect(product).toBeDefined();
         const suffix = swift.match(/case \.dev: return "([^"]+)"/)?.[1];
         expect(suffix, "AppFlavor should carry a dev name suffix").toBeDefined();
-        const expected = new Set([product!, product! + suffix!]);
-        expect(new Set(shellAssignments(buildScript, "APP_NAME"))).toEqual(expected);
-        expect(new Set(shellAssignments(installScript, "APP_NAME"))).toEqual(expected);
+        for (const script of [buildScript, installScript]) {
+            const names = byFlavour(script, "APP_NAME");
+            expect(names.release).toBe(product);
+            expect(names.dev).toBe(product! + suffix!);
+        }
     });
 
     it("the executable names should agree between the two scripts", () => {
@@ -68,10 +88,15 @@ describe("app flavours", () => {
         // check: `install-app.sh` asks a running copy to quit BY executable
         // name, so two flavours sharing one means installing the development
         // build quits the release. Only the pair being equal makes that safe.
-        const built = new Set(shellAssignments(buildScript, "EXEC_NAME"));
-        const installed = new Set(shellAssignments(installScript, "EXEC_NAME"));
-        expect(built.size).toBe(2);
-        expect(installed).toEqual(built);
+        const built = byFlavour(buildScript, "EXEC_NAME");
+        const installed = byFlavour(installScript, "EXEC_NAME");
+        expect(built.release).toBeDefined();
+        expect(built.dev).toBeDefined();
+        expect(built.release).not.toBe(built.dev);
+        // Per flavour, not as a set: swapped, `install-app.sh --dev` would ask
+        // the RELEASE executable to quit, which is the app somebody is using.
+        expect(installed.release).toBe(built.release);
+        expect(installed.dev).toBe(built.dev);
     });
 
     it("the development id should sit outside the namespace the reaper clears", () => {
@@ -81,7 +106,11 @@ describe("app flavours", () => {
         // well as in Swift, because this file is the one that reads the SHELL
         // side, and the id could drift there alone.
         const release = swiftConstant("releaseBundleID")!;
-        for (const id of shellAssignments(buildScript, "BUNDLE_ID")) {
+        const ids = shellAssignments(buildScript, "BUNDLE_ID");
+        // A floor, because the loop below is vacuous on an empty match and an
+        // empty sweep reads exactly like a clean one.
+        expect(ids.length).toBe(2);
+        for (const id of ids) {
             if (id === release) { continue; }
             expect(id.startsWith(release + "."), `${id} is inside the namespace reap.sh clears`)
                 .toBe(false);

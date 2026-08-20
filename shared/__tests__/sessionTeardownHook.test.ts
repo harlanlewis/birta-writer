@@ -83,7 +83,14 @@ describe("session teardown hook", () => {
         // from inside the checkout, so a looser pattern reaches them.
         expect(code).toContain('jot/build/Birta Writer Jot[^/]*\\.app/Contents/MacOS/');
         // Only one branch may delete, and it is the one the caller asked for.
-        expect(code).not.toMatch(/^\s*rm -rf(?!.*MODE)/m);
+        // `rm -f`, which is the form the script actually uses: an assertion
+        // written against `rm -rf` passes here whatever the script does, and
+        // would go on passing if the delete were hoisted out of its branch.
+        for (const line of code.split("\n")) {
+            if (!/\brm\s+-[rf]/.test(line)) { continue; }
+            expect(line, "a delete outside the reap branch").toMatch(/\$plist|\$dest|\$work/);
+        }
+        expect(code).toMatch(/if \[ "\$MODE" = "reap" \]/);
         expect(code).not.toContain("/Applications");
         // SIGTERM only: WebKit's helpers are not children of the app and only
         // exit because the app asks them to, so a hard kill orphans a set per

@@ -44,7 +44,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // something. `Updater` refuses for a development build, when the
         // setting is off, and under a throwaway defaults domain.
         updater.onStatus = { [weak self] message in self?.coordinator.flashStatus(message) }
-        updater.onUpdateAvailable = { [weak self] tag in self?.offerUpdate(tag) }
+        // Off the main-queue drain before anything modal. `onUpdateAvailable`
+        // fires from inside `Updater`'s continuation, and an `NSAlert` spun
+        // from there runs a nested run loop that libdispatch will not
+        // re-enter: every `DispatchQueue.main.async` in the app, the sync
+        // scheduler's max-wait and the flush timeout among them, stops being
+        // serviced for as long as the alert is on screen. On an unattended
+        // machine that is indefinitely.
+        updater.onUpdateAvailable = { [weak self] tag in
+            RunLoop.main.perform(inModes: [.common]) {
+                MainActor.assumeIsolated { self?.offerUpdate(tag) }
+            }
+        }
         updater.checkInBackground()
         // First launch only, and after the panel exists, so the screen has a
         // window to take over.
@@ -308,17 +319,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         updater.install(release) { ok in
             // Quitting is what performs the swap: the staged script waits for
-            // this process to go. Through `NSApp.terminate`, so the ordinary
-            // `applicationShouldTerminate` path runs and the buffer is flushed
-            // and written on the way out.
+            // this process to go. Through the ordinary
+            // `applicationShouldTerminate` path, so the buffer is flushed and
+            // written on the way out.
             //
-            // NOT `prepareToTerminate` here. Calling that and then failing to
-            // quit unregisters the hotkey and stops the agent for the rest of
-            // the session, silently, and leaves a script spinning until the
-            // user quits days later, at which point the app relaunches itself
-            // and reads as refusing to quit.
+            // Handed to the RUN LOOP, for the reason `installTerminationSignal`
+            // gives above and for the same mechanism: this completion runs
+            // inside a main-queue drain, `applicationShouldTerminate` answers
+            // `.terminateLater`, and the reply arrives on the main queue.
+            // libdispatch does not re-enter that drain, so calling terminate
+            // directly here leaves the app in a nested run loop with its hotkey
+            // already unregistered, alive and unquittable, while the staged
+            // script polls for a pid that never goes.
+            //
+            // NOT `prepareToTerminate` directly either: `applicationShouldTerminate`
+            // is its only caller, and calling it here would run the flush twice.
             guard ok else { return }
-            NSApp.terminate(nil)
+            NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
         }
     }
 
