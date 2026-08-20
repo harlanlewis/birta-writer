@@ -1,0 +1,117 @@
+/**
+ * The `/date` calendar. Composes the chrome recipe (ui/chrome.css): the card
+ * ground every floating surface shares, the radius and size scales, and the
+ * `.ui-btn` primitive under both steppers and the Today chip.
+ *
+ * These rules ARE eager, unlike the module that imports them. esbuild folds
+ * every imported stylesheet into the one entry CSS whatever the import graph
+ * does, so a dynamic import moves the JavaScript out of the launch bundle and
+ * not the styles, exactly as it does for every other component here. Keeping
+ * the file small is therefore the only lever, which is why it composes the
+ * chrome recipe instead of restating a card.
+ */
+
+.date-picker {
+    position: fixed;
+    /* The block menu's layer, and for its reason: above the sticky heading,
+       and kept clear of the topbar geometrically rather than by z-order. The
+       placement runs through `viewportSize()`, whose `top` is `safeAreaTop()`,
+       so the popup never opens into the band the fixed chrome paints over. */
+    z-index: 1300;
+    padding: var(--ui-space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-3);
+    font-size: var(--ui-fs-m);
+    user-select: none;
+}
+
+.date-picker__header {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-2);
+}
+
+.date-picker__month {
+    flex: 1;
+    margin: 0;
+    text-align: center;
+    font-size: var(--ui-fs-l);
+    color: var(--vscode-editor-foreground);
+}
+
+.date-picker__grid {
+    border-collapse: collapse;
+    /* The grid must not resize as the month changes, or every cell moves out
+       from under the pointer. Fixed layout plus an explicit cell size is what
+       holds a 28-day February the same width as a 31-day January. */
+    table-layout: fixed;
+}
+
+.date-picker__grid th {
+    padding-bottom: var(--ui-space-2);
+    font-size: var(--ui-fs-s);
+    font-weight: normal;
+    color: var(--vscode-descriptionForeground);
+    text-align: center;
+}
+
+.date-picker__day {
+    width: 30px;
+    height: 26px;
+    text-align: center;
+    border-radius: var(--ui-radius-m);
+    color: var(--vscode-editor-foreground);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--ui-menu-hover-bg);
+    }
+
+    /* The day the keyboard is on. A background alone would be the hover wash
+       again, so the roving cell takes the theme's own selection pair, ink
+       included: a theme free to paint selection as a solid fill would leave
+       resting ink unreadable on it. */
+    &[aria-selected="true"] {
+        background: var(--ui-menu-selected-bg);
+        color: var(--ui-menu-selected-ink);
+    }
+
+    /* Today is a fact about the calendar, not a selection, so it is marked
+       with a ring rather than a fill and the two can coexist on one cell. */
+    &--today {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: -1px;
+    }
+
+    /* The neighbouring months' days. Dimmed rather than hidden: they are
+       arrowable and clickable, and a blank corner cannot be navigated into.
+
+       The dim applies at REST only. Arrowing left off the 1st lands the roving
+       cell on an outside day, and a selection fill rendered at reduced opacity
+       is the case chrome.css rules out: a state that sets a background keeps
+       full ink, because the theme chose the fill and its knockout as a pair. */
+    &--outside:not([aria-selected="true"]) {
+        color: var(--ui-menu-ink-dim);
+        opacity: 0.55;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--vscode-focusBorder);
+        outline-offset: -2px;
+    }
+}
+
+.date-picker__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-3);
+}
+
+/* What the pick will actually write, in the characters it will write them in,
+   so the locale's own spelling is visible before it lands in the document. */
+.date-picker__preview {
+    font-size: var(--ui-fs-s);
+    color: var(--vscode-descriptionForeground);
+}

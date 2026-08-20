@@ -199,6 +199,14 @@ What the file gets is `1.`, `2.`, `3.`, always. CommonMark has no lettered or ro
 
 Select, move, duplicate, and fold blocks entirely from the keyboard, with a slash menu for inserts and find/replace with match-case, whole-word, and regex. The fast paths you already have muscle memory for in VS Code work here too.
 
+### Dates that are just text
+
+`/date` opens a calendar at the cursor; `/today`, `/tomorrow` and `/yesterday` skip it. What reaches the file is the literal characters you saw, with no node, no marker and nothing for a serializer to reproduce, so a date is as portable as the sentence around it and no tool needs to know this editor wrote it.
+
+There is no format option, and the date follows your system's own conventions rather than a fixed one: `Aug 20, 2026` where a reader expects that, `20 Aug 2026` where they expect this. The month is asked for by name, which is the part worth choosing deliberately: `08/20/2026` and `20/08/2026` are the same ten characters arranged two ways, and a named month cannot be read as the wrong day by someone who opens the file somewhere else. Asking for a short date generically gets an all-numeric one in several languages, so the request is specific. Where a language has no short name for a month, Czech and Finnish among them, a number is what it writes and a number is what you get; that is the local convention rather than a gap to paper over.
+
+The calendar is reachable entirely from the keyboard, by day, week, month and year, and closing it puts the cursor back where it was.
+
 ### The clipboard speaks Markdown in both directions
 
 Copying puts the selection's Markdown source on the clipboard's plain-text flavor, and pasting plain text reads it back as Markdown: `# Title` arrives as a heading, not as the literal characters the serializer then has to escape. Rich content pasted from a browser or a word processor keeps its own formatting as before, a paste inside a code block is always literal, and Paste as Plain Text (⇧⌘V, or the command palette) is literal for one paste (`birta.pasteFormat` makes it the rule).

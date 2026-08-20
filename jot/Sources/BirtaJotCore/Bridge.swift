@@ -65,6 +65,9 @@ public enum WebviewMessage: Equatable {
     /// request until it hears back.
     case resolveEmbedMeta(id: String, url: String)
     case perfMarks(json: String)
+    /// The page asked for the app's own date picker, anchored at the caret
+    /// rectangle (viewport coordinates, CSS pixels).
+    case showDatePicker(id: String, left: Double, top: Double, bottom: Double)
     case other(type: String)
 
     public static func parse(_ text: String) -> WebviewMessage? {
@@ -74,6 +77,7 @@ public enum WebviewMessage: Equatable {
               let type = dict["type"] as? String else { return nil }
         func str(_ k: String) -> String? { dict[k] as? String }
         func int(_ k: String) -> Int? { (dict[k] as? NSNumber)?.intValue }
+        func double(_ k: String) -> Double? { (dict[k] as? NSNumber)?.doubleValue }
         func bool(_ k: String) -> Bool? { dict[k] as? Bool }
         func bytes(_ k: String) -> Data? { BinaryPayload.data(from: dict[k]) }
         func json(_ k: String) -> String? {
@@ -156,6 +160,14 @@ public enum WebviewMessage: Equatable {
         case "resolveEmbedMeta":
             guard let id = str("id"), let u = str("url") else { return .other(type: type) }
             return .resolveEmbedMeta(id: id, url: u)
+        case "showDatePicker":
+            // A picker with no anchor would open at the window's origin rather
+            // than at the caret, which is worse than not opening, so a request
+            // missing its rectangle is not a request.
+            guard let id = str("id"),
+                  let left = double("left"), let top = double("top"), let bottom = double("bottom")
+            else { return .other(type: type) }
+            return .showDatePicker(id: id, left: left, top: top, bottom: bottom)
         case "__perfMarks": return .perfMarks(json: json("marks") ?? "{}")
         default: return .other(type: type)
         }
@@ -189,6 +201,15 @@ public enum HostMessage: Equatable {
     /// selection onto document lines (webview/agentContext.ts), which is a
     /// question only it can answer.
     case requestEditorContext(id: String)
+    /// The app's date picker closed. `date` is nil when it was dismissed
+    /// without a pick, and the reply is sent either way so the page never
+    /// waits on a picker that is gone.
+    ///
+    /// A DAY, never a string: `webview/utils/dateFormat.ts` owns the one
+    /// spelling of a date, so the app reports what was chosen and the editor
+    /// writes it. That is what keeps the two surfaces from drifting into two
+    /// formats of the same date.
+    case datePickerResult(id: String, date: CalendarDay?)
     /// Run one editor command by id (shared/editorCommands.ts), the way a
     /// contributed keybinding reaches the page.
     case editorCommand(String)
@@ -244,6 +265,9 @@ public enum HostMessage: Equatable {
             return ["type": "toolbarConfig", "config": config]
         case let .requestEditorContext(id):
             return ["type": "requestEditorContext", "id": id]
+        case let .datePickerResult(id, date):
+            return ["type": "datePickerResult", "id": id,
+                    "date": date.map { ["year": $0.year, "month": $0.month, "day": $0.day] } ?? NSNull()]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
         case let .editorCommand(command):
@@ -361,7 +385,7 @@ public struct BootConfig: Equatable {
             //     one and its four options move behind a ⋯ button.
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker"],
                 "shortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
             ],
             "fontPreset": fontPreset,

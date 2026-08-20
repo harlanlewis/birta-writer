@@ -97,6 +97,14 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     insertImage: "mutates",
     insertMath: "mutates",
     insertFootnote: "mutates",
+    // `insertDate` mutates even though opening a calendar does not, on the
+    // rule the openers beside it follow: a surface that exists to write is
+    // blocked at the opener, because a picker that opens and then refuses on
+    // Enter is a worse promise than one that never opens.
+    insertDate: "mutates",
+    insertToday: "mutates",
+    insertTomorrow: "mutates",
+    insertYesterday: "mutates",
     insertCallout: "mutates",
     toggleCallout: "mutates",
     insertParagraphAfter: "mutates",

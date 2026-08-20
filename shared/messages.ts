@@ -232,6 +232,17 @@ export type ToExtensionMessage =
     | { type: "openUrl"; url: string }
     | { type: "openHostPreferences" }
     /**
+     * Ask the host to show its own date picker, anchored at the caret
+     * (viewport coordinates). Only ever sent by a host that declares the
+     * `nativeDatePicker` arrangement, so a host with no such control never
+     * receives it, and the editor's own calendar opens instead.
+     *
+     * The host answers `datePickerResult` with the same `id`, and answers it
+     * on dismissal too: a request with no reply would leave the editor
+     * believing a picker is open forever.
+     */
+    | { type: "showDatePicker"; id: string; left: number; top: number; bottom: number }
+    /**
      * The settings dropdown was opened, so the installed release counts as
      * looked at. Opening the menu is the gesture, not clicking the What's-new
      * row: the dot claims "there is something you have not seen", and the menu
@@ -767,6 +778,20 @@ export type ToWebviewMessage =
     // `editorContextResult` correlated by `id`. Read-only — never mutates the
     // document and never runs unless an agent requests it.
     | { type: "requestEditorContext"; id: string }
+    /**
+     * The host's date picker closed. `date` is the day chosen, as a civil
+     * date with `month` 1-12 and no zone in it, or null when the picker was
+     * dismissed without a pick.
+     *
+     * The host reports the DAY and never the characters: the editor owns the
+     * one spelling of a date (`webview/utils/dateFormat.ts`), so the native
+     * picker and the editor's own calendar cannot drift into two.
+     */
+    | {
+        type: "datePickerResult";
+        id: string;
+        date: { year: number; month: number; day: number } | null;
+    }
     // Disk-drift state for this document: "conflict" while the file on disk has
     // changed since the editor last agreed with it AND the editor has unsaved
     // edits (the toolbar shows a quiet advisory badge — a manual save would hit

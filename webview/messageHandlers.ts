@@ -57,6 +57,7 @@ import { regateEmbeds } from "./plugins/embed";
 import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
 import { setAgentRoute } from "./agentRoute";
 import { resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
+import { resolveNativeDatePicker } from "./dateInsert";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -276,6 +277,11 @@ export function createMessageHandlers(
         },
         requestSwitchToTextEditor() {
             notifySwitchToTextEditor(getSwitchTarget());
+        },
+        datePickerResult(msg) {
+            // The host's own picker closed. A dismissal reports a null date
+            // and still arrives, so the request is always retired.
+            resolveNativeDatePicker(msg.id, msg.date);
         },
         requestEditorContext(msg) {
             // A coding-agent bridge (src/agentBridge/) asked for the live file

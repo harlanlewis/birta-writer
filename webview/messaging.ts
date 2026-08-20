@@ -145,6 +145,18 @@ export function notifyOpenHostPreferences(): void {
 }
 
 /**
+ * Ask the host to show its own date picker at the caret. Only sent by a host
+ * declaring the `nativeDatePicker` arrangement; the reply arrives as
+ * `datePickerResult` carrying the same `id`.
+ */
+export function notifyShowDatePicker(
+    id: string,
+    rect: { left: number; top: number; bottom: number },
+): void {
+    vscode.postMessage({ type: "showDatePicker", id, ...rect });
+}
+
+/**
  * The settings dropdown opened, so the installed release has been looked at.
  * Fired on OPEN rather than on the What's-new row, because the dot claims only
  * that something is unseen, and the menu is where it is seen.

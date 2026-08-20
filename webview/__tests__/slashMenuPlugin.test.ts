@@ -911,10 +911,13 @@ describe("context-aware item filtering (toggles hidden where they would remove)"
         // inside a cell. Paragraph stands because that is what a cell holds;
         // Blockquote and Callout stand because they WRAP, and wrapping from
         // inside a cell quotes the whole table (quoteAnyBlock.test.ts).
+        // Date stands for the same reason Inline Math does: it writes text at
+        // the caret and places no block, so a cell holds it exactly as a
+        // paragraph would.
         const labels = await openIn("| a | b |\n| - | - |\n| c | d |\n");
         expect(labels).toEqual([
             "Paragraph", "Image", "Blockquote", "Callout",
-            "Inline Math", "Link", "Footnote",
+            "Inline Math", "Link", "Footnote", "Date",
         ]);
     });
 });

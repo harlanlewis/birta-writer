@@ -645,6 +645,8 @@ final class Coordinator {
             NSLog("Birta Writer Jot: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
             saveAttachment(id: id, data: data, mimeType: mimeType)
+        case let .showDatePicker(id, left, top, bottom):
+            showDatePicker(id: id, left: left, top: top, bottom: bottom)
         case let .resolveLinkCard(id, url):
             resolveLinkCard(id: id, url: url)
         case let .unfurlUrl(id, url):
@@ -1169,6 +1171,34 @@ final class Coordinator {
             guard let self, let pending = self.pendingContexts.removeValue(forKey: id) else { return }
             NSLog("Birta Writer Jot: the page did not answer requestEditorContext in time")
             pending(nil)
+        }
+    }
+
+    /// Show the system date picker at the caret, and report what it returns.
+    ///
+    /// The page sends the caret rectangle in viewport CSS pixels, whose origin
+    /// is the TOP left; AppKit's is the bottom left, so the y flip is the whole
+    /// of the conversion. The rectangle is given a minimum height so a caret on
+    /// an empty line, which can report a zero-height box, still anchors the
+    /// popover somewhere rather than at the view's edge.
+    ///
+    /// The anchor is relative to the WEB VIEW, never to the window, and that is
+    /// worth stating rather than leaving to be inferred: the titlebar here is
+    /// transparent, full-size-content, and carries an accessory view, and any
+    /// of those could change. None of them can move this popover, because the
+    /// coordinates it is given are the page's own and the view it hangs off is
+    /// the page's own. A future titlebar arrangement, native window tabbing
+    /// included, needs no change here.
+    private func showDatePicker(id: String, left: Double, top: Double, bottom: Double) {
+        let view = host.webView
+        let height = max(bottom - top, 1)
+        let anchor = NSRect(x: left, y: view.bounds.height - bottom, width: 1, height: height)
+        let controller = DatePickerPopover()
+        controller.show(relativeTo: anchor, of: view, startingAt: CalendarDay(Date())) { [weak self] day in
+            // Always answered, a dismissal included: the page holds a pending
+            // request against this id and would otherwise wait forever.
+            self?.host.send(.datePickerResult(id: id, date: day))
+            self?.host.focusEditor()
         }
     }
 

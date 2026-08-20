@@ -3,7 +3,7 @@
  * context extractor, the tiered filter, and the drift guard that pins every
  * item to a real editor command (mirrors toolbarRegistry.test.ts).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
     filterSlashItems,
     SLASH_MENU_ITEMS,
@@ -11,6 +11,7 @@ import {
 } from "../components/slashMenu/registry";
 import { slashContext, SLASH_CONTEXT_REGEX } from "../plugins/slashMenu";
 import { EDITOR_COMMANDS } from "../../shared/editorCommands";
+import { formatCalendarDate, relativeCalendarDate } from "../utils/dateFormat";
 
 describe("slashContext", () => {
     it("a slash at block start should match with an empty query", () => {
@@ -195,6 +196,72 @@ describe("filterSlashItems", () => {
                 "callout-caution",
             ]),
         );
+    });
+});
+
+describe("dynamicDetail", () => {
+    const withDetail = SLASH_MENU_ITEMS.filter((i) => i.dynamicDetail);
+
+    it("the rows that compute their own description should be the date rows", () => {
+        // The sweep asserts its own size: a registry that lost the field would
+        // otherwise leave every check below iterating an empty list and passing.
+        expect(withDetail.map((i) => i.id).sort()).toEqual(["today", "tomorrow", "yesterday"]);
+    });
+
+    it("each date row should name the day its command would insert", () => {
+        // The user-facing claim, checked rather than assumed: typing `/tod`
+        // shows the date that picking the row would write. Both sides are
+        // derived from the same clock reading, so the assertion is about the
+        // ROW agreeing with the command and not about today's date.
+        //
+        // The clock is pinned because the two sides read it separately, and a
+        // run that crossed midnight between them would go red for no reason.
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 7, 20, 9, 0));
+        const now = new Date();
+        const expected: Record<string, string> = {
+            today: formatCalendarDate(relativeCalendarDate("today", now)),
+            tomorrow: formatCalendarDate(relativeCalendarDate("tomorrow", now)),
+            yesterday: formatCalendarDate(relativeCalendarDate("yesterday", now)),
+        };
+        try {
+            for (const item of withDetail) {
+                expect(item.dynamicDetail!(), item.id).toBe(expected[item.id]);
+            }
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("the three should name three different days", () => {
+        // Without this the check above passes on a registry where every row
+        // was wired to the same offset, since each side would agree.
+        const shown = new Set(withDetail.map((i) => i.dynamicDetail!()));
+        expect(shown.size).toBe(3);
+    });
+
+    it("a date row should be read fresh, not baked at module load", () => {
+        // The midnight case, which is the whole reason the field exists: a Jot
+        // panel is left open for days. Two reads either side of a clock change
+        // must differ, so a value captured once cannot pass.
+        //
+        // `vi.setSystemTime` rather than a stubbed `Date.now`: the `Date`
+        // CONSTRUCTOR does not route through `Date.now`, so stubbing that moves
+        // nothing and the arm passes for the wrong reason. Fake timers replace
+        // the clock the constructor reads too.
+        const item = withDetail.find((i) => i.id === "today")!;
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date(2026, 7, 20, 9, 0));
+            const before = item.dynamicDetail!();
+            vi.setSystemTime(new Date(2026, 7, 23, 9, 0));
+            const after = item.dynamicDetail!();
+            expect(after, "the row is showing a date captured at module load").not.toBe(before);
+            // And it moved to the RIGHT day, not merely to a different string.
+            expect(after).toBe(formatCalendarDate({ year: 2026, month: 8, day: 23 }));
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 

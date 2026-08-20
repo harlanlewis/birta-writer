@@ -416,6 +416,12 @@ class SlashMenuController {
             labelFor: state
                 ? (item) => item.dynamicLabel?.(state) ?? item.label
                 : undefined,
+            // Called per render rather than per open, unlike the labels
+            // above: a date row has to name the day it would insert, and a
+            // panel left open across midnight would otherwise offer
+            // yesterday's. The row is rebuilt on every query keystroke, so
+            // reading the clock here costs nothing and cannot go stale.
+            detailFor: (item) => item.dynamicDetail?.(),
             onPick: (item) => this.apply(item),
             onActiveChange: (id) => {
                 if (id) {
