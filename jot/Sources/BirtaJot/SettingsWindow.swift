@@ -36,13 +36,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     /// The panes, in toolbar order.
+    /// The panes, and their order.
+    ///
+    /// Two, not three. General holds the questions the welcome screen asks, in
+    /// the same groups and the same words, so a row a person met on first run
+    /// is where they left it. Advanced holds what the welcome screen does not
+    /// ask: which note opens, the agent command, and the reset. Editor is gone
+    /// because its only row was Autosave, which belongs with the rest of how
+    /// Jot behaves, and a tab that costs a click to discover is empty is worse
+    /// than no tab.
     private enum Tab: String, CaseIterable {
-        case general, editor, advanced
+        case general, advanced
 
         var title: String {
             switch self {
             case .general: return "General"
-            case .editor: return "Editor"
             case .advanced: return "Advanced"
             }
         }
@@ -50,7 +58,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         var symbol: String {
             switch self {
             case .general: return "gearshape"
-            case .editor: return "textformat"
             case .advanced: return "wrench.and.screwdriver"
             }
         }
@@ -75,8 +82,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// (a folder you pick) used to be a path row that silently outranked the
     /// switch above it.
     private let opensPopup = NSPopUpButton()
-    private let homePopup = NSPopUpButton()
-    private let homeCaption = Caption("")
+    private let iCloudSwitch = NSSwitch()
+    private let iCloudCaption = Caption("")
+    private let networkCaption = Caption("")
+    /// The card holding the iCloud switch and the Location row under it. Kept
+    /// so the second row can be taken away when the first one answers.
+    private var filesGroup: NSView?
     private let resetButton = NSButton(title: "Reset…", target: nil, action: nil)
     private let welcomeButton = NSButton(title: "Show Welcome…", target: nil, action: nil)
     private let loginSwitch = NSSwitch()
@@ -232,7 +243,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
         for (popup, titles, action) in [
             (opensPopup, NoteMode.allCases.map(\.title), #selector(chooseNoteMode)),
-            (homePopup, NoteHome.allCases.map(\.title), #selector(chooseNoteHome)),
             (agentPresetPopup, AgentPreset.allCases.map(\.title) + [Self.customPresetTitle],
              #selector(chooseAgentPreset)),
         ] {
@@ -265,6 +275,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
         for (control, on, action) in [
             (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
+            (iCloudSwitch, Prefs.noteHome == .iCloud, #selector(toggleICloud)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
             (loginSwitch, false, #selector(toggleLoginItem)),
@@ -293,6 +304,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// the values it was built with while the app ran on the defaults.
     private func syncControlsFromPrefs() {
         networkSwitch.state = Prefs.networkEnabled ? .on : .off
+        networkCaption.say("Off means no outbound request at all.", bad: false)
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         dockSwitch.state = Prefs.showInDock ? .on : .off
         hotkeyRecorder.setCombo(Prefs.hotkey)
@@ -310,19 +322,33 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// iCloud Drive switched off lands in Documents, silently in behaviour and
     /// not in the interface.
     private func showFiles() {
-        let home = Prefs.noteHome
         opensPopup.selectItem(withTitle: Prefs.noteMode.title)
-        homePopup.selectItem(withTitle: home.title)
         scratchpadPath.setURL(Prefs.scratchpadURL)
-        // A note that is remade each session has no one file to name, so the
-        // row that names it is dimmed rather than removed: it still says where
-        // the new ones will be made.
-        scratchpadPath.isDimmed = Prefs.noteMode == .newEachSession
-        if home != .chosen && Prefs.storeInICloud && !Prefs.iCloudAvailable {
-            homeCaption.say("iCloud Drive is off in System Settings, so notes are kept on this Mac.", bad: false)
-        } else {
-            homeCaption.say("", bad: false)
+        iCloudSwitch.state = Prefs.noteHome == .iCloud ? .on : .off
+        iCloudSwitch.isEnabled = Prefs.iCloudAvailable
+        // The Location row exists only when the answer above is no. With
+        // iCloud Drive on there is one place the note can be and it is the
+        // same place on every Mac, so the row would be a read-only fact; with
+        // it off the folder is a real choice, and this is where it is made.
+        if let filesGroup {
+            SettingsWindowController.setRowHidden(filesGroup, row: 1, hidden: Prefs.noteHome == .iCloud)
         }
+        iCloudCaption.say(Prefs.iCloudAvailable
+                          ? ""
+                          : "iCloud Drive is off in System Settings, so notes stay on this Mac.",
+                          bad: false)
+    }
+
+    /// The Where-your-notes-live card, built once and remembered so its second
+    /// row can be shown and hidden.
+    private func locationGroup() -> NSView {
+        if let filesGroup { return filesGroup }
+        let group = Self.group([
+            Self.row("Store files in iCloud Drive", control: iCloudSwitch, caption: iCloudCaption),
+            Self.row("Location", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
+        ])
+        filesGroup = group
+        return group
     }
 
     /// Show which preset the stored command came from, or Custom.
@@ -345,43 +371,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         switch tab {
         case .general:
             sections = [
-                Self.heading("Startup"),
+                // The same three groups the welcome screen shows, in the same
+                // order and with the same titles. A setting a person answered
+                // on first run is found again by looking where they answered
+                // it, which only works if the two screens are one layout.
+                Self.heading("Show and hide Jot"),
                 Self.group([
-                    Self.row("Open at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
-                             caption: loginCaption),
-                ]),
-                Self.heading("Panel"),
-                Self.group([
-                    Self.row("Show in Dock", control: dockSwitch,
-                             caption: Caption("Off keeps Jot in the menu bar only, out of the Dock and out of Cmd+Tab.")),
                     Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
                 ]),
-                Self.heading("Network"),
+                Self.heading("Where your notes live"),
+                locationGroup(),
+                Self.heading("How Jot works"),
                 Self.group([
-                    Self.row("Fetch from the web", control: networkSwitch,
-                             caption: Caption("Off means no outbound request. On enables embeds, link cards and pasted-link titles.")),
-                ]),
-            ]
-        case .editor:
-            sections = [
-                Self.heading("Editing"),
-                Self.group([
-                    Self.row("Autosave", control: autosaveSwitch,
-                             caption: Caption("Cmd+S, hiding and quitting write either way.")),
+                    Self.row("Autosave", control: autosaveSwitch),
+                    Self.row("Show in Dock", control: dockSwitch),
+                    Self.row("Start at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
+                             caption: loginCaption),
+                    Self.row("Rich link previews and embeds", control: networkSwitch,
+                             caption: networkCaption),
                 ]),
             ]
         case .advanced:
             sections = [
-                Self.heading("Files"),
-                // Three rows answering three separate questions, in the order
-                // a person asks them: what opens, where it lives, and which
-                // file that came out as. Each row above decides the one below
-                // it, so the pane reads top to bottom and no row silently
-                // overrules another.
+                Self.heading("Notes"),
                 Self.group([
                     Self.row("Opens", control: opensPopup),
-                    Self.row("Notes live in", control: homePopup, caption: homeCaption),
-                    Self.row("Note", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
                 ]),
                 Self.heading("Agent"),
                 Self.group([
@@ -393,11 +407,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 Self.group([
                     Self.row("All settings", control: resetButton,
                              caption: Caption("Back to defaults. Your notes are left where they are.")),
-                    Self.row("Welcome window", control: welcomeButton,
-                             caption: Caption("The four questions Jot asks the first time it runs.")),
+                    Self.row("Welcome screen", control: welcomeButton,
+                             caption: Caption("The questions Jot asks the first time it runs.")),
                 ]),
             ]
         }
+        // After the sections exist, not before. `wireControls` runs at the top
+        // of this method and `showFiles` hides a row of a card that this
+        // method is about to build, so the sync above reaches a `filesGroup`
+        // that is still nil and the Location row stays on screen with iCloud
+        // Drive switched on.
+        showFiles()
         return Self.pane(sections)
     }
 
@@ -494,6 +514,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // is nothing.
         for view in arranged { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         return box
+    }
+
+    /// Show or hide one row of a `group`, hairline and all.
+    ///
+    /// A row that comes and goes has to take its separator with it, or hiding
+    /// it leaves two hairlines touching where a row used to be. The index
+    /// arithmetic is `group`'s own layout read back: it interleaves
+    /// `[row, separator, row, separator, row]`, so row `i` sits at `2i` and
+    /// the hairline that belongs to it is the one before it. Tied to that
+    /// construction on purpose rather than searching for hairlines by type,
+    /// which would silently pick up any future one.
+    static func setRowHidden(_ group: NSView, row index: Int, hidden: Bool) {
+        guard let box = group as? NSBox,
+              let stack = box.contentView as? NSStackView else { return }
+        let views = stack.arrangedSubviews
+        let position = index * 2
+        guard position < views.count else { return }
+        views[position].isHidden = hidden
+        if position > 0 { views[position - 1].isHidden = hidden }
     }
 
     private static func separator() -> NSView {
@@ -626,23 +665,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         showFiles()
     }
 
-    /// Where notes live. Choosing a folder opens the panel rather than storing
-    /// anything, and a cancelled panel puts the popup back where it was: a
-    /// menu left showing an answer the settings do not hold is worse than the
-    /// gesture not having happened.
-    @objc private func chooseNoteHome() {
-        guard let home = NoteHome.allCases.first(where: { $0.title == homePopup.titleOfSelectedItem }) else { return }
-        switch home {
-        case .chosen:
-            chooseScratchpad()
-        case .iCloud, .documents:
-            // Clearing the chosen path is what makes the two homes reachable
-            // again; leaving it would keep overruling this menu invisibly.
+    /// Where notes live. Off hands the decision to the Location row below,
+    /// which is the folder chooser; on takes it back. Clearing the chosen path
+    /// is what makes iCloud reachable again, since a chosen path outranks both
+    /// homes and would otherwise overrule this switch invisibly.
+    @objc private func toggleICloud() {
+        if iCloudSwitch.state == .on {
             Prefs.scratchpadURL = nil
-            Prefs.storeInICloud = home == .iCloud
-            showFiles()
-            onChange()
+            Prefs.storeInICloud = true
+        } else {
+            Prefs.storeInICloud = false
         }
+        showFiles()
+        onChange()
     }
 
     @objc private func chooseAgentPreset() {

@@ -298,20 +298,41 @@ enum Prefs {
     /// Whether Jot has a Dock icon, and so appears in Cmd+Tab and gets an
     /// application menu bar of its own.
     ///
-    /// ON by default, and the welcome window shows it on. Somebody meeting Jot
-    /// for the first time has to be able to find it again, and without an icon
-    /// it is not in the Dock, not in Cmd+Tab, and reachable only by a hotkey
-    /// they have just been told once. Off makes it the accessory app it is at
-    /// heart, which is what someone who knows the hotkey will want, and the
-    /// switch is one row away.
+    /// Whether Jot has a Dock icon, and so appears in Cmd+Tab and gets an
+    /// application menu bar of its own.
     ///
-    /// `LSUIElement` in Info.plist stays true, so a launch never flashes an
-    /// icon before this is read; `Entry.main` applies this, and `AppDelegate`
-    /// re-applies it when the switch moves. The plist and this default
-    /// disagreeing is therefore deliberate rather than an oversight.
+    /// OFF here, and ON in the welcome screen, and the two do not disagree:
+    /// `applyOnboardingDefaults` writes the welcome's answer before that
+    /// screen draws, so the switch and the setting are the same thing from the
+    /// first frame. What this default governs is the case where the screen is
+    /// never shown, and there the accessory app is what Jot has always been.
+    ///
+    /// `LSUIElement` in Info.plist matches this, so a launch never flashes an
+    /// icon before the value is read; `Entry.main` applies it, and
+    /// `AppDelegate` re-applies it when the switch moves.
     static var showInDock: Bool {
-        get { d.object(forKey: Key.showInDock.rawValue) == nil ? true : d.bool(forKey: Key.showInDock.rawValue) }
+        get { d.bool(forKey: Key.showInDock.rawValue) }
         set { d.set(newValue, forKey: Key.showInDock.rawValue) }
+    }
+
+    /// Write the answers the welcome screen is about to SHOW, before it draws.
+    ///
+    /// The screen presents live settings, so anything it displays as on has to
+    /// be on. Writing them here rather than flipping each accessor's default
+    /// is what keeps the two apart: an onboarding default is a value somebody
+    /// was shown and can refuse in the same breath, and an accessor default is
+    /// a value that applies to people who never saw the screen. Rich link
+    /// previews is the row that makes the distinction matter, because it is
+    /// the one that reaches the network: shipped off, shown on, and never on
+    /// for anybody who was not offered the switch.
+    ///
+    /// Only keys nobody has set. A person who has already turned something off
+    /// has answered, and re-showing the screen must not overrule them.
+    static func applyOnboardingDefaults() {
+        if d.object(forKey: Key.showInDock.rawValue) == nil { showInDock = true }
+        if d.object(forKey: Key.autosave.rawValue) == nil { autosave = true }
+        if d.object(forKey: Key.storeInICloud.rawValue) == nil { storeInICloud = true }
+        if d.object(forKey: Key.networkEnabled.rawValue) == nil { networkEnabled = true }
     }
 
     /// Whether the welcome window has been shown and dismissed.

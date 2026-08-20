@@ -16,7 +16,9 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
-- Birta Writer Jot asks four questions the first time it runs, in a small window with four switches: whether notes go in iCloud Drive, whether autosave is on, whether there is a Dock icon, and whether Jot opens at login. Each row is already set to the answer Jot would have picked, so closing the window is the fast path. There is no Cancel because every row is a live setting, written the moment you move it. Advanced has a button that shows it again.
+- Birta Writer Jot asks a few questions the first time it runs, on the panel itself rather than in a window beside it: the app's mark, then the summon hotkey, whether notes go in iCloud Drive, and whether autosave, the Dock icon, starting at login and rich link previews are on. The editor is not there yet, which is the point: there is nothing to type into until the questions that decide where your bytes go are answered, and nothing to dismiss twice. All Settings and Continue are under the rows. Every row is a live setting, written the moment you move it, so there is no Cancel. The window grows to fit the questions, and Settings, Advanced has a button that shows the screen again.
+
+- Rich link previews and embeds is one of the questions Birta Writer Jot asks on that first screen, shown on. It is still off in a copy that never reaches that screen, and off means Jot makes no outbound request of any kind; what changed is that you are now asked rather than left to find the switch. Turning it off there is one click, and a copy where you have already turned it off is never switched back on.
 
 - Birta Writer Jot's agent command has a menu of the terminal agents people actually run: Claude Code, Codex CLI, Cursor CLI, Gemini CLI, GitHub Copilot CLI, OpenCode, Aider, Amp and Goose. Choosing one fills the command field below it, which is still where the setting lives and still editable; editing it says Custom. Settings, Advanced.
 
@@ -44,9 +46,13 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
-- Birta Writer Jot's file settings are three rows that ask three separate questions, instead of four controls in two panes that overruled each other: Opens (the same note every time, or a new one each session), Notes live in (iCloud Drive, Documents, or a folder you choose), and Note (the file itself). Choosing a folder used to be a path row that silently outranked the iCloud switch above it without saying so, and it is now simply the third answer in the same menu. Start with a blank note has moved here from General, where it decided what Advanced's paths were for from another pane. Settings, Advanced.
+- Birta Writer Jot's Settings is two panes, and General now asks the same three groups the first-run screen does, in the same order and the same words: Show and hide Jot, Where your notes live, and How Jot works. A setting you answered on first run is found again by looking where you answered it. Advanced holds what that screen does not ask: which note a summon opens, the agent command, and the reset.
 
-- Breaking: Birta Writer Jot shows a Dock icon by default, and appears in Cmd+Tab with it. Somebody meeting Jot for the first time could not otherwise find it again without the hotkey they had been told once. Turning it off makes it the menu-bar-only app it was, and the switch is in Settings, General. An existing install keeps whatever you had set.
+- Where your notes live is one switch and a Location row that appears only when it is off. It used to be an iCloud toggle with a path row under it that silently outranked it: choosing a folder made the switch above decide nothing, and nothing said so. With iCloud Drive on there is one place the note can be and the row is gone; with it off the folder is a real choice and Choose is right there.
+
+- Birta Writer Jot's Editor settings pane is gone. Its only row was Autosave, which is now in General under How Jot works with the rest of how Jot behaves, and a tab that costs a click to discover is empty is worse than no tab. Start with a blank note is in Advanced, as Opens, where it says what it decides.
+
+- Birta Writer Jot offers a Dock icon on that first screen, shown on, and appears in Cmd+Tab with it. Somebody meeting Jot for the first time could not otherwise find it again without the hotkey they had been told once. Turning it off there, or later in Settings, General, makes it the menu-bar-only app it has always been, and a copy that never reaches the first screen stays that way.
 
 - Birta Jot is now called Birta Writer Jot, everywhere it names itself: the app in Applications, its window and menus, its Settings window, and the menu-bar item. The app icon and the menu-bar mark are redrawn to match. Nothing about your settings moves, so the hotkey, the network switch and the agent command all survive the rename; installing replaces the old `Birta Jot.app` rather than leaving two copies competing for the hotkey.
 

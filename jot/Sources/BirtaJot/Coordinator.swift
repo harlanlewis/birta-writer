@@ -110,6 +110,10 @@ final class Coordinator {
     /// over the document the user just chose to open.
     /// Its folder is also what the page may read images from, so the two move
     /// together by construction rather than by two call sites remembering to.
+    /// The first-run screen, built the first time it is needed and kept, so
+    /// re-showing it from Settings does not lose what the switches are showing.
+    private var welcome: WelcomeView?
+
     private let watcher = NoteWatcher()
     private let missingFileBar = MissingFileBar()
     /// The bound file is gone, so nothing may be written to its path.
@@ -348,6 +352,19 @@ final class Coordinator {
                 contentView.layoutSubtreeIfNeeded()
                 traceTitleBar()
                 traceTitlebarDrag()
+                return
+            }
+            // A PNG of the panel's content, written beside the scratchpad.
+            //
+            // Rendered by the view itself rather than captured off the screen:
+            // `screencapture` needs a Screen Recording grant this repository's
+            // checks do not have, and a shell that lacks it fails with a
+            // message about a rectangle rather than about permission. This
+            // asks the view hierarchy to draw itself, which needs nothing and
+            // cannot pick up a window that happens to be in front.
+            if obj["type"] as? String == "__jotSnapshot" {
+                measure.mark("debug-snapshot")
+                writeSnapshot(named: obj["name"] as? String ?? "snapshot")
                 return
             }
             // An explicit save, exactly as Cmd+S makes one.
@@ -1322,6 +1339,99 @@ final class Coordinator {
         }
     }
 
+    /// Take the panel over with the first-run screen.
+    ///
+    /// It replaces the editor rather than floating above it, and the web view
+    /// is hidden rather than covered: a first launch has no document worth
+    /// showing yet, and one reachable underneath would be a document whose
+    /// file location is still being asked about. The titlebar names the
+    /// application for the same reason, and names nothing that can be clicked.
+    func showWelcome() {
+        // Before the screen draws, so every switch on it is showing a value
+        // that is actually stored. See `Prefs.applyOnboardingDefaults`.
+        Prefs.applyOnboardingDefaults()
+        AppDelegate.applyActivationPolicy()
+        let view = welcome ?? makeWelcome()
+        welcome = view
+        view.sync()
+        view.isHidden = false
+        host.webView.isHidden = true
+        missingFileBar.isHidden = true
+        titleBar.titleView.showAppName(Self.appName)
+        show()
+        sizePanelForWelcome(view)
+    }
+
+    private func makeWelcome() -> WelcomeView {
+        let view = WelcomeView(onHotkeyChange: { [weak self] in self?.hotkeyChanged() ?? -1 })
+        view.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            // Below the titlebar band rather than under it: the band is
+            // transparent and full height, so a view pinned to the top would
+            // put its first row behind the traffic lights.
+            view.topAnchor.constraint(equalTo: contentView.topAnchor),
+            view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+        view.onContinue = { [weak self] in self?.finishWelcome() }
+        view.onAllSettings = { [weak self] in
+            self?.finishWelcome()
+            self?.openPreferences?()
+        }
+        view.onChange = { [weak self] in self?.preferencesChanged() }
+        return view
+    }
+
+    /// Give the panel back to the editor.
+    ///
+    /// `hasSeenWelcome` is set HERE rather than when the screen appears, so a
+    /// crash during a first launch does not spend the one chance to ask.
+    private func finishWelcome() {
+        Prefs.hasSeenWelcome = true
+        welcome?.isHidden = true
+        host.webView.isHidden = false
+        missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
+        refreshTitle()
+        host.focusEditor()
+    }
+
+    /// Whether the panel is showing the first-run screen instead of a document.
+    private var isWelcoming: Bool { welcome?.isHidden == false }
+
+    /// Grow the panel so the whole first-run screen is on it.
+    ///
+    /// Only ever grows, and never past the screen: shrinking would fight a
+    /// window somebody has already sized, and this runs again every time the
+    /// screen is re-shown from Settings.
+    ///
+    /// Not guarded on `Prefs.isUserStore`, unlike the frame autosave. Nothing
+    /// here PERSISTS a size: `JotPanel` only names its autosave under a real
+    /// user's defaults, so a checking run resizes a window that is forgotten
+    /// when it closes. Guarding it here as well would have made the one thing
+    /// worth looking at, whether the screen fits, the one thing no run could
+    /// be made to show.
+    private func sizePanelForWelcome(_ view: WelcomeView) {
+        contentView.layoutSubtreeIfNeeded()
+        guard let screen = panel.screen ?? NSScreen.main else { return }
+        let chrome = panel.frame.height - panel.contentLayoutRect.height
+        let wanted = view.fittingContentHeight + chrome
+        let ceiling = screen.visibleFrame.height - 40
+        let height = min(max(panel.frame.height, wanted), ceiling)
+        guard height > panel.frame.height + 0.5 else { return }
+        var frame = panel.frame
+        // Grow downward from the title bar, which is where a window grows when
+        // a person is looking at it: the titlebar staying put is what makes it
+        // read as the same window.
+        frame.origin.y -= height - frame.height
+        frame.size.height = height
+        panel.setFrame(frame, display: true, animate: false)
+    }
+
+    /// What the titlebar says when it is not naming a file.
+    static let appName = "Birta Writer Jot"
+
     /// The missing-note bar spans the window's bottom edge, above the page's
     /// own formatting dock rather than over it.
     private func layoutMissingFileBar() {
@@ -1666,6 +1776,61 @@ final class Coordinator {
                              pageTop, anchor.origin.y, isFlipped ? "yes" : "no"))
     }
 
+    /// Draw the panel's content into a PNG beside the scratchpad.
+    ///
+    /// For looking at, not for asserting on. Layout here is the kind of thing
+    /// a number describes badly and a person reads instantly, and the app is
+    /// the only thing that can produce the image without a Screen Recording
+    /// grant.
+    ///
+    /// What it CANNOT show, which matters more than what it can: `NSSwitch`,
+    /// `NSButton` and the rest of the bezeled controls draw through layers and
+    /// come out blank here. A row whose switch is missing in one of these
+    /// images is a limit of the drawing path, not a missing control, and
+    /// reading it the other way would send somebody looking for a bug that is
+    /// not there. The `snapview` lines below are the answer to "is the control
+    /// present": they walk the real view tree with frames.
+    private func writeSnapshot(named name: String) {
+        // The welcome screen when it is up, and the whole content otherwise.
+        let target: NSView = (welcome?.isHidden == false) ? welcome! : contentView
+        let bounds = target.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        // Through the PDF drawing path. `cacheDisplay` and `layer.render`
+        // both come back blank here: a `WKWebView` is layer-backed and forces
+        // every ancestor to be, and a layer-backed AppKit view has no drawn
+        // contents to copy until the window server has asked for them.
+        // `dataWithPDF` runs the views' own drawing instead, which does not
+        // care. The failure mode of the other two is a blank rectangle of the
+        // right size, which reads as "the screen is empty" rather than as
+        // "the wrong API".
+        let pdf = target.dataWithPDF(inside: bounds)
+        guard let image = NSImage(data: pdf) else { return }
+        let rendered = NSImage(size: bounds.size)
+        rendered.lockFocus()
+        NSColor.textBackgroundColor.setFill()
+        bounds.fill()
+        image.draw(in: bounds)
+        rendered.unlockFocus()
+        guard let tiff = rendered.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let data = rep.representation(using: .png, properties: [:]) else { return }
+        let url = boundURL.deletingLastPathComponent().appendingPathComponent("\(name).png")
+        try? data.write(to: url)
+        measure.trace("snapshot at=\(url.path) w=\(Int(bounds.width)) h=\(Int(bounds.height))")
+        func dump(_ view: NSView, depth: Int) {
+            // Deep enough to reach a control. The rows nest about nine levels
+            // down (scroll, clip, document, column, form, card, card stack,
+            // row, control), and a shallower walk reports no switches at all,
+            // which reads exactly like a screen that has none.
+            guard depth < 12 else { return }
+            for sub in view.subviews {
+                measure.trace("snapview \(String(repeating: "  ", count: depth))\(type(of: sub)) frame=\(NSStringFromRect(sub.frame)) hidden=\(sub.isHidden) alpha=\(sub.alphaValue)")
+                dump(sub, depth: depth + 1)
+            }
+        }
+        dump(target, depth: 0)
+    }
+
     /// The panel's window level, for `jot/scripts/measure.sh`.
     ///
     /// Here because a level was wrong for a release while three comments and a
@@ -1677,7 +1842,17 @@ final class Coordinator {
     /// that agrees with itself.
     private func traceWindowLevel() {
         guard measure.enabled else { return }
-        measure.trace("windowlevel level=\(panel.level.rawValue) hidesOnDeactivate=\(panel.hidesOnDeactivate ? "yes" : "no")")
+        // The frame goes out in TOP-LEFT screen coordinates, which is not the
+        // convention the frame is in. AppKit measures from the bottom of the
+        // main screen and every screen-capture tool measures from the top, so
+        // converting here is what stops each reader doing it again and one of
+        // them doing it wrong.
+        let screenHeight = NSScreen.screens.first?.frame.height ?? panel.frame.maxY
+        let frame = panel.frame
+        measure.trace(String(
+            format: "windowlevel level=%d hidesOnDeactivate=%@ rect=%.0f,%.0f,%.0f,%.0f",
+            panel.level.rawValue, panel.hidesOnDeactivate ? "yes" : "no",
+            frame.origin.x, screenHeight - frame.maxY, frame.width, frame.height))
     }
 
     private func traceTitleBar() {
@@ -1739,6 +1914,12 @@ final class Coordinator {
     /// at that moment, so a captured value would leave the title answering for
     /// a setting that is no longer in force until the next keystroke.
     private func refreshTitle() {
+        // The welcome screen owns the title while it is up, and everything
+        // that touches the document goes on running behind it: the file is
+        // still bound, still read, still watched. Without this guard the next
+        // `isEdited` change would put a file name back over a screen that has
+        // no file.
+        guard !isWelcoming else { return }
         titleBar.titleView.show(
             url: boundURL,
             edited: WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,

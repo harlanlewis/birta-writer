@@ -104,6 +104,10 @@ final class TitleBarView: NSView {
     private struct Rendered: Equatable {
         let text: String
         let key: Bool
+        /// Whether the title named the application rather than a file. In the
+        /// key because the same characters mean different things either side
+        /// of it: one opens a popover and one is inert.
+        let plain: Bool
     }
     private var lastRendered: Rendered?
 
@@ -257,6 +261,9 @@ final class TitleBarView: NSView {
     /// that probe can read this decision rather than restate it. The fade is
     /// the only reason a caller would ever want the value late.
     private func syncChevron(animated: Bool = true) {
+        // Nothing to point at while the title names the application: the
+        // chevron is a picture of a click this view is not taking.
+        if plainTitle != nil { chevron.alphaValue = 0; return }
         // No file, no affordance: an empty title has nothing to open.
         let wanted: CGFloat = (url != nil && (isHovered || popover?.isShown == true)) ? 1 : 0
         guard chevron.alphaValue != wanted else { return }
@@ -522,10 +529,30 @@ final class TitleBarView: NSView {
 
     /// Name `url`, and say whether the buffer has bytes the file does not.
     func show(url: URL, edited: Bool) {
+        self.plainTitle = nil
         self.url = url
         self.edited = edited
         paint()
     }
+
+    /// Name the APPLICATION rather than a file, for a panel that is not
+    /// showing one.
+    ///
+    /// The welcome screen has no document behind it, so the titlebar has
+    /// nothing to name and nothing to open: no chevron, no popover, no path
+    /// popup, and no `Edited`. A title that offered those would offer them
+    /// against the file the panel is ABOUT to open, which is a file the person
+    /// has not chosen yet and is exactly what that screen is asking about.
+    func showAppName(_ name: String) {
+        self.plainTitle = name
+        self.edited = false
+        paint()
+    }
+
+    /// Set while the title names something that is not a file. Read by
+    /// `paint`, by the gestures, and by `hitTest`, which is what makes the
+    /// title inert rather than merely undecorated.
+    private var plainTitle: String?
 
     /// Title ink follows the window's key state, the way every macOS title
     /// does: a background window names itself quietly.
@@ -540,6 +567,10 @@ final class TitleBarView: NSView {
     }
 
     private func paint() {
+        if let plainTitle {
+            paintRuns([WindowTitle.Run(text: plainTitle, secondary: false)], toolTip: nil)
+            return
+        }
         guard let url else {
             label.attributedStringValue = NSAttributedString(string: "")
             // Forget what was drawn, or re-binding the same file afterwards
@@ -548,29 +579,33 @@ final class TitleBarView: NSView {
             return
         }
         // WHAT it says is BirtaJotCore.WindowTitle's, which is testable
-        // without a window; the two inks are this layer's, because a colour is
-        // only meaningful against a live appearance.
+        // without a window.
+        //
+        // Shortened HERE, against the ceiling, rather than left to the cell. A
+        // cell truncating a whole line eats its tail first, so `— Edited`
+        // would go before any of the name did; macOS shortens the name and
+        // keeps the state, which is why the two are separate runs.
+        paintRuns(WindowTitle.runs(name: url.lastPathComponent, edited: edited,
+                                   fitting: Double(textCeiling),
+                                   measure: Self.width(of:)),
+                  toolTip: url.path)
+    }
+
+    /// Draw `runs`, and nothing if they say what is already on screen.
+    ///
+    /// The two inks are this layer's, because a colour is only meaningful
+    /// against a live appearance. The font goes ON the runs, not only on the
+    /// field, and that is what makes `drawnTextWidth` describe the drawing: the
+    /// field draws a run in its own font when the run names none, so leaving it
+    /// off looks right on screen and reports a width in the default face, which
+    /// is narrower. Nothing goes red when it is missing, because the sizing and
+    /// the check that guards it both read the same short number and agree.
+    private func paintRuns(_ runs: [WindowTitle.Run], toolTip: String?) {
         let ink: [Bool: NSColor] = [
             false: isKey ? .labelColor : .tertiaryLabelColor,
             true: isKey ? .tertiaryLabelColor : .quaternaryLabelColor,
         ]
-        // The font goes ON the runs, not only on the field, and that is what
-        // makes `drawnTextWidth` describe the drawing. The field draws a run
-        // in its own font when the run names none, so leaving it off looks
-        // right on screen and reports a width in the default face, which is
-        // narrower. Nothing goes red: the sizing and the check that guards it
-        // both read the same short number and agree.
-        // Shortened HERE, against the ceiling, rather than left to the cell.
-        //
-        // A cell truncating a whole line eats its tail first, so `— Edited`
-        // would go before any of the name did; macOS shortens the name and
-        // keeps the state, which is why the two are separate runs. Doing it
-        // in `WindowTitle` also makes it decidable without a window, which the
-        // cell's own behaviour is not.
         let text = NSMutableAttributedString()
-        let runs = WindowTitle.runs(name: url.lastPathComponent, edited: edited,
-                                    fitting: Double(textCeiling),
-                                    measure: Self.width(of:))
         for run in runs {
             text.append(NSAttributedString(
                 string: run.text,
@@ -579,15 +614,15 @@ final class TitleBarView: NSView {
         }
         // Nothing to do when the title already says this, which under autosave
         // is almost every call: `isEdited`'s `didSet` fires on every admitted
-        // update and again on every write. Keyed on the RENDERED STRING and
-        // the ink, never on `edited`: `refreshTitle` also runs from
-        // `boundURL`'s didSet, so New Note and a document switch change the
-        // title without changing that flag.
-        let rendered = Rendered(text: text.string, key: isKey)
+        // update and again on every write. Keyed on the RENDERED STRING, the
+        // ink, and whether this is a file at all, never on `edited`:
+        // `refreshTitle` also runs from `boundURL`'s didSet, so New Note and a
+        // document switch change the title without changing that flag.
+        let rendered = Rendered(text: text.string, key: isKey, plain: plainTitle != nil)
         guard rendered != lastRendered else { return }
         lastRendered = rendered
         label.attributedStringValue = text
-        label.toolTip = url.path
+        label.toolTip = toolTip
         syncChevron()
         setAccessibilityLabel(text.string)
         resize()
@@ -603,6 +638,10 @@ final class TitleBarView: NSView {
     /// worth clicking. Points outside the text still fall through, so the
     /// titlebar keeps its own drag and double-click behaviour beside us.
     override func hitTest(_ point: NSPoint) -> NSView? {
+        // A title naming the application takes no clicks at all, so the band
+        // it sits in stays draggable across its whole width. An empty title
+        // claims nothing either.
+        guard plainTitle == nil else { return nil }
         let local = convert(point, from: superview)
         return bounds.contains(local) && label.frame.width > 0 ? self : nil
     }

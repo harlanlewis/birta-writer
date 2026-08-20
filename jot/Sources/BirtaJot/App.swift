@@ -47,8 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // reason the panel does not remember its frame.
         //
         // `BIRTA_JOT_OPEN_WELCOME=1` shows it regardless, which is how the
-        // window is proven to construct without a person and without a first
-        // launch: the gate above deliberately never fires under a throwaway
+        // screen is proven to construct without a person and without a first
+        // launch: the gate below deliberately never fires under a throwaway
         // domain, so nothing else would ever build it.
         if ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1"
             || (Prefs.isUserStore && !Prefs.hasSeenWelcome) {
@@ -278,20 +278,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func shareNote() { coordinator.shareNote() }
 
-    /// The first-launch window, and the Advanced button that shows it again.
-    ///
-    /// Kept on the delegate rather than built where it is asked for, so it
-    /// survives the Settings window that asked closing behind it.
-    private var welcomeWindow: WelcomeWindowController?
-
+    /// Show the first-run screen, which lives IN the panel rather than in a
+    /// window of its own. The Advanced button that re-shows it comes here too.
     func showWelcome() {
-        if welcomeWindow == nil {
-            welcomeWindow = WelcomeWindowController(
-                onChange: { [weak self] in self?.coordinator.preferencesChanged() })
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        welcomeWindow?.showWindow(nil)
-        welcomeWindow?.window?.makeKeyAndOrderFront(nil)
+        coordinator.showWelcome()
     }
 
     @objc func menuBackToNotes() { coordinator.backToNotes() }

@@ -878,8 +878,14 @@ for CEIL_W in "$(awk "BEGIN{print $CEIL_BOUNDARY + 400}")" \
         esac
     else
         CEIL_CUT=$((CEIL_CUT + 1))
-        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_GOT - 3)}"; then
-            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name was cut short of its own box" >&2
+        # Against the STRING it decided to draw, not against the box. The box
+        # is what the CELL needs, which is the string plus the cell's own
+        # insets, so ink never reaches it and a comparison with it fails by
+        # exactly that inset on a title that is drawn perfectly. What is being
+        # claimed here is that every glyph the app chose to draw was drawn,
+        # and `needW` is the width of exactly those glyphs.
+        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_NEED - 1)}"; then
+            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name was cut short of the string it drew" >&2
             echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
         fi
         # 4. A name that did not fit says so, with an ellipsis.
