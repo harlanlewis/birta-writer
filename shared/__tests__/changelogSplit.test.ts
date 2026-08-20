@@ -99,4 +99,85 @@ describe("the changelog split", () => {
         // this file starts shipping to the Marketplace again.
         expect(read(".vscodeignore")).toMatch(/^jot\/\*\*$/m);
     });
+
+    // A version heading must hold each section AT MOST ONCE, and nothing was
+    // asking. The way this file gets edited is by inserting a `### Changed`
+    // near the top of `## [Unreleased]` without looking for the one that is
+    // already further down, and the result reads as an ordinary changelog: two
+    // Changed sections, entries split across them, neither obviously wrong on
+    // its own. It shipped once that way with every check green.
+    //
+    // It matters beyond tidiness because the release path reads these
+    // sections. `scripts/stamp-changelog.mjs` rolls `[Unreleased]` into a
+    // version heading and the notes generator lifts top items into Highlights,
+    // so a duplicated section is one those two may only half see.
+    //
+    // Derived from the file rather than from a list of section names kept
+    // here, so a section this repo has never used yet is covered the day it
+    // first appears.
+    it("no version heading should carry the same section twice", () => {
+        for (const [name, text] of [["CHANGELOG.md", extension], ["jot/CHANGELOG.md", jot]] as const) {
+            const lines = text.split("\n");
+            let version: string | null = null;
+            let seen = new Set<string>();
+            let checked = 0;
+            for (const line of lines) {
+                const versionHeading = /^## \[([^\]]+)\]/.exec(line);
+                if (versionHeading) {
+                    version = versionHeading[1]!;
+                    seen = new Set();
+                    continue;
+                }
+                const section = /^### (.+)$/.exec(line);
+                if (!section || version === null) { continue; }
+                const title = section[1]!.trim();
+                expect(seen.has(title),
+                    `${name}: "${version}" carries "### ${title}" more than once`).toBe(false);
+                seen.add(title);
+                checked += 1;
+            }
+            // A sweep that reached nothing passes, so the walk has to report
+            // what it reached. Counted INDEPENDENTLY rather than against a
+            // number written here: a literal floor is a guess about a file that
+            // grows, and the first version of this line said 10 for a file
+            // with 8 sections, which is the failure mode it was meant to
+            // prevent. Every section in both files sits under a version
+            // heading, so the walk must have seen all of them.
+            const total = (text.match(/^### .+$/gm) ?? []).length;
+            expect(total, `${name}: no sections at all`).toBeGreaterThan(0);
+            expect(checked, `${name}: the walk skipped sections`).toBe(total);
+        }
+    });
+
+    // The floor above only proves sections were counted, not that a duplicate
+    // would have been caught. This runs the same rule over a fixture that IS
+    // broken, in the exact shape the real defect took, so the check is known to
+    // discriminate rather than assumed to.
+    it("the duplicate-section rule should reject a heading that repeats a section", () => {
+        const broken = [
+            "## [Unreleased]",
+            "",
+            "### Changed",
+            "",
+            "- one",
+            "",
+            "### Added",
+            "",
+            "- two",
+            "",
+            "### Changed",
+            "",
+            "- three",
+        ].join("\n");
+        const seen = new Set<string>();
+        const duplicates: string[] = [];
+        for (const line of broken.split("\n")) {
+            const section = /^### (.+)$/.exec(line);
+            if (!section) { continue; }
+            const title = section[1]!.trim();
+            if (seen.has(title)) { duplicates.push(title); }
+            seen.add(title);
+        }
+        expect(duplicates).toEqual(["Changed"]);
+    });
 });
