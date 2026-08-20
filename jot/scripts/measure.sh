@@ -194,6 +194,58 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# A deleted note is NOT written back.
+#
+# `AtomicFile.write` creates the file and every directory above it, so before
+# this the sequence below put the note straight back: delete it, type one
+# character, and an autosave tick recreated the path a person had just thrown
+# away. The check is the FILE, not a message: a bar that appeared while the
+# write still happened would look like the fix and be none of it.
+#
+# `rm` rather than a Finder delete on purpose. A file presenter only hears
+# about coordinated changes, which Finder makes and this does not, so this
+# exercises the pre-write existence check rather than the presenter. The
+# presenter's own path is covered by `FileMoveTests`, which is where the rule
+# about what a move into the Trash means is decided.
+show_panel
+rm -f "$SCRATCH_DIR/Scratch pad.md"
+# An explicit save rather than a hide. A hide is a toggle, so it can show the
+# panel instead and write nothing, and this check would then pass having
+# watched no write at all; the trace arm below caught exactly that.
+printf '{"type":"__jotSaveNow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ -e "$SCRATCH_DIR/Scratch pad.md" ]; then
+    echo "deleted note         FAILED: the note came back after being deleted" >&2
+    ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+# ...and the app REFUSED a write, rather than never having tried one. A file
+# that is still absent says nothing about which of those happened, and only
+# one of them is the fix.
+if ! grep -q "^jot-trace noteMissing " "$LOG"; then
+    echo "deleted note         FAILED: the note stayed deleted, but no write was ever refused" >&2
+    echo "  (the check proved nothing: it cannot tell a guard from an absent write)" >&2
+    grep -E "jot-trace (writeattempt|noteMissing)|jot-measure (visible|hide)" "$LOG" | tail -20 >&2; exit 1
+fi
+echo "deleted note         ok: the write was refused, and the note was not recreated"
+# Put it back the way the panel's own button does, so the checks below have a
+# file to read. This is also the only exercise Save It Back gets.
+show_panel
+printf '{"type":"__jotSaveMissingBack"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ ! -e "$SCRATCH_DIR/Scratch pad.md" ]; then
+    echo "deleted note         FAILED: Save It Back did not write the note" >&2; exit 1
+fi
+# The buffer, not an empty file: `$STAMP` is what the persistence check above
+# typed, and it is still what the panel is holding.
+if grep -q "$STAMP" "$SCRATCH_DIR/Scratch pad.md"; then
+    echo "deleted note         ok: Save It Back writes the buffer back to the path it came from"
+else
+    echo "deleted note         FAILED: Save It Back wrote a file without the buffer in it" >&2
+    cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
+fi
+
 # The system date picker opens AT THE CARET.
 #
 # `/date` hands the page's caret rectangle to the shell, and the shell turns

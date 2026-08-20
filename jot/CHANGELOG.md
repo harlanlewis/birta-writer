@@ -68,6 +68,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- Birta Writer Jot notices when the note it is editing is deleted, and stops writing instead of putting it back. It wrote through a path that creates the file and every folder above it, so deleting the note in Finder and typing one more character recreated it a second later, and nothing said so. A bar along the bottom of the panel now says the note is gone and that nothing has been written since, with Save It Back, which writes what is in the panel to where it came from, and New Note. Nothing reaches disk until you pick one.
+
+- Renaming or moving Birta Writer Jot's note in Finder no longer leaves it editing a file that is not there. Jot follows the file and the titlebar follows with it, and where a rename came from decides where a later rename writes back to, so a note you had pointed Jot at stays pointed at. Moving it to the Trash counts as deleting it, which is what Finder actually does, so that case gets the bar above rather than a panel quietly bound to a file in the Trash.
+
 - `/date` opens the macOS date picker at the caret in Birta Writer Jot, instead of at the bottom left of the window whatever line you were on. The page reports the caret in its own coordinates, which run from the top down, and so does the web view underneath it, but the shell mirrored the y anyway: a caret near the top of the panel was placed near the bottom, and the popover opened wherever that landed.
 
 - Birta Writer Jot's panel really does sit at the ordinary window level now, so another application's window can cover it. The setting that made it float was removed a release ago and the level was not: an `NSPanel` starts out floating, and the line that had been setting it was taken out rather than replaced, which left the panel pinned above everything with nothing in Settings to say so or turn it off. The panel also stays put when you click into another app, which is the same default arriving from the same direction.

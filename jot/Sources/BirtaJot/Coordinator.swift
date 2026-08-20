@@ -110,11 +110,41 @@ final class Coordinator {
     /// over the document the user just chose to open.
     /// Its folder is also what the page may read images from, so the two move
     /// together by construction rather than by two call sites remembering to.
+    private let watcher = NoteWatcher()
+    private let missingFileBar = MissingFileBar()
+    /// The bound file is gone, so nothing may be written to its path.
+    ///
+    /// Blocks `writeLatest` the way `hasLoaded` blocks it for a note that is
+    /// present but unreadable, and for the same reason: a write here does not
+    /// fail, it RECREATES. `AtomicFile.write` makes the file and its whole
+    /// directory, so without this an autosave tick a second after a Finder
+    /// delete puts the note back and the warning never appears.
+    /// Whether this path has ever been observed to hold the note.
+    ///
+    /// Read alongside a live `fileExists` to tell a DELETION from a note that
+    /// has never been written. Set by a successful read and by a successful
+    /// write; cleared with the binding, since it is a fact about one path.
+    private var everSeenOnDisk = false
+
+    private var noteMissing = false {
+        didSet {
+            guard noteMissing != oldValue else { return }
+            missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
+            layoutMissingFileBar()
+        }
+    }
+
     private var boundURL: URL = Prefs.activeURL {
         didSet {
+            guard boundURL != oldValue else { return }
             host.schemeHandler.roots =
                 host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
             refreshTitle()
+            // The watcher follows the binding, or it goes on reporting moves
+            // of a file the panel is no longer editing and misses the one it
+            // is. `noteMovedOnDisk` rebinds and re-watches in one step, so it
+            // is the one caller this must not fire for twice.
+            startWatching()
         }
     }
     private var escMonitor: Any?
@@ -156,6 +186,12 @@ final class Coordinator {
         // edges, and `layoutTitlebarDrag` is the one place that arithmetic
         // lives.
         contentView.addSubview(titlebarDrag)
+        // Above the web view for the same reason the drag strip is, and laid
+        // out by frame for the same reason: it spans the window's own bottom
+        // edge and the page knows nothing about it.
+        contentView.addSubview(missingFileBar)
+        missingFileBar.onSaveItBack = { [weak self] in self?.saveMissingNoteBack() }
+        missingFileBar.onNewNote = { [weak self] in self?.newNote() }
         host.webView.translatesAutoresizingMaskIntoConstraints = false
         statusOverlay.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -175,8 +211,14 @@ final class Coordinator {
             statusOverlay.heightAnchor.constraint(equalToConstant: StatusOverlay.height),
         ])
         contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
+        watcher.onMoved = { [weak self] url in self?.noteMovedOnDisk(to: url) }
+        watcher.onDeleted = { [weak self] in self?.noteDeletedOnDisk() }
+        startWatching()
         contentView.onLayout = { [weak self] in
-            MainActor.assumeIsolated { self?.layoutTitlebarDrag() }
+            MainActor.assumeIsolated {
+                self?.layoutTitlebarDrag()
+                self?.layoutMissingFileBar()
+            }
         }
         panel.addTitlebarAccessoryViewController(titleBar)
         titleBar.titleView.onReveal = { url in
@@ -306,6 +348,27 @@ final class Coordinator {
                 contentView.layoutSubtreeIfNeeded()
                 traceTitleBar()
                 traceTitlebarDrag()
+                return
+            }
+            // An explicit save, exactly as Cmd+S makes one.
+            //
+            // Here because the other ways to provoke a write from a script are
+            // both indirect: a panel toggle is a toggle rather than a
+            // direction, so a hide can show instead and no write happens at
+            // all, and autosave needs a document change and a wait. A check
+            // that meant to watch a write and silently watched nothing is the
+            // failure this exists to remove.
+            if obj["type"] as? String == "__jotSaveNow" {
+                measure.mark("debug-save-now")
+                flushThen { [weak self] in self?.write(.explicitSave) }
+                return
+            }
+            // The missing-note bar's Save It Back button, without the button.
+            // It is native chrome that only appears once the bound file has
+            // gone, so a script can reach the state and not the control.
+            if obj["type"] as? String == "__jotSaveMissingBack" {
+                measure.mark("debug-save-missing-back")
+                saveMissingNoteBack()
                 return
             }
             if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
@@ -815,6 +878,9 @@ final class Coordinator {
         case .contents(let text):
             noteUnreadable = false
             latest = text
+            // The file was there and had the note in it, which is what makes a
+            // later disappearance a deletion rather than a first write.
+            everSeenOnDisk = true
             return true
         case .absent:
             noteUnreadable = false
@@ -870,9 +936,35 @@ final class Coordinator {
     /// `ready`, or forever when the web assets are missing, `latest` is the
     /// empty string and writing it would truncate the user's scratchpad.
     private func writeLatest() {
-        guard hasLoaded else { return }
+        // `noteMissing` alongside `hasLoaded`, and both are about the same
+        // thing: a path this write would create rather than update.
+        // Every attempt, with the four facts that decide it, for
+        // `jot/scripts/measure.sh`. A check about writing needs to know a
+        // write was ATTEMPTED: "the file is still absent" is satisfied just as
+        // well by a guard that refused and by a path that was never reached,
+        // and only one of those is the behaviour being claimed.
+        if measure.enabled {
+            measure.trace("writeattempt hasLoaded=\(hasLoaded) missing=\(noteMissing) seen=\(everSeenOnDisk) exists=\(FileManager.default.fileExists(atPath: boundURL.path)) at=\(boundURL.lastPathComponent)")
+        }
+        guard hasLoaded, !noteMissing else { return }
+        // A file presenter only hears about COORDINATED changes, which Finder
+        // makes and `rm` in a terminal does not, so a delete can reach this
+        // point unannounced. `AtomicFile.write` would then recreate the file
+        // and its whole directory, silently, which is the behaviour this whole
+        // path exists to stop. One `fileExists` per write, and writes already
+        // serialize the document and touch the disk.
+        //
+        // `everSeenOnDisk` is what separates a deletion from a note that has
+        // simply never been written: a fresh scratchpad legitimately does not
+        // exist yet, and `NoteRead.absent` is treated as an empty note on
+        // purpose.
+        if everSeenOnDisk, !FileManager.default.fileExists(atPath: boundURL.path) {
+            noteDeletedOnDisk()
+            return
+        }
         writer.submit(latest, to: boundURL)
         writer.drain()
+        everSeenOnDisk = true
         // The one place the buffer and the file come back into step, so the
         // one place the title stops saying Edited. Guarded by `hasLoaded`
         // above: before the first read there is nothing to be behind.
@@ -1228,6 +1320,69 @@ final class Coordinator {
             self?.host.send(.datePickerResult(id: id, date: day))
             self?.host.focusEditor()
         }
+    }
+
+    /// The missing-note bar spans the window's bottom edge, above the page's
+    /// own formatting dock rather than over it.
+    private func layoutMissingFileBar() {
+        guard !missingFileBar.isHidden else { return }
+        let bounds = contentView.bounds
+        missingFileBar.frame = NSRect(x: 0, y: 0, width: bounds.width, height: MissingFileBar.height)
+    }
+
+    /// Watch whatever the panel is bound to now.
+    ///
+    /// Rebinding also CLEARS `noteMissing`: the flag is about one path, and
+    /// New Note or a chosen document is a different one that has not gone
+    /// anywhere.
+    private func startWatching() {
+        noteMissing = false
+        everSeenOnDisk = FileManager.default.fileExists(atPath: boundURL.path)
+        watcher.watch(boundURL)
+    }
+
+    /// A Finder rename or move: follow it, and write the new path back to
+    /// whichever of the three settings supplied the old one.
+    private func noteMovedOnDisk(to url: URL) {
+        guard url.standardizedFileURL != boundURL.standardizedFileURL else { return }
+        Prefs.rebindActive(to: url)
+        // `boundURL`'s `didSet` re-titles and re-watches; a move is the one
+        // case where those are already exactly right.
+        boundURL = url
+    }
+
+    /// The note was deleted or thrown away.
+    ///
+    /// Nothing is written and nothing is reloaded: the buffer is now the only
+    /// copy of those bytes, and reading a file that is not there over the top
+    /// of it is exactly the mistake `NoteRead` was added to stop.
+    private func noteDeletedOnDisk() {
+        guard !noteMissing else { return }
+        noteMissing = true
+        // Traced because the absence of a file is not evidence on its own: a
+        // check that deletes the note and finds it still gone passes whether
+        // the write was REFUSED or never attempted, and those are different
+        // programs. This says the refusal happened.
+        if measure.enabled { measure.trace("noteMissing at=\(boundURL.lastPathComponent)") }
+    }
+
+    /// Put the buffer back at the path it came from.
+    ///
+    /// `AtomicFile.write` recreates the file and its directory, which is the
+    /// behaviour that made a silent delete dangerous and is exactly what is
+    /// wanted once somebody has asked for it.
+    private func saveMissingNoteBack() {
+        noteMissing = false
+        // The pre-write existence check in `writeLatest` would otherwise
+        // refuse this too and put the bar straight back, which is correct for
+        // every write except the one somebody explicitly asked for. Clearing
+        // the flag says "this path has not been seen", so the write is treated
+        // as a first one and `AtomicFile` recreates the file and its folder,
+        // which is exactly what the button promises.
+        everSeenOnDisk = false
+        writeLatest()
+        watcher.watch(boundURL)
+        statusOverlay.flash("Saved \(boundURL.lastPathComponent) back.")
     }
 
     /// Rename or move the file the panel is editing, from the title popover.
