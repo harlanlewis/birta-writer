@@ -8,6 +8,7 @@
  */
 import { placeMenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { hostArranges } from "../../../shared/hostProfile";
 
 export interface HoverMenuOptions {
     /** Runs immediately before the menu is shown — e.g. repaint checkmarks. */
@@ -200,9 +201,29 @@ export function wireHoverMenu(
         }
     };
 
-    wrap.addEventListener("mouseenter", scheduleOpen);
-    wrap.addEventListener("mouseleave", scheduleHide);
-    menu.addEventListener("mouseenter", cancelHide);
+    /**
+     * Where the surface says its bar menus open on click, the pointer opens
+     * nothing (`barMenusOnClick`, shared/hostProfile.ts).
+     *
+     * The trigger's own mousedown is already swallowed by `createMenuTrigger`,
+     * so the toggle rides on `click`, which still arrives. Everything else is
+     * unchanged: the same `open`/`close` pair, the same Escape layer, the same
+     * keyboard path, and closing still happens on focusout and on Escape. A
+     * click outside closes it through the layer that was already there.
+     */
+    const onClick = (e: MouseEvent): void => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isOpen()) { close(); } else { open(); }
+    };
+
+    if (hostArranges("barMenusOnClick")) {
+        button.addEventListener("click", onClick);
+    } else {
+        wrap.addEventListener("mouseenter", scheduleOpen);
+        wrap.addEventListener("mouseleave", scheduleHide);
+        menu.addEventListener("mouseenter", cancelHide);
+    }
     button.addEventListener("keydown", onButtonKeydown);
     menu.addEventListener("keydown", onMenuKeydown);
     wrap.addEventListener("focusout", onWrapFocusout);
@@ -214,6 +235,7 @@ export function wireHoverMenu(
             escapeOff = null;
             cancelHide();
             cancelOpen();
+            button.removeEventListener("click", onClick);
             wrap.removeEventListener("mouseenter", scheduleOpen);
             wrap.removeEventListener("mouseleave", scheduleHide);
             menu.removeEventListener("mouseenter", cancelHide);
