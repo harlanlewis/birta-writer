@@ -66,7 +66,12 @@ if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
 WC_BEFORE="$(pgrep -f com.apple.WebKit | sort || true)"
 BIRTA_JOT_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
-trap '[ $KEEP = 1 ] || { kill $PID 2>/dev/null; wait $PID 2>/dev/null; } || true; rm -rf "$SCRATCH_DIR"; defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" >/dev/null 2>&1 || true' EXIT
+# Every throwaway defaults domain this run creates, cleaned by the ONE exit
+# trap below. A second `trap ... EXIT` does not add to the first, it REPLACES
+# it, so a later cleanup registered its own way silently stopped the app from
+# being killed and left a menu-bar agent running after every run.
+EXTRA_SUITES=""
+trap '[ $KEEP = 1 ] || { kill $PID 2>/dev/null; wait $PID 2>/dev/null; } || true; rm -rf "$SCRATCH_DIR"; for s in $BIRTA_JOT_DEFAULTS_SUITE $EXTRA_SUITES; do defaults delete "$s" >/dev/null 2>&1 || true; done' EXIT
 
 wait_for() { # wait_for <mark> <timeout-s>
     local n=0
@@ -228,8 +233,24 @@ if ! grep -q "^jot-trace noteMissing " "$LOG"; then
     grep -E "jot-trace (writeattempt|noteMissing)|jot-measure (visible|hide)" "$LOG" | tail -20 >&2; exit 1
 fi
 echo "deleted note         ok: the write was refused, and the note was not recreated"
+# ...and a reload while the note is missing leaves the panel still writable.
+#
+# The read side refuses while the note is gone, because the buffer is the only
+# copy. `hasLoaded` is ASSIGNED from that refusal by its one caller, so a
+# refusal reported as "not loaded" latches the panel unwritable for the rest of
+# the session: Save It Back fails, and the new note started instead swallows
+# every keystroke with nothing said. None of that is visible until somebody
+# looks for their text, which is why it is a step here rather than a reading.
+printf '{"type":"__jotReload"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ -e "$SCRATCH_DIR/Scratch pad.md" ]; then
+    echo "deleted note         FAILED: reloading recreated the deleted note" >&2; exit 1
+fi
+
 # Put it back the way the panel's own button does, so the checks below have a
-# file to read. This is also the only exercise Save It Back gets.
+# file to read. This is also the only exercise Save It Back gets, and after the
+# reload above it is what says the panel is still writable.
 show_panel
 printf '{"type":"__jotSaveMissingBack"}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 1.2
@@ -1105,12 +1126,18 @@ onboarding_defaults() { # onboarding_defaults <suite>; echoes the stored keys
     rm -rf "$dir"
 }
 
+
 ONBOARD_FRESH_SUITE="com.birtalabs.jot.measure.fresh.$$"
 ONBOARD_USED_SUITE="com.birtalabs.jot.measure.used.$$"
-trap 'defaults delete "$ONBOARD_FRESH_SUITE" >/dev/null 2>&1 || true; defaults delete "$ONBOARD_USED_SUITE" >/dev/null 2>&1 || true' EXIT
+EXTRA_SUITES="$EXTRA_SUITES $ONBOARD_FRESH_SUITE $ONBOARD_USED_SUITE"
 FRESH_KEYS="$(onboarding_defaults "$ONBOARD_FRESH_SUITE")"
-# An install that has been used: one key stored, which is all "not fresh" means.
-defaults write "$ONBOARD_USED_SUITE" autosave -bool true
+# An install that has been used, seeded with `hasSeenWelcome` specifically.
+# Any key would do for "not fresh", and this is the one worth choosing: it is
+# the key a reset leaves behind and the key most likely to be special-cased out
+# of the emptiness test, so seeding anything else leaves that mistake invisible.
+# Seeded false, because the setter stores it either way and false is what
+# Settings writes when it re-shows the screen.
+defaults write "$ONBOARD_USED_SUITE" hasSeenWelcome -bool false
 USED_KEYS="$(onboarding_defaults "$ONBOARD_USED_SUITE")"
 
 if ! echo "$FRESH_KEYS" | grep -q "networkEnabled = 1"; then

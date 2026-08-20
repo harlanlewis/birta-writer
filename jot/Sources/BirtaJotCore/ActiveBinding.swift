@@ -35,12 +35,6 @@ public enum ActiveBinding {
         return .scratchpad
     }
 
-    /// The active file, resolved by the same precedence the slot names.
-    ///
-    /// The two functions are kept in step by this one being written in terms
-    /// of the other, so a change to the order cannot reach one and miss the
-    /// other. That is the failure this type exists to prevent, and it would be
-    /// silly to reintroduce it here.
     /// WHICH stored path names `moved`, for a file that has already moved.
     ///
     /// A rename has to be written back to the setting the old path came from,
@@ -60,6 +54,12 @@ public enum ActiveBinding {
         return nil
     }
 
+    /// The active file, resolved by the same precedence the slot names.
+    ///
+    /// The two functions are kept in step by this one being written in terms
+    /// of the other, so a change to the order cannot reach one and miss the
+    /// other. That is the failure this type exists to prevent, and it would be
+    /// silly to reintroduce it here.
     public static func url(document: URL?, currentNote: URL?, scratchpad: URL) -> URL {
         switch slot(hasDocument: document != nil, hasCurrentNote: currentNote != nil) {
         case .document: return document ?? scratchpad

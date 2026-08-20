@@ -28,9 +28,12 @@ final class NoteWatcher: NSObject {
 
     private final class Presenter: NSObject, NSFilePresenter {
         var presentedItemURL: URL?
-        /// Serial. `NSFilePresenter` may deliver on any queue and an
-        /// unbounded one runs its callbacks concurrently, which would leave
-        /// `presentedItemURL` written from two of them at once.
+        /// Serial. `NSFilePresenter` may deliver on any queue, and an
+        /// unbounded one runs its callbacks concurrently, so its own writes to
+        /// `presentedItemURL` would race each other. It does not make the
+        /// property safe against `NoteWatcher.watch`, which sets it from the
+        /// main actor; that write happens only while no presenter of this
+        /// object is registered, which is what keeps the pairing apart.
         let presentedItemOperationQueue: OperationQueue = {
             let queue = OperationQueue()
             queue.maxConcurrentOperationCount = 1

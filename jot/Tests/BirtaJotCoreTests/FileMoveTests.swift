@@ -2,8 +2,6 @@ import XCTest
 @testable import BirtaJotCore
 
 final class FileMoveTests: XCTestCase {
-    private let from = URL(fileURLWithPath: "/Users/x/Documents/Birta Writer/Note.md")
-
     func testARenameInTheSameFolderShouldBeFollowed() {
         let to = URL(fileURLWithPath: "/Users/x/Documents/Birta Writer/Renamed.md")
         XCTAssertEqual(FileMove.classify(movedTo: to), .followed(to))
@@ -57,9 +55,10 @@ final class FileMoveTests: XCTestCase {
         XCTAssertEqual(FileMove.classify(movedTo: to), .deleted)
     }
 
-    /// A file named `.Trash` is not a trash FOLDER, but treating it as a
-    /// delete is the safe direction: the cost is a bar the user dismisses, and
-    /// the cost of the other mistake is writing into the Trash.
+    /// Where it LANDED is the whole of the rule, so the same destination
+    /// classifies the same way whatever it came from. Stated as a test
+    /// because the alternative, deciding from the pair, is the shape a
+    /// reader expects of something called a move.
     func testTheDestinationAloneShouldDecideIt() {
         XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: "/Users/x/.Trash/Note.md")),
                        .deleted)

@@ -232,22 +232,11 @@ enum Prefs {
         ActiveBinding.url(document: documentURL, currentNote: currentNoteURL, scratchpad: scratchpadURL)
     }
 
-    /// Which setting `activeURL` just read from, so a move updates it and not
-    /// one of the others.
-    static var activeSlot: ActiveBinding.Slot {
-        ActiveBinding.slot(hasDocument: documentURL != nil, hasCurrentNote: currentNoteURL != nil)
-    }
 
-    /// Point the setting the panel is currently bound through at `url`. The
-    /// one write-back a rename or a move makes, so it cannot pick the wrong
-    /// one of the three.
-    static func rebindActive(to url: URL) {
-        rebindActive(from: activeURL, to: url)
-    }
-
-    /// The same, for a file that has ALREADY moved.
+    /// Write a moved file's new path back to the setting it came from.
     ///
-    /// `activeSlot` asks `currentNoteURL`, whose getter returns nil for a path
+    /// Asking which slot is in force cannot answer this: `currentNoteURL`'s
+    /// getter returns nil for a path
     /// that is not on disk, so after a move it reports the slot the binding
     /// has fallen back to rather than the slot it came from. A Finder rename
     /// would then write the new path into `scratchpadPath` and leave
@@ -355,12 +344,16 @@ enum Prefs {
     /// Whether this install has never stored a setting.
     ///
     /// The absence of every key, which is what a first launch looks like and
-    /// nothing else does. `hasSeenWelcome` is excluded because clearing it is
-    /// how Settings re-shows the screen, and a re-show is not a first launch.
+    /// nothing else does.
+    ///
+    /// `hasSeenWelcome` counts like any other, and excluding it is a mistake
+    /// worth naming: setting it to false STORES it, so it is present either
+    /// way, and leaving it out instead made a reset look like a first launch.
+    /// Reset removes every other key, so the next Show Welcome would have
+    /// written the onboarding answers again and switched the network back on,
+    /// which is the thing `reset` keeping the flag was supposed to prevent.
     static var isFirstLaunch: Bool {
-        Key.allCases
-            .filter { $0 != .hasSeenWelcome }
-            .allSatisfy { d.object(forKey: $0.rawValue) == nil }
+        Key.allCases.allSatisfy { d.object(forKey: $0.rawValue) == nil }
     }
 
     /// Write the answers the welcome screen is about to SHOW, before it draws.

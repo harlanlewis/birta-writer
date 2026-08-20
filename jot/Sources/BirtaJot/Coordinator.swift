@@ -376,6 +376,15 @@ final class Coordinator {
                 writeSnapshot(named: obj["name"] as? String ?? "snapshot")
                 return
             }
+            // Reload the page against the current settings, as a settings
+            // change does. The one gesture that re-reads the note without
+            // rebinding, and therefore the only way a script can reach the
+            // state where a refused read could downgrade `hasLoaded`.
+            if obj["type"] as? String == "__jotReload" {
+                measure.mark("debug-reload")
+                preferencesChanged()
+                return
+            }
             // An explicit save, exactly as Cmd+S makes one.
             //
             // Here because the other ways to provoke a write from a script are
@@ -645,7 +654,15 @@ final class Coordinator {
             // the disk can be (a write may still be in flight), and it is what
             // the remount must show.
             if reloadFromDisk {
-                boundURL = Prefs.activeURL
+                // Not while the note is missing. `Prefs.activeURL` re-derives
+                // the binding, and `currentNoteURL` reports itself empty for a
+                // path that is not on disk, so a deleted New Note falls back
+                // to the scratchpad: the binding changes, `startWatching`
+                // clears `noteMissing`, and the read that follows is a
+                // legitimate read of another file straight over the only copy
+                // of the deleted one. The guard in `adopt` cannot see that,
+                // because by then nothing is missing.
+                if !noteMissing { boundURL = Prefs.activeURL }
                 // The disk is the truth on this arm, so nothing is unwritten
                 // (`adopt` clears `isEdited`). The other arm keeps it: after a
                 // content-process death `latest` can be ahead of the file, and
@@ -905,8 +922,11 @@ final class Coordinator {
     }
 
     /// Take a read into the buffer, answering whether the buffer may be
-    /// WRITTEN afterwards. False leaves `hasLoaded` alone, so `writeLatest`
-    /// refuses and the note on disk is safe.
+    /// WRITTEN afterwards. The caller ASSIGNS `hasLoaded` from this, so a
+    /// refusal is a downgrade rather than a hold: the missing-note arm returns
+    /// the flag unchanged for that reason, since the note was readable before
+    /// it was deleted and the panel must still be writable once the user
+    /// answers the bar. The unreadable arm does return false, and means it.
     private func adopt(_ read: NoteRead) -> Bool {
         // Not for a read this refuses: a buffer that was not replaced still
         // holds bytes the file does not, which is what the flag means.
@@ -930,7 +950,7 @@ final class Coordinator {
             // empty file. `writeLatest` was guarded for this and the read side
             // was not, which left every settings change, every reload and
             // every finished agent run as a way to lose the note.
-            if noteMissing { return false }
+            if noteMissing { return hasLoaded }
             latest = ""
             return true
         case .unreadable:
@@ -989,7 +1009,7 @@ final class Coordinator {
     /// whole path exists to stop, and doing it at quit, unattended, would be
     /// the worst moment to start.
     private func rescueMissingNote() {
-        guard noteMissing, !latest.isEmpty else { return }
+        guard noteMissing, !latest.isBlank else { return }
         let directory = boundURL.deletingLastPathComponent()
         let stem = boundURL.deletingPathExtension().lastPathComponent
         let ext = boundURL.pathExtension.isEmpty ? "md" : boundURL.pathExtension
@@ -1186,10 +1206,9 @@ final class Coordinator {
     /// would discard what the user has, so that read is ignored and the buffer
     /// stands.
     ///
-    /// A file that is genuinely ABSENT still empties the buffer, exactly as it
-    /// did before this distinction existed. Deleting the note in Finder is a
-    /// thing the user did on purpose, and the panel following it is the old
-    /// behaviour rather than a case this guard was reaching for.
+    /// A file that is absent and NOT known to have been deleted still empties
+    /// the buffer: that is a note nobody has written yet. A deletion is the
+    /// other case, and the guard below holds the buffer for it.
     private func reloadFromDiskIntoBuffer() {
         // Same rule as `adopt`: a note that is missing because it was deleted
         // must not be read over the buffer holding the only copy of it.
@@ -1417,6 +1436,12 @@ final class Coordinator {
     /// file location is still being asked about. The titlebar names the
     /// application for the same reason, and names nothing that can be clicked.
     func showWelcome() {
+        // Whatever is in the panel goes to disk FIRST. On a first launch there
+        // is nothing to write, but Settings can re-show this screen at any
+        // time, and the write embargo below closes every path out for as long
+        // as it is up: with autosave off, text typed before the button was
+        // pressed would die with the process.
+        flushThen { [weak self] in self?.write(.explicitSave) }
         // Before the screen draws, so every switch on it is showing a value
         // that is actually stored. See `Prefs.applyOnboardingDefaults`.
         Prefs.applyOnboardingDefaults()
@@ -1495,6 +1520,7 @@ final class Coordinator {
         let height = min(max(panel.frame.height, wanted), ceiling)
         guard height > panel.frame.height + 0.5 else { return }
         heightBeforeWelcome = panel.frame.height
+        heightAfterWelcome = height
         var frame = panel.frame
         // Grow downward from the title bar, which is where a window grows when
         // a person is looking at it: the titlebar staying put is what makes it
@@ -1510,6 +1536,12 @@ final class Coordinator {
     /// The panel's height before the first-run screen grew it, so the editor
     /// is not left in a window sized for a form seen once. Nil once given back.
     private var heightBeforeWelcome: CGFloat?
+    /// What this code grew it TO, so the restore can tell its own size from
+    /// one the user chose. Recomputing the wanted height instead compares
+    /// against a number that is not what the window was set to, and passes for
+    /// every size smaller than it: a user who dragged the panel down mid-screen
+    /// would have it snapped back under them.
+    private var heightAfterWelcome: CGFloat?
 
     /// Undo `sizePanelForWelcome`, keeping the titlebar where it is.
     ///
@@ -1517,11 +1549,10 @@ final class Coordinator {
     /// this code chose, and a window that snapped back under them would be
     /// worse than one left tall.
     private func restorePanelAfterWelcome() {
-        guard let previous = heightBeforeWelcome else { return }
+        guard let previous = heightBeforeWelcome, let grown = heightAfterWelcome else { return }
         heightBeforeWelcome = nil
-        guard let welcome else { return }
-        let grown = welcome.fittingContentHeight + (panel.frame.height - panel.contentLayoutRect.height)
-        guard abs(panel.frame.height - min(grown, panel.frame.height)) < 0.5 else { return }
+        heightAfterWelcome = nil
+        guard abs(panel.frame.height - grown) < 0.5 else { return }
         var frame = panel.frame
         frame.origin.y += frame.height - previous
         frame.size.height = previous
