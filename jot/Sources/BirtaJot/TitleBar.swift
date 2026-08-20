@@ -111,6 +111,13 @@ final class TitleBarView: NSView {
     }
     private var lastRendered: Rendered?
 
+    /// The characters actually on screen, for `jot/scripts/measure.sh`.
+    ///
+    /// Separate from the accessibility label, which carries the whole name.
+    /// The script is asking what was DRAWN, and a check that read the a11y
+    /// label would report a name in full while the titlebar showed half of it.
+    private(set) var drawnTitle = ""
+
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 0, height: TitleBarView.height))
         build()
@@ -175,9 +182,8 @@ final class TitleBarView: NSView {
         // that value carries, never under the field's setting, and this label
         // is filled through `attributedStringValue` and never through
         // `stringValue`. So a `lineBreakMode` here would be inert while
-        // looking load-bearing, which is what four rounds of fixes tuned.
-        // WHERE the name is shortened is `WindowTitle.runs(fitting:)`, before
-        // the string exists.
+        // looking load-bearing. WHERE the name is shortened is
+        // `WindowTitle.runs(fitting:)`, before the string exists.
         //
         // What remains for the cell is refusing to WRAP, which is this line:
         // `NSTextField(labelWithString:)` leaves it off, so the default
@@ -202,8 +208,7 @@ final class TitleBarView: NSView {
     /// asks a CELL rather than an attributed string on purpose. A cell needs
     /// more room to draw a string than the string reports needing, so a
     /// truncation decided on the string's number promises that a name fits
-    /// into a box the cell then clips its last glyph out of. The two numbers
-    /// differ by about one letter, which is exactly the size of the defect.
+    /// into a box the cell then clips the tail of it out of.
     ///
     /// Same factory as the drawn label, so the two cannot drift apart. Reused
     /// rather than built per candidate because the bisection asks about a
@@ -212,8 +217,8 @@ final class TitleBarView: NSView {
     private static let ruler = makeTitleField()
 
     /// What a candidate title needs, in the font and the cell it will be drawn
-    /// in. Falls back to the string's own width only if the field has no cell,
-    /// which it always has.
+    /// in. Falls back to the string's own width only if the field has no
+    /// cell, which it always has.
     private static func width(of text: String) -> Double {
         ruler.attributedStringValue = NSAttributedString(string: text, attributes: [.font: titleFont])
         guard let cell = ruler.cell else {
@@ -399,12 +404,12 @@ final class TitleBarView: NSView {
     ///
     /// Asked of the CELL, not of the string, and the difference is the last
     /// glyph. `NSAttributedString.size()` reports a typesetting width; the
-    /// cell lays the same string out inside its own insets and needs a few
-    /// points more, so a box sized to the string's number is a box the cell
-    /// draws the tail of the name outside of, and the titlebar clips it. That
-    /// is silent in exactly the way the wrap was: `Birta Writer Jot.md` lost
-    /// the `d` off its extension, and every model-side number agreed the name
-    /// was drawn in full.
+    /// cell lays the same string out inside its own insets and needs more
+    /// than that, so a box sized to the string's number is a box the cell
+    /// draws the tail of the name outside of, and the titlebar clips it. It is
+    /// silent in the way the wrap was: every model-side number agrees the name
+    /// is drawn in full, because every one of them describes the string.
+    /// `measure.sh`'s `title ink` arm is what compares the box to the cell.
     ///
     /// `cellSize(forBounds:)` is the cell's own answer to "how much room does
     /// this take", so it tracks the font and the insets rather than restating
@@ -488,9 +493,9 @@ final class TitleBarView: NSView {
     /// The number `resize` and `layout` size the label from, published so a
     /// check can compare the box against it. Neither `titleFit().needed` nor
     /// `titleFieldWidth()` can stand in: both report the STRING's width, the
-    /// cell needs a few points more than that to draw the same string, and
-    /// the gap is one glyph. A box between the two numbers looks correct by
-    /// every model-side measure and clips the last letter off the name.
+    /// cell needs its own insets on top of that to draw the same string. A
+    /// box between the two numbers looks correct by every model-side measure
+    /// and clips the tail of the name away.
     func titleCellWidth() -> CGFloat { drawnTextWidth() }
 
     /// The chevron, for `jot/scripts/measure.sh`: whether its image resolved,
@@ -568,7 +573,14 @@ final class TitleBarView: NSView {
 
     private func paint() {
         if let plainTitle {
-            paintRuns([WindowTitle.Run(text: plainTitle, secondary: false)], toolTip: nil)
+            // Through the same shortening a file name gets. A narrow panel
+            // cannot fit this either, and skipping it here would clip the app
+            // name mid-glyph: the exact defect this file was rewritten for,
+            // reintroduced by the one title that took a different route.
+            paintRuns(WindowTitle.runs(name: plainTitle, edited: false,
+                                       fitting: Double(textCeiling),
+                                       measure: Self.width(of:)),
+                      toolTip: nil, fullName: plainTitle)
             return
         }
         guard let url else {
@@ -588,7 +600,7 @@ final class TitleBarView: NSView {
         paintRuns(WindowTitle.runs(name: url.lastPathComponent, edited: edited,
                                    fitting: Double(textCeiling),
                                    measure: Self.width(of:)),
-                  toolTip: url.path)
+                  toolTip: url.path, fullName: url.lastPathComponent)
     }
 
     /// Draw `runs`, and nothing if they say what is already on screen.
@@ -600,7 +612,7 @@ final class TitleBarView: NSView {
     /// off looks right on screen and reports a width in the default face, which
     /// is narrower. Nothing goes red when it is missing, because the sizing and
     /// the check that guards it both read the same short number and agree.
-    private func paintRuns(_ runs: [WindowTitle.Run], toolTip: String?) {
+    private func paintRuns(_ runs: [WindowTitle.Run], toolTip: String?, fullName: String) {
         let ink: [Bool: NSColor] = [
             false: isKey ? .labelColor : .tertiaryLabelColor,
             true: isKey ? .tertiaryLabelColor : .quaternaryLabelColor,
@@ -624,7 +636,14 @@ final class TitleBarView: NSView {
         label.attributedStringValue = text
         label.toolTip = toolTip
         syncChevron()
-        setAccessibilityLabel(text.string)
+        // The WHOLE name, not the shortened one. Shortening is a fact about
+        // how much room the window has, and a screen reader has all the room
+        // there is; a sighted reader recovers the rest from the tooltip and
+        // the popover, and a reader who is listening would be handed the
+        // ellipsis and nothing else. `drawnTitle` is what the checks read, so
+        // the two do not have to be the same string.
+        setAccessibilityLabel(fullName)
+        drawnTitle = text.string
         resize()
     }
 

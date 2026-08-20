@@ -10,8 +10,8 @@ import AppKit
 /// At the ORDINARY window level, and `level` is assigned rather than left out.
 /// An `NSPanel` is `.floating` by default and `isFloatingPanel` is the setter
 /// for that level, so the level a panel ends up at is never the absence of a
-/// line; leaving it out is how this file came to describe a level it did not
-/// have. A window that will not go behind anything is a window you fight, and
+/// line, and a file that leaves it out is describing a level it does not set.
+/// A window that will not go behind anything is a window you fight, and
 /// the hotkey brings this one back in a keystroke. `measure.sh` reads the
 /// level, because prose asserting one is not a check.
 @MainActor

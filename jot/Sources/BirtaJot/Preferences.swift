@@ -95,7 +95,16 @@ enum Prefs {
     /// before it is rebound. `SettingsWindowController.resetAllSettings` is
     /// the one place that sequence is written down.
     static func reset() {
-        for key in Key.allCases { d.removeObject(forKey: key.rawValue) }
+        for key in Key.allCases where key != .hasSeenWelcome {
+            d.removeObject(forKey: key.rawValue)
+        }
+        // `hasSeenWelcome` deliberately survives. Clearing it would make the
+        // next launch a first launch, and a first launch writes the onboarding
+        // answers, so a reset done to get back to a quiet, no-network state
+        // would put the network switch back on one launch later. The sheet
+        // says every setting goes back to its default, and that is what a
+        // default IS here; seeing the screen again is its own button.
+        hasSeenWelcome = true
         sweepRetiredKeys()
         UserDefaults.standard.removeObject(forKey: panelFrameAutosaveDefaultsKey)
         // Deliberately discarded: the caller re-reads `LoginItem.state` to
@@ -233,12 +242,40 @@ enum Prefs {
     /// one write-back a rename or a move makes, so it cannot pick the wrong
     /// one of the three.
     static func rebindActive(to url: URL) {
-        switch activeSlot {
+        rebindActive(from: activeURL, to: url)
+    }
+
+    /// The same, for a file that has ALREADY moved.
+    ///
+    /// `activeSlot` asks `currentNoteURL`, whose getter returns nil for a path
+    /// that is not on disk, so after a move it reports the slot the binding
+    /// has fallen back to rather than the slot it came from. A Finder rename
+    /// would then write the new path into `scratchpadPath` and leave
+    /// `currentNotePath` naming a file that is gone: the panel follows the
+    /// note, which looks right, while the scratchpad setting has been
+    /// repointed at somebody's renamed note.
+    ///
+    /// Matched against the STORED strings rather than through the accessors,
+    /// for the same reason: the accessors are what filter on existence.
+    static func rebindActive(from old: URL, to url: URL) {
+        func stored(_ key: Key) -> URL? {
+            guard let path = d.string(forKey: key.rawValue), !path.isEmpty else { return nil }
+            return URL(fileURLWithPath: path)
+        }
+        switch ActiveBinding.slot(holding: old,
+                                  document: stored(.documentPath),
+                                  currentNote: stored(.currentNotePath),
+                                  scratchpad: stored(.scratchpadPath)) {
         case .document: documentURL = url
         case .currentNote: currentNoteURL = url
         case .scratchpad: scratchpadURL = url
+        // Nothing stored names it, so it is the default scratchpad location,
+        // and pointing the scratchpad setting at where it went is what keeps
+        // the panel on it next launch.
+        case nil: scratchpadURL = url
         }
     }
+
 
     static var networkEnabled: Bool {
         get { d.bool(forKey: Key.networkEnabled.rawValue) }
@@ -315,32 +352,50 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.showInDock.rawValue) }
     }
 
+    /// Whether this install has never stored a setting.
+    ///
+    /// The absence of every key, which is what a first launch looks like and
+    /// nothing else does. `hasSeenWelcome` is excluded because clearing it is
+    /// how Settings re-shows the screen, and a re-show is not a first launch.
+    static var isFirstLaunch: Bool {
+        Key.allCases
+            .filter { $0 != .hasSeenWelcome }
+            .allSatisfy { d.object(forKey: $0.rawValue) == nil }
+    }
+
     /// Write the answers the welcome screen is about to SHOW, before it draws.
     ///
     /// The screen presents live settings, so anything it displays as on has to
-    /// be on. Writing them here rather than flipping each accessor's default
-    /// is what keeps the two apart: an onboarding default is a value somebody
-    /// was shown and can refuse in the same breath, and an accessor default is
-    /// a value that applies to people who never saw the screen. Rich link
-    /// previews is the row that makes the distinction matter, because it is
-    /// the one that reaches the network: shipped off, shown on, and never on
-    /// for anybody who was not offered the switch.
+    /// be on. Writing them here rather than flipping `showInDock`'s and
+    /// `networkEnabled`'s accessor defaults is what keeps two different things
+    /// apart: an onboarding default is a value somebody was shown and can
+    /// refuse in the same gesture, and an accessor default is what applies to
+    /// somebody who was never shown anything.
     ///
-    /// Only keys nobody has set. A person who has already turned something off
-    /// has answered, and re-showing the screen must not overrule them.
+    /// FIRST LAUNCH ONLY, and that is the whole of the rule. An existing
+    /// install reaches this screen too, because `hasSeenWelcome` is absent for
+    /// everybody who had Jot before the screen existed, and writing onboarding
+    /// answers there would reach into settings they have been living with: a
+    /// Dock icon would appear on an app that never had one, and rich link
+    /// previews would start making requests, both before a single click.
+    /// Somebody already running Jot has answered these by leaving them alone.
+    ///
+    /// So an existing install sees the screen showing what it already does,
+    /// which is the right thing for it to say.
     static func applyOnboardingDefaults() {
-        if d.object(forKey: Key.showInDock.rawValue) == nil { showInDock = true }
-        if d.object(forKey: Key.autosave.rawValue) == nil { autosave = true }
-        if d.object(forKey: Key.storeInICloud.rawValue) == nil { storeInICloud = true }
-        if d.object(forKey: Key.networkEnabled.rawValue) == nil { networkEnabled = true }
+        guard isFirstLaunch else { return }
+        showInDock = true
+        autosave = true
+        storeInICloud = true
+        networkEnabled = true
     }
 
-    /// Whether the welcome window has been shown and dismissed.
+    /// Whether the first-run screen has been shown and resolved.
     ///
-    /// Set when that window CLOSES rather than when it opens, so a crash
-    /// during a first launch does not spend the one chance to ask. Cleared by
-    /// the Advanced button that shows it again, which is the only other thing
-    /// that writes it.
+    /// Set when that screen is RESOLVED rather than when it appears, so a
+    /// crash during a first launch does not spend the one chance to ask.
+    /// Cleared by the Advanced button that shows it again, which is the only
+    /// other thing that writes it, and deliberately survived by `reset`.
     static var hasSeenWelcome: Bool {
         get { d.bool(forKey: Key.hasSeenWelcome.rawValue) }
         set { d.set(newValue, forKey: Key.hasSeenWelcome.rawValue) }

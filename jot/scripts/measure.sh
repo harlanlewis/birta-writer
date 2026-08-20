@@ -319,7 +319,6 @@ TB_ATTACHED="$(echo "$TITLEBAR" | sed -n 's/.*attached=\([a-z]*\).*/\1/p')"
 TB_TEXT="$(echo "$TITLEBAR" | sed -n 's/.*text=//p')"
 TB_TEXT_MID="$(echo "$TITLEBAR" | sed -n 's/.*textMidY=\([0-9.-]*\).*/\1/p')"
 TB_CLOSE_MID="$(echo "$TITLEBAR" | sed -n 's/.*closeMidY=\([0-9.-]*\).*/\1/p')"
-TB_GOT="$(echo "$TITLEBAR" | sed -n 's/.*gotW=\([0-9.-]*\).*/\1/p')"
 TB_CELL="$(echo "$TITLEBAR" | sed -n 's/.*cellW=\([0-9.-]*\).*/\1/p')"
 if [ -z "$TITLEBAR" ]; then
     echo "titlebar             FAILED: the app reported no titlebar trace at all" >&2; exit 1
@@ -786,12 +785,6 @@ CEIL_CHROME="$(awk "BEGIN{printf \"%.1f\", $CEIL_VIEW_W - $CEIL_GOT}")"
 # the cell needs to draw it and the gap between the two is one glyph.
 CEIL_FULLBOX="$CEIL_GOT"
 CEIL_FULLINK="$CEIL_INK"
-# The label is sized from the glyph width rounded UP (`drawnTextWidth`), so the
-# boundary is computed from the same rounded number the app draws with. Rounding
-# the requirement and the boundary differently puts the line a point away from
-# where the app actually puts it, and a check that straddles it by a point
-# reports the wrong regime rather than a failure.
-CEIL_NEED_UP="$(awk "BEGIN{n = $CEIL_NEED; printf \"%d\", (n == int(n)) ? n : int(n) + 1}")"
 CEIL_BOUNDARY="$(awk "BEGIN{s = $CEIL_X + $CEIL_CHROME + $CEIL_FULLBOX + $CEIL_CONTROLS + 8; printf \"%d\", (s == int(s)) ? s : int(s) + 1}")"
 if [ -z "$CEIL_CONTROLS" ] || awk "BEGIN{exit !($CEIL_CONTROLS <= 0)}"; then
     echo "title ceiling        FAILED: the page never reported its controls' width, so nothing bounds the title" >&2
@@ -872,8 +865,12 @@ for CEIL_W in "$(awk "BEGIN{print $CEIL_BOUNDARY + 400}")" \
         # The other half of the ellipsis arm below. Without it a title that
         # truncated at every width would satisfy that one and be caught by
         # nothing here: it is the PAIR that says the ellipsis tracks the room.
+        # `*…*`, not `*…`. The ellipsis ends the NAME run, and an edited title
+        # puts " — Edited" after it, so anchoring at the end of the line makes
+        # both arms mean the opposite of what they say the moment autosave is
+        # on. Nothing about this sweep guarantees it is off.
         case "$CEIL_TEXT" in
-            *…) echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the whole name fits and it was truncated anyway" >&2
+            *…*) echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the whole name fits and it was truncated anyway" >&2
                 echo "  text=\"$CEIL_TEXT\" needs=$CEIL_NEED got=$CEIL_GOT" >&2; exit 1;;
         esac
     else
@@ -903,7 +900,7 @@ for CEIL_W in "$(awk "BEGIN{print $CEIL_BOUNDARY + 400}")" \
         #    Against the pre-fix build the two part company visibly, the model
         #    reporting a whole name the label had no room for.
         case "$CEIL_TEXT" in
-            *…) ;;
+            *…*) ;;
             *)  echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name did not fit and was cut with no ellipsis" >&2
                 echo "  text=\"$CEIL_TEXT\" needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1;;
         esac

@@ -54,3 +54,61 @@ final class ActiveBindingTests: XCTestCase {
                        "a new slot needs a case in the switch above, not just here")
     }
 }
+
+/// Which stored setting a moved file came from.
+///
+/// Separate from the precedence tests above because it answers a different
+/// question, and one the precedence rule CANNOT answer after a move: a slot
+/// whose file no longer exists reads as empty, so asking "which slot is in
+/// force" names the slot the binding fell back to.
+final class ActiveBindingRebindTests: XCTestCase {
+    private let document = URL(fileURLWithPath: "/tmp/doc.md")
+    private let currentNote = URL(fileURLWithPath: "/tmp/Note 2026-08-20.md")
+    private let scratchpad = URL(fileURLWithPath: "/tmp/Birta Writer Jot.md")
+    private let moved = URL(fileURLWithPath: "/tmp/Renamed.md")
+
+    func testAMovedFileShouldBeMatchedToTheSettingThatNamedIt() {
+        XCTAssertEqual(ActiveBinding.slot(holding: document, document: document,
+                                          currentNote: currentNote, scratchpad: scratchpad), .document)
+        XCTAssertEqual(ActiveBinding.slot(holding: currentNote, document: document,
+                                          currentNote: currentNote, scratchpad: scratchpad), .currentNote)
+        XCTAssertEqual(ActiveBinding.slot(holding: scratchpad, document: document,
+                                          currentNote: currentNote, scratchpad: scratchpad), .scratchpad)
+    }
+
+    /// The defect. A note made by New Note is renamed in Finder; the old path
+    /// is now gone, so the precedence rule reports `.scratchpad` and the
+    /// rename would be written into the scratchpad setting, repointing it at
+    /// somebody's renamed note. Matching the old path does not care that the
+    /// file has moved.
+    func testARenamedCurrentNoteShouldNotBeWrittenIntoTheScratchpadSetting() {
+        let byPrecedence = ActiveBinding.slot(hasDocument: false, hasCurrentNote: false)
+        XCTAssertEqual(byPrecedence, .scratchpad, "the rule this one exists to not be")
+        XCTAssertEqual(ActiveBinding.slot(holding: currentNote, document: nil,
+                                          currentNote: currentNote, scratchpad: scratchpad),
+                       .currentNote)
+    }
+
+    /// The default scratchpad location is stored nowhere, so nothing names it.
+    func testAFileNoSettingNamesShouldMatchNothing() {
+        XCTAssertNil(ActiveBinding.slot(holding: moved, document: nil,
+                                        currentNote: nil, scratchpad: nil))
+        XCTAssertNil(ActiveBinding.slot(holding: moved, document: document,
+                                        currentNote: currentNote, scratchpad: scratchpad))
+    }
+
+    func testAPathSpelledWithDotsShouldStillMatch() {
+        XCTAssertEqual(ActiveBinding.slot(holding: URL(fileURLWithPath: "/tmp/./doc.md"),
+                                          document: document, currentNote: nil, scratchpad: nil),
+                       .document)
+    }
+
+    /// Precedence is kept even here: a path stored in two settings at once
+    /// belongs to the one that outranks the other, so a rebind cannot write
+    /// the lower slot and leave the higher one naming the old path.
+    func testAPathStoredTwiceShouldMatchTheSlotThatOutranks() {
+        XCTAssertEqual(ActiveBinding.slot(holding: scratchpad, document: nil,
+                                          currentNote: scratchpad, scratchpad: scratchpad),
+                       .currentNote)
+    }
+}

@@ -3,15 +3,15 @@ import AppKit
 /// A bar along the bottom of the panel saying the note is gone, with the two
 /// things a person can do about it.
 ///
-///     The note was deleted. Nothing has been written.   [Save It Back] [New Note]
+///     The note was deleted. Nothing has been written.   [Save It Back] [Discard and Start New]
 ///
 /// Not `StatusOverlay`, which sits a few points away and looks like the
 /// obvious home for this. Its own header states its rule: "News, never state.
 /// Nothing here is a control and nothing here persists." This is the opposite
 /// of both. It is a STATE, held until it is answered, and it exists to carry
-/// two controls. A message that faded after six seconds would take the only
-/// route back with it, and a person who stepped away would return to a panel
-/// that had silently stopped saving.
+/// two controls. A message that faded would take the only route back with it,
+/// and a person who stepped away would return to a panel that had silently
+/// stopped saving.
 ///
 /// It takes the room rather than floating over the text, because the text
 /// under it is exactly what is at risk and covering that would be perverse.
@@ -20,11 +20,15 @@ final class MissingFileBar: NSView {
     static let height: CGFloat = 34
 
     var onSaveItBack: (() -> Void)?
-    var onNewNote: (() -> Void)?
+    var onDiscardAndStartNew: (() -> Void)?
 
     private let label = NSTextField(labelWithString: "")
     private let saveButton = NSButton(title: "Save It Back", target: nil, action: nil)
-    private let newButton = NSButton(title: "New Note", target: nil, action: nil)
+    /// Named for what it costs, not for what it makes. The buffer is the only
+    /// copy of the deleted note's text, and this is the one button on the
+    /// panel that throws it away; a button called New Note would be a button
+    /// whose label is the half of the sentence that sounds good.
+    private let newButton = NSButton(title: "Discard and Start New", target: nil, action: nil)
 
     init() {
         super.init(frame: .zero)
@@ -50,9 +54,13 @@ final class MissingFileBar: NSView {
         }
         saveButton.action = #selector(saveItBack)
         newButton.action = #selector(newNote)
-        // Save It Back is the default: the buffer is the only copy of those
-        // bytes, and putting them somewhere is what almost everybody wants.
-        saveButton.keyEquivalent = "\r"
+        // NO key equivalent on either button, and Return is the one that
+        // matters. `performKeyEquivalent` walks the key window's whole content
+        // view before a key reaches the first responder, and this bar is in
+        // that hierarchy above a live editor, so a default button here would
+        // swallow every Return the user typed into their note and run Save It
+        // Back instead. The bar is up exactly when the buffer is the only copy
+        // of the text, which makes it the worst place to take a key away.
 
         let row = NSStackView(views: [label, saveButton, newButton])
         row.orientation = .horizontal
@@ -87,5 +95,5 @@ final class MissingFileBar: NSView {
     }
 
     @objc private func saveItBack() { onSaveItBack?() }
-    @objc private func newNote() { onNewNote?() }
+    @objc private func newNote() { onDiscardAndStartNew?() }
 }

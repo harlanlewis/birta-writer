@@ -4,11 +4,11 @@ import BirtaJotCore
 /// Watches the file the panel is bound to, so a Finder rename is followed and
 /// a delete is noticed before the next write undoes it.
 ///
-/// Jot had no file watcher at all. Disk was re-read at three moments (launch,
-/// after an agent run, and on summon when the note was known unreadable), so a
-/// rename made while the panel sat idle was invisible, and `AtomicFile.write`
-/// creates a missing file AND its whole directory, which means a note deleted
-/// in Finder came straight back at the next autosave tick.
+/// A rename made while the panel is idle has to be followed, and a delete has
+/// to be noticed before the next write: `AtomicFile.write` creates a missing
+/// file and every directory above it, so an unnoticed delete is undone rather
+/// than reported. Nothing else re-reads the disk between a launch, an agent
+/// run, and a summon onto a note already known unreadable.
 ///
 /// `NSFilePresenter` rather than an FSEvents stream or a `DispatchSource` on a
 /// descriptor, for one reason: it is the only one of the three that says WHERE
@@ -28,16 +28,22 @@ final class NoteWatcher: NSObject {
 
     private final class Presenter: NSObject, NSFilePresenter {
         var presentedItemURL: URL?
-        let presentedItemOperationQueue = OperationQueue()
+        /// Serial. `NSFilePresenter` may deliver on any queue and an
+        /// unbounded one runs its callbacks concurrently, which would leave
+        /// `presentedItemURL` written from two of them at once.
+        let presentedItemOperationQueue: OperationQueue = {
+            let queue = OperationQueue()
+            queue.maxConcurrentOperationCount = 1
+            return queue
+        }()
         var onMove: ((URL) -> Void)?
         var onDelete: (() -> Void)?
 
         func presentedItemDidMove(to newURL: URL) {
-            let old = presentedItemURL
-            // Kept in step here as well as on the main actor, because the next
-            // callback compares against it and may arrive first.
+            // `NSFilePresenter`'s contract: the presented URL follows the item,
+            // and the coordination machinery reads it back.
             presentedItemURL = newURL
-            switch FileMove.classify(from: old ?? newURL, to: newURL) {
+            switch FileMove.classify(movedTo: newURL) {
             case .followed(let url): onMove?(url)
             case .deleted: onDelete?()
             }

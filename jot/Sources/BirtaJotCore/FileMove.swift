@@ -10,8 +10,9 @@ import Foundation
 /// bound to a file in the Trash and the next autosave writes the buffer back
 /// into it, so emptying the Trash loses the note twice over.
 ///
-/// Here, and not at the call site, because it is decidable from two paths and
-/// nothing else. A file presenter cannot be driven from a unit test; this can.
+/// Here, and not at the call site, because it is decidable from the
+/// destination and nothing else. A file presenter cannot be driven from a unit
+/// test; this can.
 public enum FileMove: Equatable, Sendable {
     /// A rename or a move. Follow it: the note is the same note.
     case followed(URL)
@@ -31,8 +32,7 @@ public enum FileMove: Equatable, Sendable {
     /// Trash takes its contents with it: the note's own path then names the
     /// folder rather than the trash directory, and only an ancestor says what
     /// happened.
-    public static func classify(from source: URL, to destination: URL) -> FileMove {
-        _ = source
+    public static func classify(movedTo destination: URL) -> FileMove {
         let components = destination.standardizedFileURL.pathComponents
         if components.contains(where: trashDirectoryNames.contains) { return .deleted }
         return .followed(destination)

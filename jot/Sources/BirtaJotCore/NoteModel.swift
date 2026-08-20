@@ -2,17 +2,11 @@ import Foundation
 
 /// The two questions Jot's file settings actually ask, as two types.
 ///
-/// They were one tangle of switches that overrode each other silently: a
-/// "Keep in iCloud Drive" toggle that a chosen path quietly outranked, an
-/// "Edit a document instead" toggle that disabled New Note from another pane,
-/// and a "Start with a blank note" switch sitting in General deciding what
-/// Advanced's paths were even for. Nothing was wrong with any one of them; the
-/// problem was that three controls answered two questions and neither question
-/// was written down.
-///
 /// The questions are: WHAT does summoning the panel open, and WHERE do notes
 /// live. They are independent, which is why they are separate types and why
-/// neither resolver takes the other's value.
+/// neither resolver takes the other's value. A control that answered a bit of
+/// each is what makes a settings pane impossible to reason about, because
+/// there is then no question a row is the answer to.
 
 /// What summoning Birta Writer Jot opens.
 public enum NoteMode: String, CaseIterable, Sendable {
@@ -33,22 +27,15 @@ public enum NoteMode: String, CaseIterable, Sendable {
 
 /// Where Birta Writer Jot keeps its notes.
 ///
-/// Three answers, and the third is what made the old pair confusing: choosing
-/// a folder of your own outranks the iCloud switch entirely, so the switch
-/// decided nothing while a path was set and said nothing about it either.
-/// Here it is a third option in the same control, which is what it always was.
+/// Three answers, and the third outranks the other two: a folder of your own
+/// is where notes are whatever the iCloud preference says. The surfaces show
+/// that as a switch plus a Location row, and both of them clear the chosen
+/// path when the switch goes on, so the switch is never left deciding
+/// nothing.
 public enum NoteHome: String, CaseIterable, Sendable {
     case iCloud
     case documents
     case chosen
-
-    public var title: String {
-        switch self {
-        case .iCloud: return "iCloud Drive"
-        case .documents: return "Documents"
-        case .chosen: return "Choose a folder…"
-        }
-    }
 
     /// Which home is in force, given the two things stored and what the
     /// machine can actually do.

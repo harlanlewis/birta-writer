@@ -246,7 +246,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (agentPresetPopup, AgentPreset.allCases.map(\.title) + [Self.customPresetTitle],
              #selector(chooseAgentPreset)),
         ] {
-            // Titles come from the types, so a case added to `NoteHome` or
+            // Titles come from the types, so a case added to `NoteMode` or
             // `AgentPreset` appears here without this file being edited. The
             // menu's own order is the type's declaration order.
             popup.removeAllItems()
@@ -719,8 +719,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
     }
 
-    /// Ask the four first-launch questions again. Changes no setting itself;
-    /// the window it opens is the thing that writes.
+    /// Ask the first-launch questions again. This clears the flag that gates
+    /// the screen and nothing else; the screen it opens is what writes.
     @objc private func showWelcomeAgain() {
         Prefs.hasSeenWelcome = false
         onShowWelcome()

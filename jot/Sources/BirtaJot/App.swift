@@ -40,8 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         buildStatusItem()
         coordinator.start()
-        // First launch only, and after the panel exists: meeting a form before
-        // meeting the editor is the thing this window is trying to avoid.
+        // First launch only, and after the panel exists, so the screen has a
+        // window to take over.
         // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, so a
         // run would meet this window every time; skipped there for the same
         // reason the panel does not remember its frame.
@@ -317,13 +317,35 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// Enablement for the main menu and the status menu, which keep their items
     /// between openings.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        // Nothing that touches the document while the first-run screen is up.
+        // Hiding the web view walls off the mouse and, with the first
+        // responder moved, the keyboard; the menu bar reaches past both. Cmd+N
+        // there would make a note in the folder the screen is still asking
+        // about and bind to it, outranking the answer being given, and its
+        // status message would be drawn behind the screen.
+        if coordinator.isWelcoming, let action = item.action, Self.documentCommands.contains(action) {
+            return false
+        }
         switch item.action {
         case #selector(copyEverything), #selector(menuSaveAs), #selector(shareNote):
             return coordinator.hasContent
         case #selector(revealLastSave):
             return coordinator.lastSavedURL != nil
+        case #selector(menuBackToNotes):
+            // Dead unless Jot is actually on a document, which today only an
+            // install carrying an older `documentPath` can be.
+            return Prefs.documentURL != nil
         default:
             return true
         }
     }
+
+    /// Every menu command that reads or writes the note. Named once so the
+    /// first-run gate above cannot drift out of step with the File menu.
+    private static let documentCommands: Set<Selector> = [
+        #selector(menuNewNote), #selector(menuSaveNow), #selector(menuSaveAs),
+        #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
+        #selector(menuBackToNotes), #selector(menuFind), #selector(menuInsertLink),
+        #selector(menuToggleTaskChecked),
+    ]
 }

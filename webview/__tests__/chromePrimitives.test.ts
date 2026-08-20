@@ -60,11 +60,23 @@ function namedPrimitives(): Map<string, string[]> {
     return found;
 }
 
+/** CSS with its comments removed, so a name mentioned in prose is not a rule. */
+function withoutComments(css: string): string {
+    return css.replace(/\/\*[\s\S]*?\*\//g, " ");
+}
+
 /** Every `ui-*` class a rule in webview CSS actually selects. */
 function definedPrimitives(): Set<string> {
     const defined = new Set<string>();
     for (const file of FILES.filter((f) => f.endsWith(".css"))) {
-        for (const hit of readFileSync(file, "utf8").matchAll(/\.(ui-[a-z0-9-]+)/g)) {
+        // A SELECTOR, which means a `{` has to follow, and outside a comment.
+        // Neither is pedantry: the fix this guard was written for added a doc
+        // block naming `.ui-card`, and a bare `\.(ui-[a-z0-9-]+)` match over
+        // raw text counted that sentence as the rule. Deleting the real rule
+        // then left the guard green, which is the guard failing at the one
+        // job it has.
+        for (const hit of withoutComments(readFileSync(file, "utf8"))
+            .matchAll(/\.(ui-[a-z0-9-]+)[^{};]*\{/g)) {
             defined.add(hit[1]);
         }
     }
@@ -73,7 +85,7 @@ function definedPrimitives(): Set<string> {
     for (const file of FILES.filter((f) => f.endsWith(".ts"))) {
         const text = readFileSync(file, "utf8");
         if (!/`[^`]*\{[^`]*:[^`]*\}/s.test(text)) { continue; }
-        for (const hit of text.matchAll(/\.(ui-[a-z0-9-]+)\s*(?=[,{:.[\s])/g)) {
+        for (const hit of withoutComments(text).matchAll(/\.(ui-[a-z0-9-]+)[^{};]*\{/g)) {
             defined.add(hit[1]);
         }
     }
@@ -89,6 +101,22 @@ describe("chrome primitives", () => {
             .filter(([cls]) => !defined.has(cls))
             .map(([cls, where]) => `${cls} (named in ${[...new Set(where)].join(", ")})`);
         expect(orphans).toEqual([]);
+    });
+
+    // The hole the first version of this guard had. A name is defined by a
+    // RULE; the doc block above `.ui-card` in chrome.css names it in prose,
+    // and counting that made the guard unable to see the very class it was
+    // written for going missing.
+    it("a ui- class named only in a CSS comment should not count as defined", () => {
+        const commented = withoutComments(`
+            /* .ui-imaginary is described here and nowhere else */
+            .ui-real { color: red; }
+        `);
+        const found = new Set(
+            [...commented.matchAll(/\.(ui-[a-z0-9-]+)[^{};]*\{/g)].map((m) => m[1]),
+        );
+        expect(found.has("ui-real")).toBe(true);
+        expect(found.has("ui-imaginary")).toBe(false);
     });
 
     // The sweep has to have reached something, or it reports on a vocabulary

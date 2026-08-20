@@ -104,25 +104,12 @@ final class Coordinator {
     /// two must not be conflated: the retry on summon keys off this one, and
     /// keying it off `hasLoaded` announced an arrival on every first launch.
     private var noteUnreadable = false
-    /// The file the buffer's bytes belong to. Bound when the file is read, and
-    /// only there: a Preferences change that points at another file first
-    /// flushes to THIS one, then rebinds, so a scratchpad is never written
-    /// over the document the user just chose to open.
-    /// Its folder is also what the page may read images from, so the two move
-    /// together by construction rather than by two call sites remembering to.
     /// The first-run screen, built the first time it is needed and kept, so
     /// re-showing it from Settings does not lose what the switches are showing.
     private var welcome: WelcomeView?
 
     private let watcher = NoteWatcher()
     private let missingFileBar = MissingFileBar()
-    /// The bound file is gone, so nothing may be written to its path.
-    ///
-    /// Blocks `writeLatest` the way `hasLoaded` blocks it for a note that is
-    /// present but unreadable, and for the same reason: a write here does not
-    /// fail, it RECREATES. `AtomicFile.write` makes the file and its whole
-    /// directory, so without this an autosave tick a second after a Finder
-    /// delete puts the note back and the warning never appears.
     /// Whether this path has ever been observed to hold the note.
     ///
     /// Read alongside a live `fileExists` to tell a DELETION from a note that
@@ -130,6 +117,15 @@ final class Coordinator {
     /// write; cleared with the binding, since it is a fact about one path.
     private var everSeenOnDisk = false
 
+    /// The bound file is gone, so nothing may be written to its path.
+    ///
+    /// Blocks `writeLatest` the way `hasLoaded` blocks it for a note that is
+    /// present but unreadable, and for the same reason: a write here does not
+    /// fail, it RECREATES. `AtomicFile.write` makes the file and its whole
+    /// directory, so without this an autosave tick a second after a Finder
+    /// delete puts the note back and the warning never appears. The READ side
+    /// is guarded too, in `adopt` and `reloadFromDiskIntoBuffer`: with the
+    /// file gone the buffer is the only copy, and a read would replace it.
     private var noteMissing = false {
         didSet {
             guard noteMissing != oldValue else { return }
@@ -138,6 +134,13 @@ final class Coordinator {
         }
     }
 
+    /// The file the buffer's bytes belong to.
+    ///
+    /// A Preferences change that points at another file first flushes to THIS
+    /// one, then rebinds, so a scratchpad is never written over the document
+    /// the user just chose to open. Its folder is also what the page may read
+    /// images from, so the two move together by construction rather than by
+    /// two call sites remembering to.
     private var boundURL: URL = Prefs.activeURL {
         didSet {
             guard boundURL != oldValue else { return }
@@ -195,7 +198,13 @@ final class Coordinator {
         // edge and the page knows nothing about it.
         contentView.addSubview(missingFileBar)
         missingFileBar.onSaveItBack = { [weak self] in self?.saveMissingNoteBack() }
-        missingFileBar.onNewNote = { [weak self] in self?.newNote() }
+        missingFileBar.onDiscardAndStartNew = { [weak self] in
+            // Clearing the flag first is what lets the new note be created and
+            // written at all; the bytes of the old one are what the button
+            // says it is discarding.
+            self?.noteMissing = false
+            self?.newNote()
+        }
         host.webView.translatesAutoresizingMaskIntoConstraints = false
         statusOverlay.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -546,8 +555,17 @@ final class Coordinator {
         if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeFirstResponder(host.webView)
-        if state == .warm { host.focusEditor() }
+        // The first-run screen owns the keyboard while it is up. A hidden view
+        // is out of hit testing, so the mouse is already walled off, and
+        // `makeFirstResponder` does not refuse a hidden view: without this the
+        // editor behind the screen would take every keystroke and autosave
+        // would write them.
+        if isWelcoming {
+            panel.makeFirstResponder(welcome)
+        } else {
+            panel.makeFirstResponder(host.webView)
+            if state == .warm { host.focusEditor() }
+        }
         if state == .cold { loadPage() }
         // A note that was there and unreadable when we last looked leaves the
         // panel unwritable, and nothing else would ever look again: the only
@@ -890,7 +908,9 @@ final class Coordinator {
     /// WRITTEN afterwards. False leaves `hasLoaded` alone, so `writeLatest`
     /// refuses and the note on disk is safe.
     private func adopt(_ read: NoteRead) -> Bool {
-        isEdited = false
+        // Not for a read this refuses: a buffer that was not replaced still
+        // holds bytes the file does not, which is what the flag means.
+        if case .absent = read, noteMissing {} else { isEdited = false }
         switch read {
         case .contents(let text):
             noteUnreadable = false
@@ -901,6 +921,16 @@ final class Coordinator {
             return true
         case .absent:
             noteUnreadable = false
+            // A note that is missing BECAUSE it was deleted is not the same as
+            // one that has never been written, even though the disk cannot
+            // tell them apart. In the first case the buffer is the only copy
+            // of those bytes, and taking this read would replace it with
+            // nothing: the panel would go blank behind the bar that says
+            // nothing has been written, and Save It Back would then write an
+            // empty file. `writeLatest` was guarded for this and the read side
+            // was not, which left every settings change, every reload and
+            // every finished agent run as a way to lose the note.
+            if noteMissing { return false }
             latest = ""
             return true
         case .unreadable:
@@ -940,7 +970,37 @@ final class Coordinator {
         hotkey.unregister()
         // A child process outliving the app is litter nobody can attribute.
         agent.stopAll()
-        flushThen(done)
+        flushThen { [weak self] in
+            self?.rescueMissingNote()
+            done()
+        }
+    }
+
+    /// Put the buffer somewhere before the app goes away, when its own file is
+    /// gone and every write is being refused.
+    ///
+    /// Quitting is the end of the only copy those bytes have. The bar offers
+    /// Save It Back, and taking that offer needs somebody to be looking at it:
+    /// a deletion is noticed whether or not the panel is visible, so this
+    /// state can be reached without the bar ever having been on screen.
+    ///
+    /// Written BESIDE the deleted file under a name of its own, never back to
+    /// the deleted path. Recreating a file the user threw away is what this
+    /// whole path exists to stop, and doing it at quit, unattended, would be
+    /// the worst moment to start.
+    private func rescueMissingNote() {
+        guard noteMissing, !latest.isEmpty else { return }
+        let directory = boundURL.deletingLastPathComponent()
+        let stem = boundURL.deletingPathExtension().lastPathComponent
+        let ext = boundURL.pathExtension.isEmpty ? "md" : boundURL.pathExtension
+        let target = Coordinator.unusedURL(in: directory, stem: "\(stem) (recovered)", extension: ext)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try AtomicFile.writeString(latest, to: target)
+            NSLog("Birta Writer Jot: the deleted note's unwritten text is in \(target.path)")
+        } catch {
+            NSLog("Birta Writer Jot: could not rescue the deleted note: \(error)")
+        }
     }
 
     /// Last-chance synchronous write, idempotent after `prepareToTerminate`.
@@ -963,7 +1023,14 @@ final class Coordinator {
         if measure.enabled {
             measure.trace("writeattempt hasLoaded=\(hasLoaded) missing=\(noteMissing) seen=\(everSeenOnDisk) exists=\(FileManager.default.fileExists(atPath: boundURL.path)) at=\(boundURL.lastPathComponent)")
         }
-        guard hasLoaded, !noteMissing else { return }
+        // Nothing is written while the first-run screen is up. Two reasons,
+        // and the second is the one that bites: there is nothing to write,
+        // since the editor is not reachable; and `AtomicFile.write` creates
+        // the file AND every directory above it, so a write here would build
+        // the folder for a location the screen is still asking about. Toggling
+        // the iCloud switch would leave an empty note in iCloud Drive and
+        // another in Documents.
+        guard hasLoaded, !noteMissing, !isWelcoming else { return }
         // A file presenter only hears about COORDINATED changes, which Finder
         // makes and `rm` in a terminal does not, so a delete can reach this
         // point unannounced. `AtomicFile.write` would then recreate the file
@@ -1124,6 +1191,9 @@ final class Coordinator {
     /// thing the user did on purpose, and the panel following it is the old
     /// behaviour rather than a case this guard was reaching for.
     private func reloadFromDiskIntoBuffer() {
+        // Same rule as `adopt`: a note that is missing because it was deleted
+        // must not be read over the buffer holding the only copy of it.
+        guard !noteMissing else { return }
         let read = readActiveNote()
         if case .unreadable = read {
             if let message = read.message { statusOverlay.flash(message) }
@@ -1139,17 +1209,6 @@ final class Coordinator {
         }
     }
 
-    /// Cmd+N. Put the current note beyond doubt, then start a fresh file.
-    ///
-    /// No Save/Don't Save sheet, and that is the macOS answer rather than a
-    /// shortcut past it: the buffer is written before the switch every time,
-    /// unconditionally and whatever the autosave setting says, so there is
-    /// never an unsaved change to ask about. A prompt here would be asking
-    /// permission to do something already done.
-    ///
-    /// A bound DOCUMENT is left alone. New Note makes a note in Jot's own
-    /// folder; it is not a way to stop editing the file the user pointed Jot
-    /// at, which is what the Document setting is for.
     /// Leave a document Jot was pointed at, and go back to the notes.
     ///
     /// The `document` slot in `ActiveBinding` outranks the other two, so this
@@ -1172,15 +1231,26 @@ final class Coordinator {
         }
     }
 
+    /// Cmd+N. Put the current note beyond doubt, then start a fresh file.
+    ///
+    /// No Save/Don't Save sheet, and that is the macOS answer rather than a
+    /// shortcut past it: the buffer is written before the switch every time,
+    /// unconditionally and whatever the autosave setting says, so there is
+    /// never an unsaved change to ask about. A prompt here would be asking
+    /// permission to do something already done.
+    ///
+    /// With ONE exception, and it is the reason the missing-note bar's second
+    /// button says Discard rather than New Note: when the bound file has been
+    /// deleted there is nowhere to write the buffer to, so the write above is
+    /// refused and switching away really does drop those bytes. Nothing else
+    /// can reach this state, because every other caller has a file.
+    ///
     func newNote() {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
-            // A bound document is LEFT, not a reason to refuse. Jot used to
-            // say no here because "edit a document instead" was a switch in
-            // Settings, so leaving meant going to another window and turning
-            // it off; the switch is gone and the way back is this gesture and
-            // Back to My Notes beside it.
+            // A bound document is LEFT, not a reason to refuse. This gesture
+            // and Back to My Notes beside it are the two ways out of one.
             Prefs.documentURL = nil
             let directory = Prefs.notesDirectory
             do {
@@ -1369,9 +1439,10 @@ final class Coordinator {
         NSLayoutConstraint.activate([
             view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            // Below the titlebar band rather than under it: the band is
-            // transparent and full height, so a view pinned to the top would
-            // put its first row behind the traffic lights.
+            // The full height of the content. Clearance for the titlebar
+            // band, which is transparent and full height, is the screen's own
+            // `topInset` rather than a constraint here, so the band's ground
+            // still shows through above the first row.
             view.topAnchor.constraint(equalTo: contentView.topAnchor),
             view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
@@ -1391,14 +1462,17 @@ final class Coordinator {
     private func finishWelcome() {
         Prefs.hasSeenWelcome = true
         welcome?.isHidden = true
+        restorePanelAfterWelcome()
         host.webView.isHidden = false
         missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
+        layoutMissingFileBar()
         refreshTitle()
+        panel.makeFirstResponder(host.webView)
         host.focusEditor()
     }
 
     /// Whether the panel is showing the first-run screen instead of a document.
-    private var isWelcoming: Bool { welcome?.isHidden == false }
+    var isWelcoming: Bool { welcome?.isHidden == false }
 
     /// Grow the panel so the whole first-run screen is on it.
     ///
@@ -1420,12 +1494,37 @@ final class Coordinator {
         let ceiling = screen.visibleFrame.height - 40
         let height = min(max(panel.frame.height, wanted), ceiling)
         guard height > panel.frame.height + 0.5 else { return }
+        heightBeforeWelcome = panel.frame.height
         var frame = panel.frame
         // Grow downward from the title bar, which is where a window grows when
         // a person is looking at it: the titlebar staying put is what makes it
-        // read as the same window.
+        // read as the same window. Clamped to the screen, because growing
+        // downward off the bottom puts the buttons somewhere no scroller can
+        // reach: it is the WINDOW that is off screen, not its content.
         frame.origin.y -= height - frame.height
         frame.size.height = height
+        frame.origin.y = max(frame.origin.y, screen.visibleFrame.minY)
+        panel.setFrame(frame, display: true, animate: false)
+    }
+
+    /// The panel's height before the first-run screen grew it, so the editor
+    /// is not left in a window sized for a form seen once. Nil once given back.
+    private var heightBeforeWelcome: CGFloat?
+
+    /// Undo `sizePanelForWelcome`, keeping the titlebar where it is.
+    ///
+    /// Only if the user has not resized in between: their size wins over one
+    /// this code chose, and a window that snapped back under them would be
+    /// worse than one left tall.
+    private func restorePanelAfterWelcome() {
+        guard let previous = heightBeforeWelcome else { return }
+        heightBeforeWelcome = nil
+        guard let welcome else { return }
+        let grown = welcome.fittingContentHeight + (panel.frame.height - panel.contentLayoutRect.height)
+        guard abs(panel.frame.height - min(grown, panel.frame.height)) < 0.5 else { return }
+        var frame = panel.frame
+        frame.origin.y += frame.height - previous
+        frame.size.height = previous
         panel.setFrame(frame, display: true, animate: false)
     }
 
@@ -1455,7 +1554,7 @@ final class Coordinator {
     /// whichever of the three settings supplied the old one.
     private func noteMovedOnDisk(to url: URL) {
         guard url.standardizedFileURL != boundURL.standardizedFileURL else { return }
-        Prefs.rebindActive(to: url)
+        Prefs.rebindActive(from: boundURL, to: url)
         // `boundURL`'s `didSet` re-titles and re-watches; a move is the one
         // case where those are already exactly right.
         boundURL = url
@@ -1482,6 +1581,11 @@ final class Coordinator {
     /// behaviour that made a silent delete dangerous and is exactly what is
     /// wanted once somebody has asked for it.
     private func saveMissingNoteBack() {
+        // `writeLatest` still refuses before the first read has landed, which
+        // the presenter can beat. Clearing the bar and flashing "Saved" on the
+        // way to a write that did not happen would be the worst possible lie
+        // in this state, so the flag comes back if the file is not there
+        // afterwards.
         noteMissing = false
         // The pre-write existence check in `writeLatest` would otherwise
         // refuse this too and put the bar straight back, which is correct for
@@ -1491,6 +1595,11 @@ final class Coordinator {
         // which is exactly what the button promises.
         everSeenOnDisk = false
         writeLatest()
+        guard FileManager.default.fileExists(atPath: boundURL.path) else {
+            noteMissing = true
+            statusOverlay.flash("Could not write \(boundURL.lastPathComponent).")
+            return
+        }
         watcher.watch(boundURL)
         statusOverlay.flash("Saved \(boundURL.lastPathComponent) back.")
     }
@@ -1552,7 +1661,7 @@ final class Coordinator {
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
             }
-            Prefs.rebindActive(to: target)
+            Prefs.rebindActive(from: source, to: target)
             self.boundURL = target
             if self.lastSavedURL == source { self.lastSavedURL = target }
             let moved = target.deletingLastPathComponent().standardizedFileURL
@@ -1574,11 +1683,16 @@ final class Coordinator {
         stamp.locale = Locale(identifier: "en_US_POSIX")
         stamp.calendar = Calendar(identifier: .gregorian)
         stamp.dateFormat = "yyyy-MM-dd"
-        let base = "Note \(stamp.string(from: Date()))"
-        var candidate = directory.appendingPathComponent("\(base).md")
+        return unusedURL(in: directory, stem: "Note \(stamp.string(from: Date()))", extension: "md")
+    }
+
+    /// `stem.ext` in `directory`, with a number appended until nothing is
+    /// there. Shared so a new note and a rescued one number the same way.
+    static func unusedURL(in directory: URL, stem: String, extension ext: String) -> URL {
+        var candidate = directory.appendingPathComponent("\(stem).\(ext)")
         var n = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = directory.appendingPathComponent("\(base) \(n).md")
+            candidate = directory.appendingPathComponent("\(stem) \(n).\(ext)")
             n += 1
         }
         return candidate
@@ -1818,9 +1932,9 @@ final class Coordinator {
         try? data.write(to: url)
         measure.trace("snapshot at=\(url.path) w=\(Int(bounds.width)) h=\(Int(bounds.height))")
         func dump(_ view: NSView, depth: Int) {
-            // Deep enough to reach a control. The rows nest about nine levels
-            // down (scroll, clip, document, column, form, card, card stack,
-            // row, control), and a shallower walk reports no switches at all,
+            // Deep enough to reach a control. The rows nest through scroll,
+            // clip, document, column, form, card, card stack and row before
+            // one, and a walk that stops short reports no switches at all,
             // which reads exactly like a screen that has none.
             guard depth < 12 else { return }
             for sub in view.subviews {
@@ -1833,10 +1947,9 @@ final class Coordinator {
 
     /// The panel's window level, for `jot/scripts/measure.sh`.
     ///
-    /// Here because a level was wrong for a release while three comments and a
-    /// changelog entry said it was right. `NSPanel` starts at `.floating` and
-    /// `isFloatingPanel` is a setter for that level, so the level is never the
-    /// absence of a line and cannot be read off the source by eye. Raw, not
+    /// `NSPanel` starts at `.floating` and `isFloatingPanel` is a setter for
+    /// that level, so the level a panel ends up at is never the absence of a
+    /// line and cannot be read off the source by eye. Raw, not
     /// compared to a constant here: the assertion belongs in the script, where
     /// a wrong expectation shows up as a failing arm rather than as a probe
     /// that agrees with itself.
@@ -1877,7 +1990,11 @@ final class Coordinator {
             view.titleFieldWidth(), view.titleCellWidth(),
             text.midY, close.midY,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
-            view.accessibilityLabel() ?? ""))
+            // The DRAWN characters, not the accessibility label. The label now
+            // carries the whole name whatever the window's width, which is
+            // right for a screen reader and useless to a check asking whether
+            // the title was shortened.
+            view.drawnTitle))
         traceChevron()
     }
 

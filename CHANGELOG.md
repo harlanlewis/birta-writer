@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The `/date` calendar is drawn as a floating card, on its own ground, instead of as a bare grid of numbers over the text underneath it. It arrived with no background, no border and no shadow at all, so the document showed straight through the days.
+
+
 ---
 
 ## [2026.820.0] - 2026, August 20
@@ -23,8 +28,6 @@
 - Copying a reference now says so in a notification naming the reference, rather than in the status bar. The question it answers is "did that copy", asked in the half-second before pasting somewhere else, and the bottom corner of the window is the one place someone editing prose in the middle of it is not looking.
 
 ### Fixed
-
-- The `/date` calendar is drawn as a floating card, on its own ground, instead of as a bare grid of numbers over the text underneath it. It named the shared card style without that style existing, so it arrived with no background, no border and no shadow, and the document showed straight through the days.
 
 - Copying a reference saves the file first. The reference names lines in a file, and with unsaved edits those line numbers were computed against bytes that were not on disk, so an agent following the reference read something else. If the save fails, nothing is copied and it says so, rather than handing over a pointer the file cannot honour.
 

@@ -66,7 +66,7 @@ final class WelcomeView: NSView {
         layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
 
         for (control, on, action) in [
-            (iCloudSwitch, Prefs.storeInICloud && Prefs.iCloudAvailable, #selector(toggleICloud)),
+            (iCloudSwitch, Prefs.noteHome == .iCloud, #selector(toggleICloud)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (dockSwitch, Prefs.showInDock, #selector(toggleDock)),
             (loginSwitch, false, #selector(toggleLogin)),
@@ -124,7 +124,8 @@ final class WelcomeView: NSView {
                 SettingsWindowController.row("Autosave", control: autosaveSwitch),
                 SettingsWindowController.row("Show in Dock", control: dockSwitch),
                 SettingsWindowController.row("Start at login", control: loginSwitch, caption: loginCaption),
-                SettingsWindowController.row("Rich link previews and embeds", control: networkSwitch),
+                SettingsWindowController.row("Rich link previews and embeds", control: networkSwitch,
+                                             caption: Caption("Off means no outbound request at all.")),
             ]),
         ])
         form.orientation = .vertical
@@ -136,7 +137,7 @@ final class WelcomeView: NSView {
             view.widthAnchor.constraint(equalTo: form.widthAnchor).isActive = true
         }
         // A heading belongs to the card under it, not between two of them.
-        for (index, view) in form.arrangedSubviews.enumerated() where index > 0 && index % 2 == 0 {
+        for index in form.arrangedSubviews.indices where index > 0 && index % 2 == 0 {
             form.setCustomSpacing(18, after: form.arrangedSubviews[index - 1])
         }
 
@@ -214,7 +215,7 @@ final class WelcomeView: NSView {
     /// Put every control where the settings actually are.
     func sync() {
         hotkeyRecorder.setCombo(Prefs.hotkey)
-        iCloudSwitch.state = Prefs.storeInICloud && Prefs.iCloudAvailable ? .on : .off
+        iCloudSwitch.state = Prefs.noteHome == .iCloud ? .on : .off
         iCloudSwitch.isEnabled = Prefs.iCloudAvailable
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         dockSwitch.state = Prefs.showInDock ? .on : .off
@@ -227,7 +228,7 @@ final class WelcomeView: NSView {
     ///
     /// With iCloud Drive on there is one place the note can be and it is the
     /// same place on every Mac, so a path row would be a read-only fact taking
-    /// a row of a screen whose whole point is the four questions worth asking.
+    /// a row of a screen that exists to ask the few questions worth asking.
     /// With it off the folder is a real choice, and this is where it is made.
     private func showLocation() {
         locationPath.setURL(Prefs.scratchpadURL)
@@ -241,9 +242,16 @@ final class WelcomeView: NSView {
                           bad: false)
     }
 
+    /// `isOn`, not `== .on`, and `isEnabled` for the same reason.
+    ///
+    /// `LoginItemState` distinguishes a registration macOS is holding from one
+    /// it refused; a switch drawn from `== .on` snaps back for the first and
+    /// says the request was declined when it was only pending. Settings reads
+    /// it this way and so must this, or the same row means two things.
     private func showLoginItem(_ state: LoginItemState) {
-        loginSwitch.state = state == .on ? .on : .off
-        loginCaption.say(state.isWarning ? state.caption : "", bad: state.isWarning)
+        loginSwitch.state = state.isOn ? .on : .off
+        loginSwitch.isEnabled = state.isEnabled
+        loginCaption.say(state.caption, bad: state.isWarning)
     }
 
     private func hotkeyChosen(_ combo: HotkeyCombo) {
@@ -253,8 +261,19 @@ final class WelcomeView: NSView {
                           bad: status != noErr)
     }
 
+    /// The same gesture Settings' row makes, and it has to stay the same one.
+    ///
+    /// Clearing a chosen path is what makes iCloud reachable at all: a path
+    /// the user picked outranks both homes, so leaving it set would put the
+    /// switch on while the notes stayed in their folder, with the Location row
+    /// now hidden and nothing on screen naming where they are.
     @objc private func toggleICloud() {
-        Prefs.storeInICloud = iCloudSwitch.state == .on
+        if iCloudSwitch.state == .on {
+            Prefs.scratchpadURL = nil
+            Prefs.storeInICloud = true
+        } else {
+            Prefs.storeInICloud = false
+        }
         showLocation()
         onChange?()
     }
