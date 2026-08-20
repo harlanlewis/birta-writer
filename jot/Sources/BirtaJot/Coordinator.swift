@@ -654,15 +654,27 @@ final class Coordinator {
             // the disk can be (a write may still be in flight), and it is what
             // the remount must show.
             if reloadFromDisk {
-                // Not while the note is missing. `Prefs.activeURL` re-derives
-                // the binding, and `currentNoteURL` reports itself empty for a
-                // path that is not on disk, so a deleted New Note falls back
-                // to the scratchpad: the binding changes, `startWatching`
-                // clears `noteMissing`, and the read that follows is a
-                // legitimate read of another file straight over the only copy
-                // of the deleted one. The guard in `adopt` cannot see that,
-                // because by then nothing is missing.
-                if !noteMissing { boundURL = Prefs.activeURL }
+                // While the note is missing, rebind only for a setting the
+                // user actually changed.
+                //
+                // `Prefs.activeURL` re-derives the binding through accessors
+                // that filter on existence, so a deleted New Note falls back
+                // to the scratchpad on its own: the binding changes,
+                // `startWatching` clears `noteMissing`, and the read that
+                // follows lands another file's contents on the only copy of
+                // the deleted one, past the guard in `adopt`, which by then
+                // has nothing to see. `storedActiveURL` reads the same
+                // settings without that filter, so it moves when somebody
+                // moves it and not when a file disappears.
+                //
+                // The buffer is rescued before a deliberate rebind, because it
+                // is still the only copy of a note nobody has answered for.
+                if !noteMissing {
+                    boundURL = Prefs.activeURL
+                } else if Prefs.storedActiveURL.standardizedFileURL != boundURL.standardizedFileURL {
+                    rescueMissingNote()
+                    boundURL = Prefs.activeURL
+                }
                 // The disk is the truth on this arm, so nothing is unwritten
                 // (`adopt` clears `isEdited`). The other arm keeps it: after a
                 // content-process death `latest` can be ahead of the file, and
@@ -1317,6 +1329,13 @@ final class Coordinator {
         cancelPendingAutosave()
         boundURL = url
         latest = content
+        // The caller has just written this file and is handing back its bytes,
+        // so the buffer IS the file. Both read-side embargoes are facts about
+        // the path being left, and carrying them across is how a fresh note
+        // ends up permanently unwritable: every keystroke refused by
+        // `writeLatest`, no bar, nothing said, and the lot gone at quit.
+        hasLoaded = true
+        noteUnreadable = false
         // `content` came off disk, so the buffer is the file.
         isEdited = false
         refreshTitle()
@@ -1436,12 +1455,23 @@ final class Coordinator {
     /// file location is still being asked about. The titlebar names the
     /// application for the same reason, and names nothing that can be clicked.
     func showWelcome() {
-        // Whatever is in the panel goes to disk FIRST. On a first launch there
-        // is nothing to write, but Settings can re-show this screen at any
-        // time, and the write embargo below closes every path out for as long
-        // as it is up: with autosave off, text typed before the button was
-        // pressed would die with the process.
-        flushThen { [weak self] in self?.write(.explicitSave) }
+        // Whatever is in the panel goes to disk FIRST, and the screen goes up
+        // in the COMPLETION rather than beside the call.
+        //
+        // `flushThen` is a round trip: it posts to the page and returns, so
+        // anything after it runs before the reply. Putting the screen up there
+        // sets `isWelcoming` in the same turn, and the write embargo then
+        // refuses the very write this is here to make. On a first launch there
+        // is nothing to write; Settings can re-show this screen at any time,
+        // and with autosave off the text typed before the button was pressed
+        // is what would be lost.
+        flushThen { [weak self] in
+            self?.write(.explicitSave)
+            self?.presentWelcome()
+        }
+    }
+
+    private func presentWelcome() {
         // Before the screen draws, so every switch on it is showing a value
         // that is actually stored. See `Prefs.applyOnboardingDefaults`.
         Prefs.applyOnboardingDefaults()

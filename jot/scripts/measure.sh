@@ -67,17 +67,31 @@ WC_BEFORE="$(pgrep -f com.apple.WebKit | sort || true)"
 BIRTA_JOT_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
 # Every throwaway defaults domain this run creates, cleaned by the ONE exit
-# trap below. A second `trap ... EXIT` does not add to the first, it REPLACES
-# it, so a later cleanup registered its own way silently stopped the app from
-# being killed and left a menu-bar agent running after every run.
+# trap below. There must stay exactly one: a second `trap ... EXIT` REPLACES
+# the first rather than adding to it, so a cleanup registered its own way
+# silently switches off everything the earlier trap did, the app's SIGTERM
+# included.
 #
 # The `rm` beside the `defaults delete` is not belt and braces. `delete` empties
-# the domain and `cfprefsd` leaves the file behind, so the plist survives every
-# run and the litter is one file per run forever. Removed by EXACT name, never
-# by a glob over `com.birtalabs.jot.*`: the app's own domain is a prefix of
-# every throwaway one, and a glob would take the user's real settings.
+# the domain and `cfprefsd` leaves the file, so the plist outlives every run.
+# Removed by EXACT name, never by a glob over `com.birtalabs.jot.*`: the app's
+# own domain is a prefix of every throwaway one, and a glob there takes the
+# user's real settings.
+# How this run ends the app, in one place.
+#
+# SIGTERM through the app's own handler, never SIGKILL: WebKit's helpers are
+# not children of the app and only exit because the app asks them to, so a hard
+# kill orphans a set of them per launch. Idempotent, so the teardown check and
+# the exit trap can both call it.
+end_app() {
+    [ -n "${PID:-}" ] || return 0
+    kill "$PID" 2>/dev/null || true
+    wait "$PID" 2>/dev/null || true
+    PID=""
+}
+
 EXTRA_SUITES=""
-trap '[ $KEEP = 1 ] || { kill $PID 2>/dev/null; wait $PID 2>/dev/null; } || true; rm -rf "$SCRATCH_DIR"; for s in $BIRTA_JOT_DEFAULTS_SUITE $EXTRA_SUITES; do defaults delete "$s" >/dev/null 2>&1 || true; rm -f "$HOME/Library/Preferences/$s.plist"; done' EXIT
+trap '[ $KEEP = 1 ] || end_app; rm -rf "$SCRATCH_DIR"; for s in $BIRTA_JOT_DEFAULTS_SUITE $EXTRA_SUITES; do defaults delete "$s" >/dev/null 2>&1 || true; rm -f "$HOME/Library/Preferences/$s.plist"; done' EXIT
 
 wait_for() { # wait_for <mark> <timeout-s>
     local n=0
@@ -247,8 +261,23 @@ echo "deleted note         ok: the write was refused, and the note was not recre
 # the session: Save It Back fails, and the new note started instead swallows
 # every keystroke with nothing said. None of that is visible until somebody
 # looks for their text, which is why it is a step here rather than a reading.
+READY_BEFORE=$(marks ready)
 printf '{"type":"__jotReload"}' > "$SCRATCH_DIR/.debug-message.json"
-kill -URG $PID; sleep 2
+kill -URG $PID
+wait_for debug-reload 5
+# The message arriving is not the gesture. A remount is, and `.ready` marks
+# one, so this waits for a NEW one: without it both assertions below pass
+# trivially when the reload never happened, since nothing recreated the file
+# and nothing downgraded the flag either. An instrument that measured nothing
+# reports success.
+RELOAD_WAIT=0
+while [ "$(marks ready)" -le "$READY_BEFORE" ]; do
+    sleep 0.1; RELOAD_WAIT=$((RELOAD_WAIT + 1))
+    if [ $RELOAD_WAIT -gt 100 ]; then
+        echo "deleted note         FAILED: the reload never remounted the page" >&2
+        echo "  (so the check below would have proved nothing)" >&2; exit 1
+    fi
+done
 rm -f "$SCRATCH_DIR/.debug-message.json"
 if [ -e "$SCRATCH_DIR/Scratch pad.md" ]; then
     echo "deleted note         FAILED: reloading recreated the deleted note" >&2; exit 1
@@ -1167,4 +1196,32 @@ echo "onboarding           ok: a first launch takes the defaults, an install tha
 
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"
+
+# This run takes its own processes with it.
+#
+# WebKit's helpers are NOT children of the app, so nothing reaps them for us:
+# they exit because the app asks them to, which only happens when the app is
+# ended through its SIGTERM trap. A hard kill anywhere, or a teardown that has
+# silently stopped running, leaves a GPU, a Networking and a WebContent process
+# per launch sitting at a fraction of a core indefinitely. They are invisible
+# to the harness lock, they read as unexplained load to whoever is next on the
+# machine, and they are one reason a red suite can be nobody's fault.
+#
+# Asserted here rather than trusted to the trap, because the trap is the thing
+# that breaks: a second `trap ... EXIT` REPLACES the first, so a cleanup added
+# later turns this off with nothing to say so.
+if [ $KEEP = 0 ]; then
+    end_app
+    sleep 2
+    WK_AFTER="$(pgrep -f com.apple.WebKit | sort || true)"
+    WK_LEFT="$(comm -12 <(printf '%s\n' "$WK_OURS" | tr ' ' '\n' | sort | grep -v '^$' || true) \
+                        <(printf '%s\n' "$WK_AFTER") | tr '\n' ' ')"
+    if [ -n "${WK_LEFT// /}" ]; then
+        echo "teardown             FAILED: this run left WebKit helpers behind: $WK_LEFT" >&2
+        echo "  (the app did not end through its SIGTERM trap, so nothing asked them to exit)" >&2
+        exit 1
+    fi
+    echo "teardown             ok: the app and every helper it started are gone"
+fi
+
 echo "log: $LOG"

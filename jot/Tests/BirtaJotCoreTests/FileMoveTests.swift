@@ -55,14 +55,20 @@ final class FileMoveTests: XCTestCase {
         XCTAssertEqual(FileMove.classify(movedTo: to), .deleted)
     }
 
-    /// Where it LANDED is the whole of the rule, so the same destination
-    /// classifies the same way whatever it came from. Stated as a test
-    /// because the alternative, deciding from the pair, is the shape a
-    /// reader expects of something called a move.
-    func testTheDestinationAloneShouldDecideIt() {
-        XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: "/Users/x/.Trash/Note.md")),
-                       .deleted)
-        XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: "/tmp/elsewhere/Other.md")),
-                       .followed(URL(fileURLWithPath: "/tmp/elsewhere/Other.md")))
+    /// A trash component at ANY depth decides it, which is the rule the
+    /// per-volume form and a dragged folder both need. Enumerated rather than
+    /// sampled: a check written against `.Trash` alone passes on an
+    /// implementation that only looks at the parent directory.
+    func testATrashComponentAtAnyDepthShouldDecideIt() {
+        let deletions = [
+            "/Users/x/.Trash/Note.md",
+            "/Users/x/.Trash/a/b/c/Note.md",
+            "/Volumes/Backup/.Trashes/501/Note.md",
+            "/Volumes/Backup/.Trashes/501/a/b/Note.md",
+        ]
+        for path in deletions {
+            XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: path)), .deleted, path)
+        }
+        XCTAssertEqual(deletions.count, 4)
     }
 }

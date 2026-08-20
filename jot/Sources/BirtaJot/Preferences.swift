@@ -232,6 +232,24 @@ enum Prefs {
         ActiveBinding.url(document: documentURL, currentNote: currentNoteURL, scratchpad: scratchpadURL)
     }
 
+    /// One stored path, with no existence filter on it.
+    private static func stored(_ key: Key) -> URL? {
+        guard let path = d.string(forKey: key.rawValue), !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// The active file as the stored settings NAME it.
+    ///
+    /// `activeURL` resolves the same three settings through accessors that
+    /// drop a path which is not on disk, which is right for opening a file and
+    /// wrong for asking whether a setting moved: a note that was deleted makes
+    /// `activeURL` change on its own. This one changes only when somebody
+    /// changes a setting.
+    static var storedActiveURL: URL {
+        ActiveBinding.url(document: stored(.documentPath),
+                          currentNote: stored(.currentNotePath),
+                          scratchpad: stored(.scratchpadPath) ?? defaultScratchpadURL)
+    }
 
     /// Write a moved file's new path back to the setting it came from.
     ///
@@ -247,10 +265,6 @@ enum Prefs {
     /// Matched against the STORED strings rather than through the accessors,
     /// for the same reason: the accessors are what filter on existence.
     static func rebindActive(from old: URL, to url: URL) {
-        func stored(_ key: Key) -> URL? {
-            guard let path = d.string(forKey: key.rawValue), !path.isEmpty else { return nil }
-            return URL(fileURLWithPath: path)
-        }
         switch ActiveBinding.slot(holding: old,
                                   document: stored(.documentPath),
                                   currentNote: stored(.currentNotePath),
@@ -264,7 +278,6 @@ enum Prefs {
         case nil: scratchpadURL = url
         }
     }
-
 
     static var networkEnabled: Bool {
         get { d.bool(forKey: Key.networkEnabled.rawValue) }
@@ -346,12 +359,12 @@ enum Prefs {
     /// The absence of every key, which is what a first launch looks like and
     /// nothing else does.
     ///
-    /// `hasSeenWelcome` counts like any other, and excluding it is a mistake
-    /// worth naming: setting it to false STORES it, so it is present either
-    /// way, and leaving it out instead made a reset look like a first launch.
-    /// Reset removes every other key, so the next Show Welcome would have
-    /// written the onboarding answers again and switched the network back on,
-    /// which is the thing `reset` keeping the flag was supposed to prevent.
+    /// EVERY key, `hasSeenWelcome` included. Its setter stores `false` rather
+    /// than removing it, so the key is present either way, and `reset`
+    /// deliberately leaves it set: excluding it here would make the state
+    /// after a reset indistinguishable from a first launch, and Show Welcome
+    /// would then write the onboarding answers over a reset that was done to
+    /// get out of them.
     static var isFirstLaunch: Bool {
         Key.allCases.allSatisfy { d.object(forKey: $0.rawValue) == nil }
     }

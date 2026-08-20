@@ -324,6 +324,24 @@ The lock exists because the prose here did not work. Run two and they do not mer
 
 Running a suite inside a `git worktree` needs care with `node_modules`. Symlinking the whole directory from the main checkout makes the workspace package resolve there: `node_modules/@birta/minimal-diff` is a relative symlink to `../../packages/minimal-diff`, so a worktree that symlinks `node_modules` wholesale tests the main checkout's engine rather than its own, silently, with a green suite. If your change touches `packages/`, build `node_modules` as per-entry symlinks with a real `@birta/` directory pointing at the worktree's own package, or run `pnpm install` in the worktree.
 
+### Leaving the machine as you found it
+
+A session that launches Birta Writer Jot owns processes and files outside every repo, and the harness lock can see none of them. Account for them before you finish: what you started is stopped, and what you wrote outside a repo is gone.
+
+The check is `pgrep -f "jot/build/Birta Writer Jot"`, which must come back empty, and `ls ~/Library/Preferences/com.birtalabs.jot.*.plist`, which must not have grown. `bash jot/scripts/measure.sh` asserts both for itself and fails rather than reporting them, so a run that leaks says so. The manual check is for everything it does not run, which is every ad-hoc probe.
+
+Three ways this leaks, each of which has happened here.
+
+A hard kill orphans WebKit. The helpers (GPU, Networking, WebContent) are XPC services rather than children of the app, so nothing reaps them: they exit because the app asks them to, which only happens on SIGTERM through its own handler. SIGKILL on the app, or on the shell that owns it, leaves a set per launch sitting at a fraction of a core until the machine restarts. They belong to no session anybody can name, which is how a red suite becomes nobody's fault. End a Jot you launched with `kill <pid>`, never `kill -9`, and never by pattern.
+
+A second `trap ... EXIT` REPLACES the first rather than adding to it. A cleanup registered its own way switches off everything the earlier trap did, and the failure is invisible: the script still passes, and the litter is somewhere nobody is looking. One trap per script, and everything that needs cleaning registers with it.
+
+`defaults delete` on a throwaway domain leaves the plist. It empties the domain and `cfprefsd` writes the file back, so one file per run accumulates in `~/Library/Preferences` indefinitely. Remove the file too, by exact name. Never by a glob over `com.birtalabs.jot.*`: the app's own domain is a prefix of every throwaway one, and a glob there takes the user's real settings.
+
+An ad-hoc probe is where this bites. None of it is visible from outside, and `jot/scripts/measure.sh`'s own header was the only place it was written down, which is not where somebody writing ten lines of Swift to answer one question will read it. A probe that builds a `WKWebView` starts the same three helpers a whole app does.
+
+Foreign load is the other half, and it is not yours to clean. The process table is machine-wide, so an orphan may belong to a session in another repo or to the user; `ListAgents` names the live peers and asking costs a message. What is yours is what you started.
+
 ### Layout and naming
 
 ```
