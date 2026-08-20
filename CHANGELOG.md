@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.820.0] - 2026, August 20
+
 ### Added
 
 - Dates from the slash menu. `/date` opens a calendar at the caret, and `/today`, `/tomorrow` and `/yesterday` insert a date without opening anything. What lands in the file is plain text, so it survives a round trip as exactly the characters you saw and every other Markdown tool reads it the same way. There is no format setting: the date is written the way your system writes dates, which is `Aug 20, 2026` on a US machine and `20 Aug 2026` on a British one. The month is asked for by name rather than as a number, so a date is usually readable by someone whose locale orders the fields differently. A few languages have no short name for a month and write the number instead, `20. 8. 2026` in Czech and `20.8.2026` in Finnish. That is their own convention for a short date, so it is what you get there.
