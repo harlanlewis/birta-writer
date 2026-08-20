@@ -888,6 +888,7 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify({ barBottom: hlOpen.barBottom, dockBottom: hlOpen.dockBottom }));
     check("jot: and the row carries no rule of its own to double it",
         hlOpen.dockOwnBorder === "0px", JSON.stringify({ dockOwnBorder: hlOpen.dockOwnBorder }));
+
     // A menu opened from the FIRST row paints over the second one.
     //
     // This guards a fix that is NOT here. The row and the bar's first row are
@@ -932,5 +933,32 @@ export async function run({ page, check, baseUrl }) {
         hlOpen.rowJustify !== "center" && hlOpen.rowJustify !== "safe center"
             && hlOpen.itemLeft !== null && hlOpen.itemLeft - hlOpen.rowLeft <= 4,
         JSON.stringify(hlOpen));
+
+
+    // The OTHER side of `barMenusOnClick`, on the page that does not declare it.
+    //
+    // Everything above measures the arrangement being ON. Nothing measured it
+    // being off, which is the half the changelog actually promises ("the
+    // extension's toolbar menus still open on hover"). Wire `hostArranges` to
+    // return true unconditionally and every check above still passes, because
+    // none of them ever mounts the control page and points at a trigger.
+    //
+    // The hover is performed rather than dispatched: `mouseenter` is what the
+    // menu listens for, and Playwright's hover fires the real sequence.
+    await mount("control.html");
+    const ctlHover = await (async () => {
+        const trigger = page.locator('.tb-item[data-item-id="format"] .tb-fmt-btn').first();
+        const before = await page.evaluate(() =>
+            !!document.querySelector('.tb-item[data-item-id="format"] .tb-fmt-menu')?.getClientRects().length);
+        await trigger.hover();
+        await page.waitForTimeout(OPEN_WAIT);
+        const after = await page.evaluate(() =>
+            !!document.querySelector('.tb-item[data-item-id="format"] .tb-fmt-menu')?.getClientRects().length);
+        return { before, after };
+    })();
+    check("control: the menu is shut before the pointer arrives", !ctlHover.before,
+        JSON.stringify(ctlHover));
+    check("control: hovering a bar trigger still opens its menu where the arrangement is absent",
+        ctlHover.after, JSON.stringify(ctlHover));
 
 }
