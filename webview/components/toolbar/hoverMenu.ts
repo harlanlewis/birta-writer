@@ -1,13 +1,20 @@
 /**
- * The shared hover lifecycle for a toolbar dropdown. Every toolbar dropdown
- * (Format, Font, Settings, Checks, Debug, ⋯ overflow) opens on hover, positions
- * itself with placeMenu, and must hold open while the pointer crosses the small
- * gap between the button and the menu. Extracting it here means all menus behave
- * identically and a new one is correct by construction — the gap-bridge bug that
- * once affected only the Debug menu can't recur, because there's one code path.
+ * The shared open/close lifecycle for a toolbar dropdown. Every toolbar
+ * dropdown (Format, Font, Settings, Checks, Debug, ⋯ overflow) positions itself
+ * with placeMenu and shares one code path here, so all menus behave identically
+ * and a new one is correct by construction — the gap-bridge bug that once
+ * affected only the Debug menu can't recur.
+ *
+ * WHICH gesture opens one is the surface's (`barMenusOnClick`,
+ * shared/hostProfile.ts), and the two halves have different failure modes.
+ * On hover the menu must hold open while the pointer crosses the small gap
+ * between the button and the menu. On click it must close on a press
+ * anywhere else, INCLUDING another menu's trigger; nothing about a pointer
+ * leaving does it, so `ui/outsidePress.ts` stands in for the mouseleave.
  */
 import { placeMenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { watchOutsidePress } from "@/ui/outsidePress";
 import { hostArranges } from "../../../shared/hostProfile";
 
 export interface HoverMenuOptions {
@@ -80,6 +87,14 @@ export function wireHoverMenu(
     const hideDelayMs = (): number =>
         options.hideDelayMs ?? (button.closest(`[${MENU_CLIP_ATTR}]`) ? 160 : 0);
     const openDelay = options.openDelayMs ?? 140;
+    /**
+     * Asked once, at wiring time, and read by both the listener set-up at the
+     * bottom and the open path above it. Two reads could not disagree in the
+     * product, where the declaration is injected before the bundle evaluates,
+     * but a test that swaps the profile between them would wire a hover menu
+     * that registers a click surface's outside-press watcher.
+     */
+    const onClickSurface = hostArranges("barMenusOnClick");
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let openTimer: ReturnType<typeof setTimeout> | null = null;
     // Escape-layer unregister handle (null while closed): a hover-opened
@@ -87,6 +102,9 @@ export function wireHoverMenu(
     // layer stack (blockKeys) — registering makes that Escape close the
     // menu instead of block-selecting under it.
     let escapeOff: (() => void) | null = null;
+    // Outside-press unregister handle (null while closed). Only ever set
+    // under `barMenusOnClick`; see the `open` path below.
+    let outsideOff: (() => void) | null = null;
 
     const cancelHide = (): void => {
         if (hideTimer !== null) {
@@ -101,6 +119,7 @@ export function wireHoverMenu(
         }
     };
     const isOpen = (): boolean => menu.style.display === "flex";
+
     const open = (): void => {
         cancelHide();
         cancelOpen();
@@ -111,10 +130,17 @@ export function wireHoverMenu(
         // Marks the wrap so its ::after gap-bridge is live only while open.
         wrap.classList.add("tb-menu-open");
         escapeOff ??= registerEscapeLayer(close);
+        // Only under `barMenusOnClick`: a hover menu already closes the moment
+        // the pointer leaves its wrap, so there is no state left for an
+        // outside press to resolve. The wrap holds both the trigger and the
+        // menu, so one element covers both halves.
+        if (onClickSurface) { outsideOff ??= watchOutsidePress([wrap], close); }
     };
     const close = (): void => {
         escapeOff?.();
         escapeOff = null;
+        outsideOff?.();
+        outsideOff = null;
         cancelHide();
         cancelOpen();
         menu.style.display = "none";
@@ -208,8 +234,12 @@ export function wireHoverMenu(
      * The trigger's own mousedown is already swallowed by `createMenuTrigger`,
      * so the toggle rides on `click`, which still arrives. Everything else is
      * unchanged: the same `open`/`close` pair, the same Escape layer, the same
-     * keyboard path, and closing still happens on focusout and on Escape. A
-     * click outside closes it through the layer that was already there.
+     * keyboard path, and closing still happens on focusout and on Escape.
+     *
+     * A press anywhere else closes it through `watchOutsidePress`, which is a
+     * listener of its own and not the Escape layer. The layer stack answers
+     * the Escape KEY and nothing else, so a click surface that leaned on it
+     * for this held every menu it had ever opened on screen at once.
      */
     const onClick = (e: MouseEvent): void => {
         e.preventDefault();
@@ -217,7 +247,7 @@ export function wireHoverMenu(
         if (isOpen()) { close(); } else { open(); }
     };
 
-    if (hostArranges("barMenusOnClick")) {
+    if (onClickSurface) {
         button.addEventListener("click", onClick);
     } else {
         wrap.addEventListener("mouseenter", scheduleOpen);
@@ -233,6 +263,8 @@ export function wireHoverMenu(
         dispose: (): void => {
             escapeOff?.();
             escapeOff = null;
+            outsideOff?.();
+            outsideOff = null;
             cancelHide();
             cancelOpen();
             button.removeEventListener("click", onClick);

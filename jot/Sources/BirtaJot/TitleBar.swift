@@ -158,7 +158,7 @@ final class TitleBarView: NSView {
         // and it wraps at a space. A name with a space in it therefore laid out
         // as two lines inside a box one line tall: the first line drew, the
         // second was clipped by the height, and the result was a title that
-        // read as a shorter name rather than as a damaged one. "Birta Jot.md"
+        // read as a shorter name rather than as a damaged one. "Birta Writer Jot.md"
         // drew as "Birta", with no ellipsis to say anything had been dropped,
         // in a label whose frame was wide enough for the whole string.
         //

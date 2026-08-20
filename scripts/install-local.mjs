@@ -57,7 +57,7 @@ function resolveCodeCli() {
 }
 
 /**
- * Build and install Birta Jot too, so the handoff leaves BOTH surfaces running
+ * Build and install Birta Writer Jot too, so the handoff leaves BOTH surfaces running
  * the tree the session just finished. Jot embeds dist/webview.js, which
  * packaging above has already produced in production form, so this only builds
  * the Swift shell and swaps the app.
@@ -73,17 +73,17 @@ function resolveCodeCli() {
  */
 function installJot() {
     if (process.platform !== "darwin") {
-        console.log("\ninstall-local: not macOS, so Birta Jot was skipped (it is a macOS app).");
+        console.log("\ninstall-local: not macOS, so Birta Writer Jot was skipped (it is a macOS app).");
         return;
     }
     if (tryCapture("swift", ["--version"]) === null) {
         console.log(
-            "\ninstall-local: no `swift` on PATH, so Birta Jot was skipped. " +
+            "\ninstall-local: no `swift` on PATH, so Birta Writer Jot was skipped. " +
                 "Install the Xcode Command Line Tools, then: pnpm jot:install",
         );
         return;
     }
-    step("building and installing Birta Jot");
+    step("building and installing Birta Writer Jot");
     try {
         run("bash", ["jot/scripts/install-app.sh", "--build"]);
     } catch {
@@ -91,7 +91,7 @@ function installJot() {
         // the script explains on its own. The extension is already installed by
         // this point and that must not be reported as a failure.
         console.log(
-            "install-local: Birta Jot was not replaced (see the message above). " +
+            "install-local: Birta Writer Jot was not replaced (see the message above). " +
                 "The extension install above is unaffected; re-run `pnpm jot:install` when ready.",
         );
     }
@@ -153,11 +153,11 @@ if (copies.length === 1 && copies[0].toLowerCase() === CURRENT_ID.toLowerCase())
     process.exit(1);
 }
 
-// 5. Install Birta Jot, the macOS shell, from the same build.
+// 5. Install Birta Writer Jot, the macOS shell, from the same build.
 installJot();
 
 console.log(
     "\n✓ Installed. Reload to run the new build: " +
         'Cmd+Shift+P → "Developer: Reload Window".' +
-        "\n  Birta Jot needs no reload: it was replaced and relaunched if it was running.",
+        "\n  Birta Writer Jot needs no reload: it was replaced and relaunched if it was running.",
 );

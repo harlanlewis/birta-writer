@@ -225,7 +225,7 @@ export const EDITOR_COMMANDS = [
     // title is the SETTINGS_TITLE_TEMPLATE expansion of JOT_PRODUCT_NAME, the
     // way the row above expands PRODUCT_NAME, and is drift-guarded against the
     // nls string and Jot's own NSWindow title.
-    { id: "openHostPreferences", title: "Birta Jot Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
+    { id: "openHostPreferences", title: "Birta Writer Jot Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"], absentUnder: "fixedToolbarLayout" },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a

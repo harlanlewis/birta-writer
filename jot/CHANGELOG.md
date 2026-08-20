@@ -1,6 +1,6 @@
-# Changelog: Birta Jot
+# Changelog: Birta Writer Jot
 
-Birta Jot is the macOS menu-bar scratchpad in `jot/`. It runs the same editor the Birta Writer extension does, out of the same `dist/webview.js`, so every editor change reaches it and those are recorded in [`../CHANGELOG.md`](../CHANGELOG.md) rather than repeated here. This file records the app AROUND that editor: its panel and window, menu bar, settings, file handling, packaging and install.
+Birta Writer Jot is the macOS menu-bar scratchpad in `jot/`. It runs the same editor the Birta Writer extension does, out of the same `dist/webview.js`, so every editor change reaches it and those are recorded in [`../CHANGELOG.md`](../CHANGELOG.md) rather than repeated here. This file records the app AROUND that editor: its panel and window, menu bar, settings, file handling, packaging and install.
 
 The two are separate because they have different readers and different ways in. The extension is installed from the VS Code Marketplace and Open VSX, both of which render `CHANGELOG.md` out of the VSIX; Jot is installable from neither, and arrives as an app attached to a GitHub Release. An entry a Marketplace reader cannot act on spends the attention the ones they can act on need.
 
@@ -10,7 +10,23 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- Birta Jot is now called Birta Writer Jot, everywhere it names itself: the app in Applications, its window and menus, its Settings window, and the menu-bar item. The app icon and the menu-bar mark are redrawn to match. Nothing about your settings moves, so the hotkey, the network switch and the agent command all survive the rename; installing replaces the old `Birta Jot.app` rather than leaving two copies competing for the hotkey.
+
+- Breaking: the note Birta Writer Jot starts with has moved out of Application Support, where you could not find it, and into a folder you can: `iCloud Drive/Birta Writer Jot/Birta Writer Jot.md` when iCloud Drive is on, and `~/Documents/Birta Writer/Birta Writer Jot.md` when it is not. Nothing is migrated, so a note you have already typed into stays at the old path and Jot will not open it: move it yourself, or point Settings at it under Advanced. A scratchpad you had already pointed somewhere is untouched.
+
+- Birta Writer Jot's search looks like a Mac search field: a rounded capsule with the magnifier inside it, the match count at its trailing end, and Done rather than an ✕. Match Case, Match Whole Word, Use Regular Expression and Find in Selection are all still there, now behind the ⋯ button rather than in a row of toggles beside the field. The extension's find bar is unchanged, and still matches VS Code's.
+
+- The arrows at the ends of Birta Writer Jot's formatting row are buttons rather than full-height strips: the same size as the controls they sit over, centred on the row, held off the window edge, and each with a tooltip saying what pressing it does. The gradient under them is wider than the button now, so a control scrolling past fades out instead of being cut in half.
+
+- Birta Writer Jot's panel no longer floats above other applications' windows, and the setting that made it is gone. A window that will not go behind anything is one you fight, and the hotkey already brings the panel back in a keystroke. What that setting was reaching for is the new hide-when-inactive switch below, which takes the panel away instead of pinning it up.
+
 ### Added
+
+- Birta Writer Jot can keep its note in iCloud Drive, so it is the same note on every Mac you have. On by default, and off automatically when iCloud Drive is switched off in System Settings, where the row says so and the note stays on this Mac. Settings, Advanced. Switching it does not copy the note between the two places; the path under the row tells you where you landed.
+
+- Without a Dock icon, Birta Writer Jot can hide itself whenever it is not the app in front, which makes it a true overlay: summon it, type, click back into your work, and it is gone with nothing to dismiss. Off by default. Settings, General, under Show in Dock; with a Dock icon it does not apply and the row says why.
 
 - The file name in Birta Writer Jot's titlebar shows a chevron when you point at it, the way a document window does on macOS, so the name reads as something you can open rather than as a label. Clicking it still opens the same Name, Tags and Where popover; the chevron only says that it will. It stays while the popover is open, and the space it occupies is reserved whether or not it is drawn, so the title never shifts as the pointer arrives.
 
@@ -43,6 +59,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 - The gear menu's row for Jot's settings, and the title of the window it opens, are called Birta Jot Settings again. One release called them Writer Jot Settings, which named the app by a name nothing else uses: the app in Applications and the folder it keeps notes in both say Birta Jot.
 
 ### Fixed
+
+- Birta Writer Jot will not write over a note it could not read. It read the note with "give me the text, or nothing", which cannot tell a note that is not there from a note that is there and unavailable, so both mounted an empty panel and the next save wrote that empty panel to the file. Nothing could reach that before, because the note lived where only Jot touched it. Keeping it in iCloud Drive makes it routine: on a second Mac the note may not have downloaded yet, and macOS evicts a file it has not seen used for a while and leaves a placeholder in its place. Jot now says so along the bottom of the panel, saves nothing in either direction until the note arrives, and picks it up the next time you summon the panel.
+
+- Birta Writer Jot's toolbar menus close when you click anywhere else, including on another menu's button. Its menus open on a click rather than on hover, and nothing was listening for the click that should have dismissed one, so every menu you opened stayed on screen: the format menu, the list menu and the gear menu could all be showing at once, overlapping each other over the text. Only one is open at a time now, and a click on the page closes it. The extension's menus open on hover and were never affected.
 
 - Birta Writer Jot's titlebar draws the whole file name. A label that is told to truncate is still free to wrap first, and it wraps at a space, so a name with one in it laid out on two lines inside a box one line tall: the first line drew, the rest was clipped away, and nothing said so. A note called `Birta Jot.md` titled itself `Birta`, which reads as the name of the file rather than as damage. The previous release narrowed the gap without closing it. A name genuinely too long for the titlebar now ends in an ellipsis.
 

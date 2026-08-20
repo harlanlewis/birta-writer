@@ -6,7 +6,7 @@ import XCTest
 final class ActiveBindingTests: XCTestCase {
     private let doc = URL(fileURLWithPath: "/tmp/jot-test/Chosen.md")
     private let note = URL(fileURLWithPath: "/tmp/jot-test/Note.md")
-    private let pad = URL(fileURLWithPath: "/tmp/jot-test/Birta Jot.md")
+    private let pad = URL(fileURLWithPath: "/tmp/jot-test/Birta Writer Jot.md")
 
     func testADocumentOutranksEverything() {
         XCTAssertEqual(ActiveBinding.slot(hasDocument: true, hasCurrentNote: true), .document)

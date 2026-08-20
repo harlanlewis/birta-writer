@@ -56,6 +56,12 @@
  * mouse user sees a row that appears to end at the window's edge. The
  * scrollbar that would have said so is hidden, deliberately, since a
  * permanent one across a row of chrome is louder than the controls in it.
+ *
+ * Each is a BUTTON the size of the items it sits over, centred on the row and
+ * inset from the window frame, carrying a tooltip that says what pressing it
+ * does; behind it sits a wider gradient of the bar's own ground, so the item
+ * passing underneath goes out on a fade rather than being cut in half. The
+ * two are separate elements, and dock.css holds the reason.
  */
 import { IconChevronLeft, IconChevronRight } from "@/ui/icons";
 import { t } from "@/i18n";
@@ -146,9 +152,18 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         const btn = document.createElement("button");
         btn.className = `ui-btn tb-btn tb-dock-scroll tb-dock-scroll--${direction}`;
         btn.innerHTML = direction === "start" ? IconChevronLeft : IconChevronRight;
-        btn.setAttribute("aria-label", direction === "start"
+        const label = direction === "start"
             ? t("Scroll the formatting controls left")
-            : t("Scroll the formatting controls right"));
+            : t("Scroll the formatting controls right");
+        btn.setAttribute("aria-label", label);
+        // A chevron at the edge of a scrolling row is the one control here
+        // whose PURPOSE a glyph does not carry: an arrow against the window's
+        // edge reads as "there is more" without saying that pressing it is
+        // what fetches the more. The tooltip is the sentence.
+        //
+        // Placed below, which is the side with room: the row is the bar's last
+        // child, so above is the bar's own first row.
+        applyTooltip(btn, label, { placement: "below" });
         // Out of the tab order and hidden from assistive tech: these move a
         // viewport, they do not reach anything. Every control they scroll to is
         // already focusable and already reachable by tabbing, which scrolls it
@@ -169,6 +184,22 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
     const scrollEnd = makeScroller("end");
 
     /**
+     * The gradient under one chevron, as an element of its own rather than a
+     * pseudo-element on the button (dock.css says why the obvious shape does
+     * not work). Purely decorative, so it is hidden from assistive tech; the
+     * button on top of it carries the label.
+     */
+    function makeFade(direction: "start" | "end"): HTMLElement {
+        const fade = document.createElement("div");
+        fade.className = `tb-dock-fade tb-dock-fade--${direction}`;
+        fade.setAttribute("aria-hidden", "true");
+        return fade;
+    }
+
+    const fadeStart = makeFade("start");
+    const fadeEnd = makeFade("end");
+
+    /**
      * Show each chevron only while the row can move that way.
      *
      * A tolerance rather than an equality: `scrollLeft` is fractional under
@@ -182,9 +213,15 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         const atEnd = row.scrollLeft >= slack - 1;
         scrollStart.hidden = slack <= 1 || atStart;
         scrollEnd.hidden = slack <= 1 || atEnd;
+        // The fade goes with its chevron, always. A gradient left behind on an
+        // edge with nothing past it says the row scrolls when it does not.
+        fadeStart.hidden = scrollStart.hidden;
+        fadeEnd.hidden = scrollEnd.hidden;
     }
 
-    el.append(row, scrollStart, scrollEnd);
+    // Fades first, so the buttons paint over them in DOM order as well as by
+    // z-index; the chevron is the thing being pressed.
+    el.append(row, fadeStart, fadeEnd, scrollStart, scrollEnd);
     row.addEventListener("scroll", paintScrollers, { passive: true });
     // The row's own box changes with the window, and its content's width
     // changes when the items are rendered into it. Both move the answer, and

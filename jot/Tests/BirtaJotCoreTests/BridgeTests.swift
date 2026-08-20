@@ -160,11 +160,11 @@ final class BridgeTests: XCTestCase {
         // the check that a NEW arrangement was declared here deliberately, so a
         // list built from the thing under test would agree with any change at
         // all. The cost is that adding one means editing this line, which is
-        // the point of it. It went red exactly once, for a commit that added
-        // `barMenusOnClick` to the bridge and never ran `swift test`.
+        // the point of it: every arrangement Jot has gained has gone red here
+        // first, in a commit that added it to the bridge and ran no Swift.
         XCTAssertEqual(host?["arrangements"] as? [String],
                        ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout",
-                        "barMenusOnClick"])
+                        "barMenusOnClick", "nativeFindBar"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

@@ -3,7 +3,7 @@ import BirtaJotCore
 
 /// The middle of the titlebar band, made to behave like the titlebar it is.
 ///
-///     ◉ ◉ ◉  Birta Jot.md ───────────────────── T  ⌕  ⚙
+///     ◉ ◉ ◉  Birta Writer Jot.md ───────────────────── T  ⌕  ⚙
 ///                         └── this view ──────┘
 ///
 /// The panel gives its page a full-height transparent titlebar, so the

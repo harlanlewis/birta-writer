@@ -29,11 +29,12 @@ enum Prefs {
         static let viewState = "viewState"
         static let saveAsDirectory = "saveAsDirectory"
         static let autosave = "autosave"
-        static let floatAboveOtherWindows = "floatAboveOtherWindows"
         static let agentCommand = "agentCommand"
         static let showInDock = "showInDock"
+        static let hideWhenInactive = "hideWhenInactive"
         static let openToBlankNote = "openToBlankNote"
         static let currentNotePath = "currentNotePath"
+        static let storeInICloud = "storeInICloud"
     }
 
     static var hotkey: HotkeyCombo {
@@ -44,18 +45,7 @@ enum Prefs {
         set { d.set(newValue.spelling, forKey: Key.hotkey) }
     }
 
-    /// The app's own name, and the only spelling of it in this file.
-    ///
-    /// `JOT_PRODUCT_NAME` in shared/product.ts is the source; Swift cannot
-    /// import TypeScript, so this restates it and the drift test in
-    /// `shared/__tests__/editorCommandsContributions.test.ts` reads this file
-    /// and fails when the two disagree. It is a constant rather than two
-    /// literals because the folder and the file inside it are the same name,
-    /// and a rename that moved one of them would leave the app keeping
-    /// "Birta Jot.md" in a folder called something else.
-    static let productName = "Birta Jot"
-
-    /// The scratchpad file. Default: ~/Library/Application Support/Birta Jot/Birta Jot.md.
+    /// The scratchpad file. Default: `defaultScratchpadURL` below.
     /// `BIRTA_JOT_SCRATCHPAD` overrides it for a run, so jot/scripts/measure.sh
     /// can type into a throwaway file and never touch the real one.
     static var scratchpadURL: URL {
@@ -67,20 +57,63 @@ enum Prefs {
         set { d.set(newValue.path, forKey: Key.scratchpadPath) }
     }
 
-    /// The app's name, twice: the folder Jot keeps its things in, and the note
-    /// inside it.
+    /// Whether the user has pointed the scratchpad at a path of their own,
+    /// which overrides both homes: `scratchpadURL` prefers the stored path, so
+    /// the iCloud switch decides nothing while this is true and the Settings
+    /// row says as much rather than offering a choice that does nothing.
+    static var hasExplicitScratchpadPath: Bool {
+        !(d.string(forKey: Key.scratchpadPath) ?? "").isEmpty
+    }
+
+    /// Whether the note lives in iCloud Drive, so it is the same note on every
+    /// machine the user has.
+    ///
+    /// ON by default, and subject to iCloud Drive actually being switched on:
+    /// `scratchpadLocation` resolves the two together, and a machine without
+    /// iCloud falls back to the local folder rather than failing. Syncing a
+    /// scratchpad is what most people want from one and the least surprising
+    /// thing a note can do; the switch is there because it is also an outbound
+    /// copy of everything typed into it, which is a choice that belongs to the
+    /// user rather than to us.
+    static var storeInICloud: Bool {
+        get { d.object(forKey: Key.storeInICloud) == nil ? true : d.bool(forKey: Key.storeInICloud) }
+        set { d.set(newValue, forKey: Key.storeInICloud) }
+    }
+
+    /// Whether this machine has iCloud Drive switched on.
+    static var iCloudAvailable: Bool { ScratchpadLocation.iCloudDriveRoot() != nil }
+
+    /// Which of the two homes the default note is in right now.
+    static var scratchpadLocation: ScratchpadLocation {
+        ScratchpadLocation.inForce(preferICloud: storeInICloud, iCloudAvailable: iCloudAvailable)
+    }
+
+    /// The default note's path, in whichever home is in force.
     ///
     /// The file is named after the app rather than after what it is for. It is
     /// the one document a person who has changed no settings ever sees, its
-    /// name is what the window titles itself with, and "Birta Jot" is what
-    /// they would call the thing that window is. A description of the file's
-    /// role is a word they never chose and would have to learn.
+    /// name is what the window titles itself with, and "Birta Writer Jot" is
+    /// what they would call the thing that window is. A description of the
+    /// file's role is a word they never chose and would have to learn.
+    ///
+    /// The two homes and the folder each uses are `ScratchpadLocation`'s, which
+    /// is where the reasoning for them lives and which is testable without a
+    /// real home directory.
     static var defaultScratchpadURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return base
-            .appendingPathComponent(productName, isDirectory: true)
-            .appendingPathComponent("\(productName).md")
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        switch scratchpadLocation {
+        case .iCloud:
+            // `iCloudAvailable` is what put us here, so the root is there; the
+            // fallback covers only the race where iCloud Drive is switched off
+            // between the two reads, and lands on the same folder the `.local`
+            // case would have chosen.
+            guard let root = ScratchpadLocation.iCloudDriveRoot() else {
+                return ScratchpadLocation.local.url(root: home.appendingPathComponent("Documents", isDirectory: true))
+            }
+            return ScratchpadLocation.iCloud.url(root: root)
+        case .local:
+            return ScratchpadLocation.local.url(root: home.appendingPathComponent("Documents", isDirectory: true))
+        }
     }
 
     /// When set, Jot edits this document instead of the scratchpad.
@@ -179,14 +212,6 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.autosave) }
     }
 
-    /// Whether the panel stays above other applications' windows. Off by
-    /// default: a window that will not go behind anything is a window you
-    /// fight, and the hotkey already brings the panel back in one keystroke.
-    static var floatAboveOtherWindows: Bool {
-        get { d.bool(forKey: Key.floatAboveOtherWindows) }
-        set { d.set(newValue, forKey: Key.floatAboveOtherWindows) }
-    }
-
     /// The shell command `/ai` runs, with `{prompt}` where the quoted request
     /// goes. The same shape as the extension's `birta.agent.command`, so a
     /// command tuned there can be pasted here unchanged. Empty turns `/ai` off:
@@ -210,6 +235,28 @@ enum Prefs {
         get { d.bool(forKey: Key.showInDock) }
         set { d.set(newValue, forKey: Key.showInDock) }
     }
+
+    /// Whether the panel hides itself when Jot stops being the active app.
+    ///
+    /// Off by default, and only meaningful while `showInDock` is off: the two
+    /// answer the same question about what kind of thing Jot is, and
+    /// `hidesWhenInactive` is what makes it a true overlay — summon it, type,
+    /// click back into your work and it is gone, with no window to dismiss.
+    ///
+    /// Meaningless WITH a Dock icon, which is why the Settings row is disabled
+    /// there rather than merely unhelpful. An ordinary application whose window
+    /// vanished every time you looked at another one would be one you could not
+    /// use: Cmd+Tab to it, glance at the browser, and the window you tabbed to
+    /// is gone. `hidesWhenInactiveInForce` is the one place that pairing is
+    /// resolved, so the panel and the Settings row cannot disagree about it.
+    static var hideWhenInactive: Bool {
+        get { d.bool(forKey: Key.hideWhenInactive) }
+        set { d.set(newValue, forKey: Key.hideWhenInactive) }
+    }
+
+    /// Whether the panel actually hides on deactivation right now: the setting
+    /// AND the absence of a Dock icon.
+    static var hidesWhenInactiveInForce: Bool { hideWhenInactive && !showInDock }
 
     /// Whether launching starts a new empty note rather than reopening the
     /// last one. Off by default: a scratchpad that survives a restart is what

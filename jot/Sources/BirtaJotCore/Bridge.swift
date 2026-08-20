@@ -353,9 +353,15 @@ public struct BootConfig: Equatable {
             //   fixedToolbarLayout        two controls and a fixed dock is not
             //     an arrangement worth offering to rearrange, and the bar is
             //     the only route to search and settings, so it does not hide.
+            //   barMenusOnClick           a window's own menus open on a click,
+            //     and a panel summoned under the pointer would otherwise open
+            //     one on arrival.
+            //   nativeFindBar             every other control in this window is
+            //     a native one, so the search field is drawn as macOS draws
+            //     one and its four options move behind a ⋯ button.
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar"],
                 "shortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
             ],
             "fontPreset": fontPreset,

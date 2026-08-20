@@ -136,40 +136,58 @@ describe("editor command contributions", () => {
     });
 
     it("Jot's own name in Swift should be the shared constant's spelling", () => {
-        // The default scratchpad is `<name>/<name>.md` under Application
-        // Support, so Jot's name reaches the filesystem and not only a label:
-        // the folder it keeps things in and the note the window titles itself
-        // with. Swift cannot import product.ts, and this is the read that
+        // Jot's name reaches the FILESYSTEM and not only a label: the note the
+        // window titles itself with, and the folder holding it in iCloud
+        // Drive. Swift cannot import product.ts, and this is the read that
         // relates the two — the same technique as the window-title guard
         // above.
         //
-        // Asserted on the CONSTANT rather than on the path expression, and the
-        // count is asserted first. A regex over the path would pass a file
-        // that had gone back to two separate literals as long as both happened
-        // to read "Birta Jot", which is exactly the drift a rename causes and
+        // This guard follows its subject. Both names used to be spelled in
+        // `Preferences.swift`, and moving them to `ScratchpadLocation` would
+        // have left it reading a file that no longer said either, passing on a
+        // corpus that had emptied under it.
+        //
+        // Asserted on the CONSTANTS rather than on the path expressions, and
+        // each count is asserted first. A regex over a path would pass a file
+        // that had gone back to separate literals as long as each happened to
+        // read the right thing, which is exactly the drift a rename causes and
         // exactly what this is here to catch.
         const swift = fs.readFileSync(
-            path.join(root, "jot/Sources/BirtaJot/Preferences.swift"), "utf8");
+            path.join(root, "jot/Sources/BirtaJotCore/ScratchpadLocation.swift"), "utf8");
         const code = swift
             .split("\n")
-            .filter((line) => !line.trimStart().startsWith("//"))
+            .filter((line) => !line.trimStart().startsWith("//") && !line.trimStart().startsWith("///"))
             .join("\n");
-        const names = [...code.matchAll(/\bstatic let productName\s*=\s*"([^"]+)"/g)].map((m) => m[1]!);
-        expect(names, "Preferences.swift should declare productName exactly once").toHaveLength(1);
-        expect(names[0]).toBe(JOT_PRODUCT_NAME);
 
-        // And that the constant is what the default path is built from, in
-        // both positions. A constant nothing reads is a constant that agrees
-        // with the test and not with the app.
-        const path_ = code.match(
-            /defaultScratchpadURL: URL \{[\s\S]*?\n {4}\}/,
-        )?.[0];
-        expect(path_, "defaultScratchpadURL should still be readable here").toBeTruthy();
-        expect(path_).not.toMatch(/"[^"]*Birta[^"]*"/);
-        expect(
-            [...path_!.matchAll(/\bproductName\b/g)],
-            "the folder and the file should both come from productName",
-        ).toHaveLength(2);
+        for (const [constant, expected] of [
+            ["productName", JOT_PRODUCT_NAME],
+            ["suiteName", PRODUCT_NAME],
+        ] as const) {
+            const found = [...code.matchAll(
+                new RegExp(`\\bpublic static let ${constant}\\s*=\\s*"([^"]+)"`, "g"),
+            )].map((m) => m[1]!);
+            expect(found, `ScratchpadLocation should declare ${constant} exactly once`).toHaveLength(1);
+            expect(found[0]).toBe(expected);
+        }
+
+        // And that the constants are what the paths are built from. A constant
+        // nothing reads is a constant that agrees with the test and not with
+        // the app, which is why this half exists at all.
+        //
+        // `folderName` answers both homes, so it must name both constants and
+        // spell neither; `fileName` interpolates the product name.
+        const folders = code.match(/var folderName: String \{[\s\S]*?\n {4}\}/)?.[0];
+        expect(folders, "folderName should still be readable here").toBeTruthy();
+        expect(folders, "the folders should not be spelled out").not.toMatch(/"[^"]*Birta[^"]*"/);
+        for (const constant of ["productName", "suiteName"]) {
+            expect(folders, `folderName should be built from ${constant}`)
+                .toMatch(new RegExp(`\\b${constant}\\b`));
+        }
+
+        const fileName = code.match(/\bstatic let fileName\s*=\s*(.+)/)?.[1];
+        expect(fileName, "fileName should still be readable here").toBeTruthy();
+        expect(fileName, "the note's name should be built from productName")
+            .toBe('"\\(productName).md"');
     });
 
     it("the native toolbar context menu order should match the shared table order", () => {

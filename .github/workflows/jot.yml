@@ -59,15 +59,15 @@ jobs:
         run: |
           node esbuild.mjs --production
           bash jot/scripts/build-app.sh
-          test -x "jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
-          test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/webview.js"
-          test -f "jot/build/Birta Jot.app/Contents/Resources/web/dist/hostPalette.css"
+          test -x "jot/build/Birta Writer Jot.app/Contents/MacOS/BirtaJot"
+          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/web/dist/webview.js"
+          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/web/dist/hostPalette.css"
           # The icons are committed, not generated here, so what this proves is
           # that build-app.sh still copies them in: an app with no AppIcon.icns
           # gets the blank document icon, and one with no MenuBarTemplate.pdf
           # falls back to a stock symbol, both silently.
-          test -f "jot/build/Birta Jot.app/Contents/Resources/AppIcon.icns"
-          test -f "jot/build/Birta Jot.app/Contents/Resources/MenuBarTemplate.pdf"
+          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/AppIcon.icns"
+          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/MenuBarTemplate.pdf"
 
       - name: install the WebKit browser
         run: npx playwright install webkit

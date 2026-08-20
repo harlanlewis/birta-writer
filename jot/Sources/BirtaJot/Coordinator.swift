@@ -98,6 +98,12 @@ final class Coordinator {
     private var reloadFromDisk = true
     /// False until the bound file has been read once; nothing is written before.
     private var hasLoaded = false
+    /// True while the bound file is THERE and could not be read: evicted by
+    /// iCloud, not downloaded yet, or otherwise unavailable. Distinct from
+    /// `!hasLoaded`, which is also true during an ordinary cold start, so the
+    /// two must not be conflated: the retry on summon keys off this one, and
+    /// keying it off `hasLoaded` announced an arrival on every first launch.
+    private var noteUnreadable = false
     /// The file the buffer's bytes belong to. Bound when the file is read, and
     /// only there: a Preferences change that points at another file first
     /// flushes to THIS one, then rebinds, so a scratchpad is never written
@@ -122,7 +128,7 @@ final class Coordinator {
         let webRoot = Coordinator.locateWebRoot()
         host = WebHost(webRoot: webRoot, documentDirectory: Prefs.activeURL.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
-            NSLog("Birta Jot: write failed: \(error)")
+            NSLog("Birta Writer Jot: write failed: \(error)")
         })
         hotkey = GlobalHotkey()
     }
@@ -208,7 +214,7 @@ final class Coordinator {
         hotkey.onPress = { [weak self] in self?.hotkeyPressed() }
         let status = hotkey.register(Prefs.hotkey)
         if status != noErr {
-            NSLog("Birta Jot: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
+            NSLog("Birta Writer Jot: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
         }
         installEscapeMonitor()
         if measure.enabled { installDebugSignals() }
@@ -416,7 +422,7 @@ final class Coordinator {
     }
 
     private func contentProcessDied() {
-        NSLog("Birta Jot: web content process terminated; remounting")
+        NSLog("Birta Writer Jot: web content process terminated; remounting")
         measure.mark("terminate")
         state = .cold
         loadPage()
@@ -444,6 +450,13 @@ final class Coordinator {
         panel.makeFirstResponder(host.webView)
         if state == .warm { host.focusEditor() }
         if state == .cold { loadPage() }
+        // A note that was there and unreadable when we last looked leaves the
+        // panel unwritable, and nothing else would ever look again: the only
+        // other reader runs after an agent run, and the download this is
+        // waiting on finishes on iCloud's schedule rather than on ours. Being
+        // summoned is the natural moment to ask again, and it is bounded by
+        // the user doing it.
+        if noteUnreadable { retryUnreadableNote() }
         // Summoned under a pointer that never moved: no enter event fires, so
         // the window has to ask where the pointer is.
         contentView.syncHoverFromPointer()
@@ -514,14 +527,17 @@ final class Coordinator {
             // the remount must show.
             if reloadFromDisk {
                 boundURL = Prefs.activeURL
-                latest = readActiveFile()
-                // The disk is the truth on this arm, so nothing is unwritten.
-                // The other arm keeps `isEdited`: after a content-process
-                // death `latest` can be ahead of the file, and saying it is
-                // not would be the one lie this flag must never tell.
-                isEdited = false
+                // The disk is the truth on this arm, so nothing is unwritten
+                // (`adopt` clears `isEdited`). The other arm keeps it: after a
+                // content-process death `latest` can be ahead of the file, and
+                // saying it is not would be the one lie this flag must never
+                // tell.
+                //
+                // `hasLoaded` is set only when the read actually produced the
+                // note. A file that is there and unreadable leaves it false,
+                // so `writeLatest` refuses and the note is never truncated.
                 reloadFromDisk = false
-                hasLoaded = true
+                hasLoaded = adopt(readActiveNote())
             }
             host.send(.initDoc(content: latest, syncVersion: guardState.version, viewStateJSON: Prefs.viewStateJSON))
             state = .warm
@@ -597,7 +613,7 @@ final class Coordinator {
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
-            NSLog("Birta Jot: webview crash (\(source)): \(message)")
+            NSLog("Birta Writer Jot: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
             saveAttachment(id: id, data: data, mimeType: mimeType)
         case let .resolveLinkCard(id, url):
@@ -681,7 +697,7 @@ final class Coordinator {
         } catch AttachmentStore.StoreError.unsupportedType(let type) {
             host.send(.imageUploadError(id: id, error: "Jot cannot save a \(type) image."))
         } catch {
-            NSLog("Birta Jot: attachment save failed: \(error)")
+            NSLog("Birta Writer Jot: attachment save failed: \(error)")
             host.send(.imageUploadError(id: id, error: "The image could not be saved beside this document."))
         }
     }
@@ -698,7 +714,7 @@ final class Coordinator {
         guard !plan.isEmpty else { return }
         let failed = AttachmentReferences.apply(plan)
         guard !failed.isEmpty else { return }
-        NSLog("Birta Jot: \(failed.count) attachment(s) could not be copied: \(failed.joined(separator: ", "))")
+        NSLog("Birta Writer Jot: \(failed.count) attachment(s) could not be copied: \(failed.joined(separator: ", "))")
         let alert = NSAlert()
         alert.messageText = failed.count == 1
             ? "One image could not be copied"
@@ -714,8 +730,74 @@ final class Coordinator {
 
     // MARK: persistence
 
-    private func readActiveFile() -> String {
-        (try? String(contentsOf: boundURL, encoding: .utf8)) ?? ""
+    /// Read the bound file, keeping "there is no note" apart from "the note is
+    /// there and I could not read it" (`BirtaJotCore.NoteRead`).
+    ///
+    /// The second case only became reachable when the note could live in
+    /// iCloud Drive, and it is the dangerous one: treated as an empty note it
+    /// mounts an empty buffer, and the next write puts that buffer where the
+    /// note was. `hasLoaded` is the guard that already exists to stop exactly
+    /// that, and the caller leaves it false here rather than a new mechanism
+    /// being invented for it.
+    ///
+    /// Asks iCloud for the file on the way past, so the state resolves itself
+    /// rather than needing the user to know what to do about it.
+    private func readActiveNote() -> NoteRead {
+        let result = NoteRead.read(at: boundURL)
+        if case .unreadable(.notDownloaded) = result {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: boundURL)
+        }
+        return result
+    }
+
+    /// Ask again for a note that was present and unreadable, and put it in the
+    /// panel if it has arrived.
+    ///
+    /// Gated on `noteUnreadable` and NOT on `hasLoaded`, which is the trap
+    /// here: `hasLoaded` is also false during an ordinary cold start, before
+    /// the first read has happened at all, so keying off it fired this on
+    /// every first launch and announced that a note had arrived from iCloud
+    /// when nothing had been waiting on. The flag says we actually saw a note
+    /// we could not read, which is the only state worth retrying.
+    ///
+    /// A successful read lifts the write embargo, so the panel stops
+    /// discarding what is typed into it.
+    private func retryUnreadableNote() {
+        let read = readActiveNote()
+        guard case .contents(let text) = read else { return }
+        noteUnreadable = false
+        hasLoaded = true
+        latest = text
+        isEdited = false
+        if state == .warm {
+            host.send(.externalUpdate(content: text, syncVersion: guardState.bumpVersion()))
+        }
+        statusOverlay.flash("This note has arrived. Saving is on again.")
+    }
+
+    /// Take a read into the buffer, answering whether the buffer may be
+    /// WRITTEN afterwards. False leaves `hasLoaded` alone, so `writeLatest`
+    /// refuses and the note on disk is safe.
+    private func adopt(_ read: NoteRead) -> Bool {
+        isEdited = false
+        switch read {
+        case .contents(let text):
+            noteUnreadable = false
+            latest = text
+            return true
+        case .absent:
+            noteUnreadable = false
+            latest = ""
+            return true
+        case .unreadable:
+            noteUnreadable = true
+            // The buffer stays empty and unwritable. Saying so matters: an
+            // empty panel over a note that exists is indistinguishable from a
+            // new note, and the user would otherwise start typing into it.
+            latest = ""
+            if let message = read.message { statusOverlay.flash(message) }
+            return false
+        }
     }
 
     /// Ask the page for its freshest bytes, write them, then run `then`.
@@ -734,7 +816,7 @@ final class Coordinator {
         host.send(.flushSave(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
-            NSLog("Birta Jot: flush timed out; writing the last admitted content")
+            NSLog("Birta Writer Jot: flush timed out; writing the last admitted content")
             self.writeLatest()
             finish()
         }
@@ -890,8 +972,25 @@ final class Coordinator {
     }
 
     /// Take what is on disk as the buffer's new truth.
+    ///
+    /// A file that is present and UNREADABLE is not news: this runs when the
+    /// file changed underneath us, and iCloud evicting a note is one of the
+    /// ways that happens. Replacing the buffer with an empty string there
+    /// would discard what the user has, so that read is ignored and the buffer
+    /// stands.
+    ///
+    /// A file that is genuinely ABSENT still empties the buffer, exactly as it
+    /// did before this distinction existed. Deleting the note in Finder is a
+    /// thing the user did on purpose, and the panel following it is the old
+    /// behaviour rather than a case this guard was reaching for.
     private func reloadFromDiskIntoBuffer() {
-        let onDisk = readActiveFile()
+        let read = readActiveNote()
+        if case .unreadable = read {
+            if let message = read.message { statusOverlay.flash(message) }
+            return
+        }
+        let onDisk: String
+        if case .contents(let text) = read { onDisk = text } else { onDisk = "" }
         guard onDisk != latest else { return }
         latest = onDisk
         isEdited = false
@@ -923,7 +1022,7 @@ final class Coordinator {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             } catch {
-                NSLog("Birta Jot: could not create \(directory.path): \(error)")
+                NSLog("Birta Writer Jot: could not create \(directory.path): \(error)")
                 self.statusOverlay.flash("Could not make a new note in \(directory.lastPathComponent).")
                 return
             }
@@ -933,7 +1032,7 @@ final class Coordinator {
                 // one the next launch cannot find its way back to.
                 try AtomicFile.writeString("", to: target)
             } catch {
-                NSLog("Birta Jot: could not write \(target.path): \(error)")
+                NSLog("Birta Writer Jot: could not write \(target.path): \(error)")
                 self.statusOverlay.flash("Could not make a new note.")
                 return
             }
@@ -956,7 +1055,7 @@ final class Coordinator {
         } catch {
             // The scratchpad is the fallback, and it is a good one: the setting
             // says where to START, not that the old note may be lost.
-            NSLog("Birta Jot: could not start a blank note in \(directory.path): \(error)")
+            NSLog("Birta Writer Jot: could not start a blank note in \(directory.path): \(error)")
         }
     }
 
@@ -1039,7 +1138,7 @@ final class Coordinator {
         host.send(.requestEditorContext(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, let pending = self.pendingContexts.removeValue(forKey: id) else { return }
-            NSLog("Birta Jot: the page did not answer requestEditorContext in time")
+            NSLog("Birta Writer Jot: the page did not answer requestEditorContext in time")
             pending(nil)
         }
     }
@@ -1096,7 +1195,7 @@ final class Coordinator {
                     try AtomicFile.writeString(self.latest, to: target)
                 }
             } catch {
-                NSLog("Birta Jot: could not move \(source.path) to \(target.path): \(error)")
+                NSLog("Birta Writer Jot: could not move \(source.path) to \(target.path): \(error)")
                 self.measure.trace("relocate failed \(target.lastPathComponent)")
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
@@ -1469,6 +1568,18 @@ final class Coordinator {
         hotkey.register(Prefs.hotkey)
     }
 
+    /// Re-read the settings that decide how the WINDOW behaves, without the
+    /// flush-and-reload `preferencesChanged` does.
+    ///
+    /// Separate because the cost is what distinguishes them, not the subject:
+    /// a file or network change needs a fresh page, and this needs a property
+    /// set on a window that is already showing the right document. Routing the
+    /// Dock switch through the heavy path would leave the user watching a
+    /// switch they moved with the panel blank for a round trip.
+    func panelBehaviorChanged() {
+        panel.applyHideWhenInactive()
+    }
+
     func preferencesChanged() {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
@@ -1479,7 +1590,7 @@ final class Coordinator {
             self.loadPage()
             // The bound file may have changed; the titlebar names it.
             self.refreshTitle()
-            self.panel.applyFloatLevel()
+            self.panel.applyHideWhenInactive()
         }
     }
 
@@ -1510,7 +1621,7 @@ final class Coordinator {
             let web = res.appendingPathComponent("web", isDirectory: true)
             if FileManager.default.fileExists(atPath: web.appendingPathComponent("index.html").path) { return web }
         }
-        NSLog("Birta Jot: no web assets found; set BIRTA_JOT_WEB_DIR or run jot/scripts/build-app.sh")
+        NSLog("Birta Writer Jot: no web assets found; set BIRTA_JOT_WEB_DIR or run jot/scripts/build-app.sh")
         return URL(fileURLWithPath: "/nonexistent", isDirectory: true)
     }
 }

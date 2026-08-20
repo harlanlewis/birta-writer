@@ -25,7 +25,7 @@ export const PRODUCT_NAME = "Birta Writer";
  * this constant. The fourth, `e2e/jotHost/checks.mjs`, is an assertion rather
  * than a declaration, so it fails on its own when the label moves.
  */
-export const JOT_PRODUCT_NAME = "Birta Jot";
+export const JOT_PRODUCT_NAME = "Birta Writer Jot";
 
 /**
  * The published release history, opened by the gear menu's What's New row.
