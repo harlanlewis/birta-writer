@@ -41,10 +41,27 @@ enum Prefs {
         static let autosave = "autosave"
         static let agentCommand = "agentCommand"
         static let showInDock = "showInDock"
-        static let hideWhenInactive = "hideWhenInactive"
         static let openToBlankNote = "openToBlankNote"
         static let currentNotePath = "currentNotePath"
         static let storeInICloud = "storeInICloud"
+
+        /// Keys no accessor reads any more.
+        ///
+        /// A removed setting leaves its value behind, and a value nothing
+        /// reads is invisible until the name comes back meaning something
+        /// else. Swept once at launch so the domain holds only what is live,
+        /// and read again by `reset()`, which would otherwise leave exactly
+        /// the keys a reset is for behind.
+        static let retired = [
+            "floatAboveOtherWindows",
+            "hideWhenInactive",
+        ]
+    }
+
+    /// Drop the retired keys. Cheap, idempotent, and called before anything
+    /// reads a preference.
+    static func sweepRetiredKeys() {
+        for key in Key.retired { d.removeObject(forKey: key) }
     }
 
     static var hotkey: HotkeyCombo {
@@ -245,28 +262,6 @@ enum Prefs {
         get { d.bool(forKey: Key.showInDock) }
         set { d.set(newValue, forKey: Key.showInDock) }
     }
-
-    /// Whether the panel hides itself when Jot stops being the active app.
-    ///
-    /// Off by default, and only meaningful while `showInDock` is off: the two
-    /// answer the same question about what kind of thing Jot is, and
-    /// `hidesWhenInactive` is what makes it a true overlay — summon it, type,
-    /// click back into your work and it is gone, with no window to dismiss.
-    ///
-    /// Meaningless WITH a Dock icon, which is why the Settings row is disabled
-    /// there rather than merely unhelpful. An ordinary application whose window
-    /// vanished every time you looked at another one would be one you could not
-    /// use: Cmd+Tab to it, glance at the browser, and the window you tabbed to
-    /// is gone. `hidesWhenInactiveInForce` is the one place that pairing is
-    /// resolved, so the panel and the Settings row cannot disagree about it.
-    static var hideWhenInactive: Bool {
-        get { d.bool(forKey: Key.hideWhenInactive) }
-        set { d.set(newValue, forKey: Key.hideWhenInactive) }
-    }
-
-    /// Whether the panel actually hides on deactivation right now: the setting
-    /// AND the absence of a Dock icon.
-    static var hidesWhenInactiveInForce: Bool { hideWhenInactive && !showInDock }
 
     /// Whether launching starts a new empty note rather than reopening the
     /// last one. Off by default: a scratchpad that survives a restart is what

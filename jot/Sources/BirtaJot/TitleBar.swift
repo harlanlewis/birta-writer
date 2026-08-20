@@ -155,6 +155,15 @@ final class TitleBarView: NSView {
     /// a string built without it measures a size nothing ever draws at, and
     /// every width taken from it is short.
     private static let titleFont = NSFont.titleBarFont(ofSize: NSFont.systemFontSize)
+
+    /// What a candidate title measures, in the font it will be drawn in.
+    ///
+    /// The measurer `WindowTitle.runs(fitting:measure:)` bisects with, and the
+    /// one place the font requirement above is discharged for a string that
+    /// does not exist yet.
+    private static func width(of text: String) -> Double {
+        Double(NSAttributedString(string: text, attributes: [.font: titleFont]).size().width)
+    }
     /// Laid out by hand, and that is the whole reason this file was worth
     /// getting wrong once.
     ///
@@ -168,25 +177,31 @@ final class TitleBarView: NSView {
     /// own frame from its content is what makes the width real.
     private func build() {
         label.font = Self.titleFont
-        // A title is ONE line, and saying so is what makes the line-break mode
-        // below mean truncation.
+        // A title is ONE line, and this is the only thing enforcing it.
         //
-        // `NSTextField(labelWithString:)` leaves `usesSingleLineMode` off, so a
-        // label that is told to truncate its tail is still free to WRAP first,
-        // and it wraps at a space. A name with a space in it therefore laid out
-        // as two lines inside a box one line tall: the first line drew, the
-        // second was clipped by the height, and the result was a title that
-        // read as a shorter name rather than as a damaged one. "Birta Writer Jot.md"
-        // drew as "Birta", with no ellipsis to say anything had been dropped,
-        // in a label whose frame was wide enough for the whole string.
+        // The field's own `lineBreakMode` is NOT set here, and its absence is
+        // the point. A cell lays an attributed value out under the paragraph
+        // style that value carries, never under the field's setting, and this
+        // label is filled through `attributedStringValue` and never through
+        // `stringValue`. So a `lineBreakMode` on the field would be inert
+        // while looking load-bearing, which is what four rounds of fixes
+        // tuned. WHERE the name is shortened is `WindowTitle.runs(fitting:)`,
+        // before the string exists.
         //
-        // Every instrument here reported that title as correct, because
-        // `stringValue`, `accessibilityLabel`, the label's frame and its
-        // `visibleRect` are all the model rather than the drawing. What
-        // discriminates is how many lines the cell lays the string out on, and
-        // `measure.sh` asserts that against the live window.
+        // What remains for the cell is refusing to WRAP, which is this line:
+        // `NSTextField(labelWithString:)` leaves it off, so the default
+        // paragraph style's `.byWordWrapping` applies and a name with a space
+        // in it lays out on two lines inside a box one line tall, the first
+        // drawn and the rest clipped away. `usesSingleLineMode` reinterprets a
+        // wrapping mode as `.byClipping`, which is AppKit's documented rule
+        // for it, and one line is all this needs to be.
+        //
+        // Deliberately not a truncating paragraph style on top. A cell in one
+        // needs its box 4pt wider than `NSAttributedString.size()` reports, so
+        // it truncates a name that fits and draws an ellipsis that means the
+        // window is too narrow when it is not; the `title ink` arm of
+        // `jot/scripts/measure.sh` is what says so.
         label.usesSingleLineMode = true
-        label.lineBreakMode = .byTruncatingTail
         label.setAccessibilityRole(.staticText)
         addSubview(label)
         // Template so it inks itself from the control tint and follows the
@@ -254,6 +269,13 @@ final class TitleBarView: NSView {
     func setTextCeiling(_ ceiling: CGFloat) {
         guard ceiling != textCeiling else { return }
         textCeiling = ceiling
+        // Repaint, because WHAT the title says is a function of the ceiling
+        // now and not only how much of it is shown: a window dragged narrower
+        // has to give up characters, and one dragged wider has to take them
+        // back. `paint` returns early when the string it would draw is the one
+        // already drawn, so a resize that changes no characters costs a
+        // measurement and nothing else.
+        paint()
         resize()
         layoutSubtreeIfNeeded()
     }
@@ -351,6 +373,7 @@ final class TitleBarView: NSView {
     private func drawnTextWidth() -> CGFloat {
         label.attributedStringValue.size().width.rounded(.up)
     }
+
 
     /// How far the title's INK actually reaches, in points.
     ///
@@ -486,8 +509,18 @@ final class TitleBarView: NSView {
         // right on screen and reports a width in the default face, which is
         // narrower. Nothing goes red: the sizing and the check that guards it
         // both read the same short number and agree.
+        // Shortened HERE, against the ceiling, rather than left to the cell.
+        //
+        // A cell truncating a whole line eats its tail first, so `— Edited`
+        // would go before any of the name did; macOS shortens the name and
+        // keeps the state, which is why the two are separate runs. Doing it
+        // in `WindowTitle` also makes it decidable without a window, which the
+        // cell's own behaviour is not.
         let text = NSMutableAttributedString()
-        for run in WindowTitle.runs(name: url.lastPathComponent, edited: edited) {
+        let runs = WindowTitle.runs(name: url.lastPathComponent, edited: edited,
+                                    fitting: Double(textCeiling),
+                                    measure: Self.width(of:))
+        for run in runs {
             text.append(NSAttributedString(
                 string: run.text,
                 attributes: [.foregroundColor: ink[run.secondary] as Any,

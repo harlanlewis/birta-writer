@@ -44,6 +44,53 @@ public enum WindowTitle {
         return runs
     }
 
+    /// The character that stands for the part of a name that did not fit. One
+    /// glyph, not three periods: a real ellipsis is what the platform draws and
+    /// what a reader recognises as damage rather than as punctuation.
+    public static let ellipsis = "\u{2026}"
+
+    /// The same title, with the NAME shortened until the whole line fits.
+    ///
+    /// The name is what gives way, and the suffix never does. A cell asked to
+    /// truncate a whole line eats its tail first, so `Edited` would go before
+    /// any of the name did, and `Edited` is the half a reader is scanning for.
+    /// macOS shortens the name and keeps the state; this is that rule, and the
+    /// reason the two are separate `Run`s in the first place.
+    ///
+    /// `measure` is injected so this is decidable with no window: the drawing
+    /// side passes a text measurer in its own title font, and a test passes
+    /// arithmetic. It is asked about whole candidate strings rather than about
+    /// characters, because a font kerns and the width of a prefix is not the
+    /// sum of its glyphs.
+    ///
+    /// Returns the untouched runs when they already fit, and a name of nothing
+    /// but the ellipsis when even one character will not go, which is still
+    /// preferable to a suffix with no subject.
+    public static func runs(name: String, edited: Bool,
+                            fitting ceiling: Double,
+                            measure: (String) -> Double) -> [Run] {
+        let full = runs(name: name, edited: edited)
+        let line = full.map(\.text).joined()
+        if measure(line) <= ceiling { return full }
+
+        let suffix = edited ? separator + editedSuffix : ""
+        let characters = Array(name)
+        // The largest prefix length that fits, by bisection over LENGTHS. The
+        // predicate is monotonic in length for any sane font, and asking the
+        // measurer O(log n) times rather than O(n) matters because this runs on
+        // every repaint of a window being dragged narrower.
+        var low = 0
+        var high = characters.count
+        while low < high {
+            let mid = (low + high + 1) / 2
+            let candidate = String(characters[0..<mid]) + ellipsis + suffix
+            if measure(candidate) <= ceiling { low = mid } else { high = mid - 1 }
+        }
+        var shortened = [Run(text: String(characters[0..<low]) + ellipsis, secondary: false)]
+        if edited { shortened.append(Run(text: suffix, secondary: true)) }
+        return shortened
+    }
+
     /// Whether a title should carry the suffix at all, given the buffer's
     /// state and the autosave setting.
     ///

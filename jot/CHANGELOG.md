@@ -46,8 +46,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - The arrows at the ends of Birta Writer Jot's formatting row are buttons rather than full-height strips: the same size as the controls they sit over, centred on the row, held off the window edge, and each with a tooltip saying what pressing it does. The gradient under them is wider than the button now, so a control scrolling past fades out instead of being cut in half.
 
-- Birta Writer Jot's panel no longer floats above other applications' windows, and the setting that made it is gone. A window that will not go behind anything is one you fight, and the hotkey already brings the panel back in a keystroke. What that setting was reaching for is the new "hide when Jot is not in front" switch, which takes the panel away instead of pinning it up.
-
 - Birta Writer Jot's editing controls have moved out of the titlebar row onto a second row of the toolbar, directly below it and above the text, on the page's own ground with no rule between the two rows. The row is closed to start with, and the serif T that opens it sits in the toolbar itself next to search; the choice is remembered. Every control that changes the document is there, including the seven that used to ship hidden and needed a settings change to reach: Strikethrough, Highlight, Inline Code, Horizontal Rule, Inline Math, Footnote and Clear Formatting. It starts at the window's left edge, and the text moves down to make room for it rather than being covered. When the window is too narrow for the whole set, the row scrolls sideways and a chevron appears at whichever edge you can still move toward; clicking one scrolls the row. The titlebar row keeps search and the settings gear. This is Jot only; the extension's toolbar is unchanged.
 
 - Birta Writer Jot's menus open when you click them, not when the pointer passes over them, and their buttons no longer carry a chevron. A menu that opens on hover needs the chevron to say that resting there will do something; where the click is what opens it, the click is the whole of the affordance. This is Jot only: the extension's toolbar menus still open on hover, with their chevrons.
@@ -57,6 +55,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 - Birta Writer Jot's gear menu no longer offers Customize Toolbar or Hide Toolbar, and the commands do nothing there. The formatting row's contents and order are fixed, and the toolbar is the only route to search and settings, so neither question is Jot's to answer. Both are unchanged in the extension.
 
 ### Fixed
+
+- Birta Writer Jot's panel really does sit at the ordinary window level now, so another application's window can cover it. The setting that made it float was removed a release ago and the level was not: an `NSPanel` starts out floating, and the line that had been setting it was taken out rather than replaced, which left the panel pinned above everything with nothing in Settings to say so or turn it off. The panel also stays put when you click into another app, which is the same default arriving from the same direction.
+
+- The file name in Birta Writer Jot's titlebar ends in an ellipsis when it does not fit, instead of stopping mid-letter. Every previous attempt at this set the line-break mode on the text field, and a field's own setting does not govern a title built as a styled string, so none of them ever reached the drawing: the name was laid out to be cut at whatever pixel the titlebar ran out at. The name is now shortened before it is drawn, and `Edited` is never what gets dropped to make room, because the state of the file is the half you are looking for.
 
 - Birta Writer Jot will not write over a note it could not read. It read the note with "give me the text, or nothing", which cannot tell a note that is not there from a note that is there and unavailable, so both mounted an empty panel and the next save wrote that empty panel to the file. Nothing could reach that before, because the note lived where only Jot touched it. Keeping it in iCloud Drive makes it routine: on a second Mac the note may not have downloaded yet, and macOS evicts a file it has not seen used for a while and leaves a placeholder in its place. Jot now says so along the bottom of the panel, saves nothing in either direction until the note arrives, and picks it up the next time you summon the panel.
 
@@ -71,6 +73,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 - The chevron beside the formatting bar's T is drawn all the time. It used to appear on hover and grow from nothing, which pushed every control in the row 4px sideways as the pointer crossed it, so the button you were reaching for moved as you arrived at it.
 
 ### Removed
+
+- Birta Writer Jot's "hide when Jot is not in front" switch, which shipped one release ago as the answer to a panel that floated. The panel no longer floats, so there is nothing to answer: a window you can cover is a window you can leave on screen. Settings, General.
 
 - Birta Writer Jot's two Chrome settings, one for the formatting half of the toolbar and one for the file path, both shipped one release ago. The dock's own toggle answers the first, and the second named a row that no longer exists: the file is in the titlebar now, where a macOS window title is not something you switch off.
 

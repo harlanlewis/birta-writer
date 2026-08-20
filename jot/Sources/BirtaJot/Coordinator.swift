@@ -1462,8 +1462,23 @@ final class Coordinator {
             title.maxX, titlebarControlsWidth, panel.frame.width))
     }
 
+    /// The panel's window level, for `jot/scripts/measure.sh`.
+    ///
+    /// Here because a level was wrong for a release while three comments and a
+    /// changelog entry said it was right. `NSPanel` starts at `.floating` and
+    /// `isFloatingPanel` is a setter for that level, so the level is never the
+    /// absence of a line and cannot be read off the source by eye. Raw, not
+    /// compared to a constant here: the assertion belongs in the script, where
+    /// a wrong expectation shows up as a failing arm rather than as a probe
+    /// that agrees with itself.
+    private func traceWindowLevel() {
+        guard measure.enabled else { return }
+        measure.trace("windowlevel level=\(panel.level.rawValue) hidesOnDeactivate=\(panel.hidesOnDeactivate ? "yes" : "no")")
+    }
+
     private func traceTitleBar() {
         guard measure.enabled else { return }
+        traceWindowLevel()
         let view = titleBar.titleView
         let frame = view.convert(view.bounds, to: nil)
         let text = view.labelFrameInWindow()
@@ -1642,18 +1657,6 @@ final class Coordinator {
         hotkey.register(Prefs.hotkey)
     }
 
-    /// Re-read the settings that decide how the WINDOW behaves, without the
-    /// flush-and-reload `preferencesChanged` does.
-    ///
-    /// Separate because the cost is what distinguishes them, not the subject:
-    /// a file or network change needs a fresh page, and this needs a property
-    /// set on a window that is already showing the right document. Routing the
-    /// Dock switch through the heavy path would leave the user watching a
-    /// switch they moved with the panel blank for a round trip.
-    func panelBehaviorChanged() {
-        panel.applyHideWhenInactive()
-    }
-
     func preferencesChanged() {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
@@ -1664,7 +1667,6 @@ final class Coordinator {
             self.loadPage()
             // The bound file may have changed; the titlebar names it.
             self.refreshTitle()
-            self.panel.applyHideWhenInactive()
         }
     }
 

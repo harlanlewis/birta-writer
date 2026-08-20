@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything reads a preference, and before the panel is built.
+        Prefs.sweepRetiredKeys()
         buildMainMenu()
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
@@ -264,8 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
-                onChange: { [weak self] in self?.coordinator.preferencesChanged() },
-                onPanelBehaviorChange: { [weak self] in self?.coordinator.panelBehaviorChanged() })
+                onChange: { [weak self] in self?.coordinator.preferencesChanged() })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)

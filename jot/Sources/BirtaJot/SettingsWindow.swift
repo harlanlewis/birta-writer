@@ -70,8 +70,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let networkSwitch = NSSwitch()
     private let agentField = NSTextField(string: Prefs.agentCommand)
     private let dockSwitch = NSSwitch()
-    private let hideInactiveSwitch = NSSwitch()
-    private let hideInactiveCaption = Caption("")
     private let blankSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
     private let iCloudSwitch = NSSwitch()
@@ -82,17 +80,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     private let onHotkeyChange: () -> OSStatus
     private let onChange: () -> Void
-    /// The light path: a window-behaviour setting moved, and the page behind it
-    /// does not need reloading. Separate from `onChange` for the reason
-    /// `Coordinator.panelBehaviorChanged` gives.
-    private let onPanelBehaviorChange: () -> Void
 
     init(onHotkeyChange: @escaping () -> OSStatus,
-         onChange: @escaping () -> Void,
-         onPanelBehaviorChange: @escaping () -> Void) {
+         onChange: @escaping () -> Void) {
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
-        self.onPanelBehaviorChange = onPanelBehaviorChange
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: 300),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -249,7 +241,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (iCloudSwitch, Prefs.storeInICloud, #selector(toggleICloud)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
-            (hideInactiveSwitch, Prefs.hideWhenInactive, #selector(toggleHideWhenInactive)),
             (blankSwitch, Prefs.openToBlankNote, #selector(toggleOpenToBlank)),
             (loginSwitch, false, #selector(toggleLoginItem)),
         ] {
@@ -266,7 +257,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
         showLoginItem(LoginItem.state)
         showICloud()
-        showHideWhenInactive()
     }
 
     /// Put the iCloud row where the machine actually is.
@@ -295,21 +285,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
     }
 
-    /// Put the hide-on-deactivate row where the pairing says.
-    ///
-    /// Disabled while Jot has a Dock icon, and the caption says why rather than
-    /// leaving a dead switch to be puzzled over: with an icon Jot is an
-    /// ordinary application, and one whose window vanished every time you
-    /// looked at another one would be unusable.
-    private func showHideWhenInactive() {
-        let applies = !Prefs.showInDock
-        hideInactiveSwitch.isEnabled = applies
-        hideInactiveSwitch.state = Prefs.hideWhenInactive ? .on : .off
-        hideInactiveCaption.say(
-            applies ? "" : "Only without a Dock icon: an app in the Dock keeps its window.",
-            bad: false)
-    }
-
     private func buildPane(_ tab: Tab) -> NSView {
         if panes.isEmpty { wireControls() }
         let sections: [NSView]
@@ -326,12 +301,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 Self.group([
                     Self.row("Show in Dock", control: dockSwitch,
                              caption: Caption("Off keeps Jot in the menu bar only, out of the Dock and out of Cmd+Tab.")),
-                    // Directly under the Dock row, because it is that row's
-                    // consequence: it is live only while the one above it is
-                    // off, and reading them in the other order asks you to
-                    // remember a state from further up the pane.
-                    Self.row("Hide when Jot is not in front", control: hideInactiveSwitch,
-                             caption: hideInactiveCaption),
                     Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
                 ]),
                 Self.heading("Network"),
@@ -682,25 +651,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.agentCommand = agentField.stringValue
     }
 
-    /// The Dock icon, and Cmd+Tab with it. Applied HERE and now, the way the
-    /// float switch applies its window level: `onChange` flushes the buffer and
-    /// reloads the page, so routing this through it would leave the user
-    /// watching a switch they moved with nothing happening for a round trip.
-    /// Nothing else about the app needs re-reading for it, so it does not go
-    /// through `onChange` at all.
+    /// The Dock icon, and Cmd+Tab with it. Applied HERE and now rather than
+    /// through `onChange`, which flushes the buffer and reloads the page: that
+    /// would leave the user watching a switch they moved with nothing
+    /// happening for a round trip. Nothing else needs re-reading for it.
     @objc private func toggleShowInDock() {
         Prefs.showInDock = dockSwitch.state == .on
         AppDelegate.applyActivationPolicy()
-        // The row below is this row's consequence, and the panel's behaviour
-        // is too: gaining a Dock icon takes hide-on-deactivate away whatever
-        // that switch says (`Prefs.hidesWhenInactiveInForce`).
-        showHideWhenInactive()
-        onPanelBehaviorChange()
-    }
-
-    @objc private func toggleHideWhenInactive() {
-        Prefs.hideWhenInactive = hideInactiveSwitch.state == .on
-        onPanelBehaviorChange()
     }
 
     /// The note's home. `onChange` rather than the light path: this moves which

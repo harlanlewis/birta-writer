@@ -194,6 +194,24 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# The panel sits at the ordinary window level, where anything else can cover
+# it. Read from the live window rather than from the source: `NSPanel` is
+# `.floating` by default and `isFloatingPanel` sets that level, so a panel's
+# level is never the absence of a line, and a release shipped floating while
+# three comments and a changelog entry said it did not. 0 is
+# `NSWindow.Level.normal`; `.floating` is 3.
+LEVELTRACE="$(grep "^jot-trace windowlevel " "$LOG" | tail -1 || true)"
+WIN_LEVEL="$(echo "$LEVELTRACE" | sed -n 's/.*level=\([0-9-]*\).*/\1/p')"
+if [ -z "$LEVELTRACE" ]; then
+    echo "window level         FAILED: the app reported no window-level trace at all" >&2; exit 1
+fi
+if [ "$WIN_LEVEL" = "0" ]; then
+    echo "window level         ok: normal, so another app's window can cover the panel"
+else
+    echo "window level         FAILED: expected 0 (normal), got $WIN_LEVEL" >&2
+    echo "$LEVELTRACE" >&2; exit 1
+fi
+
 # The window's own title. A titlebar accessory is placed by AppKit inside a
 # band this panel has made transparent and full-height, so whether it arrived,
 # arrived empty, or arrived under the traffic lights is a question no unit test
@@ -638,6 +656,9 @@ ceil_at() { # ceil_at <width>; sets CEIL_* from the traces it provokes
     CEIL_WINDOW="$(echo "$drag" | sed -n 's/.*windowW=\([0-9.-]*\).*/\1/p')"
     CEIL_DRAG_W="$(echo "$drag" | sed -n 's/.* w=\([0-9.-]*\).*/\1/p')"
     CEIL_DRAG_HIDDEN="$(echo "$drag" | sed -n 's/.*hidden=\([a-z]*\).*/\1/p')"
+    # The characters actually drawn. `text=` is last on the line, so it can
+    # carry spaces and an ellipsis without any of it needing escaping.
+    CEIL_TEXT="$(echo "$tb" | sed -n 's/.*text=//p')"
     if [ -z "$CEIL_NEED" ] || [ -z "$CEIL_WINDOW" ]; then
         echo "title ceiling        FAILED: no titlebar/drag trace after resizing to $1" >&2
         echo "  $tb" >&2; echo "  $drag" >&2; exit 1
@@ -726,12 +747,38 @@ for CEIL_W in "$(awk "BEGIN{print $CEIL_BOUNDARY + 400}")" \
             echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name fits but is not drawn in full" >&2
             echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
         fi
+        # The other half of the ellipsis arm below. Without it a title that
+        # truncated at every width would satisfy that one and be caught by
+        # nothing here: it is the PAIR that says the ellipsis tracks the room.
+        case "$CEIL_TEXT" in
+            *…) echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the whole name fits and it was truncated anyway" >&2
+                echo "  text=\"$CEIL_TEXT\" needs=$CEIL_NEED got=$CEIL_GOT" >&2; exit 1;;
+        esac
     else
         CEIL_CUT=$((CEIL_CUT + 1))
         if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_GOT - 3)}"; then
             echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name was cut short of its own box" >&2
             echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
         fi
+        # 4. A name that did not fit says so, with an ellipsis.
+        #
+        #    Every other number here is a WIDTH, and a name sliced at a pixel
+        #    is exactly as wide as one truncated at the same ceiling: both
+        #    fill the box, so the ink arm above passes on either and cannot
+        #    tell them apart. It passed on a build that clipped, through four
+        #    releases.
+        #
+        #    `text` is the MODEL, the string the app decided to draw, so this
+        #    arm on its own would say nothing about the drawing. It is the
+        #    PAIR that discriminates: arm 3 ties the ink to the box, and this
+        #    ties the box's contents to a name that admits it was shortened.
+        #    Against the pre-fix build the two part company visibly, the model
+        #    reporting a whole name the label had no room for.
+        case "$CEIL_TEXT" in
+            *…) ;;
+            *)  echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name did not fit and was cut with no ellipsis" >&2
+                echo "  text=\"$CEIL_TEXT\" needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1;;
+        esac
     fi
 done
 
