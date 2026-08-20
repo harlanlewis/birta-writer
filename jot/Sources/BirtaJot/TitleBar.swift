@@ -99,6 +99,14 @@ final class TitleBarView: NSView {
     /// to stop. Anything that needs the height the view actually HAS reads
     /// `bounds`.
     static let height: CGFloat = 28
+    /// The tail truncation `paint` attaches to every run. One instance,
+    /// because it is read and never mutated, and `paint` builds its string
+    /// before the cache below can decide the repaint was not needed.
+    private static let truncating: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        return style
+    }()
 
     /// Laid out by hand, and that is the whole reason this file was worth
     /// getting wrong once.
@@ -122,10 +130,45 @@ final class TitleBarView: NSView {
         resize()
     }
 
+    /// The box the label needs, which is NOT what `intrinsicContentSize`
+    /// reports. Every width below reads this and nothing else.
+    ///
+    /// A label's intrinsic width is its TEXT's width, and its cell draws that
+    /// text inset inside whatever box it is handed, so a label sized at the
+    /// intrinsic width is its own insets too narrow. `fittingSize` asks the
+    /// cell instead. `cellSize` is NOT the substitute it looks like: a box of
+    /// exactly `cellSize` still fails to draw the string, and only
+    /// `fittingSize` clears it.
+    ///
+    /// What too narrow COSTS is a word, not the sliver of a glyph the
+    /// arithmetic suggests, because the cell has nowhere to put the overflow
+    /// but the next line and the label is one line tall. So a name that does
+    /// not fit loses everything from the last space onward, silently, and
+    /// what is left reads as a shorter filename. The paragraph style `paint`
+    /// attaches is what turns that into a tail truncation with an ellipsis,
+    /// which is also what makes `maxTextWidth` a ceiling rather than a cut.
+    ///
+    /// Heights agree between the two, so the vertical centring below is
+    /// unaffected, and `jot/scripts/measure.sh` is where that is checked
+    /// against a live window (`title baseline`), along with the label having
+    /// been given the box this names (`title width`). Neither line can tell
+    /// you this is the RIGHT quantity to size from: both sides of the width
+    /// comparison read it, so a wrong one would agree with itself. What that
+    /// check does catch is the sizing drifting away from it again.
+    ///
+    /// Empty is zero, and it has to be said rather than left to the cell: with
+    /// nothing to draw the cell still asks for its own insets, and a titled
+    /// view of only insets is a patch of window beside the traffic lights that
+    /// takes a click and answers with nothing, because `hitTest` reads the
+    /// label's width to decide whether there is a title to click at all.
+    private var textSize: NSSize {
+        label.stringValue.isEmpty ? .zero : label.fittingSize
+    }
+
     /// Fit the view to its text, within the ceiling. The label's own placement
     /// inside it is `layout()`'s, which runs again after AppKit has resized us.
     private func resize() {
-        let text = min(label.intrinsicContentSize.width, Self.maxTextWidth)
+        let text = min(textSize.width, Self.maxTextWidth)
         setFrameSize(NSSize(width: Self.leadingGap + text, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
@@ -145,7 +188,7 @@ final class TitleBarView: NSView {
     /// is a figure to quote.
     override func layout() {
         super.layout()
-        let size = label.intrinsicContentSize
+        let size = textSize
         // Never wider than the room this view actually has. The ceiling above
         // is about a long name crowding the page's controls; this is about the
         // view being narrower than its own text for any reason at all, and the
@@ -198,7 +241,12 @@ final class TitleBarView: NSView {
     /// `stringValue` and `accessibilityLabel` both answer a question about
     /// intent, and a name cut off in the middle answers it exactly as an
     /// intact one does.
-    func textWidthNeeded() -> CGFloat { label.intrinsicContentSize.width }
+    ///
+    /// It has to report what the label needs to DRAW, never the quantity
+    /// `resize` sized the label FROM, or the comparison is one number against
+    /// itself: a check that holds for every name, cannot fail, and lets a cut
+    /// title through while it passes.
+    func textWidthNeeded() -> CGFloat { textSize.width }
 
     /// Name `url`, and say whether the buffer has bytes the file does not.
     func show(url: URL, edited: Bool) {
@@ -230,11 +278,18 @@ final class TitleBarView: NSView {
             false: isKey ? .labelColor : .tertiaryLabelColor,
             true: isKey ? .tertiaryLabelColor : .quaternaryLabelColor,
         ]
+        // The truncation the label was configured for, carried ON THE STRING.
+        // `label.lineBreakMode` governs a plain `stringValue` and nothing
+        // else, so an attributed title falls back to the default paragraph
+        // style, which wraps by word: a name too long for its box loses every
+        // word after the last space that fits, off the bottom of a
+        // single-line label, with no ellipsis to say so.
         let text = NSMutableAttributedString()
         for run in WindowTitle.runs(name: url.lastPathComponent, edited: edited) {
             text.append(NSAttributedString(
                 string: run.text,
-                attributes: [.foregroundColor: ink[run.secondary] as Any]))
+                attributes: [.foregroundColor: ink[run.secondary] as Any,
+                             .paragraphStyle: Self.truncating]))
         }
         // Nothing to do when the title already says this, which under autosave
         // is almost every call: `isEdited`'s `didSet` fires on every admitted

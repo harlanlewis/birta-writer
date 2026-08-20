@@ -142,7 +142,7 @@ jot/                                          Birta Writer Jot, the macOS menu-b
 jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
 jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
-jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory; why the label centres on `bounds` and not on the height it was built at
+jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory; why the label is sized from what its cell needs and centred on `bounds`, never on what it reports or was built at
 jot/Sources/BirtaJot/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
 jot/Sources/BirtaJotCore/TitlebarBand.swift   Where that strip starts and stops, and what a double click on a titlebar is the user's setting to decide
 jot/Sources/BirtaJot/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
