@@ -184,6 +184,22 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     /// stylesheet (jot/Resources/index.html) reads to put the toolbar away.
     /// A class rather than a message: the bundle is the extension's and knows
     /// nothing about a window nobody is pointing at.
+    /// Toggle `body.jot-resting`, which the page styles when it has a resting
+    /// treatment to apply.
+    ///
+    /// It currently has none. The rule this drove faded the formatting
+    /// controls when the pointer left the window, and that stopped being
+    /// possible when they became a row of the bar: the strip it was written
+    /// for was fixed to the window's bottom edge and outside the layout, so
+    /// fading it left nothing behind, where fading a row of the bar leaves the
+    /// text pushed down around a gap with nothing drawn in it. Removing the
+    /// row instead reflows the document every time the pointer leaves the
+    /// window, which is what the original rule chose opacity to avoid.
+    ///
+    /// The machinery is kept rather than deleted because the question it
+    /// answers is still a good one and the hover tracking behind it is the
+    /// expensive half to rebuild. Anything that fades here has to cost no
+    /// layout, which is a real constraint on what the next treatment can be.
     func setChromeResting(_ resting: Bool) {
         let js = "document.body.classList.toggle('jot-resting', \(resting ? "true" : "false"));"
         webView.evaluateJavaScript(js) { _, _ in }
@@ -192,24 +208,80 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     /// Ask the page where its formatting dock is, for `jot/scripts/measure.sh`.
     ///
     /// The panel's own page carries CSS the browser harness does not (the
-    /// titlebar carve-out, the at-rest fade), so "the dock renders in WebKit"
-    /// and "the dock renders in THIS window" are different claims. This is how
-    /// the second one gets asked.
+    /// titlebar carve-out, and the leading inset that belongs to the first row
+    /// alone), so "the row renders in WebKit" and "the row renders in THIS
+    /// window, where the left edge is the window's" are different claims. This
+    /// is how the second one gets asked.
     func reportDockGeometry(_ report: @escaping (String) -> Void) {
         let js = """
         (function () {
           var d = document.querySelector('.tb-dock');
           if (!d) { return 'absent'; }
+          var bar = document.querySelector('.editor-topbar');
+          var toggle = document.querySelector('.tb-dock-toggle');
           var r = d.getBoundingClientRect();
+          var b = bar ? bar.getBoundingClientRect() : { top: -1, bottom: -1, height: -1 };
+          var t = toggle ? toggle.getBoundingClientRect() : { left: -1, width: -1 };
           return ['x=' + Math.round(r.left), 'y=' + Math.round(r.top),
                   'w=' + Math.round(r.width), 'h=' + Math.round(r.height),
                   'bottomGap=' + Math.round(window.innerHeight - r.bottom),
                   'expanded=' + d.dataset.expanded,
-                  'items=' + d.querySelectorAll('.tb-dock-row .tb-item').length].join(' ');
+                  'items=' + d.querySelectorAll('.tb-dock-row .tb-item').length,
+                  // Where it sits in the bar, which is what the arrangement
+                  // claims and what a rect alone cannot say: a row drawn at the
+                  // right pixels while parented to the body would report the
+                  // same numbers and take none of the bar's protections.
+                  'inBar=' + (d.parentElement === bar),
+                  'barBottom=' + Math.round(b.bottom),
+                  'barHeight=' + Math.round(b.height),
+                  // The toggle belongs to the bar's own row, not to the row it
+                  // opens; collapsed, it is the only part of this on screen.
+                  'toggleX=' + Math.round(t.left),
+                  'toggleW=' + Math.round(t.width),
+                  'toggleInRow=' + (toggle ? !!toggle.closest('.tb-dock') : 'absent')].join(' ');
         })()
         """
         webView.evaluateJavaScript(js) { value, _ in
             report(value as? String ?? "unavailable")
+        }
+    }
+
+    /// How much of the titlebar band's trailing edge the page's own controls
+    /// occupy, in CSS points, or nil when the page cannot say yet.
+    ///
+    /// A WIDTH rather than a position, and that is the point: the cluster is
+    /// right-aligned, so its width changes only when the set of controls does,
+    /// while its x moves with every window resize. Reporting the width lets the
+    /// shell recompute the drag strip locally on resize instead of waiting on a
+    /// round trip to the page, which during a live drag-resize would leave the
+    /// strip a frame or more behind the window it is in.
+    ///
+    /// The first row only. The formatting row below it is not in the band, and
+    /// including it would shrink the strip by the width of a row that is not
+    /// there.
+    func reportTitlebarControlsWidth(_ report: @escaping (CGFloat?) -> Void) {
+        let js = """
+        (function () {
+          var bar = document.querySelector('.editor-topbar .toolbar');
+          if (!bar) { return null; }
+          var items = bar.querySelectorAll('.tb-zone--right > *');
+          var left = null, right = null;
+          for (var i = 0; i < items.length; i++) {
+            var r = items[i].getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) { continue; }
+            left = left === null ? r.left : Math.min(left, r.left);
+            right = right === null ? r.right : Math.max(right, r.right);
+          }
+          if (left === null) { return 0; }
+          // To the window's edge, not the cluster's own box: the gap between
+          // the last control and the edge is padding nobody should be able to
+          // grab the window by either, and treating it as draggable would put
+          // a drag target under the pointer that is aiming for the gear.
+          return Math.round(window.innerWidth - left);
+        })()
+        """
+        webView.evaluateJavaScript(js) { value, _ in
+            report((value as? NSNumber).map { CGFloat($0.doubleValue) })
         }
     }
 

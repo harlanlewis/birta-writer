@@ -13,11 +13,15 @@
 <link rel="stylesheet" href="dist/hostPalette.css">
 <style>
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
-  .editor-topbar { height: 40px; box-sizing: border-box; }
+  <!-- A FLOOR, not a fit. The real page (jot/Resources/index.html) pins no
+       height at all; this stands in for the titlebar band the panel's bar sits
+       under, and a fixed height would model a bar that cannot hold a second
+       row when the product's can. -->
+  .editor-topbar { min-height: 40px; box-sizing: border-box; }
 </style>
 <script>
   document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, host: { capabilities: ["imageUpload", "appPreferences", "agent"], arrangements: ["typographyInGearMenu", "formattingInBottomDock", "fixedToolbarLayout"], shortcuts: [{ keys: "Mod-,", label: "Settings" }, { keys: "Mod-Shift-d", label: "Toggle Task Done" }] } };
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, host: { capabilities: ["imageUpload", "appPreferences", "agent"], arrangements: ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout"], shortcuts: [{ keys: "Mod-,", label: "Settings" }, { keys: "Mod-Shift-d", label: "Toggle Task Done" }] } };
   // The shell seeds `getState` from the persisted bag in its document-start
   // user script (Bridge.userScript), so the page reads it synchronously before
   // the bundle runs. A harness whose store starts empty cannot see anything

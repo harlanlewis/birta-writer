@@ -347,7 +347,7 @@ public struct BootConfig: Equatable {
             //   typographyInGearMenu      the panel's toolbar is short and its
             //     right-hand block is always on screen, so the typography rows
             //     read better inside the gear than as a second dropdown.
-            //   formattingInBottomDock    the titlebar row is the window's, so
+            //   formattingInSecondRow    the titlebar row is the window's, so
             //     the editing controls leave it: the file name sits beside the
             //     traffic lights and the dock holds the rest.
             //   fixedToolbarLayout        two controls and a fixed dock is not
@@ -355,7 +355,7 @@ public struct BootConfig: Equatable {
             //     the only route to search and settings, so it does not hide.
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInBottomDock", "fixedToolbarLayout"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout"],
                 "shortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
             ],
             "fontPreset": fontPreset,

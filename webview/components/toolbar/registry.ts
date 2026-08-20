@@ -227,7 +227,7 @@ export function hostAvailableItems(): ReadonlySet<ToolbarItemId> {
 }
 
 /**
- * The two surfaces under `formattingInBottomDock`, as one partition of the
+ * The two surfaces under `formattingInSecondRow`, as one partition of the
  * items this host can carry.
  *
  * The split is `ITEM_MUTATES` and nothing else: a control that changes the

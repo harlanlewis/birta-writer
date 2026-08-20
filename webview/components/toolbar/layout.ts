@@ -5,8 +5,8 @@
  * arrive already built and wrapped, keyed by id, and this module only ever
  * re-parents them.
  *
- * Under `formattingInBottomDock` there is a SECOND holder, the dock at the
- * window's bottom leading corner (dock.ts), and the placement question changes
+ * Under `formattingInSecondRow` there is a SECOND holder, a row inside the bar
+ * itself (dock.ts), and the placement question changes
  * shape rather than gaining a case: the partition is derived from
  * `ITEM_MUTATES`, so there is no config to resolve, nothing hidden, no overflow
  * to collapse and no customize mode to enter. Everything below that reads
@@ -135,9 +135,15 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     // The second holder, or null on a surface that keeps everything in the bar.
     // Read once for the same reason `available` is, and null is the fact every
     // branch below asks about, so no call site re-reads the declaration.
-    const dock: FormattingDock | null = hostArranges("formattingInBottomDock")
+    const dock: FormattingDock | null = hostArranges("formattingInSecondRow")
         ? createFormattingDock({ items })
         : null;
+    if (dock) {
+        // The bar holds both rows, so the bar is what turns into a column and
+        // what every height consumer goes on measuring.
+        topbar.classList.add("editor-topbar--stacked");
+        topbar.appendChild(dock.el);
+    }
     // Whether the arrangement is the user's to change. Read once, and the two
     // things it withdraws are withdrawn HERE as well as at the menus that offer
     // them: `hostHasCommand` already keeps the gear row, the slash row and the
@@ -325,6 +331,12 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             for (const id of topBar) {
                 const el = items[id];
                 if (el) { rightZone.appendChild(el); }
+                // The row's toggle rides directly in front of Find, so the two
+                // controls that open something sit together. Placed by the
+                // item it follows rather than at an index, because the zone's
+                // contents are the partition's to decide and an index would be
+                // a second, silent claim about that order.
+                if (id === "find") { rightZone.insertBefore(dock.toggle, el ?? null); }
             }
             renderPinned();
             return;

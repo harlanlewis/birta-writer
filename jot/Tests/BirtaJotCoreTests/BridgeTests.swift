@@ -157,7 +157,7 @@ final class BridgeTests: XCTestCase {
         let host = i18n["host"] as? [String: Any]
         XCTAssertEqual((host?["capabilities"] as? [String]) ?? ["x"], [])
         XCTAssertEqual(host?["arrangements"] as? [String],
-                       ["typographyInGearMenu", "formattingInBottomDock", "fixedToolbarLayout"])
+                       ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 
