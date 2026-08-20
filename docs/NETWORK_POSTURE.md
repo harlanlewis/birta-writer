@@ -18,7 +18,7 @@ Every network capability sits on one rung. The rungs are ordered by what leaves 
 | 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document; What's New (`birta.editor.openWhatsNew`); Ask Agent (`/ai`, `birta.editor.askAgent`), which hands one composed line to a shell command run as a child process or in a terminal, to the Chat view, or to the clipboard per `birta.agent.command`, and never to a model of its own |
 | 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards; link cards |
 | 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Shipped for GitHub (MAR-198); every other provider directed, not built | GitHub repository, issue and pull-request cards; Jira, Asana and Figma still to come |
-| 3. Your document content | The document itself | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232), any cloud or sync surface |
+| 3. Your document content | The document itself, uploaded by Birta, to a destination Birta chose | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232). Jot's note in iCloud Drive is NOT this, and §1's own subsection argues why |
 
 ### Rung 1 today: three features, and only one of them writes to the file
 
@@ -30,13 +30,25 @@ Link cards contact the host of a web link that sits alone on its own line, and w
 
 ### The same rung, on a second surface
 
-Birta Writer Jot makes rung-1 requests too, and the rung is what matters rather than the process making them: a URL the user typed goes to its own host and to where that host redirects, and nowhere else. Nothing about rungs 2 or 3 exists there at all, since Jot has no connectors and uploads no document content.
+Birta Writer Jot makes rung-1 requests too, and the rung is what matters rather than the process making them: a URL the user typed goes to its own host and to where that host redirects, and nowhere else. Jot has no connectors, so nothing about rung 2 exists there at all. Rung 3 needs the paragraph below rather than a clause, because Jot can now keep its note in iCloud Drive.
 
 Three differences from the extension, all of them narrowing:
 
 - **One switch, not four.** Jot has a single network preference, off by default, and with it off the app makes no outbound request of any kind. Embeds, link cards and paste-unfurl all ride it. There is no per-provider table because there are no provider cards to gate.
 - **The guards are a second implementation, and are held to the first.** `jot/Sources/BirtaJotCore/UrlGuard.swift` mirrors `src/utils/urlGuard.ts`, and `PageMetadataFetcher` mirrors the redirect, byte and time bounds around it. Neither language can import the other, so the cases live in `shared/__fixtures__/urlGuardCases.json` and both test suites read them: a rule enforced on one surface and not the other fails a test rather than becoming an exposure nobody compared. Add a case there, never in one suite.
 - **The embed caption is not fetched.** `resolveEmbedMeta` is answered with nothing, because it needs the provider recognizer and that table is not worth a second copy in Swift. The card renders without a fetched caption.
+
+### Jot's note in iCloud Drive: where it sits on the ladder, and why
+
+Jot's `storeInICloud` setting, on by default where iCloud Drive is available, puts the default note at `iCloud Drive/Birta Writer Jot/Birta Writer Jot.md` instead of `~/Documents/Birta Writer/`. macOS then syncs that file, so the note's bytes leave the machine. This is the first shipped Birta behavior of which that is true by default, and it deserves to be argued rather than assumed, because rung 3's own examples name "any cloud or sync surface".
+
+It is not rung 3, and the reason is the same one that puts Send Feedback on rung 0b rather than rung 1. Nothing leaves the machine *from Birta*. Jot opens a file in a folder in the user's own filesystem and writes to it with `write`, `fsync` and `rename`; it holds no credential, names no endpoint, and constructs no request. What syncs the folder is macOS, under the user's own iCloud account, exactly as it would if they had dragged any other file there.
+
+Jot does make one explicit ask of iCloud, and it is worth naming rather than rounding to zero: on finding the note evicted, `Coordinator.readActiveNote` calls `FileManager.startDownloadingUbiquitousItem`. That is a request for a file the OS is already managing on the user's behalf, in the inbound direction, carrying no content and choosing no host. It sends nothing. Deliberately not a ubiquity container either (`ScratchpadLocation.iCloudDriveRoot`), which would need an entitlement and would hide the note under a container name. It is the ordinary iCloud Drive folder, visible in Finder, and the user can move the note out of it from Settings or from the title popover.
+
+Rung 3 is a different thing wearing similar words. The publish loop (MAR-232) would have Birta choose the destination, hold the credential, decide who can read the result, and put document content on the wire under its own identity. None of those is true here, and the open scope question rung 3 is gated on is *who can see it*, which for a file in the user's own iCloud Drive has the same answer as every other file in it.
+
+What is genuinely new, and is the reason this section exists rather than a table row, is the default. Every other network capability in this document ships off, and this one ships on where the service is available. The argument for it is that this is a file location rather than a request, and that a scratchpad which is the same note on every Mac is what most people want a scratchpad to be. The argument against is that "off by default" has been the whole shape of the posture. It is a switch in Settings, it says which location is in force underneath it, and turning it off moves the next write to `~/Documents/Birta Writer/`. Nothing is copied in either direction, so the choice never silently duplicates a note. A machine with iCloud Drive switched off never reaches any of this.
 
 Paste-unfurl in Jot writes on the same terms as in the extension: the fetched title arrives as an offer, and auto-apply is left at its default of false, so nothing reaches the file until the user accepts it.
 

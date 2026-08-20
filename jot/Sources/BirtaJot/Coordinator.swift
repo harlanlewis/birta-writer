@@ -98,6 +98,12 @@ final class Coordinator {
     private var reloadFromDisk = true
     /// False until the bound file has been read once; nothing is written before.
     private var hasLoaded = false
+    /// True while the bound file is THERE and could not be read: evicted by
+    /// iCloud, not downloaded yet, or otherwise unavailable. Distinct from
+    /// `!hasLoaded`, which is also true during an ordinary cold start, so the
+    /// two must not be conflated: the retry on summon keys off this one, and
+    /// keying it off `hasLoaded` announced an arrival on every first launch.
+    private var noteUnreadable = false
     /// The file the buffer's bytes belong to. Bound when the file is read, and
     /// only there: a Preferences change that points at another file first
     /// flushes to THIS one, then rebinds, so a scratchpad is never written
@@ -444,6 +450,13 @@ final class Coordinator {
         panel.makeFirstResponder(host.webView)
         if state == .warm { host.focusEditor() }
         if state == .cold { loadPage() }
+        // A note that was there and unreadable when we last looked leaves the
+        // panel unwritable, and nothing else would ever look again: the only
+        // other reader runs after an agent run, and the download this is
+        // waiting on finishes on iCloud's schedule rather than on ours. Being
+        // summoned is the natural moment to ask again, and it is bounded by
+        // the user doing it.
+        if noteUnreadable { retryUnreadableNote() }
         // Summoned under a pointer that never moved: no enter event fires, so
         // the window has to ask where the pointer is.
         contentView.syncHoverFromPointer()
@@ -514,14 +527,17 @@ final class Coordinator {
             // the remount must show.
             if reloadFromDisk {
                 boundURL = Prefs.activeURL
-                latest = readActiveFile()
-                // The disk is the truth on this arm, so nothing is unwritten.
-                // The other arm keeps `isEdited`: after a content-process
-                // death `latest` can be ahead of the file, and saying it is
-                // not would be the one lie this flag must never tell.
-                isEdited = false
+                // The disk is the truth on this arm, so nothing is unwritten
+                // (`adopt` clears `isEdited`). The other arm keeps it: after a
+                // content-process death `latest` can be ahead of the file, and
+                // saying it is not would be the one lie this flag must never
+                // tell.
+                //
+                // `hasLoaded` is set only when the read actually produced the
+                // note. A file that is there and unreadable leaves it false,
+                // so `writeLatest` refuses and the note is never truncated.
                 reloadFromDisk = false
-                hasLoaded = true
+                hasLoaded = adopt(readActiveNote())
             }
             host.send(.initDoc(content: latest, syncVersion: guardState.version, viewStateJSON: Prefs.viewStateJSON))
             state = .warm
@@ -714,8 +730,74 @@ final class Coordinator {
 
     // MARK: persistence
 
-    private func readActiveFile() -> String {
-        (try? String(contentsOf: boundURL, encoding: .utf8)) ?? ""
+    /// Read the bound file, keeping "there is no note" apart from "the note is
+    /// there and I could not read it" (`BirtaJotCore.NoteRead`).
+    ///
+    /// The second case only became reachable when the note could live in
+    /// iCloud Drive, and it is the dangerous one: treated as an empty note it
+    /// mounts an empty buffer, and the next write puts that buffer where the
+    /// note was. `hasLoaded` is the guard that already exists to stop exactly
+    /// that, and the caller leaves it false here rather than a new mechanism
+    /// being invented for it.
+    ///
+    /// Asks iCloud for the file on the way past, so the state resolves itself
+    /// rather than needing the user to know what to do about it.
+    private func readActiveNote() -> NoteRead {
+        let result = NoteRead.read(at: boundURL)
+        if case .unreadable(.notDownloaded) = result {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: boundURL)
+        }
+        return result
+    }
+
+    /// Ask again for a note that was present and unreadable, and put it in the
+    /// panel if it has arrived.
+    ///
+    /// Gated on `noteUnreadable` and NOT on `hasLoaded`, which is the trap
+    /// here: `hasLoaded` is also false during an ordinary cold start, before
+    /// the first read has happened at all, so keying off it fired this on
+    /// every first launch and announced that a note had arrived from iCloud
+    /// when nothing had been waiting on. The flag says we actually saw a note
+    /// we could not read, which is the only state worth retrying.
+    ///
+    /// A successful read lifts the write embargo, so the panel stops
+    /// discarding what is typed into it.
+    private func retryUnreadableNote() {
+        let read = readActiveNote()
+        guard case .contents(let text) = read else { return }
+        noteUnreadable = false
+        hasLoaded = true
+        latest = text
+        isEdited = false
+        if state == .warm {
+            host.send(.externalUpdate(content: text, syncVersion: guardState.bumpVersion()))
+        }
+        statusOverlay.flash("This note has arrived. Saving is on again.")
+    }
+
+    /// Take a read into the buffer, answering whether the buffer may be
+    /// WRITTEN afterwards. False leaves `hasLoaded` alone, so `writeLatest`
+    /// refuses and the note on disk is safe.
+    private func adopt(_ read: NoteRead) -> Bool {
+        isEdited = false
+        switch read {
+        case .contents(let text):
+            noteUnreadable = false
+            latest = text
+            return true
+        case .absent:
+            noteUnreadable = false
+            latest = ""
+            return true
+        case .unreadable:
+            noteUnreadable = true
+            // The buffer stays empty and unwritable. Saying so matters: an
+            // empty panel over a note that exists is indistinguishable from a
+            // new note, and the user would otherwise start typing into it.
+            latest = ""
+            if let message = read.message { statusOverlay.flash(message) }
+            return false
+        }
     }
 
     /// Ask the page for its freshest bytes, write them, then run `then`.
@@ -890,8 +972,25 @@ final class Coordinator {
     }
 
     /// Take what is on disk as the buffer's new truth.
+    ///
+    /// A file that is present and UNREADABLE is not news: this runs when the
+    /// file changed underneath us, and iCloud evicting a note is one of the
+    /// ways that happens. Replacing the buffer with an empty string there
+    /// would discard what the user has, so that read is ignored and the buffer
+    /// stands.
+    ///
+    /// A file that is genuinely ABSENT still empties the buffer, exactly as it
+    /// did before this distinction existed. Deleting the note in Finder is a
+    /// thing the user did on purpose, and the panel following it is the old
+    /// behaviour rather than a case this guard was reaching for.
     private func reloadFromDiskIntoBuffer() {
-        let onDisk = readActiveFile()
+        let read = readActiveNote()
+        if case .unreadable = read {
+            if let message = read.message { statusOverlay.flash(message) }
+            return
+        }
+        let onDisk: String
+        if case .contents(let text) = read { onDisk = text } else { onDisk = "" }
         guard onDisk != latest else { return }
         latest = onDisk
         isEdited = false
