@@ -44,7 +44,9 @@ APP="jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
 # A throwaway scratchpad: the probes below type into it, and the user's real
 # one is never touched.
 SCRATCH_DIR="$(mktemp -d -t jot-measure-scratch)"
-export BIRTA_JOT_SCRATCHPAD="$SCRATCH_DIR/Scratchpad.md"
+# A space in the name is load-bearing, not decoration: it is the wrap point the
+# title bug needed, and a name without one passes that bug forever.
+export BIRTA_JOT_SCRATCHPAD="$SCRATCH_DIR/Scratch pad.md"
 # ...and a throwaway defaults domain, so the run never rewrites the user's
 # toolbar layout, view state or panel frame.
 export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
@@ -131,10 +133,10 @@ printf '{"type":"__testInsertText","text":"%s\\n"}' "$STAMP" > "$SCRATCH_DIR/.de
 kill -URG $PID; sleep 0.5
 hide_panel 0.7      # hide: flushSave → write → orderOut
 sleep 1.5
-if grep -q "$STAMP" "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null; then
-    echo "persistence          ok: '$STAMP' is in Scratchpad.md after hide"
+if grep -q "$STAMP" "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null; then
+    echo "persistence          ok: '$STAMP' is in the scratchpad after hide"
 else
-    echo "persistence          FAILED: '$STAMP' not in Scratchpad.md" >&2; cat "$LOG" >&2; exit 1
+    echo "persistence          FAILED: '$STAMP' not in the scratchpad" >&2; cat "$LOG" >&2; exit 1
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
@@ -146,10 +148,10 @@ show_panel
 printf '{"type":"__jotKeys","keys":["End","Enter","Enter","N","e","x","t","Enter","l","i","n","e"]}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 2
 hide_panel
-if grep -q "^Next$" "$SCRATCH_DIR/Scratchpad.md" && grep -q "^line$" "$SCRATCH_DIR/Scratchpad.md"; then
+if grep -q "^Next$" "$SCRATCH_DIR/Scratch pad.md" && grep -q "^line$" "$SCRATCH_DIR/Scratch pad.md"; then
     echo "typing               ok: Return moves to a new paragraph in the panel's WebKit"
 else
-    echo "typing               FAILED: expected 'Next' and 'line' on their own lines:" >&2; cat "$SCRATCH_DIR/Scratchpad.md" >&2; exit 1
+    echo "typing               FAILED: expected 'Next' and 'line' on their own lines:" >&2; cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
@@ -181,12 +183,12 @@ kill -URG $PID; sleep 2.5
 hide_panel
 pbcopy < "$CLIP_BACKUP" 2>/dev/null || true
 rm -f "$CLIP_BACKUP"
-PASTED_REF="$(grep -o 'Attachments/[A-Za-z0-9.]*' "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null | head -1 || true)"
+PASTED_REF="$(grep -o 'Attachments/[A-Za-z0-9.]*' "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null | head -1 || true)"
 if [ -n "$PASTED_REF" ] && [ -f "$SCRATCH_DIR/$PASTED_REF" ]; then
     echo "paste                ok: the image reached $PASTED_REF and the document references it"
 else
     echo "paste                FAILED: expected an Attachments/ reference in the document." >&2
-    echo "document:" >&2; cat "$SCRATCH_DIR/Scratchpad.md" >&2
+    echo "document:" >&2; cat "$SCRATCH_DIR/Scratch pad.md" >&2
     echo "attachments:" >&2; ls -l "$SCRATCH_DIR/Attachments" >&2 2>/dev/null || echo "(none)" >&2
     exit 1
 fi
@@ -221,32 +223,120 @@ fi
 if [ "$TB_ATTACHED" = "yes" ] \
    && awk "BEGIN{exit !($TB_W > 0)}" \
    && awk "BEGIN{exit !($TB_X >= 78)}" \
-   && [ "$TB_TEXT" = "Scratchpad.md" ]; then
+   && [ "$TB_TEXT" = "Scratch pad.md" ]; then
     echo "titlebar             ok: \"$TB_TEXT\" at x=$TB_X w=$TB_W, clear of the window buttons"
 else
-    echo "titlebar             FAILED: expected an attached accessory naming Scratchpad.md at x>=78 with width>0" >&2
+    echo "titlebar             FAILED: expected an attached accessory naming 'Scratch pad.md' at x>=78 with width>0" >&2
     echo "$TITLEBAR" >&2; exit 1
 fi
 
-# The title is drawn IN FULL, which every check above is blind to. `text=` is
-# the accessibility label and `titletext` is the label's `stringValue`, and both
-# report the whole string whatever is on screen, so a name cut off in the middle
-# answers them exactly as an intact one does. The two widths are what
-# discriminate: what the label got, against what the string needs.
+# The title is drawn IN FULL, in PIXELS, which every other check here is blind
+# to and which took a defect shipping to establish.
 #
-# The case this exists for is a name with a space in it, because that is the
-# one where a cut looks like a shorter name rather than like damage: "Birta
-# Jot.md" losing its tail reads as a file called "Birta", and nobody
-# investigates a title that looks like a filename.
-TB_TEXT_W="$(echo "$TITLEBAR" | sed -n 's/.*textW=\([0-9.-]*\).*/\1/p')"
-TB_TEXT_NEEDS="$(echo "$TITLEBAR" | sed -n 's/.*textNeeds=\([0-9.-]*\).*/\1/p')"
-if [ -n "$TB_TEXT_W" ] && [ -n "$TB_TEXT_NEEDS" ] \
-   && awk "BEGIN{exit !($TB_TEXT_NEEDS > 0)}" \
-   && awk "BEGIN{exit !($TB_TEXT_W >= $TB_TEXT_NEEDS - 0.5)}"; then
-    echo "title width          ok: the name is drawn at the width it needs ($TB_TEXT_W of $TB_TEXT_NEEDS)"
-else
-    echo "title width          FAILED: the title has less room than its own text needs" >&2
+# `text=` is the accessibility label and `titletext` is the label's
+# `stringValue`. Both report the whole string whatever is on screen. So do the
+# label's frame, its `visibleRect`, and the height the string lays out in. All
+# of them agreed that "Birta Jot.md" was fine while the window drew "Birta":
+# the field had not been told a title is one line, so it was free to WRAP at the
+# space, and the second line was clipped by a box one line tall. A name cut that
+# way carries no ellipsis, so it reads as a shorter NAME rather than as damage,
+# and nobody investigates a title that looks like a filename.
+#
+# `inkW` is the rightmost column of the label carrying any alpha, measured from
+# a bitmap of the label itself. In the broken build every number above was
+# identical to the fixed one and this was 32.5 against 65.0.
+#
+# The name driving it has a SPACE in it, deliberately: without one there is no
+# wrap point, and the default `Scratchpad.md` passed this bug for its whole
+# life.
+TB_NEED_W="$(echo "$TITLEBAR" | sed -n 's/.*needW=\([0-9.-]*\).*/\1/p')"
+TB_GOT_W="$(echo "$TITLEBAR" | sed -n 's/.*gotW=\([0-9.-]*\).*/\1/p')"
+TB_INK_W="$(echo "$TITLEBAR" | sed -n 's/.*inkW=\([0-9.-]*\).*/\1/p')"
+if [ -z "$TB_NEED_W" ] || [ -z "$TB_INK_W" ]; then
+    echo "title ink            FAILED: the trace carried no needW/inkW to compare" >&2
     echo "$TITLEBAR" >&2; exit 1
+fi
+# A zero need is a title that has not painted, and zero ink would agree with it
+# perfectly. Asserted before the comparison, for the same reason the baseline
+# check asserts its two midpoints are non-zero.
+if awk "BEGIN{exit !($TB_NEED_W > 0)}" \
+   && awk "BEGIN{exit !($TB_GOT_W >= $TB_NEED_W - 0.5)}" \
+   && awk "BEGIN{exit !($TB_INK_W >= $TB_NEED_W - 2)}"; then
+    echo "title ink            ok: the name is drawn to the width its glyphs need (ink $TB_INK_W, needs $TB_NEED_W)"
+else
+    echo "title ink            FAILED: the title is not drawn in full" >&2
+    echo "  needs=$TB_NEED_W got=$TB_GOT_W ink=$TB_INK_W" >&2
+    echo "$TITLEBAR" >&2; exit 1
+fi
+
+# The title's two width measurements must AGREE, and that is a different claim
+# from either of them being right.
+#
+# `needW` asks the attributed string and `fieldW` asks the field. The string
+# answers in whatever font it carries; the field knows its own. So they agree
+# only while `paint` puts the font on the string, and diverge by about a fifth
+# the moment it does not.
+#
+# This exists because the ink check above CANNOT see that failure. Sized off a
+# font-blind string the label comes out short, the cell truncates the name into
+# it, and the ink then reaches the short width it was given, so ink against
+# needs passes on a visibly cut title. It did: 83.0 of ink against 84.0 of
+# need, on a name whose glyphs want 102.7.
+TB_FIELD_W="$(echo "$TITLEBAR" | sed -n 's/.*fieldW=\([0-9.-]*\).*/\1/p')"
+if [ -n "$TB_FIELD_W" ] \
+   && awk "BEGIN{exit !($TB_FIELD_W > 0)}" \
+   && awk "BEGIN{d = $TB_NEED_W - $TB_FIELD_W; if (d < 0) d = -d; exit !(d <= 1.5)}"; then
+    echo "title measure        ok: the string and the field report the same width ($TB_NEED_W, $TB_FIELD_W)"
+else
+    echo "title measure        FAILED: the title's two width measurements disagree, so one of them is not about the drawing" >&2
+    echo "  needW=$TB_NEED_W fieldW=$TB_FIELD_W" >&2
+    echo "$TITLEBAR" >&2; exit 1
+fi
+
+# The hover chevron beside the title, which says the name opens something.
+#
+# Four numbers, and the DIFFERENCE between two of them is the claim. An image
+# view that never draws and one that never hides both report a single alpha
+# quite happily, so `restAlpha` against `overAlpha` is what says the affordance
+# appears at all, and `restInk` against `overInk` is what says the appearing is
+# pixels rather than a frame nobody fills.
+#
+# `hasImage` is the arm that stops the rest reporting healthily about nothing:
+# NSImage(systemSymbolName:) answers nil for a name the system does not carry,
+# and an image view holding nil draws nothing and raises nothing.
+#
+# `x` against the name's own trailing edge is what keeps it AFTER the title
+# rather than over it. The width is reserved whether or not the chevron is
+# drawn, so this holds in both states and the title never moves under the
+# pointer.
+#
+# Not covered: that the tracking area fires. A script has no pointer without an
+# Accessibility grant, so the hover state is set rather than performed, and
+# whether a real mouse reaches this view is the one part of it only a person
+# can see.
+CHEV="$(grep "^jot-trace chevron " "$LOG" | tail -1 || true)"
+CH_IMG="$(echo "$CHEV" | sed -n 's/.*hasImage=\([a-z]*\).*/\1/p')"
+CH_X="$(echo "$CHEV" | sed -n 's/.*chevron hasImage=[a-z]* x=\([0-9.-]*\).*/\1/p')"
+CH_W="$(echo "$CHEV" | sed -n 's/.* w=\([0-9.-]*\).*/\1/p')"
+CH_REST="$(echo "$CHEV" | sed -n 's/.*restAlpha=\([0-9.-]*\).*/\1/p')"
+CH_OVER="$(echo "$CHEV" | sed -n 's/.*overAlpha=\([0-9.-]*\).*/\1/p')"
+CH_REST_INK="$(echo "$CHEV" | sed -n 's/.*restInk=\([0-9.-]*\).*/\1/p')"
+CH_OVER_INK="$(echo "$CHEV" | sed -n 's/.*overInk=\([0-9.-]*\).*/\1/p')"
+CH_TEXT_MAX="$(echo "$CHEV" | sed -n 's/.*textMaxX=\([0-9.-]*\).*/\1/p')"
+if [ -z "$CHEV" ]; then
+    echo "title chevron        FAILED: the app reported no chevron trace at all" >&2; exit 1
+fi
+if [ "$CH_IMG" = "yes" ] \
+   && awk "BEGIN{exit !($CH_W > 0)}" \
+   && awk "BEGIN{exit !($CH_REST == 0)}" \
+   && awk "BEGIN{exit !($CH_OVER == 1)}" \
+   && awk "BEGIN{exit !($CH_REST_INK == 0)}" \
+   && awk "BEGIN{exit !($CH_OVER_INK > 0)}" \
+   && awk "BEGIN{exit !($CH_X >= $CH_TEXT_MAX)}"; then
+    echo "title chevron        ok: hidden at rest, drawn on hover (ink $CH_REST_INK -> $CH_OVER_INK), after the name at x=$CH_X"
+else
+    echo "title chevron        FAILED: the hover affordance is not there, not drawn, or not after the name" >&2
+    echo "$CHEV" >&2; exit 1
 fi
 
 # WHERE the title sits vertically, which the check above says nothing about: it
@@ -428,9 +518,9 @@ fi
 #    rose, and a title that never had to come back down holds still under the
 #    old behaviour too. The file gaining the typed text is the evidence, and
 #    it is the same evidence the persistence check trusts.
-if [ "$(grep -c "^steady$" "$SCRATCH_DIR/Scratchpad.md" 2>/dev/null || echo 0)" -lt 2 ]; then
+if [ "$(grep -c "^steady$" "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null || echo 0)" -lt 2 ]; then
     echo "title stability      FAILED: the burst never reached the file, so no write happened to hold still across" >&2
-    cat "$SCRATCH_DIR/Scratchpad.md" >&2; exit 1
+    cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
 # 3. and it said one thing the whole time.
 if [ "$BURST_COUNT" = "1" ]; then
@@ -491,7 +581,7 @@ kill -URG $PID; sleep 1.5
 POPOVER="$(grep "^jot-trace titlepopover " "$LOG" | tail -1 | sed 's/^jot-trace titlepopover //')"
 rm -f "$SCRATCH_DIR/.debug-message.json"
 P_SHOWN="$(echo "$POPOVER" | sed -n 's/.*shown=\([a-z]*\).*/\1/p')"
-P_NAME="$(echo "$POPOVER" | sed -n 's/.*name=\([^ ]*\).*/\1/p')"
+P_NAME="$(echo "$POPOVER" | sed -n 's/.*name=\(.*\) where=.*/\1/p')"
 P_FOLDERS="$(echo "$POPOVER" | sed -n 's/.*folders=\([0-9]*\).*/\1/p')"
 P_ROWS="$(echo "$POPOVER" | sed -n 's/.*rows=\([0-9]*\).*/\1/p')"
 # Every row, not just "it opened". A popover that appeared with an empty Name
@@ -499,7 +589,7 @@ P_ROWS="$(echo "$POPOVER" | sed -n 's/.*rows=\([0-9]*\).*/\1/p')"
 # presence check cannot tell it from a working one. `folders` counts the real
 # directories; `rows` counts them plus the separator and Other…, so rows must
 # exceed folders or the menu lost its escape hatch.
-if [ "$P_SHOWN" = "yes" ] && [ "$P_NAME" = "Scratchpad.md" ] \
+if [ "$P_SHOWN" = "yes" ] && [ "$P_NAME" = "Scratch pad.md" ] \
    && [ "${P_FOLDERS:-0}" -ge 2 ] && [ "${P_ROWS:-0}" -gt "${P_FOLDERS:-0}" ]; then
     echo "title popover        ok: $POPOVER"
 else
@@ -517,13 +607,13 @@ kill -URG $PID; sleep 2.5
 rm -f "$SCRATCH_DIR/.debug-message.json"
 RENAMED="$SCRATCH_DIR/Renamed by measure.md"
 TITLE_AFTER="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
-if [ -f "$RENAMED" ] && [ ! -f "$SCRATCH_DIR/Scratchpad.md" ] \
+if [ -f "$RENAMED" ] && [ ! -f "$SCRATCH_DIR/Scratch pad.md" ] \
    && [ "$TITLE_AFTER" = "Renamed by measure.md" ]; then
     echo "title rename         ok: the file moved and the title followed it"
 else
     echo "title rename         FAILED: expected the file renamed and the title to follow" >&2
     echo "  renamed exists: $([ -f "$RENAMED" ] && echo yes || echo no)" >&2
-    echo "  old still there: $([ -f "$SCRATCH_DIR/Scratchpad.md" ] && echo yes || echo no)" >&2
+    echo "  old still there: $([ -f "$SCRATCH_DIR/Scratch pad.md" ] && echo yes || echo no)" >&2
     echo "  title now: \"$TITLE_AFTER\"" >&2
     ls -l "$SCRATCH_DIR" >&2; exit 1
 fi
@@ -551,10 +641,10 @@ else
 fi
 # Everything after this reads the scratchpad by its original name, so put it
 # back the same way it was moved.
-printf '{"type":"__jotRename","name":"Scratchpad.md"}' > "$SCRATCH_DIR/.debug-message.json"
+printf '{"type":"__jotRename","name":"Scratch pad.md"}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 2.5
 rm -f "$SCRATCH_DIR/.debug-message.json"
-if [ ! -f "$SCRATCH_DIR/Scratchpad.md" ]; then
+if [ ! -f "$SCRATCH_DIR/Scratch pad.md" ]; then
     echo "title rename         FAILED: could not rename back, so the checks below would read the wrong file" >&2
     ls -l "$SCRATCH_DIR" >&2; exit 1
 fi
@@ -578,7 +668,7 @@ rm -f "$CLIP_BACKUP2"
 # nothing anywhere. Checked against the throwaway scratchpad this run created,
 # so it is the real bound file rather than a shape that merely looks right.
 case "$COPIED" in
-    "$SCRATCH_DIR/Scratchpad.md#L"*) REF_OK=1 ;;
+    "$SCRATCH_DIR/Scratch pad.md#L"*) REF_OK=1 ;;
     *) REF_OK=0 ;;
 esac
 if [ "$REF_OK" = 1 ]; then
@@ -605,7 +695,7 @@ while [ "$(grep -c "^jot-measure ready " "$LOG")" -le "$BEFORE" ]; do
     if [ $n -gt 200 ]; then echo "no remount after kill" >&2; cat "$LOG" >&2; exit 1; fi
 done
 echo "terminate→ready      $(delta "$(last terminate)" "$(last ready)") ms   (cold recovery: WebKit reports the death, Jot remounts)"
-if grep -q "$STAMP" "$SCRATCH_DIR/Scratchpad.md"; then
+if grep -q "$STAMP" "$SCRATCH_DIR/Scratch pad.md"; then
     echo "recovery             ok: the buffer survived the content-process kill"
 else
     echo "recovery             FAILED: the buffer did not survive the kill" >&2; cat "$LOG" >&2; exit 1
