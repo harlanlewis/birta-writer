@@ -319,6 +319,8 @@ TB_ATTACHED="$(echo "$TITLEBAR" | sed -n 's/.*attached=\([a-z]*\).*/\1/p')"
 TB_TEXT="$(echo "$TITLEBAR" | sed -n 's/.*text=//p')"
 TB_TEXT_MID="$(echo "$TITLEBAR" | sed -n 's/.*textMidY=\([0-9.-]*\).*/\1/p')"
 TB_CLOSE_MID="$(echo "$TITLEBAR" | sed -n 's/.*closeMidY=\([0-9.-]*\).*/\1/p')"
+TB_GOT="$(echo "$TITLEBAR" | sed -n 's/.*gotW=\([0-9.-]*\).*/\1/p')"
+TB_CELL="$(echo "$TITLEBAR" | sed -n 's/.*cellW=\([0-9.-]*\).*/\1/p')"
 if [ -z "$TITLEBAR" ]; then
     echo "titlebar             FAILED: the app reported no titlebar trace at all" >&2; exit 1
 fi
@@ -372,13 +374,20 @@ fi
 # A zero need is a title that has not painted, and zero ink would agree with it
 # perfectly. Asserted before the comparison, for the same reason the baseline
 # check asserts its two midpoints are non-zero.
+# The box is compared against what the CELL needs, not against what the string
+# measures. Those are different numbers, the cell's is the larger, and the gap
+# between them is one glyph: a label sized to the string draws the tail of the
+# name outside its own box and the titlebar clips it. `Birta Writer Jot.md`
+# lost the `d` that way, with `needW`, `gotW` and `inkW` all agreeing it was
+# fine, because all three describe the string.
 if awk "BEGIN{exit !($TB_NEED_W > 0)}" \
-   && awk "BEGIN{exit !($TB_GOT_W >= $TB_NEED_W - 0.5)}" \
+   && awk "BEGIN{exit !($TB_CELL > 0)}" \
+   && awk "BEGIN{exit !($TB_GOT_W >= $TB_CELL - 0.1)}" \
    && awk "BEGIN{exit !($TB_INK_W >= $TB_NEED_W - 2)}"; then
-    echo "title ink            ok: the name is drawn to the width its glyphs need (ink $TB_INK_W, needs $TB_NEED_W)"
+    echo "title ink            ok: the label has the room the cell asked for (got $TB_GOT_W, cell needs $TB_CELL, ink $TB_INK_W)"
 else
     echo "title ink            FAILED: the title is not drawn in full" >&2
-    echo "  needs=$TB_NEED_W got=$TB_GOT_W ink=$TB_INK_W" >&2
+    echo "  needs=$TB_NEED_W cellNeeds=$TB_CELL got=$TB_GOT_W ink=$TB_INK_W" >&2
     echo "$TITLEBAR" >&2; exit 1
 fi
 
@@ -753,6 +762,7 @@ ceil_at() { # ceil_at <width>; sets CEIL_* from the traces it provokes
     CEIL_DRAG_HIDDEN="$(echo "$drag" | sed -n 's/.*hidden=\([a-z]*\).*/\1/p')"
     # The characters actually drawn. `text=` is last on the line, so it can
     # carry spaces and an ellipsis without any of it needing escaping.
+    CEIL_CELL="$(echo "$tb" | sed -n 's/.*cellW=\([0-9.-]*\).*/\1/p')"
     CEIL_TEXT="$(echo "$tb" | sed -n 's/.*text=//p')"
     if [ -z "$CEIL_NEED" ] || [ -z "$CEIL_WINDOW" ]; then
         echo "title ceiling        FAILED: no titlebar/drag trace after resizing to $1" >&2
@@ -770,13 +780,19 @@ ceil_at() { # ceil_at <width>; sets CEIL_* from the traces it provokes
 # against `draggableSpan` itself.
 ceil_at 2400
 CEIL_CHROME="$(awk "BEGIN{printf \"%.1f\", $CEIL_VIEW_W - $CEIL_GOT}")"
+# What the app does with all the room in the world: the box it gives the label
+# and the ink that comes out. Every arm below compares against THESE rather
+# than against the string's own width, because the string's width is not what
+# the cell needs to draw it and the gap between the two is one glyph.
+CEIL_FULLBOX="$CEIL_GOT"
+CEIL_FULLINK="$CEIL_INK"
 # The label is sized from the glyph width rounded UP (`drawnTextWidth`), so the
 # boundary is computed from the same rounded number the app draws with. Rounding
 # the requirement and the boundary differently puts the line a point away from
 # where the app actually puts it, and a check that straddles it by a point
 # reports the wrong regime rather than a failure.
 CEIL_NEED_UP="$(awk "BEGIN{n = $CEIL_NEED; printf \"%d\", (n == int(n)) ? n : int(n) + 1}")"
-CEIL_BOUNDARY="$(awk "BEGIN{s = $CEIL_X + $CEIL_CHROME + $CEIL_NEED_UP + $CEIL_CONTROLS + 8; printf \"%d\", (s == int(s)) ? s : int(s) + 1}")"
+CEIL_BOUNDARY="$(awk "BEGIN{s = $CEIL_X + $CEIL_CHROME + $CEIL_FULLBOX + $CEIL_CONTROLS + 8; printf \"%d\", (s == int(s)) ? s : int(s) + 1}")"
 if [ -z "$CEIL_CONTROLS" ] || awk "BEGIN{exit !($CEIL_CONTROLS <= 0)}"; then
     echo "title ceiling        FAILED: the page never reported its controls' width, so nothing bounds the title" >&2
     exit 1
@@ -836,11 +852,22 @@ for CEIL_W in "$(awk "BEGIN{print $CEIL_BOUNDARY + 400}")" \
     #    `layout()`, which is code rather than a measurement, and the only
     #    number in this trace that could see it (`visTextW`) reports the
     #    accessory's width rather than the label's.
-    if awk "BEGIN{exit !($CEIL_GOT >= $CEIL_NEED_UP - 0.1)}"; then
+    if awk "BEGIN{exit !($CEIL_GOT >= $CEIL_FULLBOX - 0.1)}"; then
         CEIL_FULL=$((CEIL_FULL + 1))
-        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_NEED - 2)}"; then
+        # Against the ink the app put down with unlimited room, not against
+        # the string's width. A box a point or two short of what the CELL
+        # needs clips the last glyph and still measures wider than the string,
+        # so a comparison with the string passes on a clipped name; the same
+        # name drawn twice, once unconstrained, is what discriminates.
+        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_FULLINK - 0.6)}"; then
             echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name fits but is not drawn in full" >&2
-            echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
+            echo "  ink=$CEIL_INK unconstrained=$CEIL_FULLINK got=$CEIL_GOT cellNeeds=$CEIL_CELL" >&2; exit 1
+        fi
+        # ...and the box is at least what the cell asked for, which is the
+        # same claim from the other side and fails a point earlier.
+        if ! awk "BEGIN{exit !($CEIL_GOT >= $CEIL_CELL - 0.1)}"; then
+            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the label is narrower than the cell needs to draw" >&2
+            echo "  got=$CEIL_GOT cellNeeds=$CEIL_CELL needs=$CEIL_NEED ink=$CEIL_INK" >&2; exit 1
         fi
         # The other half of the ellipsis arm below. Without it a title that
         # truncated at every width would satisfy that one and be caught by

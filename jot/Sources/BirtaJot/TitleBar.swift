@@ -64,7 +64,7 @@ final class TitleBarView: NSView {
     }()
     private var popover: NSPopover?
 
-    private let label = NSTextField(labelWithString: "")
+    private let label = TitleBarView.makeTitleField()
     /// The affordance that says the title opens something, drawn the way macOS
     /// draws it on a document window: a small chevron after the name, on
     /// hover.
@@ -156,13 +156,67 @@ final class TitleBarView: NSView {
     /// every width taken from it is short.
     private static let titleFont = NSFont.titleBarFont(ofSize: NSFont.systemFontSize)
 
-    /// What a candidate title measures, in the font it will be drawn in.
+    /// A title label, configured. Used for the one this view draws AND for the
+    /// ruler below, because the two have to be the same KIND of thing: the
+    /// measurer decides how much name fits and the label draws it, so a
+    /// difference between their configurations is a difference between what
+    /// was promised to fit and what does.
+    private static func makeTitleField() -> NSTextField {
+        let field = NSTextField(labelWithString: "")
+        field.font = titleFont
+        // A title is ONE line, and this is the only thing enforcing it.
+        //
+        // The field's own `lineBreakMode` is NOT set, and its absence is the
+        // point. A cell lays an attributed value out under the paragraph style
+        // that value carries, never under the field's setting, and this label
+        // is filled through `attributedStringValue` and never through
+        // `stringValue`. So a `lineBreakMode` here would be inert while
+        // looking load-bearing, which is what four rounds of fixes tuned.
+        // WHERE the name is shortened is `WindowTitle.runs(fitting:)`, before
+        // the string exists.
+        //
+        // What remains for the cell is refusing to WRAP, which is this line:
+        // `NSTextField(labelWithString:)` leaves it off, so the default
+        // paragraph style's `.byWordWrapping` applies and a name with a space
+        // in it lays out on two lines inside a box one line tall, the first
+        // drawn and the rest clipped away. `usesSingleLineMode` reinterprets a
+        // wrapping mode as `.byClipping`, which is AppKit's documented rule
+        // for it, and one line is all this needs to be.
+        //
+        // Deliberately not a truncating paragraph style on top. A cell in one
+        // needs its box wider than the string measures before it will draw the
+        // string in full, so it truncates a name that fits and draws an
+        // ellipsis that means the window is too narrow when it is not; the
+        // `title ink` arm of `jot/scripts/measure.sh` is what says so.
+        field.usesSingleLineMode = true
+        return field
+    }
+
+    /// An off-screen label, kept only to be measured.
     ///
-    /// The measurer `WindowTitle.runs(fitting:measure:)` bisects with, and the
-    /// one place the font requirement above is discharged for a string that
-    /// does not exist yet.
+    /// The measurer `WindowTitle.runs(fitting:measure:)` bisects with, and it
+    /// asks a CELL rather than an attributed string on purpose. A cell needs
+    /// more room to draw a string than the string reports needing, so a
+    /// truncation decided on the string's number promises that a name fits
+    /// into a box the cell then clips its last glyph out of. The two numbers
+    /// differ by about one letter, which is exactly the size of the defect.
+    ///
+    /// Same factory as the drawn label, so the two cannot drift apart. Reused
+    /// rather than built per candidate because the bisection asks about a
+    /// handful of strings per repaint and a repaint happens on every point of
+    /// a window drag.
+    private static let ruler = makeTitleField()
+
+    /// What a candidate title needs, in the font and the cell it will be drawn
+    /// in. Falls back to the string's own width only if the field has no cell,
+    /// which it always has.
     private static func width(of text: String) -> Double {
-        Double(NSAttributedString(string: text, attributes: [.font: titleFont]).size().width)
+        ruler.attributedStringValue = NSAttributedString(string: text, attributes: [.font: titleFont])
+        guard let cell = ruler.cell else {
+            return Double(ruler.attributedStringValue.size().width)
+        }
+        let unbounded = NSRect(x: 0, y: 0, width: CGFloat.greatestFiniteMagnitude, height: height)
+        return Double(cell.cellSize(forBounds: unbounded).width)
     }
     /// Laid out by hand, and that is the whole reason this file was worth
     /// getting wrong once.
@@ -176,32 +230,6 @@ final class TitleBarView: NSView {
     /// hierarchy is indistinguishable from having worked. Sizing this view's
     /// own frame from its content is what makes the width real.
     private func build() {
-        label.font = Self.titleFont
-        // A title is ONE line, and this is the only thing enforcing it.
-        //
-        // The field's own `lineBreakMode` is NOT set here, and its absence is
-        // the point. A cell lays an attributed value out under the paragraph
-        // style that value carries, never under the field's setting, and this
-        // label is filled through `attributedStringValue` and never through
-        // `stringValue`. So a `lineBreakMode` on the field would be inert
-        // while looking load-bearing, which is what four rounds of fixes
-        // tuned. WHERE the name is shortened is `WindowTitle.runs(fitting:)`,
-        // before the string exists.
-        //
-        // What remains for the cell is refusing to WRAP, which is this line:
-        // `NSTextField(labelWithString:)` leaves it off, so the default
-        // paragraph style's `.byWordWrapping` applies and a name with a space
-        // in it lays out on two lines inside a box one line tall, the first
-        // drawn and the rest clipped away. `usesSingleLineMode` reinterprets a
-        // wrapping mode as `.byClipping`, which is AppKit's documented rule
-        // for it, and one line is all this needs to be.
-        //
-        // Deliberately not a truncating paragraph style on top. A cell in one
-        // needs its box 4pt wider than `NSAttributedString.size()` reports, so
-        // it truncates a name that fits and draws an ellipsis that means the
-        // window is too narrow when it is not; the `title ink` arm of
-        // `jot/scripts/measure.sh` is what says so.
-        label.usesSingleLineMode = true
         label.setAccessibilityRole(.staticText)
         addSubview(label)
         // Template so it inks itself from the control tint and follows the
@@ -360,18 +388,31 @@ final class TitleBarView: NSView {
     func labelFrameInWindow() -> NSRect { label.convert(label.bounds, to: nil) }
 
 
-    /// The width the TITLE'S OWN GLYPHS need, rounded up.
+    /// The width the label needs to DRAW its title, rounded up.
     ///
-    /// The string being drawn, measured in the font it is drawn in, rounded so
-    /// it can never land under. That is the whole specification, and each half
-    /// of it is a way this has been got wrong: measured off the FIELD it
-    /// answers for a layout the field may not be doing, and measured off a
-    /// string carrying no `.font` it answers in the default system face, which
-    /// is narrower than the titlebar one and yields a box the cell then has to
-    /// truncate into. A title ending in an ellipsis it did not need is the
-    /// quiet version of the same bug as a title cut at a space.
+    /// Asked of the CELL, not of the string, and the difference is the last
+    /// glyph. `NSAttributedString.size()` reports a typesetting width; the
+    /// cell lays the same string out inside its own insets and needs a few
+    /// points more, so a box sized to the string's number is a box the cell
+    /// draws the tail of the name outside of, and the titlebar clips it. That
+    /// is silent in exactly the way the wrap was: `Birta Writer Jot.md` lost
+    /// the `d` off its extension, and every model-side number agreed the name
+    /// was drawn in full.
+    ///
+    /// `cellSize(forBounds:)` is the cell's own answer to "how much room does
+    /// this take", so it tracks the font and the insets rather than restating
+    /// them, and there is no constant here to go stale. The unbounded width is
+    /// what asks for the untruncated requirement; the ceiling is applied by
+    /// the callers, which is where it belongs.
+    ///
+    /// Still measured off a string that carries `.font`, which is the other
+    /// half of the specification and the other way this has been got wrong: a
+    /// run naming no font measures in the default system face, which is
+    /// narrower than the titlebar one.
     private func drawnTextWidth() -> CGFloat {
-        label.attributedStringValue.size().width.rounded(.up)
+        guard let cell = label.cell else { return label.attributedStringValue.size().width.rounded(.up) }
+        let unbounded = NSRect(x: 0, y: 0, width: CGFloat.greatestFiniteMagnitude, height: bounds.height)
+        return cell.cellSize(forBounds: unbounded).width.rounded(.up)
     }
 
 
@@ -434,6 +475,16 @@ final class TitleBarView: NSView {
     /// ink against the same short number and passes. Two measurements from one
     /// source agree whatever is wrong with them; these come from two.
     func titleFieldWidth() -> CGFloat { label.intrinsicContentSize.width }
+
+    /// What the CELL says it needs to draw the title, for `measure.sh`.
+    ///
+    /// The number `resize` and `layout` size the label from, published so a
+    /// check can compare the box against it. Neither `titleFit().needed` nor
+    /// `titleFieldWidth()` can stand in: both report the STRING's width, the
+    /// cell needs a few points more than that to draw the same string, and
+    /// the gap is one glyph. A box between the two numbers looks correct by
+    /// every model-side measure and clips the last letter off the name.
+    func titleCellWidth() -> CGFloat { drawnTextWidth() }
 
     /// The chevron, for `jot/scripts/measure.sh`: whether its image resolved,
     /// where it sits, and how much ink it puts down when shown.
