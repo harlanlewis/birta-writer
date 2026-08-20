@@ -142,6 +142,8 @@ One buffer, written to `~/Documents/Birta Writer/Birta Writer Jot.md` (Settings 
 
 `BIRTA_JOT_OPEN_SETTINGS=general|editor|advanced` opens Settings on a pane at launch, which is how a pane is proven to construct without a person to click it. The same seam as `BIRTA_JOT_SCRATCHPAD` and `BIRTA_JOT_DEFAULTS_SUITE`, and used with them.
 
+`BIRTA_JOT_OPEN_WELCOME=1` opens the first-launch window at launch, for the same reason and with the same caveat. It is the only way to build that window on demand: the launch gate is `hasSeenWelcome` on a real user's defaults, so a run under `BIRTA_JOT_DEFAULTS_SUITE` never meets it.
+
 Manual checklist, because a window server and a global hotkey are outside what CI can drive: summon from a fullscreen app; type, hide, `cat` the scratchpad; quit mid-typing and relaunch; toggle System Settings > Appearance and watch the panel follow; type and watch the file change with autosave on, then turn it off and confirm Cmd+S and quitting still write; open a menu, press Esc once (menu closes) and twice (panel hides).
 
 The editor itself stays covered by the repo's harness: `node e2e/run.mjs jotHost` mounts the bundle with the Jot profile in Chromium, and `BIRTA_E2E_BROWSER=webkit` runs the same suite in the engine the panel renders in. That WebKit run speaks for rendering and DOM; for typed sequences it does not (Playwright's WebKit key injection puts text after a Return on the previous line, the app's own NSEvent path does not), which is why `measure.sh` types through the panel itself.

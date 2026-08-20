@@ -40,6 +40,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         buildStatusItem()
         coordinator.start()
+        // First launch only, and after the panel exists: meeting a form before
+        // meeting the editor is the thing this window is trying to avoid.
+        // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, so a
+        // run would meet this window every time; skipped there for the same
+        // reason the panel does not remember its frame.
+        //
+        // `BIRTA_JOT_OPEN_WELCOME=1` shows it regardless, which is how the
+        // window is proven to construct without a person and without a first
+        // launch: the gate above deliberately never fires under a throwaway
+        // domain, so nothing else would ever build it.
+        if ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1"
+            || (Prefs.isUserStore && !Prefs.hasSeenWelcome) {
+            showWelcome()
+        }
         // A settings window can otherwise only be opened by a person, which
         // makes "does it construct" a question nothing but a human can answer.
         // Same seam as BIRTA_JOT_SCRATCHPAD and BIRTA_JOT_DEFAULTS_SUITE, and
@@ -110,6 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // elsewhere. Neither empties the panel.
         let fileMenu = NSMenu(title: "File")
         JotMenu.add(.file, to: fileMenu, target: self)
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(withTitle: "Back to My Notes", action: #selector(menuBackToNotes), keyEquivalent: "")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
         // Share is a File-menu verb on macOS, and this is now its only route:
@@ -262,11 +278,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func shareNote() { coordinator.shareNote() }
 
+    /// The first-launch window, and the Advanced button that shows it again.
+    ///
+    /// Kept on the delegate rather than built where it is asked for, so it
+    /// survives the Settings window that asked closing behind it.
+    private var welcomeWindow: WelcomeWindowController?
+
+    func showWelcome() {
+        if welcomeWindow == nil {
+            welcomeWindow = WelcomeWindowController(
+                onChange: { [weak self] in self?.coordinator.preferencesChanged() })
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        welcomeWindow?.showWindow(nil)
+        welcomeWindow?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func menuBackToNotes() { coordinator.backToNotes() }
+
     @objc func menuOpenSettings() {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
-                onChange: { [weak self] in self?.coordinator.preferencesChanged() })
+                onChange: { [weak self] in self?.coordinator.preferencesChanged() },
+                onShowWelcome: { [weak self] in self?.showWelcome() })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)

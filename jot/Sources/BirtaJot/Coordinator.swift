@@ -1041,14 +1041,38 @@ final class Coordinator {
     /// A bound DOCUMENT is left alone. New Note makes a note in Jot's own
     /// folder; it is not a way to stop editing the file the user pointed Jot
     /// at, which is what the Document setting is for.
+    /// Leave a document Jot was pointed at, and go back to the notes.
+    ///
+    /// The `document` slot in `ActiveBinding` outranks the other two, so this
+    /// is the only way out of it now that Settings has no switch for it. The
+    /// buffer is flushed to the document first: leaving a file is not a reason
+    /// to lose what was typed into it.
+    func backToNotes() {
+        guard Prefs.documentURL != nil else {
+            statusOverlay.flash("Jot is already on your notes.")
+            return
+        }
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            Prefs.documentURL = nil
+            self.reloadFromDisk = true
+            self.loadPage()
+            self.refreshTitle()
+            self.statusOverlay.flash("Back to your notes.")
+        }
+    }
+
     func newNote() {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
-            guard Prefs.documentURL == nil else {
-                self.statusOverlay.flash("Jot is set to edit a document; New Note is off while that is on.")
-                return
-            }
+            // A bound document is LEFT, not a reason to refuse. Jot used to
+            // say no here because "edit a document instead" was a switch in
+            // Settings, so leaving meant going to another window and turning
+            // it off; the switch is gone and the way back is this gesture and
+            // Back to My Notes beside it.
+            Prefs.documentURL = nil
             let directory = Prefs.notesDirectory
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -1279,6 +1303,11 @@ final class Coordinator {
     /// on one day never lands on the first.
     static func unusedNoteURL(in directory: URL) -> URL {
         let stamp = DateFormatter()
+        // Pinned, like `suggestedFileName`'s beside it: an unpinned formatter
+        // spells the date in the system calendar, so a Mac set to a
+        // non-Gregorian one files notes under a year nothing else here uses.
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.calendar = Calendar(identifier: .gregorian)
         stamp.dateFormat = "yyyy-MM-dd"
         let base = "Note \(stamp.string(from: Date()))"
         var candidate = directory.appendingPathComponent("\(base).md")

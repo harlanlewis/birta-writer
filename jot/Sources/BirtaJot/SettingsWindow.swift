@@ -64,27 +64,37 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let hotkeyRecorder = HotkeyRecorderView(combo: Prefs.hotkey)
     private let hotkeyCaption = Caption("")
     private let scratchpadPath = PathLabel(Prefs.scratchpadURL)
-    private let documentPath = PathLabel(Prefs.documentURL)
-    private let documentSwitch = NSSwitch()
-    private let documentChoose = NSButton(title: "Choose…", target: nil, action: nil)
     private let networkSwitch = NSSwitch()
     private let agentField = NSTextField(string: Prefs.agentCommand)
+    private let agentPresetPopup = NSPopUpButton()
     private let dockSwitch = NSSwitch()
-    private let blankSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
-    private let iCloudSwitch = NSSwitch()
-    private let iCloudCaption = Caption("")
+    /// The two questions the file settings ask: what a summon opens, and where
+    /// notes live. Popups rather than switches because neither is a yes or a
+    /// no: one has two named answers and the other has three, and the third
+    /// (a folder you pick) used to be a path row that silently outranked the
+    /// switch above it.
+    private let opensPopup = NSPopUpButton()
+    private let homePopup = NSPopUpButton()
+    private let homeCaption = Caption("")
+    private let resetButton = NSButton(title: "Reset…", target: nil, action: nil)
+    private let welcomeButton = NSButton(title: "Show Welcome…", target: nil, action: nil)
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption(LoginItemState.off.caption)
     private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
 
     private let onHotkeyChange: () -> OSStatus
     private let onChange: () -> Void
+    /// Show the welcome window. Injected rather than built here: the window is
+    /// the app delegate's, so it survives this one being closed.
+    private let onShowWelcome: () -> Void
 
     init(onHotkeyChange: @escaping () -> OSStatus,
-         onChange: @escaping () -> Void) {
+         onChange: @escaping () -> Void,
+         onShowWelcome: @escaping () -> Void) {
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
+        self.onShowWelcome = onShowWelcome
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: 300),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -220,11 +230,29 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private func wireControls() {
         hotkeyRecorder.onCombo = { [weak self] combo in self?.hotkeyChosen(combo) }
 
-        documentSwitch.state = Prefs.documentURL == nil ? .off : .on
-        documentChoose.target = self
-        documentChoose.action = #selector(chooseDocument)
-        documentChoose.isEnabled = Prefs.documentURL != nil
-        documentPath.isDimmed = Prefs.documentURL == nil
+        for (popup, titles, action) in [
+            (opensPopup, NoteMode.allCases.map(\.title), #selector(chooseNoteMode)),
+            (homePopup, NoteHome.allCases.map(\.title), #selector(chooseNoteHome)),
+            (agentPresetPopup, AgentPreset.allCases.map(\.title) + [Self.customPresetTitle],
+             #selector(chooseAgentPreset)),
+        ] {
+            // Titles come from the types, so a case added to `NoteHome` or
+            // `AgentPreset` appears here without this file being edited. The
+            // menu's own order is the type's declaration order.
+            popup.removeAllItems()
+            popup.addItems(withTitles: titles)
+            popup.controlSize = .small
+            popup.target = self
+            popup.action = action
+        }
+        agentPresetPopup.widthAnchor.constraint(equalToConstant: 260).isActive = true
+
+        resetButton.target = self
+        resetButton.action = #selector(resetAllSettings)
+        resetButton.controlSize = .small
+        welcomeButton.target = self
+        welcomeButton.action = #selector(showWelcomeAgain)
+        welcomeButton.controlSize = .small
 
         agentField.placeholderString = "claude -p {prompt}"
         agentField.delegate = self
@@ -236,12 +264,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         loginSettingsButton.controlSize = .small
 
         for (control, on, action) in [
-            (documentSwitch, Prefs.documentURL != nil, #selector(toggleDocument)),
             (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
-            (iCloudSwitch, Prefs.storeInICloud, #selector(toggleICloud)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
-            (blankSwitch, Prefs.openToBlankNote, #selector(toggleOpenToBlank)),
             (loginSwitch, false, #selector(toggleLoginItem)),
         ] {
             // The size a settings row uses. A regular NSSwitch is drawn for a
@@ -255,35 +280,64 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             control.target = self
             control.action = action
         }
-        showLoginItem(LoginItem.state)
-        showICloud()
+        syncControlsFromPrefs()
     }
 
-    /// Put the iCloud row where the machine actually is.
+    /// Put every control back in step with what is stored.
     ///
-    /// Two facts, and the caption carries both because neither alone is what
-    /// the user wants to know: whether the switch is on, and WHERE the note
-    /// consequently is. A switch reading "on" over a file in ~/Documents is the
-    /// state this row exists to explain — iCloud Drive is off on this machine,
-    /// so the preference has nowhere to put the note and Jot fell back rather
-    /// than failing. The switch is disabled there, because a preference that
-    /// cannot take effect is not a choice.
-    private func showICloud() {
-        let available = Prefs.iCloudAvailable
-        let chosen = Prefs.hasExplicitScratchpadPath
-        // Two reasons the switch decides nothing, and each disables it: the
-        // service is off, or the user has already named a path themselves.
-        iCloudSwitch.isEnabled = available && !chosen
-        iCloudSwitch.state = Prefs.storeInICloud ? .on : .off
+    /// Extracted because `wireControls` runs exactly once, from the first
+    /// `buildPane`, so before this existed there was NO way to redraw a pane
+    /// from `Prefs`. That is fine while the only writer is the control itself
+    /// and fatal the moment something changes several settings at once, which
+    /// is exactly what Reset does: without this the pane would go on showing
+    /// the values it was built with while the app ran on the defaults.
+    private func syncControlsFromPrefs() {
+        networkSwitch.state = Prefs.networkEnabled ? .on : .off
+        autosaveSwitch.state = Prefs.autosave ? .on : .off
+        dockSwitch.state = Prefs.showInDock ? .on : .off
+        hotkeyRecorder.setCombo(Prefs.hotkey)
+        agentField.stringValue = Prefs.agentCommand
+        showAgentPreset()
+        showLoginItem(LoginItem.state)
+        showFiles()
+    }
+
+    /// Put the file rows where the machine and the settings actually are.
+    ///
+    /// The caption belongs to the home row and carries the two things the menu
+    /// itself cannot say: WHERE that choice put the file, and the one case
+    /// where the choice is overruled. Asking for iCloud Drive on a Mac with
+    /// iCloud Drive switched off lands in Documents, silently in behaviour and
+    /// not in the interface.
+    private func showFiles() {
+        let home = Prefs.noteHome
+        opensPopup.selectItem(withTitle: Prefs.noteMode.title)
+        homePopup.selectItem(withTitle: home.title)
         scratchpadPath.setURL(Prefs.scratchpadURL)
-        if chosen {
-            iCloudCaption.say("You chose the location below, so this has no effect.", bad: false)
-        } else if !available {
-            iCloudCaption.say("iCloud Drive is off in System Settings, so the note is kept on this Mac.", bad: false)
+        // A note that is remade each session has no one file to name, so the
+        // row that names it is dimmed rather than removed: it still says where
+        // the new ones will be made.
+        scratchpadPath.isDimmed = Prefs.noteMode == .newEachSession
+        if home != .chosen && Prefs.storeInICloud && !Prefs.iCloudAvailable {
+            homeCaption.say("iCloud Drive is off in System Settings, so notes are kept on this Mac.", bad: false)
         } else {
-            iCloudCaption.say("", bad: false)
+            homeCaption.say("", bad: false)
         }
     }
+
+    /// Show which preset the stored command came from, or Custom.
+    ///
+    /// Custom is the ABSENCE of a match rather than a case of its own, so a
+    /// command edited by a character stops claiming the preset it started
+    /// from. The popup is a shortcut into the field below it, never a second
+    /// place the setting lives.
+    private func showAgentPreset() {
+        let title = AgentPreset.matching(template: Prefs.agentCommand)?.title ?? Self.customPresetTitle
+        agentPresetPopup.selectItem(withTitle: title)
+    }
+
+    /// The row that means "whatever is in the field below".
+    private static let customPresetTitle = "Custom"
 
     private func buildPane(_ tab: Tab) -> NSView {
         if panes.isEmpty { wireControls() }
@@ -295,7 +349,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 Self.group([
                     Self.row("Open at login", control: Self.pairedControl(loginSettingsButton, loginSwitch),
                              caption: loginCaption),
-                    Self.row("Start with a blank note", control: blankSwitch),
                 ]),
                 Self.heading("Panel"),
                 Self.group([
@@ -320,19 +373,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .advanced:
             sections = [
                 Self.heading("Files"),
+                // Three rows answering three separate questions, in the order
+                // a person asks them: what opens, where it lives, and which
+                // file that came out as. Each row above decides the one below
+                // it, so the pane reads top to bottom and no row silently
+                // overrules another.
                 Self.group([
-                    // Above the path it decides, so the row reads top to
-                    // bottom: which home, then where that put the file.
-                    Self.row("Keep in iCloud Drive", control: iCloudSwitch, caption: iCloudCaption),
-                    Self.row("Scratchpad", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
-                    Self.row("Edit a document instead", control: documentSwitch,
-                             caption: Caption("Jot edits that file rather than the scratchpad.")),
-                    Self.row("Document", control: Self.pathControl(documentPath, documentChoose)),
+                    Self.row("Opens", control: opensPopup),
+                    Self.row("Notes live in", control: homePopup, caption: homeCaption),
+                    Self.row("Note", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
                 ]),
                 Self.heading("Agent"),
                 Self.group([
+                    Self.row("Agent", control: agentPresetPopup),
                     Self.row("Command", control: agentField,
                              caption: Caption("What /ai runs. {prompt} is replaced by the request.")),
+                ]),
+                Self.heading("Reset"),
+                Self.group([
+                    Self.row("All settings", control: resetButton,
+                             caption: Caption("Back to defaults. Your notes are left where they are.")),
+                    Self.row("Welcome window", control: welcomeButton,
+                             caption: Caption("The four questions Jot asks the first time it runs.")),
                 ]),
             ]
         }
@@ -340,7 +402,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     /// One pane: sections down the page, padded, sized to its content.
-    private static func pane(_ sections: [NSView]) -> NSView {
+    static func pane(_ sections: [NSView]) -> NSView {
         let stack = NSStackView(views: sections)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -390,7 +452,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             : NSColor(white: 0, alpha: 0.035)
     }
 
-    private static func heading(_ title: String) -> NSTextField {
+    static func heading(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
         return label
@@ -398,7 +460,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// One rounded section. Rows are separated by a hairline, inset from the
     /// leading edge the way a grouped list insets its separators.
-    private static func group(_ rows: [NSView]) -> NSView {
+    static func group(_ rows: [NSView]) -> NSView {
         var arranged: [NSView] = []
         for (index, row) in rows.enumerated() {
             if index > 0 { arranged.append(separator()) }
@@ -461,7 +523,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// but may fill later (the login row goes from silent to a warning) has to
     /// collapse to nothing meanwhile, and under plain constraints a hidden
     /// NSTextField keeps its line height and leaves a blank gap.
-    private static func row(_ title: String, control: NSView, caption: Caption? = nil) -> NSView {
+    static func row(_ title: String, control: NSView, caption: Caption? = nil) -> NSView {
         let label = NSTextField(labelWithString: title)
         let line = NSView()
         for view in [label, control] {
@@ -513,7 +575,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     /// A path and the button that changes it, as one trailing control.
-    private static func pathControl(_ path: PathLabel, _ button: NSButton) -> NSView {
+    static func pathControl(_ path: PathLabel, _ button: NSButton) -> NSView {
         let stack = NSStackView(views: [path, button])
         stack.orientation = .horizontal
         stack.spacing = 8
@@ -521,7 +583,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         return stack
     }
 
-    private static func pathControl(_ path: PathLabel, _ target: AnyObject, _ action: Selector) -> NSView {
+    static func pathControl(_ path: PathLabel, _ target: AnyObject, _ action: Selector) -> NSView {
         pathControl(path, NSButton(title: "Choose…", target: target, action: action))
     }
 
@@ -553,6 +615,82 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     // MARK: files
 
+    /// The three popups and the two buttons Advanced grew.
+    ///
+    /// Each writes ONE setting and then re-reads the pane, because these rows
+    /// decide each other: the mode dims the file row, and the home changes the
+    /// path that row shows.
+    @objc private func chooseNoteMode() {
+        Prefs.noteMode = NoteMode.allCases.first { $0.title == opensPopup.titleOfSelectedItem }
+            ?? Prefs.noteMode
+        showFiles()
+    }
+
+    /// Where notes live. Choosing a folder opens the panel rather than storing
+    /// anything, and a cancelled panel puts the popup back where it was: a
+    /// menu left showing an answer the settings do not hold is worse than the
+    /// gesture not having happened.
+    @objc private func chooseNoteHome() {
+        guard let home = NoteHome.allCases.first(where: { $0.title == homePopup.titleOfSelectedItem }) else { return }
+        switch home {
+        case .chosen:
+            chooseScratchpad()
+        case .iCloud, .documents:
+            // Clearing the chosen path is what makes the two homes reachable
+            // again; leaving it would keep overruling this menu invisibly.
+            Prefs.scratchpadURL = nil
+            Prefs.storeInICloud = home == .iCloud
+            showFiles()
+            onChange()
+        }
+    }
+
+    @objc private func chooseAgentPreset() {
+        guard let preset = AgentPreset.allCases.first(where: { $0.title == agentPresetPopup.titleOfSelectedItem })
+        else {
+            // Custom: the field below is the setting, and it already holds
+            // whatever it holds. Nothing to write.
+            return showAgentPreset()
+        }
+        Prefs.agentCommand = preset.template
+        agentField.stringValue = preset.template
+    }
+
+    /// Everything back to defaults, in the order that leaves nothing stale.
+    ///
+    /// A sheet first, because this is not undoable and the window has no
+    /// Cancel of its own. Then `Prefs.reset`, then re-apply each thing that
+    /// was read at launch and cached somewhere: the Dock policy, the hotkey
+    /// registration, and finally the page, which is last because
+    /// `onChange` is the only path that flushes the buffer to the old file
+    /// before rebinding to the new one. Reversing those two loses whatever is
+    /// in the panel.
+    @objc private func resetAllSettings() {
+        let alert = NSAlert()
+        alert.messageText = "Reset all settings?"
+        alert.informativeText = "Every setting goes back to its default, including the hotkey. "
+            + "Your notes are left exactly where they are, and Jot reopens the default one."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            Prefs.reset()
+            AppDelegate.applyActivationPolicy()
+            _ = self.onHotkeyChange()
+            self.syncControlsFromPrefs()
+            self.onChange()
+        }
+    }
+
+    /// Ask the four first-launch questions again. Changes no setting itself;
+    /// the window it opens is the thing that writes.
+    @objc private func showWelcomeAgain() {
+        Prefs.hasSeenWelcome = false
+        onShowWelcome()
+    }
+
     @objc private func chooseScratchpad() {
         let panel = NSSavePanel()
         panel.title = "Scratchpad location"
@@ -564,47 +702,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             Prefs.scratchpadURL = url
             // The iCloud row above stops deciding anything the moment a path
             // is chosen here, and has to say so in the same gesture.
-            self.showICloud()
+            self.showFiles()
             self.onChange()
         }
     }
 
-
-    @objc private func chooseDocument() {
-        let panel = NSOpenPanel()
-        panel.title = "Document to open"
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText, .plainText]
-        panel.beginSheetModal(for: window!) { [weak self] resp in
-            guard resp == .OK, let url = panel.url, let self else { return }
-            Prefs.documentURL = url
-            self.documentSwitch.state = .on
-            self.documentPath.setURL(url)
-            self.setDocumentRowEnabled(true)
-            self.onChange()
-        }
-    }
-
-    @objc private func toggleDocument() {
-        if documentSwitch.state == .off {
-            Prefs.documentURL = nil
-            documentPath.setURL(nil)
-            setDocumentRowEnabled(false)
-            onChange()
-        } else if Prefs.documentURL == nil {
-            chooseDocument()
-        } else {
-            setDocumentRowEnabled(true)
-        }
-    }
-
-    private func setDocumentRowEnabled(_ enabled: Bool) {
-        documentChoose.isEnabled = enabled
-        documentPath.isDimmed = !enabled
-    }
-
-    // MARK: login item
 
     /// Put the row where the system says it is. Called on every toggle and
     /// whenever the window comes forward, because System Settings changes the
@@ -640,7 +742,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // Same reason: iCloud Drive is switched on in System Settings, and Jot
         // is never told. A row that said "iCloud Drive is off" until the next
         // launch would be lying about a thing the user has just changed.
-        showICloud()
+        showFiles()
     }
 
     /// Committed on every edit rather than only on Return: the window has no
@@ -649,6 +751,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     func controlTextDidChange(_ notification: Notification) {
         guard (notification.object as? NSTextField) === agentField else { return }
         Prefs.agentCommand = agentField.stringValue
+        // The popup follows the field, never the other way round: a command
+        // edited by a character stops being the preset it started from, and a
+        // menu still naming that preset would describe a field it no longer
+        // matches.
+        showAgentPreset()
+    }
+
+    @objc private func toggleAutosave() {
+        Prefs.autosave = autosaveSwitch.state == .on
     }
 
     /// The Dock icon, and Cmd+Tab with it. Applied HERE and now rather than
@@ -658,30 +769,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     @objc private func toggleShowInDock() {
         Prefs.showInDock = dockSwitch.state == .on
         AppDelegate.applyActivationPolicy()
-    }
-
-    /// The note's home. `onChange` rather than the light path: this moves which
-    /// FILE the panel is editing, so the buffer has to be flushed to the old
-    /// one before the page comes back against the new.
-    ///
-    /// Nothing is copied between the two homes, and that is deliberate rather
-    /// than unfinished. Moving a file into or out of iCloud on a switch flip is
-    /// a file operation with a failure mode (a half-uploaded note, a conflict
-    /// with one already there) that a switch gives no room to report. The path
-    /// under the row updates, so what happened is visible, and the note that
-    /// was there is still where it was.
-    @objc private func toggleICloud() {
-        Prefs.storeInICloud = iCloudSwitch.state == .on
-        showICloud()
-        onChange()
-    }
-
-    @objc private func toggleOpenToBlank() {
-        Prefs.openToBlankNote = blankSwitch.state == .on
-    }
-
-    @objc private func toggleAutosave() {
-        Prefs.autosave = autosaveSwitch.state == .on
     }
 
     @objc private func toggleNetwork() {
