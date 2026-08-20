@@ -56,6 +56,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- `/date` opens the macOS date picker at the caret in Birta Writer Jot, instead of at the bottom left of the window whatever line you were on. The page reports the caret in its own coordinates, which run from the top down, and so does the web view underneath it, but the shell mirrored the y anyway: a caret near the top of the panel was placed near the bottom, and the popover opened wherever that landed.
+
 - Birta Writer Jot's panel really does sit at the ordinary window level now, so another application's window can cover it. The setting that made it float was removed a release ago and the level was not: an `NSPanel` starts out floating, and the line that had been setting it was taken out rather than replaced, which left the panel pinned above everything with nothing in Settings to say so or turn it off. The panel also stays put when you click into another app, which is the same default arriving from the same direction.
 
 - The file name in Birta Writer Jot's titlebar ends in an ellipsis when it does not fit, instead of stopping mid-letter. Every previous attempt at this set the line-break mode on the text field, and a field's own setting does not govern a title built as a styled string, so none of them ever reached the drawing: the name was laid out to be cut at whatever pixel the titlebar ran out at. The name is now shortened before it is drawn, and `Edited` is never what gets dropped to make room, because the state of the file is the half you are looking for.

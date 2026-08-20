@@ -1176,11 +1176,13 @@ final class Coordinator {
 
     /// Show the system date picker at the caret, and report what it returns.
     ///
-    /// The page sends the caret rectangle in viewport CSS pixels, whose origin
-    /// is the TOP left; AppKit's is the bottom left, so the y flip is the whole
-    /// of the conversion. The rectangle is given a minimum height so a caret on
-    /// an empty line, which can report a zero-height box, still anchors the
-    /// popover somewhere rather than at the view's edge.
+    /// The page sends the caret rectangle in viewport CSS pixels, and turning
+    /// those into the view's own coordinates is `BirtaJotCore.CaretAnchor`'s,
+    /// which is testable without a window. `isFlipped` is read off the view
+    /// rather than assumed: a `WKWebView` is flipped, so the page's numbers
+    /// pass straight through, and a conversion written for AppKit's usual
+    /// bottom-left origin would mirror a caret near the top of the panel to
+    /// the bottom of it.
     ///
     /// The anchor is relative to the WEB VIEW, never to the window, and that is
     /// worth stating rather than leaving to be inferred: the titlebar here is
@@ -1191,8 +1193,10 @@ final class Coordinator {
     /// included, needs no change here.
     private func showDatePicker(id: String, left: Double, top: Double, bottom: Double) {
         let view = host.webView
-        let height = max(bottom - top, 1)
-        let anchor = NSRect(x: left, y: view.bounds.height - bottom, width: 1, height: height)
+        let anchor = CaretAnchor.rect(left: left, top: top, bottom: bottom,
+                                      viewHeight: view.bounds.height,
+                                      isFlipped: view.isFlipped)
+        traceDatePickerAnchor(pageTop: top, anchor: anchor, isFlipped: view.isFlipped)
         let controller = DatePickerPopover()
         controller.show(relativeTo: anchor, of: view, startingAt: CalendarDay(Date())) { [weak self] day in
             // Always answered, a dismissal included: the page holds a pending
@@ -1460,6 +1464,22 @@ final class Coordinator {
             frame.origin.x, frame.width, frame.height,
             titlebarDrag.isHidden ? "yes" : "no",
             title.maxX, titlebarControlsWidth, panel.frame.width))
+    }
+
+    /// Where the caret the page reported landed in the view, for
+    /// `jot/scripts/measure.sh`.
+    ///
+    /// The one page-to-view coordinate conversion in the app, and it lives in
+    /// a target no unit test reaches. `CaretAnchor` is tested on its own, and
+    /// what that cannot see is the value of `isFlipped` on the real view: a
+    /// conversion written for the wrong convention still produces a rectangle,
+    /// the popover still opens, and it opens at the other end of the window,
+    /// which reads as placement nobody tuned rather than as an inversion.
+    /// Both numbers, because the claim is that they AGREE.
+    private func traceDatePickerAnchor(pageTop: Double, anchor: NSRect, isFlipped: Bool) {
+        guard measure.enabled else { return }
+        measure.trace(String(format: "datepicker pageTop=%.1f anchorY=%.1f flipped=%@",
+                             pageTop, anchor.origin.y, isFlipped ? "yes" : "no"))
     }
 
     /// The panel's window level, for `jot/scripts/measure.sh`.

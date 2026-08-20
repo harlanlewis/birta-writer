@@ -24,6 +24,8 @@
 
 ### Fixed
 
+- The `/date` calendar is drawn as a floating card, on its own ground, instead of as a bare grid of numbers over the text underneath it. It named the shared card style without that style existing, so it arrived with no background, no border and no shadow, and the document showed straight through the days.
+
 - Copying a reference saves the file first. The reference names lines in a file, and with unsaved edits those line numbers were computed against bytes that were not on disk, so an agent following the reference read something else. If the save fails, nothing is copied and it says so, rather than handing over a pointer the file cannot honour.
 
 - Copy Reference for AI Agent is offered on any selection, not only a run of text. Selecting whole blocks or a range of table cells hid the button, so getting a pointer to a section meant selecting its words instead of the blocks you had already picked. A reference taken from a table selection now names every row the selection covers and quotes every cell in it; it named one row and quoted one cell before, so a column dragged down four rows sent an agent to the wrong place.

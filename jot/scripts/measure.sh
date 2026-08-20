@@ -194,6 +194,49 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# The system date picker opens AT THE CARET.
+#
+# `/date` hands the page's caret rectangle to the shell, and the shell turns
+# viewport coordinates into the web view's own. That conversion is the only one
+# in the app and sits in a target no unit test reaches; `CaretAnchorTests`
+# covers the arithmetic, and what it cannot see is `isFlipped` on the real
+# view. A `WKWebView` is flipped, so the page's y passes straight through, and
+# a conversion written for AppKit's usual bottom-left origin mirrors a caret
+# near the top of the panel to the bottom of the window. The popover opens
+# either way, which is why this is a number rather than a look.
+show_panel
+# Two batches, because the slash menu renders asynchronously: Return sent in
+# the same burst as the query arrives before there is a row to choose.
+printf '{"type":"__jotKeys","keys":["End","Enter","/","d","a","t","e"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+printf '{"type":"__jotKeys","keys":["Enter"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+DATEPICK="$(grep "^jot-trace datepicker " "$LOG" | tail -1 || true)"
+DP_PAGE_TOP="$(echo "$DATEPICK" | sed -n 's/.*pageTop=\([0-9.-]*\).*/\1/p')"
+DP_ANCHOR_Y="$(echo "$DATEPICK" | sed -n 's/.*anchorY=\([0-9.-]*\).*/\1/p')"
+DP_FLIPPED="$(echo "$DATEPICK" | sed -n 's/.*flipped=\([a-z]*\).*/\1/p')"
+if [ -z "$DATEPICK" ]; then
+    echo "date picker          FAILED: /date asked for no picker at all" >&2
+    echo "  (the slash menu may not have opened; nothing was traced)" >&2; exit 1
+fi
+# The page's own y and the anchor's must be the SAME number in a flipped view.
+# Asserted against `pageTop`, which the page measured, rather than against a
+# constant: a caret anywhere in the panel satisfies this and only an inverted
+# conversion fails it.
+if [ "$DP_FLIPPED" = "yes" ] && awk "BEGIN{exit !(($DP_ANCHOR_Y - $DP_PAGE_TOP) < 0.5 && ($DP_PAGE_TOP - $DP_ANCHOR_Y) < 0.5)}"; then
+    echo "date picker          ok: anchored at the caret (page y=$DP_PAGE_TOP, anchor y=$DP_ANCHOR_Y)"
+else
+    echo "date picker          FAILED: the picker is not anchored where the caret is" >&2
+    echo "  $DATEPICK" >&2; exit 1
+fi
+# Dismiss it, and undo the "/date" the slash menu consumed, so everything below
+# reads the buffer it expects.
+printf '{"type":"__jotKeys","keys":["Escape"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.8
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
 # The panel sits at the ordinary window level, where anything else can cover
 # it. Read from the live window rather than from the source: `NSPanel` is
 # `.floating` by default and `isFloatingPanel` sets that level, so a panel's
