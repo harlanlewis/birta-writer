@@ -35,7 +35,12 @@ final class JotPanel: NSPanel {
         // The system's own show and hide, not a chosen one.
         animationBehavior = .default
         minSize = NSSize(width: 360, height: 240)
-        setFrameAutosaveName("JotPanel")
+        // Remembered for a person, never for a measurement. The autosave goes
+        // to the app's standard defaults rather than through `Prefs`, so it is
+        // the one piece of state `BIRTA_JOT_DEFAULTS_SUITE` does not already
+        // cover, and a checking run that resizes the panel would otherwise
+        // hand the user back a window the width of whatever it finished on.
+        if Prefs.isUserStore { setFrameAutosaveName("JotPanel") }
     }
 
     /// Put the panel where the "Hide when Jot is not in front" setting says.
@@ -64,7 +69,11 @@ final class JotPanel: NSPanel {
 
     /// First show with no remembered frame: centre on the screen under the mouse.
     func placeIfUnplaced() {
-        if setFrameUsingName("JotPanel") { return }
+        // Guarded for the reason the autosave above is, and separately:
+        // `setFrameUsingName` reads that defaults key whether or not this
+        // window ever named itself, so without this a checking run would still
+        // open at the user's own size and measure a width nobody chose.
+        if Prefs.isUserStore, setFrameUsingName("JotPanel") { return }
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }

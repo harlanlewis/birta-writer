@@ -17,6 +17,16 @@ enum Prefs {
         return .standard
     }()
 
+    /// Whether the store above is the person's own.
+    ///
+    /// Everything Jot remembers goes through `d` and is therefore covered by
+    /// the throwaway domain, with ONE exception that is not: AppKit's window
+    /// frame autosave writes to the app's standard defaults whatever this file
+    /// is pointed at. So a checking run that resizes the panel leaves the
+    /// person's own window at whatever width the run finished on. `JotPanel`
+    /// reads this to stop remembering at all when the defaults are not theirs.
+    static var isUserStore: Bool { d === UserDefaults.standard }
+
     enum Key {
         static let hotkey = "hotkey"
         static let scratchpadPath = "scratchpadPath"

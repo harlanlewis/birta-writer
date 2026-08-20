@@ -289,6 +289,25 @@ final class Coordinator {
                 measure.trace("titlepopover \(titleBar.titleView.openPopoverForMeasurement())")
                 return
             }
+            // The window's WIDTH, which is the axis the title's ceiling lives
+            // on and the one no other probe here varies. A script cannot drag
+            // a window edge (that needs a pointer), and a fresh launch at a
+            // width would measure placement rather than the resize path, so
+            // the frame is set here and the two titlebar traces are taken
+            // again against it.
+            if obj["type"] as? String == "__jotResize", let width = obj["width"] as? NSNumber {
+                measure.mark("debug-resize")
+                var frame = panel.frame
+                frame.size.width = CGFloat(width.doubleValue)
+                panel.setFrame(frame, display: true)
+                // The refit is `contentView.onLayout`'s, so the traces below
+                // have to be taken after that pass has actually run rather
+                // than after the frame was merely asked to change.
+                contentView.layoutSubtreeIfNeeded()
+                traceTitleBar()
+                traceTitlebarDrag()
+                return
+            }
             if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
                 measure.mark("debug-rename")
                 titleBar.titleView.commitNameForMeasurement(name)
@@ -462,8 +481,10 @@ final class Coordinator {
         contentView.syncHoverFromPointer()
         measure.mark("visible")
         traceTitleBar()
-        // The page's controls are only measurable once it has laid out, and
-        // showing the panel is the first moment that is true of a cold start.
+        // Asked again on every summon, because the page can have remounted
+        // since (a content-process death reloads it) and the answer is the
+        // page's. The first answer comes earlier, on `.ready`, so nothing that
+        // depends on it is drawn against a width of zero.
         refreshTitlebarControlsWidth()
         traceTitlebarDrag()
         if measure.enabled, state == .warm {
@@ -544,6 +565,14 @@ final class Coordinator {
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshTitle()
+            // Ask for the width the title's ceiling is computed against as
+            // soon as there is a page to ask, rather than waiting for the
+            // first summon. Until it answers, the width reads 0, which the
+            // arithmetic cannot tell from a page with no controls at all, and
+            // a long name would take the whole band for the round trip and
+            // then pull back. Prewarm mounts the page before the panel is ever
+            // shown, so on that path the answer is in hand first.
+            refreshTitlebarControlsWidth()
             host.setChromeResting(!contentView.isHovering)
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
@@ -1322,6 +1351,21 @@ final class Coordinator {
     func layoutTitlebarDrag() {
         let bandHeight = panel.frame.height - panel.contentLayoutRect.height
         let titleView = titleBar.titleView
+        // The title's ceiling and the strip's span are two answers to one
+        // question, so they are taken from one place and in this order: the
+        // title takes what it may, then the strip takes what is left of the
+        // same band. Computing the ceiling anywhere else would put the same
+        // geometry in two call sites, and the one that went stale would be
+        // invisible, because a title is legible whatever width it was cut to.
+        //
+        // Before the guard below, not after. A window with no band still has a
+        // width, and a ceiling left unset because the strip could not be laid
+        // out is a ceiling from the last size the window happened to be.
+        titleView.setTextCeiling(TitlebarBand.titleTextCeiling(
+            windowWidth: contentView.bounds.width,
+            titleOriginX: titleView.convert(titleView.bounds, to: contentView).minX,
+            titleChromeWidth: TitleBarView.chromeWidth,
+            trailingControlsWidth: titlebarControlsWidth))
         let leading = titleView.convert(titleView.bounds, to: contentView).maxX
         guard bandHeight > 0,
               let span = TitlebarBand.draggableSpan(

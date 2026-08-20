@@ -567,6 +567,202 @@ else
     echo "$DRAG" >&2; exit 1
 fi
 
+# The title's ceiling follows the WINDOW, which is the axis every check above
+# is blind to: each of them measures one window at one width, and the ceiling
+# on the name was a constant, so it was wrong in both directions at once
+# without moving a single number any of them read.
+#
+# Too small in a wide window: the name was cut at a fixed width with the rest
+# of the band empty, and a cut title reads as a shorter NAME. Too large in a
+# narrow one: the title ran past where the page's controls start and sat under
+# the T, the magnifier and the gear, and the strip that makes the band
+# draggable vanished with it.
+#
+# The sweep is DERIVED, not listed. The widths come from what this run
+# measures (where AppKit put the accessory, what the glyphs need, what the
+# page's controls take), so they follow the name and the toolbar rather than
+# being tuned to whatever the product's default note is called this month. A
+# list of widths would have to be re-tuned by hand every time either moves,
+# and a width that has quietly stopped reproducing looks exactly like a width
+# that passes.
+show_panel
+# The page's controls were measured BEFORE anything was drawn against them.
+#
+# The ceiling is computed from that width, and a width of zero is
+# indistinguishable to the arithmetic from a page carrying no controls at all,
+# so a title sized while the answer was still outstanding takes the whole band
+# and pulls back a round trip later. The panel is prewarmed with the page
+# mounted and hidden, which is what makes the answer available before the first
+# summon; asking only when the panel is shown puts a zero in the first frame of
+# every launch.
+#
+# The FIRST trace of the run, deliberately, not the last. Every trace after the
+# page has answered carries a healthy width whether or not the early ones did,
+# so the last one cannot see this and the tail of this file is full of them.
+DRAG_FIRST="$(grep "^jot-trace titlebardrag " "$LOG" | head -1 || true)"
+DRAG_FIRST_CONTROLS="$(echo "$DRAG_FIRST" | sed -n 's/.*controlsW=\([0-9.-]*\).*/\1/p')"
+if [ -n "$DRAG_FIRST_CONTROLS" ] && awk "BEGIN{exit !($DRAG_FIRST_CONTROLS > 0)}"; then
+    echo "titlebar width first ok: the page's controls were measured before the band was first laid out ($DRAG_FIRST_CONTROLS)"
+else
+    echo "titlebar width first FAILED: the band was laid out before the page reported its controls" >&2
+    echo "  first trace: $DRAG_FIRST" >&2; exit 1
+fi
+
+# A name long enough to press the ceiling. It keeps the space that
+# `Scratch pad.md` is named for: a wrap point is what the ink check exists to
+# see, and a long name without one would pass that bug while testing this one.
+CEIL_NAME="A rather long note name for measuring the title ceiling.md"
+CEIL_WIDE_BEFORE="$(grep "^jot-trace titlebardrag " "$LOG" | tail -1 | sed -n 's/.*windowW=\([0-9.-]*\).*/\1/p')"
+printf '{"type":"__jotRename","name":"%s"}' "$CEIL_NAME" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
+# One resize, one pair of traces. Everything is read back from the app rather
+# than assumed: the width asked for is not the width granted (the panel has a
+# minimum, and the system constrains a frame to the screen), so every
+# assertion below uses the `windowW` the app reports.
+ceil_at() { # ceil_at <width>; sets CEIL_* from the traces it provokes
+    printf '{"type":"__jotResize","width":%s}' "$1" > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1.2
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    local tb drag
+    tb="$(grep "^jot-trace titlebar " "$LOG" | tail -1 || true)"
+    drag="$(grep "^jot-trace titlebardrag " "$LOG" | tail -1 || true)"
+    CEIL_VIEW_W="$(echo "$tb" | sed -n 's/.*titlebar x=[0-9.-]* y=[0-9.-]* w=\([0-9.-]*\).*/\1/p')"
+    CEIL_X="$(echo "$tb" | sed -n 's/.*titlebar x=\([0-9.-]*\).*/\1/p')"
+    CEIL_NEED="$(echo "$tb" | sed -n 's/.*needW=\([0-9.-]*\).*/\1/p')"
+    CEIL_GOT="$(echo "$tb" | sed -n 's/.*gotW=\([0-9.-]*\).*/\1/p')"
+    CEIL_INK="$(echo "$tb" | sed -n 's/.*inkW=\([0-9.-]*\).*/\1/p')"
+    CEIL_MAXX="$(echo "$drag" | sed -n 's/.*titleMaxX=\([0-9.-]*\).*/\1/p')"
+    CEIL_CONTROLS="$(echo "$drag" | sed -n 's/.*controlsW=\([0-9.-]*\).*/\1/p')"
+    CEIL_WINDOW="$(echo "$drag" | sed -n 's/.*windowW=\([0-9.-]*\).*/\1/p')"
+    CEIL_DRAG_W="$(echo "$drag" | sed -n 's/.* w=\([0-9.-]*\).*/\1/p')"
+    CEIL_DRAG_HIDDEN="$(echo "$drag" | sed -n 's/.*hidden=\([a-z]*\).*/\1/p')"
+    if [ -z "$CEIL_NEED" ] || [ -z "$CEIL_WINDOW" ]; then
+        echo "title ceiling        FAILED: no titlebar/drag trace after resizing to $1" >&2
+        echo "  $tb" >&2; echo "  $drag" >&2; exit 1
+    fi
+}
+
+# The boundary, computed from this run's own numbers: the window width at which
+# the whole name exactly fits. `CEIL_CHROME` is everything in the accessory
+# that is not the text, taken as the view's width minus its text's rather than
+# written down here, so the leading gap and the chevron's reserved room stay
+# the app's business. The 8 mirrors `TitlebarBand.draggableSpan`'s
+# `minimumWidth`, the narrowest strip the app will show at all; the tie between
+# that floor and this ceiling is asserted in Swift, by `TitlebarBandTests`,
+# against `draggableSpan` itself.
+ceil_at 2400
+CEIL_CHROME="$(awk "BEGIN{printf \"%.1f\", $CEIL_VIEW_W - $CEIL_GOT}")"
+# The label is sized from the glyph width rounded UP (`drawnTextWidth`), so the
+# boundary is computed from the same rounded number the app draws with. Rounding
+# the requirement and the boundary differently puts the line a point away from
+# where the app actually puts it, and a check that straddles it by a point
+# reports the wrong regime rather than a failure.
+CEIL_NEED_UP="$(awk "BEGIN{n = $CEIL_NEED; printf \"%d\", (n == int(n)) ? n : int(n) + 1}")"
+CEIL_BOUNDARY="$(awk "BEGIN{s = $CEIL_X + $CEIL_CHROME + $CEIL_NEED_UP + $CEIL_CONTROLS + 8; printf \"%d\", (s == int(s)) ? s : int(s) + 1}")"
+if [ -z "$CEIL_CONTROLS" ] || awk "BEGIN{exit !($CEIL_CONTROLS <= 0)}"; then
+    echo "title ceiling        FAILED: the page never reported its controls' width, so nothing bounds the title" >&2
+    exit 1
+fi
+
+# Four widths spanning the boundary: roomy, exactly at it, one point inside it,
+# and far below. The last two must truncate and the first two must not, which
+# is the discrimination: a ceiling that ignored the window would sit on one
+# side of that line at every width, and a ceiling that always truncated would
+# sit on the other.
+CEIL_FULL=0
+CEIL_CUT=0
+CEIL_SEEN=0
+# The widths the app GRANTED, which is not the list asked for: the panel has a
+# minimum width and the system constrains a frame to the screen, so a request
+# below either comes back clamped. Recorded so a sweep whose widths collapsed
+# onto each other says so, instead of failing the tally below with no clue why.
+CEIL_WIDTHS=""
+for CEIL_W in "$(awk "BEGIN{print $CEIL_BOUNDARY + 400}")" \
+              "$CEIL_BOUNDARY" \
+              "$(awk "BEGIN{print $CEIL_BOUNDARY - 1}")" \
+              "$(awk "BEGIN{print $CEIL_BOUNDARY - 150}")"; do
+    ceil_at "$CEIL_W"
+    CEIL_SEEN=$((CEIL_SEEN + 1))
+    CEIL_WIDTHS="$CEIL_WIDTHS $CEIL_WINDOW(got=$CEIL_GOT)"
+    # 1. The title never reaches the page's controls, and leaves a strip of
+    #    band between the two. Three sources, on purpose: `titleMaxX` is a view
+    #    frame the shell code sets, `controlsW` is measured in the page by
+    #    JavaScript, and `windowW` is the window's. A comparison drawn from one
+    #    of them would agree with itself whatever was wrong.
+    if ! awk "BEGIN{exit !($CEIL_MAXX + 8 <= $CEIL_WINDOW - $CEIL_CONTROLS + 0.5)}"; then
+        echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the title reaches into the page's controls" >&2
+        echo "  titleMaxX=$CEIL_MAXX windowW=$CEIL_WINDOW controlsW=$CEIL_CONTROLS" >&2
+        CEIL_CONTROLS_AT="$(awk "BEGIN{printf \"%.1f\", $CEIL_WINDOW - $CEIL_CONTROLS}")"
+        CEIL_OVERLAP="$(awk "BEGIN{printf \"%.1f\", $CEIL_MAXX - $CEIL_CONTROLS_AT}")"
+        echo "  the page's controls start at $CEIL_CONTROLS_AT, so the title overlaps them by ${CEIL_OVERLAP}pt" >&2
+        echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK dragW=$CEIL_DRAG_W hidden=$CEIL_DRAG_HIDDEN" >&2
+        exit 1
+    fi
+    # 2. ...so the strip is still there to grab. A title that ate the band
+    #    leaves this hidden, which is the same defect seen from the other end.
+    if [ "$CEIL_DRAG_HIDDEN" != "no" ] || ! awk "BEGIN{exit !($CEIL_DRAG_W >= 8)}"; then
+        echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt no draggable band is left (hidden=$CEIL_DRAG_HIDDEN w=$CEIL_DRAG_W)" >&2
+        exit 1
+    fi
+    # 3. What the name did with the room it got. Either it all fits, and then
+    #    every glyph must be drawn, or it does not, and then the label must
+    #    have filled the box it was given rather than stopped short inside it.
+    #    Ink short of its own box is the wrap failure this file was written
+    #    around: the name laid out on a second line nobody can see, so it ends
+    #    without an ellipsis and reads as a shorter name.
+    #
+    #    What it does NOT cover, stated because the shape of the number
+    #    invites the opposite reading: `inkW` renders the LABEL into its own
+    #    bitmap, so a container clipping the label from outside moves nothing
+    #    here. That case is held off by the `room` clamp in `TitleBarView`'s
+    #    `layout()`, which is code rather than a measurement, and the only
+    #    number in this trace that could see it (`visTextW`) reports the
+    #    accessory's width rather than the label's.
+    if awk "BEGIN{exit !($CEIL_GOT >= $CEIL_NEED_UP - 0.1)}"; then
+        CEIL_FULL=$((CEIL_FULL + 1))
+        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_NEED - 2)}"; then
+            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name fits but is not drawn in full" >&2
+            echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
+        fi
+    else
+        CEIL_CUT=$((CEIL_CUT + 1))
+        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_GOT - 3)}"; then
+            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name was cut short of its own box" >&2
+            echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
+        fi
+    fi
+done
+
+# The sweep has to have reached BOTH regimes, or it measured one and reported
+# on two. A ceiling stuck at a constant passes every assertion above at the
+# widths on one side of it; what it cannot do is fit the whole name at 400pt
+# more than it needs AND truncate 150pt below the line. Asserted here rather
+# than assumed, because a name that had grown long enough to truncate
+# everywhere, or short enough to fit everywhere, would leave every check above
+# green having tested nothing.
+if [ "$CEIL_SEEN" = 4 ] && [ "$CEIL_FULL" -ge 2 ] && [ "$CEIL_CUT" -ge 2 ]; then
+    echo "title ceiling        ok: the name follows the window ($CEIL_FULL widths drew it whole, $CEIL_CUT truncated), clear of the page's controls at every width"
+else
+    echo "title ceiling        FAILED: the sweep did not reach both regimes, so it discriminates nothing" >&2
+    echo "  widths measured=$CEIL_SEEN drawn whole=$CEIL_FULL truncated=$CEIL_CUT boundary=${CEIL_BOUNDARY}pt" >&2
+    echo "  granted widths:$CEIL_WIDTHS" >&2
+    echo "  name=\"$CEIL_NAME\" needs=$CEIL_NEED controls=$CEIL_CONTROLS" >&2
+    exit 1
+fi
+
+# Put the window and the file back, so everything below reads the panel and the
+# scratchpad it expects.
+ceil_at "${CEIL_WIDE_BEFORE:-640}"
+printf '{"type":"__jotRename","name":"Scratch pad.md"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ ! -f "$SCRATCH_DIR/Scratch pad.md" ]; then
+    echo "title ceiling        FAILED: could not rename back, so the checks below would read the wrong file" >&2
+    ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+
 # The document popover, and the rename it exists for.
 #
 # A click on the title cannot be synthesized from a script: the title is native

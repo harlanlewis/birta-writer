@@ -144,7 +144,7 @@ jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuB
 jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
 jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory; why the label is sized from what its cell needs and centred on `bounds`, never on what it reports or was built at
 jot/Sources/BirtaJot/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
-jot/Sources/BirtaJotCore/TitlebarBand.swift   Where that strip starts and stops, and what a double click on a titlebar is the user's setting to decide
+jot/Sources/BirtaJotCore/TitlebarBand.swift   Where that strip starts and stops, how wide the title may be drawn so a strip is still left, and what a double click on a titlebar is the user's setting to decide
 jot/Sources/BirtaJot/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
 jot/Sources/BirtaJotCore/ActiveBinding.swift  WHICH of Jot's three file settings is in force, so a rename writes back to the one it was read from
 jot/Sources/BirtaJotCore/DocumentName.swift   What a typed filename means: the extension kept, `/` and `:` refused, an unchanged field not a rename
