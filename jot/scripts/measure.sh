@@ -1080,6 +1080,58 @@ for h in $WK_OURS; do
     r=$(ps -o rss= -p "$h" 2>/dev/null | tr -d ' ' || true)
     RSS_HELPERS=$((RSS_HELPERS + ${r:-0}))
 done
+# The onboarding defaults reach a FIRST launch and nothing else.
+#
+# Two launches with their own defaults domains, because the claim is a
+# difference between two states of the world and one run cannot show it. The
+# rule is `Prefs.isFirstLaunch`, and what makes it fragile is ORDERING rather
+# than logic: it asks whether any key is stored, so anything that writes a
+# preference before the screen appears turns a first launch into an existing
+# one and the defaults silently stop applying. A unit test cannot see that.
+#
+# `networkEnabled` is the one worth the two launches. It is the only setting
+# here that reaches the network, `docs/NETWORK_POSTURE.md` records it as
+# shipping off, and the failure is silent in the direction that matters: an
+# install that predates this screen having outbound requests switched on
+# without anybody clicking anything.
+onboarding_defaults() { # onboarding_defaults <suite>; echoes the stored keys
+    local dir; dir="$(mktemp -d -t jot-onboard)"
+    BIRTA_JOT_MEASURE=1 BIRTA_JOT_SCRATCHPAD="$dir/Onboard.md" \
+        BIRTA_JOT_DEFAULTS_SUITE="$1" BIRTA_JOT_OPEN_WELCOME=1 "$APP" 2>/dev/null &
+    local pid=$!
+    sleep 3; kill -USR1 $pid; sleep 2
+    defaults read "$1" 2>/dev/null || true
+    kill $pid 2>/dev/null; wait $pid 2>/dev/null || true
+    rm -rf "$dir"
+}
+
+ONBOARD_FRESH_SUITE="com.birtalabs.jot.measure.fresh.$$"
+ONBOARD_USED_SUITE="com.birtalabs.jot.measure.used.$$"
+trap 'defaults delete "$ONBOARD_FRESH_SUITE" >/dev/null 2>&1 || true; defaults delete "$ONBOARD_USED_SUITE" >/dev/null 2>&1 || true' EXIT
+FRESH_KEYS="$(onboarding_defaults "$ONBOARD_FRESH_SUITE")"
+# An install that has been used: one key stored, which is all "not fresh" means.
+defaults write "$ONBOARD_USED_SUITE" autosave -bool true
+USED_KEYS="$(onboarding_defaults "$ONBOARD_USED_SUITE")"
+
+if ! echo "$FRESH_KEYS" | grep -q "networkEnabled = 1"; then
+    echo "onboarding           FAILED: a first launch did not take the onboarding defaults" >&2
+    echo "  (something wrote a preference before the screen appeared, so nothing applies)" >&2
+    echo "$FRESH_KEYS" >&2; exit 1
+fi
+if ! echo "$FRESH_KEYS" | grep -q "showInDock = 1"; then
+    echo "onboarding           FAILED: a first launch did not take the Dock default" >&2
+    echo "$FRESH_KEYS" >&2; exit 1
+fi
+if echo "$USED_KEYS" | grep -q "networkEnabled"; then
+    echo "onboarding           FAILED: an install that already had settings had the network switched on for it" >&2
+    echo "$USED_KEYS" >&2; exit 1
+fi
+if echo "$USED_KEYS" | grep -q "showInDock"; then
+    echo "onboarding           FAILED: an install that already had settings was given a Dock icon" >&2
+    echo "$USED_KEYS" >&2; exit 1
+fi
+echo "onboarding           ok: a first launch takes the defaults, an install that has settings is left alone"
+
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"
 echo "log: $LOG"
