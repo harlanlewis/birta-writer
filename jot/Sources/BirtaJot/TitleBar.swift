@@ -116,6 +116,24 @@ final class TitleBarView: NSView {
         // name rather than reproduced as a size and a weight, so it follows the
         // system rather than a guess about it.
         label.font = NSFont.titleBarFont(ofSize: NSFont.systemFontSize)
+        // A title is ONE line, and saying so is what makes the line-break mode
+        // below mean truncation.
+        //
+        // `NSTextField(labelWithString:)` leaves `usesSingleLineMode` off, so a
+        // label that is told to truncate its tail is still free to WRAP first,
+        // and it wraps at a space. A name with a space in it therefore laid out
+        // as two lines inside a box one line tall: the first line drew, the
+        // second was clipped by the height, and the result was a title that
+        // read as a shorter name rather than as a damaged one. "Birta Jot.md"
+        // drew as "Birta", with no ellipsis to say anything had been dropped,
+        // in a label whose frame was wide enough for the whole string.
+        //
+        // Every instrument here reported that title as correct, because
+        // `stringValue`, `accessibilityLabel`, the label's frame and its
+        // `visibleRect` are all the model rather than the drawing. What
+        // discriminates is how many lines the cell lays the string out on, and
+        // `measure.sh` asserts that against the live window.
+        label.usesSingleLineMode = true
         label.lineBreakMode = .byTruncatingTail
         label.setAccessibilityRole(.staticText)
         addSubview(label)
@@ -125,7 +143,7 @@ final class TitleBarView: NSView {
     /// Fit the view to its text, within the ceiling. The label's own placement
     /// inside it is `layout()`'s, which runs again after AppKit has resized us.
     private func resize() {
-        let text = min(label.intrinsicContentSize.width, Self.maxTextWidth)
+        let text = min(drawnTextWidth(), Self.maxTextWidth)
         setFrameSize(NSSize(width: Self.leadingGap + text, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
@@ -158,7 +176,7 @@ final class TitleBarView: NSView {
         let room = max(0, bounds.width - Self.leadingGap)
         label.frame = NSRect(x: Self.leadingGap,
                              y: ((bounds.height - size.height) / 2).rounded(),
-                             width: min(size.width, Self.maxTextWidth, room),
+                             width: min(drawnTextWidth(), Self.maxTextWidth, room),
                              height: size.height)
     }
 
@@ -192,13 +210,67 @@ final class TitleBarView: NSView {
     /// the accessory arrived and nothing about where the title is drawn in it.
     func labelFrameInWindow() -> NSRect { label.convert(label.bounds, to: nil) }
 
-    /// The width the title WOULD need to be read in full, against the width
-    /// `labelFrameInWindow` says it got. Two numbers rather than one because
-    /// the label reports its whole string whatever is on screen, so
-    /// `stringValue` and `accessibilityLabel` both answer a question about
-    /// intent, and a name cut off in the middle answers it exactly as an
-    /// intact one does.
-    func textWidthNeeded() -> CGFloat { label.intrinsicContentSize.width }
+
+    /// The width the TITLE'S OWN GLYPHS need, rounded up.
+    ///
+    /// Asked of the attributed string rather than of the field, and rounded up
+    /// rather than trusted, because `intrinsicContentSize` came back a fraction
+    /// SHORT of what the string draws in. A label sized to that fraction is one
+    /// the cell has to truncate to fit, and a title ending in an ellipsis it
+    /// did not need is the mildest version of this same bug.
+    private func drawnTextWidth() -> CGFloat {
+        label.attributedStringValue.size().width.rounded(.up)
+    }
+
+    /// How far the title's INK actually reaches, in points.
+    ///
+    /// The label is rendered into a bitmap and the rightmost column carrying
+    /// any alpha is found. This is the only measurement in this file taken from
+    /// pixels, and it is here because it is the only one that ever caught the
+    /// defect it exists for: a name with a space drew as the word before the
+    /// space, while `stringValue`, `accessibilityLabel`, the frame, the
+    /// `visibleRect` and the laid-out height all reported a correct title. The
+    /// numbers agreed with each other because they all describe the model. Only
+    /// the drawing disagreed, so only the drawing can be asked.
+    ///
+    /// Measure-mode only in practice: it costs a bitmap and a scan of a box
+    /// about 130 pixels wide, which is nothing once, and pointless on a path
+    /// nobody is checking.
+    func drawnInkWidth() -> CGFloat {
+        let box = label.bounds
+        guard box.width > 0, box.height > 0,
+              let rep = label.bitmapImageRepForCachingDisplay(in: box) else { return -1 }
+        label.cacheDisplay(in: box, to: rep)
+        let wide = rep.pixelsWide, high = rep.pixelsHigh
+        guard wide > 0, high > 0 else { return -1 }
+        for x in stride(from: wide - 1, through: 0, by: -1) {
+            for y in 0..<high where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 {
+                return CGFloat(x + 1) / CGFloat(wide) * box.width
+            }
+        }
+        return 0
+    }
+
+    /// What the title's glyphs need, against the width the label was given.
+    ///
+    /// Guards the milder failure, which is real and separate: a label narrower
+    /// than its string makes the cell truncate, and the title ends in an
+    /// ellipsis it did not need. It does NOT guard the one this file exists to
+    /// stop; `drawnInkWidth` does. A wrapped-height measurement was tried here
+    /// and removed, because it reported one line in the broken build and the
+    /// fixed one alike, and a number that agrees with a broken build is worse
+    /// than no number.
+    func titleFit() -> (needed: CGFloat, given: CGFloat) {
+        (label.attributedStringValue.size().width, label.bounds.width)
+    }
+
+    /// How much of the LABEL survives its ancestors' clipping.
+    ///
+    /// `visibleRect` is the part of a view not cut away by the boxes it sits
+    /// in, so this is the only number here that an ancestor can move. The
+    /// others are frames this file sets, and a container that clips them says
+    /// nothing to any of them.
+    func visibleLabelWidth() -> CGFloat { label.visibleRect.width }
 
     /// Name `url`, and say whether the buffer has bytes the file does not.
     func show(url: URL, edited: Bool) {
