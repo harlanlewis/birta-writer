@@ -104,17 +104,54 @@ final class Coordinator {
     /// two must not be conflated: the retry on summon keys off this one, and
     /// keying it off `hasLoaded` announced an arrival on every first launch.
     private var noteUnreadable = false
-    /// The file the buffer's bytes belong to. Bound when the file is read, and
-    /// only there: a Preferences change that points at another file first
-    /// flushes to THIS one, then rebinds, so a scratchpad is never written
-    /// over the document the user just chose to open.
-    /// Its folder is also what the page may read images from, so the two move
-    /// together by construction rather than by two call sites remembering to.
+    /// The first-run screen, built the first time it is needed and kept, so
+    /// re-showing it from Settings does not lose what the switches are showing.
+    private var welcome: WelcomeView?
+
+    private let watcher = NoteWatcher()
+    private let missingFileBar = MissingFileBar()
+    /// Whether this path has ever been observed to hold the note.
+    ///
+    /// Read alongside a live `fileExists` to tell a DELETION from a note that
+    /// has never been written. Set by a successful read and by a successful
+    /// write; cleared with the binding, since it is a fact about one path.
+    private var everSeenOnDisk = false
+
+    /// The bound file is gone, so nothing may be written to its path.
+    ///
+    /// Blocks `writeLatest` the way `hasLoaded` blocks it for a note that is
+    /// present but unreadable, and for the same reason: a write here does not
+    /// fail, it RECREATES. `AtomicFile.write` makes the file and its whole
+    /// directory, so without this an autosave tick a second after a Finder
+    /// delete puts the note back and the warning never appears. The READ side
+    /// is guarded too, in `adopt` and `reloadFromDiskIntoBuffer`: with the
+    /// file gone the buffer is the only copy, and a read would replace it.
+    private var noteMissing = false {
+        didSet {
+            guard noteMissing != oldValue else { return }
+            missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
+            layoutMissingFileBar()
+        }
+    }
+
+    /// The file the buffer's bytes belong to.
+    ///
+    /// A Preferences change that points at another file first flushes to THIS
+    /// one, then rebinds, so a scratchpad is never written over the document
+    /// the user just chose to open. Its folder is also what the page may read
+    /// images from, so the two move together by construction rather than by
+    /// two call sites remembering to.
     private var boundURL: URL = Prefs.activeURL {
         didSet {
+            guard boundURL != oldValue else { return }
             host.schemeHandler.roots =
                 host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
             refreshTitle()
+            // The watcher follows the binding, or it goes on reporting moves
+            // of a file the panel is no longer editing and misses the one it
+            // is. `noteMovedOnDisk` rebinds and re-watches in one step, so it
+            // is the one caller this must not fire for twice.
+            startWatching()
         }
     }
     private var escMonitor: Any?
@@ -156,6 +193,18 @@ final class Coordinator {
         // edges, and `layoutTitlebarDrag` is the one place that arithmetic
         // lives.
         contentView.addSubview(titlebarDrag)
+        // Above the web view for the same reason the drag strip is, and laid
+        // out by frame for the same reason: it spans the window's own bottom
+        // edge and the page knows nothing about it.
+        contentView.addSubview(missingFileBar)
+        missingFileBar.onSaveItBack = { [weak self] in self?.saveMissingNoteBack() }
+        missingFileBar.onDiscardAndStartNew = { [weak self] in
+            // Clearing the flag first is what lets the new note be created and
+            // written at all; the bytes of the old one are what the button
+            // says it is discarding.
+            self?.noteMissing = false
+            self?.newNote()
+        }
         host.webView.translatesAutoresizingMaskIntoConstraints = false
         statusOverlay.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -175,8 +224,14 @@ final class Coordinator {
             statusOverlay.heightAnchor.constraint(equalToConstant: StatusOverlay.height),
         ])
         contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
+        watcher.onMoved = { [weak self] url in self?.noteMovedOnDisk(to: url) }
+        watcher.onDeleted = { [weak self] in self?.noteDeletedOnDisk() }
+        startWatching()
         contentView.onLayout = { [weak self] in
-            MainActor.assumeIsolated { self?.layoutTitlebarDrag() }
+            MainActor.assumeIsolated {
+                self?.layoutTitlebarDrag()
+                self?.layoutMissingFileBar()
+            }
         }
         panel.addTitlebarAccessoryViewController(titleBar)
         titleBar.titleView.onReveal = { url in
@@ -306,6 +361,49 @@ final class Coordinator {
                 contentView.layoutSubtreeIfNeeded()
                 traceTitleBar()
                 traceTitlebarDrag()
+                return
+            }
+            // A PNG of the panel's content, written beside the scratchpad.
+            //
+            // Rendered by the view itself rather than captured off the screen:
+            // `screencapture` needs a Screen Recording grant this repository's
+            // checks do not have, and a shell that lacks it fails with a
+            // message about a rectangle rather than about permission. This
+            // asks the view hierarchy to draw itself, which needs nothing and
+            // cannot pick up a window that happens to be in front.
+            if obj["type"] as? String == "__jotSnapshot" {
+                measure.mark("debug-snapshot")
+                writeSnapshot(named: obj["name"] as? String ?? "snapshot")
+                return
+            }
+            // Reload the page against the current settings, as a settings
+            // change does. The one gesture that re-reads the note without
+            // rebinding, and therefore the only way a script can reach the
+            // state where a refused read could downgrade `hasLoaded`.
+            if obj["type"] as? String == "__jotReload" {
+                measure.mark("debug-reload")
+                preferencesChanged()
+                return
+            }
+            // An explicit save, exactly as Cmd+S makes one.
+            //
+            // Here because the other ways to provoke a write from a script are
+            // both indirect: a panel toggle is a toggle rather than a
+            // direction, so a hide can show instead and no write happens at
+            // all, and autosave needs a document change and a wait. A check
+            // that meant to watch a write and silently watched nothing is the
+            // failure this exists to remove.
+            if obj["type"] as? String == "__jotSaveNow" {
+                measure.mark("debug-save-now")
+                flushThen { [weak self] in self?.write(.explicitSave) }
+                return
+            }
+            // The missing-note bar's Save It Back button, without the button.
+            // It is native chrome that only appears once the bound file has
+            // gone, so a script can reach the state and not the control.
+            if obj["type"] as? String == "__jotSaveMissingBack" {
+                measure.mark("debug-save-missing-back")
+                saveMissingNoteBack()
                 return
             }
             if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
@@ -466,8 +564,17 @@ final class Coordinator {
         if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeFirstResponder(host.webView)
-        if state == .warm { host.focusEditor() }
+        // The first-run screen owns the keyboard while it is up. A hidden view
+        // is out of hit testing, so the mouse is already walled off, and
+        // `makeFirstResponder` does not refuse a hidden view: without this the
+        // editor behind the screen would take every keystroke and autosave
+        // would write them.
+        if isWelcoming {
+            panel.makeFirstResponder(welcome)
+        } else {
+            panel.makeFirstResponder(host.webView)
+            if state == .warm { host.focusEditor() }
+        }
         if state == .cold { loadPage() }
         // A note that was there and unreadable when we last looked leaves the
         // panel unwritable, and nothing else would ever look again: the only
@@ -547,7 +654,27 @@ final class Coordinator {
             // the disk can be (a write may still be in flight), and it is what
             // the remount must show.
             if reloadFromDisk {
-                boundURL = Prefs.activeURL
+                // While the note is missing, rebind only for a setting the
+                // user actually changed.
+                //
+                // `Prefs.activeURL` re-derives the binding through accessors
+                // that filter on existence, so a deleted New Note falls back
+                // to the scratchpad on its own: the binding changes,
+                // `startWatching` clears `noteMissing`, and the read that
+                // follows lands another file's contents on the only copy of
+                // the deleted one, past the guard in `adopt`, which by then
+                // has nothing to see. `storedActiveURL` reads the same
+                // settings without that filter, so it moves when somebody
+                // moves it and not when a file disappears.
+                //
+                // The buffer is rescued before a deliberate rebind, because it
+                // is still the only copy of a note nobody has answered for.
+                if !noteMissing {
+                    boundURL = Prefs.activeURL
+                } else if Prefs.storedActiveURL.standardizedFileURL != boundURL.standardizedFileURL {
+                    rescueMissingNote()
+                    boundURL = Prefs.activeURL
+                }
                 // The disk is the truth on this arm, so nothing is unwritten
                 // (`adopt` clears `isEdited`). The other arm keeps it: after a
                 // content-process death `latest` can be ahead of the file, and
@@ -807,17 +934,35 @@ final class Coordinator {
     }
 
     /// Take a read into the buffer, answering whether the buffer may be
-    /// WRITTEN afterwards. False leaves `hasLoaded` alone, so `writeLatest`
-    /// refuses and the note on disk is safe.
+    /// WRITTEN afterwards. The caller ASSIGNS `hasLoaded` from this, so a
+    /// refusal is a downgrade rather than a hold: the missing-note arm returns
+    /// the flag unchanged for that reason, since the note was readable before
+    /// it was deleted and the panel must still be writable once the user
+    /// answers the bar. The unreadable arm does return false, and means it.
     private func adopt(_ read: NoteRead) -> Bool {
-        isEdited = false
+        // Not for a read this refuses: a buffer that was not replaced still
+        // holds bytes the file does not, which is what the flag means.
+        if case .absent = read, noteMissing {} else { isEdited = false }
         switch read {
         case .contents(let text):
             noteUnreadable = false
             latest = text
+            // The file was there and had the note in it, which is what makes a
+            // later disappearance a deletion rather than a first write.
+            everSeenOnDisk = true
             return true
         case .absent:
             noteUnreadable = false
+            // A note that is missing BECAUSE it was deleted is not the same as
+            // one that has never been written, even though the disk cannot
+            // tell them apart. In the first case the buffer is the only copy
+            // of those bytes, and taking this read would replace it with
+            // nothing: the panel would go blank behind the bar that says
+            // nothing has been written, and Save It Back would then write an
+            // empty file. `writeLatest` was guarded for this and the read side
+            // was not, which left every settings change, every reload and
+            // every finished agent run as a way to lose the note.
+            if noteMissing { return hasLoaded }
             latest = ""
             return true
         case .unreadable:
@@ -857,7 +1002,37 @@ final class Coordinator {
         hotkey.unregister()
         // A child process outliving the app is litter nobody can attribute.
         agent.stopAll()
-        flushThen(done)
+        flushThen { [weak self] in
+            self?.rescueMissingNote()
+            done()
+        }
+    }
+
+    /// Put the buffer somewhere before the app goes away, when its own file is
+    /// gone and every write is being refused.
+    ///
+    /// Quitting is the end of the only copy those bytes have. The bar offers
+    /// Save It Back, and taking that offer needs somebody to be looking at it:
+    /// a deletion is noticed whether or not the panel is visible, so this
+    /// state can be reached without the bar ever having been on screen.
+    ///
+    /// Written BESIDE the deleted file under a name of its own, never back to
+    /// the deleted path. Recreating a file the user threw away is what this
+    /// whole path exists to stop, and doing it at quit, unattended, would be
+    /// the worst moment to start.
+    private func rescueMissingNote() {
+        guard noteMissing, !latest.isBlank else { return }
+        let directory = boundURL.deletingLastPathComponent()
+        let stem = boundURL.deletingPathExtension().lastPathComponent
+        let ext = boundURL.pathExtension.isEmpty ? "md" : boundURL.pathExtension
+        let target = Coordinator.unusedURL(in: directory, stem: "\(stem) (recovered)", extension: ext)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try AtomicFile.writeString(latest, to: target)
+            NSLog("Birta Writer Jot: the deleted note's unwritten text is in \(target.path)")
+        } catch {
+            NSLog("Birta Writer Jot: could not rescue the deleted note: \(error)")
+        }
     }
 
     /// Last-chance synchronous write, idempotent after `prepareToTerminate`.
@@ -870,9 +1045,42 @@ final class Coordinator {
     /// `ready`, or forever when the web assets are missing, `latest` is the
     /// empty string and writing it would truncate the user's scratchpad.
     private func writeLatest() {
-        guard hasLoaded else { return }
+        // `noteMissing` alongside `hasLoaded`, and both are about the same
+        // thing: a path this write would create rather than update.
+        // Every attempt, with the four facts that decide it, for
+        // `jot/scripts/measure.sh`. A check about writing needs to know a
+        // write was ATTEMPTED: "the file is still absent" is satisfied just as
+        // well by a guard that refused and by a path that was never reached,
+        // and only one of those is the behaviour being claimed.
+        if measure.enabled {
+            measure.trace("writeattempt hasLoaded=\(hasLoaded) missing=\(noteMissing) seen=\(everSeenOnDisk) exists=\(FileManager.default.fileExists(atPath: boundURL.path)) at=\(boundURL.lastPathComponent)")
+        }
+        // Nothing is written while the first-run screen is up. Two reasons,
+        // and the second is the one that bites: there is nothing to write,
+        // since the editor is not reachable; and `AtomicFile.write` creates
+        // the file AND every directory above it, so a write here would build
+        // the folder for a location the screen is still asking about. Toggling
+        // the iCloud switch would leave an empty note in iCloud Drive and
+        // another in Documents.
+        guard hasLoaded, !noteMissing, !isWelcoming else { return }
+        // A file presenter only hears about COORDINATED changes, which Finder
+        // makes and `rm` in a terminal does not, so a delete can reach this
+        // point unannounced. `AtomicFile.write` would then recreate the file
+        // and its whole directory, silently, which is the behaviour this whole
+        // path exists to stop. One `fileExists` per write, and writes already
+        // serialize the document and touch the disk.
+        //
+        // `everSeenOnDisk` is what separates a deletion from a note that has
+        // simply never been written: a fresh scratchpad legitimately does not
+        // exist yet, and `NoteRead.absent` is treated as an empty note on
+        // purpose.
+        if everSeenOnDisk, !FileManager.default.fileExists(atPath: boundURL.path) {
+            noteDeletedOnDisk()
+            return
+        }
         writer.submit(latest, to: boundURL)
         writer.drain()
+        everSeenOnDisk = true
         // The one place the buffer and the file come back into step, so the
         // one place the title stops saying Edited. Guarded by `hasLoaded`
         // above: before the first read there is nothing to be behind.
@@ -1010,11 +1218,13 @@ final class Coordinator {
     /// would discard what the user has, so that read is ignored and the buffer
     /// stands.
     ///
-    /// A file that is genuinely ABSENT still empties the buffer, exactly as it
-    /// did before this distinction existed. Deleting the note in Finder is a
-    /// thing the user did on purpose, and the panel following it is the old
-    /// behaviour rather than a case this guard was reaching for.
+    /// A file that is absent and NOT known to have been deleted still empties
+    /// the buffer: that is a note nobody has written yet. A deletion is the
+    /// other case, and the guard below holds the buffer for it.
     private func reloadFromDiskIntoBuffer() {
+        // Same rule as `adopt`: a note that is missing because it was deleted
+        // must not be read over the buffer holding the only copy of it.
+        guard !noteMissing else { return }
         let read = readActiveNote()
         if case .unreadable = read {
             if let message = read.message { statusOverlay.flash(message) }
@@ -1030,6 +1240,28 @@ final class Coordinator {
         }
     }
 
+    /// Leave a document Jot was pointed at, and go back to the notes.
+    ///
+    /// The `document` slot in `ActiveBinding` outranks the other two, so this
+    /// is the only way out of it now that Settings has no switch for it. The
+    /// buffer is flushed to the document first: leaving a file is not a reason
+    /// to lose what was typed into it.
+    func backToNotes() {
+        guard Prefs.documentURL != nil else {
+            statusOverlay.flash("Jot is already on your notes.")
+            return
+        }
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            Prefs.documentURL = nil
+            self.reloadFromDisk = true
+            self.loadPage()
+            self.refreshTitle()
+            self.statusOverlay.flash("Back to your notes.")
+        }
+    }
+
     /// Cmd+N. Put the current note beyond doubt, then start a fresh file.
     ///
     /// No Save/Don't Save sheet, and that is the macOS answer rather than a
@@ -1038,17 +1270,19 @@ final class Coordinator {
     /// never an unsaved change to ask about. A prompt here would be asking
     /// permission to do something already done.
     ///
-    /// A bound DOCUMENT is left alone. New Note makes a note in Jot's own
-    /// folder; it is not a way to stop editing the file the user pointed Jot
-    /// at, which is what the Document setting is for.
+    /// With ONE exception, and it is the reason the missing-note bar's second
+    /// button says Discard rather than New Note: when the bound file has been
+    /// deleted there is nowhere to write the buffer to, so the write above is
+    /// refused and switching away really does drop those bytes. Nothing else
+    /// can reach this state, because every other caller has a file.
+    ///
     func newNote() {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
-            guard Prefs.documentURL == nil else {
-                self.statusOverlay.flash("Jot is set to edit a document; New Note is off while that is on.")
-                return
-            }
+            // A bound document is LEFT, not a reason to refuse. This gesture
+            // and Back to My Notes beside it are the two ways out of one.
+            Prefs.documentURL = nil
             let directory = Prefs.notesDirectory
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -1095,6 +1329,13 @@ final class Coordinator {
         cancelPendingAutosave()
         boundURL = url
         latest = content
+        // The caller has just written this file and is handing back its bytes,
+        // so the buffer IS the file. Both read-side embargoes are facts about
+        // the path being left, and carrying them across is how a fresh note
+        // ends up permanently unwritable: every keystroke refused by
+        // `writeLatest`, no bar, nothing said, and the lot gone at quit.
+        hasLoaded = true
+        noteUnreadable = false
         // `content` came off disk, so the buffer is the file.
         isEdited = false
         refreshTitle()
@@ -1176,11 +1417,13 @@ final class Coordinator {
 
     /// Show the system date picker at the caret, and report what it returns.
     ///
-    /// The page sends the caret rectangle in viewport CSS pixels, whose origin
-    /// is the TOP left; AppKit's is the bottom left, so the y flip is the whole
-    /// of the conversion. The rectangle is given a minimum height so a caret on
-    /// an empty line, which can report a zero-height box, still anchors the
-    /// popover somewhere rather than at the view's edge.
+    /// The page sends the caret rectangle in viewport CSS pixels, and turning
+    /// those into the view's own coordinates is `BirtaJotCore.CaretAnchor`'s,
+    /// which is testable without a window. `isFlipped` is read off the view
+    /// rather than assumed: a `WKWebView` is flipped, so the page's numbers
+    /// pass straight through, and a conversion written for AppKit's usual
+    /// bottom-left origin would mirror a caret near the top of the panel to
+    /// the bottom of it.
     ///
     /// The anchor is relative to the WEB VIEW, never to the window, and that is
     /// worth stating rather than leaving to be inferred: the titlebar here is
@@ -1191,8 +1434,10 @@ final class Coordinator {
     /// included, needs no change here.
     private func showDatePicker(id: String, left: Double, top: Double, bottom: Double) {
         let view = host.webView
-        let height = max(bottom - top, 1)
-        let anchor = NSRect(x: left, y: view.bounds.height - bottom, width: 1, height: height)
+        let anchor = CaretAnchor.rect(left: left, top: top, bottom: bottom,
+                                      viewHeight: view.bounds.height,
+                                      isFlipped: view.isFlipped)
+        traceDatePickerAnchor(pageTop: top, anchor: anchor, isFlipped: view.isFlipped)
         let controller = DatePickerPopover()
         controller.show(relativeTo: anchor, of: view, startingAt: CalendarDay(Date())) { [weak self] day in
             // Always answered, a dismissal included: the page holds a pending
@@ -1200,6 +1445,234 @@ final class Coordinator {
             self?.host.send(.datePickerResult(id: id, date: day))
             self?.host.focusEditor()
         }
+    }
+
+    /// Say something along the bottom of the panel, from outside.
+    ///
+    /// The overlay is news rather than state, which is exactly what an update
+    /// message is: it says what just happened and goes.
+    func flashStatus(_ message: String) {
+        statusOverlay.flash(message)
+    }
+
+    /// Take the panel over with the first-run screen.
+    ///
+    /// It replaces the editor rather than floating above it, and the web view
+    /// is hidden rather than covered: a first launch has no document worth
+    /// showing yet, and one reachable underneath would be a document whose
+    /// file location is still being asked about. The titlebar names the
+    /// application for the same reason, and names nothing that can be clicked.
+    func showWelcome() {
+        // Whatever is in the panel goes to disk FIRST, and the screen goes up
+        // in the COMPLETION rather than beside the call.
+        //
+        // `flushThen` is a round trip: it posts to the page and returns, so
+        // anything after it runs before the reply. Putting the screen up there
+        // sets `isWelcoming` in the same turn, and the write embargo then
+        // refuses the very write this is here to make. On a first launch there
+        // is nothing to write; Settings can re-show this screen at any time,
+        // and with autosave off the text typed before the button was pressed
+        // is what would be lost.
+        flushThen { [weak self] in
+            self?.write(.explicitSave)
+            self?.presentWelcome()
+        }
+    }
+
+    private func presentWelcome() {
+        // Before the screen draws, so every switch on it is showing a value
+        // that is actually stored. See `Prefs.applyOnboardingDefaults`.
+        Prefs.applyOnboardingDefaults()
+        AppDelegate.applyActivationPolicy()
+        let view = welcome ?? makeWelcome()
+        welcome = view
+        view.sync()
+        view.isHidden = false
+        host.webView.isHidden = true
+        missingFileBar.isHidden = true
+        titleBar.titleView.showAppName(Self.appName)
+        show()
+        sizePanelForWelcome(view)
+    }
+
+    private func makeWelcome() -> WelcomeView {
+        let view = WelcomeView(onHotkeyChange: { [weak self] in self?.hotkeyChanged() ?? -1 })
+        view.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            // The full height of the content. Clearance for the titlebar
+            // band, which is transparent and full height, is the screen's own
+            // `topInset` rather than a constraint here, so the band's ground
+            // still shows through above the first row.
+            view.topAnchor.constraint(equalTo: contentView.topAnchor),
+            view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+        view.onContinue = { [weak self] in self?.finishWelcome() }
+        view.onAllSettings = { [weak self] in
+            self?.finishWelcome()
+            self?.openPreferences?()
+        }
+        view.onChange = { [weak self] in self?.preferencesChanged() }
+        return view
+    }
+
+    /// Give the panel back to the editor.
+    ///
+    /// `hasSeenWelcome` is set HERE rather than when the screen appears, so a
+    /// crash during a first launch does not spend the one chance to ask.
+    private func finishWelcome() {
+        Prefs.hasSeenWelcome = true
+        welcome?.isHidden = true
+        restorePanelAfterWelcome()
+        host.webView.isHidden = false
+        missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
+        layoutMissingFileBar()
+        refreshTitle()
+        panel.makeFirstResponder(host.webView)
+        host.focusEditor()
+    }
+
+    /// Whether the panel is showing the first-run screen instead of a document.
+    var isWelcoming: Bool { welcome?.isHidden == false }
+
+    /// Grow the panel so the whole first-run screen is on it.
+    ///
+    /// Only ever grows, and never past the screen: shrinking would fight a
+    /// window somebody has already sized, and this runs again every time the
+    /// screen is re-shown from Settings.
+    ///
+    /// Not guarded on `Prefs.isUserStore`, unlike the frame autosave. Nothing
+    /// here PERSISTS a size: `JotPanel` only names its autosave under a real
+    /// user's defaults, so a checking run resizes a window that is forgotten
+    /// when it closes. Guarding it here as well would have made the one thing
+    /// worth looking at, whether the screen fits, the one thing no run could
+    /// be made to show.
+    private func sizePanelForWelcome(_ view: WelcomeView) {
+        contentView.layoutSubtreeIfNeeded()
+        guard let screen = panel.screen ?? NSScreen.main else { return }
+        let chrome = panel.frame.height - panel.contentLayoutRect.height
+        let wanted = view.fittingContentHeight + chrome
+        let ceiling = screen.visibleFrame.height - 40
+        let height = min(max(panel.frame.height, wanted), ceiling)
+        guard height > panel.frame.height + 0.5 else { return }
+        heightBeforeWelcome = panel.frame.height
+        heightAfterWelcome = height
+        var frame = panel.frame
+        // Grow downward from the title bar, which is where a window grows when
+        // a person is looking at it: the titlebar staying put is what makes it
+        // read as the same window. Clamped to the screen, because growing
+        // downward off the bottom puts the buttons somewhere no scroller can
+        // reach: it is the WINDOW that is off screen, not its content.
+        frame.origin.y -= height - frame.height
+        frame.size.height = height
+        frame.origin.y = max(frame.origin.y, screen.visibleFrame.minY)
+        panel.setFrame(frame, display: true, animate: false)
+    }
+
+    /// The panel's height before the first-run screen grew it, so the editor
+    /// is not left in a window sized for a form seen once. Nil once given back.
+    private var heightBeforeWelcome: CGFloat?
+    /// What this code grew it TO, so the restore can tell its own size from
+    /// one the user chose. Recomputing the wanted height instead compares
+    /// against a number that is not what the window was set to, and passes for
+    /// every size smaller than it: a user who dragged the panel down mid-screen
+    /// would have it snapped back under them.
+    private var heightAfterWelcome: CGFloat?
+
+    /// Undo `sizePanelForWelcome`, keeping the titlebar where it is.
+    ///
+    /// Only if the user has not resized in between: their size wins over one
+    /// this code chose, and a window that snapped back under them would be
+    /// worse than one left tall.
+    private func restorePanelAfterWelcome() {
+        guard let previous = heightBeforeWelcome, let grown = heightAfterWelcome else { return }
+        heightBeforeWelcome = nil
+        heightAfterWelcome = nil
+        guard abs(panel.frame.height - grown) < 0.5 else { return }
+        var frame = panel.frame
+        frame.origin.y += frame.height - previous
+        frame.size.height = previous
+        panel.setFrame(frame, display: true, animate: false)
+    }
+
+    /// What the titlebar says when it is not naming a file. The build's own
+    /// name, so a development copy says so rather than impersonating the one
+    /// somebody uses.
+    static var appName: String { AppFlavor.current.displayName }
+
+    /// The missing-note bar spans the window's bottom edge, above the page's
+    /// own formatting dock rather than over it.
+    private func layoutMissingFileBar() {
+        guard !missingFileBar.isHidden else { return }
+        let bounds = contentView.bounds
+        missingFileBar.frame = NSRect(x: 0, y: 0, width: bounds.width, height: MissingFileBar.height)
+    }
+
+    /// Watch whatever the panel is bound to now.
+    ///
+    /// Rebinding also CLEARS `noteMissing`: the flag is about one path, and
+    /// New Note or a chosen document is a different one that has not gone
+    /// anywhere.
+    private func startWatching() {
+        noteMissing = false
+        everSeenOnDisk = FileManager.default.fileExists(atPath: boundURL.path)
+        watcher.watch(boundURL)
+    }
+
+    /// A Finder rename or move: follow it, and write the new path back to
+    /// whichever of the three settings supplied the old one.
+    private func noteMovedOnDisk(to url: URL) {
+        guard url.standardizedFileURL != boundURL.standardizedFileURL else { return }
+        Prefs.rebindActive(from: boundURL, to: url)
+        // `boundURL`'s `didSet` re-titles and re-watches; a move is the one
+        // case where those are already exactly right.
+        boundURL = url
+    }
+
+    /// The note was deleted or thrown away.
+    ///
+    /// Nothing is written and nothing is reloaded: the buffer is now the only
+    /// copy of those bytes, and reading a file that is not there over the top
+    /// of it is exactly the mistake `NoteRead` was added to stop.
+    private func noteDeletedOnDisk() {
+        guard !noteMissing else { return }
+        noteMissing = true
+        // Traced because the absence of a file is not evidence on its own: a
+        // check that deletes the note and finds it still gone passes whether
+        // the write was REFUSED or never attempted, and those are different
+        // programs. This says the refusal happened.
+        if measure.enabled { measure.trace("noteMissing at=\(boundURL.lastPathComponent)") }
+    }
+
+    /// Put the buffer back at the path it came from.
+    ///
+    /// `AtomicFile.write` recreates the file and its directory, which is the
+    /// behaviour that made a silent delete dangerous and is exactly what is
+    /// wanted once somebody has asked for it.
+    private func saveMissingNoteBack() {
+        // `writeLatest` still refuses before the first read has landed, which
+        // the presenter can beat. Clearing the bar and flashing "Saved" on the
+        // way to a write that did not happen would be the worst possible lie
+        // in this state, so the flag comes back if the file is not there
+        // afterwards.
+        noteMissing = false
+        // The pre-write existence check in `writeLatest` would otherwise
+        // refuse this too and put the bar straight back, which is correct for
+        // every write except the one somebody explicitly asked for. Clearing
+        // the flag says "this path has not been seen", so the write is treated
+        // as a first one and `AtomicFile` recreates the file and its folder,
+        // which is exactly what the button promises.
+        everSeenOnDisk = false
+        writeLatest()
+        guard FileManager.default.fileExists(atPath: boundURL.path) else {
+            noteMissing = true
+            statusOverlay.flash("Could not write \(boundURL.lastPathComponent).")
+            return
+        }
+        watcher.watch(boundURL)
+        statusOverlay.flash("Saved \(boundURL.lastPathComponent) back.")
     }
 
     /// Rename or move the file the panel is editing, from the title popover.
@@ -1259,7 +1732,7 @@ final class Coordinator {
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
             }
-            Prefs.rebindActive(to: target)
+            Prefs.rebindActive(from: source, to: target)
             self.boundURL = target
             if self.lastSavedURL == source { self.lastSavedURL = target }
             let moved = target.deletingLastPathComponent().standardizedFileURL
@@ -1275,12 +1748,22 @@ final class Coordinator {
     /// on one day never lands on the first.
     static func unusedNoteURL(in directory: URL) -> URL {
         let stamp = DateFormatter()
+        // Pinned, like `suggestedFileName`'s beside it: an unpinned formatter
+        // spells the date in the system calendar, so a Mac set to a
+        // non-Gregorian one files notes under a year nothing else here uses.
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.calendar = Calendar(identifier: .gregorian)
         stamp.dateFormat = "yyyy-MM-dd"
-        let base = "Note \(stamp.string(from: Date()))"
-        var candidate = directory.appendingPathComponent("\(base).md")
+        return unusedURL(in: directory, stem: "Note \(stamp.string(from: Date()))", extension: "md")
+    }
+
+    /// `stem.ext` in `directory`, with a number appended until nothing is
+    /// there. Shared so a new note and a rescued one number the same way.
+    static func unusedURL(in directory: URL, stem: String, extension ext: String) -> URL {
+        var candidate = directory.appendingPathComponent("\(stem).\(ext)")
         var n = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = directory.appendingPathComponent("\(base) \(n).md")
+            candidate = directory.appendingPathComponent("\(stem) \(n).\(ext)")
             n += 1
         }
         return candidate
@@ -1462,15 +1945,110 @@ final class Coordinator {
             title.maxX, titlebarControlsWidth, panel.frame.width))
     }
 
+    /// Where the caret the page reported landed in the view, for
+    /// `jot/scripts/measure.sh`.
+    ///
+    /// The one page-to-view coordinate conversion in the app, and it lives in
+    /// a target no unit test reaches. `CaretAnchor` is tested on its own, and
+    /// what that cannot see is the value of `isFlipped` on the real view: a
+    /// conversion written for the wrong convention still produces a rectangle,
+    /// the popover still opens, and it opens at the other end of the window,
+    /// which reads as placement nobody tuned rather than as an inversion.
+    /// Both numbers, because the claim is that they AGREE.
+    private func traceDatePickerAnchor(pageTop: Double, anchor: NSRect, isFlipped: Bool) {
+        guard measure.enabled else { return }
+        measure.trace(String(format: "datepicker pageTop=%.1f anchorY=%.1f flipped=%@",
+                             pageTop, anchor.origin.y, isFlipped ? "yes" : "no"))
+    }
+
+    /// Draw the panel's content into a PNG beside the scratchpad.
+    ///
+    /// For looking at, not for asserting on. Layout here is the kind of thing
+    /// a number describes badly and a person reads instantly, and the app is
+    /// the only thing that can produce the image without a Screen Recording
+    /// grant.
+    ///
+    /// What it CANNOT show, which matters more than what it can: `NSSwitch`,
+    /// `NSButton` and the rest of the bezeled controls draw through layers and
+    /// come out blank here. A row whose switch is missing in one of these
+    /// images is a limit of the drawing path, not a missing control, and
+    /// reading it the other way would send somebody looking for a bug that is
+    /// not there. The `snapview` lines below are the answer to "is the control
+    /// present": they walk the real view tree with frames.
+    private func writeSnapshot(named name: String) {
+        // The welcome screen when it is up, and the whole content otherwise.
+        let target: NSView = (welcome?.isHidden == false) ? welcome! : contentView
+        let bounds = target.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        // Through the PDF drawing path. `cacheDisplay` and `layer.render`
+        // both come back blank here: a `WKWebView` is layer-backed and forces
+        // every ancestor to be, and a layer-backed AppKit view has no drawn
+        // contents to copy until the window server has asked for them.
+        // `dataWithPDF` runs the views' own drawing instead, which does not
+        // care. The failure mode of the other two is a blank rectangle of the
+        // right size, which reads as "the screen is empty" rather than as
+        // "the wrong API".
+        let pdf = target.dataWithPDF(inside: bounds)
+        guard let image = NSImage(data: pdf) else { return }
+        let rendered = NSImage(size: bounds.size)
+        rendered.lockFocus()
+        NSColor.textBackgroundColor.setFill()
+        bounds.fill()
+        image.draw(in: bounds)
+        rendered.unlockFocus()
+        guard let tiff = rendered.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let data = rep.representation(using: .png, properties: [:]) else { return }
+        let url = boundURL.deletingLastPathComponent().appendingPathComponent("\(name).png")
+        try? data.write(to: url)
+        measure.trace("snapshot at=\(url.path) w=\(Int(bounds.width)) h=\(Int(bounds.height))")
+        func dump(_ view: NSView, depth: Int) {
+            // Deep enough to reach a control. The rows nest through scroll,
+            // clip, document, column, form, card, card stack and row before
+            // one, and a walk that stops short reports no switches at all,
+            // which reads exactly like a screen that has none.
+            guard depth < 12 else { return }
+            for sub in view.subviews {
+                measure.trace("snapview \(String(repeating: "  ", count: depth))\(type(of: sub)) frame=\(NSStringFromRect(sub.frame)) hidden=\(sub.isHidden) alpha=\(sub.alphaValue)")
+                dump(sub, depth: depth + 1)
+            }
+        }
+        dump(target, depth: 0)
+    }
+
+    /// The panel's window level, for `jot/scripts/measure.sh`.
+    ///
+    /// `NSPanel` starts at `.floating` and `isFloatingPanel` is a setter for
+    /// that level, so the level a panel ends up at is never the absence of a
+    /// line and cannot be read off the source by eye. Raw, not
+    /// compared to a constant here: the assertion belongs in the script, where
+    /// a wrong expectation shows up as a failing arm rather than as a probe
+    /// that agrees with itself.
+    private func traceWindowLevel() {
+        guard measure.enabled else { return }
+        // The frame goes out in TOP-LEFT screen coordinates, which is not the
+        // convention the frame is in. AppKit measures from the bottom of the
+        // main screen and every screen-capture tool measures from the top, so
+        // converting here is what stops each reader doing it again and one of
+        // them doing it wrong.
+        let screenHeight = NSScreen.screens.first?.frame.height ?? panel.frame.maxY
+        let frame = panel.frame
+        measure.trace(String(
+            format: "windowlevel level=%d hidesOnDeactivate=%@ rect=%.0f,%.0f,%.0f,%.0f",
+            panel.level.rawValue, panel.hidesOnDeactivate ? "yes" : "no",
+            frame.origin.x, screenHeight - frame.maxY, frame.width, frame.height))
+    }
+
     private func traceTitleBar() {
         guard measure.enabled else { return }
+        traceWindowLevel()
         let view = titleBar.titleView
         let frame = view.convert(view.bounds, to: nil)
         let text = view.labelFrameInWindow()
         let close = panel.standardWindowButton(.closeButton)
             .map { $0.convert($0.bounds, to: nil) } ?? .zero
         measure.trace(String(
-            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f fieldW=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f fieldW=%.1f cellW=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
             frame.origin.x, frame.origin.y, frame.width, frame.height,
             // What an ANCESTOR leaves of us. Every other number here is a
             // frame this code set, so they agree with each other by
@@ -1480,10 +2058,14 @@ final class Coordinator {
             // one line in it. The only numbers here about the DRAWING; see
             // TitleBar.titleFit.
             view.titleFit().needed, view.titleFit().given, view.drawnInkWidth(),
-            view.titleFieldWidth(),
+            view.titleFieldWidth(), view.titleCellWidth(),
             text.midY, close.midY,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
-            view.accessibilityLabel() ?? ""))
+            // The DRAWN characters, not the accessibility label. The label now
+            // carries the whole name whatever the window's width, which is
+            // right for a screen reader and useless to a check asking whether
+            // the title was shortened.
+            view.drawnTitle))
         traceChevron()
     }
 
@@ -1520,6 +2102,12 @@ final class Coordinator {
     /// at that moment, so a captured value would leave the title answering for
     /// a setting that is no longer in force until the next keystroke.
     private func refreshTitle() {
+        // The welcome screen owns the title while it is up, and everything
+        // that touches the document goes on running behind it: the file is
+        // still bound, still read, still watched. Without this guard the next
+        // `isEdited` change would put a file name back over a screen that has
+        // no file.
+        guard !isWelcoming else { return }
         titleBar.titleView.show(
             url: boundURL,
             edited: WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
@@ -1642,18 +2230,6 @@ final class Coordinator {
         hotkey.register(Prefs.hotkey)
     }
 
-    /// Re-read the settings that decide how the WINDOW behaves, without the
-    /// flush-and-reload `preferencesChanged` does.
-    ///
-    /// Separate because the cost is what distinguishes them, not the subject:
-    /// a file or network change needs a fresh page, and this needs a property
-    /// set on a window that is already showing the right document. Routing the
-    /// Dock switch through the heavy path would leave the user watching a
-    /// switch they moved with the panel blank for a round trip.
-    func panelBehaviorChanged() {
-        panel.applyHideWhenInactive()
-    }
-
     func preferencesChanged() {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
@@ -1664,7 +2240,6 @@ final class Coordinator {
             self.loadPage()
             // The bound file may have changed; the titlebar names it.
             self.refreshTitle()
-            self.panel.applyHideWhenInactive()
         }
     }
 

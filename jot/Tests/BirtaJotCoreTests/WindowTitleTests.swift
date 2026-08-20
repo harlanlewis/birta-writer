@@ -37,6 +37,80 @@ final class WindowTitleTests: XCTestCase {
 
     // MARK: ancestry
 
+    // MARK: truncation
+    //
+    // One point per character, so a ceiling is a character count and the
+    // arithmetic in a case is readable. A real font kerns and this does not,
+    // which is exactly why `runs(fitting:measure:)` asks the measurer about
+    // whole candidate strings rather than adding up glyph widths.
+    private let perCharacter: (String) -> Double = { Double($0.count) }
+
+    func testANameThatFitsShouldBeLeftExactlyAlone() {
+        let runs = WindowTitle.runs(name: "Note.md", edited: false,
+                                    fitting: 100, measure: perCharacter)
+        XCTAssertEqual(runs, [WindowTitle.Run(text: "Note.md", secondary: false)])
+    }
+
+    func testANameThatDoesNotFitShouldEndInAnEllipsis() {
+        let runs = WindowTitle.runs(name: "Note 2026-08-20 2.md", edited: false,
+                                    fitting: 10, measure: perCharacter)
+        let line = runs.map(\.text).joined()
+        XCTAssertTrue(line.hasSuffix(WindowTitle.ellipsis), line)
+        XCTAssertEqual(line.count, 10)
+    }
+
+    /// The defect this whole path exists for: a clipped name is the same
+    /// LENGTH as a truncated one at the same ceiling, so a check on width
+    /// cannot tell them apart. The ellipsis is the only thing that can.
+    func testAClippedNameAndATruncatedOneDifferOnlyInTheEllipsis() {
+        let name = "Birta Writer Jot.md"
+        let runs = WindowTitle.runs(name: name, edited: false,
+                                    fitting: 8, measure: perCharacter)
+        XCTAssertEqual(runs.map(\.text).joined(), "Birta W" + WindowTitle.ellipsis)
+        XCTAssertNotEqual(runs.map(\.text).joined(), String(name.prefix(8)))
+    }
+
+    /// A name with a space in it is the case that used to WRAP rather than
+    /// truncate, and one without is the case that could never have caught it.
+    func testANameWithNoSpaceShouldTruncateTheSameWayAsOneWithSpaces() {
+        let spaced = WindowTitle.runs(name: "aaa bbb ccc.md", edited: false,
+                                      fitting: 6, measure: perCharacter)
+        let solid = WindowTitle.runs(name: "aaabbbccc.md", edited: false,
+                                     fitting: 6, measure: perCharacter)
+        XCTAssertEqual(spaced.map(\.text).joined().count, 6)
+        XCTAssertEqual(solid.map(\.text).joined().count, 6)
+        XCTAssertTrue(spaced[0].text.hasSuffix(WindowTitle.ellipsis))
+        XCTAssertTrue(solid[0].text.hasSuffix(WindowTitle.ellipsis))
+    }
+
+    /// The reason the truncation is here and not in the cell. A whole-line
+    /// tail truncation eats `Edited` first, and `Edited` is the half being
+    /// scanned for.
+    func testTheNameShouldGiveWayAndTheEditedSuffixShouldSurvive() {
+        let runs = WindowTitle.runs(name: "a very long note indeed.md", edited: true,
+                                    fitting: 20, measure: perCharacter)
+        XCTAssertEqual(runs.count, 2)
+        XCTAssertTrue(runs[0].text.hasSuffix(WindowTitle.ellipsis))
+        XCTAssertEqual(runs[1].text, WindowTitle.separator + WindowTitle.editedSuffix)
+        XCTAssertTrue(runs[1].secondary)
+        XCTAssertEqual(runs.map(\.text).joined().count, 20)
+    }
+
+    func testACeilingTooSmallForAnythingShouldStillNotDropTheSuffix() {
+        let runs = WindowTitle.runs(name: "anything.md", edited: true,
+                                    fitting: 1, measure: perCharacter)
+        XCTAssertEqual(runs[0].text, WindowTitle.ellipsis)
+        XCTAssertEqual(runs[1].text, WindowTitle.separator + WindowTitle.editedSuffix)
+    }
+
+    func testTheLongestNameThatFitsShouldBeChosenAndNotAShorterOne() {
+        // Ceiling 11, ellipsis costs 1, so ten characters of name fit exactly
+        // and eleven do not. Bisection off by one lands on nine.
+        let runs = WindowTitle.runs(name: "abcdefghijklmnop", edited: false,
+                                    fitting: 11, measure: perCharacter)
+        XCTAssertEqual(runs[0].text, "abcdefghij" + WindowTitle.ellipsis)
+    }
+
     func testAFileShouldListItselfFirstThenEveryFolderUpToTheRoot() {
         let chain = WindowTitle.ancestry(of: URL(fileURLWithPath: "/Users/x/Notes/Scratchpad.md"))
         XCTAssertEqual(chain.map(\.path), [

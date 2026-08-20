@@ -32,12 +32,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything reads a preference, and before the panel is built.
+        Prefs.sweepRetiredKeys()
         buildMainMenu()
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         buildStatusItem()
         coordinator.start()
+        // Asked once a launch, in the background, and silent unless there is
+        // something. `Updater` refuses for a development build, when the
+        // setting is off, and under a throwaway defaults domain.
+        updater.onStatus = { [weak self] message in self?.coordinator.flashStatus(message) }
+        // Off the main-queue drain before anything modal. `onUpdateAvailable`
+        // fires from inside `Updater`'s continuation, and an `NSAlert` spun
+        // from there runs a nested run loop that libdispatch will not
+        // re-enter: every `DispatchQueue.main.async` in the app, the sync
+        // scheduler's max-wait and the flush timeout among them, stops being
+        // serviced for as long as the alert is on screen. On an unattended
+        // machine that is indefinitely.
+        updater.onUpdateAvailable = { [weak self] tag in
+            RunLoop.main.perform(inModes: [.common]) {
+                MainActor.assumeIsolated { self?.offerUpdate(tag) }
+            }
+        }
+        updater.checkInBackground()
+        // First launch only, and after the panel exists, so the screen has a
+        // window to take over.
+        // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, so a
+        // run would meet this window every time; skipped there for the same
+        // reason the panel does not remember its frame.
+        //
+        // `BIRTA_JOT_OPEN_WELCOME=1` shows it regardless, which is how the
+        // screen is proven to construct without a person and without a first
+        // launch: the gate below deliberately never fires under a throwaway
+        // domain, so nothing else would ever build it.
+        if ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1"
+            || (Prefs.isUserStore && !Prefs.hasSeenWelcome) {
+            showWelcome()
+        }
         // A settings window can otherwise only be opened by a person, which
         // makes "does it construct" a question nothing but a human can answer.
         // Same seam as BIRTA_JOT_SCRATCHPAD and BIRTA_JOT_DEFAULTS_SUITE, and
@@ -47,6 +80,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Panes are built on first show, so naming one is what proves it
             // constructs. "1" opens the window on whichever pane is default.
             settingsWindow?.selectTabForTesting(tab)
+            // And then move the one control that changes a pane's height after
+            // it is built, so a check on the window following its pane has a
+            // second sizing to read. Deferred, or the two fits collapse into
+            // one and the trace cannot tell them apart.
+            if ProcessInfo.processInfo.environment["BIRTA_JOT_TOGGLE_ICLOUD"] == "1" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    self?.settingsWindow?.toggleICloudForTesting()
+                }
+            }
         }
         installTerminationSignal()
     }
@@ -94,13 +136,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMainMenu() {
         let main = NSMenu()
 
-        let appMenu = NSMenu(title: "Birta Writer Jot")
-        appMenu.addItem(withTitle: "About Birta Writer Jot", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let appMenu = NSMenu(title: AppFlavor.current.displayName)
+        appMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         JotMenu.add(.app, to: appMenu, target: self)
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Birta Writer Jot", action: #selector(hidePanel), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Birta Writer Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Hide \(AppFlavor.current.displayName)", action: #selector(hidePanel), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appItem = NSMenuItem(); appItem.submenu = appMenu; main.addItem(appItem)
 
         // The conventional File menu, with the conventional chords: Cmd+S
@@ -108,6 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // elsewhere. Neither empties the panel.
         let fileMenu = NSMenu(title: "File")
         JotMenu.add(.file, to: fileMenu, target: self)
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(withTitle: "Back to My Notes", action: #selector(menuBackToNotes), keyEquivalent: "")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
         // Share is a File-menu verb on macOS, and this is now its only route:
@@ -158,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = Self.statusItemImage()
-            button.toolTip = "Birta Writer Jot"
+            button.toolTip = AppFlavor.current.displayName
             button.target = self
             button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -167,11 +211,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         // The panel toggle, and nothing about where files live: that belongs in
         // the window, next to the note it would act on.
-        showItem = menu.addItem(withTitle: "Show Birta Writer Jot", action: #selector(togglePanel), keyEquivalent: "")
+        showItem = menu.addItem(withTitle: "Show \(AppFlavor.current.displayName)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Birta Writer Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for item in menu.items where item.action != nil && item.action != #selector(NSApplication.terminate(_:)) {
             item.target = self
         }
@@ -207,11 +251,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func statusItemImage() -> NSImage? {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent("MenuBarTemplate.pdf"),
               let image = NSImage(contentsOf: url) else {
-            return NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Birta Writer Jot")
+            return NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: AppFlavor.current.displayName)
         }
         image.isTemplate = true
         image.size = NSSize(width: 16, height: 16)
-        image.accessibilityDescription = "Birta Writer Jot"
+        image.accessibilityDescription = AppFlavor.current.displayName
         return image
     }
 
@@ -260,12 +304,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func shareNote() { coordinator.shareNote() }
 
+    /// Show the first-run screen, which lives IN the panel rather than in a
+    /// window of its own. The Advanced button that re-shows it comes here too.
+    func showWelcome() {
+        coordinator.showWelcome()
+    }
+
+    @objc func menuBackToNotes() { coordinator.backToNotes() }
+
+    /// Say a newer release exists, and let the user take it or leave it.
+    ///
+    /// A sheet rather than a silent swap: replacing the app somebody is typing
+    /// into is not a thing to do behind them, and this is the one moment where
+    /// asking costs nothing because nothing has been downloaded yet.
+    private func offerUpdate(_ tag: String) {
+        guard let release = updater.available else { return }
+        let alert = NSAlert()
+        alert.messageText = "\(AppFlavor.current.displayName) \(tag) is available."
+        alert.informativeText = "It will be downloaded, checked, and installed, and Jot will restart. "
+            + "Your note is written first and is not touched."
+        alert.addButton(withTitle: "Install and Restart")
+        alert.addButton(withTitle: "Later")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        updater.install(release) { ok in
+            // Quitting is what performs the swap: the staged script waits for
+            // this process to go. Through the ordinary
+            // `applicationShouldTerminate` path, so the buffer is flushed and
+            // written on the way out.
+            //
+            // Handed to the RUN LOOP, for the reason `installTerminationSignal`
+            // gives above and for the same mechanism: this completion runs
+            // inside a main-queue drain, `applicationShouldTerminate` answers
+            // `.terminateLater`, and the reply arrives on the main queue.
+            // libdispatch does not re-enter that drain, so calling terminate
+            // directly here leaves the app in a nested run loop with its hotkey
+            // already unregistered, alive and unquittable, while the staged
+            // script polls for a pid that never goes.
+            //
+            // NOT `prepareToTerminate` directly either: `applicationShouldTerminate`
+            // is its only caller, and calling it here would run the flush twice.
+            guard ok else { return }
+            NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
+        }
+    }
+
+    /// Keeps the release build current. Held here rather than on the
+    /// coordinator because it outlives any window and belongs to the app.
+    let updater = Updater()
+
     @objc func menuOpenSettings() {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
                 onChange: { [weak self] in self?.coordinator.preferencesChanged() },
-                onPanelBehaviorChange: { [weak self] in self?.coordinator.panelBehaviorChanged() })
+                onShowWelcome: { [weak self] in self?.showWelcome() },
+                onCheckForUpdates: { [weak self] in self?.updater.checkNow() })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)
@@ -281,7 +374,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
         // menu is not searched for key equivalents; the global hotkey is
         // registered with Carbon and works whatever has focus.
         let combo = coordinator.hotkey.combo ?? Prefs.hotkey
-        showItem.title = coordinator.isVisible ? "Hide Birta Writer Jot" : "Show Birta Writer Jot"
+        showItem.title = coordinator.isVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
         showItem.keyEquivalent = combo.menuKeyEquivalent
         showItem.keyEquivalentModifierMask = combo.menuModifierMask
 
@@ -291,13 +384,35 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// Enablement for the main menu and the status menu, which keep their items
     /// between openings.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        // Nothing that touches the document while the first-run screen is up.
+        // Hiding the web view walls off the mouse and, with the first
+        // responder moved, the keyboard; the menu bar reaches past both. Cmd+N
+        // there would make a note in the folder the screen is still asking
+        // about and bind to it, outranking the answer being given, and its
+        // status message would be drawn behind the screen.
+        if coordinator.isWelcoming, let action = item.action, Self.documentCommands.contains(action) {
+            return false
+        }
         switch item.action {
         case #selector(copyEverything), #selector(menuSaveAs), #selector(shareNote):
             return coordinator.hasContent
         case #selector(revealLastSave):
             return coordinator.lastSavedURL != nil
+        case #selector(menuBackToNotes):
+            // Dead unless Jot is actually on a document, which today only an
+            // install carrying an older `documentPath` can be.
+            return Prefs.documentURL != nil
         default:
             return true
         }
     }
+
+    /// Every menu command that reads or writes the note. Named once so the
+    /// first-run gate above cannot drift out of step with the File menu.
+    private static let documentCommands: Set<Selector> = [
+        #selector(menuNewNote), #selector(menuSaveNow), #selector(menuSaveAs),
+        #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
+        #selector(menuBackToNotes), #selector(menuFind), #selector(menuInsertLink),
+        #selector(menuToggleTaskChecked),
+    ]
 }

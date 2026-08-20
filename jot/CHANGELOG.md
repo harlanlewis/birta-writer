@@ -10,6 +10,46 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Birta Writer Jot keeps itself up to date. Once a launch it asks this project's release page whether there is a newer version, and says so if there is; downloading and installing are a click, and it restarts into the new one with your note written first. On by default, in Settings, Advanced, with a Check Now beside it. It does not ride the "Rich link previews and embeds" switch, because that one is about what happens to what you type and this one is about the app replacing itself: someone who wants no link previews should still get fixes. Nothing about you or your notes is sent, and the download is checked against the published checksum before anything is written; a release that published none is refused rather than installed unverified.
+
+- A development build of Birta Writer Jot now installs beside the release instead of over it, under its own name with [DEV] on the end, so a change can be looked at without taking away the copy your notes are in. The two share nothing that would make them collide: separate settings, separate note, and a separate summon hotkey, which is Shift plus the usual one. The development build never updates itself, since replacing it would remove the thing it was installed to show. `pnpm run install:local` builds and installs that one.
+
+- Birta Writer Jot asks three questions the first time it runs, on the panel itself rather than in a window beside it: the summon hotkey, whether notes go in iCloud Drive, and whether it appears in the Dock and starts at login. Those are the ones you cannot answer later without going looking; everything else has a default worth keeping and a row in Settings. The editor is not there yet, which is the point: there is nothing to type into until the questions that decide where your bytes go are answered, and nothing to dismiss twice. All Settings and Start Writing are under the rows. Every row is a live setting, written the moment you move it, so there is no Cancel. The window grows to fit the questions, and Settings, Advanced has a button that shows the screen again.
+
+- Birta Writer Jot's agent command has a menu of the terminal agents people actually run: Claude Code, Codex CLI, Cursor CLI, Gemini CLI, GitHub Copilot CLI, OpenCode, Aider, Amp and Goose. Choosing one fills the command field below it, which is still where the setting lives and still editable; editing it says Custom. Settings, Advanced.
+
+- Reset all settings, in Birta Writer Jot's Advanced settings. Everything goes back to its defaults, the hotkey included, after a confirmation. Your notes are not touched: the files stay exactly where they are, and Jot reopens the default one, so a note you had pointed it at is one Choose away rather than gone. The first-run screen does not come back, because a reset is not a reason to be asked again; the button beside it is.
+
+### Changed
+
+- Birta Writer Jot's Settings is two panes, and General now holds every question the first-run screen asks, in the same order and worded the same, under three headings: Show and hide Jot, Where your notes live, and How Jot works. A setting you answered on first run is found again by looking where you answered it. Advanced holds what that screen does not ask: which note a summon opens, the agent command, updates, and the reset.
+
+- Where your notes live is one switch and a Location row that appears only when it is off. It used to be an iCloud toggle with a path row under it that silently outranked it: choosing a folder made the switch above decide nothing, and nothing said so. With iCloud Drive on there is one place the note can be and the row is gone; with it off the folder is a real choice and Choose is right there.
+
+- Birta Writer Jot's Editor settings pane is gone. Its only row was Autosave, which is now in General under How Jot works with the rest of how Jot behaves, and a tab that costs a click to discover is empty is worse than no tab. Start with a blank note is in Advanced, as Opens, where it says what it decides.
+
+### Fixed
+
+- An `/ai` request in Birta Writer Jot no longer drops the model or effort it was given when your agent command names a longer flag starting with the same letters. A command carrying `--model-fallback` read as already carrying `--model`, so the request's model was silently left off. It affects only a command spelled that way; the menu's own presets are not.
+
+- Birta Writer Jot notices when the note it is editing is deleted, and stops writing instead of putting it back. It wrote through a path that creates the file and every folder above it, so deleting the note in Finder and typing one more character recreated it a second later, and nothing said so. A bar along the bottom of the panel now says the note is gone and that nothing has been written since, with Save It Back, which writes what is in the panel to where it came from, and Discard and Start New. Nothing reaches disk until you pick one, no reload or settings change can quietly replace what is in the panel while you decide, and quitting with the bar up leaves the unwritten text in a file named after the note beside where it used to be.
+
+- Renaming or moving Birta Writer Jot's note in Finder no longer leaves it editing a file that is not there. Jot follows the file and the titlebar follows with it, and the rename is written back to the setting the old path came from, so a note you had pointed Jot at stays pointed at and your scratchpad setting is not quietly repointed at it. Moving it to the Trash counts as deleting it, which is what Finder actually does, so that case gets the bar above rather than a panel bound to a file in the Trash.
+
+- Birta Writer Jot's panel really does sit at the ordinary window level, so another application's window can cover it. The setting that made it float was removed a release ago and the level was not, which left the panel pinned above everything with nothing in Settings to say so or turn it off. It also stays put when you click into another app, which is the same default arriving from the same direction.
+
+- The file name in Birta Writer Jot's titlebar is drawn whole, and ends in an ellipsis when the window is genuinely too narrow for it. It used to stop mid-letter in both cases, and `Birta Writer Jot.md` was losing the `d`. `Edited` is never what gets dropped to make room, because the state of the file is the half you are looking for.
+
+- `/date` opens the macOS date picker at the caret in Birta Writer Jot, instead of mirrored to the opposite end of the panel: a caret near the top opened the picker near the bottom.
+
+### Removed
+
+- The switch in Birta Writer Jot's Advanced settings that pointed Jot at a document instead of your notes, and the path row beside it. A document you open is not a setting; the titlebar already names the file Jot is on, and Back to My Notes on the File menu is the way back off one.
+
+- Birta Writer Jot's "hide when Jot is not in front" switch, which shipped one release ago as the answer to a panel that floated. The panel no longer floats, so there is nothing to answer: a window you can cover is a window you can leave on screen. Settings, General.
+
 ---
 
 ## [2026.820.0] - 2026, August 20

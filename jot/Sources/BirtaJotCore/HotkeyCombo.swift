@@ -21,8 +21,19 @@ public struct HotkeyCombo: Equatable, Sendable {
     public static let optionKey: UInt32 = 0x800
     public static let controlKey: UInt32 = 0x1000
 
-    /// The default: Command-Option-Control-J. Unclaimed by macOS and the usual launchers.
-    public static let `default` = HotkeyCombo(keyCode: 38, modifiers: cmdKey | optionKey | controlKey, spelling: "cmd+alt+ctrl+j")
+    /// The release build's default: Command-Option-Control-J. Unclaimed by
+    /// macOS and the usual launchers.
+    public static let release = HotkeyCombo(keyCode: 38, modifiers: cmdKey | optionKey | controlKey, spelling: "cmd+alt+ctrl+j")
+
+    /// The development build's, which adds Shift.
+    ///
+    /// A global hotkey is first come first served, so two builds asking for
+    /// the same one means the second to launch does not get it, and the only
+    /// sign is a caption in a Settings pane nobody has opened.
+    public static let dev = HotkeyCombo(keyCode: 38, modifiers: cmdKey | optionKey | controlKey | shiftKey, spelling: "cmd+alt+ctrl+shift+j")
+
+    /// This build's default, whichever it is.
+    public static var `default`: HotkeyCombo { AppFlavor.current.defaultHotkey }
 
     public init(keyCode: UInt32, modifiers: UInt32, spelling: String) {
         self.keyCode = keyCode

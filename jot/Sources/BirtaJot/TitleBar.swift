@@ -64,7 +64,7 @@ final class TitleBarView: NSView {
     }()
     private var popover: NSPopover?
 
-    private let label = NSTextField(labelWithString: "")
+    private let label = TitleBarView.makeTitleField()
     /// The affordance that says the title opens something, drawn the way macOS
     /// draws it on a document window: a small chevron after the name, on
     /// hover.
@@ -104,8 +104,19 @@ final class TitleBarView: NSView {
     private struct Rendered: Equatable {
         let text: String
         let key: Bool
+        /// Whether the title named the application rather than a file. In the
+        /// key because the same characters mean different things either side
+        /// of it: one opens a popover and one is inert.
+        let plain: Bool
     }
     private var lastRendered: Rendered?
+
+    /// The characters actually on screen, for `jot/scripts/measure.sh`.
+    ///
+    /// Separate from the accessibility label, which carries the whole name.
+    /// The script is asking what was DRAWN, and a check that read the a11y
+    /// label would report a name in full while the titlebar showed half of it.
+    private(set) var drawnTitle = ""
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 0, height: TitleBarView.height))
@@ -155,6 +166,67 @@ final class TitleBarView: NSView {
     /// a string built without it measures a size nothing ever draws at, and
     /// every width taken from it is short.
     private static let titleFont = NSFont.titleBarFont(ofSize: NSFont.systemFontSize)
+
+    /// A title label, configured. Used for the one this view draws AND for the
+    /// ruler below, because the two have to be the same KIND of thing: the
+    /// measurer decides how much name fits and the label draws it, so a
+    /// difference between their configurations is a difference between what
+    /// was promised to fit and what does.
+    private static func makeTitleField() -> NSTextField {
+        let field = NSTextField(labelWithString: "")
+        field.font = titleFont
+        // A title is ONE line, and this is the only thing enforcing it.
+        //
+        // The field's own `lineBreakMode` is NOT set, and its absence is the
+        // point. A cell lays an attributed value out under the paragraph style
+        // that value carries, never under the field's setting, and this label
+        // is filled through `attributedStringValue` and never through
+        // `stringValue`. So a `lineBreakMode` here would be inert while
+        // looking load-bearing. WHERE the name is shortened is
+        // `WindowTitle.runs(fitting:)`, before the string exists.
+        //
+        // What remains for the cell is refusing to WRAP, which is this line:
+        // `NSTextField(labelWithString:)` leaves it off, so the default
+        // paragraph style's `.byWordWrapping` applies and a name with a space
+        // in it lays out on two lines inside a box one line tall, the first
+        // drawn and the rest clipped away. `usesSingleLineMode` reinterprets a
+        // wrapping mode as `.byClipping`, which is AppKit's documented rule
+        // for it, and one line is all this needs to be.
+        //
+        // Deliberately not a truncating paragraph style on top. A cell in one
+        // needs its box wider than the string measures before it will draw the
+        // string in full, so it truncates a name that fits and draws an
+        // ellipsis that means the window is too narrow when it is not; the
+        // `title ink` arm of `jot/scripts/measure.sh` is what says so.
+        field.usesSingleLineMode = true
+        return field
+    }
+
+    /// An off-screen label, kept only to be measured.
+    ///
+    /// The measurer `WindowTitle.runs(fitting:measure:)` bisects with, and it
+    /// asks a CELL rather than an attributed string on purpose. A cell needs
+    /// more room to draw a string than the string reports needing, so a
+    /// truncation decided on the string's number promises that a name fits
+    /// into a box the cell then clips the tail of it out of.
+    ///
+    /// Same factory as the drawn label, so the two cannot drift apart. Reused
+    /// rather than built per candidate because the bisection asks about a
+    /// handful of strings per repaint and a repaint happens on every point of
+    /// a window drag.
+    private static let ruler = makeTitleField()
+
+    /// What a candidate title needs, in the font and the cell it will be drawn
+    /// in. Falls back to the string's own width only if the field has no
+    /// cell, which it always has.
+    private static func width(of text: String) -> Double {
+        ruler.attributedStringValue = NSAttributedString(string: text, attributes: [.font: titleFont])
+        guard let cell = ruler.cell else {
+            return Double(ruler.attributedStringValue.size().width)
+        }
+        let unbounded = NSRect(x: 0, y: 0, width: CGFloat.greatestFiniteMagnitude, height: height)
+        return Double(cell.cellSize(forBounds: unbounded).width)
+    }
     /// Laid out by hand, and that is the whole reason this file was worth
     /// getting wrong once.
     ///
@@ -167,26 +239,6 @@ final class TitleBarView: NSView {
     /// hierarchy is indistinguishable from having worked. Sizing this view's
     /// own frame from its content is what makes the width real.
     private func build() {
-        label.font = Self.titleFont
-        // A title is ONE line, and saying so is what makes the line-break mode
-        // below mean truncation.
-        //
-        // `NSTextField(labelWithString:)` leaves `usesSingleLineMode` off, so a
-        // label that is told to truncate its tail is still free to WRAP first,
-        // and it wraps at a space. A name with a space in it therefore laid out
-        // as two lines inside a box one line tall: the first line drew, the
-        // second was clipped by the height, and the result was a title that
-        // read as a shorter name rather than as a damaged one. "Birta Writer Jot.md"
-        // drew as "Birta", with no ellipsis to say anything had been dropped,
-        // in a label whose frame was wide enough for the whole string.
-        //
-        // Every instrument here reported that title as correct, because
-        // `stringValue`, `accessibilityLabel`, the label's frame and its
-        // `visibleRect` are all the model rather than the drawing. What
-        // discriminates is how many lines the cell lays the string out on, and
-        // `measure.sh` asserts that against the live window.
-        label.usesSingleLineMode = true
-        label.lineBreakMode = .byTruncatingTail
         label.setAccessibilityRole(.staticText)
         addSubview(label)
         // Template so it inks itself from the control tint and follows the
@@ -214,6 +266,9 @@ final class TitleBarView: NSView {
     /// that probe can read this decision rather than restate it. The fade is
     /// the only reason a caller would ever want the value late.
     private func syncChevron(animated: Bool = true) {
+        // Nothing to point at while the title names the application: the
+        // chevron is a picture of a click this view is not taking.
+        if plainTitle != nil { chevron.alphaValue = 0; return }
         // No file, no affordance: an empty title has nothing to open.
         let wanted: CGFloat = (url != nil && (isHovered || popover?.isShown == true)) ? 1 : 0
         guard chevron.alphaValue != wanted else { return }
@@ -254,6 +309,13 @@ final class TitleBarView: NSView {
     func setTextCeiling(_ ceiling: CGFloat) {
         guard ceiling != textCeiling else { return }
         textCeiling = ceiling
+        // Repaint, because WHAT the title says is a function of the ceiling
+        // now and not only how much of it is shown: a window dragged narrower
+        // has to give up characters, and one dragged wider has to take them
+        // back. `paint` returns early when the string it would draw is the one
+        // already drawn, so a resize that changes no characters costs a
+        // measurement and nothing else.
+        paint()
         resize()
         layoutSubtreeIfNeeded()
     }
@@ -338,19 +400,33 @@ final class TitleBarView: NSView {
     func labelFrameInWindow() -> NSRect { label.convert(label.bounds, to: nil) }
 
 
-    /// The width the TITLE'S OWN GLYPHS need, rounded up.
+    /// The width the label needs to DRAW its title, rounded up.
     ///
-    /// The string being drawn, measured in the font it is drawn in, rounded so
-    /// it can never land under. That is the whole specification, and each half
-    /// of it is a way this has been got wrong: measured off the FIELD it
-    /// answers for a layout the field may not be doing, and measured off a
-    /// string carrying no `.font` it answers in the default system face, which
-    /// is narrower than the titlebar one and yields a box the cell then has to
-    /// truncate into. A title ending in an ellipsis it did not need is the
-    /// quiet version of the same bug as a title cut at a space.
+    /// Asked of the CELL, not of the string, and the difference is the last
+    /// glyph. `NSAttributedString.size()` reports a typesetting width; the
+    /// cell lays the same string out inside its own insets and needs more
+    /// than that, so a box sized to the string's number is a box the cell
+    /// draws the tail of the name outside of, and the titlebar clips it. It is
+    /// silent in the way the wrap was: every model-side number agrees the name
+    /// is drawn in full, because every one of them describes the string.
+    /// `measure.sh`'s `title ink` arm is what compares the box to the cell.
+    ///
+    /// `cellSize(forBounds:)` is the cell's own answer to "how much room does
+    /// this take", so it tracks the font and the insets rather than restating
+    /// them, and there is no constant here to go stale. The unbounded width is
+    /// what asks for the untruncated requirement; the ceiling is applied by
+    /// the callers, which is where it belongs.
+    ///
+    /// Still measured off a string that carries `.font`, which is the other
+    /// half of the specification and the other way this has been got wrong: a
+    /// run naming no font measures in the default system face, which is
+    /// narrower than the titlebar one.
     private func drawnTextWidth() -> CGFloat {
-        label.attributedStringValue.size().width.rounded(.up)
+        guard let cell = label.cell else { return label.attributedStringValue.size().width.rounded(.up) }
+        let unbounded = NSRect(x: 0, y: 0, width: CGFloat.greatestFiniteMagnitude, height: bounds.height)
+        return cell.cellSize(forBounds: unbounded).width.rounded(.up)
     }
+
 
     /// How far the title's INK actually reaches, in points.
     ///
@@ -412,6 +488,16 @@ final class TitleBarView: NSView {
     /// source agree whatever is wrong with them; these come from two.
     func titleFieldWidth() -> CGFloat { label.intrinsicContentSize.width }
 
+    /// What the CELL says it needs to draw the title, for `measure.sh`.
+    ///
+    /// The number `resize` and `layout` size the label from, published so a
+    /// check can compare the box against it. Neither `titleFit().needed` nor
+    /// `titleFieldWidth()` can stand in: both report the STRING's width, the
+    /// cell needs its own insets on top of that to draw the same string. A
+    /// box between the two numbers looks correct by every model-side measure
+    /// and clips the tail of the name away.
+    func titleCellWidth() -> CGFloat { drawnTextWidth() }
+
     /// The chevron, for `jot/scripts/measure.sh`: whether its image resolved,
     /// where it sits, and how much ink it puts down when shown.
     ///
@@ -448,10 +534,30 @@ final class TitleBarView: NSView {
 
     /// Name `url`, and say whether the buffer has bytes the file does not.
     func show(url: URL, edited: Bool) {
+        self.plainTitle = nil
         self.url = url
         self.edited = edited
         paint()
     }
+
+    /// Name the APPLICATION rather than a file, for a panel that is not
+    /// showing one.
+    ///
+    /// The welcome screen has no document behind it, so the titlebar has
+    /// nothing to name and nothing to open: no chevron, no popover, no path
+    /// popup, and no `Edited`. A title that offered those would offer them
+    /// against the file the panel is ABOUT to open, which is a file the person
+    /// has not chosen yet and is exactly what that screen is asking about.
+    func showAppName(_ name: String) {
+        self.plainTitle = name
+        self.edited = false
+        paint()
+    }
+
+    /// Set while the title names something that is not a file. Read by
+    /// `paint`, by the gestures, and by `hitTest`, which is what makes the
+    /// title inert rather than merely undecorated.
+    private var plainTitle: String?
 
     /// Title ink follows the window's key state, the way every macOS title
     /// does: a background window names itself quietly.
@@ -466,6 +572,17 @@ final class TitleBarView: NSView {
     }
 
     private func paint() {
+        if let plainTitle {
+            // Through the same shortening a file name gets. A narrow panel
+            // cannot fit this either, and skipping it here would clip the app
+            // name mid-glyph: the exact defect this file was rewritten for,
+            // reintroduced by the one title that took a different route.
+            paintRuns(WindowTitle.runs(name: plainTitle, edited: false,
+                                       fitting: Double(textCeiling),
+                                       measure: Self.width(of:)),
+                      toolTip: nil, fullName: plainTitle)
+            return
+        }
         guard let url else {
             label.attributedStringValue = NSAttributedString(string: "")
             // Forget what was drawn, or re-binding the same file afterwards
@@ -474,20 +591,34 @@ final class TitleBarView: NSView {
             return
         }
         // WHAT it says is BirtaJotCore.WindowTitle's, which is testable
-        // without a window; the two inks are this layer's, because a colour is
-        // only meaningful against a live appearance.
+        // without a window.
+        //
+        // Shortened HERE, against the ceiling, rather than left to the cell. A
+        // cell truncating a whole line eats its tail first, so `— Edited`
+        // would go before any of the name did; macOS shortens the name and
+        // keeps the state, which is why the two are separate runs.
+        paintRuns(WindowTitle.runs(name: url.lastPathComponent, edited: edited,
+                                   fitting: Double(textCeiling),
+                                   measure: Self.width(of:)),
+                  toolTip: url.path, fullName: url.lastPathComponent)
+    }
+
+    /// Draw `runs`, and nothing if they say what is already on screen.
+    ///
+    /// The two inks are this layer's, because a colour is only meaningful
+    /// against a live appearance. The font goes ON the runs, not only on the
+    /// field, and that is what makes `drawnTextWidth` describe the drawing: the
+    /// field draws a run in its own font when the run names none, so leaving it
+    /// off looks right on screen and reports a width in the default face, which
+    /// is narrower. Nothing goes red when it is missing, because the sizing and
+    /// the check that guards it both read the same short number and agree.
+    private func paintRuns(_ runs: [WindowTitle.Run], toolTip: String?, fullName: String) {
         let ink: [Bool: NSColor] = [
             false: isKey ? .labelColor : .tertiaryLabelColor,
             true: isKey ? .tertiaryLabelColor : .quaternaryLabelColor,
         ]
-        // The font goes ON the runs, not only on the field, and that is what
-        // makes `drawnTextWidth` describe the drawing. The field draws a run
-        // in its own font when the run names none, so leaving it off looks
-        // right on screen and reports a width in the default face, which is
-        // narrower. Nothing goes red: the sizing and the check that guards it
-        // both read the same short number and agree.
         let text = NSMutableAttributedString()
-        for run in WindowTitle.runs(name: url.lastPathComponent, edited: edited) {
+        for run in runs {
             text.append(NSAttributedString(
                 string: run.text,
                 attributes: [.foregroundColor: ink[run.secondary] as Any,
@@ -495,17 +626,24 @@ final class TitleBarView: NSView {
         }
         // Nothing to do when the title already says this, which under autosave
         // is almost every call: `isEdited`'s `didSet` fires on every admitted
-        // update and again on every write. Keyed on the RENDERED STRING and
-        // the ink, never on `edited`: `refreshTitle` also runs from
-        // `boundURL`'s didSet, so New Note and a document switch change the
-        // title without changing that flag.
-        let rendered = Rendered(text: text.string, key: isKey)
+        // update and again on every write. Keyed on the RENDERED STRING, the
+        // ink, and whether this is a file at all, never on `edited`:
+        // `refreshTitle` also runs from `boundURL`'s didSet, so New Note and a
+        // document switch change the title without changing that flag.
+        let rendered = Rendered(text: text.string, key: isKey, plain: plainTitle != nil)
         guard rendered != lastRendered else { return }
         lastRendered = rendered
         label.attributedStringValue = text
-        label.toolTip = url.path
+        label.toolTip = toolTip
         syncChevron()
-        setAccessibilityLabel(text.string)
+        // The WHOLE name, not the shortened one. Shortening is a fact about
+        // how much room the window has, and a screen reader has all the room
+        // there is; a sighted reader recovers the rest from the tooltip and
+        // the popover, and a reader who is listening would be handed the
+        // ellipsis and nothing else. `drawnTitle` is what the checks read, so
+        // the two do not have to be the same string.
+        setAccessibilityLabel(fullName)
+        drawnTitle = text.string
         resize()
     }
 
@@ -519,6 +657,10 @@ final class TitleBarView: NSView {
     /// worth clicking. Points outside the text still fall through, so the
     /// titlebar keeps its own drag and double-click behaviour beside us.
     override func hitTest(_ point: NSPoint) -> NSView? {
+        // A title naming the application takes no clicks at all, so the band
+        // it sits in stays draggable across its whole width. An empty title
+        // claims nothing either.
+        guard plainTitle == nil else { return nil }
         let local = convert(point, from: superview)
         return bounds.contains(local) && label.frame.width > 0 ? self : nil
     }

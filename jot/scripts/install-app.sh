@@ -20,8 +20,25 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 BUILD=0
-[ "${1:-}" = "--build" ] && BUILD=1
-SRC="jot/build/Birta Writer Jot.app"
+FLAVOR=release
+for arg in "$@"; do
+    case "$arg" in
+        --build) BUILD=1 ;;
+        --dev) FLAVOR=dev ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
+
+# The three names a flavour changes, and every one of them has to move
+# together: the bundle, the executable inside it, and therefore what to ask to
+# quit. `BirtaJotCore.AppFlavor` is where the reasoning lives.
+APP_NAME="Birta Writer Jot"
+EXEC_NAME="BirtaJot"
+if [ "$FLAVOR" = dev ]; then
+    APP_NAME="Birta Writer Jot [DEV]"
+    EXEC_NAME="BirtaJotDev"
+fi
+SRC="jot/build/$APP_NAME.app"
 
 # Leave the tree as this run found it. Building here produces jot/.build (the
 # SwiftPM cache) and jot/build (the assembled app), together a few hundred
@@ -50,9 +67,13 @@ trap tidy EXIT
 
 if [ "$BUILD" = 1 ]; then
     node esbuild.mjs --production
-    bash jot/scripts/build-app.sh
+    if [ "$FLAVOR" = dev ]; then
+        bash jot/scripts/build-app.sh --dev
+    else
+        bash jot/scripts/build-app.sh
+    fi
 fi
-if [ ! -x "$SRC/Contents/MacOS/BirtaJot" ]; then
+if [ ! -x "$SRC/Contents/MacOS/$EXEC_NAME" ]; then
     echo "no app at $SRC: run 'pnpm jot:build' first (or pass --build)" >&2
     exit 1
 fi
@@ -66,19 +87,19 @@ if [ ! -w "$DEST_DIR" ]; then
     mkdir -p "$DEST_DIR"
     echo "note: /Applications is not writable; installing to $DEST_DIR"
 fi
-DEST="$DEST_DIR/Birta Writer Jot.app"
+DEST="$DEST_DIR/$APP_NAME.app"
 
 WAS_RUNNING=0
-if pgrep -x BirtaJot >/dev/null 2>&1; then
+if pgrep -x "$EXEC_NAME" >/dev/null 2>&1; then
     WAS_RUNNING=1
-    echo "→ asking the running Birta Writer Jot to quit (it flushes its buffer first)"
-    pkill -TERM -x BirtaJot || true
+    echo "→ asking the running $APP_NAME to quit (it flushes its buffer first)"
+    pkill -TERM -x "$EXEC_NAME" || true
     for _ in $(seq 1 100); do
-        pgrep -x BirtaJot >/dev/null 2>&1 || break
+        pgrep -x "$EXEC_NAME" >/dev/null 2>&1 || break
         sleep 0.1
     done
-    if pgrep -x BirtaJot >/dev/null 2>&1; then
-        echo "install-app: Birta Writer Jot is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
+    if pgrep -x "$EXEC_NAME" >/dev/null 2>&1; then
+        echo "install-app: $APP_NAME is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
         exit 1
     fi
 fi
@@ -91,8 +112,14 @@ echo "→ installing to $DEST"
 # The old copy is moved aside rather than deleted first, and only removed once
 # the new one is in place. Deleting first leaves a window where a failed `mv`
 # means no app at all, which is a worse state than either version of it.
-STAGE="$DEST_DIR/.Birta Writer Jot.app.incoming"
-OLD="$DEST_DIR/.Birta Writer Jot.app.previous"
+# Flavoured, like everything else here. Two sessions installing different
+# flavours at once share this directory, and hardcoded names mean one run's
+# `rm -rf` destroys the other's staged bundle mid-copy; in the worst
+# interleaving the `mv` below moves the OTHER flavour's bundle into this
+# destination, which is the user's hotkey, note and settings changing under
+# them without a word.
+STAGE="$DEST_DIR/.$APP_NAME.app.incoming"
+OLD="$DEST_DIR/.$APP_NAME.app.previous"
 rm -rf "$STAGE" "$OLD"
 ditto "$SRC" "$STAGE"
 if [ -d "$DEST" ]; then mv "$DEST" "$OLD"; fi
@@ -114,13 +141,22 @@ rm -rf "$OLD"
 # Both directories are swept for the old name, not just the one being installed
 # into: the rename is what makes the old bundle a stranger, and it can be
 # sitting in either place from an earlier install.
+#
+# Scoped to THIS FLAVOUR, which is the whole point of there being two. The
+# sweep used to name the release bundle literally, so a development install
+# deleted `~/Applications/Birta Writer Jot.app`: the release copy, removed by
+# the flavour that exists so the release is never touched.
+#
+# The legacy names belong to the release alone. A development build has no
+# predecessor, so there is nothing of its own to clean up under an old name,
+# and reaching for one would be reaching at somebody else's app again.
 OTHER_DIR=/Applications
 [ "$DEST_DIR" = /Applications ] && OTHER_DIR="$HOME/Applications"
-for stale in \
-    "$OTHER_DIR/Birta Writer Jot.app" \
-    "$DEST_DIR/Birta Jot.app" \
-    "$OTHER_DIR/Birta Jot.app"
-do
+STALE=("$OTHER_DIR/$APP_NAME.app")
+if [ "$FLAVOR" = release ]; then
+    STALE+=("$DEST_DIR/Birta Jot.app" "$OTHER_DIR/Birta Jot.app")
+fi
+for stale in "${STALE[@]}"; do
     if [ -d "$stale" ]; then
         echo "→ removing the other copy at $stale"
         rm -rf "$stale"

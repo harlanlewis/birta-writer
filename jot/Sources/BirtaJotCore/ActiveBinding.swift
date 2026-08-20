@@ -35,6 +35,25 @@ public enum ActiveBinding {
         return .scratchpad
     }
 
+    /// WHICH stored path names `moved`, for a file that has already moved.
+    ///
+    /// A rename has to be written back to the setting the old path came from,
+    /// and after the move that setting can no longer be found by asking which
+    /// slot is in force: a slot whose file no longer exists reports itself
+    /// empty, so the binding has already fallen back to the next one down.
+    /// Matching the OLD path against what is stored is what survives the move.
+    ///
+    /// Nil means no stored path names it, which is the default scratchpad
+    /// location: it is where the panel is without anything having been stored.
+    public static func slot(holding moved: URL,
+                            document: URL?, currentNote: URL?, scratchpad: URL?) -> Slot? {
+        let target = moved.standardizedFileURL.path
+        if document?.standardizedFileURL.path == target { return .document }
+        if currentNote?.standardizedFileURL.path == target { return .currentNote }
+        if scratchpad?.standardizedFileURL.path == target { return .scratchpad }
+        return nil
+    }
+
     /// The active file, resolved by the same precedence the slot names.
     ///
     /// The two functions are kept in step by this one being written in terms

@@ -50,7 +50,6 @@ export BIRTA_JOT_SCRATCHPAD="$SCRATCH_DIR/Scratch pad.md"
 # ...and a throwaway defaults domain, so the run never rewrites the user's
 # toolbar layout, view state or panel frame.
 export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
-trap 'defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" >/dev/null 2>&1 || true' EXIT
 # The formatting row ships closed, and what this script has to look at is an
 # open one. Seeded through the view-state bag the app really restores from,
 # rather than through a debug message: the restore path is itself part of what
@@ -66,7 +65,32 @@ if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
 WC_BEFORE="$(pgrep -f com.apple.WebKit | sort || true)"
 BIRTA_JOT_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
-trap '[ $KEEP = 1 ] || { kill $PID 2>/dev/null; wait $PID 2>/dev/null; } || true; rm -rf "$SCRATCH_DIR"; defaults delete "$BIRTA_JOT_DEFAULTS_SUITE" >/dev/null 2>&1 || true' EXIT
+# Every throwaway defaults domain this run creates, cleaned by the ONE exit
+# trap below. There must stay exactly one: a second `trap ... EXIT` REPLACES
+# the first rather than adding to it, so a cleanup registered its own way
+# silently switches off everything the earlier trap did, the app's SIGTERM
+# included.
+#
+# The `rm` beside the `defaults delete` is not belt and braces. `delete` empties
+# the domain and `cfprefsd` leaves the file, so the plist outlives every run.
+# Removed by EXACT name, never by a glob over `com.birtalabs.jot.*`: the app's
+# own domain is a prefix of every throwaway one, and a glob there takes the
+# user's real settings.
+# How this run ends the app, in one place.
+#
+# SIGTERM through the app's own handler, never SIGKILL: WebKit's helpers are
+# not children of the app and only exit because the app asks them to, so a hard
+# kill orphans a set of them per launch. Idempotent, so the teardown check and
+# the exit trap can both call it.
+end_app() {
+    [ -n "${PID:-}" ] || return 0
+    kill "$PID" 2>/dev/null || true
+    wait "$PID" 2>/dev/null || true
+    PID=""
+}
+
+EXTRA_SUITES=""
+trap '[ $KEEP = 1 ] || end_app; rm -rf "$SCRATCH_DIR"; for s in $BIRTA_JOT_DEFAULTS_SUITE $EXTRA_SUITES; do defaults delete "$s" >/dev/null 2>&1 || true; rm -f "$HOME/Library/Preferences/$s.plist"; done' EXIT
 
 wait_for() { # wait_for <mark> <timeout-s>
     local n=0
@@ -194,6 +218,171 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# A deleted note is NOT written back.
+#
+# `AtomicFile.write` creates the file and every directory above it, so before
+# this the sequence below put the note straight back: delete it, type one
+# character, and an autosave tick recreated the path a person had just thrown
+# away. The check is the FILE, not a message: a bar that appeared while the
+# write still happened would look like the fix and be none of it.
+#
+# `rm` rather than a Finder delete on purpose. A file presenter only hears
+# about coordinated changes, which Finder makes and this does not, so this
+# exercises the pre-write existence check rather than the presenter. The
+# presenter's own path is covered by `FileMoveTests`, which is where the rule
+# about what a move into the Trash means is decided.
+show_panel
+rm -f "$SCRATCH_DIR/Scratch pad.md"
+# An explicit save rather than a hide. A hide is a toggle, so it can show the
+# panel instead and write nothing, and this check would then pass having
+# watched no write at all; the trace arm below caught exactly that.
+printf '{"type":"__jotSaveNow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ -e "$SCRATCH_DIR/Scratch pad.md" ]; then
+    echo "deleted note         FAILED: the note came back after being deleted" >&2
+    ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+# ...and the app REFUSED a write, rather than never having tried one. A file
+# that is still absent says nothing about which of those happened, and only
+# one of them is the fix.
+if ! grep -q "^jot-trace noteMissing " "$LOG"; then
+    echo "deleted note         FAILED: the note stayed deleted, but no write was ever refused" >&2
+    echo "  (the check proved nothing: it cannot tell a guard from an absent write)" >&2
+    grep -E "jot-trace (writeattempt|noteMissing)|jot-measure (visible|hide)" "$LOG" | tail -20 >&2; exit 1
+fi
+echo "deleted note         ok: the write was refused, and the note was not recreated"
+# ...and a reload while the note is missing leaves the panel still writable.
+#
+# The read side refuses while the note is gone, because the buffer is the only
+# copy. `hasLoaded` is ASSIGNED from that refusal by its one caller, so a
+# refusal reported as "not loaded" latches the panel unwritable for the rest of
+# the session: Save It Back fails, and the new note started instead swallows
+# every keystroke with nothing said. None of that is visible until somebody
+# looks for their text, which is why it is a step here rather than a reading.
+READY_BEFORE=$(marks ready)
+printf '{"type":"__jotReload"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID
+wait_for debug-reload 5
+# The message arriving is not the gesture. A remount is, and `.ready` marks
+# one, so this waits for a NEW one: without it both assertions below pass
+# trivially when the reload never happened, since nothing recreated the file
+# and nothing downgraded the flag either. An instrument that measured nothing
+# reports success.
+RELOAD_WAIT=0
+while [ "$(marks ready)" -le "$READY_BEFORE" ]; do
+    sleep 0.1; RELOAD_WAIT=$((RELOAD_WAIT + 1))
+    if [ $RELOAD_WAIT -gt 100 ]; then
+        echo "deleted note         FAILED: the reload never remounted the page" >&2
+        echo "  (so the check below would have proved nothing)" >&2; exit 1
+    fi
+done
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ -e "$SCRATCH_DIR/Scratch pad.md" ]; then
+    echo "deleted note         FAILED: reloading recreated the deleted note" >&2; exit 1
+fi
+
+# Put it back the way the panel's own button does, so the checks below have a
+# file to read. This is also the only exercise Save It Back gets, and after the
+# reload above it is what says the panel is still writable.
+show_panel
+printf '{"type":"__jotSaveMissingBack"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ ! -e "$SCRATCH_DIR/Scratch pad.md" ]; then
+    echo "deleted note         FAILED: Save It Back did not write the note" >&2; exit 1
+fi
+# The buffer, not an empty file: `$STAMP` is what the persistence check above
+# typed, and it is still what the panel is holding.
+if grep -q "$STAMP" "$SCRATCH_DIR/Scratch pad.md"; then
+    echo "deleted note         ok: Save It Back writes the buffer back to the path it came from"
+else
+    echo "deleted note         FAILED: Save It Back wrote a file without the buffer in it" >&2
+    cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
+fi
+
+# The system date picker opens AT THE CARET.
+#
+# `/date` hands the page's caret rectangle to the shell, and the shell turns
+# viewport coordinates into the web view's own. That conversion is the only one
+# in the app and sits in a target no unit test reaches; `CaretAnchorTests`
+# covers the arithmetic, and what it cannot see is `isFlipped` on the real
+# view. A `WKWebView` is flipped, so the page's y passes straight through, and
+# a conversion written for AppKit's usual bottom-left origin mirrors a caret
+# near the top of the panel to the bottom of the window. The popover opens
+# either way, which is why this is a number rather than a look.
+show_panel
+# Retried, because the gesture can be dropped for a reason that is not the
+# thing under test. An accessory app driven from a shell frequently cannot
+# take activation (the paste check above carries the same warning), and a
+# burst of keys sent while the panel is not key reaches nothing at all. That
+# made this arm fail about one run in several, and an arm people learn to
+# re-run past is an arm that will be re-run past on the day it is right.
+#
+# Two batches per attempt, because the slash menu renders asynchronously:
+# Return sent in the same burst as the query arrives before there is a row to
+# choose. Escape first, so a previous attempt that got half way leaves no menu
+# open for this one to type into.
+DATEPICK=""
+for attempt in 1 2 3; do
+    printf '{"type":"__jotKeys","keys":["Escape","End","Enter","/","d","a","t","e"]}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    printf '{"type":"__jotKeys","keys":["Enter"]}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    DATEPICK="$(grep "^jot-trace datepicker " "$LOG" | tail -1 || true)"
+    [ -n "$DATEPICK" ] && break
+    # Dismiss whatever did land, and ask for the window again.
+    printf '{"type":"__jotKeys","keys":["Escape"]}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 0.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    show_panel
+done
+if [ -n "$DATEPICK" ] && [ "$attempt" -gt 1 ]; then
+    echo "date picker          (took $attempt attempts; the panel was slow to take key focus)"
+fi
+DP_PAGE_TOP="$(echo "$DATEPICK" | sed -n 's/.*pageTop=\([0-9.-]*\).*/\1/p')"
+DP_ANCHOR_Y="$(echo "$DATEPICK" | sed -n 's/.*anchorY=\([0-9.-]*\).*/\1/p')"
+DP_FLIPPED="$(echo "$DATEPICK" | sed -n 's/.*flipped=\([a-z]*\).*/\1/p')"
+if [ -z "$DATEPICK" ]; then
+    echo "date picker          FAILED: /date asked for no picker at all" >&2
+    echo "  (the slash menu may not have opened; nothing was traced)" >&2; exit 1
+fi
+# The page's own y and the anchor's must be the SAME number in a flipped view.
+# Asserted against `pageTop`, which the page measured, rather than against a
+# constant: a caret anywhere in the panel satisfies this and only an inverted
+# conversion fails it.
+if [ "$DP_FLIPPED" = "yes" ] && awk "BEGIN{exit !(($DP_ANCHOR_Y - $DP_PAGE_TOP) < 0.5 && ($DP_PAGE_TOP - $DP_ANCHOR_Y) < 0.5)}"; then
+    echo "date picker          ok: anchored at the caret (page y=$DP_PAGE_TOP, anchor y=$DP_ANCHOR_Y)"
+else
+    echo "date picker          FAILED: the picker is not anchored where the caret is" >&2
+    echo "  $DATEPICK" >&2; exit 1
+fi
+# Dismiss it, and undo the "/date" the slash menu consumed, so everything below
+# reads the buffer it expects.
+printf '{"type":"__jotKeys","keys":["Escape"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.8
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
+# The panel sits at the ordinary window level, where anything else can cover
+# it. Read from the live window rather than from the source: `NSPanel` is
+# `.floating` by default and `isFloatingPanel` sets that level, so a panel's
+# level is never the absence of a line, and a release shipped floating while
+# three comments and a changelog entry said it did not. 0 is
+# `NSWindow.Level.normal`; `.floating` is 3.
+LEVELTRACE="$(grep "^jot-trace windowlevel " "$LOG" | tail -1 || true)"
+WIN_LEVEL="$(echo "$LEVELTRACE" | sed -n 's/.*level=\([0-9-]*\).*/\1/p')"
+if [ -z "$LEVELTRACE" ]; then
+    echo "window level         FAILED: the app reported no window-level trace at all" >&2; exit 1
+fi
+if [ "$WIN_LEVEL" = "0" ]; then
+    echo "window level         ok: normal, so another app's window can cover the panel"
+else
+    echo "window level         FAILED: expected 0 (normal), got $WIN_LEVEL" >&2
+    echo "$LEVELTRACE" >&2; exit 1
+fi
+
 # The window's own title. A titlebar accessory is placed by AppKit inside a
 # band this panel has made transparent and full-height, so whether it arrived,
 # arrived empty, or arrived under the traffic lights is a question no unit test
@@ -206,6 +395,7 @@ TB_ATTACHED="$(echo "$TITLEBAR" | sed -n 's/.*attached=\([a-z]*\).*/\1/p')"
 TB_TEXT="$(echo "$TITLEBAR" | sed -n 's/.*text=//p')"
 TB_TEXT_MID="$(echo "$TITLEBAR" | sed -n 's/.*textMidY=\([0-9.-]*\).*/\1/p')"
 TB_CLOSE_MID="$(echo "$TITLEBAR" | sed -n 's/.*closeMidY=\([0-9.-]*\).*/\1/p')"
+TB_CELL="$(echo "$TITLEBAR" | sed -n 's/.*cellW=\([0-9.-]*\).*/\1/p')"
 if [ -z "$TITLEBAR" ]; then
     echo "titlebar             FAILED: the app reported no titlebar trace at all" >&2; exit 1
 fi
@@ -259,13 +449,20 @@ fi
 # A zero need is a title that has not painted, and zero ink would agree with it
 # perfectly. Asserted before the comparison, for the same reason the baseline
 # check asserts its two midpoints are non-zero.
+# The box is compared against what the CELL needs, not against what the string
+# measures. Those are different numbers, the cell's is the larger, and the gap
+# between them is one glyph: a label sized to the string draws the tail of the
+# name outside its own box and the titlebar clips it. `Birta Writer Jot.md`
+# lost the `d` that way, with `needW`, `gotW` and `inkW` all agreeing it was
+# fine, because all three describe the string.
 if awk "BEGIN{exit !($TB_NEED_W > 0)}" \
-   && awk "BEGIN{exit !($TB_GOT_W >= $TB_NEED_W - 0.5)}" \
+   && awk "BEGIN{exit !($TB_CELL > 0)}" \
+   && awk "BEGIN{exit !($TB_GOT_W >= $TB_CELL - 0.1)}" \
    && awk "BEGIN{exit !($TB_INK_W >= $TB_NEED_W - 2)}"; then
-    echo "title ink            ok: the name is drawn to the width its glyphs need (ink $TB_INK_W, needs $TB_NEED_W)"
+    echo "title ink            ok: the label has the room the cell asked for (got $TB_GOT_W, cell needs $TB_CELL, ink $TB_INK_W)"
 else
     echo "title ink            FAILED: the title is not drawn in full" >&2
-    echo "  needs=$TB_NEED_W got=$TB_GOT_W ink=$TB_INK_W" >&2
+    echo "  needs=$TB_NEED_W cellNeeds=$TB_CELL got=$TB_GOT_W ink=$TB_INK_W" >&2
     echo "$TITLEBAR" >&2; exit 1
 fi
 
@@ -638,6 +835,10 @@ ceil_at() { # ceil_at <width>; sets CEIL_* from the traces it provokes
     CEIL_WINDOW="$(echo "$drag" | sed -n 's/.*windowW=\([0-9.-]*\).*/\1/p')"
     CEIL_DRAG_W="$(echo "$drag" | sed -n 's/.* w=\([0-9.-]*\).*/\1/p')"
     CEIL_DRAG_HIDDEN="$(echo "$drag" | sed -n 's/.*hidden=\([a-z]*\).*/\1/p')"
+    # The characters actually drawn. `text=` is last on the line, so it can
+    # carry spaces and an ellipsis without any of it needing escaping.
+    CEIL_CELL="$(echo "$tb" | sed -n 's/.*cellW=\([0-9.-]*\).*/\1/p')"
+    CEIL_TEXT="$(echo "$tb" | sed -n 's/.*text=//p')"
     if [ -z "$CEIL_NEED" ] || [ -z "$CEIL_WINDOW" ]; then
         echo "title ceiling        FAILED: no titlebar/drag trace after resizing to $1" >&2
         echo "  $tb" >&2; echo "  $drag" >&2; exit 1
@@ -654,13 +855,13 @@ ceil_at() { # ceil_at <width>; sets CEIL_* from the traces it provokes
 # against `draggableSpan` itself.
 ceil_at 2400
 CEIL_CHROME="$(awk "BEGIN{printf \"%.1f\", $CEIL_VIEW_W - $CEIL_GOT}")"
-# The label is sized from the glyph width rounded UP (`drawnTextWidth`), so the
-# boundary is computed from the same rounded number the app draws with. Rounding
-# the requirement and the boundary differently puts the line a point away from
-# where the app actually puts it, and a check that straddles it by a point
-# reports the wrong regime rather than a failure.
-CEIL_NEED_UP="$(awk "BEGIN{n = $CEIL_NEED; printf \"%d\", (n == int(n)) ? n : int(n) + 1}")"
-CEIL_BOUNDARY="$(awk "BEGIN{s = $CEIL_X + $CEIL_CHROME + $CEIL_NEED_UP + $CEIL_CONTROLS + 8; printf \"%d\", (s == int(s)) ? s : int(s) + 1}")"
+# What the app does with all the room in the world: the box it gives the label
+# and the ink that comes out. Every arm below compares against THESE rather
+# than against the string's own width, because the string's width is not what
+# the cell needs to draw it and the gap between the two is one glyph.
+CEIL_FULLBOX="$CEIL_GOT"
+CEIL_FULLINK="$CEIL_INK"
+CEIL_BOUNDARY="$(awk "BEGIN{s = $CEIL_X + $CEIL_CHROME + $CEIL_FULLBOX + $CEIL_CONTROLS + 8; printf \"%d\", (s == int(s)) ? s : int(s) + 1}")"
 if [ -z "$CEIL_CONTROLS" ] || awk "BEGIN{exit !($CEIL_CONTROLS <= 0)}"; then
     echo "title ceiling        FAILED: the page never reported its controls' width, so nothing bounds the title" >&2
     exit 1
@@ -720,18 +921,65 @@ for CEIL_W in "$(awk "BEGIN{print $CEIL_BOUNDARY + 400}")" \
     #    `layout()`, which is code rather than a measurement, and the only
     #    number in this trace that could see it (`visTextW`) reports the
     #    accessory's width rather than the label's.
-    if awk "BEGIN{exit !($CEIL_GOT >= $CEIL_NEED_UP - 0.1)}"; then
+    if awk "BEGIN{exit !($CEIL_GOT >= $CEIL_FULLBOX - 0.1)}"; then
         CEIL_FULL=$((CEIL_FULL + 1))
-        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_NEED - 2)}"; then
+        # Against the ink the app put down with unlimited room, not against
+        # the string's width. A box a point or two short of what the CELL
+        # needs clips the last glyph and still measures wider than the string,
+        # so a comparison with the string passes on a clipped name; the same
+        # name drawn twice, once unconstrained, is what discriminates.
+        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_FULLINK - 0.6)}"; then
             echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name fits but is not drawn in full" >&2
-            echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
+            echo "  ink=$CEIL_INK unconstrained=$CEIL_FULLINK got=$CEIL_GOT cellNeeds=$CEIL_CELL" >&2; exit 1
         fi
+        # ...and the box is at least what the cell asked for, which is the
+        # same claim from the other side and fails a point earlier.
+        if ! awk "BEGIN{exit !($CEIL_GOT >= $CEIL_CELL - 0.1)}"; then
+            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the label is narrower than the cell needs to draw" >&2
+            echo "  got=$CEIL_GOT cellNeeds=$CEIL_CELL needs=$CEIL_NEED ink=$CEIL_INK" >&2; exit 1
+        fi
+        # The other half of the ellipsis arm below. Without it a title that
+        # truncated at every width would satisfy that one and be caught by
+        # nothing here: it is the PAIR that says the ellipsis tracks the room.
+        # `*…*`, not `*…`. The ellipsis ends the NAME run, and an edited title
+        # puts " — Edited" after it, so anchoring at the end of the line makes
+        # both arms mean the opposite of what they say the moment autosave is
+        # on. Nothing about this sweep guarantees it is off.
+        case "$CEIL_TEXT" in
+            *…*) echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the whole name fits and it was truncated anyway" >&2
+                echo "  text=\"$CEIL_TEXT\" needs=$CEIL_NEED got=$CEIL_GOT" >&2; exit 1;;
+        esac
     else
         CEIL_CUT=$((CEIL_CUT + 1))
-        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_GOT - 3)}"; then
-            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name was cut short of its own box" >&2
+        # Against the STRING it decided to draw, not against the box. The box
+        # is what the CELL needs, which is the string plus the cell's own
+        # insets, so ink never reaches it and a comparison with it fails by
+        # exactly that inset on a title that is drawn perfectly. What is being
+        # claimed here is that every glyph the app chose to draw was drawn,
+        # and `needW` is the width of exactly those glyphs.
+        if ! awk "BEGIN{exit !($CEIL_INK >= $CEIL_NEED - 1)}"; then
+            echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name was cut short of the string it drew" >&2
             echo "  needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1
         fi
+        # 4. A name that did not fit says so, with an ellipsis.
+        #
+        #    Every other number here is a WIDTH, and a name sliced at a pixel
+        #    is exactly as wide as one truncated at the same ceiling: both
+        #    fill the box, so the ink arm above passes on either and cannot
+        #    tell them apart. It passed on a build that clipped, through four
+        #    releases.
+        #
+        #    `text` is the MODEL, the string the app decided to draw, so this
+        #    arm on its own would say nothing about the drawing. It is the
+        #    PAIR that discriminates: arm 3 ties the ink to the box, and this
+        #    ties the box's contents to a name that admits it was shortened.
+        #    Against the pre-fix build the two part company visibly, the model
+        #    reporting a whole name the label had no room for.
+        case "$CEIL_TEXT" in
+            *…*) ;;
+            *)  echo "title ceiling        FAILED: at ${CEIL_WINDOW}pt the name did not fit and was cut with no ellipsis" >&2
+                echo "  text=\"$CEIL_TEXT\" needs=$CEIL_NEED got=$CEIL_GOT ink=$CEIL_INK" >&2; exit 1;;
+        esac
     fi
 done
 
@@ -908,6 +1156,216 @@ for h in $WK_OURS; do
     r=$(ps -o rss= -p "$h" 2>/dev/null | tr -d ' ' || true)
     RSS_HELPERS=$((RSS_HELPERS + ${r:-0}))
 done
+# The onboarding defaults reach a FIRST launch and nothing else.
+#
+# Two launches with their own defaults domains, because the claim is a
+# difference between two states of the world and one run cannot show it. The
+# rule is `Prefs.isFirstLaunch`, and what makes it fragile is ORDERING rather
+# than logic: it asks whether any key is stored, so anything that writes a
+# preference before the screen appears turns a first launch into an existing
+# one and the defaults silently stop applying. A unit test cannot see that.
+#
+# `networkEnabled` is the one worth the two launches. It is the only setting
+# here that reaches the network, `docs/NETWORK_POSTURE.md` records it as
+# shipping off, and the failure is silent in the direction that matters: an
+# install that predates this screen having outbound requests switched on
+# without anybody clicking anything.
+# Sets ONBOARD_KEYS to what the run stored, and ONBOARD_ALIVE to whether the
+# app actually got as far as mounting its editor.
+#
+# The liveness signal is the app's own `ready` mark rather than the presence of
+# any stored key, and that is not a detail: the checks below assert an ABSENCE,
+# and an absence over a run that never started is not evidence. It used to lean
+# on the run writing SOMETHING, which stopped being true the moment the
+# first-run screen stopped writing preferences, and the arm said so rather than
+# passing, which is the whole point of having it.
+onboarding_run() { # onboarding_run <suite>
+    local dir log pid
+    dir="$(mktemp -d -t jot-onboard)"
+    log="$(mktemp -t jot-onboard)"
+    BIRTA_JOT_MEASURE=1 BIRTA_JOT_SCRATCHPAD="$dir/Onboard.md" \
+        BIRTA_JOT_DEFAULTS_SUITE="$1" BIRTA_JOT_OPEN_WELCOME=1 "$APP" 2>"$log" &
+    pid=$!
+    sleep 3; kill -USR1 $pid; sleep 2
+    ONBOARD_KEYS="$(defaults read "$1" 2>/dev/null || true)"
+    ONBOARD_LOGIN="$(grep "^jot-trace onboarding " "$log" | tail -1 || true)"
+    ONBOARD_ALIVE=0
+    grep -q "^jot-measure ready " "$log" && ONBOARD_ALIVE=1
+    kill $pid 2>/dev/null; wait $pid 2>/dev/null || true
+    rm -rf "$dir" "$log"
+}
+
+
+# The settings window is as tall as its pane, and FOLLOWS it.
+#
+# A pane's height is not fixed once built: the Location row comes and goes with
+# the answer above it. A window that keeps its first height puts a scroller
+# over two rows of settings, which reads as a pane too big rather than a window
+# that did not follow, so the trace says which happened.
+#
+# The arm therefore MOVES that switch (`BIRTA_JOT_TOGGLE_ICLOUD`) and requires
+# two traces at different pane heights. Reading one trace would read the
+# initial sizing, which happens whether or not the following works: delete the
+# whole fix and a one-trace check still passes.
+#
+# Compared as content against pane, never frame against pane. A frame carries
+# the titlebar and the preference toolbar, so a frame taller than the pane says
+# nothing about whether the pane fits inside it.
+SETTINGS_SUITE="com.birtalabs.jot.measure.settings.$$"
+SETTINGS_DIR="$(mktemp -d -t jot-settings)"
+SETTINGS_LOG="$(mktemp -t jot-settings)"
+BIRTA_JOT_MEASURE=1 BIRTA_JOT_SCRATCHPAD="$SETTINGS_DIR/S.md" \
+    BIRTA_JOT_DEFAULTS_SUITE="$SETTINGS_SUITE" BIRTA_JOT_OPEN_SETTINGS=general \
+    BIRTA_JOT_TOGGLE_ICLOUD=1 "$APP" 2>"$SETTINGS_LOG" &
+SETTINGS_PID=$!
+sleep 5
+SETTINGS_FITS="$(grep "^jot-trace settingsfit " "$SETTINGS_LOG" || true)"
+SETTINGS_TOGGLE="$(grep "^jot-trace icloudtoggle " "$SETTINGS_LOG" | tail -1 || true)"
+kill $SETTINGS_PID 2>/dev/null; wait $SETTINGS_PID 2>/dev/null || true
+rm -rf "$SETTINGS_DIR" "$SETTINGS_LOG"
+EXTRA_SUITES="$EXTRA_SUITES $SETTINGS_SUITE"
+
+# The control that changes a pane's height is disabled when iCloud Drive is off
+# in System Settings. That is a fact about this machine, so it is reported and
+# skipped rather than read as a window that did not follow its pane.
+if [ -z "$SETTINGS_TOGGLE" ]; then
+    echo "settings fit         FAILED: the settings window never reached the toggle, so nothing was driven" >&2
+    printf '%s\n' "$SETTINGS_FITS" >&2; exit 1
+fi
+case "$SETTINGS_TOGGLE" in
+    *available=0)
+        echo "settings fit         skipped: iCloud Drive is off on this Mac, so the row that changes the pane's height cannot be moved"
+        SETTINGS_FITS="" ;;
+esac
+if [ -n "$SETTINGS_FITS" ]; then
+
+SETTINGS_COUNT="$(printf '%s\n' "$SETTINGS_FITS" | grep -c settingsfit || true)"
+if [ "${SETTINGS_COUNT:-0}" -lt 2 ]; then
+    echo "settings fit         FAILED: the window sized itself $SETTINGS_COUNT time(s); the pane changed height and it did not follow" >&2
+    printf '%s\n' "$SETTINGS_FITS" >&2; exit 1
+fi
+
+# Every fit gave the pane at least what it asked for, or the cap if it asked
+# for more than a window may take.
+SETTINGS_PANES=""
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    FIT_CONTENT="$(printf '%s' "$line" | sed -n 's/.* content=\([0-9]*\).*/\1/p')"
+    FIT_PANE="$(printf '%s' "$line" | sed -n 's/.* pane=\([0-9]*\).*/\1/p')"
+    FIT_CAP="$(printf '%s' "$line" | sed -n 's/.* cap=\([0-9]*\).*/\1/p')"
+    if [ -z "$FIT_CONTENT" ] || [ -z "$FIT_PANE" ] || [ -z "$FIT_CAP" ]; then
+        echo "settings fit         FAILED: a trace line is missing a figure" >&2
+        echo "  $line" >&2; exit 1
+    fi
+    WANT="$FIT_PANE"
+    if [ "$WANT" -gt "$FIT_CAP" ]; then WANT="$FIT_CAP"; fi
+    if [ "$FIT_CONTENT" -lt "$WANT" ]; then
+        echo "settings fit         FAILED: the pane is given ${FIT_CONTENT}pt and needs ${WANT}pt, so it scrolls" >&2
+        echo "  $line" >&2; exit 1
+    fi
+    SETTINGS_PANES="$SETTINGS_PANES $FIT_PANE"
+done <<EOF
+$SETTINGS_FITS
+EOF
+
+# And the two fits were for DIFFERENT panes. Equal heights would mean the
+# window resized twice for the same content, which is not what the switch does
+# and would let the count above pass on a repeat of the first sizing.
+SETTINGS_DISTINCT="$(printf '%s\n' $SETTINGS_PANES | sort -u | wc -l | tr -d ' ')"
+if [ "$SETTINGS_DISTINCT" -lt 2 ]; then
+    echo "settings fit         FAILED: every fit was for the same pane height, so nothing followed a change" >&2
+    printf '%s\n' "$SETTINGS_FITS" >&2; exit 1
+fi
+echo "settings fit         ok: the window followed its pane across $SETTINGS_COUNT sizings (pane heights:$SETTINGS_PANES)"
+fi
+
+ONBOARD_FRESH_SUITE="com.birtalabs.jot.measure.fresh.$$"
+ONBOARD_USED_SUITE="com.birtalabs.jot.measure.used.$$"
+EXTRA_SUITES="$EXTRA_SUITES $ONBOARD_FRESH_SUITE $ONBOARD_USED_SUITE"
+onboarding_run "$ONBOARD_FRESH_SUITE"
+FRESH_KEYS="$ONBOARD_KEYS"; FRESH_ALIVE="$ONBOARD_ALIVE"; FRESH_LOGIN="$ONBOARD_LOGIN"
+# An install that has been used, seeded with `hasSeenWelcome` specifically.
+# Any key would do for "not fresh", and this is the one worth choosing: it is
+# the key a reset leaves behind and the key most likely to be special-cased out
+# of the emptiness test, so seeding anything else leaves that mistake invisible.
+# Seeded false, because the setter stores it either way and false is what
+# Settings writes when it re-shows the screen.
+defaults write "$ONBOARD_USED_SUITE" hasSeenWelcome -bool false
+onboarding_run "$ONBOARD_USED_SUITE"
+USED_KEYS="$ONBOARD_KEYS"; USED_ALIVE="$ONBOARD_ALIVE"; USED_LOGIN="$ONBOARD_LOGIN"
+
+# Neither a first launch nor an existing install may end up with the network
+# switched on. That is the posture claim, and it is worth two launches because
+# the failure is silent in the direction that matters: an app making outbound
+# requests that nobody asked it to make.
+#
+# Asserted as an ABSENCE, which needs the launches to have done something or
+# it passes on a pair of empty domains. `FRESH_KEYS` carrying the app's own
+# writes is what says the app ran at all.
+if echo "$FRESH_KEYS" | grep -q "networkEnabled = 1"; then
+    echo "onboarding           FAILED: a first launch switched the network on" >&2
+    echo "$FRESH_KEYS" >&2; exit 1
+fi
+if echo "$USED_KEYS" | grep -q "networkEnabled = 1"; then
+    echo "onboarding           FAILED: an install that already had settings had the network switched on for it" >&2
+    echo "$USED_KEYS" >&2; exit 1
+fi
+if echo "$USED_KEYS" | grep -q "showInDock"; then
+    echo "onboarding           FAILED: an install that already had settings was given a Dock icon" >&2
+    echo "$USED_KEYS" >&2; exit 1
+fi
+# Both launches have to have HAPPENED. The two checks above assert an absence,
+# which a run that never started satisfies perfectly.
+if [ "$FRESH_ALIVE" != 1 ] || [ "$USED_ALIVE" != 1 ]; then
+    echo "onboarding           FAILED: a launch never reached ready, so the checks proved nothing" >&2
+    echo "  (fresh alive=$FRESH_ALIVE, used alive=$USED_ALIVE)" >&2; exit 1
+fi
+# And no run registered a login item. That is the ONE thing the first-run
+# defaults still do, so it is the one thing worth pinning, and it is asserted
+# as an absence because a login item lives in BTM rather than under our
+# defaults domain: nothing here can see it having been written, only the
+# decision not to. Without the store gate every one of these runs registers a
+# login item pointing at `jot/build`, which the next checkout replaces, and
+# `reap.sh` cannot reach it.
+for pair in "fresh:$FRESH_LOGIN" "used:$USED_LOGIN"; do
+    which="${pair%%:*}"; line="${pair#*:}"
+    case "$line" in
+        *loginitem=skipped) ;;
+        "") echo "onboarding           FAILED: the $which launch never reached the onboarding defaults" >&2; exit 1 ;;
+        *) echo "onboarding           FAILED: the $which launch registered a login item for a build directory" >&2
+           echo "  $line" >&2; exit 1 ;;
+    esac
+done
+echo "onboarding           ok: no network switched on, and no login item taken, on either launch"
+
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"
+
+# This run takes its own processes with it.
+#
+# WebKit's helpers are NOT children of the app, so nothing reaps them for us:
+# they exit because the app asks them to, which only happens when the app is
+# ended through its SIGTERM trap. A hard kill anywhere, or a teardown that has
+# silently stopped running, leaves a GPU, a Networking and a WebContent process
+# per launch sitting at a fraction of a core indefinitely. They are invisible
+# to the harness lock, they read as unexplained load to whoever is next on the
+# machine, and they are one reason a red suite can be nobody's fault.
+#
+# Asserted here rather than trusted to the trap, because the trap is the thing
+# that breaks: a second `trap ... EXIT` REPLACES the first, so a cleanup added
+# later turns this off with nothing to say so.
+if [ $KEEP = 0 ]; then
+    end_app
+    sleep 2
+    WK_AFTER="$(pgrep -f com.apple.WebKit | sort || true)"
+    WK_LEFT="$(comm -12 <(printf '%s\n' "$WK_OURS" | tr ' ' '\n' | sort | grep -v '^$' || true) \
+                        <(printf '%s\n' "$WK_AFTER") | tr '\n' ' ')"
+    if [ -n "${WK_LEFT// /}" ]; then
+        echo "teardown             FAILED: this run left WebKit helpers behind: $WK_LEFT" >&2
+        echo "  (the app did not end through its SIGTERM trap, so nothing asked them to exit)" >&2
+        exit 1
+    fi
+    echo "teardown             ok: the app and every helper it started are gone"
+fi
+
 echo "log: $LOG"

@@ -315,6 +315,37 @@ export async function run({ page, check, baseUrl }) {
         stacking.top >= stacking.barBottom, JSON.stringify(stacking));
     check("the picker is what the pointer actually reaches at its own corner",
         stacking.hitIsPicker, JSON.stringify(stacking));
+
+    // ...and it is a CARD, not a bare grid of numbers over the prose.
+    //
+    // Separate from the hit test above, which cannot see this: an element with
+    // no background is still the element at its own corner, so `elementFromPoint`
+    // answers the same either way. A floating surface that does not paint its
+    // own ground leaves the document showing through it, and every other check
+    // in this file - placement, roving focus, keys, re-anchoring - passes on a
+    // picker nobody can read. The recipe is `.ui-card` in ui/chrome.css; what
+    // is asserted here is the computed result, so composing it a different way
+    // is fine and having no ground at all is not.
+    const skin = await page.evaluate(() => {
+        const style = getComputedStyle(document.querySelector(".date-picker"));
+        const alpha = (color) => {
+            const parts = color.match(/[\d.]+/g) ?? [];
+            return parts.length >= 4 ? Number(parts[3]) : (color === "transparent" ? 0 : 1);
+        };
+        return {
+            background: style.backgroundColor,
+            backgroundAlpha: alpha(style.backgroundColor),
+            shadow: style.boxShadow,
+            radius: style.borderRadius,
+        };
+    });
+    check("the picker paints an opaque ground, so the text under it does not show through",
+        skin.backgroundAlpha >= 0.95, JSON.stringify(skin));
+    check("the picker carries the card's lift, so it reads as floating above the page",
+        skin.shadow !== "none" && skin.shadow !== "", JSON.stringify(skin));
+    check("the picker's corners are rounded, the way every other floating surface's are",
+        skin.radius !== "0px" && skin.radius !== "", JSON.stringify(skin));
+
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 

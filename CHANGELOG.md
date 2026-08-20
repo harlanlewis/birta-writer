@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The `/date` calendar is drawn as a floating card, on its own ground, instead of as a bare grid of numbers over the text underneath it. It arrived with no background, no border and no shadow at all, so the document showed straight through the days.
+
+
 ---
 
 ## [2026.820.0] - 2026, August 20

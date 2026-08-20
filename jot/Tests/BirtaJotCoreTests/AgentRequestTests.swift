@@ -84,4 +84,18 @@ final class AgentRequestTests: XCTestCase {
         XCTAssertEqual(AgentRequest.harnessName(from: "/usr/local/bin/claude {prompt}"), "claude")
         XCTAssertNil(AgentRequest.harnessName(from: "   "))
     }
+
+    func testAFlagThisOneIsAPrefixOfShouldNotCountAsCarryingIt() {
+        // `--model` is a prefix of `--model-fallback`. Read as a substring, a
+        // template naming the second reads as already naming the first, and
+        // the request's model is dropped with nothing to say so.
+        let template = "claude --model-fallback sonnet {prompt}"
+        let out = AgentRequest.adding(flag: "--model", value: "opus", to: template)
+        XCTAssertEqual(out, "claude --model-fallback sonnet --model 'opus' {prompt}")
+    }
+
+    func testAFlagSpelledWithAnEqualsShouldCountAsCarryingIt() {
+        let template = "claude --model=opus {prompt}"
+        XCTAssertEqual(AgentRequest.adding(flag: "--model", value: "sonnet", to: template), template)
+    }
 }

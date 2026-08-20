@@ -14,8 +14,9 @@ Every network capability sits on one rung. The rungs are ordered by what leaves 
 
 | Rung | What leaves | Status | Examples |
 |---|---|---|---|
-| 0. Nothing | No outbound request at all | Shipped, and the default. `birta.network.enabled` ships `false`; with it off the editor makes no outbound request | Everything, out of the box |
+| 0. Nothing | No outbound request at all | Shipped, and the default. `birta.network.enabled` ships `false`, and Jot's `networkEnabled` ships `false`; with it off neither makes an outbound request, and nothing but a person switches either on | Everything, out of the box |
 | 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document; What's New (`birta.editor.openWhatsNew`); Ask Agent (`/ai`, `birta.editor.askAgent`), which hands one composed line to a shell command run as a child process or in a terminal, to the Chat view, or to the clipboard per `birta.agent.command`, and never to a model of its own |
+| 0c. The app asking about itself | Nothing about you or your documents. A GET to the project's own release host, and then the archive | Shipped, Jot only, on by default | Birta Writer Jot's update check (`autoUpdate`) |
 | 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards; link cards |
 | 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Shipped for GitHub (MAR-198); every other provider directed, not built | GitHub repository, issue and pull-request cards; Jira, Asana and Figma still to come |
 | 3. Your document content | The document itself, uploaded by Birta, to a destination Birta chose | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232). Jot's note in iCloud Drive is NOT this, and §1's own subsection argues why |
@@ -32,11 +33,23 @@ Link cards contact the host of a web link that sits alone on its own line, and w
 
 Birta Writer Jot makes rung-1 requests too, and the rung is what matters rather than the process making them: a URL the user typed goes to its own host and to where that host redirects, and nowhere else. Jot has no connectors, so nothing about rung 2 exists there at all. Rung 3 needs the paragraph below rather than a clause, because Jot can now keep its note in iCloud Drive.
 
-Three differences from the extension, all of them narrowing:
+Four differences from the extension. Three narrow what the extension does; the fourth is where Jot asks rather than defaults.
 
-- **One switch, not four.** Jot has a single network preference, off by default, and with it off the app makes no outbound request of any kind. Embeds, link cards and paste-unfurl all ride it. There is no per-provider table because there are no provider cards to gate.
+- **One switch, not four.** Jot has a single network preference, and with it off the app makes no outbound request of any kind. Embeds, link cards and paste-unfurl all ride it. There is no per-provider table because there are no provider cards to gate.
+
+- **One switch, off, and nothing turns it on but a person.** The stored default is `false`, exactly as `birta.network.enabled` is, and no code path anywhere sets it to true: the first-run screen does not ask about the network at all, so there is no default-on to argue about and no install, new or old, reaches rung 1 without somebody moving that switch themselves. `Prefs.applyOnboardingDefaults` is where such a write would go, and its doc says why it must never grow one; `jot/scripts/measure.sh`'s onboarding arm asserts the absence on both a first launch and an existing install.
 - **The guards are a second implementation, and are held to the first.** `jot/Sources/BirtaJotCore/UrlGuard.swift` mirrors `src/utils/urlGuard.ts`, and `PageMetadataFetcher` mirrors the redirect, byte and time bounds around it. Neither language can import the other, so the cases live in `shared/__fixtures__/urlGuardCases.json` and both test suites read them: a rule enforced on one surface and not the other fails a test rather than becoming an exposure nobody compared. Add a case there, never in one suite.
 - **The embed caption is not fetched.** `resolveEmbedMeta` is answered with nothing, because it needs the provider recognizer and that table is not worth a second copy in Swift. The card renders without a fetched caption.
+
+### Jot updating itself: a rung of its own, and on by default
+
+Birta Writer Jot is on no app store and cannot be, so the only way to get a fix has been to notice a release happened and run a shell script, which is a thing nobody does. `Prefs.autoUpdate` ships on: once a launch the app asks `api.github.com` what the newest release of this project is, and if it is newer than the running build, says so. Downloading and replacing are a click, never automatic, because swapping the app somebody is typing into is not a thing to do behind them.
+
+It is 0c rather than rung 1, and the distinction is what leaves the machine. A rung-1 request carries a URL the user typed, which is content: it says what they are reading. This carries nothing of theirs. The request names the project, not the person; the response is a version number; no identifier is invented for it, and the app's own version reaches the host only as the ordinary shape of an HTTP request. The nearest existing neighbour is 0b, where Birta composes something and the user's own client sends it, and the difference from that is only that here Birta makes the request itself.
+
+It deliberately does NOT ride `networkEnabled`, and that is the part worth arguing rather than assuming, because it is the first shipped behaviour where Jot makes a request with that switch off. The two are different consents. `networkEnabled` is about what happens to what you type: whether a link you pasted is fetched, whether an embed resolves. Updating is about the program. Riding one on the other would mean a person who wants no link previews also gets no fixes, which is not a trade anybody asked for and not one the switch's own wording offers.
+
+Two limits keep it honest. It is the RELEASE build only (`AppFlavor.updatesItself`): a development build replacing itself would delete the change somebody installed it to look at. And the published checksum is checked before anything is written, with a release that published none refused rather than installed unverified. It proves the archive arrived intact and proves nothing about who built it, since both files come from the same place. Jot is ad-hoc signed and has no signature to check, which is the same reason it is not offered to anybody who does not already own the source.
 
 ### Jot's note in iCloud Drive: where it sits on the ladder, and why
 

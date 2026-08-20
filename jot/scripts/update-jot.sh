@@ -73,7 +73,10 @@ if [ -n "$SUM_URL" ]; then
     fi
     echo "→ checksum ok"
 else
-    echo "note: no checksum published beside this asset; skipping that check"
+    echo "that release published no checksum beside its app, so nothing was installed." >&2
+    echo "The checksum is the only thing proving the download arrived whole; an" >&2
+    echo "ad-hoc signed app carries nothing else to check. Pass a release that has one." >&2
+    exit 1
 fi
 
 ditto -x -k "$TMP/jot.zip" "$TMP/unpacked"

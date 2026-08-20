@@ -152,6 +152,27 @@
  * Keyboard focus comes from the global :focus-visible ring (style.css) —
  * never redefined here.
  */
+
+/**
+ * .ui-card, the floating-card recipe as a class.
+ *
+ * The four declarations the --ui-card-* tokens above describe, in one place a
+ * surface can compose, the way .ui-btn is the button primitive rather than a
+ * set of tokens each button restates. Composing it is opt-in: the surfaces
+ * that inline these four lines are not wrong, and this exists so a new one
+ * does not have to know which four.
+ *
+ * It is deliberately ONLY ground, edge, corner and lift. A card's size,
+ * padding and layout belong to what is in it, and a primitive that guessed at
+ * them would be overridden at every call site.
+ */
+.ui-card {
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
+}
+
 .ui-btn {
     -webkit-appearance: none;
     appearance: none;
