@@ -1,15 +1,15 @@
 import XCTest
 @testable import BirtaJotCore
 
-/// The invariant that made this a type: the first-run screen is a subset of
-/// Settings' General pane, in order, worded the same.
+/// The invariant that makes these types rather than two layouts: the first-run
+/// screen is a subset of Settings' General pane, in order, worded the same, so
+/// a question somebody answered on first run is found again by looking where
+/// they answered it.
 ///
-/// It used to be a comment in two files, and it was broken by one row's wording
-/// drifting from its twin with nothing to say so. The subject of these tests is
-/// the declaration rather than the drawing: `SettingsWindowController` and
-/// `WelcomeView` render these arrays, so a row that moves here moves on screen,
-/// and a row added to one screen only cannot be spelled differently on the
-/// other because there is one spelling.
+/// The subject is the declaration rather than the drawing.
+/// `SettingsWindowController` and `WelcomeView` render these arrays, so a row
+/// that moves here moves on screen, and a label has one spelling because there
+/// is one place to spell it.
 final class SettingsFormTests: XCTestCase {
     func testWelcomeShouldBeAnOrderedSubsetOfGeneral() {
         let general = SettingsForm.rows(of: SettingsForm.general)
@@ -29,10 +29,21 @@ final class SettingsFormTests: XCTestCase {
                        + "stopped at \(welcome[min(cursor, welcome.count - 1)].rawValue)")
     }
 
-    func testEveryRowShouldAppearOnExactlyOneScreen() {
+    func testEveryFirstRunRowShouldBeOnTheFirstRunScreen() {
+        // `WelcomeRow` is the vocabulary `WelcomeView` switches over, so a case
+        // declared and never placed in a group is a control nothing draws.
+        let placed = SettingsForm.welcome.flatMap(\.rows)
+        XCTAssertEqual(Set(placed).count, placed.count, "a first-run row is drawn twice")
+        XCTAssertEqual(Set(placed), Set(WelcomeRow.allCases),
+                       "unplaced: "
+                       + Set(WelcomeRow.allCases).subtracting(placed)
+                       .map(\.settingsRow.rawValue).sorted().joined(separator: ", "))
+    }
+
+    func testEveryRowShouldAppearOnExactlyOneSettingsPane() {
         // The floor that stops this file passing on an empty enumeration, and
-        // the guard that a case added to `SettingsRow` was actually placed on
-        // a screen rather than declared and forgotten.
+        // the guard that a case added to `SettingsRow` was placed on a screen
+        // rather than declared and forgotten.
         let placed = SettingsForm.rows(of: SettingsForm.general)
             + SettingsForm.rows(of: SettingsForm.advanced)
         XCTAssertEqual(Set(placed).count, placed.count, "a row is drawn twice in Settings")
@@ -50,9 +61,13 @@ final class SettingsFormTests: XCTestCase {
     }
 
     func testTheLocationRowShouldBeFoundByNameRatherThanByCount() {
-        XCTAssertEqual(SettingsForm.index(of: .location, inGroupOf: SettingsForm.general), 1)
-        XCTAssertEqual(SettingsForm.index(of: .location, inGroupOf: SettingsForm.welcome), 1)
-        XCTAssertNil(SettingsForm.index(of: .autosave, inGroupOf: SettingsForm.welcome))
+        // Both values are read by production code: `SettingsWindowController`
+        // and `WelcomeView` each hide their own Location row by asking.
+        XCTAssertEqual(SettingsForm.index(of: SettingsRow.location, inGroupOf: SettingsForm.general), 1)
+        XCTAssertEqual(SettingsForm.index(of: WelcomeRow.location, inGroupOf: SettingsForm.welcome), 1)
+        XCTAssertNil(SettingsForm.index(of: SettingsRow.autosave, inGroupOf: SettingsForm.general.filter {
+            $0.heading == "Where your notes live"
+        }))
     }
 
     func testEveryHeadedGroupShouldHaveRowsAndTheWelcomeShouldHaveNoHeadings() {
@@ -60,9 +75,8 @@ final class SettingsFormTests: XCTestCase {
             XCTAssertFalse(group.rows.isEmpty)
             XCTAssertNotNil(group.heading)
         }
-        for group in SettingsForm.welcome {
-            XCTAssertFalse(group.rows.isEmpty)
-            XCTAssertNil(group.heading, "the first run draws no headings")
-        }
+        // The first-run groups carry no heading field at all, which is the
+        // type saying what a comment used to.
+        for group in SettingsForm.welcome { XCTAssertFalse(group.rows.isEmpty) }
     }
 }

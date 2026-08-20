@@ -221,8 +221,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // `content` and `pane` are the pair worth comparing, and `to` is not:
         // a frame height carries the titlebar and the toolbar as well, so a
         // window whose CONTENT is shorter than its pane still reads as taller
-        // than it by that much. `content` is the height the pane is actually
-        // given, capped, and `wanted` is what it asked for uncapped.
+        // than it by that much. `content` is what the pane is given, capped at
+        // `cap`; `pane` is what it asked for.
         if ProcessInfo.processInfo.environment["BIRTA_JOT_MEASURE"] == "1" {
             FileHandle.standardError.write(Data(
                 ("jot-trace settingsfit from=\(Int(window.frame.height)) to=\(Int(frame.height))"
@@ -282,9 +282,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// to drive it, a check on the window following its pane can only ever see
     /// the FIRST sizing, which happens whether or not the following works.
     func toggleICloudForTesting() {
-        guard iCloudSwitch.isEnabled else { return }
+        // Traced either way. The switch is disabled when iCloud Drive is off
+        // in System Settings, which is a fact about the machine running the
+        // check and not about the product; without this line the arm reads a
+        // missing second resize and blames the window for not following.
+        if ProcessInfo.processInfo.environment["BIRTA_JOT_MEASURE"] == "1" {
+            FileHandle.standardError.write(Data(
+                "jot-trace icloudtoggle available=\(iCloudSwitch.isEnabled ? 1 : 0)\n".utf8))
+        }
+        guard iCloudSwitch.isEnabled, let action = iCloudSwitch.action else { return }
         iCloudSwitch.state = iCloudSwitch.state == .on ? .off : .on
-        NSApp.sendAction(iCloudSwitch.action!, to: iCloudSwitch.target, from: iCloudSwitch)
+        NSApp.sendAction(action, to: iCloudSwitch.target, from: iCloudSwitch)
     }
 
     @objc private func selectTab(_ sender: NSToolbarItem) {
@@ -644,8 +652,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         return holder
     }
 
-    /// A settings row: the name on the left, the control on the right, and an
-    /// optional sentence under both.
+    /// A row, labelled from the shared vocabulary. Every row on either screen
+    /// goes through here, so a label has one spelling.
+    static func row(_ row: SettingsRow, control: NSView, caption: Caption? = nil) -> NSView {
+        self.row(row.rawValue, control: control, caption: caption)
+    }
+
     /// A settings row: the name on the left, the control on the right, and an
     /// optional sentence under both.
     ///
@@ -655,12 +667,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// but may fill later (the login row goes from silent to a warning) has to
     /// collapse to nothing meanwhile, and under plain constraints a hidden
     /// NSTextField keeps its line height and leaves a blank gap.
-    /// The same row, labelled from the shared vocabulary. Every row on either
-    /// screen goes through here, so a label has one spelling.
-    static func row(_ row: SettingsRow, control: NSView, caption: Caption? = nil) -> NSView {
-        self.row(row.rawValue, control: control, caption: caption)
-    }
-
     static func row(_ title: String, control: NSView, caption: Caption? = nil) -> NSView {
         let label = NSTextField(labelWithString: title)
         let line = NSView()

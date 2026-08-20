@@ -253,8 +253,8 @@ describe("the Jot profile's copies", () => {
     it("the VS Code page should import its capabilities and declare the other two empty", () => {
         // The one declarer that does NOT restate the profile: it imports
         // `HOST_PROFILES.vscode`, so its capabilities cannot drift. The pair
-        // beside them are bare literals and had nothing reading them, which is
-        // the shape of an absent guard rather than a wrong one.
+        // beside them are bare literals, and this is the only thing that reads
+        // them; without it they are unguarded, which no run reports.
         const html = read("src/webviewHtml.ts");
         expect(html).toContain("HOST_PROFILES.vscode");
         expect(html).toContain("arrangements: [], shortcuts: []");
@@ -294,9 +294,8 @@ describe("the Jot profile's copies", () => {
     it("the e2e page should declare the shortcuts the app actually binds", () => {
         // The comparison the check above cannot make, made against the SOURCE
         // rather than a literal, so it is still not a fourth copy. Without it
-        // the harness measures a cheatsheet the app never ships: the page
-        // carried two rows while `JotMenu` bound seven, and everything the
-        // suite asserted about the panel's shortcut list was true of neither.
+        // the harness can assert whatever it likes about a cheatsheet the app
+        // never ships, and be right about neither.
         const menu = read("jot/Sources/BirtaJot/JotMenu.swift");
         const bound = [...menu.matchAll(/\.init\(title: "([^"]+)"/g)].map((m) => m[1]!);
         expect(bound.length).toBeGreaterThan(2);

@@ -1220,9 +1220,24 @@ BIRTA_JOT_MEASURE=1 BIRTA_JOT_SCRATCHPAD="$SETTINGS_DIR/S.md" \
 SETTINGS_PID=$!
 sleep 5
 SETTINGS_FITS="$(grep "^jot-trace settingsfit " "$SETTINGS_LOG" || true)"
+SETTINGS_TOGGLE="$(grep "^jot-trace icloudtoggle " "$SETTINGS_LOG" | tail -1 || true)"
 kill $SETTINGS_PID 2>/dev/null; wait $SETTINGS_PID 2>/dev/null || true
 rm -rf "$SETTINGS_DIR" "$SETTINGS_LOG"
 EXTRA_SUITES="$EXTRA_SUITES $SETTINGS_SUITE"
+
+# The control that changes a pane's height is disabled when iCloud Drive is off
+# in System Settings. That is a fact about this machine, so it is reported and
+# skipped rather than read as a window that did not follow its pane.
+if [ -z "$SETTINGS_TOGGLE" ]; then
+    echo "settings fit         FAILED: the settings window never reached the toggle, so nothing was driven" >&2
+    printf '%s\n' "$SETTINGS_FITS" >&2; exit 1
+fi
+case "$SETTINGS_TOGGLE" in
+    *available=0)
+        echo "settings fit         skipped: iCloud Drive is off on this Mac, so the row that changes the pane's height cannot be moved"
+        SETTINGS_FITS="" ;;
+esac
+if [ -n "$SETTINGS_FITS" ]; then
 
 SETTINGS_COUNT="$(printf '%s\n' "$SETTINGS_FITS" | grep -c settingsfit || true)"
 if [ "${SETTINGS_COUNT:-0}" -lt 2 ]; then
@@ -1262,6 +1277,7 @@ if [ "$SETTINGS_DISTINCT" -lt 2 ]; then
     printf '%s\n' "$SETTINGS_FITS" >&2; exit 1
 fi
 echo "settings fit         ok: the window followed its pane across $SETTINGS_COUNT sizings (pane heights:$SETTINGS_PANES)"
+fi
 
 ONBOARD_FRESH_SUITE="com.birtalabs.jot.measure.fresh.$$"
 ONBOARD_USED_SUITE="com.birtalabs.jot.measure.used.$$"

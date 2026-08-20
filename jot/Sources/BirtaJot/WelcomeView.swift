@@ -139,7 +139,7 @@ final class WelcomeView: NSView {
         let form = NSStackView(views: SettingsForm.welcome.map { group in
             SettingsWindowController.group(group.rows.map { row in
                 let (control, caption) = wiring(for: row)
-                return SettingsWindowController.row(row, control: control, caption: caption)
+                return SettingsWindowController.row(row.settingsRow, control: control, caption: caption)
             })
         })
         locationGroup = form.arrangedSubviews[
@@ -206,7 +206,12 @@ final class WelcomeView: NSView {
     /// because the controls differ (no Settings button beside Start at login
     /// here); what may NOT differ is which rows appear and how they are
     /// worded, and that is `SettingsForm`'s to say.
-    private func wiring(for row: SettingsRow) -> (NSView, Caption?) {
+    ///
+    /// Over `WelcomeRow` rather than `SettingsRow`, so this switch is
+    /// exhaustive over exactly the questions this screen asks. A row added to
+    /// the first run fails to compile until it has a control here, and a row
+    /// that is only ever a Settings row cannot reach this method at all.
+    private func wiring(for row: WelcomeRow) -> (NSView, Caption?) {
         switch row {
         case .summon: return (hotkeyRecorder, hotkeyCaption)
         case .storeInICloud: return (iCloudSwitch, iCloudCaption)
@@ -214,12 +219,6 @@ final class WelcomeView: NSView {
             return (SettingsWindowController.pathControl(locationPath, self, #selector(chooseLocation)), nil)
         case .showInDock: return (dockSwitch, nil)
         case .startAtLogin: return (loginSwitch, loginCaption)
-        // Settings' rows. `SettingsFormTests` holds that the first run is a
-        // subset, so reaching one of these here means the declaration moved.
-        case .autosave, .richLinks, .opens, .agentPreset, .agentCommand,
-             .checkForUpdates, .resetSettings, .welcomeScreen:
-            assertionFailure("\(row.rawValue) is not a first-run question")
-            return (NSView(), nil)
         }
     }
 
@@ -269,7 +268,10 @@ final class WelcomeView: NSView {
         locationPath.setURL(Prefs.scratchpadURL)
         let inICloud = Prefs.noteHome == .iCloud
         if let locationGroup {
-            SettingsWindowController.setRowHidden(locationGroup, row: 1, hidden: inICloud)
+            SettingsWindowController.setRowHidden(
+                locationGroup,
+                row: SettingsForm.index(of: .location, inGroupOf: SettingsForm.welcome) ?? 1,
+                hidden: inICloud)
         }
         iCloudCaption.say(Prefs.iCloudAvailable
                           ? ""

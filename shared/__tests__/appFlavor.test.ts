@@ -33,7 +33,13 @@ const handoff = readFileSync(join(REPO, "scripts/install-local.mjs"), "utf8");
 const releaseWorkflow = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
 const feed = readFileSync(join(REPO, "jot/Sources/BirtaJotCore/ReleaseFeed.swift"), "utf8");
 const product = readFileSync(join(REPO, "shared/product.ts"), "utf8")
-    .match(/JOT_PRODUCT_NAME\s*=\s*"([^"]+)"/)![1]!;
+    .match(/JOT_PRODUCT_NAME\s*=\s*"([^"]+)"/)?.[1];
+if (!product) {
+    // Thrown with a message rather than left as a non-null assertion: every
+    // test here reads it, so an unreadable constant takes the whole file down
+    // and the reason has to survive that.
+    throw new Error("shared/product.ts no longer declares JOT_PRODUCT_NAME as a string literal");
+}
 
 /** Every `NAME="value"` assignment in a shell script, by name. */
 function shellAssignments(text: string, name: string): string[] {
@@ -122,17 +128,29 @@ describe("app flavours", () => {
 
     it("the handoff should print the name of the app it actually installs", () => {
         // `install-local.mjs` names the development build in what it prints,
-        // and nothing related that string to the bundle. A rename left six
-        // messages naming an app that no longer existed, all of them
-        // user-facing, and every gate stayed green.
+        // and the name it prints has to be the bundle it installs. Nothing
+        // else relates the two, so a rename that misses this file leaves
+        // user-facing messages naming an app that does not exist, with every
+        // gate green.
         const suffix = swift.match(/case \.dev: return "([^"]+)"/)?.[1];
         const printed = handoff.match(/JOT_APP_NAME\s*=\s*"([^"]+)"/)?.[1];
         expect(printed, "install-local.mjs should name the app in one constant").toBeDefined();
         expect(printed).toBe(product + suffix!);
-        // And it should be the only spelling in that file, or the constant is
-        // decoration standing beside literals nothing checks.
-        const strays = [...handoff.matchAll(new RegExp(`${product}[^\\s\`"']`, "g"))];
-        expect(strays.map((m) => m[0])).toEqual([]);
+        // And the constant should be the only place that file spells the name,
+        // or it is decoration standing beside literals nothing checks.
+        //
+        // Comments are stripped first: naming the release app in a sentence
+        // about why the handoff does not touch it is correct prose. What is
+        // left is code, and the only occurrence code may contain is the
+        // assignment itself. Filtering on the character AFTER the name cannot
+        // do this job, because the two shapes that actually occur are a name
+        // followed by a space and a name that is the whole literal.
+        const code = handoff
+            .replace(/\/\*[\s\S]*?\*\//g, "")
+            .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+        const spellings = [...code.matchAll(new RegExp(product!, "g"))];
+        expect(spellings.length, `${product} is spelled ${spellings.length} times in code`).toBe(1);
+        expect(code).toContain(`JOT_APP_NAME = "${printed}"`);
     });
 
     it("the by-hand updater should only ever name the release app", () => {

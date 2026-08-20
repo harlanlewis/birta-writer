@@ -28,8 +28,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - Where your notes live is one switch and a Location row that appears only when it is off. It used to be an iCloud toggle with a path row under it that silently outranked it: choosing a folder made the switch above decide nothing, and nothing said so. With iCloud Drive on there is one place the note can be and the row is gone; with it off the folder is a real choice and Choose is right there.
 
-- Birta Writer Jot offers a Dock icon on the first-run screen, shown on, and appears in Cmd+Tab with it. Somebody meeting Jot for the first time could not otherwise find it again without the hotkey they had been told once. As with rich link previews, this is offered to a new install only: a copy you already had keeps the menu-bar-only behaviour it has always had, and the switch is in Settings, General either way.
-
 - Birta Writer Jot's Editor settings pane is gone. Its only row was Autosave, which is now in General under How Jot works with the rest of how Jot behaves, and a tab that costs a click to discover is empty is worse than no tab. Start with a blank note is in Advanced, as Opens, where it says what it decides.
 
 ### Fixed
