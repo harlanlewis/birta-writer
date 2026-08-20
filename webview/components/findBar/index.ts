@@ -10,10 +10,14 @@ import {
     IconReplaceAll,
     IconFindSelection,
     IconX,
+    IconSearch,
+    IconEllipsis,
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
 import { attachInputUndo } from "@/utils/inputUndo";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { watchOutsidePress } from "@/ui/outsidePress";
+import { hostArranges } from "../../../shared/hostProfile";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import { revealPosition } from "@/editing/blockOps";
@@ -160,6 +164,51 @@ function sortSub(m: SearchMatch): number {
     }
 }
 
+/**
+ * The ⋯ popover holding the four search options, under `nativeFindBar`.
+ *
+ * Small enough to live here rather than compose `wireHoverMenu`, which is the
+ * toolbar's and carries a hover lifecycle, a clipping-container rule and a
+ * placement pass this needs none of: the popover is anchored to its own wrap
+ * by CSS and there is nothing to place.
+ *
+ * What it does share is the two dismissal rules every transient surface in
+ * this webview obeys, and it shares them by using the same two registries
+ * rather than by reimplementing either: Escape closes the topmost surface
+ * (`ui/escapeLayers.ts`), and a press anywhere outside closes this one
+ * (`ui/outsidePress.ts`). The wrap covers both the trigger and the menu, so
+ * pressing the trigger while it is open reaches the toggle rather than being
+ * eaten as an outside press and reopened by the same click.
+ */
+function wireOptionsPopover(button: HTMLElement, menu: HTMLElement, wrap: HTMLElement): void {
+    let escapeOff: (() => void) | null = null;
+    let outsideOff: (() => void) | null = null;
+    const close = (): void => {
+        escapeOff?.();
+        escapeOff = null;
+        outsideOff?.();
+        outsideOff = null;
+        menu.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+    };
+    const open = (): void => {
+        menu.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+        escapeOff ??= registerEscapeLayer(close);
+        outsideOff ??= watchOutsidePress([wrap], close);
+    };
+    button.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (menu.hidden) { open(); } else { close(); }
+    });
+    // A press inside the popover must not reach the outside-press watcher of
+    // anything ABOVE it in the layer stack, and must not steal focus from the
+    // input: an option toggle re-runs the search, and the search reads the
+    // field the caret is expected to be in.
+    menu.addEventListener("mousedown", (e) => e.preventDefault());
+}
+
 export function initFindBar(
     getEditorView: () => EditorView | null,
     getMarkdownSource: () => string,
@@ -169,6 +218,7 @@ export function initFindBar(
     const bar = document.createElement("div");
     bar.className = "find-bar";
     bar.setAttribute("role", "search");
+    if (hostArranges("nativeFindBar")) { bar.classList.add("find-bar--native"); }
 
     const btnToggleReplace = createButton({
         className: "ui-btn ui-btn--icon find-bar__btn find-bar__toggle",
@@ -255,14 +305,69 @@ export function initFindBar(
     btnInSelection.setAttribute("aria-label", t("Find in Selection"));
     btnInSelection.setAttribute("aria-pressed", "false");
 
+    /**
+     * Whether this surface draws the platform's find bar rather than the
+     * editor's (`nativeFindBar`, shared/hostProfile.ts). Read once, at build
+     * time: the four option toggles are BUILT into one holder or the other,
+     * and a bar that asked again later could not move a button it had already
+     * wired.
+     */
+    const native = hostArranges("nativeFindBar");
+
+    // "Done" rather than an ✕ on a native bar, because that is the word the
+    // platform's own find bar uses and this one is drawn to be mistaken for
+    // it. `ui-btn--icon` is what the icon case composes and the text case must
+    // not: its fixed square would clip the word.
     const btnClose = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn",
-        icon: IconX,
+        ...(native
+            ? { className: "ui-btn find-bar__btn find-bar__done", label: t("Done") }
+            : { className: "ui-btn ui-btn--icon find-bar__btn", icon: IconX }),
         title: `${t("Close")} (Esc)`,
     });
     btnClose.setAttribute("aria-label", t("Close"));
 
-    findRow.append(input, count, btnPrev, btnNext, sep, btnCase, btnWord, btnRegex, btnInSelection, btnClose);
+    if (native) {
+        // The field: a capsule with the magnifier inside it and the count at
+        // its trailing end, which is where the platform puts both. The input
+        // and the count are the same two elements either way, re-parented
+        // rather than rebuilt, so every handler and every paint below reaches
+        // them without knowing which surface it is on.
+        const field = document.createElement("div");
+        field.className = "find-bar__field";
+        const glyph = document.createElement("span");
+        glyph.className = "find-bar__glyph";
+        glyph.innerHTML = IconSearch;
+        // Decoration. The input beside it already carries the accessible name,
+        // and a second announcement of "search" is noise on the way to it.
+        glyph.setAttribute("aria-hidden", "true");
+        field.append(glyph, input, count);
+
+        // The options, behind a ⋯ rather than beside the field. Same four
+        // buttons, same handlers, same active class — a strip relocated, not a
+        // menu of new controls, which is what keeps this an arrangement.
+        const optionsWrap = document.createElement("div");
+        optionsWrap.className = "find-bar__options-wrap";
+        const btnOptions = createButton({
+            className: "ui-btn ui-btn--icon find-bar__btn find-bar__options-btn",
+            icon: IconEllipsis,
+            title: t("Search Options"),
+        });
+        btnOptions.setAttribute("aria-label", t("Search Options"));
+        btnOptions.setAttribute("aria-haspopup", "true");
+        btnOptions.setAttribute("aria-expanded", "false");
+        // `--ui-card-*` is a RECIPE of tokens rather than a class, so the
+        // surface composes it in CSS; there is no `.ui-card` to add here.
+        const optionsMenu = document.createElement("div");
+        optionsMenu.className = "find-bar__options";
+        optionsMenu.hidden = true;
+        optionsMenu.append(btnCase, btnWord, btnRegex, btnInSelection);
+        optionsWrap.append(btnOptions, optionsMenu);
+        wireOptionsPopover(btnOptions, optionsMenu, optionsWrap);
+
+        findRow.append(field, btnPrev, btnNext, optionsWrap, btnClose);
+    } else {
+        findRow.append(input, count, btnPrev, btnNext, sep, btnCase, btnWord, btnRegex, btnInSelection, btnClose);
+    }
 
     // Replace row (hidden until toggled)
     const replaceRow = document.createElement("div");

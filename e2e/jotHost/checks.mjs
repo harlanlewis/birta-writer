@@ -179,7 +179,7 @@ export async function run({ page, check, baseUrl }) {
     check("jot: gear menu offers the typography presets, the cheatsheet and the shell's own Settings",
         JSON.stringify(gear.labels) === JSON.stringify(
             ["Sans serif", "Serif", "Monospace",
-             "Show Keyboard Shortcuts", "Birta Jot Settings"]),
+             "Show Keyboard Shortcuts", "Birta Writer Jot Settings"]),
         JSON.stringify(gear.labels));
     // The typography rows stay at the TOP with the layout rows withdrawn. They
     // are what a reader opens this menu for, and the rule that placed them
@@ -576,6 +576,91 @@ export async function run({ page, check, baseUrl }) {
 
     check("jot: the last control can be reached by scrolling", scrolled);
 
+    // The chevron's SHAPE, which jsdom cannot answer and which is the whole of
+    // what changed: it was a full-height strip flush against the window frame,
+    // and it is now a button the size of the controls it sits over, centred on
+    // the row and held off the edge. Each of those is a separate way to get it
+    // wrong, so each is a separate clause.
+    //
+    // Compared against a real toolbar item rather than against numbers written
+    // here: the claim is "the same size as its neighbours", and a hardcoded 24
+    // would keep passing on the day the items changed height.
+    //
+    // The START chevron, and that is not arbitrary: the row was just scrolled
+    // to its end, so the FORWARD one is correctly hidden and a hidden element
+    // reports a zero rect, which fails every clause below for the wrong reason.
+    // The check above has already asserted this one is showing.
+    const chevronShape = await page.evaluate(() => {
+        const btn = document.querySelector(".tb-dock-scroll--start");
+        const row = document.querySelector(".tb-dock-row");
+        const item = row.querySelector(".tb-item .ui-btn");
+        if (!btn || !item || !btn.getClientRects().length) { return null; }
+        const e = btn.getBoundingClientRect();
+        const r = row.getBoundingClientRect();
+        const i = item.getBoundingClientRect();
+        const fade = document.querySelector(".tb-dock-fade--start");
+        const f = fade?.getBoundingClientRect();
+        return {
+            height: e.height,
+            itemHeight: i.height,
+            rowHeight: r.height,
+            centreOffset: Math.abs((e.top + e.bottom) / 2 - (r.top + r.bottom) / 2),
+            // The leading edge here, since this is the leading chevron.
+            insetFromFrame: e.left - r.left,
+            fadeWidth: f ? f.width : 0,
+            buttonWidth: e.width,
+            fadeShown: !!fade && !!fade.getClientRects().length,
+        };
+    });
+    // These two do NOT discriminate on this fixture, and saying so is the
+    // point: the row's content box happens to be exactly the item height here,
+    // so the old full-height strip measured 24 as well and passes both. They
+    // are kept because they are the property actually wanted, and they would
+    // catch a strip in a row that had grown taller. The clauses below are the
+    // ones that fail against the old chevron.
+    check("jot: the scroll chevron is the same height as the controls it sits over",
+        chevronShape !== null && Math.abs(chevronShape.height - chevronShape.itemHeight) <= 1,
+        JSON.stringify(chevronShape));
+    check("jot: and is no taller than the row",
+        chevronShape !== null && chevronShape.height <= chevronShape.rowHeight,
+        JSON.stringify(chevronShape));
+    check("jot: it is centred on the row",
+        chevronShape !== null && chevronShape.centreOffset <= 1,
+        JSON.stringify(chevronShape));
+    check("jot: and inset from the window frame rather than flush against it",
+        chevronShape !== null && chevronShape.insetFromFrame > 0,
+        JSON.stringify(chevronShape));
+    // The fade is its own element now, and has to be WIDER than the button or
+    // the item underneath meets a hard edge instead of dissolving.
+    check("jot: the fade behind it is shown and wider than the button",
+        chevronShape !== null && chevronShape.fadeShown
+            && chevronShape.fadeWidth > chevronShape.buttonWidth,
+        JSON.stringify(chevronShape));
+
+    // Hidden WITH its chevron. A gradient left on an edge with nothing past it
+    // says the row scrolls when it does not, and `hidden` on the button alone
+    // would leave exactly that.
+    const fadesAtRest = await page.evaluate(() => {
+        const row = document.querySelector(".tb-dock-row");
+        row.scrollTo({ left: 0, behavior: "instant" });
+        return new Promise((resolve) => setTimeout(() => resolve({
+            startChevron: !!document.querySelector(".tb-dock-scroll--start")?.getClientRects().length,
+            startFade: !!document.querySelector(".tb-dock-fade--start")?.getClientRects().length,
+            endChevron: !!document.querySelector(".tb-dock-scroll--end")?.getClientRects().length,
+            endFade: !!document.querySelector(".tb-dock-fade--end")?.getClientRects().length,
+        }), 200));
+    });
+    check("jot: each fade is shown exactly when its own chevron is",
+        fadesAtRest.startChevron === fadesAtRest.startFade
+            && fadesAtRest.endChevron === fadesAtRest.endFade,
+        JSON.stringify(fadesAtRest));
+    // A floor on the case above: back at the start, the two edges must DISAGREE
+    // with each other, or "they match their chevrons" is being asserted about
+    // two pairs that are both simply shown.
+    check("jot: and at the start the two edges disagree, so that check discriminates",
+        fadesAtRest.startChevron !== fadesAtRest.endChevron,
+        JSON.stringify(fadesAtRest));
+
     // The dropdowns open OUT of a box whose `overflow-x: auto` clips both
     // axes. Escaping that is the whole reason `data-menu-clip` exists, so the
     // check is geometric: the menu has to be taller than the gap it would have
@@ -648,6 +733,50 @@ export async function run({ page, check, baseUrl }) {
         return !menu || menu.style.display === "none";
     });
     check("jot: and clicking the trigger again closes it", closedByTrigger);
+
+    // Dismissal, which is the half a click surface has to provide for itself.
+    // A hover menu closes when the pointer leaves its wrap, so at most one is
+    // ever open and an outside press has nothing to resolve; neither holds
+    // here, and both are checked.
+    //
+    // Driven through real clicks rather than synthesized events, because that
+    // is the layer the defect lived in: every trigger swallows its own
+    // mousedown, so a listener in the wrong phase hears nothing at all and a
+    // prop-level probe would agree with either implementation.
+    const menuOpen = (id) => page.evaluate((itemId) => {
+        const menu = document.querySelector(
+            `.tb-dock-row [data-item-id="${itemId}"] .tb-fmt-menu`);
+        return !!menu && menu.style.display !== "none";
+    }, id);
+
+    await page.locator(`${rowSel} [data-item-id="format"] .tb-fmt-btn`).click();
+    await page.waitForTimeout(250);
+    // THE reported defect: opening a second bar menu left the first on screen,
+    // so the format, list and gear menus could all be showing at once.
+    await page.locator(`${rowSel} [data-item-id="listMenu"] .tb-fmt-btn`).click();
+    await page.waitForTimeout(250);
+    const secondOpened = await menuOpen("listMenu");
+    const firstClosed = !(await menuOpen("format"));
+    check("jot: opening a second bar menu closes the first",
+        secondOpened && firstClosed,
+        JSON.stringify({ secondOpened, firstClosed }));
+
+    // And a press on the page, which belongs to no menu at all.
+    //
+    // `page.mouse` at a point well below the bar rather than a locator click on
+    // a paragraph: the open menu drops down over the top of the document, so
+    // Playwright finds the first paragraph covered and retries the click until
+    // it times out. What is wanted here is a press at a place no menu is, which
+    // is a coordinate rather than an element.
+    const belowEverything = await page.evaluate(() => {
+        const box = document.querySelector(".milkdown").getBoundingClientRect();
+        return { x: Math.round(box.left + box.width / 2), y: Math.round(box.bottom - 20) };
+    });
+    await page.mouse.click(belowEverything.x, belowEverything.y);
+    await page.waitForTimeout(250);
+    const closedByOutside = !(await menuOpen("listMenu"));
+    check("jot: and clicking the document closes the open menu", closedByOutside);
+
     // Reopened, because the checks below act on a row of it.
     await page.locator(`${rowSel} [data-item-id="format"] .tb-fmt-btn`).click();
     await page.waitForTimeout(250);

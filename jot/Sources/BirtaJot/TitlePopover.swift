@@ -5,9 +5,9 @@ import BirtaJotCore
 /// window's title.
 ///
 ///     ┌──────────────────────────────────┐
-///     │  Name:  [ Birta Jot.md         ] │
+///     │  Name:  [ Birta Writer Jot.md         ] │
 ///     │  Tags:  [                      ] │
-///     │ Where:  [ 📁 Birta Jot       ⌄ ] │
+///     │ Where:  [ 📁 Birta Writer    ⌄ ] │
 ///     └──────────────────────────────────┘
 ///
 /// Built rather than inherited, and that is worth saying because it looks

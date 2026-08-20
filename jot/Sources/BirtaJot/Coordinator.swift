@@ -122,7 +122,7 @@ final class Coordinator {
         let webRoot = Coordinator.locateWebRoot()
         host = WebHost(webRoot: webRoot, documentDirectory: Prefs.activeURL.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
-            NSLog("Birta Jot: write failed: \(error)")
+            NSLog("Birta Writer Jot: write failed: \(error)")
         })
         hotkey = GlobalHotkey()
     }
@@ -208,7 +208,7 @@ final class Coordinator {
         hotkey.onPress = { [weak self] in self?.hotkeyPressed() }
         let status = hotkey.register(Prefs.hotkey)
         if status != noErr {
-            NSLog("Birta Jot: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
+            NSLog("Birta Writer Jot: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
         }
         installEscapeMonitor()
         if measure.enabled { installDebugSignals() }
@@ -416,7 +416,7 @@ final class Coordinator {
     }
 
     private func contentProcessDied() {
-        NSLog("Birta Jot: web content process terminated; remounting")
+        NSLog("Birta Writer Jot: web content process terminated; remounting")
         measure.mark("terminate")
         state = .cold
         loadPage()
@@ -597,7 +597,7 @@ final class Coordinator {
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
-            NSLog("Birta Jot: webview crash (\(source)): \(message)")
+            NSLog("Birta Writer Jot: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
             saveAttachment(id: id, data: data, mimeType: mimeType)
         case let .resolveLinkCard(id, url):
@@ -681,7 +681,7 @@ final class Coordinator {
         } catch AttachmentStore.StoreError.unsupportedType(let type) {
             host.send(.imageUploadError(id: id, error: "Jot cannot save a \(type) image."))
         } catch {
-            NSLog("Birta Jot: attachment save failed: \(error)")
+            NSLog("Birta Writer Jot: attachment save failed: \(error)")
             host.send(.imageUploadError(id: id, error: "The image could not be saved beside this document."))
         }
     }
@@ -698,7 +698,7 @@ final class Coordinator {
         guard !plan.isEmpty else { return }
         let failed = AttachmentReferences.apply(plan)
         guard !failed.isEmpty else { return }
-        NSLog("Birta Jot: \(failed.count) attachment(s) could not be copied: \(failed.joined(separator: ", "))")
+        NSLog("Birta Writer Jot: \(failed.count) attachment(s) could not be copied: \(failed.joined(separator: ", "))")
         let alert = NSAlert()
         alert.messageText = failed.count == 1
             ? "One image could not be copied"
@@ -734,7 +734,7 @@ final class Coordinator {
         host.send(.flushSave(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
-            NSLog("Birta Jot: flush timed out; writing the last admitted content")
+            NSLog("Birta Writer Jot: flush timed out; writing the last admitted content")
             self.writeLatest()
             finish()
         }
@@ -923,7 +923,7 @@ final class Coordinator {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             } catch {
-                NSLog("Birta Jot: could not create \(directory.path): \(error)")
+                NSLog("Birta Writer Jot: could not create \(directory.path): \(error)")
                 self.statusOverlay.flash("Could not make a new note in \(directory.lastPathComponent).")
                 return
             }
@@ -933,7 +933,7 @@ final class Coordinator {
                 // one the next launch cannot find its way back to.
                 try AtomicFile.writeString("", to: target)
             } catch {
-                NSLog("Birta Jot: could not write \(target.path): \(error)")
+                NSLog("Birta Writer Jot: could not write \(target.path): \(error)")
                 self.statusOverlay.flash("Could not make a new note.")
                 return
             }
@@ -956,7 +956,7 @@ final class Coordinator {
         } catch {
             // The scratchpad is the fallback, and it is a good one: the setting
             // says where to START, not that the old note may be lost.
-            NSLog("Birta Jot: could not start a blank note in \(directory.path): \(error)")
+            NSLog("Birta Writer Jot: could not start a blank note in \(directory.path): \(error)")
         }
     }
 
@@ -1039,7 +1039,7 @@ final class Coordinator {
         host.send(.requestEditorContext(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, let pending = self.pendingContexts.removeValue(forKey: id) else { return }
-            NSLog("Birta Jot: the page did not answer requestEditorContext in time")
+            NSLog("Birta Writer Jot: the page did not answer requestEditorContext in time")
             pending(nil)
         }
     }
@@ -1096,7 +1096,7 @@ final class Coordinator {
                     try AtomicFile.writeString(self.latest, to: target)
                 }
             } catch {
-                NSLog("Birta Jot: could not move \(source.path) to \(target.path): \(error)")
+                NSLog("Birta Writer Jot: could not move \(source.path) to \(target.path): \(error)")
                 self.measure.trace("relocate failed \(target.lastPathComponent)")
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
@@ -1469,6 +1469,18 @@ final class Coordinator {
         hotkey.register(Prefs.hotkey)
     }
 
+    /// Re-read the settings that decide how the WINDOW behaves, without the
+    /// flush-and-reload `preferencesChanged` does.
+    ///
+    /// Separate because the cost is what distinguishes them, not the subject:
+    /// a file or network change needs a fresh page, and this needs a property
+    /// set on a window that is already showing the right document. Routing the
+    /// Dock switch through the heavy path would leave the user watching a
+    /// switch they moved with the panel blank for a round trip.
+    func panelBehaviorChanged() {
+        panel.applyHideWhenInactive()
+    }
+
     func preferencesChanged() {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
@@ -1479,7 +1491,7 @@ final class Coordinator {
             self.loadPage()
             // The bound file may have changed; the titlebar names it.
             self.refreshTitle()
-            self.panel.applyFloatLevel()
+            self.panel.applyHideWhenInactive()
         }
     }
 
@@ -1510,7 +1522,7 @@ final class Coordinator {
             let web = res.appendingPathComponent("web", isDirectory: true)
             if FileManager.default.fileExists(atPath: web.appendingPathComponent("index.html").path) { return web }
         }
-        NSLog("Birta Jot: no web assets found; set BIRTA_JOT_WEB_DIR or run jot/scripts/build-app.sh")
+        NSLog("Birta Writer Jot: no web assets found; set BIRTA_JOT_WEB_DIR or run jot/scripts/build-app.sh")
         return URL(fileURLWithPath: "/nonexistent", isDirectory: true)
     }
 }

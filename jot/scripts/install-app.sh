@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install "Birta Jot.app" where macOS expects to find it, replacing a running
+# Install "Birta Writer Jot.app" where macOS expects to find it, replacing a running
 # copy safely.
 #
 #   pnpm jot:install                       # production build, then this
@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.."
 
 BUILD=0
 [ "${1:-}" = "--build" ] && BUILD=1
-SRC="jot/build/Birta Jot.app"
+SRC="jot/build/Birta Writer Jot.app"
 
 # Leave the tree as this run found it. Building here produces jot/.build (the
 # SwiftPM cache) and jot/build (the assembled app), together a few hundred
@@ -66,19 +66,19 @@ if [ ! -w "$DEST_DIR" ]; then
     mkdir -p "$DEST_DIR"
     echo "note: /Applications is not writable; installing to $DEST_DIR"
 fi
-DEST="$DEST_DIR/Birta Jot.app"
+DEST="$DEST_DIR/Birta Writer Jot.app"
 
 WAS_RUNNING=0
 if pgrep -x BirtaJot >/dev/null 2>&1; then
     WAS_RUNNING=1
-    echo "→ asking the running Birta Jot to quit (it flushes its buffer first)"
+    echo "→ asking the running Birta Writer Jot to quit (it flushes its buffer first)"
     pkill -TERM -x BirtaJot || true
     for _ in $(seq 1 100); do
         pgrep -x BirtaJot >/dev/null 2>&1 || break
         sleep 0.1
     done
     if pgrep -x BirtaJot >/dev/null 2>&1; then
-        echo "install-app: Birta Jot is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
+        echo "install-app: Birta Writer Jot is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
         exit 1
     fi
 fi
@@ -91,8 +91,8 @@ echo "→ installing to $DEST"
 # The old copy is moved aside rather than deleted first, and only removed once
 # the new one is in place. Deleting first leaves a window where a failed `mv`
 # means no app at all, which is a worse state than either version of it.
-STAGE="$DEST_DIR/.Birta Jot.app.incoming"
-OLD="$DEST_DIR/.Birta Jot.app.previous"
+STAGE="$DEST_DIR/.Birta Writer Jot.app.incoming"
+OLD="$DEST_DIR/.Birta Writer Jot.app.previous"
 rm -rf "$STAGE" "$OLD"
 ditto "$SRC" "$STAGE"
 if [ -d "$DEST" ]; then mv "$DEST" "$OLD"; fi
@@ -106,15 +106,26 @@ if ! mv "$STAGE" "$DEST"; then
 fi
 rm -rf "$OLD"
 
-# One copy only: a second in the other standard location is a second app for
-# Launch Services to choose between, and the hotkey belongs to whichever
-# happens to be running.
+# One copy only, and there are two ways to end up with more than one: a copy in
+# the other standard location, and a copy under the name the app used to have.
+# Either is a second app for Launch Services to choose between, and the hotkey
+# belongs to whichever happens to be running.
+#
+# Both directories are swept for the old name, not just the one being installed
+# into: the rename is what makes the old bundle a stranger, and it can be
+# sitting in either place from an earlier install.
 OTHER_DIR=/Applications
 [ "$DEST_DIR" = /Applications ] && OTHER_DIR="$HOME/Applications"
-if [ -d "$OTHER_DIR/Birta Jot.app" ]; then
-    echo "→ removing the other copy at $OTHER_DIR"
-    rm -rf "$OTHER_DIR/Birta Jot.app"
-fi
+for stale in \
+    "$OTHER_DIR/Birta Writer Jot.app" \
+    "$DEST_DIR/Birta Jot.app" \
+    "$OTHER_DIR/Birta Jot.app"
+do
+    if [ -d "$stale" ]; then
+        echo "→ removing the other copy at $stale"
+        rm -rf "$stale"
+    fi
+done
 
 if [ "$WAS_RUNNING" = 1 ]; then
     echo "→ relaunching"

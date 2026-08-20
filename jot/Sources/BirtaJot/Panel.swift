@@ -1,12 +1,19 @@
 import AppKit
 
-/// The floating scratchpad window. An NSPanel that joins every Space and sits
-/// over fullscreen apps, remembers its frame, and hides rather than closes.
+/// The scratchpad window. An NSPanel that joins every Space and sits over
+/// fullscreen apps, remembers its frame, and hides rather than closes.
 ///
 /// Not `.nonactivatingPanel`: key equivalents (Cmd+S, Cmd+C/V/Z inside the
 /// WKWebView) route through the app's main menu, which needs the app active,
-/// and losing focus must not hide the panel anyway, so there is nothing to
-/// gain from staying inactive.
+/// so a panel that never activated could not run its own chords.
+///
+/// At the ORDINARY window level, always. The panel used to take `.floating`
+/// under a setting, and both the setting and the level are gone: a window that
+/// will not go behind anything is a window you fight, the hotkey already brings
+/// it back in one keystroke, and every other window Jot opened had to be raised
+/// to match or it opened behind the one that spawned it. What the setting was
+/// reaching for is `hideWhenInactive`, which answers it the other way round by
+/// taking the panel away instead of pinning it up.
 @MainActor
 final class JotPanel: NSPanel {
     var onHideRequest: (() -> Void)?
@@ -17,12 +24,11 @@ final class JotPanel: NSPanel {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
                    styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                    backing: .buffered, defer: false)
-        title = "Birta Jot"
+        title = "Birta Writer Jot"
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         isFloatingPanel = true
-        applyFloatLevel()
-        hidesOnDeactivate = false
+        applyHideWhenInactive()
         isReleasedWhenClosed = false
         becomesKeyOnlyIfNeeded = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -32,15 +38,20 @@ final class JotPanel: NSPanel {
         setFrameAutosaveName("JotPanel")
     }
 
-    /// Put the panel at the level the "Float above other windows" setting
-    /// names. `.floating` is one step above `.normal`, which is enough to sit
-    /// over other applications and low enough that a system alert still wins.
+    /// Put the panel where the "Hide when Jot is not in front" setting says.
     ///
-    /// Anything Jot opens ON TOP of the panel has to be raised to match, or it
-    /// opens behind the window that spawned it and reads as not having opened
-    /// at all. `SettingsWindowController` is the one that does.
-    func applyFloatLevel() {
-        level = Prefs.floatAboveOtherWindows ? .floating : .normal
+    /// `hidesOnDeactivate` is AppKit's own overlay behaviour, so the hiding,
+    /// the animation and the ordering are the system's rather than a
+    /// notification handler racing them. Called at init and again whenever
+    /// either half of the pairing moves, since a Dock icon appearing has to
+    /// take the behaviour away (`Prefs.hidesWhenInactiveInForce`).
+    ///
+    /// Deliberately not `isFloatingPanel = false` when it is off: floating
+    /// panel status is about how the window behaves in its own app, and the
+    /// window LEVEL, which is the thing users noticed, is `.normal` in every
+    /// case now.
+    func applyHideWhenInactive() {
+        hidesOnDeactivate = Prefs.hidesWhenInactiveInForce
     }
 
     override var canBecomeKey: Bool { true }

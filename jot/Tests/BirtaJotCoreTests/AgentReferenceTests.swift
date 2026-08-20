@@ -43,7 +43,7 @@ final class AgentReferenceTests: XCTestCase {
     func testAnAbsolutePathIsCarriedThroughUnchanged() {
         // Jot's whole difference from the extension, and it is nothing this
         // type does: it references whatever path it is handed.
-        let path = "/Users/x/Library/Application Support/Birta Jot/Birta Jot.md"
+        let path = "/Users/x/Documents/Birta Writer/Birta Writer Jot.md"
         XCTAssertEqual(AgentReference.reference(path: path, selection: caret(3, 0)), "\(path)#L3")
     }
 

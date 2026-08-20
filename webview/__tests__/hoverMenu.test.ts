@@ -265,3 +265,124 @@ describe("wireHoverMenu", () => {
         expect(menu.style.display).toBe("none");
     });
 });
+
+/**
+ * The other half of the lifecycle: `barMenusOnClick`, where the pointer opens
+ * nothing and a press is the whole grammar.
+ *
+ * The hover half above is held together by mouseleave — leaving the wrap closes
+ * the menu, so two can never be open at once and no outside press has anything
+ * to resolve. Neither is true here, and this is where that is checked.
+ */
+describe("wireHoverMenu under barMenusOnClick", () => {
+    type Declared = { __i18n?: { host?: { arrangements?: string[] } } };
+    const g = globalThis as Declared;
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        while (closeTopmostLayer()) { /* drain */ }
+        // Declared BEFORE wiring: the arrangement is read once, at wire time.
+        g.__i18n = { host: { arrangements: ["barMenusOnClick"] } };
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+        delete g.__i18n;
+        document.body.innerHTML = "";
+    });
+
+    /** A press, the way a real one arrives. */
+    function press(target: HTMLElement): void {
+        target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    }
+
+    /** A wired menu whose trigger swallows mousedown, as the real ones do. */
+    function wired(): ReturnType<typeof build> {
+        const parts = build();
+        parts.button.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        wireHoverMenu(parts.wrap, parts.button, parts.menu);
+        return parts;
+    }
+
+    it("hovering the wrap should open nothing", () => {
+        const { wrap, menu } = wired();
+        fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS * 3);
+        expect(menu.style.display).toBe("none");
+    });
+
+    it("a press on the trigger should open it, and another should close it", () => {
+        const { button, menu } = wired();
+        press(button);
+        expect(menu.style.display).toBe("flex");
+        press(button);
+        expect(menu.style.display).toBe("none");
+    });
+
+    it("a press outside the wrap should close it", () => {
+        const { menu } = wired();
+        const elsewhere = document.createElement("div");
+        document.body.appendChild(elsewhere);
+        press(document.querySelector("button")!);
+        expect(menu.style.display).toBe("flex");
+        press(elsewhere);
+        expect(menu.style.display).toBe("none");
+    });
+
+    it("a press inside the open menu should leave it open", () => {
+        const { button, menu } = wired();
+        const row = document.createElement("div");
+        menu.appendChild(row);
+        press(button);
+        press(row);
+        expect(menu.style.display).toBe("flex");
+    });
+
+    // THE reported defect: every bar menu ever opened stayed on screen at once,
+    // because each trigger swallows its own mousedown and nothing else was
+    // listening. Two menus, and the invariant is that at most one is open.
+    it("opening a second menu should close the first", () => {
+        const first = wired();
+        const second = wired();
+        press(first.button);
+        expect(first.menu.style.display).toBe("flex");
+
+        press(second.button);
+        expect(second.menu.style.display).toBe("flex");
+        expect(first.menu.style.display).toBe("none");
+
+        // And back, so the property is symmetric rather than an artefact of
+        // which one was wired first.
+        press(first.button);
+        expect(first.menu.style.display).toBe("flex");
+        expect(second.menu.style.display).toBe("none");
+    });
+
+    it("closing by an outside press should leave no Escape layer behind", () => {
+        const { button } = wired();
+        const elsewhere = document.createElement("div");
+        document.body.appendChild(elsewhere);
+        press(button);
+        press(elsewhere);
+        // A leaked entry would swallow the next Escape the editor was owed.
+        expect(closeTopmostLayer()).toBe(false);
+    });
+
+    it("dispose() should remove the outside-press listener too", () => {
+        const parts = build();
+        const { dispose } = wireHoverMenu(parts.wrap, parts.button, parts.menu);
+        press(parts.button);
+        expect(parts.menu.style.display).toBe("flex");
+        dispose();
+        // Still open (dispose does not close), and a press outside must now be
+        // ignored rather than reaching a disposed menu's close.
+        parts.menu.style.display = "flex";
+        const elsewhere = document.createElement("div");
+        document.body.appendChild(elsewhere);
+        press(elsewhere);
+        expect(parts.menu.style.display).toBe("flex");
+    });
+});

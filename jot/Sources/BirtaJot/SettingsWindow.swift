@@ -70,19 +70,29 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let networkSwitch = NSSwitch()
     private let agentField = NSTextField(string: Prefs.agentCommand)
     private let dockSwitch = NSSwitch()
+    private let hideInactiveSwitch = NSSwitch()
+    private let hideInactiveCaption = Caption("")
     private let blankSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
-    private let floatSwitch = NSSwitch()
+    private let iCloudSwitch = NSSwitch()
+    private let iCloudCaption = Caption("")
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption(LoginItemState.off.caption)
     private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
 
     private let onHotkeyChange: () -> OSStatus
     private let onChange: () -> Void
+    /// The light path: a window-behaviour setting moved, and the page behind it
+    /// does not need reloading. Separate from `onChange` for the reason
+    /// `Coordinator.panelBehaviorChanged` gives.
+    private let onPanelBehaviorChange: () -> Void
 
-    init(onHotkeyChange: @escaping () -> OSStatus, onChange: @escaping () -> Void) {
+    init(onHotkeyChange: @escaping () -> OSStatus,
+         onChange: @escaping () -> Void,
+         onPanelBehaviorChange: @escaping () -> Void) {
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
+        self.onPanelBehaviorChange = onPanelBehaviorChange
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: 300),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -92,12 +102,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // named somewhere else on screen; Jot is an accessory app with no Dock
         // icon, so "General" alone belongs to nothing the user can see. The
         // toolbar below the title already names and highlights the pane.
-        window.title = "Birta Jot Settings"
-        // The panel floats, so a settings window at the ordinary level opens
-        // BEHIND the window it was opened from. Match the panel's level, which
-        // is the setting's level, so turning floating off lowers both together
-        // rather than leaving Settings stranded above everything.
-        window.level = Prefs.floatAboveOtherWindows ? .floating : .normal
+        window.title = "Birta Writer Jot Settings"
+        // No `window.level` here, and that absence is the point. This window
+        // used to be raised to `.floating` to match a panel that could float,
+        // because an ordinary-level window opened BEHIND the one it was opened
+        // from. The panel is at the ordinary level in every case now, so there
+        // is nothing left to match and a settings window pinned over every
+        // other application would be a bug rather than a setting.
         super.init(window: window)
         window.delegate = self
 
@@ -236,8 +247,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (documentSwitch, Prefs.documentURL != nil, #selector(toggleDocument)),
             (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
-            (floatSwitch, Prefs.floatAboveOtherWindows, #selector(toggleFloat)),
+            (iCloudSwitch, Prefs.storeInICloud, #selector(toggleICloud)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
+            (hideInactiveSwitch, Prefs.hideWhenInactive, #selector(toggleHideWhenInactive)),
             (blankSwitch, Prefs.openToBlankNote, #selector(toggleOpenToBlank)),
             (loginSwitch, false, #selector(toggleLoginItem)),
         ] {
@@ -253,6 +265,49 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             control.action = action
         }
         showLoginItem(LoginItem.state)
+        showICloud()
+        showHideWhenInactive()
+    }
+
+    /// Put the iCloud row where the machine actually is.
+    ///
+    /// Two facts, and the caption carries both because neither alone is what
+    /// the user wants to know: whether the switch is on, and WHERE the note
+    /// consequently is. A switch reading "on" over a file in ~/Documents is the
+    /// state this row exists to explain — iCloud Drive is off on this machine,
+    /// so the preference has nowhere to put the note and Jot fell back rather
+    /// than failing. The switch is disabled there, because a preference that
+    /// cannot take effect is not a choice.
+    private func showICloud() {
+        let available = Prefs.iCloudAvailable
+        let chosen = Prefs.hasExplicitScratchpadPath
+        // Two reasons the switch decides nothing, and each disables it: the
+        // service is off, or the user has already named a path themselves.
+        iCloudSwitch.isEnabled = available && !chosen
+        iCloudSwitch.state = Prefs.storeInICloud ? .on : .off
+        scratchpadPath.setURL(Prefs.scratchpadURL)
+        if chosen {
+            iCloudCaption.say("You chose the location below, so this has no effect.", bad: false)
+        } else if !available {
+            iCloudCaption.say("iCloud Drive is off in System Settings, so the note is kept on this Mac.", bad: false)
+        } else {
+            iCloudCaption.say("", bad: false)
+        }
+    }
+
+    /// Put the hide-on-deactivate row where the pairing says.
+    ///
+    /// Disabled while Jot has a Dock icon, and the caption says why rather than
+    /// leaving a dead switch to be puzzled over: with an icon Jot is an
+    /// ordinary application, and one whose window vanished every time you
+    /// looked at another one would be unusable.
+    private func showHideWhenInactive() {
+        let applies = !Prefs.showInDock
+        hideInactiveSwitch.isEnabled = applies
+        hideInactiveSwitch.state = Prefs.hideWhenInactive ? .on : .off
+        hideInactiveCaption.say(
+            applies ? "" : "Only without a Dock icon: an app in the Dock keeps its window.",
+            bad: false)
     }
 
     private func buildPane(_ tab: Tab) -> NSView {
@@ -269,9 +324,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 ]),
                 Self.heading("Panel"),
                 Self.group([
-                    Self.row("Float above other windows", control: floatSwitch),
                     Self.row("Show in Dock", control: dockSwitch,
                              caption: Caption("Off keeps Jot in the menu bar only, out of the Dock and out of Cmd+Tab.")),
+                    // Directly under the Dock row, because it is that row's
+                    // consequence: it is live only while the one above it is
+                    // off, and reading them in the other order asks you to
+                    // remember a state from further up the pane.
+                    Self.row("Hide when Jot is not in front", control: hideInactiveSwitch,
+                             caption: hideInactiveCaption),
                     Self.row("Summon Jot", control: hotkeyRecorder, caption: hotkeyCaption),
                 ]),
                 Self.heading("Network"),
@@ -292,6 +352,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             sections = [
                 Self.heading("Files"),
                 Self.group([
+                    // Above the path it decides, so the row reads top to
+                    // bottom: which home, then where that put the file.
+                    Self.row("Keep in iCloud Drive", control: iCloudSwitch, caption: iCloudCaption),
                     Self.row("Scratchpad", control: Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad))),
                     Self.row("Edit a document instead", control: documentSwitch,
                              caption: Caption("Jot edits that file rather than the scratchpad.")),
@@ -530,7 +593,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         panel.beginSheetModal(for: window!) { [weak self] resp in
             guard resp == .OK, let url = panel.url, let self else { return }
             Prefs.scratchpadURL = url
-            self.scratchpadPath.setURL(url)
+            // The iCloud row above stops deciding anything the moment a path
+            // is chosen here, and has to say so in the same gesture.
+            self.showICloud()
             self.onChange()
         }
     }
@@ -603,6 +668,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// is re-read on the way in rather than only when it is first built.
     func windowDidBecomeKey(_ notification: Notification) {
         showLoginItem(LoginItem.state)
+        // Same reason: iCloud Drive is switched on in System Settings, and Jot
+        // is never told. A row that said "iCloud Drive is off" until the next
+        // launch would be lying about a thing the user has just changed.
+        showICloud()
     }
 
     /// Committed on every edit rather than only on Return: the window has no
@@ -622,6 +691,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     @objc private func toggleShowInDock() {
         Prefs.showInDock = dockSwitch.state == .on
         AppDelegate.applyActivationPolicy()
+        // The row below is this row's consequence, and the panel's behaviour
+        // is too: gaining a Dock icon takes hide-on-deactivate away whatever
+        // that switch says (`Prefs.hidesWhenInactiveInForce`).
+        showHideWhenInactive()
+        onPanelBehaviorChange()
+    }
+
+    @objc private func toggleHideWhenInactive() {
+        Prefs.hideWhenInactive = hideInactiveSwitch.state == .on
+        onPanelBehaviorChange()
+    }
+
+    /// The note's home. `onChange` rather than the light path: this moves which
+    /// FILE the panel is editing, so the buffer has to be flushed to the old
+    /// one before the page comes back against the new.
+    ///
+    /// Nothing is copied between the two homes, and that is deliberate rather
+    /// than unfinished. Moving a file into or out of iCloud on a switch flip is
+    /// a file operation with a failure mode (a half-uploaded note, a conflict
+    /// with one already there) that a switch gives no room to report. The path
+    /// under the row updates, so what happened is visible, and the note that
+    /// was there is still where it was.
+    @objc private func toggleICloud() {
+        Prefs.storeInICloud = iCloudSwitch.state == .on
+        showICloud()
+        onChange()
     }
 
     @objc private func toggleOpenToBlank() {
@@ -630,15 +725,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     @objc private func toggleAutosave() {
         Prefs.autosave = autosaveSwitch.state == .on
-    }
-
-    /// The panel's level, and the Settings window's with it: this window opens
-    /// from the panel, so leaving it above while the panel drops would strand
-    /// it over every other app.
-    @objc private func toggleFloat() {
-        Prefs.floatAboveOtherWindows = floatSwitch.state == .on
-        window?.level = Prefs.floatAboveOtherWindows ? .floating : .normal
-        onChange()
     }
 
     @objc private func toggleNetwork() {

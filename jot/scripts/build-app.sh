@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build "Birta Jot.app" from the SwiftPM package and the webview bundle.
+# Build "Birta Writer Jot.app" from the SwiftPM package and the webview bundle.
 #
 #   pnpm jot:build            # production esbuild, then this
 #   bash jot/scripts/build-app.sh [--debug] [--out DIR]
@@ -8,7 +8,7 @@
 # (no Xcode project: Info.plist from jot/Resources, the binary, and the web
 # assets under Contents/Resources/web/), ad-hoc codesign. No Apple developer
 # account is involved; notarization is a distribution step, deferred on
-# purpose (MAR-370). Output: jot/build/Birta Jot.app unless --out is given.
+# purpose (MAR-370). Output: jot/build/Birta Writer Jot.app unless --out is given.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -35,7 +35,7 @@ echo "swift build -c $CONFIG"
 swift build -c "$CONFIG" --package-path jot
 BIN="$(swift build -c "$CONFIG" --package-path jot --show-bin-path)/BirtaJot"
 
-APP="$OUT/Birta Jot.app"
+APP="$OUT/Birta Writer Jot.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web/dist"
 cp "$BIN" "$APP/Contents/MacOS/BirtaJot"

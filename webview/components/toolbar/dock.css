@@ -132,19 +132,40 @@
    narrow, and the last control would be pushed out by the control that exists
    to reach it.
 
-   Each carries a short fade of the bar's own ground on its inner side, so the
-   item passing underneath goes out on a gradient instead of being cut in half
-   by an opaque square. */
+   A BUTTON and a FADE, as two elements, and separating them is what fixes the
+   three ways one element got it wrong. Stretched to the row's full height it
+   drew a hover wash taller than every other control in the row, so it read as
+   a region rather than as something to press. Aligned to the row's outer edge
+   it sat flush against the window frame with its glyph hard against the
+   corner. And being the same element as the fade, it could only be as wide as
+   the fade was subtle, so the button could not grow without the gradient
+   growing with it.
+
+   Two elements rather than a pseudo-element on the button, which is the
+   obvious shape and does not work: the button is transformed for its own
+   centring, so it establishes a stacking context, and a `z-index: -1` child of
+   it paints ABOVE the parent's background rather than behind it. The fade is
+   opaque where it meets the button, so it would cover the hover wash exactly
+   where a hover is being reported. A sibling under the button has no such
+   ordering to argue with. */
 .tb-dock-scroll {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 1;
+    /* Centred on the row rather than filling it: the pressable area is a
+       button the size of its neighbours, not a full-height strip. */
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
     display: flex;
     align-items: center;
-    width: 22px;
+    justify-content: center;
+    /* Wider than a `.tb-btn`'s 26px minimum, because this one is a target at
+       the window's edge with a fade under it: the glyph needs room on both
+       sides to read as a control rather than as the edge of the fade.
+       Transparent at rest so the fade behind it shows through, and its own
+       hover wash paints over the fade rather than under it. */
+    width: 30px;
+    height: 24px;
     padding: 0;
-    border-radius: 0;
 
     &[hidden] {
         display: none;
@@ -156,21 +177,49 @@
     }
 }
 
+/* The fade under one chevron. Full row height, and reaching well past the
+   button's inner edge, so an item scrolling under it dissolves rather than
+   meeting a line. Shown and hidden with the button it belongs to (dock.ts),
+   because a gradient with no chevron in it says a row scrolls when it does
+   not. Never a target: the press belongs to the button on top. */
+.tb-dock-fade {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 58px;
+    pointer-events: none;
+
+    &[hidden] {
+        display: none;
+    }
+}
+
 .tb-dock-scroll--start {
-    left: 0;
-    justify-content: flex-start;
-    background: linear-gradient(
-        to right,
-        var(--vscode-editor-background) 55%,
-        transparent 100%);
+    /* Inset from the frame, not flush to it. The window's own edge is not a
+       button's edge, and a glyph in the corner reads as clipped. */
+    left: var(--ui-space-2);
 }
 
 .tb-dock-scroll--end {
+    right: var(--ui-space-2);
+}
+
+/* Anchored to the frame rather than to the button, so the fade also covers the
+   gap the button is inset by and no item surfaces in it. */
+.tb-dock-fade--start {
+    left: 0;
+    background: linear-gradient(
+        to right,
+        var(--vscode-editor-background) 60%,
+        transparent 100%);
+}
+
+.tb-dock-fade--end {
     right: 0;
-    justify-content: flex-end;
     background: linear-gradient(
         to left,
-        var(--vscode-editor-background) 55%,
+        var(--vscode-editor-background) 60%,
         transparent 100%);
 }
 

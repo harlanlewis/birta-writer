@@ -197,13 +197,33 @@ export type HostArrangement =
      * A layout fact, not a capability: both surfaces can do either, and the
      * same commands run from the same menus whichever way they are opened.
      */
-    | "barMenusOnClick";
+    | "barMenusOnClick"
+    /**
+     * The find bar is drawn the way the platform draws one, and its search
+     * OPTIONS (match case, whole word, regular expression, find in selection)
+     * live behind a ⋯ button rather than as a strip of toggles beside the
+     * field.
+     *
+     * A layout fact and not a capability, which is the distinction that
+     * decides where this belongs: every option is still there and still runs
+     * the same code, and a surface that declared this would be claiming
+     * nothing about what it can do. What it claims is that a window whose
+     * every other control is a native one should not carry an editor's
+     * toolbelt across the top of its search field.
+     *
+     * The four options are the ones that move, and the count, the two
+     * chevrons and the replace disclosure are the ones that stay: an option
+     * is a mode you set once and forget, and the rest are read or pressed on
+     * every search.
+     */
+    | "nativeFindBar";
 
 export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "typographyInGearMenu",
     "formattingInSecondRow",
     "fixedToolbarLayout",
     "barMenusOnClick",
+    "nativeFindBar",
 ];
 
 /** One key the host binds itself, for the keyboard cheatsheet to print. */

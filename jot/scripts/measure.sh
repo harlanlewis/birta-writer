@@ -38,7 +38,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-APP="jot/build/Birta Jot.app/Contents/MacOS/BirtaJot"
+APP="jot/build/Birta Writer Jot.app/Contents/MacOS/BirtaJot"
 [ -x "$APP" ] || { echo "build first: bash jot/scripts/build-app.sh" >&2; exit 1; }
 
 # A throwaway scratchpad: the probes below type into it, and the user's real

@@ -197,3 +197,157 @@
     0% { background-color: var(--vscode-editor-findMatchHighlightBackground); }
     100% { background-color: transparent; }
 }
+
+/* ─── The platform's find bar ───
+   Everything under `.find-bar--native`, which the bar wears when the surface
+   declares `nativeFindBar` (shared/hostProfile.ts). Absent everywhere else, so
+   the editor's own bar above is untouched by all of it.
+
+   The rules above draw VS Code's find widget, which is the right answer inside
+   VS Code and the wrong one in a window whose every other control is a native
+   one: a rectangular field with a blue ring, a strip of four toggles beside
+   it, and an ✕. What follows draws what macOS draws instead — a capsule with
+   the magnifier inside it, the count at the field's trailing end, two
+   chevrons, and Done.
+
+   The four option toggles are not removed, only re-held: `index.ts` builds
+   them into a ⋯ popover instead of into the row. That is what keeps this an
+   arrangement rather than a capability — the same buttons, running the same
+   code, in a different place. */
+.find-bar--native {
+    align-items: center;
+    gap: var(--ui-space-2);
+    padding: var(--ui-space-2) var(--ui-space-3);
+    /* A larger radius than the docked-panel `l`: this is a floating capsule of
+       chrome over the text, not a panel edged against anything. */
+    border-radius: var(--ui-radius-xl);
+    /* The card's own edge, not the editor-widget border the VS Code bar takes.
+       A widget border is drawn to sit against an editor's ground; this one
+       floats over a page. */
+    border-color: var(--ui-card-border);
+    min-width: 320px;
+}
+
+/* The field: input, magnifier and count as one capsule, so the focus ring
+   surrounds the whole of what the user thinks of as the search box rather than
+   just the text they type in. */
+.find-bar--native .find-bar__field {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-2);
+    flex: 1;
+    min-width: 0;
+    height: 24px;
+    padding: 0 var(--ui-space-3);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: var(--ui-radius-pill);
+}
+
+/* The whole capsule takes the ring, from the input inside it. `:focus-within`
+   in effect, written as `:has` for the same reason every other rule in this
+   file names its target: the element that HAS focus is the input, and drawing
+   a ring around the text rather than around the field is the tell that a
+   capsule is a picture of one. */
+.find-bar--native .find-bar__field:has(.find-bar__input:focus) {
+    border-color: var(--vscode-focusBorder);
+}
+
+.find-bar--native .find-bar__glyph {
+    display: flex;
+    flex: 0 0 auto;
+    color: var(--vscode-descriptionForeground);
+
+    svg {
+        width: 13px;
+        height: 13px;
+    }
+}
+
+/* Inside the capsule the input is just text: the field carries the ground, the
+   edge and the ring, and an input drawing its own would be a box in a box. */
+.find-bar--native .find-bar__input {
+    height: auto;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+.find-bar--native .find-bar__field .find-bar__count {
+    padding: 0;
+    min-width: 0;
+}
+
+/* An invalid pattern colours the CAPSULE, since that is what now carries the
+   edge. The rules above put it on the input, which no longer has one, so both
+   halves are restated here: the field takes the error, and the input is held
+   flat under every state that would otherwise redraw its box. */
+.find-bar--native.find-bar--no-results .find-bar__field,
+.find-bar--native:has(.find-bar__input[aria-invalid="true"]) .find-bar__field {
+    border-color: var(--vscode-inputValidation-errorBorder);
+    background: var(--vscode-inputValidation-errorBackground);
+}
+
+.find-bar--native .find-bar__input:focus,
+.find-bar--native.find-bar--no-results .find-bar__input,
+.find-bar--native .find-bar__input[aria-invalid="true"] {
+    border-color: transparent;
+    background: transparent;
+}
+
+/* Done: the word the platform uses, so a text button rather than a square. */
+.find-bar--native .find-bar__done {
+    height: 24px;
+    padding: 0 var(--ui-space-3);
+    font-size: var(--ui-fs-m);
+    font-weight: 500;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+/* ─── The ⋯ options popover ───
+   The four toggles, in the same horizontal strip they formed beside the field,
+   moved behind a button. Deliberately NOT redrawn as menu rows: they are the
+   same four elements, with the same handlers and the same `--active` class, so
+   a check that asserts one is on keeps working wherever it is held. */
+.find-bar--native .find-bar__options-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.find-bar--native .find-bar__options {
+    position: absolute;
+    top: calc(100% + var(--ui-space-2));
+    right: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-1);
+    padding: var(--ui-space-2);
+    /* The floating-card recipe (ui/chrome.css): a menu that goes away again. */
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
+
+    &[hidden] {
+        display: none;
+    }
+}
+
+/* Open, the ⋯ takes the same quiet pressed treatment its toggles take, so the
+   button says the popover below it is the thing it opened. Chained, not bare:
+   `toolbar.activeBackground` has a null default outside high-contrast themes,
+   so a bare `var()` resolves to the initial value and nothing paints. */
+.find-bar--native .find-bar__options-btn[aria-expanded="true"] {
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+/* The replace disclosure spans one row here, not two: the native bar's rows
+   are taller, and a chevron stretched over both reads as a bracket. */
+.find-bar--native .find-bar__toggle {
+    align-self: center;
+    height: 24px;
+}

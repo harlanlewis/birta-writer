@@ -94,13 +94,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMainMenu() {
         let main = NSMenu()
 
-        let appMenu = NSMenu(title: "Birta Jot")
-        appMenu.addItem(withTitle: "About Birta Jot", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let appMenu = NSMenu(title: "Birta Writer Jot")
+        appMenu.addItem(withTitle: "About Birta Writer Jot", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         JotMenu.add(.app, to: appMenu, target: self)
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Birta Jot", action: #selector(hidePanel), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Birta Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Hide Birta Writer Jot", action: #selector(hidePanel), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Birta Writer Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appItem = NSMenuItem(); appItem.submenu = appMenu; main.addItem(appItem)
 
         // The conventional File menu, with the conventional chords: Cmd+S
@@ -158,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = Self.statusItemImage()
-            button.toolTip = "Birta Jot"
+            button.toolTip = "Birta Writer Jot"
             button.target = self
             button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -171,7 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Birta Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit Birta Writer Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for item in menu.items where item.action != nil && item.action != #selector(NSApplication.terminate(_:)) {
             item.target = self
         }
@@ -190,14 +190,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// shorter than the size they are given, and matching that size draws a
     /// visibly larger neighbour.
     ///
-    /// The number is about the drawn height and not about the artwork's shape,
-    /// which is worth saying because the artwork has changed under it once. It
-    /// was justified by the mark being a filled box reaching its own edges; the
-    /// mark is now a bare letterform, and the number still holds, because the
-    /// letterform fills most of its own box vertically and lands at the same
-    /// height. Check that by measuring rather than by looking: a lighter mark
-    /// reads small at exactly the size that makes it the right height, and the
-    /// answer to that is the drawing rather than this constant.
+    /// The number is about the DRAWN HEIGHT and not about the artwork's shape,
+    /// and the distinction is load-bearing because the artwork has changed
+    /// under it more than once. The mark today is a stroked square holding a
+    /// letter; a square reaches its own edges, so the drawn height and the box
+    /// are the same thing and this number holds directly. A mark that did not
+    /// fill its box would land shorter at the same number.
+    ///
+    /// Check that by measuring against the running bar rather than by looking:
+    /// a lighter mark reads small at exactly the size that makes it the right
+    /// height, and the answer to that is the drawing rather than this constant.
     ///
     /// The symbol is the fallback for `swift run`, which has no bundle to read.
     /// An app with no menu-bar item has no way in at all, so this degrades to
@@ -205,11 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func statusItemImage() -> NSImage? {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent("MenuBarTemplate.pdf"),
               let image = NSImage(contentsOf: url) else {
-            return NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Birta Jot")
+            return NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Birta Writer Jot")
         }
         image.isTemplate = true
         image.size = NSSize(width: 16, height: 16)
-        image.accessibilityDescription = "Birta Jot"
+        image.accessibilityDescription = "Birta Writer Jot"
         return image
     }
 
@@ -262,7 +264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
-                onChange: { [weak self] in self?.coordinator.preferencesChanged() })
+                onChange: { [weak self] in self?.coordinator.preferencesChanged() },
+                onPanelBehaviorChange: { [weak self] in self?.coordinator.panelBehaviorChanged() })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)
