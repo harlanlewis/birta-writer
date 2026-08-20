@@ -34,6 +34,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- An `/ai` request in Birta Writer Jot no longer drops the model or effort it was given when your agent command names a longer flag starting with the same letters. A command carrying `--model-fallback` read as already carrying `--model`, so the request's model was silently left off. It affects only a command spelled that way; the menu's own presets are not.
+
 - Birta Writer Jot notices when the note it is editing is deleted, and stops writing instead of putting it back. It wrote through a path that creates the file and every folder above it, so deleting the note in Finder and typing one more character recreated it a second later, and nothing said so. A bar along the bottom of the panel now says the note is gone and that nothing has been written since, with Save It Back, which writes what is in the panel to where it came from, and Discard and Start New. Nothing reaches disk until you pick one, no reload or settings change can quietly replace what is in the panel while you decide, and quitting with the bar up leaves the unwritten text in a file named after the note beside where it used to be.
 
 - Renaming or moving Birta Writer Jot's note in Finder no longer leaves it editing a file that is not there. Jot follows the file and the titlebar follows with it, and the rename is written back to the setting the old path came from, so a note you had pointed Jot at stays pointed at and your scratchpad setting is not quietly repointed at it. Moving it to the Trash counts as deleting it, which is what Finder actually does, so that case gets the bar above rather than a panel bound to a file in the Trash.

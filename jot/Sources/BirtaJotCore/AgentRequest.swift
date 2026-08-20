@@ -49,9 +49,22 @@ public enum AgentRequest {
     ///
     /// A template that already carries the flag is left alone: the user wrote
     /// it there, and this is a per-request addition rather than an override.
+    /// That is where this and `setTemplateFlag` part company, and deliberately:
+    /// there the panel OWNS the value and replaces it, here the template is the
+    /// person's and a request may only add what is missing.
+    ///
+    /// "Carries the flag" is a whole argument, not a substring. `--model` is a
+    /// prefix of `--model-fallback`, so a plain `contains` reads a template
+    /// that names the second as already naming the first and drops the model
+    /// the request asked for, silently.
     public static func adding(flag: String, value: String, to template: String) -> String {
         let trimmed = template.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.contains(flag) else { return trimmed }
+        let present = trimmed.split(whereSeparator: \.isWhitespace).contains {
+            // `--flag`, or `--flag=value`, which is the same argument spelled
+            // the other way.
+            $0 == flag || $0.hasPrefix(flag + "=")
+        }
+        guard !present else { return trimmed }
         let addition = "\(flag) \(shellQuote(value))"
         guard trimmed.hasSuffix(promptPlaceholder) else { return "\(trimmed) \(addition)" }
         let head = String(trimmed.dropLast(promptPlaceholder.count))
