@@ -150,43 +150,70 @@ describe("placement against the fixed chrome", () => {
         document.querySelector(".heading-sticky-title")?.remove();
     });
 
-    // jsdom has no layout, so every rect is stubbed: a 40px topbar, a 64px
-    // sticky heading below it, a toolbar button inside the topbar, and a
-    // 20px-tall tooltip.
-    function fixedChrome(): HTMLButtonElement {
+    // jsdom has no layout, so every rect is stubbed: a topbar `barHeight`
+    // tall, a 64px sticky heading below it, a toolbar button on the bar's
+    // first row, a second anchor in the document below, and a 20px-tall
+    // tooltip.
+    //
+    // `barHeight` is the parameter the two-row arrangement needs. A bar as
+    // tall as its one row cannot tell "floored to the bar" from "hung off the
+    // button": on a 40px bar the two land 6px apart, so a fixture built only
+    // at that height pins neither rule against the other.
+    function fixedChrome(barHeight = 40) {
         const topbar = document.createElement("div");
         topbar.className = "editor-topbar";
-        topbar.getBoundingClientRect = () => new DOMRect(0, 0, 800, 40);
+        topbar.getBoundingClientRect = () => new DOMRect(0, 0, 800, barHeight);
         document.body.appendChild(topbar);
         const sticky = document.createElement("div");
         sticky.className = "heading-sticky-title";
-        sticky.getBoundingClientRect = () => new DOMRect(0, 40, 800, 64);
+        sticky.getBoundingClientRect = () => new DOMRect(0, barHeight, 800, 64);
         document.body.appendChild(sticky);
         const btn = document.createElement("button");
         btn.getBoundingClientRect = () => new DOMRect(300, 8, 24, 24);
         topbar.appendChild(btn);
-        return btn;
+        const inDoc = document.createElement("button");
+        inDoc.getBoundingClientRect = () => new DOMRect(300, 10, 24, 24);
+        document.body.appendChild(inDoc);
+        return { btn, inDoc };
     }
 
-    it("a toolbar tooltip should sit just under its button, not under the sticky heading the tooltip paints over", () => {
-        const btn = fixedChrome();
-        showTooltipAt(btn, "Insert Table", "below");
-        const t = tip()!;
-        t.getBoundingClientRect = () => new DOMRect(0, 0, 80, 20);
-        // Re-place with the tooltip's own size known (the first placement
-        // measured a zero rect; the assertion is about the anchor gap).
-        showTooltipAt(btn, "Insert Table", "below");
-        // The button's own gap (8 + 24 + 6 = 38) is inside the topbar, which
-        // paints over the tooltip, so it lands on the topbar's floor: bottom
-        // edge plus the margin. Measured against the whole safe area it would
-        // sit under the sticky heading instead (40 + 64 + 4).
-        expect(t.style.top).toBe(`${40 + 4}px`);
+    // The tooltip is measured on its second placement: the first one reads a
+    // zero rect, and every assertion here is about where the box lands.
+    function place(el: HTMLElement, text: string, placement: "below" | "above") {
+        showTooltipAt(el, text, placement);
+        tip()!.getBoundingClientRect = () => new DOMRect(0, 0, 80, 20);
+        showTooltipAt(el, text, placement);
+        return tip()!;
+    }
+
+    it("a toolbar button's tooltip should hang off the button, not off the bar", () => {
+        const { btn } = fixedChrome();
+        // The button's own gap: 8 + 24 + 6.
+        expect(place(btn, "Insert Table", "below").style.top).toBe("38px");
     });
 
-    it("an anchor above the topbar's bottom edge should still be floored to that edge", () => {
-        const btn = fixedChrome();
-        btn.getBoundingClientRect = () => new DOMRect(300, -30, 24, 24);
-        showTooltipAt(btn, "Off the top", "above");
+    it("a bar grown to two rows should still leave the tooltip on its button", () => {
+        const { btn } = fixedChrome(68);
+        // The regression this rewrite exists for. Floored to the bar's bottom
+        // the tip would be at 72, below the row the button opens and adrift
+        // from the button it names; the single-row bar above hid that,
+        // because there 38 and 44 read the same on screen.
+        expect(place(btn, "Hide formatting controls", "below").style.top).toBe("38px");
+    });
+
+    it("a document anchor's tooltip should be floored to the topbar, not to the sticky heading", () => {
+        const { inDoc } = fixedChrome();
+        // 10 + 24 + 6 = 40 is under the bar, which paints over the tooltip, so
+        // it lands on the bar's bottom edge plus the margin. Floored against
+        // the whole safe area it would sit under the sticky heading instead
+        // (40 + 64 + 4).
+        expect(place(inDoc, "Insert Table", "below").style.top).toBe(`${40 + 4}px`);
+    });
+
+    it("a document anchor above the topbar's bottom edge should still be floored to that edge", () => {
+        const { inDoc } = fixedChrome();
+        inDoc.getBoundingClientRect = () => new DOMRect(300, -30, 24, 24);
+        showTooltipAt(inDoc, "Off the top", "above");
         expect(parseFloat(tip()!.style.top)).toBeGreaterThanOrEqual(40 + 4);
     });
 });

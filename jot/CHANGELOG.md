@@ -34,6 +34,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- Birta Writer Jot's titlebar draws the whole file name. The title was given a box narrower than the name needs, and what that costs is a whole word rather than a letter, with no ellipsis to say anything was dropped: a note called `Birta Jot.md` titled itself with a shorter name, which reads as the name of the file rather than as damage. A name genuinely too long for the titlebar now ends in an ellipsis, which it did not do before either.
+
+- A tooltip in Birta Writer Jot's toolbar sits under the button it names. With the formatting row open it was pushed below both rows and out over the text, pointing at nothing.
+
 - The chevron beside the formatting bar's T is drawn all the time. It used to appear on hover and grow from nothing, which pushed every control in the row 4px sideways as the pointer crossed it, so the button you were reaching for moved as you arrived at it.
 
 ### Removed

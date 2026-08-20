@@ -114,6 +114,19 @@ export function getTopbarBottom(): number {
 }
 
 /**
+ * Whether `el` is INSIDE the bar `getTopbarBottom` measures.
+ *
+ * The pair travels together: chrome placed against the bar's bottom edge has
+ * to know whether the thing it is placing lives above that edge, because for
+ * an anchor in the bar the edge pushes the chrome away from what it belongs
+ * to rather than clear of what would cover it (ui/tooltip.ts is the reader).
+ * Here so the selector has one home rather than two.
+ */
+export function isInTopbar(el: Element): boolean {
+    return !!el.closest(".editor-topbar");
+}
+
+/**
  * The height of the sticky heading title, or 0 when it is not showing.
  *
  * NOT the same as `measureStickyHeadingHeight` in plugins/caretScrollMargin.ts,

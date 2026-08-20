@@ -466,6 +466,58 @@ export async function run({ page, check, baseUrl }) {
     check("jot: and the choice was written to the view-state bag",
         expanded.saved === true, JSON.stringify(expanded));
 
+    // The tip that hover just raised, which is still on screen: it names the
+    // toggle, so it has to be UNDER the toggle.
+    //
+    // The pull the other way is the reason `position()` has a floor at all:
+    // the bar paints over the tooltip, so a tip anywhere in the bar's box
+    // would be invisible. That floor is right for an anchor in the document
+    // and backwards for one in the bar, and a second row is what made the
+    // difference visible: the tip cleared both rows and landed over the text,
+    // pointing at nothing.
+    //
+    // Three assertions, because two of them are only sound together. "Near
+    // its anchor" and "inside the bar's box" would be satisfied by a tip
+    // nobody can see; the z-order is what says the overlap is legible.
+    //
+    // z-index IS paint order for this pair, and the last assertion checks the
+    // premise rather than assuming it: both are `position: fixed` children of
+    // <body>, so they share the root stacking context with nothing between
+    // them. Either one acquiring a positioned ancestor breaks that, and the
+    // check is what will say so.
+    const tipBox = await page.evaluate(() => {
+        const tip = document.querySelector(".custom-tooltip");
+        const toggle = document.querySelector(".tb-dock-toggle");
+        const bar = document.querySelector(".editor-topbar");
+        if (!tip || !toggle || !bar) return null;
+        const t = tip.getBoundingClientRect();
+        const b = toggle.getBoundingClientRect();
+        const bar_ = bar.getBoundingClientRect();
+        return {
+            shown: getComputedStyle(tip).display !== "none" && t.height > 0,
+            text: tip.textContent,
+            gap: Math.round(t.top - b.bottom),
+            belowBar: Math.round(t.top - bar_.bottom),
+            barHeight: Math.round(bar_.height),
+            tipZ: Number.parseInt(getComputedStyle(tip).zIndex, 10),
+            barZ: Number.parseInt(getComputedStyle(bar).zIndex, 10),
+            tipFixed: getComputedStyle(tip).position === "fixed",
+            tipInBody: tip.parentElement === document.body,
+            barFixed: getComputedStyle(bar).position === "fixed",
+            barInBody: bar.parentElement === document.body,
+        };
+    });
+    check("jot: hovering the toggle raises its tooltip", !!tipBox?.shown,
+        JSON.stringify(tipBox));
+    check("jot: the tooltip hangs off the toggle, not off the whole two-row bar",
+        tipBox && tipBox.gap >= 0 && tipBox.gap <= 12 && tipBox.belowBar < 0,
+        JSON.stringify(tipBox));
+    check("jot: and it paints over the bar it now overlaps",
+        tipBox && tipBox.tipZ > tipBox.barZ
+            && tipBox.tipFixed && tipBox.tipInBody
+            && tipBox.barFixed && tipBox.barInBody,
+        JSON.stringify(tipBox));
+
     // Narrow enough that the row cannot fit: it must SCROLL rather than wrap,
     // clip silently, or push the window wider than the viewport.
     const viewport = page.viewportSize();

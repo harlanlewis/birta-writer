@@ -2118,7 +2118,13 @@ body.toolbar-hidden::before {
 
 .custom-tooltip {
     position: fixed;
-    z-index: 10000;
+    /* Above the topbar and the menus that open from it: a tip names a control,
+       and one anchored to a toolbar button sits under that button rather than
+       below the whole bar (ui/tooltip.ts), which puts it inside the bar's box.
+       It never takes a click, so being on top occludes nothing. Still under
+       the surfaces that take the whole window while they are up, the
+       fullscreen shell and the image lightbox. */
+    z-index: 10004;
     display: none;
     padding: 4px 8px;
     /* Inverted chip: reversed contrast in every theme — the editor's

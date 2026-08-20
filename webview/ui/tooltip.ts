@@ -1,4 +1,4 @@
-import { getTopbarBottom } from "../utils/headingUtils";
+import { getTopbarBottom, isInTopbar } from "../utils/headingUtils";
 
 let tooltipEl: HTMLElement | null = null;
 
@@ -62,7 +62,15 @@ function position(
     // must stay the topbar alone, not safeAreaTop(): the tooltip stacks above
     // the sticky heading, and a floor that counted it would push a toolbar
     // button's own tip down past the sticky title.
-    const safeTop = getTopbarBottom();
+    //
+    // An anchor INSIDE the bar is the one case that floor gets backwards. A
+    // tip named after a control cannot clear the chrome the control lives in
+    // without leaving the control: under the formattingInSecondRow
+    // arrangement the bar is two rows tall, so a top-row button's tip landed
+    // below the row it opens, adrift from the button and over the document.
+    // Such a tip is floored by its own anchor and paints ABOVE the bar
+    // instead, which is what .custom-tooltip's z-index buys.
+    const safeTop = isInTopbar(el) ? 0 : getTopbarBottom();
 
     if (placement === "left") {
         x = elRect.left - tipRect.width - 6;
