@@ -90,6 +90,8 @@ import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
 import { hostHasCommand } from "../shared/hostProfile";
 import { exportHtmlLazy } from "@/export/loader";
+import { insertDateAtCaret, openDateChooser } from "@/dateInsert";
+import { type RelativeDay, relativeCalendarDate, toCalendarDate } from "@/utils/dateFormat";
 
 export type GetEditor = () => Editor | null;
 
@@ -428,6 +430,12 @@ function toggleList(getEditor: GetEditor, kind: ListKind): void {
         });
         if (changed) { dispatch(tr); }
     });
+}
+
+/** Writes the date a relative command names, read from the clock right now. */
+function insertRelativeDate(getEditor: GetEditor, which: RelativeDay): void {
+    runProse(getEditor, (view) =>
+        insertDateAtCaret(view, relativeCalendarDate(which, new Date())));
 }
 
 /** Inserts a footnote reference/definition pair and refocuses the editor. */
@@ -841,6 +849,14 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
     insertFootnote: (getEditor) => insertFootnote(getEditor),
+    // The clock is read HERE, once per invocation, and never cached. A panel
+    // that stays open across midnight is the ordinary case for Birta Writer
+    // Jot, and a date computed when the module loaded would be yesterday's.
+    insertDate: (getEditor) =>
+        runProse(getEditor, (view) => openDateChooser(view, toCalendarDate(new Date()))),
+    insertToday: (getEditor) => insertRelativeDate(getEditor, "today"),
+    insertTomorrow: (getEditor) => insertRelativeDate(getEditor, "tomorrow"),
+    insertYesterday: (getEditor) => insertRelativeDate(getEditor, "yesterday"),
     // Optional string arg = callout kind ("warning" from the slash menu / picker)
     insertCallout: (getEditor, args) => insertCallout(getEditor, args),
     toggleCallout: (getEditor, args) => toggleCallout(getEditor, args),

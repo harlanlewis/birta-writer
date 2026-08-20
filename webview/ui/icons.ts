@@ -27,6 +27,8 @@ export const IconQuote = svg(`<path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2
 export const IconTerminal = svg(`<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>`);
 export const IconNetwork = svg(`<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>`);
 export const IconMinus = svg(`<line x1="5" y1="12" x2="19" y2="12"/>`);
+// "calendar": a page with two binding posts and a ruled head.
+export const IconCalendar = svg(`<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>`);
 export const IconPlus = svg(`<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`);
 
 // Drag-handle grip (two columns of three dots) — the "grab" affordance, reused

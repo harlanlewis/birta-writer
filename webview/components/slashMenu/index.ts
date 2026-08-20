@@ -68,6 +68,18 @@ export interface SlashMenuOptions {
     items?: readonly SlashMenuItem[];
     /** Display label for a row (dynamic toggle labels); falls back to item.label. */
     labelFor?(item: SlashMenuItem): string;
+    /**
+     * Trailing description for a row, where the row's own is computed rather
+     * than fixed (a date row names the date it would insert); falls back to
+     * `item.detail`.
+     *
+     * Called on every RENDER, which is every keystroke of the query, not once
+     * per open. That is a stronger guarantee than `labelFor` gives and not the
+     * same one: `labelFor` resolves against a state snapshot taken at open,
+     * because the toggles it reads cannot change while a query is typed. A
+     * clock can.
+     */
+    detailFor?(item: SlashMenuItem): string | undefined;
 }
 
 export const SLASH_MENU_DOM_ID = "md-slash-menu";
@@ -203,7 +215,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         // argument mode is waiting for, the markdown syntax, or what the row
         // inserts. Syntax outranks the description because a reader who
         // knows the syntax stops needing the menu.
-        const hintValue = hintText ?? item.hint ?? item.detail;
+        const hintValue = hintText ?? item.hint ?? opts.detailFor?.(item) ?? item.detail;
         if (hintValue) {
             const hint = document.createElement("span");
             // The description is prose, not something to type, so it takes

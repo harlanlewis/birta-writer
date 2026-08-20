@@ -126,6 +126,18 @@ export const EDITOR_COMMANDS = [
     { id: "insertImage", title: "Insert Image", palette: true, sections: [], hostCapability: "imageUpload" },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
+    // Dates. Four ids rather than one taking an offset, for the reason the
+    // seven `foldLevel*` entries give: a palette row carries no argument, so
+    // an id per answer is the only shape the palette can reach. `insertDate`
+    // opens a calendar; the three relative ones insert without asking, and are
+    // the typed gesture (`/today`) rather than something to browse for.
+    // What they insert is plain text, deliberately: a date is characters in
+    // the document, not a node, so it survives serialization as exactly what
+    // the user read on screen and every other tool sees the same bytes.
+    { id: "insertDate", title: "Insert Date", palette: true, sections: [] },
+    { id: "insertToday", title: "Insert Today's Date", palette: true, sections: [] },
+    { id: "insertTomorrow", title: "Insert Tomorrow's Date", palette: true, sections: [] },
+    { id: "insertYesterday", title: "Insert Yesterday's Date", palette: true, sections: [] },
     { id: "insertCallout", title: "Insert Callout", palette: true, sections: [] },
     // Toolbar Quote-dropdown semantics (menuitemcheckbox rows): same-kind
     // lifts out, different-kind retypes in place, outside wraps. Not in the

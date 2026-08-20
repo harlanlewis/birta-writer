@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Dates from the slash menu. `/date` opens a calendar at the caret, and `/today`, `/tomorrow` and `/yesterday` insert a date without opening anything. What lands in the file is plain text, so it survives a round trip as exactly the characters you saw and every other Markdown tool reads it the same way. There is no format setting: the date is written the way your system writes dates, which is `Aug 20, 2026` on a US machine and `20 Aug 2026` on a British one. The month is asked for by name rather than as a number, so a date is usually readable by someone whose locale orders the fields differently. A few languages have no short name for a month and write the number instead, `20. 8. 2026` in Czech and `20.8.2026` in Finnish. That is their own convention for a short date, so it is what you get there.
+
+  The calendar is a keyboard control, not just a grid of buttons. Arrow keys move by a day, Page Up and Page Down by a month, holding Shift with them moves by a year, Home and End reach the ends of the week, Enter or Space picks the day, and Escape closes it and puts your cursor back where it was. The week starts on the day your locale starts it on. Today is marked, each day carries its full spoken date for a screen reader, the month heading announces itself when you page to a new one, and the footer spells out the day you are on, in the characters it would write, before you commit to it.
+
+  Typing `/tod` shows you the date it would insert on the row itself, so the three relative commands say what they will do rather than making you find out.
+
 ### Changed
 
 - The BUTTON on the selection palette, Copy Reference for AI Agent, copies the selected lines as well as the reference, quoted in a markdown fence, whenever there is a selection. With just a caret it copies the reference alone, as before. The reason is where it gets pasted: an agent running where your file is opens it from `path.md#L12-L20` and ignores the rest, and a chat box in a browser cannot open anything and has only the lines, so sending both means not having to decide first. The two command-palette rows of the same name are unchanged and still mean exactly what they say: Copy Reference for AI Agent is the pointer, Copy Context for AI Agent is the pointer and the lines.

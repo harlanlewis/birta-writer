@@ -349,6 +349,26 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.insertDate",
+                "title": "%command.editor.insertDate.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.insertToday",
+                "title": "%command.editor.insertToday.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.insertTomorrow",
+                "title": "%command.editor.insertTomorrow.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.insertYesterday",
+                "title": "%command.editor.insertYesterday.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.insertCallout",
                 "title": "%command.editor.insertCallout.title%",
                 "category": "Birta Writer"
@@ -1109,6 +1129,22 @@
                 },
                 {
                     "command": "birta.editor.insertFootnote",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.insertDate",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.insertToday",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.insertTomorrow",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.insertYesterday",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

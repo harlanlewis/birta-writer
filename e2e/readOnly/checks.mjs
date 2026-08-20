@@ -659,6 +659,7 @@ const MUTATING_COMMANDS = [
     "toggleBulletList", "toggleOrderedList", "toggleTaskList", "toggleTaskChecked", "toggleBlockquote",
     "insertCodeBlock", "insertHorizontalRule", "insertTable", "insertLink",
     "insertSectionLink", "insertImage", "insertMath", "insertFootnote",
+    "insertDate", "insertToday", "insertTomorrow", "insertYesterday",
     "insertCallout", "toggleCallout", "insertParagraphAfter", "insertParagraphBefore",
     "duplicateBlockUp", "duplicateBlockDown", "moveBlockUp", "moveBlockDown",
     "indentBlock", "outdentBlock", "deleteBlock", "joinLines",

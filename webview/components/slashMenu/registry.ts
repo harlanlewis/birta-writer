@@ -13,12 +13,14 @@
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { t } from "@/i18n";
 import { CALLOUT_ICONS } from "../callout";
+import { formatCalendarDate, relativeCalendarDate } from "@/utils/dateFormat";
 import {
     IconAgentChat,
     IconAlertCircle,
     IconArrowLeftRight,
     IconBold,
     IconCalculator,
+    IconCalendar,
     IconCheckSquare,
     IconClipboardList,
     IconCode,
@@ -108,6 +110,19 @@ interface SlashMenuItemBase {
      * the syntax is the one worth the space.
      */
     readonly detail?: string;
+    /**
+     * A `detail` the row computes instead of carrying, for a row whose answer
+     * to "what will this insert" is not fixed.
+     *
+     * Read on every render of the row, which is every keystroke of the query.
+     * That is what keeps a date row honest on a panel left open since
+     * yesterday, and it is why this takes no state argument where
+     * `dynamicLabel` does: the toggles a label reads are fixed for the life of
+     * one menu, and a clock is not.
+     *
+     * Display-only: the filter still matches `label` and `keywords`.
+     */
+    readonly dynamicDetail?: () => string;
     /** Lowercase aliases the filter matches in addition to the label. */
     readonly keywords: readonly string[];
     /**
@@ -218,6 +233,18 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     // Search-revealed (like the other parity rows) so the browse list stays lean.
     { id: "sectionLink", group: "insert", label: t("Section Link"), icon: IconHash, keywords: ["section", "anchor", "jump", "toc", "header", "heading"], commandId: "insertSectionLink", searchOnly: true },
     { id: "footnote", group: "insert", label: t("Footnote"), icon: IconFootnote, hint: "[^]", keywords: ["footnote", "reference", "note"], commandId: "insertFootnote" },
+    // Dates. One browsable row, which opens a calendar, and three that are the
+    // typed gesture: `/today` is faster than finding Today in a list, and a
+    // reader scanning the Insert group is looking for a picker rather than for
+    // three rows that differ by one day.
+    // Each of the three names the date it would insert, read from the clock on
+    // every render rather than baked, so what lands in the document is legible
+    // before it does and a panel open since yesterday cannot offer yesterday's.
+    // The keywords carry "date" so `/date` surfaces all four together.
+    { id: "date", group: "insert", label: t("Date"), icon: IconCalendar, keywords: ["date", "calendar", "day", "picker", "when"], commandId: "insertDate", detail: t("pick a day") },
+    { id: "today", group: "insert", label: t("Today"), icon: IconCalendar, keywords: ["today", "date", "now", "current"], commandId: "insertToday", searchOnly: true, dynamicDetail: () => formatCalendarDate(relativeCalendarDate("today", new Date())) },
+    { id: "tomorrow", group: "insert", label: t("Tomorrow"), icon: IconCalendar, keywords: ["tomorrow", "date", "next"], commandId: "insertTomorrow", searchOnly: true, dynamicDetail: () => formatCalendarDate(relativeCalendarDate("tomorrow", new Date())) },
+    { id: "yesterday", group: "insert", label: t("Yesterday"), icon: IconCalendar, keywords: ["yesterday", "date", "previous", "last"], commandId: "insertYesterday", searchOnly: true, dynamicDetail: () => formatCalendarDate(relativeCalendarDate("yesterday", new Date())) },
     { id: "divider", group: "insert", label: t("Horizontal Rule"), icon: IconMinus, hint: "---", keywords: ["hr", "divider", "rule", "line", "separator"], commandId: "insertHorizontalRule" },
     // ── Inline formatting (toolbar parity; all search-revealed) ──
     // With no selection these set the stored mark for the text typed next,

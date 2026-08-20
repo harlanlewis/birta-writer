@@ -117,6 +117,11 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     insertImage: NONE,
     insertMath: NONE,
     insertFootnote: NONE,
+    // Text at the caret, never a block node, so no placement question arises.
+    insertDate: NONE,
+    insertToday: NONE,
+    insertTomorrow: NONE,
+    insertYesterday: NONE,
     openLink: NONE,
     askAgent: NONE,
     askAgentAdvanced: NONE,
