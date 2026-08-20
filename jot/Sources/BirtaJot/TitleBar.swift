@@ -178,7 +178,7 @@ final class TitleBarView: NSView {
                                 accessibilityDescription: nil)
         chevron.image?.isTemplate = true
         chevron.symbolConfiguration = .init(pointSize: 9, weight: .semibold)
-        chevron.contentTintColor = .secondaryLabelColor
+        chevron.contentTintColor = isKey ? .secondaryLabelColor : .tertiaryLabelColor
         chevron.alphaValue = 0
         // It is a picture of what a click does, and the click is this view's.
         // Announcing it separately would put a second, unlabelled element in
@@ -427,6 +427,10 @@ final class TitleBarView: NSView {
     func setWindowKey(_ key: Bool) {
         guard key != isKey else { return }
         isKey = key
+        // The chevron is part of the title, so it takes the title's rule: a
+        // background window names itself quietly, and points at itself
+        // quietly too.
+        chevron.contentTintColor = key ? .secondaryLabelColor : .tertiaryLabelColor
         paint()
     }
 
