@@ -70,8 +70,14 @@ PID=$!
 # trap below. A second `trap ... EXIT` does not add to the first, it REPLACES
 # it, so a later cleanup registered its own way silently stopped the app from
 # being killed and left a menu-bar agent running after every run.
+#
+# The `rm` beside the `defaults delete` is not belt and braces. `delete` empties
+# the domain and `cfprefsd` leaves the file behind, so the plist survives every
+# run and the litter is one file per run forever. Removed by EXACT name, never
+# by a glob over `com.birtalabs.jot.*`: the app's own domain is a prefix of
+# every throwaway one, and a glob would take the user's real settings.
 EXTRA_SUITES=""
-trap '[ $KEEP = 1 ] || { kill $PID 2>/dev/null; wait $PID 2>/dev/null; } || true; rm -rf "$SCRATCH_DIR"; for s in $BIRTA_JOT_DEFAULTS_SUITE $EXTRA_SUITES; do defaults delete "$s" >/dev/null 2>&1 || true; done' EXIT
+trap '[ $KEEP = 1 ] || { kill $PID 2>/dev/null; wait $PID 2>/dev/null; } || true; rm -rf "$SCRATCH_DIR"; for s in $BIRTA_JOT_DEFAULTS_SUITE $EXTRA_SUITES; do defaults delete "$s" >/dev/null 2>&1 || true; rm -f "$HOME/Library/Preferences/$s.plist"; done' EXIT
 
 wait_for() { # wait_for <mark> <timeout-s>
     local n=0
