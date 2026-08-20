@@ -78,6 +78,23 @@ final class TitleBarView: NSView {
     /// choice is to draw the affordance or to have none.
     private let chevron = NSImageView()
     private var isHovered = false
+    /// A ceiling on the name, so a long one cannot push the title across the
+    /// window and under the page's own toolbar. The label truncates instead.
+    ///
+    /// It is the WINDOW'S measurement, not this view's, which is why it
+    /// arrives from outside. How much room the title may take depends on how
+    /// wide the window is and on how much of the far edge the page's controls
+    /// have claimed, and this view can see neither. A constant here is wrong
+    /// in both directions at once, too small in a wide window and too large in
+    /// a narrow one, and it fails quietly both ways: a name cut short reads as
+    /// a shorter name, and a name run under the gear reads as a page that drew
+    /// on top of it.
+    ///
+    /// Unbounded until told. `Coordinator.layoutTitlebarDrag` is the one thing
+    /// that knows the answer, and it sets this before the panel is ever on
+    /// screen and again on every layout pass, so the initial value is reached
+    /// only by `build()`.
+    private var textCeiling: CGFloat = .greatestFiniteMagnitude
     private var url: URL?
     private var edited = false
     private var isKey = true
@@ -100,9 +117,6 @@ final class TitleBarView: NSView {
     /// Air between the traffic lights and the title. NOT an inset past the
     /// buttons: AppKit places a `.leading` accessory after them already.
     private static let leadingGap: CGFloat = 8
-    /// A ceiling on the name, so a long one cannot push the title across the
-    /// window into the page's own toolbar. The label truncates instead.
-    private static let maxTextWidth: CGFloat = 320
     /// Air between the name and the chevron, and the box the chevron sits in.
     ///
     /// Reserved WHETHER OR NOT the chevron is drawn, which is the whole of why
@@ -117,6 +131,10 @@ final class TitleBarView: NSView {
     /// `resize` adds it and `layout` subtracts it, and the two disagreeing is
     /// how the title ends up a few points wider or narrower than its own box.
     private static let chevronRoom: CGFloat = chevronGap + chevronWidth
+    /// Everything inside this view that is NOT the text, which is what a
+    /// ceiling on the text has to be computed net of. Published because the
+    /// arithmetic lives in `TitlebarBand`, so the caller has to hand it over.
+    static var chromeWidth: CGFloat { leadingGap + chevronRoom }
     /// The height this view is BUILT at, and nothing else.
     ///
     /// AppKit stretches a titlebar accessory to the titlebar's own height, so
@@ -227,10 +245,23 @@ final class TitleBarView: NSView {
         syncChevron()
     }
 
+    /// Take a new ceiling from the window.
+    ///
+    /// Does nothing when it has not moved. This runs on every layout pass, so
+    /// a resize that does not change the answer must not cost a relayout, and
+    /// the early return is also what keeps `resize()` from re-entering the
+    /// pass that called it.
+    func setTextCeiling(_ ceiling: CGFloat) {
+        guard ceiling != textCeiling else { return }
+        textCeiling = ceiling
+        resize()
+        layoutSubtreeIfNeeded()
+    }
+
     /// Fit the view to its text, within the ceiling. The label's own placement
     /// inside it is `layout()`'s, which runs again after AppKit has resized us.
     private func resize() {
-        let text = min(drawnTextWidth(), Self.maxTextWidth)
+        let text = min(drawnTextWidth(), textCeiling)
         // Nothing to open, nothing to point at: an empty title reserves no
         // room, which is also what keeps `hitTest` from claiming a strip of
         // window beside the traffic lights that answers a click with nothing.
@@ -265,7 +296,7 @@ final class TitleBarView: NSView {
         // called that. Bounded here, the label truncates itself and says it
         // did.
         let room = max(0, bounds.width - Self.leadingGap - Self.chevronRoom)
-        let textWidth = min(drawnTextWidth(), Self.maxTextWidth, room)
+        let textWidth = min(drawnTextWidth(), textCeiling, room)
         label.frame = NSRect(x: Self.leadingGap,
                              y: ((bounds.height - size.height) / 2).rounded(),
                              width: textWidth,

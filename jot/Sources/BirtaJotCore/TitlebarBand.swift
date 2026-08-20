@@ -31,6 +31,44 @@ public enum TitlebarBand {
         guard width >= minimumWidth else { return nil }
         return (x: start, width: width)
     }
+
+    /// The widest the title's TEXT may be drawn, in points.
+    ///
+    /// The same question as `draggableSpan`, asked from the other end. The
+    /// title grows rightwards and the drag strip starts where the title stops,
+    /// so a ceiling on one is a floor on the other, and this returns the
+    /// largest text width for which `draggableSpan` still returns a strip:
+    /// take exactly this much and the strip that follows is `minimumWidth`
+    /// wide, take a point more and there is no strip at all. That tie is what
+    /// makes this the ceiling rather than a number chosen to look right, and
+    /// `TitlebarBandTests` asserts it against `draggableSpan` itself rather
+    /// than against a table of expected widths.
+    ///
+    /// `titleOriginX` is where AppKit placed the leading accessory, which is
+    /// after the traffic lights, so nothing here repeats an inset the system
+    /// owns. `titleChromeWidth` is everything inside the accessory that is not
+    /// the text: the gap before the name and the room the chevron holds
+    /// whether or not it is drawn.
+    ///
+    /// `trailingControlsWidth` is how much of the far edge is spoken for, and
+    /// this is indifferent to what is standing there: it is a width the far
+    /// end reports, not an inventory of what the band currently holds. A
+    /// claimant that arrives later changes that number and nothing here.
+    ///
+    /// A window too narrow to hold any of it yields 0, never a negative: the
+    /// caller's job then is to draw no title rather than to draw one
+    /// backwards.
+    public static func titleTextCeiling(
+        windowWidth: CGFloat,
+        titleOriginX: CGFloat,
+        titleChromeWidth: CGFloat,
+        trailingControlsWidth: CGFloat,
+        minimumWidth: CGFloat = 8,
+    ) -> CGFloat {
+        let end = windowWidth - max(0, trailingControlsWidth) - minimumWidth
+        let start = max(0, titleOriginX) + max(0, titleChromeWidth)
+        return max(0, end - start)
+    }
 }
 
 /// What a double click on the titlebar does, which is the user's choice and
