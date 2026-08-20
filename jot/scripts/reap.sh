@@ -56,7 +56,10 @@ CLEARED=0
 # Selected by pattern and acted on by pid, which is the shape that keeps a
 # pattern from acting on a set nobody has looked at: every match is printed
 # with the directory it was started from before anything is sent to it.
-for pid in $(pgrep -f "jot/build/Birta Writer Jot.app" || true); do
+# Both flavours: the development build is "Birta Writer Jot Dev.app", so a
+# pattern anchored on ".app" would match the release name and miss the one a
+# session is most likely to have left running.
+for pid in $(pgrep -f "jot/build/Birta Writer Jot" || true); do
     cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
     if [ -z "$cwd" ]; then
         echo "  process $pid: cannot tell which checkout started it, leaving it alone"

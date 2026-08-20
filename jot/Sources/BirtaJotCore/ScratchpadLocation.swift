@@ -59,10 +59,15 @@ public enum ScratchpadLocation: String, CaseIterable, Sendable {
     public static let fileName = "\(productName).md"
 
     /// The note's path under `root`.
-    public func url(root: URL) -> URL {
+    ///
+    /// `nameSuffix` is the build flavour's (`AppFlavor.nameSuffix`), appended
+    /// to the folder AND the file so a development build never opens the note
+    /// somebody is using. Empty by default, which is the release, so every
+    /// existing install stays exactly where it is.
+    public func url(root: URL, nameSuffix: String = "") -> URL {
         root
-            .appendingPathComponent(folderName, isDirectory: true)
-            .appendingPathComponent(Self.fileName)
+            .appendingPathComponent(folderName + nameSuffix, isDirectory: true)
+            .appendingPathComponent("\(Self.productName)\(nameSuffix).md")
     }
 
     /// The user's iCloud Drive folder, or nil when iCloud Drive is off.

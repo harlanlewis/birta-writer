@@ -50,6 +50,7 @@ enum Prefs {
         case currentNotePath
         case storeInICloud
         case hasSeenWelcome
+        case autoUpdate
     }
 
     /// Keys no accessor reads any more.
@@ -191,11 +192,13 @@ enum Prefs {
             // between the two reads, and lands on the same folder the `.local`
             // case would have chosen.
             guard let root = ScratchpadLocation.iCloudDriveRoot() else {
-                return ScratchpadLocation.local.url(root: home.appendingPathComponent("Documents", isDirectory: true))
+                return ScratchpadLocation.local.url(root: home.appendingPathComponent("Documents", isDirectory: true),
+                                                    nameSuffix: AppFlavor.current.nameSuffix)
             }
-            return ScratchpadLocation.iCloud.url(root: root)
+            return ScratchpadLocation.iCloud.url(root: root, nameSuffix: AppFlavor.current.nameSuffix)
         case .local:
-            return ScratchpadLocation.local.url(root: home.appendingPathComponent("Documents", isDirectory: true))
+            return ScratchpadLocation.local.url(root: home.appendingPathComponent("Documents", isDirectory: true),
+                                                nameSuffix: AppFlavor.current.nameSuffix)
         }
     }
 
@@ -394,6 +397,23 @@ enum Prefs {
         autosave = true
         storeInICloud = true
         networkEnabled = true
+    }
+
+    /// Whether Jot checks for a newer release on its own.
+    ///
+    /// ON by default, and deliberately NOT riding `networkEnabled`. The two
+    /// are different consents: that switch is about what happens to what you
+    /// type, and this is about the app replacing itself. Riding it would mean
+    /// somebody who wants no link previews also gets no fixes, and Jot is on
+    /// no app store, so without this the only way to get one is to notice a
+    /// release happened and run a shell script. `docs/NETWORK_POSTURE.md`
+    /// carries the argument and the rung.
+    ///
+    /// The check is automatic; the replacement is never. Swapping the app
+    /// somebody is typing into is not a thing to do behind them.
+    static var autoUpdate: Bool {
+        get { d.object(forKey: Key.autoUpdate.rawValue) == nil ? true : d.bool(forKey: Key.autoUpdate.rawValue) }
+        set { d.set(newValue, forKey: Key.autoUpdate.rawValue) }
     }
 
     /// Whether the first-run screen has been shown and resolved.

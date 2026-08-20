@@ -71,7 +71,11 @@ describe("session teardown hook", () => {
             .filter((line) => !line.trimStart().startsWith("#"))
             .join("\n");
         // It selects development builds by path, and never the installed copy.
-        expect(code).toContain("jot/build/Birta Writer Jot.app");
+        // Without the `.app`, deliberately: the development flavour's bundle
+        // is "Birta Writer Jot Dev.app", so a pattern anchored on the
+        // extension matches only the release name and misses the build a
+        // session is most likely to have left running.
+        expect(code).toContain('pgrep -f "jot/build/Birta Writer Jot"');
         expect(code).not.toContain("/Applications");
         // SIGTERM only: WebKit's helpers are not children of the app and only
         // exit because the app asks them to, so a hard kill orphans a set per

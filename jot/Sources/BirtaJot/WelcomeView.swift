@@ -92,7 +92,7 @@ final class WelcomeView: NSView {
             hero.heightAnchor.constraint(equalToConstant: Self.heroSide),
         ])
 
-        let title = NSTextField(labelWithString: "Birta Writer Jot")
+        let title = NSTextField(labelWithString: AppFlavor.current.displayName)
         title.font = .systemFont(ofSize: 22, weight: .semibold)
         title.alignment = .center
 

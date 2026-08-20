@@ -73,25 +73,33 @@ function resolveCodeCli() {
  */
 function installJot() {
     if (process.platform !== "darwin") {
-        console.log("\ninstall-local: not macOS, so Birta Writer Jot was skipped (it is a macOS app).");
+        console.log("\ninstall-local: not macOS, so Birta Writer Jot Dev was skipped (it is a macOS app).");
         return;
     }
     if (tryCapture("swift", ["--version"]) === null) {
         console.log(
-            "\ninstall-local: no `swift` on PATH, so Birta Writer Jot was skipped. " +
+            "\ninstall-local: no `swift` on PATH, so Birta Writer Jot Dev was skipped. " +
                 "Install the Xcode Command Line Tools, then: pnpm jot:install",
         );
         return;
     }
-    step("building and installing Birta Writer Jot");
+    step("building and installing Birta Writer Jot Dev");
     try {
-        run("bash", ["jot/scripts/install-app.sh", "--build"]);
+        // The DEVELOPMENT flavour, beside the release rather than over it.
+        //
+        // This used to replace `/Applications/Birta Writer Jot.app`, so the
+        // only way to look at a change was to take away the app holding
+        // somebody's notes, and every handoff asked them to accept that. The
+        // two now coexist: separate bundle id, separate defaults domain,
+        // separate note, separate hotkey, and the development one never
+        // updates itself. `BirtaJotCore.AppFlavor` holds that list.
+        run("bash", ["jot/scripts/install-app.sh", "--build", "--dev"]);
     } catch {
         // A refusal here is usually a running copy that would not quit, which
         // the script explains on its own. The extension is already installed by
         // this point and that must not be reported as a failure.
         console.log(
-            "install-local: Birta Writer Jot was not replaced (see the message above). " +
+            "install-local: Birta Writer Jot Dev was not replaced (see the message above). " +
                 "The extension install above is unaffected; re-run `pnpm jot:install` when ready.",
         );
     }
@@ -153,11 +161,12 @@ if (copies.length === 1 && copies[0].toLowerCase() === CURRENT_ID.toLowerCase())
     process.exit(1);
 }
 
-// 5. Install Birta Writer Jot, the macOS shell, from the same build.
+// 5. Install Birta Writer Jot Dev, the macOS shell, from the same build.
 installJot();
 
 console.log(
     "\n✓ Installed. Reload to run the new build: " +
         'Cmd+Shift+P → "Developer: Reload Window".' +
-        "\n  Birta Writer Jot needs no reload: it was replaced and relaunched if it was running.",
+        "\n  Birta Writer Jot Dev needs no reload: it was replaced and relaunched if it was running.\n" +
+        "  It sits beside the release copy and keeps its own note, hotkey and settings.",
 );

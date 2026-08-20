@@ -1447,6 +1447,14 @@ final class Coordinator {
         }
     }
 
+    /// Say something along the bottom of the panel, from outside.
+    ///
+    /// The overlay is news rather than state, which is exactly what an update
+    /// message is: it says what just happened and goes.
+    func flashStatus(_ message: String) {
+        statusOverlay.flash(message)
+    }
+
     /// Take the panel over with the first-run screen.
     ///
     /// It replaces the editor rather than floating above it, and the web view
@@ -1589,8 +1597,10 @@ final class Coordinator {
         panel.setFrame(frame, display: true, animate: false)
     }
 
-    /// What the titlebar says when it is not naming a file.
-    static let appName = "Birta Writer Jot"
+    /// What the titlebar says when it is not naming a file. The build's own
+    /// name, so a development copy says so rather than impersonating the one
+    /// somebody uses.
+    static var appName: String { AppFlavor.current.displayName }
 
     /// The missing-note bar spans the window's bottom edge, above the page's
     /// own formatting dock rather than over it.

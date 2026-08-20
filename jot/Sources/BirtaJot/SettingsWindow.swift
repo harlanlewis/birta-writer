@@ -88,6 +88,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// The card holding the iCloud switch and the Location row under it. Kept
     /// so the second row can be taken away when the first one answers.
     private var filesGroup: NSView?
+    private let updateSwitch = NSSwitch()
+    private let updateCaption = Caption("")
+    private let updateButton = NSButton(title: "Check Now", target: nil, action: nil)
     private let resetButton = NSButton(title: "Reset…", target: nil, action: nil)
     private let welcomeButton = NSButton(title: "Show Welcome…", target: nil, action: nil)
     private let loginSwitch = NSSwitch()
@@ -99,13 +102,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Show the welcome window. Injected rather than built here: the window is
     /// the app delegate's, so it survives this one being closed.
     private let onShowWelcome: () -> Void
+    /// Ask for an update check now. The Updater is the app delegate's, so it
+    /// outlives this window.
+    private let onCheckForUpdates: () -> Void
 
     init(onHotkeyChange: @escaping () -> OSStatus,
          onChange: @escaping () -> Void,
-         onShowWelcome: @escaping () -> Void) {
+         onShowWelcome: @escaping () -> Void,
+         onCheckForUpdates: @escaping () -> Void) {
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
         self.onShowWelcome = onShowWelcome
+        self.onCheckForUpdates = onCheckForUpdates
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Metrics.content + Metrics.windowPadding * 2, height: 300),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -115,7 +123,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // named somewhere else on screen; Jot is an accessory app with no Dock
         // icon, so "General" alone belongs to nothing the user can see. The
         // toolbar below the title already names and highlights the pane.
-        window.title = "Birta Writer Jot Settings"
+        window.title = "\(AppFlavor.current.displayName) Settings"
         // No `window.level` here, and that absence is the point. This window
         // used to be raised to `.floating` to match a panel that could float,
         // because an ordinary-level window opened BEHIND the one it was opened
@@ -257,6 +265,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
         agentPresetPopup.widthAnchor.constraint(equalToConstant: 260).isActive = true
 
+        updateButton.target = self
+        updateButton.action = #selector(checkForUpdatesNow)
+        updateButton.controlSize = .small
         resetButton.target = self
         resetButton.action = #selector(resetAllSettings)
         resetButton.controlSize = .small
@@ -276,6 +287,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         for (control, on, action) in [
             (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
             (iCloudSwitch, Prefs.noteHome == .iCloud, #selector(toggleICloud)),
+            (updateSwitch, Prefs.autoUpdate, #selector(toggleAutoUpdate)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
             (loginSwitch, false, #selector(toggleLoginItem)),
@@ -305,6 +317,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private func syncControlsFromPrefs() {
         networkSwitch.state = Prefs.networkEnabled ? .on : .off
         networkCaption.say("Off means no outbound request at all.", bad: false)
+        showAutoUpdate()
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         dockSwitch.state = Prefs.showInDock ? .on : .off
         hotkeyRecorder.setCombo(Prefs.hotkey)
@@ -362,6 +375,30 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         agentPresetPopup.selectItem(withTitle: title)
     }
 
+    /// Put the update row where this build actually stands.
+    ///
+    /// A development build cannot update itself, and the row says why rather
+    /// than sitting there switched on and doing nothing: replacing it would
+    /// delete the change it was installed to show.
+    private func showAutoUpdate() {
+        let canUpdate = AppFlavor.current.updatesItself
+        updateSwitch.isEnabled = canUpdate
+        updateButton.isEnabled = canUpdate
+        updateSwitch.state = Prefs.autoUpdate && canUpdate ? .on : .off
+        updateCaption.say(canUpdate
+                          ? "Asks the project's own release page what the newest version is. Installing is always a click."
+                          : "A development build does not replace itself.",
+                          bad: false)
+    }
+
+    @objc private func toggleAutoUpdate() {
+        Prefs.autoUpdate = updateSwitch.state == .on
+    }
+
+    @objc private func checkForUpdatesNow() {
+        onCheckForUpdates()
+    }
+
     /// The row that means "whatever is in the field below".
     private static let customPresetTitle = "Custom"
 
@@ -402,6 +439,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                     Self.row("Agent", control: agentPresetPopup),
                     Self.row("Command", control: agentField,
                              caption: Caption("What /ai runs. {prompt} is replaced by the request.")),
+                ]),
+                Self.heading("Updates"),
+                Self.group([
+                    Self.row("Check for updates", control: Self.pairedControl(updateButton, updateSwitch),
+                             caption: updateCaption),
                 ]),
                 Self.heading("Reset"),
                 Self.group([

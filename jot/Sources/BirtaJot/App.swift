@@ -50,6 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // screen is proven to construct without a person and without a first
         // launch: the gate below deliberately never fires under a throwaway
         // domain, so nothing else would ever build it.
+        // Asked once a launch, in the background, and silent unless there is
+        // something. `Updater` refuses for a development build and when the
+        // setting is off.
+        updater.onStatus = { [weak self] message in self?.coordinator.flashStatus(message) }
+        updater.onUpdateAvailable = { [weak self] tag in self?.offerUpdate(tag) }
+        updater.checkInBackground()
+
         if ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1"
             || (Prefs.isUserStore && !Prefs.hasSeenWelcome) {
             showWelcome()
@@ -110,13 +117,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMainMenu() {
         let main = NSMenu()
 
-        let appMenu = NSMenu(title: "Birta Writer Jot")
-        appMenu.addItem(withTitle: "About Birta Writer Jot", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let appMenu = NSMenu(title: AppFlavor.current.displayName)
+        appMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         JotMenu.add(.app, to: appMenu, target: self)
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Birta Writer Jot", action: #selector(hidePanel), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Birta Writer Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Hide \(AppFlavor.current.displayName)", action: #selector(hidePanel), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appItem = NSMenuItem(); appItem.submenu = appMenu; main.addItem(appItem)
 
         // The conventional File menu, with the conventional chords: Cmd+S
@@ -176,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = Self.statusItemImage()
-            button.toolTip = "Birta Writer Jot"
+            button.toolTip = AppFlavor.current.displayName
             button.target = self
             button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -185,11 +192,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         // The panel toggle, and nothing about where files live: that belongs in
         // the window, next to the note it would act on.
-        showItem = menu.addItem(withTitle: "Show Birta Writer Jot", action: #selector(togglePanel), keyEquivalent: "")
+        showItem = menu.addItem(withTitle: "Show \(AppFlavor.current.displayName)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Birta Writer Jot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for item in menu.items where item.action != nil && item.action != #selector(NSApplication.terminate(_:)) {
             item.target = self
         }
@@ -225,11 +232,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func statusItemImage() -> NSImage? {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent("MenuBarTemplate.pdf"),
               let image = NSImage(contentsOf: url) else {
-            return NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Birta Writer Jot")
+            return NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: AppFlavor.current.displayName)
         }
         image.isTemplate = true
         image.size = NSSize(width: 16, height: 16)
-        image.accessibilityDescription = "Birta Writer Jot"
+        image.accessibilityDescription = AppFlavor.current.displayName
         return image
     }
 
@@ -286,12 +293,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func menuBackToNotes() { coordinator.backToNotes() }
 
+    /// Say a newer release exists, and let the user take it or leave it.
+    ///
+    /// A sheet rather than a silent swap: replacing the app somebody is typing
+    /// into is not a thing to do behind them, and this is the one moment where
+    /// asking costs nothing because nothing has been downloaded yet.
+    private func offerUpdate(_ tag: String) {
+        guard let release = updater.available else { return }
+        let alert = NSAlert()
+        alert.messageText = "\(AppFlavor.current.displayName) \(tag) is available."
+        alert.informativeText = "It will be downloaded, checked, and installed, and Jot will restart. "
+            + "Your note is written first and is not touched."
+        alert.addButton(withTitle: "Install and Restart")
+        alert.addButton(withTitle: "Later")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        // The buffer goes to disk before anything replaces the app.
+        coordinator.prepareToTerminate { [weak self] in
+            self?.updater.install(release) { _ in }
+        }
+    }
+
+    /// Keeps the release build current. Held here rather than on the
+    /// coordinator because it outlives any window and belongs to the app.
+    let updater = Updater()
+
     @objc func menuOpenSettings() {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
                 onChange: { [weak self] in self?.coordinator.preferencesChanged() },
-                onShowWelcome: { [weak self] in self?.showWelcome() })
+                onShowWelcome: { [weak self] in self?.showWelcome() },
+                onCheckForUpdates: { [weak self] in self?.updater.checkNow() })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)
@@ -307,7 +339,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
         // menu is not searched for key equivalents; the global hotkey is
         // registered with Carbon and works whatever has focus.
         let combo = coordinator.hotkey.combo ?? Prefs.hotkey
-        showItem.title = coordinator.isVisible ? "Hide Birta Writer Jot" : "Show Birta Writer Jot"
+        showItem.title = coordinator.isVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
         showItem.keyEquivalent = combo.menuKeyEquivalent
         showItem.keyEquivalentModifierMask = combo.menuModifierMask
 

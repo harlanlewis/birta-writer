@@ -20,8 +20,25 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 BUILD=0
-[ "${1:-}" = "--build" ] && BUILD=1
-SRC="jot/build/Birta Writer Jot.app"
+FLAVOR=release
+for arg in "$@"; do
+    case "$arg" in
+        --build) BUILD=1 ;;
+        --dev) FLAVOR=dev ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
+
+# The three names a flavour changes, and every one of them has to move
+# together: the bundle, the executable inside it, and therefore what to ask to
+# quit. `BirtaJotCore.AppFlavor` is where the reasoning lives.
+APP_NAME="Birta Writer Jot"
+EXEC_NAME="BirtaJot"
+if [ "$FLAVOR" = dev ]; then
+    APP_NAME="Birta Writer Jot Dev"
+    EXEC_NAME="BirtaJotDev"
+fi
+SRC="jot/build/$APP_NAME.app"
 
 # Leave the tree as this run found it. Building here produces jot/.build (the
 # SwiftPM cache) and jot/build (the assembled app), together a few hundred
@@ -50,9 +67,13 @@ trap tidy EXIT
 
 if [ "$BUILD" = 1 ]; then
     node esbuild.mjs --production
-    bash jot/scripts/build-app.sh
+    if [ "$FLAVOR" = dev ]; then
+        bash jot/scripts/build-app.sh --dev
+    else
+        bash jot/scripts/build-app.sh
+    fi
 fi
-if [ ! -x "$SRC/Contents/MacOS/BirtaJot" ]; then
+if [ ! -x "$SRC/Contents/MacOS/$EXEC_NAME" ]; then
     echo "no app at $SRC: run 'pnpm jot:build' first (or pass --build)" >&2
     exit 1
 fi
@@ -66,19 +87,19 @@ if [ ! -w "$DEST_DIR" ]; then
     mkdir -p "$DEST_DIR"
     echo "note: /Applications is not writable; installing to $DEST_DIR"
 fi
-DEST="$DEST_DIR/Birta Writer Jot.app"
+DEST="$DEST_DIR/$APP_NAME.app"
 
 WAS_RUNNING=0
-if pgrep -x BirtaJot >/dev/null 2>&1; then
+if pgrep -x "$EXEC_NAME" >/dev/null 2>&1; then
     WAS_RUNNING=1
-    echo "→ asking the running Birta Writer Jot to quit (it flushes its buffer first)"
-    pkill -TERM -x BirtaJot || true
+    echo "→ asking the running $APP_NAME to quit (it flushes its buffer first)"
+    pkill -TERM -x "$EXEC_NAME" || true
     for _ in $(seq 1 100); do
-        pgrep -x BirtaJot >/dev/null 2>&1 || break
+        pgrep -x "$EXEC_NAME" >/dev/null 2>&1 || break
         sleep 0.1
     done
-    if pgrep -x BirtaJot >/dev/null 2>&1; then
-        echo "install-app: Birta Writer Jot is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
+    if pgrep -x "$EXEC_NAME" >/dev/null 2>&1; then
+        echo "install-app: $APP_NAME is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
         exit 1
     fi
 fi

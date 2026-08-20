@@ -132,7 +132,17 @@ describe("editor command contributions", () => {
             .join("\n");
         const titles = [...code.matchAll(/\bwindow\.title\s*=\s*"([^"]+)"/g)].map((m) => m[1]!);
         expect(titles, "SettingsWindow.swift should set window.title exactly once").toHaveLength(1);
-        expect(titles[0]).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
+        // The name is INTERPOLATED, because a development build carries its own
+        // (`AppFlavor.displayName`) and a window titled for the release while
+        // running a different build is a window that lies about which app it
+        // belongs to. So the literal is the template around the name, and what
+        // relates it to the row is that expanding it with the shared constant
+        // reproduces the row exactly.
+        const expanded = titles[0].replace(
+            /\\\(AppFlavor\.current\.displayName\)/g,
+            JOT_PRODUCT_NAME,
+        );
+        expect(expanded).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
     });
 
     it("Jot's own name in Swift should be the shared constant's spelling", () => {

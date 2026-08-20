@@ -1,4 +1,5 @@
 import AppKit
+import BirtaJotCore
 
 /// The scratchpad window. An NSPanel that joins every Space and is available
 /// over a fullscreen app, remembers its frame, and hides rather than closes.
@@ -24,7 +25,7 @@ final class JotPanel: NSPanel {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
                    styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                    backing: .buffered, defer: false)
-        title = "Birta Writer Jot"
+        title = AppFlavor.current.displayName
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         level = .normal
