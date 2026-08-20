@@ -184,10 +184,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// a coloured image would stay dark on dark. PDF, so it is drawn at the
     /// display's own backing scale rather than resampled from one bitmap.
     ///
-    /// Drawn smaller than the bar's own thickness. The mark is a filled box
-    /// reaching its own edges, where the SF Symbols beside it carry their
-    /// padding inside the glyph, so matching their nominal size would draw a
+    /// Drawn smaller than the bar's own thickness, so the GLYPH stands as tall
+    /// as the ones beside it. The SF Symbols in the menu bar carry their
+    /// padding inside the box they are asked for, so their visible mark is
+    /// shorter than the size they are given, and matching that size draws a
     /// visibly larger neighbour.
+    ///
+    /// The number is about the drawn height and not about the artwork's shape,
+    /// which is worth saying because the artwork has changed under it once. It
+    /// was justified by the mark being a filled box reaching its own edges; the
+    /// mark is now a bare letterform, and the number still holds, because the
+    /// letterform fills most of its own box vertically and lands at the same
+    /// height. Check that by measuring rather than by looking: a lighter mark
+    /// reads small at exactly the size that makes it the right height, and the
+    /// answer to that is the drawing rather than this constant.
     ///
     /// The symbol is the fallback for `swift run`, which has no bundle to read.
     /// An app with no menu-bar item has no way in at all, so this degrades to
