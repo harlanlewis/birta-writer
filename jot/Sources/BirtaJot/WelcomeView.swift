@@ -391,6 +391,7 @@ final class WelcomeView: NSView {
     /// switch on while the notes stayed in their folder, with the Location row
     /// now hidden and nothing on screen naming where they are.
     @objc private func toggleICloud() {
+        let previous = Prefs.notesDirectory
         if iCloudSwitch.state == .on {
             Prefs.scratchpadURL = nil
             Prefs.storeInICloud = true
@@ -398,7 +399,8 @@ final class WelcomeView: NSView {
             Prefs.storeInICloud = false
         }
         showLocation()
-        onChange?()
+        NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                             in: window) { [weak self] in self?.onChange?() }
     }
 
     @objc private func toggleDock() {
@@ -428,9 +430,11 @@ final class WelcomeView: NSView {
         panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
+            let previous = Prefs.notesDirectory
             Prefs.scratchpadURL = url
             self.showLocation()
-            self.onChange?()
+            NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                                 in: self.window) { [weak self] in self?.onChange?() }
         }
     }
 

@@ -1192,6 +1192,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// is what makes iCloud reachable again, since a chosen path outranks both
     /// homes and would otherwise overrule this switch invisibly.
     @objc private func toggleICloud() {
+        // Read BEFORE the write: the old location is the thing being left, and
+        // once the pref moves there is nothing left to compute it from.
+        let previous = Prefs.notesDirectory
         if iCloudSwitch.state == .on {
             Prefs.scratchpadURL = nil
             Prefs.storeInICloud = true
@@ -1199,7 +1202,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             Prefs.storeInICloud = false
         }
         showFiles()
-        onChange()
+        NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                             in: window) { [weak self] in self?.onChange() }
     }
 
     /// A template is a SHORTCUT INTO the field below, never a second place the
@@ -1266,11 +1270,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
         panel.beginSheetModal(for: window!) { [weak self] resp in
             guard resp == .OK, let url = panel.url, let self else { return }
+            let previous = Prefs.notesDirectory
             Prefs.scratchpadURL = url
             // The iCloud row above stops deciding anything the moment a path
             // is chosen here, and has to say so in the same gesture.
             self.showFiles()
-            self.onChange()
+            NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                                 in: self.window) { [weak self] in self?.onChange() }
         }
     }
 
