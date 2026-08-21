@@ -1,0 +1,87 @@
+import AppKit
+import BirtaJotCore
+import XCTest
+@testable import BirtaJot
+
+/// The other half of the drawing invariant, over the screen somebody sees once.
+///
+/// `SettingsPaneTests` holds the Settings side: the pane draws the rows its
+/// declaration names. This holds the first-run side, and the two together are
+/// what make the claim checkable at all, because the claim is about the SAME
+/// question being asked in one place and answered again in another.
+///
+/// The first-run side is the half that cannot be checked by using the app.
+/// It is shown once, on a launch with an empty defaults domain, so a row lost
+/// out of it is invisible to everyone who already has Jot, and the person it
+/// is not invisible to has no second chance to notice.
+///
+/// Measured before this file existed, so it is a hole rather than a worry:
+/// with the mirror of the mutation `SettingsPaneTests` was built for,
+///
+///     SettingsWindowController.group(group.rows.filter { $0 != .showInDock }...
+///
+/// in `WelcomeView`'s form, the whole Jot suite passed, 309 tests.
+///
+/// `WelcomeView` is an `NSView` with no window at all, and it builds its rows
+/// through the same `SettingsWindowController.row` as Settings does, so the
+/// same walk reads it.
+@MainActor
+final class WelcomeScreenTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        _ = NSApplication.shared
+    }
+
+    /// The row labels on the screen, top to bottom. Told apart from headings,
+    /// captions and a path field by the shape of a row: a plain `NSView`
+    /// holding exactly its label and its control. `SettingsPaneTests` carries
+    /// the full argument for why this is not a walk over every `NSTextField`.
+    private func rowLabels(in view: NSView) -> [String] {
+        var found: [String] = []
+        if let field = view as? NSTextField, !(field is Caption), !(field is PathLabel),
+           let line = field.superview, type(of: line) == NSView.self,
+           line.subviews.count == 2, line.subviews.first === field {
+            found.append(field.stringValue)
+        }
+        for subview in view.subviews { found += rowLabels(in: subview) }
+        return found
+    }
+
+    func testTheFirstRunScreenShouldDrawEveryRowItAsksAbout() {
+        let welcome = WelcomeView(onHotkeyChange: { 0 })
+        welcome.layoutSubtreeIfNeeded()
+        let drawn = rowLabels(in: welcome)
+        let declared = SettingsForm.rows(of: SettingsForm.welcome).map(\.rawValue)
+        XCTAssertEqual(drawn, declared,
+                       "the first-run screen and its declaration disagree; drawn: "
+                       + drawn.joined(separator: " | "))
+    }
+
+    /// The two screens, compared as DRAWN rather than as declared.
+    ///
+    /// `SettingsFormTests` makes this comparison between two arrays, which is
+    /// where it belongs and is not what this is. Both sides here came off a
+    /// live view hierarchy, so a row that is declared in both and drawn in
+    /// only one fails here and nowhere else.
+    func testEveryRowTheFirstRunDrawsShouldBeDrawnInSettingsToo() {
+        let welcome = WelcomeView(onHotkeyChange: { 0 })
+        welcome.layoutSubtreeIfNeeded()
+        let asked = rowLabels(in: welcome)
+
+        let settings = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+                                                onShowWelcome: {}, onCheckForUpdates: {})
+        defer { settings.window?.close() }
+        settings.selectTabForTesting("general")
+        settings.window?.contentView?.layoutSubtreeIfNeeded()
+        let general = rowLabels(in: settings.window!.contentView!)
+
+        XCTAssertFalse(asked.isEmpty, "the first-run screen drew no rows at all")
+        XCTAssertGreaterThan(general.count, asked.count,
+                             "General is meant to draw rows the first run does not ask about")
+        for label in asked {
+            XCTAssertTrue(general.contains(label),
+                          "the first run asks about \(label) on screen, and the General pane "
+                          + "draws no row by that name to go back to")
+        }
+    }
+}

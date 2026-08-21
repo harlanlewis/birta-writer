@@ -1,15 +1,16 @@
 name: Jot
 
-# Builds the Birta Writer Jot shell (jot/, SwiftPM) and runs its core tests
-# on a macOS runner. A separate workflow with a paths filter for the same
-# reason as typing-perf: macOS minutes are the expensive ones, and most PRs
-# cannot touch the shell. Advisory, not required: a required check a paths
+# Builds the Birta Writer Jot shell (jot/, SwiftPM) and runs its Swift tests on
+# a macOS runner: the core target's, and the app target's, which build real
+# AppKit windows headlessly. A separate workflow with a paths filter for the
+# same reason as typing-perf: macOS minutes are the expensive ones, and most
+# PRs cannot touch the shell. Advisory, not required: a required check a paths
 # filter skips leaves a PR waiting forever.
 #
 # The webview bundle the app embeds is covered by ci.yml; this job builds the
 # assets only to prove build-app.sh assembles a bundle from them.
 #
-# It also runs the two e2e suites that speak for the panel, in WebKit. That is
+# It also runs the e2e suites that speak for the panel, in WebKit. That is
 # a carve-out from ci.yml's "e2e is a local pre-push gate" policy, and it earns
 # one on the policy's own terms: those suites assert which block holds which
 # text, never layout geometry or an absolute time, and each guards its own
@@ -53,7 +54,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: swift --version
-      - name: swift test (BirtaJotCore)
+      - name: swift test (BirtaJotCore and the app)
         run: swift test --package-path jot
       - name: build the webview bundle and assemble the app
         run: |

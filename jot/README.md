@@ -12,7 +12,7 @@ Requires macOS 14 or later and Swift 6 (the Command Line Tools are enough to bui
 pnpm jot:build     # production esbuild, swift build, assemble jot/build/Birta Writer Jot.app
 pnpm jot:install   # the above, then install to /Applications and relaunch
 pnpm jot:run       # build, then open the app out of jot/build
-pnpm jot:test      # swift test over jot/Sources/BirtaJotCore
+pnpm jot:test      # swift test over both targets: BirtaJotCore and the app
 ```
 
 `jot/build/` is a build directory: gitignored, and whatever the last checkout produced, so a branch switch quietly changes which Jot the hotkey summons. `/Applications` holds the one copy you actually run, and `pnpm run install:local` puts it there as part of the end-of-work handoff, so it is never a step you take by hand.
@@ -78,7 +78,7 @@ On a first launch the panel shows the welcome screen instead of the editor: the 
 
 The window itself is quiet until you point at it. While the pointer is elsewhere the panel is the page, the traffic lights, the window's title and the top bar's search and settings; the formatting bar along the bottom fades in when the pointer arrives and out when it leaves. The shell owns that: `AppearanceObservingView`'s tracking area is the one source of truth, and it tells the page by setting `jot-resting` on the body, which `jot/Resources/index.html` styles. That stylesheet also carves the traffic lights' corner out of the toolbar, takes its bottom hairline off, and turns off elastic overscroll, which would otherwise rubber-band the fixed toolbar away from the top edge. All three are facts about a window rather than about the editor, which is why they are the host page's and not `webview/`'s.
 
-Layout: `Sources/BirtaJotCore` is everything testable without a window (hotkey parsing, the flush/seq guard ported from `shared/saveFlushController.ts`, atomic writes, the autosave rule, the agent request codec, the bridge codec and the boot config); `Sources/BirtaJot` is the AppKit/WebKit app; `Resources/index.html` is the page template, served over the `birta://app/` scheme with the CSP and theme class filled in; `scripts/build-app.sh` assembles the bundle by hand, no Xcode project.
+Layout: `Sources/BirtaJotCore` is the host-free half (hotkey parsing, the flush/seq guard ported from `shared/saveFlushController.ts`, atomic writes, the autosave rule, the agent request codec, the bridge codec and the boot config); `Sources/BirtaJot` is the AppKit/WebKit app. Both have a test target, and the app target is tested the way it is built: `Tests/BirtaJotTests` constructs a real window controller, lets AppKit lay its panes out, and reads the live view hierarchy back, all before anything is shown, so it runs in CI alongside the core's tests. What still needs a running app is what needs the page, the pasteboard or a real keystroke, and that is `scripts/measure.sh`. `Resources/index.html` is the page template, served over the `birta://app/` scheme with the CSP and theme class filled in; `scripts/build-app.sh` assembles the bundle by hand, no Xcode project.
 
 ## Asking an agent
 

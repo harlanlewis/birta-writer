@@ -139,6 +139,7 @@ webview/components/imageView/index.ts         Image NodeView (selection/lightbox
 webview/ui/hostPalette.css                    The --vscode-* palette a non-VS-Code host links (Jot, the e2e harness); guarded by hostPalette.test.ts
 shared/hostProfile.ts                         What the surface IS: the one profile a page declares in window.__i18n.host (capabilities, arrangements, shortcuts) and the only reader of it
 jot/                                          Birta Writer Jot, the macOS menu-bar scratchpad shell (SwiftPM) around dist/webview.js; jot/README.md
+jot/Tests/BirtaJotTests/                      The APP target under test: real windows, laid out and read back, before anything is shown
 jot/scripts/reap.sh                           Clears what a run leaves outside every repo: development-build processes and throwaway defaults domains; fired by a SessionEnd hook
 jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
@@ -295,6 +296,7 @@ The exception is [`NETWORK_POSTURE.md`](docs/NETWORK_POSTURE.md), which records 
 | Extension unit tests | Vitest 4.x (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
 | WebView unit tests | Vitest 4.x + jsdom 24.x | `webview/utils/`, `webview/messaging.ts` |
 | Integration tests | @vscode/test-electron + Mocha | `src/test/`, in a real Extension Host: activation, `onWillSaveTextDocument` and `waitUntil` reaching disk, the custom-editor save cycle with a live webview |
+| Jot shell tests | XCTest + SwiftPM | `jot/Tests/BirtaJotCoreTests` over the host-free half, `jot/Tests/BirtaJotTests` over the app: real AppKit windows, laid out and read back before anything is shown. Run by `bash jot/scripts/test.sh`, not by `pnpm test` |
 
 The `vscode` module is mocked centrally via `__mocks__/vscode.ts`, injected by `resolve.alias` in `vitest.config.ts`. Do not `vi.mock("vscode")` in individual test files.
 
