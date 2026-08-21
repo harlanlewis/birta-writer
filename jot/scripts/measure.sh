@@ -57,7 +57,10 @@ export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
 # unexercised.
 # `-string` is load-bearing: without it `defaults` reads the braces as
 # old-style plist syntax, fails to parse, and writes nothing at all.
-defaults write "$BIRTA_JOT_DEFAULTS_SUITE" viewState -string '{"formattingDockExpanded":true}'
+# The key has to match `STATE_KEY` in webview/components/toolbar/dock.ts. A
+# name that has drifted seeds nothing, and this script still passes, having
+# measured a CLOSED row: the failure is a wrong number rather than a red.
+defaults write "$BIRTA_JOT_DEFAULTS_SUITE" viewState -string '{"formattingRowExpanded":true}'
 LOG="$(mktemp -t jot-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
