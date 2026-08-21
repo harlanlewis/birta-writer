@@ -83,6 +83,58 @@ ditto -x -k "$TMP/jot.zip" "$TMP/unpacked"
 APP="$TMP/unpacked/Birta Writer Jot.app"
 [ -x "$APP/Contents/MacOS/BirtaJot" ] || { echo "the archive did not contain the app" >&2; exit 1; }
 
+# Can this Mac launch what was just downloaded? Asked BEFORE the running copy
+# is quit and replaced, because everything below is built so a failure leaves
+# the app where it was, and an app the machine refuses defeats that from
+# outside: the move succeeds and macOS only says no afterwards, with the
+# working copy already gone.
+#
+# The bundle answers both questions about itself, so a release that raises the
+# floor is judged against its own number rather than one written here.
+NEEDS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist" 2>/dev/null || true)"
+RUNNING="$(sw_vers -productVersion)"
+if [ -n "$NEEDS" ]; then
+    # Compared as numbers by `sort -V`, never as text: macOS 14.10 is newer
+    # than 14.9 and sorts before it as a string. `sort -V` puts the lower
+    # version first, so the floor coming first means the machine meets it.
+    LOWEST="$(printf '%s\n%s\n' "$NEEDS" "$RUNNING" | sort -V | head -1)"
+    if [ "$LOWEST" = "$RUNNING" ] && [ "$NEEDS" != "$RUNNING" ]; then
+        echo "that release needs macOS $NEEDS and this Mac runs $RUNNING. Nothing was installed." >&2
+        exit 1
+    fi
+fi
+
+# The architecture, which is the case that actually happens today: the release
+# job runs `swift build` with no --arch on an Apple Silicon runner, so the
+# published app carries arm64 alone and an Intel Mac cannot execute it.
+#
+# `lipo` ships with the Command Line Tools rather than with macOS, so this is
+# skipped OUT LOUD on a machine without them rather than passing quietly. The
+# in-app updater has no such gap; it reads the Mach-O header itself
+# (`BirtaJotCore.SystemRequirements`), and a second reader written in shell
+# would be the same logic in a second language with nothing relating the two.
+# An `if`, not `[ … ] && …`: under `set -e` a trailing && list that evaluates
+# false takes the script out, so on every Intel Mac (the case this whole block
+# exists for) the one-liner form would exit here instead of checking anything.
+MACHINE="$(uname -m)"
+if [ "$MACHINE" = arm64e ]; then
+    # A Mac reporting the pointer-authentication variant runs ordinary arm64
+    # code, so it is the same answer to the only question asked here.
+    MACHINE=arm64
+fi
+if command -v lipo >/dev/null 2>&1; then
+    BUILT="$(lipo -archs "$APP/Contents/MacOS/BirtaJot" 2>/dev/null || true)"
+    case " $BUILT " in
+        *" $MACHINE "*) : ;;
+        *)
+            echo "that release is built for ${BUILT:-an unreadable architecture} and this Mac is $MACHINE. Nothing was installed." >&2
+            exit 1
+            ;;
+    esac
+else
+    echo "note: lipo is not installed, so the app's architecture was not checked (this Mac is $MACHINE)."
+fi
+
 # Clear the download quarantine. See the warning at the top of this file: an
 # ad-hoc signature is not one Gatekeeper can attribute to anyone, so without
 # this the app refuses to open at all.

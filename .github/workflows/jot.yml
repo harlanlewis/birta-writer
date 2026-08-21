@@ -70,6 +70,27 @@ jobs:
           test -f "jot/build/Birta Writer Jot.app/Contents/Resources/AppIcon.icns"
           test -f "jot/build/Birta Writer Jot.app/Contents/Resources/MenuBarTemplate.pdf"
 
+      # What the published app can actually run on. jot/README.md tells people
+      # the download is Apple Silicon only, and that is a consequence of the
+      # build rather than a request: `swift build` with no --arch produces the
+      # runner's own architecture, and the runner is arm64. Asserted here so
+      # the sentence in the README is checked rather than believed, and so
+      # that making the build universal (--arch arm64 --arch x86_64) fails
+      # here and sends whoever does it to the README.
+      #
+      # The floor is asserted for the same reason from the other side: an
+      # Info.plist that lost LSMinimumSystemVersion would ship an app macOS
+      # launches on anything, and the crash would land on the oldest Mac.
+      - name: what the built app runs on
+        run: |
+          APP="jot/build/Birta Writer Jot.app"
+          ARCHS="$(lipo -archs "$APP/Contents/MacOS/BirtaJot")"
+          echo "built for: $ARCHS"
+          test "$ARCHS" = "arm64"
+          FLOOR="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
+          echo "minimum macOS: $FLOOR"
+          test -n "$FLOOR"
+
       - name: install the WebKit browser
         run: npx playwright install webkit
 
