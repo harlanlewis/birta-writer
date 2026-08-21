@@ -7,7 +7,7 @@ import Foundation
 /// and it must stay that way: two spellings of one control leave somebody who
 /// answered the question on first run with no row by that name to go back to.
 public enum SettingsRow: String, CaseIterable, Sendable {
-    case summon = "Show and hide Jot"
+    case summon = "Show and hide Birta Writer"
     case storeInICloud = "Store in iCloud Drive"
     case location = "Location"
     case autosave = "Automatically save changes"
@@ -128,9 +128,9 @@ public enum SettingsForm {
     /// the paragraphs sit under, which is why no card here carries one.
     public static let aiAgent = SettingsPane(
         intro: [
-            "Optionally enable Jot to use your existing AI agent CLI tool to read and edit "
+            "Optionally enable Birta Writer to use your existing AI agent CLI tool to read and edit "
                 + "your note files. Requires the tool to be installed and runnable from Terminal.",
-            "Jot /ai command uses your existing authentication and needs no additional "
+            "The /ai command uses your existing authentication and needs no additional "
                 + "configuration.",
             "Your AI provider (OpenAI, Anthropic, etc) may charge standard API or subscription "
                 + "utilization when used.",

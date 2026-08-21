@@ -1,6 +1,6 @@
 import Foundation
 
-/// Which build of Birta Writer Jot this is, so a development copy and the one
+/// Which build of Birta Writer this is, so a development copy and the one
 /// somebody actually uses can sit in /Applications together.
 ///
 /// The point is a reviewable build that costs the release nothing. Installing

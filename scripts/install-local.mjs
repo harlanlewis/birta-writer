@@ -22,7 +22,7 @@ const CURRENT_ID = "BirtaLabs.birta-writer";
 // nothing relates a printed string to a bundle on disk, so a rename left six
 // messages here naming an app that no longer existed. `appFlavor.test.ts`
 // holds this literal to the composed name.
-const JOT_APP_NAME = "Birta Writer Jot [DEV]";
+const JOT_APP_NAME = "Birta Writer [DEV]";
 // The VS Code `code` CLI is often not on PATH on macOS even when VS Code is
 // installed — fall back to the app-bundle binary before giving up.
 const CODE_FALLBACK =
@@ -59,7 +59,7 @@ function resolveCodeCli() {
 }
 
 /**
- * Build and install Birta Writer Jot too, so the handoff leaves BOTH surfaces running
+ * Build and install the Mac app too, so the handoff leaves BOTH surfaces running
  * the tree the session just finished. Jot embeds dist/webview.js, which
  * packaging above has already produced in production form, so this only builds
  * the Swift shell and swaps the app.

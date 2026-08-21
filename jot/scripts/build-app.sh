@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build "Birta Writer Jot.app" from the SwiftPM package and the webview bundle.
+# Build "Birta Writer.app" from the SwiftPM package and the webview bundle.
 #
 #   pnpm jot:build            # production esbuild, then this
 #   bash jot/scripts/build-app.sh [--debug] [--dev] [--out DIR]
 #
-# `--dev` builds the DEVELOPMENT flavour: "Birta Writer Jot [DEV].app", bundle id
+# `--dev` builds the DEVELOPMENT flavour: "Birta Writer [DEV].app", bundle id
 # `com.birtalabs.jotdev`. It is meant to sit in /Applications beside the
 # release rather than replace it, so a change can be looked at without taking
 # away the app somebody keeps their notes in. Everything that would make the
@@ -16,7 +16,7 @@
 # (no Xcode project: Info.plist from jot/Resources, the binary, and the web
 # assets under Contents/Resources/web/), ad-hoc codesign. No Apple developer
 # account is involved; notarization is a distribution step, deferred on
-# purpose (MAR-370). Output: jot/build/Birta Writer Jot.app unless --out is given.
+# purpose (MAR-370). Output: jot/build/Birta Writer.app unless --out is given.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -37,11 +37,11 @@ done
 # The two names, in one place. Kept in step with `AppFlavor` by
 # `shared/__tests__/appFlavor.test.ts`, which reads both files: Swift cannot be
 # imported by a shell script, so the id lives twice and a check holds it.
-APP_NAME="Birta Writer Jot"
+APP_NAME="Birta Writer"
 BUNDLE_ID="com.birtalabs.jot"
 EXEC_NAME="BirtaJot"
 if [ "$FLAVOR" = dev ]; then
-    APP_NAME="Birta Writer Jot [DEV]"
+    APP_NAME="Birta Writer [DEV]"
     BUNDLE_ID="com.birtalabs.jotdev"
     # The EXECUTABLE differs too, and it is not cosmetic. `install-app.sh` and
     # anything else that asks a running copy to quit selects it by process

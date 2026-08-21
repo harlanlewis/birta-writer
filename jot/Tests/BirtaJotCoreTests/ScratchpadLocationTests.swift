@@ -52,10 +52,10 @@ final class ScratchpadLocationTests: XCTestCase {
     func testEachHomeShouldPutTheNoteInItsOwnFolder() {
         XCTAssertEqual(
             ScratchpadLocation.iCloud.url(root: tmp).path,
-            tmp.appendingPathComponent("Birta Writer Jot/Birta Writer Jot.md").path)
+            tmp.appendingPathComponent("Birta Writer/Birta Writer.md").path)
         XCTAssertEqual(
             ScratchpadLocation.local.url(root: tmp).path,
-            tmp.appendingPathComponent("Birta Writer/Birta Writer Jot.md").path)
+            tmp.appendingPathComponent("Birta Writer/Birta Writer.md").path)
     }
 
     /// The folders differ and the FILE does not. A note that renamed itself

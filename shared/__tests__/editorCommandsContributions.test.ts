@@ -194,6 +194,23 @@ describe("editor command contributions", () => {
                 .toMatch(new RegExp(`\\b${constant}\\b`));
         }
 
+        // WHICH branch reads which, and this half is load-bearing only since
+        // the two constants came to hold the same string. Every surface is
+        // called Birta Writer, so the value assertions above can no longer
+        // tell a branch that reads the app's name from one that reads the
+        // suite's: swap the two arms and every check before this one still
+        // passes, on paths that are byte-identical today and would diverge the
+        // moment the names do. The naming decision is what removed that
+        // signal, so the guard is rebuilt on structure, which the decision
+        // does not touch.
+        for (const [home, constant] of [
+            ["iCloud", "productName"],
+            ["local", "suiteName"],
+        ] as const) {
+            expect(folders, `the ${home} folder should be named after ${constant}`)
+                .toMatch(new RegExp(`case \\.${home}:\\s*return Self\\.${constant}\\b`));
+        }
+
         const fileName = code.match(/\bstatic let fileName\s*=\s*(.+)/)?.[1];
         expect(fileName, "fileName should still be readable here").toBeTruthy();
         expect(fileName, "the note's name should be built from productName")

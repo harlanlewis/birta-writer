@@ -34,7 +34,7 @@
  * ## What it inserts
  *
  * Nothing, directly. It hands a `CalendarDate` to the `onPick` it was given,
- * which is the same callback the relative commands and Birta Writer Jot's
+ * which is the same callback the relative commands and Birta Writer's
  * native picker all end at, so there is one insertion and one spelling of a
  * date no matter which of the three chose it.
  */

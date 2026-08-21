@@ -44,7 +44,7 @@ releases/**
 # with two full copies of the bundle (318 files / 30 MB vs 114 / 10 MB).
 dist-base/**
 dist-head/**
-# Birta Writer Jot's shell: Swift sources, Package.swift, Tests, Resources and its
+# Birta Writer's shell: Swift sources, Package.swift, Tests, Resources and its
 # scripts. Every other source directory is above; this one arrived later and
 # was simply never added, so it shipped to every Marketplace reader, none of
 # whom can build it — a VSIX is not a checkout, and building Jot needs the

@@ -135,7 +135,7 @@ final class AgentRunner {
             once(AgentProbeResult(
                 succeeded: false, transcript: "",
                 failure: "The command did not answer within "
-                    + "\(Int(Self.probeTimeout)) seconds, so Jot stopped waiting."))
+                    + "\(Int(Self.probeTimeout)) seconds, so Birta Writer stopped waiting."))
         }
     }
 

@@ -53,15 +53,26 @@ describe("the changelog split", () => {
         expect(versions(jot)).toContain("Unreleased");
     });
 
-    it("no entry in the extension's changelog should be written as a Jot entry", () => {
+    it("no entry in the extension's changelog should be written as an app entry", () => {
         // A shape check, not a semantic one, and deliberately narrow: it catches
-        // the way Jot entries are actually written (the subject opens the
-        // sentence) without firing on an editor entry that mentions Jot in
-        // passing, which is legitimate and exists. It cannot catch a Jot entry
+        // the way app entries are actually written (the subject opens the
+        // sentence) without firing on an editor entry that mentions the app in
+        // passing, which is legitimate and exists. It cannot catch an app entry
         // phrased to avoid the opening, so it is a floor rather than a proof.
+        //
+        // TWO spellings, because the app's name changed under this guard and
+        // both have to stay matched. `Jot` is what every entry already in
+        // `jot/CHANGELOG.md` opens with and is the shape a misfile would still
+        // take from an older draft; `for Mac` is the shape the convention now
+        // asks for, and it exists BECAUSE of the rename. Both surfaces are
+        // called Birta Writer, so a bare "Birta Writer" opening no longer says
+        // which product an entry is about and cannot be matched here without
+        // firing on most of the editor's own entries. The disambiguator moved
+        // from the product name into the convention, and this pattern is the
+        // only thing holding that convention up.
         const misfiled = entries(extension).filter((e) =>
-            /^(Breaking, in |In )?Birta (Writer )?Jot\b/.test(e));
-        expect(misfiled, `Jot entries in CHANGELOG.md: ${misfiled.map((e) => e.slice(0, 60)).join(" | ")}`)
+            /^(Breaking, in |In )?Birta (Writer )?(Jot|for Mac)\b/.test(e));
+        expect(misfiled, `app entries in CHANGELOG.md: ${misfiled.map((e) => e.slice(0, 60)).join(" | ")}`)
             .toEqual([]);
         // The sweep has to have read something, or an empty parse reports clean.
         expect(entries(extension).length).toBeGreaterThan(100);

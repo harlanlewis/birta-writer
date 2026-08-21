@@ -6,7 +6,7 @@ import XCTest
 final class ActiveBindingTests: XCTestCase {
     private let doc = URL(fileURLWithPath: "/tmp/jot-test/Chosen.md")
     private let note = URL(fileURLWithPath: "/tmp/jot-test/Note.md")
-    private let pad = URL(fileURLWithPath: "/tmp/jot-test/Birta Writer Jot.md")
+    private let pad = URL(fileURLWithPath: "/tmp/jot-test/Birta Writer.md")
 
     func testADocumentOutranksEverything() {
         XCTAssertEqual(ActiveBinding.slot(hasDocument: true, hasCurrentNote: true), .document)
@@ -64,7 +64,7 @@ final class ActiveBindingTests: XCTestCase {
 final class ActiveBindingRebindTests: XCTestCase {
     private let document = URL(fileURLWithPath: "/tmp/doc.md")
     private let currentNote = URL(fileURLWithPath: "/tmp/Note 2026-08-20.md")
-    private let scratchpad = URL(fileURLWithPath: "/tmp/Birta Writer Jot.md")
+    private let scratchpad = URL(fileURLWithPath: "/tmp/Birta Writer.md")
     private let moved = URL(fileURLWithPath: "/tmp/Renamed.md")
 
     func testAMovedFileShouldBeMatchedToTheSettingThatNamedIt() {

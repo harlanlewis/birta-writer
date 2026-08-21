@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install "Birta Writer Jot.app" where macOS expects to find it, replacing a running
+# Install "Birta Writer.app" where macOS expects to find it, replacing a running
 # copy safely.
 #
 #   pnpm jot:install                       # production build, then this
@@ -32,10 +32,10 @@ done
 # The three names a flavour changes, and every one of them has to move
 # together: the bundle, the executable inside it, and therefore what to ask to
 # quit. `BirtaJotCore.AppFlavor` is where the reasoning lives.
-APP_NAME="Birta Writer Jot"
+APP_NAME="Birta Writer"
 EXEC_NAME="BirtaJot"
 if [ "$FLAVOR" = dev ]; then
-    APP_NAME="Birta Writer Jot [DEV]"
+    APP_NAME="Birta Writer [DEV]"
     EXEC_NAME="BirtaJotDev"
 fi
 SRC="jot/build/$APP_NAME.app"
@@ -143,7 +143,7 @@ rm -rf "$OLD"
 # sitting in either place from an earlier install.
 #
 # Scoped to THIS FLAVOUR, which is the whole point of there being two: a
-# development install must never reach for `Birta Writer Jot.app`, the release
+# development install must never reach for `Birta Writer.app`, the release
 # copy, which is the one this flavour exists so as not to touch.
 OTHER_DIR=/Applications
 [ "$DEST_DIR" = /Applications ] && OTHER_DIR="$HOME/Applications"

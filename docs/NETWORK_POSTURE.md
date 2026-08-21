@@ -16,7 +16,7 @@ Every network capability sits on one rung. The rungs are ordered by what leaves 
 |---|---|---|---|
 | 0. Nothing | No outbound request at all | Shipped, and the default. `birta.network.enabled` ships `false`, and Jot's `networkEnabled` ships `false`; with it off neither makes an outbound request, and nothing but a person switches either on | Everything, out of the box |
 | 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document; What's New (`birta.editor.openWhatsNew`); Ask Agent (`/ai`, `birta.editor.askAgent`), which hands one composed line to a shell command run as a child process or in a terminal, to the Chat view, or to the clipboard per `birta.agent.command`, and never to a model of its own |
-| 0c. The app asking about itself | Nothing about you or your documents. A GET to the project's own release host, and then the archive | Shipped, Jot only, on by default | Birta Writer Jot's update check (`autoUpdate`) |
+| 0c. The app asking about itself | Nothing about you or your documents. A GET to the project's own release host, and then the archive | Shipped, Jot only, on by default | Birta Writer for Mac's update check (`autoUpdate`) |
 | 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards; link cards |
 | 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Shipped for GitHub (MAR-198); every other provider directed, not built | GitHub repository, issue and pull-request cards; Jira, Asana and Figma still to come |
 | 3. Your document content | The document itself, uploaded by Birta, to a destination Birta chose | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232). Jot's note in iCloud Drive is NOT this, and §1's own subsection argues why |
@@ -31,7 +31,7 @@ Link cards contact the host of a web link that sits alone on its own line, and w
 
 ### The same rung, on a second surface
 
-Birta Writer Jot makes rung-1 requests too, and the rung is what matters rather than the process making them: a URL the user typed goes to its own host and to where that host redirects, and nowhere else. Jot has no connectors, so nothing about rung 2 exists there at all. Rung 3 needs the paragraph below rather than a clause, because Jot can now keep its note in iCloud Drive.
+Birta Writer for Mac makes rung-1 requests too, and the rung is what matters rather than the process making them: a URL the user typed goes to its own host and to where that host redirects, and nowhere else. Jot has no connectors, so nothing about rung 2 exists there at all. Rung 3 needs the paragraph below rather than a clause, because Jot can now keep its note in iCloud Drive.
 
 Four differences from the extension. Three narrow what the extension does; the fourth is where Jot asks rather than defaults.
 
@@ -43,7 +43,7 @@ Four differences from the extension. Three narrow what the extension does; the f
 
 ### Jot updating itself: a rung of its own, and on by default
 
-Birta Writer Jot is on no app store and cannot be, so the only way to get a fix has been to notice a release happened and run a shell script, which is a thing nobody does. `Prefs.autoUpdate` ships on: at launch, and about once a day while the app is running, it asks `api.github.com` what the newest release of this project is, and if it is newer than the running build, says so. The pacing is a day rather than a launch because Jot is a menu-bar app people leave running for weeks, so a launch-only check stops happening for exactly the people who use it most; the interval is `UpdatePolicy.recheckInterval`, and a version you decline is not raised again until a newer one exists. Downloading and replacing are a click, never automatic, because swapping the app somebody is typing into is not a thing to do behind them.
+Birta Writer for Mac is on no app store and cannot be, so the only way to get a fix has been to notice a release happened and run a shell script, which is a thing nobody does. `Prefs.autoUpdate` ships on: at launch, and about once a day while the app is running, it asks `api.github.com` what the newest release of this project is, and if it is newer than the running build, says so. The pacing is a day rather than a launch because Jot is a menu-bar app people leave running for weeks, so a launch-only check stops happening for exactly the people who use it most; the interval is `UpdatePolicy.recheckInterval`, and a version you decline is not raised again until a newer one exists. Downloading and replacing are a click, never automatic, because swapping the app somebody is typing into is not a thing to do behind them.
 
 It is 0c rather than rung 1, and the distinction is what leaves the machine. A rung-1 request carries a URL the user typed, which is content: it says what they are reading. This carries nothing of theirs. The request names the project, not the person; the response is a version number; no identifier is invented for it, and the app's own version reaches the host only as the ordinary shape of an HTTP request. The nearest existing neighbour is 0b, where Birta composes something and the user's own client sends it, and the difference from that is only that here Birta makes the request itself.
 
@@ -53,7 +53,7 @@ Two limits keep it honest. It is the RELEASE build only (`AppFlavor.updatesItsel
 
 ### Jot's note in iCloud Drive: where it sits on the ladder, and why
 
-Jot's `storeInICloud` setting, on by default where iCloud Drive is available, puts the default note at `iCloud Drive/Birta Writer Jot/Birta Writer Jot.md` instead of `~/Documents/Birta Writer/`. macOS then syncs that file, so the note's bytes leave the machine. This is the first shipped Birta behavior of which that is true by default, and it deserves to be argued rather than assumed, because rung 3's own examples name "any cloud or sync surface".
+Jot's `storeInICloud` setting, on by default where iCloud Drive is available, puts the default note at `iCloud Drive/Birta Writer/Birta Writer.md` instead of `~/Documents/Birta Writer/`. macOS then syncs that file, so the note's bytes leave the machine. This is the first shipped Birta behavior of which that is true by default, and it deserves to be argued rather than assumed, because rung 3's own examples name "any cloud or sync surface".
 
 It is not rung 3, and the reason is the same one that puts Send Feedback on rung 0b rather than rung 1. Nothing leaves the machine *from Birta*. Jot opens a file in a folder in the user's own filesystem and writes to it with `write`, `fsync` and `rename`; it holds no credential, names no endpoint, and constructs no request. What syncs the folder is macOS, under the user's own iCloud account, exactly as it would if they had dragged any other file there.
 

@@ -1,7 +1,7 @@
 import AppKit
 import BirtaJotCore
 
-/// The system date picker `/date` opens on Birta Writer Jot.
+/// The system date picker `/date` opens on Birta Writer.
 ///
 /// This is a PRESENTATION of behaviour the editor already has, which is why
 /// the page declares `nativeDatePicker` as an arrangement rather than as a

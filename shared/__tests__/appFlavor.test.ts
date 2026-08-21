@@ -162,7 +162,7 @@ describe("app flavours", () => {
         // Matched up to `.app`, capturing what sits BETWEEN the product name
         // and the extension, which is where a suffix would land. Matching the
         // product name alone cannot discriminate: a suffix begins with a
-        // space, so `Birta Writer Jot [DEV].app` would be read as the release
+        // space, so `Birta Writer [DEV].app` would be read as the release
         // name followed by text the pattern never sees.
         const named = [...updateScript.matchAll(new RegExp(`${product}([^"\\n]*?)\\.app`, "g"))];
         expect(named.length).toBeGreaterThan(3);

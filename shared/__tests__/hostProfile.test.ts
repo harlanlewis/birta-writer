@@ -231,6 +231,57 @@ describe("hostHasCommand", () => {
         }
     });
 
+    /**
+     * Two commands may share a title only if no surface can reach both.
+     *
+     * This became a live risk rather than a hypothetical one when both
+     * products were named Birta Writer: `openExtensionSettings` and
+     * `openHostPreferences` are now both titled "Birta Writer Settings", and
+     * what keeps a gear menu from drawing that row twice is only that no
+     * profile declares `hostSettings` and `appPreferences` together. Nothing
+     * was asking, and the failure would be silent in the worst way, since two
+     * identical rows read as a rendering glitch rather than as a wrong one.
+     *
+     * Over the profiles table rather than a pair named here, so a surface
+     * added later is covered by existing, and a capability moved into the
+     * wrong profile fails at the moment it collides.
+     */
+    it("no surface should be able to reach two commands with the same title", () => {
+        let checked = 0;
+        for (const [surface, caps] of Object.entries(HOST_PROFILES)) {
+            declare(caps);
+            const seen = new Map<string, string>();
+            for (const m of EDITOR_COMMANDS) {
+                if (!hostHasCommand(m.id)) { continue; }
+                const clash = seen.get(m.title);
+                expect(clash, `${surface} reaches both ${clash} and ${m.id} as "${m.title}"`)
+                    .toBeUndefined();
+                seen.set(m.title, m.id);
+                checked += 1;
+            }
+        }
+        // A profile table that stopped being read, or a predicate that
+        // refused everything, would satisfy every assertion above.
+        expect(Object.keys(HOST_PROFILES).length).toBeGreaterThan(1);
+        expect(checked).toBeGreaterThan(EDITOR_COMMANDS.length);
+    });
+
+    it("the two settings commands should be the case that needs the guard", () => {
+        // The pair above, pinned: same title, different capability, and the
+        // capabilities really are disjoint across the table. If a future
+        // profile declares both, the guard above fires; this says why it
+        // would, so the fix is renaming a row rather than deleting a test.
+        const settings = EDITOR_COMMANDS.filter((m) => m.title === "Birta Writer Settings");
+        expect(settings.map((m) => m.id).sort())
+            .toEqual(["openExtensionSettings", "openHostPreferences"]);
+        const caps = settings.map((m) => ("hostCapability" in m ? m.hostCapability : undefined));
+        expect(new Set(caps).size, "they must be gated apart").toBe(settings.length);
+        for (const profile of Object.values(HOST_PROFILES)) {
+            const held = caps.filter((c) => c !== undefined && profile.includes(c));
+            expect(held.length, "no profile may hold both").toBeLessThanOrEqual(1);
+        }
+    });
+
     it("every absentUnder should name a real arrangement", () => {
         for (const m of WITHDRAWN) {
             expect(ALL_HOST_ARRANGEMENTS, m.id).toContain(m.absentUnder);

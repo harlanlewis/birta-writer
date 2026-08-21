@@ -5,8 +5,8 @@ import Foundation
 ///
 /// Two homes, and the setting chooses between them:
 ///
-///     iCloud    <iCloud Drive>/Birta Writer Jot/Birta Writer Jot.md
-///     local     ~/Documents/Birta Writer/Birta Writer Jot.md
+///     iCloud    <iCloud Drive>/Birta Writer/Birta Writer.md
+///     local     ~/Documents/Birta Writer/Birta Writer.md
 ///
 /// Both are places a person can find in Finder, which is the whole reason
 /// neither is Application Support any more: a scratchpad kept in a Library
@@ -35,7 +35,7 @@ public enum ScratchpadLocation: String, CaseIterable, Sendable {
     /// and fails when the two disagree. It lives HERE rather than in `Prefs`
     /// because this is where the name is spent, and a constant the paths do
     /// not read is one that agrees with its test rather than with the app.
-    public static let productName = "Birta Writer Jot"
+    public static let productName = "Birta Writer"
 
     /// The company's product line, which is what the LOCAL folder is named
     /// after. `PRODUCT_NAME` in shared/product.ts is its source, held to it by
