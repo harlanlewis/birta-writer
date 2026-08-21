@@ -38,6 +38,34 @@ const plist = read("jot/Resources/Info.plist");
 const readme = read("jot/README.md");
 const updater = read("jot/scripts/update-jot.sh");
 const workflow = read(".github/workflows/jot.yml");
+const inApp = read("jot/Sources/BirtaJot/Updater.swift");
+const requirements = read("jot/Sources/BirtaJotCore/SystemRequirements.swift");
+
+/**
+ * A source file with its comment-only lines removed.
+ *
+ * Every assertion below is about what a file DOES, and each of these files
+ * carries a comment explaining the very thing being asserted. Searching the
+ * raw text would let the explanation stand in for the check: delete the check,
+ * keep the paragraph saying why it is there, and the guard is still green.
+ */
+function code(source: string, marker: string): string {
+    return source
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith(marker))
+        .join("\n");
+}
+
+/**
+ * One workflow step's body, comments removed.
+ *
+ * Scoped to the step, because the earlier build step is full of `test -f`
+ * lines and a guard that counted those would pass on somebody else's work.
+ */
+function workflowStep(name: string): string {
+    const block = workflow.split(/^\s*- name: /m).find((part) => part.startsWith(name));
+    return code(block ?? "", "#");
+}
 
 /**
  * The floor SwiftPM compiles against, from `platforms: [.macOS(.v14)]`.
@@ -59,10 +87,16 @@ function plistFloor(): string | undefined {
     )?.[1];
 }
 
-/** Every "macOS <version> or later" the README states. */
-const stated = [...readme.matchAll(/macOS \*{0,2}(\d+(?:\.\d+)*)\*{0,2} or later/g)].map(
-    (m) => m[1]!,
-);
+/**
+ * Every macOS version number the README names.
+ *
+ * Every one of them, rather than the ones spelled "macOS 14 or later": a
+ * phrasing list is a list the next phrasing never joins, and the README said
+ * the floor twice in two shapes before this matched only one of them. The
+ * cost is that a sentence naming some other macOS version for some other
+ * reason would fail here, which is a rewording rather than a wrong answer.
+ */
+const stated = [...readme.matchAll(/macOS \*{0,2}(\d+(?:\.\d+)*)\*{0,2}/g)].map((m) => m[1]!);
 
 /** Two floors compared as numbers, with a missing component reading as zero. */
 function sameVersion(a: string, b: string): boolean {
@@ -121,16 +155,59 @@ describe("Jot's macOS floor", () => {
 });
 
 describe("what the update paths refuse", () => {
-    it("the by-hand updater should check the floor before it replaces anything", () => {
+    it("the by-hand updater should check both axes before it replaces anything", () => {
         // Ordering is the whole guarantee. Every failure below the quit is
         // recoverable by design; a refusal that arrived after it would have
-        // replaced a working app with one that will not open.
-        const check = updater.indexOf("LSMinimumSystemVersion");
-        const quit = updater.indexOf("pkill -TERM");
-        expect(check, "update-jot.sh no longer reads the bundle's floor").toBeGreaterThan(-1);
+        // replaced a working app with one that will not open. Both axes are
+        // held to it, because the architecture one is the case that actually
+        // happens today and an ordering guard over the floor alone would not
+        // have noticed it moving.
+        const script = code(updater, "#");
+        const floor = script.indexOf("LSMinimumSystemVersion");
+        const architecture = script.indexOf("lipo -archs");
+        const quit = script.indexOf("pkill -TERM");
+        expect(floor, "update-jot.sh no longer reads the bundle's floor").toBeGreaterThan(-1);
+        expect(architecture, "update-jot.sh no longer reads the bundle's architectures")
+            .toBeGreaterThan(-1);
         expect(quit, "update-jot.sh no longer quits the running app").toBeGreaterThan(-1);
-        expect(check, "the compatibility check has to run before the app is quit")
+        expect(floor, "the floor check has to run before the app is quit").toBeLessThan(quit);
+        expect(architecture, "the architecture check has to run before the app is quit")
             .toBeLessThan(quit);
+    });
+
+    it("the in-app updater should check compatibility before it arms the swap", () => {
+        // The same ordering, held the same way, because the claim is that BOTH
+        // paths preflight and a guard over one of them is a guard over half a
+        // claim. `Updater` hands the swap to a script that runs once this
+        // process is gone, so `swap.run()` is the point of no return: a
+        // refusal after it has already replaced the copy somebody is using.
+        // The check is private to one method with no seam to call, so the
+        // source order is what there is to assert.
+        const source = code(inApp, "//");
+        const check = source.indexOf("SystemRequirements.refusal(");
+        const armed = source.indexOf("swap.run()");
+        expect(check, "Updater.swift no longer asks whether this Mac can run the download")
+            .toBeGreaterThan(-1);
+        expect(armed, "Updater.swift no longer arms the swap").toBeGreaterThan(-1);
+        expect(check, "the compatibility check has to run before the swap is armed")
+            .toBeLessThan(armed);
+    });
+
+    it("neither Swift side of the check should spell a floor of its own", () => {
+        // The bundle being installed is what answers, so a release that raises
+        // the floor is judged against its own number. A literal here would be
+        // a fourth declaration, invisible to the three this file relates, and
+        // wrong on exactly the day it mattered.
+        const floor = manifestFloor()!.split(".")[0]!;
+        for (const [name, source] of [
+            ["SystemRequirements.swift", requirements],
+            ["Updater.swift", inApp],
+        ] as const) {
+            expect(
+                code(source, "//"),
+                `${name} spells the macOS floor instead of reading it off the bundle`,
+            ).not.toMatch(new RegExp(`macOS ${floor}\\b`));
+        }
     });
 
     it("the by-hand updater should read the floor off the bundle rather than spell one", () => {
@@ -138,18 +215,39 @@ describe("what the update paths refuse", () => {
         // be wrong on the day a release raises the floor: the question is
         // whether THIS Mac can run THAT download, so the download answers it.
         const floor = manifestFloor()!.split(".")[0]!;
-        const script = updater
-            .split("\n")
-            .filter((line) => !line.trimStart().startsWith("#"))
-            .join("\n");
-        expect(script).not.toMatch(new RegExp(`macOS ${floor}\\b`));
+        expect(
+            code(updater, "#"),
+            "update-jot.sh spells the macOS floor instead of reading it off the bundle",
+        ).not.toMatch(new RegExp(`macOS ${floor}\\b`));
     });
 
     it("CI should assert what the built app runs on", () => {
         // The README's architecture claim is about an artifact, so the binary
         // is what has to be asked. Named here so the sentence and its only
         // check cannot drift apart silently.
-        expect(workflow).toContain("lipo -archs");
-        expect(workflow).toContain("LSMinimumSystemVersion");
+        //
+        // Asserted on the assertions, not on the words around them. Reading
+        // `lipo -archs` into a variable and echoing it checks nothing, and the
+        // step's own comment names `LSMinimumSystemVersion` while explaining
+        // why the check is there, so a guard that searched the file for either
+        // string would pass with both checks deleted and the comment left.
+        const step = workflowStep("what the built app runs on");
+        expect(step, "the workflow no longer asks the built app what it runs on").not.toBe("");
+        const checks = step
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith("test "));
+        expect(step, "CI no longer reads the built binary's architectures").toContain("lipo -archs");
+        expect(step, "CI no longer reads the built bundle's floor").toContain(
+            "LSMinimumSystemVersion",
+        );
+        expect(
+            checks.filter((line) => line.includes("arm64")).length,
+            "CI reads the architectures but asserts nothing about them",
+        ).toBeGreaterThan(0);
+        expect(
+            checks.length,
+            "CI reads both facts but does not assert both of them",
+        ).toBeGreaterThanOrEqual(2);
     });
 });
