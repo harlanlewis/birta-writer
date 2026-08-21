@@ -10,6 +10,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.821.0] - 2026, August 21
+
 ### Added
 
 - A Test button beside Birta Writer Jot's agent command, in Settings, AI Agent. It runs the command once with a trivial request and shows you what came back: the tool's name and its answer if it worked, and its own error output if it did not. Everything else on that pane is a claim about a shell line nobody has run, so a command that is not installed, not authenticated, or simply mistyped looked exactly like one that works. The test runs in a folder of its own, which is removed afterwards, so a tool that decides to write a file while saying hello does not write it next to your notes.

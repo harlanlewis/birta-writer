@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.821.0] - 2026, August 21
+
 ### Changed
 
 - An `/ai` request that fails no longer leaves a small red marker in the margin beside the block you asked from. The notification, which names the tool, the file and the reason and offers Show Output, was already the report; the marker said the same thing worse, with the reason only on hover and a click needed to clear it, and there is nothing left to stop by the time it appears. The marker still shows while a request is running, where its click does something: it stops the run. The same applies to a run whose changes overlapped edits you made while it worked, which the notification already explains.
@@ -17,7 +21,6 @@
 - Changing whether two adjacent bold runs are one run or two is written to the file, in both directions. Making `**a** **b**` into `**a b**`, or the reverse, looked right on screen and was then dropped by the save, which compared the two spellings, judged them the same, and wrote nothing. The file kept whichever form it already had and the next open showed it back. No other emphasis edit was affected.
 
 - The `/date` calendar is drawn as a floating card, on its own ground, instead of as a bare grid of numbers over the text underneath it. It arrived with no background, no border and no shadow at all, so the document showed straight through the days.
-
 
 ---
 
