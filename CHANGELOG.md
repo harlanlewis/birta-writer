@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.821.1] - 2026, August 21
+
 ### Fixed
 
 - When an `/ai` request's changes overlap edits you made while it was working, the agent's own version is now kept as a file beside your document, named in the message that tells you what was left out. The message used to point at the file the agent had written and offer Compare in the drift badge. That was true only until the merged document was next written back over it, so with `files.autoSave` set to `afterDelay` the agent's version was usually gone about a second later and the comparison showed nothing missing. With the default of `off` you had until the next save. The copy is written before the merge happens rather than after, is called `<name> (agent).md` and never overwrites anything, and is removed again when the merge reports that nothing was left out.

@@ -10,6 +10,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.821.1] - 2026, August 21
+
 ### Added
 
 - Changing where Birta Writer Jot keeps your notes now offers to bring them with you. Turning on Store in iCloud Drive, or choosing a folder, used to point Jot at the new place and move nothing: the notes stayed safe exactly where they were and left the panel without a word, which is indistinguishable from losing them. Jot now asks, naming how many notes are involved and the folder they are in, and Leave Them is a real answer that has already told you where to find them. It asks only when there is something to carry, so a folder with no notes in it changes silently as before, and renaming a note without changing its folder is not a move and is never asked about.
