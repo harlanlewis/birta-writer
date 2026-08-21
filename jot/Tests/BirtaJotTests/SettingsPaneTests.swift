@@ -74,6 +74,16 @@ final class SettingsPaneTests: XCTestCase {
                        + drawn.joined(separator: " | "))
     }
 
+    func testTheEditorPaneShouldDrawEveryRowItDeclares() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let drawn = labels(of: controller, tab: "editor")
+        let declared = SettingsForm.rows(of: SettingsForm.editor).map(\.rawValue)
+        XCTAssertEqual(drawn, declared,
+                       "the Editor pane and its declaration disagree; drawn: "
+                       + drawn.joined(separator: " | "))
+    }
+
     func testTheAdvancedPaneShouldDrawEveryRowItDeclares() {
         let controller = makeController()
         defer { controller.window?.close() }
@@ -82,6 +92,32 @@ final class SettingsPaneTests: XCTestCase {
         XCTAssertEqual(drawn, declared,
                        "the Advanced pane and its declaration disagree; drawn: "
                        + drawn.joined(separator: " | "))
+    }
+
+    /// The three arms above name their panes by hand, which is the shape that
+    /// let an Editor pane be added with nothing checking it. This one is
+    /// derived from the tab list instead, so a FOURTH pane is covered the day
+    /// it lands rather than the day somebody remembers to write its arm.
+    ///
+    /// Both directions matter and neither is visible from one side: a tab with
+    /// no declared pane draws an empty window, and a declared pane no tab
+    /// reaches is rows nobody can get to.
+    func testEveryTabShouldDrawExactlyTheRowsItsPaneDeclares() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let names = SettingsWindowController.tabNames
+        XCTAssertEqual(names.count, SettingsForm.panes.count,
+                       "a pane has no tab, or a tab has no pane: tabs "
+                       + names.joined(separator: ", "))
+        for name in names {
+            guard let declared = SettingsWindowController.declaredRows(forTab: name) else {
+                XCTFail("tab \(name) declares no pane")
+                continue
+            }
+            XCTAssertFalse(declared.isEmpty, "tab \(name) declares an empty pane")
+            XCTAssertEqual(labels(of: controller, tab: name), declared.map(\.rawValue),
+                           "the \(name) pane and its declaration disagree")
+        }
     }
 
     /// The reason this file exists, stated as its own check: every row the

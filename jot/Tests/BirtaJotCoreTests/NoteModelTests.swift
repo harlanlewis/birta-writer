@@ -73,23 +73,16 @@ final class NoteModelTests: XCTestCase {
         XCTAssertEqual(Set(AgentPreset.allCases.map(\.template)).count, AgentPreset.allCases.count)
     }
 
-    func testEveryPresetShouldBeFoundByItsOwnTemplate() {
-        for preset in AgentPreset.allCases {
-            XCTAssertEqual(AgentPreset.matching(template: preset.template), preset)
-        }
-    }
-
-    /// An edited command is the user's, and the popup has to say Custom rather
-    /// than keep claiming the preset it started from.
-    func testACommandTheUserEditedShouldMatchNoPreset() {
-        XCTAssertNil(AgentPreset.matching(template: "claude {prompt}"))
-        XCTAssertNil(AgentPreset.matching(template: AgentPreset.claudeCode.template + " --verbose"))
-        XCTAssertNil(AgentPreset.matching(template: ""))
-    }
-
-    /// The shipped default has to still be a preset, or a fresh install opens
-    /// Settings showing Custom for a command nobody wrote.
+    /// The shipped default has to be one of the presets, so the template menu
+    /// can reach the command a fresh install already holds.
+    ///
+    /// `Prefs.agentCommand` reads its default from `fallback.template` rather
+    /// than from a second copy of that string, which is what makes this one
+    /// assertion cover both.
     func testTheDefaultCommandShouldBeOneOfThePresets() {
-        XCTAssertEqual(AgentPreset.matching(template: AgentPreset.fallback.template), AgentPreset.fallback)
+        XCTAssertTrue(AgentPreset.allCases.contains(AgentPreset.fallback))
+        XCTAssertFalse(AgentPreset.fallback.template.isEmpty)
+        XCTAssertTrue(AgentPreset.fallback.template.contains("{prompt}"),
+                      "the shipped command has no placeholder, so /ai would run it without the request")
     }
 }

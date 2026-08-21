@@ -557,6 +557,11 @@ final class Coordinator {
     }
 
     func show() {
+        // Taken before anything else on this path, and run at the end, so a
+        // handler that summons or hides cannot re-enter its own slot.
+        let held = onNextShow
+        onNextShow = nil
+        defer { held?() }
         if let front = NSWorkspace.shared.frontmostApplication, front != .current {
             previousApp = front
         }
@@ -1455,6 +1460,27 @@ final class Coordinator {
         statusOverlay.flash(message)
     }
 
+    /// The window an offer about this app should be attached to.
+    var promptWindow: NSWindow { panel }
+
+    /// Whether the panel is on screen to be attached to.
+    ///
+    /// A sheet needs a visible window, and Jot's is hidden most of the time:
+    /// it is a menu-bar scratchpad, summoned and dismissed. So this is what
+    /// the update offer asks before interrupting, and the answer decides
+    /// whether it is shown now or held.
+    var isOnScreen: Bool { panel.isVisible && !panel.isMiniaturized }
+
+    /// Whether the buffer is ahead of the file right now.
+    var hasUnwrittenBytes: Bool { isEdited }
+
+    /// Something to do the next time the panel is summoned.
+    ///
+    /// One slot, cleared as it runs. The update offer is the only user, and it
+    /// wants exactly this: an interruption that waited for the person to come
+    /// back rather than one that went looking for them.
+    var onNextShow: (() -> Void)?
+
     /// Take the panel over with the first-run screen.
     ///
     /// It replaces the editor rather than floating above it, and the web view
@@ -1744,17 +1770,17 @@ final class Coordinator {
         }
     }
 
-    /// `Note 2026-08-18.md`, numbered if that name is taken, so a second note
-    /// on one day never lands on the first.
+    /// What the user's template calls a note made now, numbered if that name
+    /// is taken, so a second note on one day never lands on the first.
+    ///
+    /// The template is expanded by `NoteNameTemplate`, which uses `strftime`
+    /// and therefore spells a date the way every other tool on the machine
+    /// does. It also guarantees a usable name from any template at all, which
+    /// is what lets this stay a pure naming question: a format somebody is
+    /// halfway through typing must never be able to stop a new note.
     static func unusedNoteURL(in directory: URL) -> URL {
-        let stamp = DateFormatter()
-        // Pinned, like `suggestedFileName`'s beside it: an unpinned formatter
-        // spells the date in the system calendar, so a Mac set to a
-        // non-Gregorian one files notes under a year nothing else here uses.
-        stamp.locale = Locale(identifier: "en_US_POSIX")
-        stamp.calendar = Calendar(identifier: .gregorian)
-        stamp.dateFormat = "yyyy-MM-dd"
-        return unusedURL(in: directory, stem: "Note \(stamp.string(from: Date()))", extension: "md")
+        let parts = NoteNameTemplate.parts(Prefs.newNoteNameTemplate)
+        return unusedURL(in: directory, stem: parts.stem, extension: parts.ext)
     }
 
     /// `stem.ext` in `directory`, with a number appended until nothing is
@@ -2108,10 +2134,18 @@ final class Coordinator {
         // `isEdited` change would put a file name back over a screen that has
         // no file.
         guard !isWelcoming else { return }
-        titleBar.titleView.show(
-            url: boundURL,
-            edited: WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
-                                            autosaveEnabled: Prefs.autosave))
+        let edited = WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
+                                             autosaveEnabled: Prefs.autosave)
+        titleBar.titleView.show(url: boundURL, edited: edited)
+        // The dot in the close button, which macOS draws for us from this one
+        // property. THE SAME boolean the word Edited is drawn from, and it has
+        // to stay the same one: they are two spellings of a single claim about
+        // whether this file on disk is behind the panel, and a titlebar making
+        // that claim in one place and not the other is a titlebar nobody can
+        // read. That is also why autosave switching on clears both at once,
+        // without an edit: with Jot writing as you type there are no unwritten
+        // bytes to warn about.
+        panel.isDocumentEdited = edited
         // The title's width is the drag strip's leading edge, so a title that
         // just changed leaves the strip starting somewhere the title no longer
         // ends. Harmless for clicks, because the accessory is in the titlebar's

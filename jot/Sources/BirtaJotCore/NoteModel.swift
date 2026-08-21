@@ -17,10 +17,16 @@ public enum NoteMode: String, CaseIterable, Sendable {
     /// old ones accumulate beside it.
     case newEachSession
 
+    /// What the menu calls it.
+    ///
+    /// Named for what you GET rather than for the policy: the row asks what a
+    /// new window opens with, so the answers are the two things it could open,
+    /// and "the same note every time" was a description of the setting rather
+    /// than of either outcome.
     public var title: String {
         switch self {
-        case .sameNote: return "The same note every time"
-        case .newEachSession: return "A new note each session"
+        case .sameNote: return "Last open file"
+        case .newEachSession: return "New file"
         }
     }
 }
@@ -57,11 +63,29 @@ public enum NoteHome: String, CaseIterable, Sendable {
 /// A list of terminal agents by the binary they install, which is the part
 /// that does not rot: a flag can change under us, and `claude` will still be
 /// what Claude Code is called. Custom is not a case here; it is the absence of
-/// a match, which is what `matching(template:)` returns nil for.
+/// a match: choosing one WRITES the command field and is then done with,
+/// and the field is what runs.
 ///
 /// Deliberately no VS Code routes. The extension's picker offers a Chat view
 /// and a clipboard fallback beside these, and neither means anything in an app
 /// with no chat view.
+/// Whether this host can hand a prompt to an agent at all.
+///
+/// A rule rather than a stored flag, because there are TWO ways to have no
+/// agent and the row, the capability and the slash command all have to agree
+/// with both of them: the switch is off, or there is no command to run. A
+/// capability that answered only the switch would offer `/ai` on a host whose
+/// command field is empty, which is a menu entry that runs nothing.
+///
+/// Pure, and here rather than in `Prefs`, so it can be checked without a
+/// defaults domain: the app's own store is the real user's, and a test that
+/// wrote to it to exercise this would change somebody's settings.
+public enum AgentAvailability {
+    public static func isAvailable(enabled: Bool, command: String) -> Bool {
+        enabled && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 public enum AgentPreset: String, CaseIterable, Sendable {
     case claudeCode
     case codex
@@ -101,16 +125,6 @@ public enum AgentPreset: String, CaseIterable, Sendable {
         case .amp: return "amp -x {prompt}"
         case .goose: return "goose run -t {prompt}"
         }
-    }
-
-    /// The preset a stored command came from, or nil for one the user wrote.
-    ///
-    /// Exact, not by binary name. Two presets could share a binary one day,
-    /// and a template that merely starts with `claude` is a command someone
-    /// edited: showing the preset for it would claim the popup describes a
-    /// field it no longer matches.
-    public static func matching(template: String) -> AgentPreset? {
-        allCases.first { $0.template == template }
     }
 
     /// The default, and the one a fresh install runs.

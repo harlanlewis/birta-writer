@@ -13,12 +13,13 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case autosave = "Autosave"
     case showInDock = "Show in Dock"
     case startAtLogin = "Start at login"
+    case autoUpdate = "Automatically update"
     case richLinks = "Rich link previews and embeds"
-    case opens = "Opens"
-    case agentPreset = "Agent"
-    case agentCommand = "Command"
-    case checkForUpdates = "Check for updates"
-    case resetSettings = "All settings"
+    case opens = "New windows open with"
+    case newNoteName = "File name"
+    case agentEnabled = "Enable /ai commands"
+    case agentCommand = "Terminal command"
+    case resetSettings = "Reset all settings"
     case welcomeScreen = "Welcome screen"
 }
 
@@ -30,7 +31,7 @@ public enum SettingsRow: String, CaseIterable, Sendable {
 /// at all: naming the subset in a comment and hoping is what let two screens
 /// spell one control two ways.
 public enum WelcomeRow: CaseIterable, Sendable {
-    case summon, storeInICloud, location, showInDock, startAtLogin
+    case summon, storeInICloud, location, showInDock, startAtLogin, autoUpdate
 
     /// The Settings row it is, which is where its label lives.
     public var settingsRow: SettingsRow {
@@ -40,6 +41,7 @@ public enum WelcomeRow: CaseIterable, Sendable {
         case .location: return .location
         case .showInDock: return .showInDock
         case .startAtLogin: return .startAtLogin
+        case .autoUpdate: return .autoUpdate
         }
     }
 }
@@ -50,15 +52,26 @@ public struct WelcomeGroup: Sendable {
     public init(rows: [WelcomeRow]) { self.rows = rows }
 }
 
-/// One card: the rows in it, and the heading above it where a screen draws
-/// headings. The first-run screen draws none, so `heading` is optional rather
-/// than each screen carrying a parallel list of titles.
+/// One card: the rows in it, the heading above it, and the sentence between
+/// the two.
+///
+/// Both optional, and they are different kinds of absent. Most groups carry no
+/// heading, because a card of plain switches is bounded by its own fill and a
+/// title over it would name what the rows already say. A heading earns its
+/// place where a card is a SUBJECT rather than a list, which today is the
+/// agent group: it holds a capability somebody has to opt into, and the intro
+/// beneath the heading is where the thing being opted into is explained.
 public struct SettingsGroup: Sendable {
     public let heading: String?
+    /// A sentence under the heading and above the card. For a group whose rows
+    /// cannot explain themselves; never a caption belonging to one row, which
+    /// is the row's own.
+    public let intro: String?
     public let rows: [SettingsRow]
 
-    public init(heading: String? = nil, rows: [SettingsRow]) {
+    public init(heading: String? = nil, intro: String? = nil, rows: [SettingsRow]) {
         self.heading = heading
+        self.intro = intro
         self.rows = rows
     }
 }
@@ -70,7 +83,8 @@ public struct SettingsGroup: Sendable {
 /// General pane, in the same order and the same words, so a question somebody
 /// answered on first run is found again by looking where they answered it.
 /// Two arrays a test compares, never a rule each screen is trusted to keep;
-/// `SettingsFormTests` is what compares them.
+/// `SettingsFormTests` is what compares them, and `SettingsPaneTests` and
+/// `WelcomeScreenTests` compare each against what is actually drawn.
 ///
 /// What the first run leaves out is every row with a default worth keeping and
 /// no consequence for somebody who never opens Settings. A screen listing all
@@ -79,22 +93,43 @@ public enum SettingsForm {
     public static let welcome: [WelcomeGroup] = [
         WelcomeGroup(rows: [.summon]),
         WelcomeGroup(rows: [.storeInICloud, .location]),
-        WelcomeGroup(rows: [.showInDock, .startAtLogin]),
+        WelcomeGroup(rows: [.showInDock, .startAtLogin, .autoUpdate]),
     ]
 
+    /// What Jot IS: how you reach it, where it puts your bytes, and how it
+    /// behaves as an application on this Mac. Every first-run question is
+    /// here, in the order it was asked.
     public static let general: [SettingsGroup] = [
-        SettingsGroup(heading: "Show and hide Jot", rows: [.summon]),
-        SettingsGroup(heading: "Where your notes live", rows: [.storeInICloud, .location]),
-        SettingsGroup(heading: "How Jot works",
-                      rows: [.autosave, .showInDock, .startAtLogin, .richLinks]),
+        SettingsGroup(rows: [.summon]),
+        SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
+        SettingsGroup(rows: [.showInDock, .startAtLogin, .autoUpdate, .richLinks]),
     ]
 
-    public static let advanced: [SettingsGroup] = [
-        SettingsGroup(heading: "Notes", rows: [.opens]),
-        SettingsGroup(heading: "Agent", rows: [.agentPreset, .agentCommand]),
-        SettingsGroup(heading: "Updates", rows: [.checkForUpdates]),
-        SettingsGroup(heading: "Reset", rows: [.resetSettings, .welcomeScreen]),
+    /// What happens INSIDE the panel: which note a summon opens, what a new
+    /// one is called, and the agent `/ai` hands a prompt to.
+    public static let editor: [SettingsGroup] = [
+        SettingsGroup(rows: [.opens, .newNoteName]),
+        SettingsGroup(heading: "AI Agent",
+                      intro: "Jot can hand a prompt to a command-line coding agent you have "
+                           + "already installed, and write what it says back into the note. It "
+                           + "runs on this Mac under your own subscription or API key; Jot adds "
+                           + "no account of its own and sends nothing anywhere else.",
+                      rows: [.agentEnabled, .agentCommand]),
     ]
+
+    /// The two gestures that undo rather than set: see the first run again,
+    /// and put every setting back.
+    public static let advanced: [SettingsGroup] = [
+        SettingsGroup(rows: [.welcomeScreen, .resetSettings]),
+    ]
+
+    /// Every pane, in toolbar order. `SettingsFormTests` sums these to check
+    /// that a case added to `SettingsRow` was actually placed on a screen, and
+    /// summing a LIST rather than naming each array is what stops a new pane
+    /// being invisible to that guard: an array left out of a hand-written sum
+    /// reads as rows unplaced, and an array left out of this one cannot be
+    /// left out, because the panes are what this is.
+    public static let panes: [[SettingsGroup]] = [general, editor, advanced]
 
     /// The rows of a Settings pane, top to bottom, with the cards flattened
     /// away.

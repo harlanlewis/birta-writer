@@ -59,12 +59,44 @@ final class Updater {
 
     private let repo = ProcessInfo.processInfo.environment["BIRTA_JOT_REPO"] ?? "harlanlewis/birta-writer"
 
+    /// Everything `check` needs that is not this type's own state.
+    ///
+    /// A seam, and it exists because the two gates below both read TRUE in an
+    /// xctest process: `AppFlavor.forBundle` answers `.release` for any bundle
+    /// id that is not the development one, and nothing sets a throwaway
+    /// defaults suite. So calling `check(force:)` from a test reached
+    /// api.github.com for real, which meant every `CheckResult` other than
+    /// `.refused` was untestable and the status strings behind them were
+    /// unasserted. Injecting the gate and the transport makes the whole
+    /// outcome table reachable without a network.
+    struct Environment {
+        var mayCheck: () -> Bool = { AppFlavor.current.updatesItself && Prefs.isUserStore }
+        var autoUpdate: () -> Bool = { Prefs.autoUpdate }
+        var now: () -> Date = Date.init
+        var lastCheck: () -> Date? = { Prefs.lastUpdateCheck }
+        var recordCheck: (Date) -> Void = { Prefs.lastUpdateCheck = $0 }
+        var currentVersion: () -> String = {
+            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        }
+        /// Answers with the body and the HTTP status, 0 for a transport
+        /// failure. One closure rather than a URLSession subclass: what a test
+        /// needs to vary is the answer, not the machinery that fetched it.
+        var fetch: (URL, @escaping (Data?, Int) -> Void) -> Void = { url, done in
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+            URLSession.shared.dataTask(with: request) { data, response, _ in
+                done(data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+            }.resume()
+        }
+    }
+
+    var environment = Environment()
+
     /// This build's version, as `Info.plist` carries it. A checkout build says
     /// `0.0.0`, which every real release is newer than; the flavour guard is
     /// what stops that mattering.
-    private var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-    }
+    private var currentVersion: String { environment.currentVersion() }
 
     /// Whether this process may check at all.
     ///
@@ -75,9 +107,7 @@ final class Updater {
     /// scripted run would reach the network and then raise a modal into an app
     /// being driven by synthesized keystrokes, which blocks the run loop and
     /// fails every check in a way that looks like an editor bug.
-    private var mayCheck: Bool {
-        AppFlavor.current.updatesItself && Prefs.isUserStore
-    }
+    private var mayCheck: Bool { environment.mayCheck() }
 
     /// Ask, and say what came back.
     ///
@@ -86,7 +116,7 @@ final class Updater {
     /// putting it back a statement later leaves auto-update permanently on for
     /// somebody who turned it off, if anything goes wrong in between.
     func check(force: Bool = false, then done: ((CheckResult) -> Void)? = nil) {
-        guard mayCheck, force || Prefs.autoUpdate, !checking else {
+        guard mayCheck, force || environment.autoUpdate(), !checking else {
             done?(.refused)
             return
         }
@@ -95,14 +125,16 @@ final class Updater {
             return
         }
         checking = true
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+        // Stamped when the request GOES OUT, not when it comes back, and that
+        // is deliberate: a machine that is offline fails every check, and a
+        // stamp written only on success would mean a laptop on a plane retried
+        // on every timer tick for the whole flight. The question this paces is
+        // how often Jot reaches for the network, and it reached.
+        environment.recordCheck(environment.now())
+        environment.fetch(url) { [weak self] data, code in
             Task { @MainActor in
                 guard let self else { return }
                 self.checking = false
-                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard code == 200, let data, let release = ReleaseFeed.parse(data) else {
                     done?(.failed)
                     return
@@ -115,7 +147,7 @@ final class Updater {
                 self.onUpdateAvailable?(release.tag)
                 done?(.found(release.tag))
             }
-        }.resume()
+        }
     }
 
     /// The launch check. Silent unless there is something: a check that failed
@@ -125,12 +157,30 @@ final class Updater {
         check()
     }
 
+    /// The check a running app makes on its own, paced by the clock.
+    ///
+    /// Separate from `checkInBackground` because a launch should always ask
+    /// and this should ask only when it is due. Jot stays running for weeks,
+    /// so without this the launch check is the only one that ever happens and
+    /// somebody who never quits is somebody who never gets a fix.
+    func checkIfDue() {
+        guard UpdatePolicy.shouldCheck(now: environment.now(),
+                                       lastCheck: environment.lastCheck()) else { return }
+        check()
+    }
+
     /// The button in Settings, which says what happened either way.
     func checkNow() {
         guard AppFlavor.current.updatesItself else {
             onStatus?("A development build does not replace itself.")
             return
         }
+        // Pressing the button is asking to be told, so a version this person
+        // declined earlier stops being suppressed. Without this, Check Now on
+        // a release you already said no to reports nothing and looks broken:
+        // the check succeeds, finds the update, and the offer is swallowed by
+        // the once-per-version rule that exists to stop the TIMER nagging.
+        Prefs.updateDeclinedTag = nil
         onStatus?("Checking for updates…")
         check(force: true) { [weak self] result in
             switch result {

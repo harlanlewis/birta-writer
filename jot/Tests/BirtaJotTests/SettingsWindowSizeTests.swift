@@ -1,4 +1,5 @@
 import AppKit
+import BirtaJotCore
 import XCTest
 @testable import BirtaJot
 
@@ -52,6 +53,57 @@ final class SettingsWindowSizeTests: XCTestCase {
         pane.layoutSubtreeIfNeeded()
         return Fit(pane: pane.fittingSize.height,
                    content: window.contentRect(forFrameRect: window.frame).height)
+    }
+
+    /// A group's intro paragraph reaches the screen.
+    ///
+    /// `SettingsPaneTests` walks ROW labels, and an intro is deliberately not
+    /// one: it sits outside the card, so that walk steps straight over it and
+    /// a declared intro that stopped being drawn would pass every other check
+    /// in the suite. This is the only thing that looks at it.
+    ///
+    /// Narrower than it started, and that is worth recording rather than
+    /// quietly dropping. It first asserted the pane's WIDTH, which could never
+    /// have failed: `pane` pins its stack to one column with a required
+    /// constraint, so an over-wide child is clipped rather than allowed to
+    /// widen anything, and the measurement came back 520 whatever was done to
+    /// it. Then it asserted the paragraph wrapped, which also could not fail,
+    /// because `Caption` carries a wrapping width by construction and there is
+    /// no way to build one without. Both were dropped. What is left is the arm
+    /// that does fail when the drawing stops: with `render` no longer
+    /// appending the intro, this is red and nothing else in the suite is.
+    func testADeclaredGroupIntroShouldBeDrawnOnItsPane() {
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("editor")
+        guard let content = controller.window?.contentView else {
+            return XCTFail("the settings window has no content view")
+        }
+        content.layoutSubtreeIfNeeded()
+
+        guard let intro = SettingsForm.editor.compactMap(\.intro).first else {
+            return XCTFail("the Editor pane declares no intro to check")
+        }
+        guard let field = field(in: content, saying: intro) else {
+            return XCTFail("the declared intro is not drawn on the Editor pane")
+        }
+        // It is prose, so it takes more than one line. A single line would
+        // mean it was drawn truncated rather than wrapped, which is the one
+        // way this can be present and still useless.
+        let oneLine = field.font?.boundingRectForFont.height ?? 13
+        XCTAssertGreaterThan(field.frame.height, oneLine * 2,
+                             "the intro is \(field.frame.height)pt tall for \(intro.count) "
+                             + "characters, so it is not wrapping")
+    }
+
+    /// The drawn field carrying exactly `text`, anywhere in `view`.
+    private func field(in view: NSView, saying text: String) -> NSTextField? {
+        if let found = view as? NSTextField, found.stringValue == text { return found }
+        for subview in view.subviews {
+            if let found = field(in: subview, saying: text) { return found }
+        }
+        return nil
     }
 
     func testTheWindowShouldFollowThePaneItShows() {

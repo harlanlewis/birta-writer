@@ -51,6 +51,10 @@ enum Prefs {
         case storeInICloud
         case hasSeenWelcome
         case autoUpdate
+        case agentEnabled
+        case newNoteNameTemplate
+        case lastUpdateCheck
+        case updateDeclinedTag
     }
 
     /// Keys no accessor reads any more.
@@ -333,8 +337,20 @@ enum Prefs {
     /// command tuned there can be pasted here unchanged. Empty turns `/ai` off:
     /// the capability is withdrawn and the page never offers the row.
     static var agentCommand: String {
-        get { d.string(forKey: Key.agentCommand.rawValue) ?? "claude -p {prompt} --permission-mode acceptEdits" }
+        // The default is the fallback preset's own template rather than a
+        // second copy of that string, so the template menu can always reach
+        // the command a fresh install holds.
+        get { d.string(forKey: Key.agentCommand.rawValue) ?? AgentPreset.fallback.template }
         set { d.set(newValue, forKey: Key.agentCommand.rawValue) }
+    }
+
+    /// Whether this host can hand a prompt to an agent at all.
+    ///
+    /// Two ways to have none, and the row and the capability must agree with
+    /// both: the switch is off, or there is no command to run. Asking here
+    /// rather than at each call site is what keeps them from disagreeing.
+    static var agentAvailable: Bool {
+        AgentAvailability.isAvailable(enabled: agentEnabled, command: agentCommand)
     }
 
     /// Whether Jot has a Dock icon, and so appears in Cmd+Tab and gets an
@@ -411,6 +427,65 @@ enum Prefs {
         _ = try? LoginItem.set(true)
     }
 
+    /// Whether `/ai` is offered at all.
+    ///
+    /// OFF by default, which is a change of posture rather than a default
+    /// picked at random: `/ai` runs a shell command on this Mac, and a
+    /// capability that runs commands is one somebody should switch on rather
+    /// than one they should discover already on. `agentCommand` still holds
+    /// WHAT would run, so switching this on does not ask the question again.
+    ///
+    /// The command being empty still withdraws the capability too, so there
+    /// are two ways to have no agent and neither of them can offer a row that
+    /// runs nothing.
+    static var agentEnabled: Bool {
+        get { d.bool(forKey: Key.agentEnabled.rawValue) }
+        set { d.set(newValue, forKey: Key.agentEnabled.rawValue) }
+    }
+
+    /// What a new note is called, as a `strftime` template.
+    ///
+    /// A template rather than a fixed name because the only thing anybody
+    /// wants to change here is the date in it, and `strftime` is the spelling
+    /// every other tool on the machine already uses for that. Ours is not a
+    /// dialect: `NoteNameTemplate` expands the standard tokens and nothing
+    /// else, so a format somebody knows from `date(1)` works here unchanged.
+    static var newNoteNameTemplate: String {
+        get {
+            let stored = d.string(forKey: Key.newNoteNameTemplate.rawValue) ?? ""
+            return stored.isEmpty ? NoteNameTemplate.default : stored
+        }
+        set { d.set(newValue, forKey: Key.newNoteNameTemplate.rawValue) }
+    }
+
+    /// When the app last ASKED the release host, successfully or not.
+    ///
+    /// Stored so a re-check is paced by wall-clock time rather than by how
+    /// often the panel is summoned. Jot is a menu-bar app that stays running
+    /// for weeks, so a check tied to launch alone is a check that stops
+    /// happening exactly for the people who use it most.
+    static var lastUpdateCheck: Date? {
+        get {
+            let seconds = d.double(forKey: Key.lastUpdateCheck.rawValue)
+            return seconds > 0 ? Date(timeIntervalSince1970: seconds) : nil
+        }
+        set { d.set(newValue?.timeIntervalSince1970 ?? 0, forKey: Key.lastUpdateCheck.rawValue) }
+    }
+
+    /// The release tag the user last said no to.
+    ///
+    /// One offer per version. Without it the re-check interval becomes a nag:
+    /// somebody who declines an update is asked again every day until they
+    /// give in, which teaches people to turn the setting off rather than to
+    /// take the update. A NEWER tag still asks, because that is different news.
+    static var updateDeclinedTag: String? {
+        get {
+            let tag = d.string(forKey: Key.updateDeclinedTag.rawValue) ?? ""
+            return tag.isEmpty ? nil : tag
+        }
+        set { d.set(newValue ?? "", forKey: Key.updateDeclinedTag.rawValue) }
+    }
+
     /// Whether Jot checks for a newer release on its own.
     ///
     /// ON by default, and deliberately NOT riding `networkEnabled`. The two
@@ -482,7 +557,19 @@ enum Prefs {
             // Swift cannot import it, so this literal restates it and
             // shared/__tests__/hostProfile.test.ts parses this file and
             // fails when the two disagree.
-            hostCapabilities: ["imageUpload", "appPreferences", "agent"],
+            // The literal IS the profile, and the filter is what a user
+            // setting withdraws from it. Kept as a literal on purpose: it is
+            // the copy `shared/__tests__/hostProfile.test.ts` parses against
+            // `HOST_PROFILES.jot`, and a list built by appending would give
+            // that guard nothing to read.
+            //
+            // Withdrawing `agent` is a capability doing its job rather than a
+            // feature flag sneaking in: a capability names what the HOST
+            // provides, and with `/ai` switched off, or with no command to
+            // run, this host provides no agent. `BootConfigTests` holds both
+            // arms.
+            hostCapabilities: ["imageUpload", "appPreferences", "agent"]
+                .filter { $0 != "agent" || agentAvailable },
             viewStateJSON: viewStateJSON,
             hostShortcuts: JotMenu.shortcuts.map { HostShortcut(keys: $0.chord, label: $0.title) }
         )
