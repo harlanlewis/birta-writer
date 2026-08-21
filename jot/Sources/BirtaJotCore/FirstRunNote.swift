@@ -68,7 +68,8 @@ public enum FirstRunNote {
 
     ## The basics
 
-    - [ ] Put the caret on this line and press Cmd+Shift+D to tick it off.
+    - [ ] Click the box at the start of this line to tick it off.
+    - [ ] Tick this one from the keyboard instead: put the caret on it and press Cmd+Shift+D.
     - [ ] Start a new line and type `/` to open the slash menu. Everything below came from it.
     - [ ] Select this sentence, and use the toolbar that appears to make a word bold.
     - [ ] Take hold of the handle at this line's left edge and drag it somewhere else.

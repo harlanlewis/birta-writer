@@ -113,6 +113,51 @@ export async function run({ page, check, baseUrl }) {
         typeof before === "string" && before.length > 0 && md === before,
         JSON.stringify({ before, md })); 
 
+    // ── The MOUSE route, which is the one the first-run tour teaches ──
+    //
+    // Every check above drives `toggleTaskChecked`, the command both surfaces
+    // route a keybinding through. Clicking the drawn box is a different path
+    // entirely: a capture-phase document listener in `webview/index.ts` with an
+    // x-coordinate hit test (`utils/taskCheckbox.ts`), because the box is a CSS
+    // pseudo-element and cannot be an event target of its own. Nothing here
+    // exercised it, so a change to that hit test, to the padding it measures
+    // against, or to the listener's phase would have left this suite green.
+    //
+    // It is pinned rather than merely covered because the tour a first launch
+    // opens on now instructs somebody to click that box, and a broken gesture
+    // there is the first thing a new user would meet.
+    const beforeClick = await doc();
+    const target = await page.evaluate(() => {
+        const li = [...document.querySelectorAll('.ProseMirror li[data-item-type="task"]')]
+            .find((el) => (el.textContent ?? "").includes("open task"));
+        if (!li) { throw new Error("no open task item"); }
+        const r = li.getBoundingClientRect();
+        // Inside the 22px padding the box is drawn in, left of the text.
+        return { x: r.left + 7, y: r.top + 12 };
+    });
+    await page.mouse.click(target.x, target.y);
+    await page.waitForTimeout(400);
+    md = await doc();
+    check("clicking the drawn box ticks the task", /- \[x\] open task/.test(md ?? ""),
+        JSON.stringify({ beforeClick, md }));
+    // The click must not have been a document-wide toggle: everything else holds.
+    check("…and touches nothing else", /- \[ \] parent/.test(md ?? "")
+        && /- plain bullet/.test(md ?? ""), JSON.stringify(md));
+
+    // A click in the TEXT must place the caret and leave the box alone, or the
+    // hit test has stopped discriminating and every click is a toggle.
+    const textPoint = await page.evaluate(() => {
+        const p = [...document.querySelectorAll('.ProseMirror li[data-item-type="task"] p')]
+            .find((el) => (el.textContent ?? "").includes("open task"));
+        const r = p.getBoundingClientRect();
+        return { x: r.left + Math.min(30, r.width / 2), y: r.top + r.height / 2 };
+    });
+    await page.mouse.click(textPoint.x, textPoint.y);
+    await page.waitForTimeout(400);
+    const afterText = await doc();
+    check("a click in the text does not toggle", afterText === md,
+        JSON.stringify({ md, afterText }));
+
     const errors = await page.evaluate(() => window.__pageErrors ?? []);
     check("no page errors", errors.length === 0, JSON.stringify(errors));
 }
