@@ -607,6 +607,12 @@ async function unusedUri(directory: vscode.Uri, stem: string, ext: string): Prom
  *
  * A failure is not worth interrupting the run for: what it costs is the copy,
  * and the merge still happens.
+ *
+ * A copy nobody settles OUTLIVES the session, and that is the deliberate side
+ * to err on. `agentMergeResult` is sent whenever the webview merges, but a
+ * webview disposed mid-flight (a switch to the raw editor) never reports, and
+ * the choice there is between leaving a file the user did not ask for and
+ * deleting the only remaining copy of the agent's work. The file stays.
  */
 async function rescueAgentVersion(requestId: string, uri: vscode.Uri, text: string): Promise<void> {
     try {
@@ -651,24 +657,22 @@ async function settleAgentRescue(requestId: string | undefined, outcome: string)
  */
 export async function reportAgentMerge(uri: vscode.Uri, outcome: string, requestId?: string): Promise<void> {
     const relPath = vscode.workspace.asRelativePath(uri, false);
-    {
-        const kept = await settleAgentRescue(requestId, outcome);
-        if (outcome === "applied" || outcome === "unchanged") {
-            vscode.window.setStatusBarMessage(vscode.l10n.t("Agent finished: {0} updated around your edits", relPath), 5000);
-            return;
-        }
-        // The kept copy is named, because the file the agent wrote is NOT a
-        // durable place to point at: the merged buffer is written back over it,
-        // within about a second when `files.autoSave` is `afterDelay`. Without
-        // a copy there is nothing honest to say, so the message says the part
-        // that is still true and stops promising a comparison.
-        const left = outcome === "partial"
-            ? vscode.l10n.t("The agent's changes to {0} overlapped yours in places; those were left out.", relPath)
-            : vscode.l10n.t("The agent's changes to {0} overlap yours and could not be merged.", relPath);
-        void vscode.window.showWarningMessage(kept
-            ? vscode.l10n.t("{0} Its full version is kept in {1}.", left, kept)
-            : left);
+    const kept = await settleAgentRescue(requestId, outcome);
+    if (outcome === "applied" || outcome === "unchanged") {
+        vscode.window.setStatusBarMessage(vscode.l10n.t("Agent finished: {0} updated around your edits", relPath), 5000);
+        return;
     }
+    // The kept copy is named, because the file the agent wrote is NOT a
+    // durable place to point at: the merged buffer is written back over it,
+    // within about a second when `files.autoSave` is `afterDelay`. Without a
+    // copy there is nothing honest to say, so the message says the part that is
+    // still true and stops promising a comparison.
+    const left = outcome === "partial"
+        ? vscode.l10n.t("The agent's changes to {0} overlapped yours in places; those were left out.", relPath)
+        : vscode.l10n.t("The agent's changes to {0} overlap yours and could not be merged.", relPath);
+    void vscode.window.showWarningMessage(kept
+        ? vscode.l10n.t("{0} Its full version is kept in {1}.", left, kept)
+        : left);
 }
 
 /** Hand the composed line to the configured route. */

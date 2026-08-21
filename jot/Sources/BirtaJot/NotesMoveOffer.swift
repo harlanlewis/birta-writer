@@ -1,6 +1,17 @@
 import AppKit
 import BirtaJotCore
 
+/// Work that must land BETWEEN the buffer's flush and the page's reload, given
+/// the completion that lets the reload proceed.
+///
+/// The ordering is the whole reason this exists. `Coordinator.writeLatest`
+/// writes to `boundURL`, which still names the OLD file while a preference
+/// change is being processed, so a notes move performed BEFORE the flush is
+/// promptly undone by it: the note the user was editing reappears at the
+/// location it was just moved out of. Flush first and the move carries a file
+/// that is already current.
+typealias BeforeReload = (@escaping () -> Void) -> Void
+
 /// The offer to bring your notes along when the notes location changes.
 ///
 /// Changing where Jot keeps notes rebinds the editor and moves nothing. The
@@ -17,20 +28,21 @@ import BirtaJotCore
 /// `NotesMove` owns every decision; this owns the sentence and the sheet.
 enum NotesMoveOffer {
 
-    /// Ask, if there is anything to ask about, then call `then` either way.
+    /// Ask, if there is anything to ask about, then apply the answer.
     ///
-    /// `then` is what the caller was going to do anyway (reload the panel onto
-    /// the new location), and it runs after the answer rather than before it:
-    /// the buffer is flushed to the file it belongs to by that reload, and
-    /// moving a file out from under a pending write is the one ordering that
-    /// could lose bytes.
+    /// `apply` is the preference reload the caller was going to do anyway, and
+    /// it takes the move as `BeforeReload` work rather than having it done
+    /// here. That is not plumbing for its own sake: the move MUST happen after
+    /// the buffer has been flushed to the file it belongs to, or the flush
+    /// writes the note being edited straight back to the folder it was moved
+    /// out of. See `BeforeReload`.
     static func offer(movingFrom oldDirectory: URL,
                       to newDirectory: URL,
                       in window: NSWindow?,
-                      then: @escaping () -> Void) {
+                      apply: @escaping (BeforeReload?) -> Void) {
         let plan = buildPlan(from: oldDirectory, to: newDirectory)
         guard !plan.isEmpty, let window else {
-            then()
+            apply(nil)
             return
         }
 
@@ -48,12 +60,22 @@ enum NotesMoveOffer {
             // named the folder the notes are in, which is the whole thing the
             // silent version failed to say.
             guard response == .alertFirstButtonReturn else {
-                then()
+                apply(nil)
                 return
             }
-            let report = NotesMove.perform(plan)
-            then()
-            reportIfAnythingStayed(report, in: window)
+            apply { continueReload in
+                // Off the main thread: this is a file copy, and into iCloud
+                // Drive it is an upload with a delay behind it. The reload
+                // waits for it rather than racing it, which is what the
+                // completion is for.
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let report = NotesMove.perform(plan)
+                    DispatchQueue.main.async {
+                        continueReload()
+                        reportIfAnythingStayed(report, in: window)
+                    }
+                }
+            }
         }
     }
 
@@ -72,7 +94,11 @@ enum NotesMoveOffer {
             from: oldDirectory, to: newDirectory,
             entries: entries, attachments: attachments,
             occupied: { fileManager.fileExists(atPath: $0.path) },
+            // Size first: this is only asked when a name collides, and the
+            // colliding file can be a video. Two whole reads to answer a
+            // question a pair of sizes settles is worth avoiding.
             identical: { source, target in
+                guard NotesMove.sizesMatch(source, target, fileManager) else { return false }
                 guard let a = try? Data(contentsOf: source),
                       let b = try? Data(contentsOf: target) else { return false }
                 return a == b

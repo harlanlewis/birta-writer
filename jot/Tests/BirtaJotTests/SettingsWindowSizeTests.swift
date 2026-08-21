@@ -73,7 +73,7 @@ final class SettingsWindowSizeTests: XCTestCase {
     /// that does fail when the drawing stops: with `render` no longer
     /// appending the intro, this is red and nothing else in the suite is.
     func testADeclaredGroupIntroShouldBeDrawnOnItsPane() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         controller.selectTabForTesting("aiAgent")
@@ -121,7 +121,7 @@ final class SettingsWindowSizeTests: XCTestCase {
     /// never shows. A height check that measures only the machine it is on
     /// is a check whose answer depends on who runs it.
     func testEveryPaneShouldFitTheCeilingWithEveryConditionalRowShown() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         let cap = SettingsWindowController.Metrics.maxPaneHeight
@@ -137,7 +137,7 @@ final class SettingsWindowSizeTests: XCTestCase {
     }
 
     func testTheWindowShouldFollowThePaneItShows() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         let cap = SettingsWindowController.Metrics.maxPaneHeight

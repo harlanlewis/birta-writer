@@ -27,7 +27,7 @@ final class SettingsPaneTests: XCTestCase {
     }
 
     private func makeController() -> SettingsWindowController {
-        SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+        SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 

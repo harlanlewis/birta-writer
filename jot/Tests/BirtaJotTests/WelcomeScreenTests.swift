@@ -94,7 +94,7 @@ final class WelcomeScreenTests: XCTestCase {
         welcome.layoutSubtreeIfNeeded()
         let asked = rowLabels(in: welcome)
 
-        let settings = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+        let settings = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                                 onShowWelcome: {}, onCheckForUpdates: {})
         defer { settings.window?.close() }
         settings.selectTabForTesting("general")

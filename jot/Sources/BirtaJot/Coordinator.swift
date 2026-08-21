@@ -1775,7 +1775,7 @@ final class Coordinator {
             self?.finishWelcome()
             self?.openPreferences?()
         }
-        view.onChange = { [weak self] in self?.preferencesChanged() }
+        view.onChange = { [weak self] work in self?.preferencesChanged(beforeReload: work) }
         return view
     }
 
@@ -2499,16 +2499,26 @@ final class Coordinator {
         hotkey.register(Prefs.hotkey)
     }
 
-    func preferencesChanged() {
+    /// - Parameter beforeReload: see `BeforeReload`. Moving the notes to a new
+    ///   location is the only caller that needs it.
+    func preferencesChanged(beforeReload: BeforeReload? = nil) {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
         // the new prefs. Cheap, and it keeps one code path.
         flushThen { [weak self] in
             guard let self else { return }
-            self.reloadFromDisk = true
-            self.loadPage()
-            // The bound file may have changed; the titlebar names it.
-            self.refreshTitle()
+            let reload: () -> Void = { [weak self] in
+                guard let self else { return }
+                self.reloadFromDisk = true
+                self.loadPage()
+                // The bound file may have changed; the titlebar names it.
+                self.refreshTitle()
+            }
+            guard let beforeReload else {
+                reload()
+                return
+            }
+            beforeReload(reload)
         }
     }
 

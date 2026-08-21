@@ -420,7 +420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
                 onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
-                onChange: { [weak self] in self?.coordinator.preferencesChanged() },
+                onChange: { [weak self] work in self?.coordinator.preferencesChanged(beforeReload: work) },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
                 onCheckForUpdates: { [weak self] in self?.updater.checkNow() })
         }

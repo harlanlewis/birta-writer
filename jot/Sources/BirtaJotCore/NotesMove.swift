@@ -68,7 +68,14 @@ public enum NotesMove {
     }
 
     /// Extensions Jot treats as a note worth carrying.
-    public static let noteExtensions: Set<String> = ["md", "markdown", "txt"]
+    ///
+    /// `.md` alone, and the narrowness is the point rather than an oversight.
+    /// Jot writes `.md` and nothing else: the name template ends in it and
+    /// every panel that picks a note filters on it. The folder is one Jot
+    /// shares rather than owns, so carrying a `.txt` somebody else put there
+    /// would be moving a stranger's file on the strength of it looking like a
+    /// note.
+    public static let noteExtensions: Set<String> = ["md"]
 
     /// Build the plan.
     ///
@@ -186,7 +193,10 @@ public enum NotesMove {
         return Report(moved: moved, failed: failed, kept: plan.kept)
     }
 
-    static func sizesMatch(_ a: URL, _ b: URL, _ fileManager: FileManager) -> Bool {
+    /// Whether two files are the same size. Public because it is the cheap
+    /// half of the identity question the app-side offer asks before it reads
+    /// two files to compare them.
+    public static func sizesMatch(_ a: URL, _ b: URL, _ fileManager: FileManager) -> Bool {
         let size: (URL) -> Int? = { url in
             (try? fileManager.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
         }

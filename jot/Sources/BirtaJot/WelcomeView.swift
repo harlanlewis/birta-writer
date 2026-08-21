@@ -35,7 +35,7 @@ final class WelcomeView: NSView {
     var onAllSettings: (() -> Void)?
     /// Reload the panel against a changed file location, which is the only
     /// setting here that decides which bytes the editor will open.
-    var onChange: (() -> Void)?
+    var onChange: ((BeforeReload?) -> Void)?
 
     private let hotkeyRecorder = HotkeyRecorderView(combo: Prefs.hotkey)
     private let hotkeyCaption = Caption("")
@@ -400,7 +400,7 @@ final class WelcomeView: NSView {
         }
         showLocation()
         NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
-                             in: window) { [weak self] in self?.onChange?() }
+                             in: window) { [weak self] work in self?.onChange?(work) }
     }
 
     @objc private func toggleDock() {
@@ -434,7 +434,7 @@ final class WelcomeView: NSView {
             Prefs.scratchpadURL = url
             self.showLocation()
             NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
-                                 in: self.window) { [weak self] in self?.onChange?() }
+                                 in: self.window) { [weak self] work in self?.onChange?(work) }
         }
     }
 

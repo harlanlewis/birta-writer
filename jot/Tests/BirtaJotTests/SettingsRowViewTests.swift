@@ -80,7 +80,7 @@ final class SettingsRowViewTests: XCTestCase {
     /// path a person takes rather than a call to `apply` written by the test.
     func testAHotkeyTheSystemRefusesShouldRedTheSummonRowsSentence() {
         // A non-zero status is macOS refusing the registration.
-        let controller = SettingsWindowController(onHotkeyChange: { -1 }, onChange: {},
+        let controller = SettingsWindowController(onHotkeyChange: { -1 }, onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         controller.selectTabForTesting("general")
@@ -107,7 +107,7 @@ final class SettingsRowViewTests: XCTestCase {
     /// window is the one above, which builds its own row. This one drives the
     /// controller's own path.
     func testTheSettingsPaneShouldHandTheLoginRowItsAvailability() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         controller.selectTabForTesting("general")
@@ -124,7 +124,7 @@ final class SettingsRowViewTests: XCTestCase {
     /// And the update row, whose answer depends on the build rather than on
     /// the system: whatever this build is, the row and the rule agree.
     func testTheSettingsPaneShouldHandTheUpdateRowItsAvailability() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         controller.selectTabForTesting("general")
