@@ -729,11 +729,12 @@ export function embedProviderSettingKey(kind: EmbedKind): string {
  * answers which providers the user wants among those already permitted, which
  * is why it is safe for an absent entry to mean ON.
  *
- * Absent means ON deliberately. VS Code merges the contributed per-provider
- * defaults, so a live read is normally complete; a PARTIAL map means a webview
- * booted before a provider existed, and failing closed there would silently
- * blank every card the user already had. Failing open costs nothing the
- * consent gates were not already holding.
+ * Absent means ON deliberately, and the map is genuinely absent on the hosts
+ * that declare no roster at all (`window.__i18n?.embedProviders` is optional).
+ * Only an explicit `false` switches a provider off, so the roster is a list of
+ * REFUSALS rather than a list of permissions, and a host that says nothing
+ * gets the same providers a fresh VS Code install does. Failing open costs
+ * nothing the two consent gates above were not already holding.
  */
 export function embedProviderEnabled(
     kind: EmbedKind,

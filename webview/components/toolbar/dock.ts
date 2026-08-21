@@ -72,16 +72,8 @@ import { applyTooltip } from "@/ui/tooltip";
 import type { ToolbarItemId } from "./registry";
 import "./dock.css";
 
-/**
- * The view-state key the expanded flag rides on.
- *
- * Still says "dock" after the arrangement became `formattingInSecondRow`, and
- * that is deliberate: the bag is persisted, so renaming the key would silently
- * drop the saved choice of everyone who had opened the row. The name is
- * historical rather than descriptive, and it stays that way until there is a
- * migration worth writing for a boolean.
- */
-const STATE_KEY = "formattingDockExpanded";
+/** The view-state key the expanded flag rides on. */
+const STATE_KEY = "formattingRowExpanded";
 
 export interface FormattingDock {
     /** The row element. The caller places it; this module never appends it. */

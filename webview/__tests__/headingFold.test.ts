@@ -251,7 +251,7 @@ describe("heading gutter level menu", () => {
         // Arrange: paragraph only — the paragraph gutter's own marker
         const editor = await makeEditor("Just a paragraph");
         const v = view(editor);
-        const pMarker = document.querySelector<HTMLButtonElement>(".heading-fold-marker--paragraph");
+        const pMarker = document.querySelector<HTMLButtonElement>('.heading-fold-marker[data-key="P"]');
         expect(pMarker).not.toBeNull();
         // The marker is the slash menu's Paragraph icon (pilcrow SVG).
         expect(pMarker!.querySelector("svg")).not.toBeNull();
@@ -275,7 +275,7 @@ describe("heading gutter level menu", () => {
     it("a paragraph inside a blockquote should NOT render a paragraph gutter", async () => {
         const editor = await makeEditor("> quoted text");
         view(editor);
-        expect(document.querySelector(".heading-fold-marker--paragraph")).toBeNull();
+        expect(document.querySelector('.heading-fold-marker[data-key="P"]')).toBeNull();
     });
 
     // MAR-79: standalone images/HTML parse as paragraphs wrapping a single
@@ -284,25 +284,25 @@ describe("heading gutter level menu", () => {
     it("an image-only paragraph should NOT render a paragraph gutter", async () => {
         const editor = await makeEditor("![two cats](cats.jpg)");
         view(editor);
-        expect(document.querySelector(".heading-fold-marker--paragraph")).toBeNull();
+        expect(document.querySelector('.heading-fold-marker[data-key="P"]')).toBeNull();
     });
 
     it("an html-only paragraph should NOT render a paragraph gutter", async () => {
         const editor = await makeEditor("<div align='center'>Centered raw HTML block</div>");
         view(editor);
-        expect(document.querySelector(".heading-fold-marker--paragraph")).toBeNull();
+        expect(document.querySelector('.heading-fold-marker[data-key="P"]')).toBeNull();
     });
 
     it("a paragraph mixing text and an inline image SHOULD render a paragraph gutter", async () => {
         const editor = await makeEditor("An inline ![icon](i.png) in a sentence");
         view(editor);
-        expect(document.querySelector(".heading-fold-marker--paragraph")).not.toBeNull();
+        expect(document.querySelector('.heading-fold-marker[data-key="P"]')).not.toBeNull();
     });
 
     it("an empty paragraph (blank line) SHOULD render a paragraph gutter", async () => {
         const editor = await makeEditor("");
         view(editor);
-        expect(document.querySelector(".heading-fold-marker--paragraph")).not.toBeNull();
+        expect(document.querySelector('.heading-fold-marker[data-key="P"]')).not.toBeNull();
     });
 
     // ── Decoration caching (the typing-perf contract) ──

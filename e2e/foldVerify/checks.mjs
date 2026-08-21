@@ -839,7 +839,7 @@ export async function run({ page, check, baseUrl }) {
     const src = await rectOf(page, ".ProseMirror > p", dragged);
     await page.mouse.move(src.x + 40, src.cy);
     await page.waitForTimeout(150);
-    const pMarker = await page.$$eval(".heading-fold-marker--paragraph", (els, t) => {
+    const pMarker = await page.$$eval('.heading-fold-marker[data-key="P"]', (els, t) => {
         const el = els.find((e) => e.closest("p")?.textContent.includes(t));
         if (!el) return null;
         const r = el.getBoundingClientRect();

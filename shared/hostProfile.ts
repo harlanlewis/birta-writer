@@ -40,10 +40,13 @@
  * gated by its own `birta.*` setting, not here.
  *
  * The host declares one object, `window.__i18n.host`. ABSENT MEANS THE VS CODE
- * PROFILE rather than the literal union: a page with no declaration is one
- * that predates the field, which makes it a VS Code page, and it should not
- * inherit a capability that names a standalone app's window. An explicit empty
- * profile is a host with nothing.
+ * PROFILE rather than the literal union: VS Code is the base surface, the one
+ * every other host is described as a DIFFERENCE from, so a page that says
+ * nothing gets it and never inherits a capability naming a standalone app's
+ * window. Every shipped page declares the field regardless; the default is
+ * what keeps the webview's own tests, which mount the editor with no host
+ * blob at all, on the surface they are written against. An explicit empty
+ * profile is a host with nothing, which is a different claim from silence.
  *
  * TWO declarers restate this by hand, because neither Swift nor an HTML
  * bootstrap can import TypeScript: Jot's Swift, split across `Prefs.bootConfig`
@@ -301,12 +304,9 @@ export function hostShortcuts(): readonly HostShortcut[] {
 /**
  * Whether the host declares `cap`.
  *
- * An absent declaration means a page that predates the field, which is a VS
- * Code page, so it gets the VS Code profile rather than the literal union:
- * every capability except the app-only ones. Before `APP_ONLY_CAPABILITIES`
- * existed those were the same set, which is why the rule reads as unchanged
- * from every existing page's point of view. Getting this wrong puts a
- * standalone app's row on a page that never heard of standalone apps.
+ * An absent declaration gets the VS Code profile rather than the literal
+ * union: every capability except the app-only ones. Getting this wrong puts a
+ * standalone app's row on a page that has no such window to put it in.
  */
 export function hostHas(cap: HostCapability): boolean {
     return hostProfile().capabilities.includes(cap);

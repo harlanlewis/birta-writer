@@ -627,7 +627,7 @@ describe("block markers for every top-level type", () => {
             "Blockquote", "Code Block", "Image", "HTML", "Table",
         ]);
         // The P marker keeps its historical class; other markers don't.
-        expect(document.querySelectorAll(".heading-fold-marker--paragraph")).toHaveLength(1);
+        expect(document.querySelectorAll('.heading-fold-marker[data-key="P"]')).toHaveLength(1);
     });
 
     it("blocks nested inside containers get their own child markers", async () => {
@@ -1182,7 +1182,7 @@ describe("fold state across moves and deletes", () => {
         const editor = await makeEditor("# A\n\n# B\n\ncontent B");
         const v = view(editor);
         collapse(v, 0);
-        pickRow(openMenuOn(markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"))[0]!), "Delete");
+        pickRow(openMenuOn(markers().filter((m) => m.dataset.key !== "P")[0]!), "Delete");
         expect(markdown(editor)).toBe("# B\n\ncontent B");
         expect(foldedSet(v).size).toBe(0); // B stays expanded
     });
@@ -1215,7 +1215,7 @@ describe("fold state vs insertions at the heading's start", () => {
         let posB = -1;
         v.state.doc.forEach((n, o) => { if (n.type.name === "heading" && n.textContent === "B") posB = o; });
         collapse(v, posB);
-        const headingMarkers = markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"));
+        const headingMarkers = markers().filter((m) => m.dataset.key !== "P");
         pickRow(openMenuOn(headingMarkers[0]!), "Duplicate");
         expect(markdown(editor)).toBe("# A\n\n# A\n\n# B\n\ncontent B");
         let newPosB = -1;
@@ -1301,7 +1301,7 @@ describe("copy actions", () => {
         });
         expect(headingAnchorSlug(v.state.doc, 0)).toBe("setup");
         expect(headingAnchorSlug(v.state.doc, secondPos)).toBe("setup-1");
-        const headingMarkers = markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"));
+        const headingMarkers = markers().filter((m) => m.dataset.key !== "P");
         pickRow(openMenuOn(headingMarkers[1]!), "Copy Link");
         const call = mockVscodeApi.postMessage.mock.calls
             .map((args) => args[0] as { type: string; data?: string })
@@ -1396,7 +1396,7 @@ describe("heading scope in the document body", () => {
         const editor = await makeEditor(DOC);
         view(editor);
         // markers(): [# A, P content A, # B, P content B] in document order.
-        const headingMarkers = markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"));
+        const headingMarkers = markers().filter((m) => m.dataset.key !== "P");
         pickRow(openMenuOn(headingMarkers[1]!), "Move Up");
         expect(markdown(editor)).toBe("# A\n\n# B\n\ncontent A\n\ncontent B");
     });
