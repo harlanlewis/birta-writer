@@ -10,6 +10,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Birta Writer Jot has an About window: its mark, its name, the version you are running, and links to the Birta Labs website, the project's source, and the page for reporting something wrong with it. It opens from the menu-bar icon's menu, on a Control-click or a right-click, and from the app menu when Jot is showing a Dock icon. A copy that did not come from a release says Development build instead of a version number, so what you quote in a bug report is either a release or plainly not one.
+
 ---
 
 ## [2026.821.1] - 2026, August 21
