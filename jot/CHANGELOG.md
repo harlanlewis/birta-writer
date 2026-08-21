@@ -74,6 +74,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- Insert Image in Birta Writer Jot opens on a tab it can fill. It opened on Browse Project, which read Loading for ten seconds and then showed an empty grid, because there is no project behind Jot to list images from and nothing ever answered. That tab is gone on Jot and the panel opens on URL; dragging a file in and pasting one both worked before and are unchanged. In VS Code, where there is a workspace to browse, nothing about the panel changes.
+
 - Clicking the marker beside a running `/ai` request in Birta Writer Jot now stops it. The marker has always offered to cancel and the panel has always been able to, but the two were never connected: the page asked under one name and Jot listened for another, so the click did nothing and the agent carried on to the end. Stopping it also stops it from writing, which is the half that matters if you asked for the wrong thing.
 
 - A finished `/ai` run in Birta Writer Jot no longer puts the agent's console output in your note. Everything the agent printed on its way to the answer was handed to the panel as if it were the file, and the panel took it as the note's new text, so a run that did exactly what you asked replaced what it had just written with a transcript of itself. Jot then wrote that back, within a beat with Automatically save changes on and at the latest when the panel hid or you quit, so the file went the same way. Jot now reads the file the agent edited, which is what it always meant to hand over.

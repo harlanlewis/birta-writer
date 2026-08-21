@@ -76,8 +76,25 @@ export type HostCapability =
     | "readOnlyMode"
     /** The table-of-contents / review sidebar. */
     | "toc"
-    /** An image store the Insert Image panel can upload to and browse. */
+    /**
+     * An image store the Insert Image panel can upload to. Uploading only:
+     * somewhere to PUT an image is not somewhere to look for one, and Jot is
+     * exactly that host (`AttachmentStore` writes beside the note). Browsing
+     * is `projectImages`.
+     */
     | "imageUpload"
+    /**
+     * A project the Insert Image panel can enumerate existing images from,
+     * which means a workspace of files rather than a single note.
+     *
+     * Split from `imageUpload` because they are two host facts, and
+     * conflating them made the panel ASK a question its host could not
+     * answer: on Jot the Project tab was the default, opened, posted
+     * `getProjectImages`, and drew an empty grid ten seconds later when the
+     * unanswered promise timed out to null (MAR-401). A host that declines
+     * this gets no Project tab, which is the panel's existing branch.
+     */
+    | "projectImages"
     /** A coding agent to hand a prompt to (Ask Agent). */
     | "agent"
     /**
@@ -126,6 +143,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "readOnlyMode",
     "toc",
     "imageUpload",
+    "projectImages",
     "agent",
     "notifications",
     "editorFont",

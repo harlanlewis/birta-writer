@@ -153,6 +153,25 @@ describe("HOST_PROFILES", () => {
             expect(gates.has(cap) || readers.has(cap), cap).toBe(true);
         }
     });
+
+    /**
+     * The `hostHas` half must be a real alternative rather than a rubber
+     * stamp. If every capability also gated a command, the disjunct above
+     * would pass unchanged with the whole sweep deleted, and no run would say
+     * so. Two capabilities rest on it, for different reasons: `projectImages`
+     * hides a tab inside the Insert Image panel, and `notifications` decides
+     * whether the page speaks where the host already has.
+     */
+    it("some capability should rest on the hostHas half alone, or the sweep is decoration", () => {
+        const gates = new Set(GATED.map((m) => (m as { hostCapability: HostCapability }).hostCapability));
+        const source = readSource(["webview", "shared", "src"]);
+        const readers = new Set(
+            [...source.matchAll(/hostHas\(\s*["'`]([A-Za-z]+)["'`]\s*\)/g)].map((m) => m[1]!));
+        const readOnly = ALL_HOST_CAPABILITIES.filter((c) => !gates.has(c) && readers.has(c));
+
+        expect(readOnly).toContain("projectImages");
+        expect(readOnly).toContain("notifications");
+    });
 });
 
 describe("hostHasCommand", () => {

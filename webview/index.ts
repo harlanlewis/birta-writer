@@ -677,7 +677,11 @@ const topbarTb = topbar
         () => currentEditor,
         { getLineMap, getMarkdownSource },
         async (file: File, altText: string) => handleImageFile(file, altText),
-        async (id: string) => handleGetProjectImages(id),
+        // A host with no project to enumerate gets no Project tab: the panel's
+        // `if (!onGetProjectImages)` branch hides it and opens on URL. Passing
+        // this unconditionally made Jot ask a question nothing answered, and
+        // the tab sat on "Loading..." until the ten-second timeout (MAR-401).
+        hostHas("projectImages") ? async (id: string) => handleGetProjectImages(id) : undefined,
         { open: () => findBar.open(), toggle: () => findBar.toggle() },
         // A host with no text editor to switch to gets no Edit Raw Markdown
         // button; the same gate makes the `editRawMarkdown` command inert.
