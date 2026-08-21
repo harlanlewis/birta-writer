@@ -1192,6 +1192,12 @@ final class Coordinator {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
+            // The bytes the agent opens, and the file they belong to. A
+            // finished run compares against both: the bytes to tell its own
+            // edit from one typed into the panel while it ran, the file
+            // because Settings can rebind the panel to another one meanwhile.
+            let handoff = self.latest
+            let handoffURL = self.boundURL
             let directory = self.boundURL.deletingLastPathComponent()
             let reference = "\(self.boundURL.lastPathComponent)#L1"
             let line = AgentRequest.compose(prompt: request, reference: reference)
@@ -1199,13 +1205,44 @@ final class Coordinator {
                            workingDirectory: directory) { [weak self] status in
                 guard let self else { return }
                 if status.status == "done" {
-                    // The agent edited the file; bring it back into the panel.
-                    // Whatever was typed during the run is the losing side,
-                    // which jot/README.md says out loud.
-                    self.reloadFromDiskIntoBuffer()
+                    self.finishAgentRun(requestId: id, status, handoff: handoff, handoffURL: handoffURL)
+                } else {
+                    self.reportAgent(requestId: id, status)
                 }
-                self.reportAgent(requestId: id, status)
             }
+        }
+    }
+
+    /// Land a finished run's edit, by `BirtaJotCore.AgentLandingPolicy`.
+    ///
+    /// The reload comes BEFORE the report, so the page still has the run live
+    /// when the change arrives and takes it into the undo history
+    /// (`recordsExternalInHistory`); `settleAgentRun` runs on the report and
+    /// would end that.
+    private func finishAgentRun(requestId: String, _ status: AgentRunStatus, handoff: String,
+                                handoffURL: URL) {
+        // The panel moved to another file while the run worked, so the file it
+        // edited is not the one on screen. Neither answer below is available:
+        // reading it in would replace the note the user switched to, and
+        // handing its bytes to the page would merge one document into another.
+        guard boundURL == handoffURL else {
+            reportAgent(requestId: requestId, status)
+            return
+        }
+        guard !noteMissing, case .contents(let onDisk) = readActiveNote() else {
+            // A note that is missing, unreadable, or has never been written:
+            // `reloadFromDiskIntoBuffer` holds the judgement for all three,
+            // and there is nothing to hand the page either way.
+            reloadFromDiskIntoBuffer()
+            reportAgent(requestId: requestId, status)
+            return
+        }
+        let landing = AgentLandingPolicy.landing(handoff: handoff, onDisk: onDisk, buffer: latest)
+        if landing.reloadsBuffer { reloadFromDiskIntoBuffer() }
+        if let diskText = landing.pageText {
+            reportAgent(requestId: requestId, status.merging(diskText))
+        } else {
+            reportAgent(requestId: requestId, status)
         }
     }
 
