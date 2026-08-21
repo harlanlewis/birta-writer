@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- BREAKING: a unit name in a calc conversion is now case-sensitive, and means what SI says it means. About sixty spellings used to be matched without regard to case, so `ML` and `ml` were both the millilitre and `T` was the tonne, while every other name in the catalog was already exact-case. That made a capital M the mega prefix everywhere except on those sixty, which is a rule nobody can hold in their head and which quietly answered a question you did not ask. Now `ml` is the millilitre and `ML` the megalitre, `t` the tonne and `T` the tesla, `s` the second and `S` the siemens, `h` the hour and `H` the henry. Every lowercase spelling works exactly as it did, plurals and abbreviations included, so a conversion written the way you would say it out loud is unaffected. A name with no unit behind it, such as `KM` or `MIN`, gives no answer rather than a number in a unit you did not mean. The temperature shorthands are unchanged: `c` and `f` are still degrees, not coulombs and farads.
+
 ### Fixed
 
 - The `/date` calendar is drawn as a floating card, on its own ground, instead of as a bare grid of numbers over the text underneath it. It arrived with no background, no border and no shadow at all, so the document showed straight through the days.
