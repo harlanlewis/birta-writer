@@ -111,8 +111,8 @@ public enum WebviewMessage: Equatable {
             guard let context = value as? [String: Any],
                   let selections = context["selections"] as? [Any] else { return nil }
             let index = (context["primary"] as? NSNumber)?.intValue ?? 0
-            guard let entry = (selections.indices.contains(index) ? selections[index] : selections.first)
-                    as? [String: Any] else { return nil }
+            let candidate: Any? = selections.indices.contains(index) ? selections[index] : selections.first
+            guard let entry = candidate as? [String: Any] else { return nil }
             func position(_ key: String) -> AgentReference.Position? {
                 guard let p = entry[key] as? [String: Any],
                       let line = (p["line"] as? NSNumber)?.intValue,
