@@ -106,6 +106,30 @@ final class SettingsWindowSizeTests: XCTestCase {
         return nil
     }
 
+    /// The ceiling fits the tallest each pane gets, not the one this Mac draws.
+    ///
+    /// The failure this exists for: General grew past the ceiling and the
+    /// suite was green locally and red on a runner, because the runner has
+    /// iCloud Drive switched off and therefore draws the Location row and a
+    /// caption explaining it, about sixty points that a Mac with iCloud on
+    /// never shows. A height check that measures only the machine it is on
+    /// is a check whose answer depends on who runs it.
+    func testEveryPaneShouldFitTheCeilingWithEveryConditionalRowShown() {
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
+                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        defer { controller.window?.close() }
+        let cap = SettingsWindowController.Metrics.maxPaneHeight
+        for name in SettingsWindowController.tabNames {
+            controller.selectTabForTesting(name)
+            controller.showEveryConditionalRowForTesting()
+            let tallest = fit(of: controller, tab: name)
+            XCTAssertLessThanOrEqual(tallest.pane, cap,
+                                     "the \(name) pane wants \(tallest.pane)pt with every "
+                                     + "conditional row shown, over a \(cap)pt ceiling, so it "
+                                     + "scrolls on a machine that draws them all")
+        }
+    }
+
     func testTheWindowShouldFollowThePaneItShows() {
         let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: {},
                                                   onShowWelcome: {}, onCheckForUpdates: {})

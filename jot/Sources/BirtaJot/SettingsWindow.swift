@@ -30,8 +30,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         static let rowInset: CGFloat = 14
         static let windowPadding: CGFloat = 20
         /// Past this the pane scrolls rather than growing the window off the
-        /// screen. Only Advanced reaches it today.
-        static let maxPaneHeight: CGFloat = 520
+        /// screen.
+        ///
+        /// Raised when General absorbed the first-run questions. Two things
+        /// about the number are worth knowing before touching it again.
+        ///
+        /// It has to fit the TALLEST General rather than the one in front of
+        /// you, and how tall that is depends on the machine: with iCloud Drive
+        /// switched off, the Location row and its caption are both on screen,
+        /// which is roughly sixty points this Mac does not show while iCloud
+        /// is on. That difference is why the old ceiling passed locally and
+        /// failed on a runner, and `pnpm test` cannot tell you which arm you
+        /// are measuring.
+        ///
+        /// And it is not the real limit: `fitWindowToPane` takes the smaller
+        /// of this and the screen, so a display that cannot show this much
+        /// scrolls anyway. What this number decides is the point at which
+        /// scrolling is preferable to a taller window, on a screen with room
+        /// for either.
+        static let maxPaneHeight: CGFloat = 640
         static var captionWidth: CGFloat { content - rowInset * 2 }
     }
 
@@ -330,6 +347,37 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let tab = Tab(rawValue: name) else { return }
         window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(tab.rawValue)
         show(tab)
+    }
+
+    /// Show every row an answer above it can take away, and every caption that
+    /// only some machines see.
+    ///
+    /// So a height check measures the TALLEST a pane gets rather than the one
+    /// this Mac happens to draw. Which rows are on screen depends on the
+    /// machine: with iCloud Drive switched off, General carries the Location
+    /// row and a caption saying so, which is roughly sixty points a Mac with
+    /// iCloud on never shows. That is not a corner case, it is half the
+    /// machines, and it is why a ceiling that fits here can fail on a runner
+    /// with the suite green both times.
+    ///
+    /// Deliberately one-way: it only reveals. Putting the rows back is what
+    /// `showFiles`, `showAgent` and `showNoteMode` do from the real settings,
+    /// so nothing here has to remember a previous state.
+    func showEveryConditionalRowForTesting() {
+        let cards: [(NSView?, SettingsRow, [SettingsGroup])] = [
+            (filesGroup, .location, SettingsForm.general),
+            (notesGroup, .newNoteName, SettingsForm.editor),
+            (agentGroup, .agentCommand, SettingsForm.editor),
+        ]
+        for (card, row, form) in cards {
+            guard let card, let index = SettingsForm.index(of: row, inGroupOf: form) else { continue }
+            Self.setRowHidden(card, row: index, hidden: false)
+        }
+        // The captions that only appear on some machines, said here so the
+        // measurement carries their height too.
+        iCloudCaption.say("iCloud Drive is off in System Settings, so notes stay on this Mac.", bad: false)
+        loginCaption.say(LoginItemState.blocked.caption, bad: true)
+        fitWindowToPane()
     }
 
     /// Move the iCloud switch the way a click does, for `BIRTA_JOT_TOGGLE_ICLOUD`.
