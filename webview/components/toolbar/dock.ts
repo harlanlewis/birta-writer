@@ -36,10 +36,11 @@
  * height to hold one button and the row would never really be gone.
  *
  * A serif T because the row is about text, and because a letter survives being
- * drawn at chrome size where a glyph for "formatting" would not. No chevron
- * beside it: the row either is or is not below the bar, which says more about
- * the state than a mark next to the letter, and the bar's other controls are
- * single glyphs.
+ * drawn at chrome size where a glyph for "formatting" would not. Nothing else
+ * is drawn beside it and nothing is drawn behind it: the row either is or is
+ * not below the bar, which says more about the state than a chevron or a
+ * pressed wash next to the letter could, and the bar's other controls are
+ * single glyphs on the window's own ground.
  *
  * The row scrolls horizontally rather than collapsing into an overflow menu:
  * the set is fixed and opinionated, so there is no tail to demote, and a
@@ -231,13 +232,14 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         // the bar measures its own height, so a collapsed row has to stop
         // occupying one or the content below never comes back up.
         el.hidden = !expanded;
-        toggle.dataset["expanded"] = String(expanded);
+        // `aria-expanded` and nothing else: the open row below the bar is the
+        // visible answer, so the button itself is drawn the same either way.
         toggle.setAttribute("aria-expanded", String(expanded));
         // A hidden row measures zero, so the chevrons have to be recomputed on
         // the way back rather than trusted from when it was closed.
         paintScrollers();
         // The label says what the click DOES, which is the opposite of the
-        // state; the glyph and the chevron already say which state it is in.
+        // state; the row below the bar already says which state it is in.
         const label = expanded ? t("Hide formatting controls") : t("Show formatting controls");
         toggle.setAttribute("aria-label", label);
         toggleTip.setText(label);

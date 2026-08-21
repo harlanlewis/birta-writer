@@ -129,4 +129,35 @@ public enum AgentPreset: String, CaseIterable, Sendable {
 
     /// The default, and the one a fresh install runs.
     public static let fallback = AgentPreset.claudeCode
+
+    /// The program a command line runs: its first word, with any path and any
+    /// surrounding quotes taken off.
+    ///
+    /// Everything after it is arguments, and arguments are exactly what the
+    /// user is expected to have changed. `claude -p {prompt}` and
+    /// `/opt/homebrew/bin/claude --model opus -p {prompt}` are the same tool.
+    static func program(of command: String) -> String? {
+        let head = command
+            .split(whereSeparator: \.isWhitespace)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        guard let head, let name = head.split(separator: "/").last, !name.isEmpty else {
+            return nil
+        }
+        return name.lowercased()
+    }
+
+    /// The preset a command is running, or nil for one this does not
+    /// recognise.
+    ///
+    /// Compared program to program, so the menu can say which tool is selected
+    /// without claiming to be the setting: the field below it is what runs,
+    /// and a command whose flags have been edited is still the same tool. A
+    /// command naming nothing here is not an error, it is somebody running
+    /// their own thing, and the menu says so by naming no tool at all.
+    public static func matching(command: String) -> AgentPreset? {
+        guard let running = program(of: command) else { return nil }
+        return allCases.first { program(of: $0.template) == running }
+    }
 }

@@ -6,13 +6,12 @@ import BirtaJotCore
 /// Built to the shape macOS settings windows have: a preference toolbar of
 /// tabs across the top (which is what centres the title, `toolbarStyle =
 /// .preference` doing the work), one pane at a time, each pane a stack of
-/// sections with a heading and rows in a rounded group.
+/// rounded groups of rows, under an opening paragraph where the pane needs
+/// one.
 ///
 /// Panes rather than one long column because the list outgrew a column: a
 /// window that scrolls past its own title is a form, and a reader looking for
-/// one switch should not have to pass nine others. `Advanced` is where the
-/// file paths and the agent command live, so the two panes anyone opens are
-/// short and every row in them is a plain choice.
+/// one switch should not have to pass nine others.
 ///
 /// A caption is the exception, not the rule. A row whose label already says
 /// what it does gets none; the ones that remain either warn (login is blocked)
@@ -32,7 +31,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         /// Past this the pane scrolls rather than growing the window off the
         /// screen.
         ///
-        /// Raised when General absorbed the first-run questions. Two things
+        /// Raised when General absorbed the first-run questions, and again
+        /// when it took the note-mode card off the middle pane. Two things
         /// about the number are worth knowing before touching it again.
         ///
         /// It has to fit the TALLEST General rather than the one in front of
@@ -48,37 +48,35 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         /// scrolls anyway. What this number decides is the point at which
         /// scrolling is preferable to a taller window, on a screen with room
         /// for either.
-        static let maxPaneHeight: CGFloat = 640
+        static let maxPaneHeight: CGFloat = 740
         static var captionWidth: CGFloat { content - rowInset * 2 }
     }
 
     /// The panes, in toolbar order.
     ///
-    /// Three, and the middle one is a deliberate reversal: an Editor pane
-    /// existed, was removed when its only row was Autosave, and comes back now
-    /// that there is a subject for it. The rule that removal was making is
-    /// still the right rule, and this pane is not an exception to it: a tab
-    /// costs a click to discover it is empty, so a tab has to be worth the
-    /// click. Editor now holds which note a summon opens, what a new one is
-    /// called, and the agent `/ai` hands a prompt to, which is a subject of
-    /// its own rather than three rows with nowhere else to go.
+    /// Three, and the middle one names its subject rather than a place: a tab
+    /// costs a click to discover what is on it, so it has to be worth the
+    /// click. An Editor pane existed, was removed when its only row was
+    /// Autosave, and came back holding three unrelated rows and an agent. The
+    /// rows that were not about the agent have gone to General, and what is
+    /// left is one subject, which is what the tab is now called.
     ///
     /// The split is by WHAT the rows are about. General is Jot as an
     /// application on this Mac: how you reach it, where it puts your bytes,
-    /// how it behaves at login and on the network. Editor is what happens
-    /// inside the panel. Advanced is the two gestures that undo rather than
-    /// set. Autosave stayed in General under exactly the argument that removed
-    /// the pane the first time: it is about when your bytes reach disk, not
-    /// about what the editor does with them.
+    /// which note a summon opens, and how it behaves at login and on the
+    /// network. AI Agent is the command `/ai` hands a prompt to. Advanced is
+    /// the gestures that undo rather than set. Autosave is in General under
+    /// the argument that removed the middle pane the first time: it is about
+    /// when your bytes reach disk, not about what the editor does with them.
     ///
     /// Which rows are on which pane is `SettingsForm`'s and not this enum's.
     private enum Tab: String, CaseIterable {
-        case general, editor, advanced
+        case general, aiAgent, advanced
 
         var title: String {
             switch self {
             case .general: return "General"
-            case .editor: return "Editor"
+            case .aiAgent: return "AI Agent"
             case .advanced: return "Advanced"
             }
         }
@@ -86,7 +84,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         var symbol: String {
             switch self {
             case .general: return "gearshape"
-            case .editor: return "square.and.pencil"
+            // Not a robot and not a brain: the pane is about handing a request
+            // to something that answers, which is what this glyph is for
+            // everywhere else on the system.
+            case .aiAgent: return "sparkles"
             case .advanced: return "wrench.and.screwdriver"
             }
         }
@@ -103,10 +104,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let networkSwitch = NSSwitch()
     private let agentField = NSTextField(string: Prefs.agentCommand)
     /// A PULL-DOWN rather than a popup, which is what keeps it from claiming
-    /// to be the setting. It always reads Select Template with the menu shut:
-    /// choosing an entry writes the field below and nothing else, and a menu
-    /// left displaying "Claude Code" over a field somebody has since edited
-    /// would be naming a template the command no longer is.
+    /// to be the setting: choosing an entry writes the field below and is then
+    /// done with, and the field is what `/ai` runs whatever it says a moment
+    /// later.
+    ///
+    /// Shut, it names the tool the command is RUNNING rather than the last
+    /// entry anybody picked, which is a different claim and a checkable one:
+    /// it is read back out of the field, by program name alone
+    /// (`AgentPreset.matching`), so an edited flag cannot make it lie and a
+    /// command of somebody's own puts it back to asking.
     private let agentPresetPopup = NSPopUpButton()
     private let agentEnabledSwitch = NSSwitch()
     private let newNoteField = NSTextField(string: Prefs.newNoteNameTemplate)
@@ -335,7 +341,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let tab = Tab(rawValue: name) else { return nil }
         switch tab {
         case .general: return SettingsForm.rows(of: SettingsForm.general)
-        case .editor: return SettingsForm.rows(of: SettingsForm.editor)
+        case .aiAgent: return SettingsForm.rows(of: SettingsForm.aiAgent)
         case .advanced: return SettingsForm.rows(of: SettingsForm.advanced)
         }
     }
@@ -364,13 +370,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// `showFiles`, `showAgent` and `showNoteMode` do from the real settings,
     /// so nothing here has to remember a previous state.
     func showEveryConditionalRowForTesting() {
-        let cards: [(NSView?, SettingsRow, [SettingsGroup])] = [
+        let cards: [(NSView?, SettingsRow, SettingsPane)] = [
             (filesGroup, .location, SettingsForm.general),
-            (notesGroup, .newNoteName, SettingsForm.editor),
-            (agentGroup, .agentCommand, SettingsForm.editor),
+            (notesGroup, .newNoteName, SettingsForm.general),
+            (agentGroup, .agentCommand, SettingsForm.aiAgent),
         ]
-        for (card, row, form) in cards {
-            guard let card, let index = SettingsForm.index(of: row, inGroupOf: form) else { continue }
+        for (card, row, pane) in cards {
+            guard let card, let index = SettingsForm.index(of: row, inPane: pane) else { continue }
             Self.setRowHidden(card, row: index, hidden: false)
         }
         // The captions that only appear on some machines, said here so the
@@ -426,7 +432,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // which is why the presets start at 1.
         agentPresetPopup.pullsDown = true
         agentPresetPopup.removeAllItems()
-        agentPresetPopup.addItems(withTitles: [Self.presetMenuTitle] + AgentPreset.allCases.map(\.title))
+        agentPresetPopup.addItems(withTitles: [Self.presetMenuPrompt] + AgentPreset.allCases.map(\.title))
         agentPresetPopup.controlSize = .small
         agentPresetPopup.target = self
         agentPresetPopup.action = #selector(chooseAgentPreset)
@@ -492,7 +498,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// the values it was built with while the app ran on the defaults.
     private func syncControlsFromPrefs() {
         networkSwitch.state = Prefs.networkEnabled ? .on : .off
-        networkCaption.say("Off means no outbound request at all.", bad: false)
+        networkCaption.say("Requires network access.", bad: false)
         showAutoUpdate()
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         dockSwitch.state = Prefs.showInDock ? .on : .off
@@ -500,6 +506,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         agentField.stringValue = Prefs.agentCommand
         newNoteField.stringValue = Prefs.newNoteNameTemplate
         agentEnabledSwitch.state = Prefs.agentEnabled ? .on : .off
+        showAgentPreset()
         showAgent()
         showNoteMode()
         showNoteNamePreview()
@@ -516,7 +523,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let agentGroup else { return }
         SettingsWindowController.setRowHidden(
             agentGroup,
-            row: SettingsForm.index(of: .agentCommand, inGroupOf: SettingsForm.editor) ?? 1,
+            row: SettingsForm.index(of: .agentCommand, inPane: SettingsForm.aiAgent) ?? 1,
             hidden: !Prefs.agentEnabled)
         fitWindowToPane()
     }
@@ -530,7 +537,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let notesGroup else { return }
         SettingsWindowController.setRowHidden(
             notesGroup,
-            row: SettingsForm.index(of: .newNoteName, inGroupOf: SettingsForm.editor) ?? 1,
+            row: SettingsForm.index(of: .newNoteName, inPane: SettingsForm.general) ?? 1,
             hidden: Prefs.noteMode != .newEachSession)
         fitWindowToPane()
     }
@@ -553,7 +560,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         if let filesGroup {
             SettingsWindowController.setRowHidden(
                 filesGroup,
-                row: SettingsForm.index(of: .location, inGroupOf: SettingsForm.general) ?? 1,
+                row: SettingsForm.index(of: .location, inPane: SettingsForm.general) ?? 1,
                 hidden: Prefs.noteHome == .iCloud)
             // The pane just got shorter or taller, so the window follows it.
             fitWindowToPane()
@@ -588,8 +595,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         onCheckForUpdates()
     }
 
-    /// What the pull-down reads with its menu shut, always.
-    private static let presetMenuTitle = "Select Template"
+    /// What the pull-down reads with its menu shut when the command below it
+    /// names no tool this build knows.
+    private static let presetMenuPrompt = "Select AI"
+
+    /// What it reads for a given command: the tool being run, or the prompt.
+    ///
+    /// A PULL-DOWN still, so this is not the menu claiming to be the setting:
+    /// the field below it is what `/ai` runs, and choosing an entry writes
+    /// that field and is then done with. What the title says is the answer to
+    /// a question somebody looking at a shell command should not have to
+    /// parse, which is which of these tools it is. Matched on the program
+    /// alone (`AgentPreset.matching`), so an edited flag does not make the
+    /// menu forget the tool it is still running.
+    private static func presetMenuTitle(for command: String) -> String {
+        AgentPreset.matching(command: command)?.title ?? presetMenuPrompt
+    }
+
+    /// Put the pull-down's title back in step with the command field.
+    private func showAgentPreset() {
+        agentPresetPopup.item(at: 0)?.title = Self.presetMenuTitle(for: Prefs.agentCommand)
+        // Item 0 IS the button's title under `pullsDown`, and AppKit caches
+        // what it drew: without this the button keeps the old word until
+        // something else makes it re-lay out.
+        agentPresetPopup.synchronizeTitleAndSelectedItem()
+    }
 
     /// Draw a screen from its declaration.
     ///
@@ -598,11 +628,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// screen show a SUBSET under the same words without a second layout to
     /// keep in step: `WelcomeView` renders the same declaration with its own
     /// controls, and `SettingsFormTests` compares the two lists.
-    private func render(_ groups: [SettingsGroup]) -> [NSView] {
+    private func render(_ pane: SettingsPane) -> [NSView] {
         var sections: [NSView] = []
-        for group in groups {
-            if let heading = group.heading { sections.append(Self.heading(heading)) }
-            if let intro = group.intro { sections.append(Self.intro(intro)) }
+        // The pane's own opening sentences, under the tab that names them.
+        // No heading is drawn above them: the toolbar already carries one, and
+        // a second copy of the tab's title at the top of its own pane is the
+        // window saying where you are twice.
+        sections.append(contentsOf: pane.intro.map(Self.intro))
+        for group in pane.groups {
             let box = Self.group(group.rows.map { row in
                 let parts = wiring(for: row)
                 return Self.row(row, control: parts.control, below: parts.below, caption: parts.caption)
@@ -631,7 +664,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .location:
             return (Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad)), [], nil)
         case .autosave:
-            return (autosaveSwitch, [], Caption("Off still writes when you hide Jot and when you quit."))
+            return (autosaveSwitch, [],
+                    Caption("Off keeps your changes in the panel until you save them with "
+                            + "Command-S. Hiding Jot leaves them there; quitting asks."))
         case .showInDock: return (dockSwitch, [], nil)
         case .startAtLogin:
             return (Self.pairedControl(loginSettingsButton, loginSwitch), [], loginCaption)
@@ -653,8 +688,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                     Caption("What /ai runs. {prompt} is replaced by the request, quoted."))
         case .resetSettings:
             return (resetButton, [],
-                    Caption("Every setting goes back to its default. No note is moved, deleted "
-                            + "or altered, and Jot reopens the default one."))
+                    Caption("Revert \(AppFlavor.current.displayName) to default settings. Will not "
+                            + "move, delete, or modify any of your files."))
         case .welcomeScreen:
             return (welcomeButton, [], Caption("The questions Jot asks the first time it runs."))
         }
@@ -670,7 +705,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         let sections: [NSView]
         switch tab {
         case .general: sections = render(SettingsForm.general)
-        case .editor: sections = render(SettingsForm.editor)
+        case .aiAgent: sections = render(SettingsForm.aiAgent)
         case .advanced: sections = render(SettingsForm.advanced)
         }
         // After the sections exist, not before. `wireControls` runs at the top
@@ -736,16 +771,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             : NSColor(white: 0, alpha: 0.035)
     }
 
-    static func heading(_ title: String) -> NSTextField {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
-        return label
-    }
-
-    /// The sentence between a heading and its card.
+    /// One paragraph of a pane's intro, above its first card.
     ///
     /// Outside the card rather than in it, because it belongs to the whole
-    /// group rather than to any row: a paragraph inside a grouped list reads
+    /// pane rather than to any row: a paragraph inside a grouped list reads
     /// as a row that forgot its control. Full content width, since it is prose
     /// and the card's insets are for rows.
     static func intro(_ text: String) -> NSTextField {
@@ -1023,6 +1052,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             .first(where: { $0.title == agentPresetPopup.titleOfSelectedItem }) else { return }
         Prefs.agentCommand = preset.template
         agentField.stringValue = preset.template
+        showAgentPreset()
         onChange()
     }
 

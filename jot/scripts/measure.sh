@@ -20,7 +20,10 @@
 #   kill→ready            cold recovery: content process death to editor mounted
 # plus idle RSS of the app and its WebKit helper processes after a quiet spell,
 # and it checks the persistence loop: inserted text reaches the scratchpad
-# file after a hide, and survives the content-process kill.
+# file after a hide, and survives the content-process kill. With autosave off
+# it checks the promise the other way: the hide writes nothing, and the
+# SIGTERM at teardown writes rather than putting up a sheet nobody is there to
+# answer.
 #
 # Usage: bash jot/scripts/measure.sh [--keep] (keep leaves the app running,
 # bound to the throwaway scratchpad it created)
@@ -1341,6 +1344,42 @@ for pair in "fresh:$FRESH_LOGIN" "used:$USED_LOGIN"; do
 done
 echo "onboarding           ok: no network switched on, and no login item taken, on either launch"
 
+# ── Autosave off: what Jot promises in both directions ──
+#
+# The setting says "automatically save while editing", and off has to mean
+# what the platform means by it: nothing reaches disk that the person did not
+# ask for. This is the arm no unit test can reach, because the promise is
+# about a gesture (hiding the panel) and a signal (SIGTERM) rather than about
+# a pure function, and it is the arm that hurts if it is wrong in either
+# direction. Written as two checks because the two failures are opposite: a
+# write on hide breaks the promise, and a quit that ASKS instead of writing
+# hangs whatever sent the signal.
+#
+# Left in place until teardown deliberately. `end_app` below sends SIGTERM,
+# which is the unattended quit, and the check that the stamp arrived then is
+# in that block.
+defaults write "$BIRTA_JOT_DEFAULTS_SUITE" autosave -bool NO
+show_panel
+OFF_STAMP="offprobe-$(date +%s)"
+printf '{"type":"__testInsertText","text":"%s\\n"}' "$OFF_STAMP" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.5
+hide_panel 0.7
+sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if grep -q "$OFF_STAMP" "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null; then
+    echo "autosave off         FAILED: hiding the panel wrote '$OFF_STAMP' to the note" >&2
+    cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
+fi
+# The typing has to have LANDED, or this passes on a probe that never reached
+# the page and proves nothing about hiding. The title is the app's own answer
+# to "is the buffer ahead of the file", which is exactly the claim.
+OFF_TITLE="$(grep "^jot-trace titletext " "$LOG" | tail -1 | sed 's/^jot-trace titletext //')"
+case "$OFF_TITLE" in
+    *Edited) echo "autosave off         ok: the hide wrote nothing, and the panel still says \"$OFF_TITLE\"" ;;
+    *) echo "autosave off         FAILED: nothing was written and the title does not say Edited either," >&2
+       echo "  so the probe never reached the page: \"$OFF_TITLE\"" >&2; exit 1 ;;
+esac
+
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"
 
@@ -1369,6 +1408,18 @@ if [ $KEEP = 0 ]; then
         exit 1
     fi
     echo "teardown             ok: the app and every helper it started are gone"
+    # The other half of the autosave-off promise, and the one that would hang
+    # an installer if it went the other way. `end_app` sent SIGTERM, which is
+    # how a running copy is replaced and how anything else managing the process
+    # ends it; there is nobody there to answer a sheet, so that quit keeps the
+    # bytes rather than asking about them.
+    if grep -q "$OFF_STAMP" "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null; then
+        echo "autosave off         ok: SIGTERM wrote '$OFF_STAMP' rather than asking"
+    else
+        echo "autosave off         FAILED: SIGTERM did not write the buffer, so an unattended quit" >&2
+        echo "  either dropped it or is sitting on a sheet nobody can answer" >&2
+        cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
+    fi
 fi
 
 echo "log: $LOG"

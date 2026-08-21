@@ -2,6 +2,7 @@ import "./findBar.css";
 import type { EditorView } from "@/pm";
 import { TextSelection, type Transaction } from "@/pm";
 import { createButton } from "@/ui/dom";
+import { createMenuTrigger, createSwitchItem } from "../toolbar/menuPrimitives";
 import {
     IconChevronUp,
     IconChevronDown,
@@ -55,6 +56,12 @@ export interface FindBarController {
         opts?: { showReplace?: boolean; focusReplace?: boolean },
     ): void;
     close(): void;
+    /**
+     * The toolbar magnifier's own press: open the bar, or put an open one
+     * away. Distinct from `open`, which every command path runs and which
+     * must never close a bar somebody is reaching for.
+     */
+    toggle(): void;
     isOpen(): boolean;
     /** Cmd+G / F3: next match while the editor keeps focus. */
     findNext(): void;
@@ -215,18 +222,55 @@ export function initFindBar(
     eventManager: EventManager,
 ): FindBarController {
     // ── DOM structure ────────────────────────────────────
+    /**
+     * Whether this surface draws the platform's find bar rather than the
+     * editor's (`nativeFindBar`, shared/hostProfile.ts). Read once, at build
+     * time: every control below is BUILT into one holder or the other, and a
+     * bar that asked again later could not move a button it had already
+     * wired.
+     */
+    const native = hostArranges("nativeFindBar");
+
     const bar = document.createElement("div");
     bar.className = "find-bar";
     bar.setAttribute("role", "search");
-    if (hostArranges("nativeFindBar")) { bar.classList.add("find-bar--native"); }
+    if (native) { bar.classList.add("find-bar--native"); }
 
-    const btnToggleReplace = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn find-bar__toggle",
-        icon: IconChevronRight,
-        title: t("Toggle Replace"),
-    });
-    btnToggleReplace.setAttribute("aria-label", t("Toggle Replace"));
-    btnToggleReplace.setAttribute("aria-expanded", "false");
+    /**
+     * The replace disclosure, and it is a different control on each surface.
+     *
+     * VS Code's find widget discloses the replace row with a chevron spanning
+     * both rows, and the bar that is drawn to be mistaken for it keeps one.
+     * The native bar takes a labelled toggle instead, for three reasons that
+     * are all about a chevron on a floating capsule rather than about
+     * chevrons: it moved down half a row as the bar grew a second one, so the
+     * control the user just pressed was no longer under the pointer; its
+     * tooltip opened over the row it had just revealed and stayed there,
+     * because the pointer never left an element that had moved out from under
+     * it; and, spanning two rows of a capsule, it read as a bracket around
+     * them rather than as a button.
+     */
+    const btnToggleReplace = native
+        ? (() => {
+            // Built by hand: `createButton` gives a labelled button a tooltip
+            // repeating its own label, which is noise beside the word itself.
+            const el = document.createElement("button");
+            el.className = "ui-btn find-bar__btn find-bar__show-replace";
+            el.textContent = t("Show Replace");
+            el.setAttribute("aria-label", t("Show Replace"));
+            el.setAttribute("aria-pressed", "false");
+            return el;
+        })()
+        : (() => {
+            const el = createButton({
+                className: "ui-btn ui-btn--icon find-bar__btn find-bar__toggle",
+                icon: IconChevronRight,
+                title: t("Toggle Replace"),
+            });
+            el.setAttribute("aria-label", t("Toggle Replace"));
+            el.setAttribute("aria-expanded", "false");
+            return el;
+        })();
 
     const rows = document.createElement("div");
     rows.className = "find-bar__rows";
@@ -273,46 +317,99 @@ export function initFindBar(
     const toggleKbd = (letter: string) =>
         kbd(isMac ? `Mod-Alt-${letter}` : `Alt-${letter}`);
 
-    const btnCase = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn",
-        label: "Aa",
-        title: `${t("Match Case")} (${toggleKbd("C")})`,
-    });
-    btnCase.setAttribute("aria-label", t("Match Case"));
-    btnCase.setAttribute("aria-pressed", "false");
-
-    const btnWord = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn",
-        label: "ab",
-        title: `${t("Match Whole Word")} (${toggleKbd("W")})`,
-    });
-    btnWord.setAttribute("aria-label", t("Match Whole Word"));
-    btnWord.setAttribute("aria-pressed", "false");
-
-    const btnRegex = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn",
-        label: ".*",
-        title: `${t("Use Regular Expression")} (${toggleKbd("R")})`,
-    });
-    btnRegex.setAttribute("aria-label", t("Use Regular Expression"));
-    btnRegex.setAttribute("aria-pressed", "false");
-
-    const btnInSelection = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn",
-        icon: IconFindSelection,
-        title: `${t("Find in Selection")} (${toggleKbd("L")})`,
-    });
-    btnInSelection.setAttribute("aria-label", t("Find in Selection"));
-    btnInSelection.setAttribute("aria-pressed", "false");
+    /**
+     * One search option, in whichever holder this surface built it into.
+     *
+     * The four options are declared once and drawn twice, and this is the seam
+     * that keeps that from being two implementations: everything below reaches
+     * an option through `activate` and `setOn` and never through a button, so
+     * the accelerators, the state repaints and the tests are the same code
+     * whether the option is a toggle button on a strip or a row in a menu.
+     */
+    interface FindOption {
+        /** The element, for its holder to place. */
+        el: HTMLElement;
+        /** Press it, as the keyboard accelerator does. */
+        activate: () => void;
+        /** Draw the on/off state. */
+        setOn: (on: boolean) => void;
+    }
 
     /**
-     * Whether this surface draws the platform's find bar rather than the
-     * editor's (`nativeFindBar`, shared/hostProfile.ts). Read once, at build
-     * time: the four option toggles are BUILT into one holder or the other,
-     * and a bar that asked again later could not move a button it had already
-     * wired.
+     * Build one option into this surface's holder.
+     *
+     * `mnemonic` is the two-character mark these options wear everywhere they
+     * appear (Aa, ab, .*) and it is the icon rather than a stand-in for one:
+     * a drawn glyph for "match case" would be less recognisable than the mark
+     * every editor already uses. Find in Selection has no such mark and takes
+     * a real icon.
      */
-    const native = hostArranges("nativeFindBar");
+    function makeOption(opts: {
+        label: string;
+        mnemonic?: string;
+        icon?: string;
+        /** The accelerator letter, for the tooltip that names it. */
+        key: string;
+        run: () => void;
+    }): FindOption {
+        const title = `${opts.label} (${toggleKbd(opts.key)})`;
+        if (!native) {
+            const el = createButton({
+                className: "ui-btn ui-btn--icon find-bar__btn",
+                ...(opts.mnemonic !== undefined ? { label: opts.mnemonic } : { icon: opts.icon }),
+                title,
+            });
+            el.setAttribute("aria-label", opts.label);
+            el.setAttribute("aria-pressed", "false");
+            el.addEventListener("click", opts.run);
+            return {
+                el,
+                activate: () => el.click(),
+                setOn: (on) => {
+                    el.classList.toggle("find-bar__btn--active", on);
+                    el.setAttribute("aria-pressed", String(on));
+                },
+            };
+        }
+        // A menu row, from the same primitive every other dropdown in this
+        // webview builds one from: an icon column, a label, and a switch. The
+        // switch is the idiom rather than a checkmark or an accent fill
+        // because each option is an independent persistent on/off, which is
+        // the distinction `toolbar/menuPrimitives.ts` draws.
+        const item = createSwitchItem(opts.label, opts.icon ?? opts.mnemonic);
+        item.el.classList.add("find-bar__option");
+        if (opts.mnemonic !== undefined) {
+            item.el.querySelector(".tb-list-item-icon")?.classList.add("find-bar__option-mnemonic");
+        }
+        item.el.setAttribute("aria-label", opts.label);
+        item.el.title = title;
+        item.el.addEventListener("click", opts.run);
+        return {
+            el: item.el,
+            activate: () => item.el.click(),
+            setOn: (on) => item.setChecked(on),
+        };
+    }
+
+    const optCase = makeOption({
+        label: t("Match Case"), mnemonic: "Aa", key: "C",
+        run: () => toggleOption(() => caseSensitive, (v) => { caseSensitive = v; }, optCase),
+    });
+    const optWord = makeOption({
+        label: t("Match Whole Word"), mnemonic: "ab", key: "W",
+        run: () => toggleOption(() => wholeWord, (v) => { wholeWord = v; }, optWord),
+    });
+    const optRegex = makeOption({
+        label: t("Use Regular Expression"), mnemonic: ".*", key: "R",
+        run: () => toggleOption(() => regexMode, (v) => { regexMode = v; }, optRegex),
+    });
+    const optInSelection = makeOption({
+        label: t("Find in Selection"), icon: IconFindSelection, key: "L",
+        run: () => {
+            setInSelection(!inSelection);
+            search(input.value);
+        },
+    });
 
     // "Done" rather than an ✕ on a native bar, because that is the word the
     // platform's own find bar uses and this one is drawn to be mistaken for
@@ -333,7 +430,7 @@ export function initFindBar(
         // rather than rebuilt, so every handler and every paint below reaches
         // them without knowing which surface it is on.
         const field = document.createElement("div");
-        field.className = "find-bar__field";
+        field.className = "find-bar__field find-bar__field--find";
         const glyph = document.createElement("span");
         glyph.className = "find-bar__glyph";
         glyph.innerHTML = IconSearch;
@@ -342,31 +439,40 @@ export function initFindBar(
         glyph.setAttribute("aria-hidden", "true");
         field.append(glyph, input, count);
 
-        // The options, behind a ⋯ rather than beside the field. Same four
-        // buttons, same handlers, same active class — a strip relocated, not a
-        // menu of new controls, which is what keeps this an arrangement.
+        // The options, behind a ⋯ rather than beside the field: the same four
+        // options, running the same code, in a dropdown drawn the way every
+        // other dropdown in this webview is drawn.
+        //
+        // `createMenuTrigger` rather than `createButton`, and the difference
+        // is the whole fix for what this button used to do: a `createButton`
+        // tooltip opens directly below the button, which is where the menu
+        // opens, so resting on the ⋯ long enough to read the tooltip and then
+        // pressing it left a label sitting over the first row it had just
+        // revealed. A menu opener carries no tooltip anywhere in this webview
+        // for exactly that reason; its accessible name is the aria-label.
         const optionsWrap = document.createElement("div");
         optionsWrap.className = "find-bar__options-wrap";
-        const btnOptions = createButton({
+        const btnOptions = createMenuTrigger({
             className: "ui-btn ui-btn--icon find-bar__btn find-bar__options-btn",
-            icon: IconEllipsis,
-            title: t("Search Options"),
+            html: IconEllipsis,
+            ariaLabel: t("Search Options"),
         });
-        btnOptions.setAttribute("aria-label", t("Search Options"));
         btnOptions.setAttribute("aria-haspopup", "true");
         btnOptions.setAttribute("aria-expanded", "false");
         // `--ui-card-*` is a RECIPE of tokens rather than a class, so the
         // surface composes it in CSS; there is no `.ui-card` to add here.
         const optionsMenu = document.createElement("div");
         optionsMenu.className = "find-bar__options";
+        optionsMenu.setAttribute("role", "menu");
         optionsMenu.hidden = true;
-        optionsMenu.append(btnCase, btnWord, btnRegex, btnInSelection);
+        optionsMenu.append(optCase.el, optWord.el, optRegex.el, optInSelection.el);
         optionsWrap.append(btnOptions, optionsMenu);
         wireOptionsPopover(btnOptions, optionsMenu, optionsWrap);
 
-        findRow.append(field, btnPrev, btnNext, optionsWrap, btnClose);
+        findRow.append(field, btnPrev, btnNext, optionsWrap, btnToggleReplace, btnClose);
     } else {
-        findRow.append(input, count, btnPrev, btnNext, sep, btnCase, btnWord, btnRegex, btnInSelection, btnClose);
+        findRow.append(input, count, btnPrev, btnNext, sep,
+                       optCase.el, optWord.el, optRegex.el, optInSelection.el, btnClose);
     }
 
     // Replace row (hidden until toggled)
@@ -381,21 +487,51 @@ export function initFindBar(
     replaceInput.spellcheck = false;
     replaceInput.autocomplete = "off";
 
+    // Labelled on the native bar, icons on VS Code's.
+    //
+    // The two icons are a page with an arrow and a page with two arrows, which
+    // is as far as a 16px square gets towards "put this one word in place of
+    // this other one" and "do that everywhere": both are read as a guess, and
+    // the guess that is wrong replaces every match in the document. VS Code's
+    // bar keeps them because it is drawn to be that widget, and because a user
+    // there has the same two icons in the same order in the editor they came
+    // from.
     const btnReplace = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn",
-        icon: IconReplace,
+        ...(native
+            ? { className: "ui-btn find-bar__btn find-bar__segment-btn", label: t("Replace") }
+            : { className: "ui-btn ui-btn--icon find-bar__btn", icon: IconReplace }),
         title: `${t("Replace")} (Enter)`,
     });
     btnReplace.setAttribute("aria-label", t("Replace"));
 
     const btnReplaceAll = createButton({
-        className: "ui-btn ui-btn--icon find-bar__btn",
-        icon: IconReplaceAll,
+        ...(native
+            ? { className: "ui-btn find-bar__btn find-bar__segment-btn", label: t("Replace All") }
+            : { className: "ui-btn ui-btn--icon find-bar__btn", icon: IconReplaceAll }),
         title: `${t("Replace All")} (${kbd("Mod-Enter")})`,
     });
     btnReplaceAll.setAttribute("aria-label", t("Replace All"));
 
-    replaceRow.append(replaceInput, btnReplace, btnReplaceAll);
+    if (native) {
+        // The replace input takes the same capsule the find input does, so the
+        // two rows read as two fields of one form. Without it the input drew
+        // no edge at all: the rules that flatten the find input are what let
+        // the field around it carry the ground, the border and the focus ring,
+        // and they reached this input too, which has no field around it.
+        const replaceField = document.createElement("div");
+        replaceField.className = "find-bar__field find-bar__field--replace";
+        replaceField.append(replaceInput);
+        // One segmented pair rather than two buttons: they act on the same
+        // thing at two scales, which is what a segment says and two adjacent
+        // buttons do not.
+        const segment = document.createElement("div");
+        segment.className = "find-bar__segment";
+        segment.setAttribute("role", "group");
+        segment.append(btnReplace, btnReplaceAll);
+        replaceRow.append(replaceField, segment);
+    } else {
+        replaceRow.append(replaceInput, btnReplace, btnReplaceAll);
+    }
 
     // Hint row: shown when raw-source (syntax) matches exist — they are find-only
     const hint = document.createElement("div");
@@ -403,7 +539,10 @@ export function initFindBar(
     hint.hidden = true;
 
     rows.append(findRow, replaceRow, hint);
-    bar.append(btnToggleReplace, rows);
+    // The chevron spans both rows and therefore sits outside them; the native
+    // bar's disclosure is a control on the find row like any other, and was
+    // appended there above.
+    if (native) { bar.append(rows); } else { bar.append(btnToggleReplace, rows); }
     document.body.appendChild(bar);
 
     // ── State ────────────────────────────────────────────
@@ -1210,8 +1349,15 @@ export function initFindBar(
     function setReplaceVisible(show: boolean) {
         replaceVisible = show;
         bar.classList.toggle("find-bar--replace-visible", show);
-        btnToggleReplace.innerHTML = show ? IconChevronDown : IconChevronRight;
-        btnToggleReplace.setAttribute("aria-expanded", String(show));
+        if (native) {
+            // The word does not change with the state: the button is a
+            // switch for the row, and "Hide Replace" over a closed row would
+            // be naming what is already gone.
+            btnToggleReplace.setAttribute("aria-pressed", String(show));
+        } else {
+            btnToggleReplace.innerHTML = show ? IconChevronDown : IconChevronRight;
+            btnToggleReplace.setAttribute("aria-expanded", String(show));
+        }
     }
 
     // ── Event bindings ───────────────────────────────────
@@ -1293,17 +1439,12 @@ export function initFindBar(
         if (replaceVisible) { replaceInput.focus(); }
     });
 
-    function bindToggle(btn: HTMLButtonElement, get: () => boolean, set: (v: boolean) => void) {
-        btn.addEventListener("click", () => {
-            set(!get());
-            btn.classList.toggle("find-bar__btn--active", get());
-            btn.setAttribute("aria-pressed", String(get()));
-            search(input.value);
-        });
+    /** Flip one plain option, repaint it, and re-run the search. */
+    function toggleOption(get: () => boolean, set: (v: boolean) => void, option: FindOption) {
+        set(!get());
+        option.setOn(get());
+        search(input.value);
     }
-    bindToggle(btnCase, () => caseSensitive, (v) => { caseSensitive = v; });
-    bindToggle(btnWord, () => wholeWord, (v) => { wholeWord = v; });
-    bindToggle(btnRegex, () => regexMode, (v) => { regexMode = v; });
 
     // Find-in-selection captures the editor selection AT toggle time (VS
     // Code's widget behavior); switching off drops the scope. Toggling on with
@@ -1325,18 +1466,12 @@ export function initFindBar(
             selectionScope = null;
             inSelection = false;
         }
-        btnInSelection.classList.toggle("find-bar__btn--active", inSelection);
-        btnInSelection.setAttribute("aria-pressed", String(inSelection));
+        optInSelection.setOn(inSelection);
         // No repaint here: every caller that changes the scope re-runs the
         // search (updateHighlights repaints), and the one that doesn't —
         // close() — has already called clearHighlights. Painting here too
         // would make both of those lines individually unfalsifiable.
     }
-    btnInSelection.addEventListener("click", () => {
-        setInSelection(!inSelection);
-        search(input.value);
-    });
-
     // Toggle accelerators (see toggleKbd above) work from anywhere in the
     // bar, mirroring VS Code's find widget.
     bar.addEventListener("keydown", (e) => {
@@ -1344,15 +1479,15 @@ export function initFindBar(
             ? e.metaKey && e.altKey && !e.ctrlKey
             : e.altKey && !e.ctrlKey && !e.metaKey;
         if (!chord || e.shiftKey) { return; }
-        const btn = e.code === "KeyC" ? btnCase
-            : e.code === "KeyW" ? btnWord
-            : e.code === "KeyR" ? btnRegex
-            : e.code === "KeyL" ? btnInSelection
+        const option = e.code === "KeyC" ? optCase
+            : e.code === "KeyW" ? optWord
+            : e.code === "KeyR" ? optRegex
+            : e.code === "KeyL" ? optInSelection
             : null;
-        if (btn) {
+        if (option) {
             e.preventDefault();
             e.stopPropagation();
-            btn.click();
+            option.activate();
         }
     });
 
@@ -1453,6 +1588,7 @@ export function initFindBar(
     return {
         open,
         close,
+        toggle: () => { if (visible) { close(); } else { open(); } },
         isOpen: () => visible,
         findNext: () => findFrom(1),
         findPrev: () => findFrom(-1),

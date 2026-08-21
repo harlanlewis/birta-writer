@@ -74,13 +74,13 @@ final class SettingsPaneTests: XCTestCase {
                        + drawn.joined(separator: " | "))
     }
 
-    func testTheEditorPaneShouldDrawEveryRowItDeclares() {
+    func testTheAgentPaneShouldDrawEveryRowItDeclares() {
         let controller = makeController()
         defer { controller.window?.close() }
-        let drawn = labels(of: controller, tab: "editor")
-        let declared = SettingsForm.rows(of: SettingsForm.editor).map(\.rawValue)
+        let drawn = labels(of: controller, tab: "aiAgent")
+        let declared = SettingsForm.rows(of: SettingsForm.aiAgent).map(\.rawValue)
         XCTAssertEqual(drawn, declared,
-                       "the Editor pane and its declaration disagree; drawn: "
+                       "the AI Agent pane and its declaration disagree; drawn: "
                        + drawn.joined(separator: " | "))
     }
 
@@ -127,7 +127,8 @@ final class SettingsPaneTests: XCTestCase {
     /// The case that found this: `Reset to defaults` writes every setting and
     /// then asks the window to redraw itself, and the note-mode popup was not
     /// among the controls that redraw ran over, so after a reset it went on
-    /// naming the answer the user had just cleared.
+    /// naming the answer the user had just cleared. That popup is on General
+    /// now, which is the pane this leaves and comes back to.
     ///
     /// Asserted through the two public gestures rather than by reaching for
     /// the control, so it stays true of a control added later: build the pane,
@@ -135,12 +136,53 @@ final class SettingsPaneTests: XCTestCase {
     func testAPaneShouldReadTheSameAfterBeingLeftAndComeBackTo() {
         let controller = makeController()
         defer { controller.window?.close() }
-        let first = labels(of: controller, tab: "editor")
-        _ = labels(of: controller, tab: "general")
+        let first = labels(of: controller, tab: "general")
+        _ = labels(of: controller, tab: "aiAgent")
         _ = labels(of: controller, tab: "advanced")
-        XCTAssertEqual(labels(of: controller, tab: "editor"), first,
-                       "the Editor pane draws different rows the second time it is shown")
+        XCTAssertEqual(labels(of: controller, tab: "general"), first,
+                       "the General pane draws different rows the second time it is shown")
         XCTAssertFalse(first.isEmpty)
+    }
+
+    /// The agent pull-down names the tool the command below it runs.
+    ///
+    /// Read off the live control rather than from the function behind it,
+    /// which is the difference between checking the answer and checking that
+    /// the answer reached the button: under `pullsDown` the title IS item 0,
+    /// and AppKit keeps drawing whatever it drew last until something asks it
+    /// to lay out again.
+    ///
+    /// Against the DEFAULT command, deliberately. Nothing here writes a
+    /// setting: the test runner has its own standard domain and none of our
+    /// keys in it, so `Prefs.agentCommand` is the fallback template, and what
+    /// this asserts is that a fresh install's pull-down names the tool a fresh
+    /// install runs rather than asking somebody to choose one it already has.
+    func testTheAgentPullDownShouldNameTheToolTheCommandRuns() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("aiAgent")
+        guard let content = controller.window?.contentView else {
+            return XCTFail("the settings window has no content view")
+        }
+        content.layoutSubtreeIfNeeded()
+        guard let popup = pullDown(in: content) else {
+            return XCTFail("the AI Agent pane draws no pull-down")
+        }
+        let expected = AgentPreset.matching(command: Prefs.agentCommand)?.title
+        XCTAssertNotNil(expected, "the default command names no tool, so this checks nothing")
+        XCTAssertEqual(popup.title, expected)
+        // And it is a shortcut into the field rather than a second place the
+        // setting lives, which is what `pullsDown` says.
+        XCTAssertTrue(popup.pullsDown)
+    }
+
+    /// The first pull-down anywhere in `view`.
+    private func pullDown(in view: NSView) -> NSPopUpButton? {
+        if let found = view as? NSPopUpButton, found.pullsDown { return found }
+        for subview in view.subviews {
+            if let found = pullDown(in: subview) { return found }
+        }
+        return nil
     }
 
     /// The reason this file exists, stated as its own check: every row the
