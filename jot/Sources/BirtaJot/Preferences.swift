@@ -432,8 +432,19 @@ enum Prefs {
     /// is the hazard `LoginItem`'s own header names, and it is machine-wide
     /// litter that `jot/scripts/reap.sh` cannot see: a login item lives in
     /// BTM, not in a plist under our domain.
-    static func applyOnboardingDefaults() {
-        let apply = isFirstLaunch && isUserStore
+    ///
+    /// The two halves and the effect are parameters so the arms can be tested
+    /// without one. Both halves read TRUE inside an xctest process, because
+    /// nothing sets `BIRTA_JOT_DEFAULTS_SUITE` there and the runner's own
+    /// standard domain holds none of our keys, so a test that called this
+    /// without a seam would take the acting branch and register a login item
+    /// pointing at whatever ran the suite. That is worse than ordinary litter:
+    /// it lives in BTM rather than in a plist under our domain, so
+    /// `jot/scripts/reap.sh` cannot see it and cannot clear it.
+    static func applyOnboardingDefaults(firstLaunch: Bool = isFirstLaunch,
+                                        userStore: Bool = isUserStore,
+                                        register: (Bool) -> Void = { _ = try? LoginItem.set($0) }) {
+        let apply = firstLaunch && userStore
         // Traced because the interesting outcome is the one that does NOTHING,
         // and an absence is invisible: a login item lives in BTM rather than
         // in a plist, so a checking run cannot observe it having been written.
@@ -444,7 +455,7 @@ enum Prefs {
         }
         guard apply else { return }
         // Shown on, so it is on. macOS can refuse, and the row says so.
-        _ = try? LoginItem.set(true)
+        register(true)
     }
 
     /// Whether `/ai` is offered at all.
