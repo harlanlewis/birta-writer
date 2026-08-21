@@ -11,8 +11,9 @@ import XCTest
 /// to every check written over the declaration alone.
 ///
 /// The window is built from an injected `AboutInfo` rather than from the
-/// bundle, because a test host has neither a version nor a copyright of its
-/// own, and a window drawing neither cannot be checked for drawing both.
+/// bundle. `AboutInfo.current` reads `Bundle.main`, which under `swift test`
+/// is the `xctest` tool's bundle, so a window built from it would be checked
+/// against Xcode's version and Apple's copyright.
 @MainActor
 final class AboutWindowTests: XCTestCase {
     override func setUp() {

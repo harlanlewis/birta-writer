@@ -34,9 +34,10 @@ final class AboutWindowController: NSWindowController {
         static let bottomPadding: CGFloat = 24
     }
 
-    /// `info` is injectable so the window can be built and read back without a
-    /// bundle: a test host has no version and no copyright of its own, and a
-    /// window that draws neither cannot be checked for drawing both.
+    /// `info` is injectable so the window can be built and read back against
+    /// known content. `AboutInfo.current` reads `Bundle.main`, and under
+    /// `swift test` that bundle is the `xctest` tool's, so a window built from
+    /// it draws Xcode's version and Apple's copyright rather than Jot's.
     ///
     /// Read once, here. The window says what the build was when it opened, and
     /// nothing about a build changes while it is running.

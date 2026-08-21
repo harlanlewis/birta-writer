@@ -155,8 +155,8 @@ jot/Sources/BirtaJotCore/DocumentName.swift   What a typed filename means: the e
 jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes, when it does not, and when it asks instead; what the autosave setting promises in both directions
 jot/Sources/BirtaJotCore/RowAvailability.swift Whether a settings row can do what it says, and what colour the sentence under it is; the two are independent and both surfaces read them here
 jot/Sources/BirtaJotCore/UnsavedChanges.swift What the quit sheet says when autosave is off and the buffer is ahead of the file
-jot/Sources/BirtaJotCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
 jot/Sources/BirtaJotCore/AboutInfo.swift      What the About window says, and THE repository string its two GitHub links and the updater's release feed all derive from
+jot/Sources/BirtaJotCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
 jot/Sources/BirtaJotCore/AgentReference.swift What Copy Reference puts on the clipboard, a port of src/agentBridge/format.ts; mirrored test cases, and its header names the two places the two deliberately differ
 jot/scripts/update-jot.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for

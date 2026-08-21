@@ -11,10 +11,12 @@
  * fetched updates from one repository while filing issues against another would
  * look correct from every screen it draws.
  *
- * The copyright is checked here for the shape AGENTS.md calls a guard that is
- * ABSENT rather than wrong: the window draws the line only when the bundle
- * carries one, so a plist that stopped declaring it would ship a window with a
- * line missing, and every Swift test would still pass.
+ * The copyright and the two menu rows are checked here for the shape AGENTS.md
+ * calls a guard that is ABSENT rather than wrong. The window draws the
+ * copyright only when the bundle carries one, so a plist that stopped
+ * declaring it would ship a window with a line missing; and nothing in the
+ * Swift suite constructs an `AppDelegate`, so the rows that open the window
+ * are the one part of this feature no XCTest can reach.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -23,6 +25,7 @@ import { join } from "node:path";
 const REPO = join(__dirname, "..", "..");
 const about = readFileSync(join(REPO, "jot/Sources/BirtaJotCore/AboutInfo.swift"), "utf8");
 const updater = readFileSync(join(REPO, "jot/Sources/BirtaJot/Updater.swift"), "utf8");
+const app = readFileSync(join(REPO, "jot/Sources/BirtaJot/App.swift"), "utf8");
 const plist = readFileSync(join(REPO, "jot/Resources/Info.plist"), "utf8");
 const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
 
@@ -33,6 +36,29 @@ function swiftConstant(name: string): string {
         throw new Error(`AboutInfo.swift no longer declares ${name} as a string literal`);
     }
     return value;
+}
+
+/**
+ * One Swift function's body, brace-matched from its signature.
+ *
+ * A rename is a thrown error naming the function rather than an empty string
+ * quietly satisfying every assertion made about it.
+ */
+function swiftFunctionBody(source: string, name: string): string {
+    const signature = source.indexOf(`func ${name}(`);
+    if (signature === -1) {
+        throw new Error(`App.swift no longer declares ${name}`);
+    }
+    const open = source.indexOf("{", signature);
+    let depth = 0;
+    for (let i = open; i < source.length; i++) {
+        if (source[i] === "{") depth += 1;
+        if (source[i] === "}") {
+            depth -= 1;
+            if (depth === 0) return source.slice(open + 1, i);
+        }
+    }
+    throw new Error(`${name} has no closing brace`);
 }
 
 /** The `<string>` a plist key carries, or undefined when the key is absent. */
@@ -61,6 +87,18 @@ describe("Jot's About window", () => {
 
     it("should link to an https website", () => {
         expect(new URL(swiftConstant("website")).protocol).toBe("https:");
+    });
+
+    it("should be reachable from the app menu and from the menu-bar item's menu", () => {
+        // Nothing in the Swift suite constructs an `AppDelegate`, so both
+        // rows could be deleted with every XCTest still green, and an
+        // accessory app's app menu is invisible: lose the status-menu row and
+        // most installs have no route to the window at all.
+        for (const builder of ["buildMainMenu", "buildStatusItem"]) {
+            const body = swiftFunctionBody(app, builder);
+            expect(body, builder).toContain("#selector(menuOpenAbout)");
+            expect(body, builder).toContain('addItem(withTitle: "About ');
+        }
     });
 
     it("should have a copyright in the bundle to draw", () => {
