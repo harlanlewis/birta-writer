@@ -25,8 +25,7 @@ export function createUnitMath(): UnitMath {
             options?: { override: boolean },
         ): void;
     };
-    // A real unit the catalog simply lacks: the nautical mile. Defined here
-    // rather than aliased, because there is nothing to alias it TO.
+    // The one catalog gap for our historical spellings: nautical mile.
     math.createUnit("nmi", "1852 m");
 
     // ── The note-taker's conventions ─────────────────────────────────────

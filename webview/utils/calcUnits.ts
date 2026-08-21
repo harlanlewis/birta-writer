@@ -5,8 +5,8 @@
  * a thin, lazily-loaded seam over mathjs's unit system. The point is the
  * CATALOG: every mathjs unit (length, mass, time, volume, area, data,
  * energy, …, with plural and abbreviated spellings) converts with zero
- * factor-table maintenance here; this module owns only a small alias map for
- * the shorthands the catalog reads as something else, and the loader.
+ * factor-table maintenance here; this module owns only a small legacy-alias
+ * map and the loader.
  *
  * SAFETY POSTURE, deliberately narrow: user EXPRESSIONS never reach mathjs —
  * calc.ts's hand-written parser owns all expression evaluation (its
@@ -77,18 +77,38 @@ export function calcUnitsReady(): boolean {
     return unitMath !== null;
 }
 
+/**
+ * Every spelling the original hand-rolled tables accepted. These keep their
+ * HISTORICAL, CASE-INSENSITIVE meaning forever: `ML`, `Ml`, and `ml` are all
+ * the millilitre (to mathjs alone, `Ml` is the megalitre — a silent 10^9 lie),
+ * `T` is the tonne (not the tesla), `S` the second, `H` the hour. Only names
+ * OUTSIDE this set fall through to the mathjs catalog with exact-case
+ * semantics (`GB` ≠ `Gb`). A spellings list, not a factor table — the factors
+ * live in mathjs.
+ */
+const LEGACY_UNITS = new Set([
+    "mm", "cm", "dm", "m", "km", "in", "inch", "inches", "ft", "foot", "feet",
+    "yd", "yard", "yards", "mi", "mile", "miles", "nmi",
+    "mg", "g", "kg", "t", "tonne", "tonnes", "oz", "lb", "lbs", "stone",
+    "ms", "s", "sec", "secs", "second", "seconds", "min", "mins", "minute",
+    "minutes", "h", "hr", "hrs", "hour", "hours", "day", "days", "week", "weeks",
+    "ml", "l", "liter", "litre", "liters", "litres", "cup", "cups",
+    "pint", "pints", "quart", "quarts", "gal", "gallon", "gallons",
+]);
+
 /** Resolution candidates for a user-typed unit name, in priority order. */
 function candidates(name: string): string[] {
-    // Aliases first and DEFINITIVE, because the temperature shorthands must
-    // beat the catalog: to mathjs alone `c` and `f` are coulomb and farad.
-    // Everything else is catalog passthrough, EXACT CASE, which is what makes
-    // a unit name mean one thing: `ML` is the megalitre and `ml` the
-    // millilitre, `MB` the megabyte and `mb` whatever mathjs says, and none of
-    // them is a guess at what the user meant by their shift key. A name the
-    // catalog does not know is refused, so the calc simply gives no answer
-    // rather than quietly picking a unit.
-    const alias = UNIT_ALIASES[name.toLowerCase()];
-    return alias ? [alias] : [name];
+    const lower = name.toLowerCase();
+    const alias = UNIT_ALIASES[lower];
+    // Aliases first (temperature shorthands must beat coulomb/farad), then the
+    // historical spellings, matched case-insensitively as they always were —
+    // both DEFINITIVE, no fallthrough: falling through to an exact-case
+    // catalog parse is how `ML` becomes the megalitre. Anything else is
+    // catalog passthrough, exact-case only (`MB` is the megabyte and `mb`
+    // resolves as mathjs says, never as a guess at the user's casing).
+    if (alias) { return [alias]; }
+    if (LEGACY_UNITS.has(lower)) { return [lower]; }
+    return [name];
 }
 
 /** `math.unit(value, name)` across the candidate spellings, or null. */
