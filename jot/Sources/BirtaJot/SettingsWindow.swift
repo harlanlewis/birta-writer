@@ -232,6 +232,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// evil; a display that cannot show even that is the only case where the
     /// scroller earns its keep.
     private func fitWindowToPane() {
+        // Nothing while a pane is being built. `buildPane` puts its rows in
+        // step as it goes, and those calls end here, but the pane being built
+        // is not in `panes` yet and `shown` still names the previous one: the
+        // window would be resized to the pane being left, and then resized
+        // again a moment later by the `show` that asked for the build. Harmless
+        // to look at and wrong to leave, because it is a measurement of the
+        // wrong subject that happens to be corrected by the next line.
+        guard !building else { return }
         guard let window, let pane = shown.flatMap({ panes[$0] }) else { return }
         pane.layoutSubtreeIfNeeded()
         let screenHeight = (window.screen ?? NSScreen.main)?.visibleFrame.height ?? Metrics.maxPaneHeight
@@ -445,6 +453,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         newNoteField.stringValue = Prefs.newNoteNameTemplate
         agentEnabledSwitch.state = Prefs.agentEnabled ? .on : .off
         showAgent()
+        showNoteMode()
+        showNoteNamePreview()
         showLoginItem(LoginItem.state)
         showFiles()
     }
@@ -602,7 +612,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
     }
 
+    /// Whether a pane is being constructed right now. See `fitWindowToPane`.
+    private var building = false
+
     private func buildPane(_ tab: Tab) -> NSView {
+        building = true
+        defer { building = false }
         if panes.isEmpty { wireControls() }
         let sections: [NSView]
         switch tab {
@@ -708,14 +723,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// reachable from the keyboard, and an `NSTextField` carrying a link is
     /// not in the key view loop.
     static func link(_ title: String, to url: URL) -> NSView {
-        let button = NSButton(title: title, target: LinkOpener.shared, action: #selector(LinkOpener.open(_:)))
-        button.bezelStyle = .inline
-        button.isBordered = false
-        button.controlSize = .small
-        button.contentTintColor = .linkColor
-        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        button.toolTip = url.absoluteString
-        LinkOpener.shared.destinations[ObjectIdentifier(button)] = url
+        let button = LinkButton(title: title, url: url)
         // Leading-aligned with the label above it, and hugging its own title
         // so the clickable area is the words rather than the row.
         let holder = NSView()
@@ -1206,21 +1214,36 @@ final class BackgroundView: NSView {
 }
 
 
-/// Opens a documentation URL for a `link` button.
+/// A caption-sized link out to documentation we do not own.
 ///
-/// A shared target rather than a subclass, because `NSButton`'s action needs
-/// an object that outlives the pane it was built into: panes are built once
-/// and kept, and a per-button owner would have to be retained by something
-/// that has no other reason to hold one.
+/// The button OWNS its destination. The first version kept a shared dictionary
+/// keyed by `ObjectIdentifier` instead, which is an address: a button that has
+/// been deallocated leaves its entry behind, and the next allocation at that
+/// address inherits somebody else's URL. Settings windows are built and closed
+/// repeatedly by the tests, which is exactly the traffic that recycles one.
+///
+/// A real button rather than an attributed-string link, because this has to be
+/// reachable from the keyboard and an `NSTextField` carrying a link is not in
+/// the key view loop.
 @MainActor
-final class LinkOpener: NSObject {
-    static let shared = LinkOpener()
-    /// Keyed by button identity rather than by title, so two links that read
-    /// the same still go to different places.
-    var destinations: [ObjectIdentifier: URL] = [:]
+final class LinkButton: NSButton {
+    private let url: URL
 
-    @objc func open(_ sender: NSButton) {
-        guard let url = destinations[ObjectIdentifier(sender)] else { return }
-        NSWorkspace.shared.open(url)
+    init(title: String, url: URL) {
+        self.url = url
+        super.init(frame: .zero)
+        self.title = title
+        bezelStyle = .inline
+        isBordered = false
+        controlSize = .small
+        contentTintColor = .linkColor
+        font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        toolTip = url.absoluteString
+        target = self
+        action = #selector(open)
     }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func open() { NSWorkspace.shared.open(url) }
 }

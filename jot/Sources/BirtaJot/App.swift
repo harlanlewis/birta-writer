@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything reads a preference, and before the panel is built.
         Prefs.sweepRetiredKeys()
+        // Also before anything writes one: the signal it reads is that this
+        // domain is empty, and the first write destroys it.
+        Prefs.settleAgentEnabledForExistingInstall()
         buildMainMenu()
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
@@ -63,8 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The pacing is `UpdatePolicy`'s; this only decides how often to ask
         // whether it is due, and hourly is cheap because being due is a
         // comparison rather than a request.
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
-            Task { @MainActor in self.updater.checkIfDue() }
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updater.checkIfDue() }
         }
         // First launch only, and after the panel exists, so the screen has a
         // window to take over.
@@ -336,15 +339,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// whatever they are actually doing.
     private func offerUpdate(_ tag: String) {
         guard updater.available != nil else { return }
+        // One offer on screen at a time. The launch check and the day timer
+        // are separate callers, and a sheet left up on an unattended machine
+        // outlives the interval between them, so without this a second sheet
+        // queues behind the first and the person answers the same question
+        // twice.
+        guard !offering else { return }
         guard UpdatePolicy.shouldOffer(tag: tag, declined: Prefs.updateDeclinedTag) else { return }
         guard let host = promptHost else {
             coordinator.onNextShow = { [weak self] in self?.offerUpdate(tag) }
             return
         }
+        offering = true
         UpdatePrompt.present(tag: tag,
                              hasUnwrittenBytes: coordinator.hasUnwrittenBytes,
                              on: host) { [weak self] answer in
             guard let self else { return }
+            self.offering = false
             guard answer == .install else {
                 // Remembered so this version is not raised again. A NEWER one
                 // still will be: that is different news.
@@ -397,6 +408,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updater = Updater()
     /// Retained so it is not deallocated the moment it is scheduled.
     private var updateTimer: Timer?
+    /// Whether an update offer is on screen right now.
+    private var offering = false
 
     @objc func menuOpenSettings() {
         if settingsWindow == nil {

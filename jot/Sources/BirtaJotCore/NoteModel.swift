@@ -81,6 +81,24 @@ public enum NoteHome: String, CaseIterable, Sendable {
 /// defaults domain: the app's own store is the real user's, and a test that
 /// wrote to it to exercise this would change somebody's settings.
 public enum AgentAvailability {
+    /// Whether an install that has never answered the `/ai` switch should be
+    /// treated as having said yes.
+    ///
+    /// A default that ships OFF is right for somebody meeting `/ai` for the
+    /// first time, and wrong for everybody who already has it: it shipped
+    /// working in 2026.819.0, so the same default silently takes a feature
+    /// away from the people using it, with nothing on screen to say where it
+    /// went. So the answer depends on whether this is a new install.
+    ///
+    /// `isFirstLaunch` has to be read BEFORE anything writes a preference, or
+    /// every install looks established. A reset is deliberately not a first
+    /// launch and must not come through here either, which is why `reset`
+    /// writes the switch off explicitly rather than clearing it: a cleared key
+    /// is what this reads as "never answered".
+    public static func enabledForInstallThatNeverAnswered(isFirstLaunch: Bool) -> Bool {
+        !isFirstLaunch
+    }
+
     public static func isAvailable(enabled: Bool, command: String) -> Bool {
         enabled && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

@@ -75,6 +75,20 @@ enum Prefs {
         for key in retiredKeys { d.removeObject(forKey: key) }
     }
 
+    /// Settle `/ai` for an install that predates the switch.
+    ///
+    /// Called at launch BEFORE anything reads or writes a preference, because
+    /// the signal it needs is `isFirstLaunch` and a single write destroys it.
+    /// `AgentAvailability` holds the argument; the short version is that a
+    /// default of off is right for a new install and is a silent removal for
+    /// everybody who already had `/ai` working.
+    static func settleAgentEnabledForExistingInstall() {
+        guard d.object(forKey: Key.agentEnabled.rawValue) == nil else { return }
+        guard AgentAvailability.enabledForInstallThatNeverAnswered(isFirstLaunch: isFirstLaunch)
+        else { return }
+        agentEnabled = true
+    }
+
     /// Put every setting back to its default, and touch no file on disk.
     ///
     /// The note is deliberately not in scope. A reset is about the settings a
@@ -110,6 +124,12 @@ enum Prefs {
         // says every setting goes back to its default, and that is what a
         // default IS here; seeing the screen again is its own button.
         hasSeenWelcome = true
+        // Written rather than left cleared, for the same reason and in the
+        // opposite direction: a cleared key is what
+        // `settleAgentEnabledForExistingInstall` reads as "never answered", so
+        // a reset that removed it would switch `/ai` back ON one launch later,
+        // on a machine where somebody has just asked for the defaults.
+        agentEnabled = false
         sweepRetiredKeys()
         UserDefaults.standard.removeObject(forKey: panelFrameAutosaveDefaultsKey)
         // Deliberately discarded: the caller re-reads `LoginItem.state` to

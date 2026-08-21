@@ -25,6 +25,20 @@ final class AgentAvailabilityTests: XCTestCase {
         XCTAssertFalse(AgentAvailability.isAvailable(enabled: true, command: "\n\t "))
     }
 
+    /// A default that ships off must not take `/ai` away from the people who
+    /// already have it.
+    ///
+    /// `/ai` shipped working in 2026.819.0, so on every existing install the
+    /// switch's absence means "was using it", not "declined it". Off is right
+    /// only for a domain that has never held a setting at all.
+    func testAnInstallThatPredatesTheSwitchShouldKeepTheAgentItAlreadyHad() {
+        XCTAssertTrue(AgentAvailability.enabledForInstallThatNeverAnswered(isFirstLaunch: false))
+    }
+
+    func testAGenuinelyNewInstallShouldStartWithTheAgentOff() {
+        XCTAssertFalse(AgentAvailability.enabledForInstallThatNeverAnswered(isFirstLaunch: true))
+    }
+
     func testAPresetTemplateShouldAlwaysCountAsACommand() {
         // Derived from the presets rather than a literal, so a preset added
         // with an empty template cannot ship a menu entry that runs nothing.

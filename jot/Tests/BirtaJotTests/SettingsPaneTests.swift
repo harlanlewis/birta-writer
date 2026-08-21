@@ -120,6 +120,29 @@ final class SettingsPaneTests: XCTestCase {
         }
     }
 
+    /// Switching panes must not lose the answer a row is showing.
+    ///
+    /// Panes are BUILT ONCE and kept, so a control put in step only while its
+    /// pane was being built shows whatever it was built with forever after.
+    /// The case that found this: `Reset to defaults` writes every setting and
+    /// then asks the window to redraw itself, and the note-mode popup was not
+    /// among the controls that redraw ran over, so after a reset it went on
+    /// naming the answer the user had just cleared.
+    ///
+    /// Asserted through the two public gestures rather than by reaching for
+    /// the control, so it stays true of a control added later: build the pane,
+    /// leave it, come back, and the rows still read the same.
+    func testAPaneShouldReadTheSameAfterBeingLeftAndComeBackTo() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let first = labels(of: controller, tab: "editor")
+        _ = labels(of: controller, tab: "general")
+        _ = labels(of: controller, tab: "advanced")
+        XCTAssertEqual(labels(of: controller, tab: "editor"), first,
+                       "the Editor pane draws different rows the second time it is shown")
+        XCTAssertFalse(first.isEmpty)
+    }
+
     /// The reason this file exists, stated as its own check: every row the
     /// first-run screen asks about is a row somebody can go back to in
     /// Settings, worded the same, ON SCREEN rather than in an array.
