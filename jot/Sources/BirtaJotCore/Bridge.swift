@@ -47,6 +47,16 @@ public enum WebviewMessage: Equatable {
     /// `conflict` leave the agent's version only in the file, and Jot's
     /// autosave is about to write the buffer over it (`AgentRescuePolicy`).
     case agentMergeResult(requestId: String, outcome: String)
+    /// A file the `/ai-advanced` composer is attaching, on its way to a path
+    /// the agent can read. `bytes` is base64: unlike `uploadImage`, which uses
+    /// the `$bytes` wrapper, the panel encodes this one itself and sends a
+    /// plain string (`shared/messages.ts`).
+    ///
+    /// Jot MUST answer, and answering is not optional politeness: the composer
+    /// disables Send while any attachment is unresolved, so a request that
+    /// never comes back leaves the panel unable to send anything at all, the
+    /// typed prompt included.
+    case agentAttachment(id: String, name: String, bytes: Data)
     case clipboardWrite(format: String, data: String)
     /// The selection palette's button: put a reference to where the caret is,
     /// and the selected lines, on the clipboard. Answered by asking the page
@@ -132,6 +142,14 @@ public enum WebviewMessage: Equatable {
         case "agentMergeResult":
             guard let id = str("requestId"), let outcome = str("outcome") else { return .other(type: type) }
             return .agentMergeResult(requestId: id, outcome: outcome)
+        case "agentAttachment":
+            // A missing or undecodable payload is answered rather than
+            // dropped: `agentAttachmentSaved` with a null path is what tells
+            // the panel to mark the chip failed and re-enable Send.
+            guard let id = str("id") else { return .other(type: type) }
+            return .agentAttachment(id: id,
+                                    name: str("name") ?? "",
+                                    bytes: str("bytes").flatMap { Data(base64Encoded: $0) } ?? Data())
         case "clipboardWrite":
             guard let f = str("format"), let d = str("data") else { return .other(type: type) }
             return .clipboardWrite(format: f, data: d)
@@ -205,6 +223,10 @@ public enum HostMessage: Equatable {
     case unfurlResult(id: String, url: String, title: String?)
     /// Reply to `resolveEmbedMeta`.
     case embedMetaResult(id: String, url: String, title: String?)
+    /// Reply to `agentAttachment`: where the bytes went, or nil when they
+    /// could not be written. Nil is a real answer; the panel marks that chip
+    /// failed and stops waiting on it.
+    case agentAttachmentSaved(id: String, path: String?)
     case toolbarConfig(json: String)
     case getPerfMarks(id: String)
     /// Ask the page where the selection is. Answered with
@@ -271,6 +293,8 @@ public enum HostMessage: Equatable {
             return ["type": "unfurlResult", "id": id, "url": url, "title": title ?? NSNull()]
         case let .embedMetaResult(id, url, title):
             return ["type": "embedMetaResult", "id": id, "url": url, "title": title ?? NSNull()]
+        case let .agentAttachmentSaved(id, path):
+            return ["type": "agentAttachmentSaved", "id": id, "path": path ?? NSNull()]
         case let .toolbarConfig(json):
             let config = (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
             return ["type": "toolbarConfig", "config": config]

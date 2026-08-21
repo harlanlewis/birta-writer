@@ -112,6 +112,13 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     exportHtml: "no export destination: Jot has no Save As for a rendered file",
     whatsNewSeen: "the extension's release notes; Jot's update offer is its own",
 
+    // ASKED IN JOT, and deliberately not answered, because the page's own
+    // documented behaviour without an answer is the behaviour Jot wants. This
+    // is the third category rather than a variety of the first: the question
+    // IS put, so a reason here has to argue that the silence is right, not
+    // that nothing asks.
+    requestAgentCapabilities: "the panel renders no model or effort control when capabilities are absent, which is what `shared/messages.ts` says absent means, and is correct for a host that runs no harness probe: `openAgentPanel` does not wait on the reply, so nothing is blocked by it never coming",
+
     // Editor state the extension persists into workspace/global storage. Jot
     // persists what it wants through its own `viewState` and `setToolbar*`
     // messages, and drops the rest rather than growing a store per setting.
@@ -142,10 +149,6 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
  * the fix rather than a tidy-up.
  */
 const KNOWN_GAPS: Record<string, string> = {
-    requestAgentCapabilities:
-        "MAR-390: Jot declares the `agent` capability, so `/ai-advanced` opens there, and the composer asks for model and effort pickers it never receives. It degrades to no pickers rather than to nothing, which is why this is a gap and not the same severity as the two above it",
-    agentAttachment:
-        "MAR-390: Jot declares the `agent` capability, so the `/ai-advanced` composer offers attaching a file, and the bytes go nowhere. Same class as `copyAgentReference`",
     resolveEmbedCard:
         "MAR-390: `queueEmbedCardResolution` states in its own header that it is deliberately NOT gated on the connection, because the extension reads a public resource anonymously. So the page asks for a card on every connector-capable embed it finds, on every host, and Jot answers none: each request settles null at `CARD_REPLY_TIMEOUT_MS` and no card is drawn where the extension would draw one. Quieter than `getProjectImages`, which sat on Loading, but the same class",
 };

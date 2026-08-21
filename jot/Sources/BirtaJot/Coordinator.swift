@@ -56,6 +56,9 @@ final class Coordinator {
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
+    /// Numbers `/ai-advanced` attachments so two files of one name in a single
+    /// request do not overwrite each other. Main thread only.
+    private var agentAttachmentSeq = 0
     /// Outbound page fetches for link cards and paste-unfurl. Built once: the
     /// transport holds an ephemeral URLSession with no cookie store and no
     /// cache, so nothing a fetch touches persists between requests.
@@ -782,6 +785,8 @@ final class Coordinator {
             NSLog("Birta Writer Jot: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
             saveAttachment(id: id, data: data, mimeType: mimeType)
+        case let .agentAttachment(id, name, bytes):
+            saveAgentAttachment(id: id, name: name, bytes: bytes)
         case let .showDatePicker(id, left, top, bottom):
             showDatePicker(id: id, left: left, top: top, bottom: bottom)
         case let .resolveLinkCard(id, url):
@@ -867,6 +872,44 @@ final class Coordinator {
         } catch {
             NSLog("Birta Writer Jot: attachment save failed: \(error)")
             host.send(.imageUploadError(id: id, error: "The image could not be saved beside this document."))
+        }
+    }
+
+    /// Write one `/ai-advanced` attachment somewhere the agent can read it and
+    /// tell the page where it went.
+    ///
+    /// Always answers, including on failure, and that is the point rather than
+    /// defensiveness: the composer disables Send while an attachment is
+    /// unresolved, so a request with no reply leaves the panel unable to send
+    /// anything at all, the typed prompt included. A null path is a real
+    /// answer, and it is what marks the chip failed and frees the button.
+    ///
+    /// The counter is read and bumped HERE, on the main thread where every
+    /// message is handled, and the write is what goes to a background queue.
+    /// Two files of the same name in one request would otherwise race for the
+    /// same number and one would overwrite the other.
+    private func saveAgentAttachment(id: String, name: String, bytes: Data) {
+        agentAttachmentSeq += 1
+        let sequence = agentAttachmentSeq
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var path: String?
+            do {
+                try AgentAttachment.check(byteCount: bytes.count)
+                let directory = AgentAttachment.directory(
+                    temporaryDirectory: URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true),
+                    processID: ProcessInfo.processInfo.processIdentifier)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let target = AgentAttachment.destination(in: directory, sequence: sequence, name: name)
+                try bytes.write(to: target, options: .atomic)
+                path = target.path
+            } catch {
+                NSLog("Birta Writer Jot: agent attachment save failed: \(error)")
+                path = nil
+            }
+            let resolved = path
+            DispatchQueue.main.async {
+                self?.host.send(.agentAttachmentSaved(id: id, path: resolved))
+            }
         }
     }
 

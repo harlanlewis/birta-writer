@@ -10,6 +10,12 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- Attaching a file to an `/ai-advanced` request in Birta Writer Jot works, and stops locking the composer when it did not. Jot never wrote the bytes anywhere and never answered to say so, and the composer holds Send disabled, reading Waiting for attachments, until every attachment reports back. So a single dropped or pasted file left the panel unable to send anything at all, the prompt you had already typed included, with no way out but removing the chip. Jot now writes the file to a per-session temporary folder and hands the agent its path, the way the extension does. A file too large, or one that cannot be written, marks that chip failed and gives you Send back rather than waiting forever.
+
+- Insert Image in Birta Writer Jot opens on a tab it can fill. It opened on Browse Project, which read Loading for ten seconds and then showed an empty grid, because there is no project behind Jot to list images from and nothing ever answered. That tab is gone on Jot and the panel opens on URL; dragging a file in and pasting one both worked before and are unchanged. In VS Code, where there is a workspace to browse, nothing about the panel changes.
+
 ---
 
 ## [2026.821.0] - 2026, August 21
@@ -73,8 +79,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 - Where Birta Writer Jot keeps your notes is one switch, Store in iCloud Drive, with a Location row that appears only when it is off. It used to be an iCloud toggle with a path row under it that silently outranked it: choosing a folder made the switch above decide nothing, and nothing said so. With iCloud Drive on there is one place the note can be and the row is gone; with it off the folder is a real choice and Choose is right there.
 
 ### Fixed
-
-- Insert Image in Birta Writer Jot opens on a tab it can fill. It opened on Browse Project, which read Loading for ten seconds and then showed an empty grid, because there is no project behind Jot to list images from and nothing ever answered. That tab is gone on Jot and the panel opens on URL; dragging a file in and pasting one both worked before and are unchanged. In VS Code, where there is a workspace to browse, nothing about the panel changes.
 
 - Clicking the marker beside a running `/ai` request in Birta Writer Jot now stops it. The marker has always offered to cancel and the panel has always been able to, but the two were never connected: the page asked under one name and Jot listened for another, so the click did nothing and the agent carried on to the end. Stopping it also stops it from writing, which is the half that matters if you asked for the wrong thing.
 
