@@ -260,13 +260,13 @@ function normalizeWrappedLinkEmphasis(line: string): string {
 }
 
 // Normalize ONE table cell: strip its padding, treat a lone `<br />` as an
-// empty cell, and canonicalize the
-// `<br>` / `<br/>` / `<br />` line-break spellings within its text (MAR-17) so
-// a lost or changed variant attr degrades to no churn instead of a spurious
-// diff. Per-cell rather than inline in the row normalizer because the merge
-// also compares cells one at a time, to salvage the ones an edit elsewhere in
-// the row would otherwise rewrite (carrySavedTableCells, MAR-214) — one
-// definition of "these two cells say the same thing", used by both.
+// empty cell, and canonicalize the `<br>` / `<br/>` / `<br />` line-break
+// spellings within its text (MAR-17) so a lost or changed variant attr
+// degrades to no churn instead of a spurious diff. Per-cell rather than inline
+// in the row normalizer because the merge also compares cells one at a time,
+// to salvage the ones an edit elsewhere in the row would otherwise rewrite
+// (carrySavedTableCells, MAR-214) — one definition of "these two cells say the
+// same thing", used by both.
 function normalizeTableCell(cell: string): string {
     const v = cell.trim();
     // A cell whose whole content is `<br />` parses to an EMPTY cell, so the

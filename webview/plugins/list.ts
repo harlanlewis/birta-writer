@@ -301,7 +301,6 @@ function correctItemSpread(children: unknown): void {
     }
 }
 
-
 export const bulletListSpreadBoolSchema = bulletListSchema.extendSchema((prev) => (ctx) => {
     const base = prev(ctx);
     return {
