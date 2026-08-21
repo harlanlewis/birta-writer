@@ -74,6 +74,16 @@ final class SettingsPaneTests: XCTestCase {
                        + drawn.joined(separator: " | "))
     }
 
+    func testTheEditorPaneShouldDrawEveryRowItDeclares() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let drawn = labels(of: controller, tab: "editor")
+        let declared = SettingsForm.rows(of: SettingsForm.editor).map(\.rawValue)
+        XCTAssertEqual(drawn, declared,
+                       "the Editor pane and its declaration disagree; drawn: "
+                       + drawn.joined(separator: " | "))
+    }
+
     func testTheAdvancedPaneShouldDrawEveryRowItDeclares() {
         let controller = makeController()
         defer { controller.window?.close() }
@@ -82,6 +92,55 @@ final class SettingsPaneTests: XCTestCase {
         XCTAssertEqual(drawn, declared,
                        "the Advanced pane and its declaration disagree; drawn: "
                        + drawn.joined(separator: " | "))
+    }
+
+    /// The three arms above name their panes by hand, which is the shape that
+    /// let an Editor pane be added with nothing checking it. This one is
+    /// derived from the tab list instead, so a FOURTH pane is covered the day
+    /// it lands rather than the day somebody remembers to write its arm.
+    ///
+    /// Both directions matter and neither is visible from one side: a tab with
+    /// no declared pane draws an empty window, and a declared pane no tab
+    /// reaches is rows nobody can get to.
+    func testEveryTabShouldDrawExactlyTheRowsItsPaneDeclares() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let names = SettingsWindowController.tabNames
+        XCTAssertEqual(names.count, SettingsForm.panes.count,
+                       "a pane has no tab, or a tab has no pane: tabs "
+                       + names.joined(separator: ", "))
+        for name in names {
+            guard let declared = SettingsWindowController.declaredRows(forTab: name) else {
+                XCTFail("tab \(name) declares no pane")
+                continue
+            }
+            XCTAssertFalse(declared.isEmpty, "tab \(name) declares an empty pane")
+            XCTAssertEqual(labels(of: controller, tab: name), declared.map(\.rawValue),
+                           "the \(name) pane and its declaration disagree")
+        }
+    }
+
+    /// Switching panes must not lose the answer a row is showing.
+    ///
+    /// Panes are BUILT ONCE and kept, so a control put in step only while its
+    /// pane was being built shows whatever it was built with forever after.
+    /// The case that found this: `Reset to defaults` writes every setting and
+    /// then asks the window to redraw itself, and the note-mode popup was not
+    /// among the controls that redraw ran over, so after a reset it went on
+    /// naming the answer the user had just cleared.
+    ///
+    /// Asserted through the two public gestures rather than by reaching for
+    /// the control, so it stays true of a control added later: build the pane,
+    /// leave it, come back, and the rows still read the same.
+    func testAPaneShouldReadTheSameAfterBeingLeftAndComeBackTo() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let first = labels(of: controller, tab: "editor")
+        _ = labels(of: controller, tab: "general")
+        _ = labels(of: controller, tab: "advanced")
+        XCTAssertEqual(labels(of: controller, tab: "editor"), first,
+                       "the Editor pane draws different rows the second time it is shown")
+        XCTAssertFalse(first.isEmpty)
     }
 
     /// The reason this file exists, stated as its own check: every row the

@@ -7,6 +7,8 @@
 #
 #   jot/Resources/AppIcon.icns          the app icon, every size macOS asks for
 #   jot/Resources/MenuBarTemplate.pdf   the menu-bar mark, vector and alpha-only
+#   jot/Resources/WelcomeHero.png       the mark on the first-run screen, light
+#   jot/Resources/WelcomeHeroDark.png   the same, dark
 #
 # The marks are drawn in a private repository, which stays the source of truth;
 # the SVGs here are deliberate copies, so that packaging never depends on that
@@ -22,6 +24,8 @@ cd "$(dirname "$0")/../.."
 RES=jot/Resources
 OUT_ICNS="$RES/AppIcon.icns"
 OUT_PDF="$RES/MenuBarTemplate.pdf"
+OUT_HERO="$RES/WelcomeHero.png"
+OUT_HERO_DARK="$RES/WelcomeHeroDark.png"
 
 for tool in rsvg-convert magick iconutil; do
     command -v "$tool" >/dev/null || { echo "missing $tool" >&2; exit 1; }
@@ -68,4 +72,25 @@ iconutil -c icns "$ICONSET" -o "$OUT_ICNS"
 # indistinguishable from the timestamp moving. The .icns needs no such help.
 SOURCE_DATE_EPOCH=0 rsvg-convert -f pdf -w 16 -h 16 "$RES/birta-writer-jot-icon.svg" -o "$OUT_PDF"
 
-echo "wrote $OUT_ICNS and $OUT_PDF"
+# The first-run hero, in both appearances.
+#
+# NOT the app icon read back through `NSApp.applicationIconImage`, which is
+# what this screen used to draw. macOS composites its own treatment onto an
+# application's icon (a light edge and a drop shadow, so a Dock tile reads as a
+# tile), and on a screen where the mark sits on its OWN paper that treatment is
+# a white border and a shadow around something that should have no visible
+# join. Drawing our file instead is the whole fix.
+#
+# Squircle-cut like the icon and at the same proportion, because it is the same
+# mark and should be the same shape; without the 100px transparent margin the
+# icon carries, since that margin exists for a system shadow this deliberately
+# does not have. 288px is 3x the 96pt it is drawn at.
+hero() {
+    rsvg-convert -w 824 -h 824 "$RES/$1" -o "$WORK/hero-art.png"
+    magick "$WORK/hero-art.png" "$WORK/mask.png" -alpha off -compose CopyOpacity -composite "$WORK/hero-cut.png"
+    magick "$WORK/hero-cut.png" -resize 288x288 -filter lanczos -strip "$2"
+}
+hero birta-writer-jot-logo-light.svg "$OUT_HERO"
+hero birta-writer-jot-logo-dark.svg "$OUT_HERO_DARK"
+
+echo "wrote $OUT_ICNS, $OUT_PDF, $OUT_HERO and $OUT_HERO_DARK"

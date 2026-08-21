@@ -85,6 +85,9 @@ cp jot/Resources/index.html "$APP/Contents/Resources/web/index.html"
 # with jot/scripts/make-icons.sh.
 cp jot/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp jot/Resources/MenuBarTemplate.pdf "$APP/Contents/Resources/MenuBarTemplate.pdf"
+# The first-run hero, both appearances. Committed outputs like the two above.
+cp jot/Resources/WelcomeHero.png "$APP/Contents/Resources/WelcomeHero.png"
+cp jot/Resources/WelcomeHeroDark.png "$APP/Contents/Resources/WelcomeHeroDark.png"
 # The whole webview build: the entry, its stylesheet, the host palette, the
 # lazy chunks and every sibling asset they resolve (katex.css, the harper wasm).
 cp -R dist/. "$APP/Contents/Resources/web/dist/"

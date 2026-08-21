@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything reads a preference, and before the panel is built.
         Prefs.sweepRetiredKeys()
+        // Also before anything writes one: the signal it reads is that this
+        // domain is empty, and the first write destroys it.
+        Prefs.settleAgentEnabledForExistingInstall()
         buildMainMenu()
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
@@ -57,6 +60,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         updater.checkInBackground()
+        // And again on a timer, because Jot is not an app people quit. A
+        // launch-only check stops happening for exactly the person who leaves
+        // it running for weeks, which is what a menu-bar scratchpad is for.
+        // The pacing is `UpdatePolicy`'s; this only decides how often to ask
+        // whether it is due, and hourly is cheap because being due is a
+        // comparison rather than a request.
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updater.checkIfDue() }
+        }
         // First launch only, and after the panel exists, so the screen has a
         // window to take over.
         // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, so a
@@ -314,18 +326,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Say a newer release exists, and let the user take it or leave it.
     ///
-    /// A sheet rather than a silent swap: replacing the app somebody is typing
-    /// into is not a thing to do behind them, and this is the one moment where
+    /// Asking rather than swapping: replacing the app somebody is typing into
+    /// is not a thing to do behind them, and this is the one moment where
     /// asking costs nothing because nothing has been downloaded yet.
+    ///
+    /// Two things decide WHEN it is asked, and both are about not interrupting
+    /// a person who did not summon this. A version already declined is not
+    /// raised again until a newer one exists, or the day timer turns the offer
+    /// into a nag and teaches people to switch updates off. And a panel that
+    /// is not on screen means the person is in another app entirely, so the
+    /// offer waits for the next summon instead of taking the screen from
+    /// whatever they are actually doing.
     private func offerUpdate(_ tag: String) {
+        guard updater.available != nil else { return }
+        // One offer on screen at a time. The launch check and the day timer
+        // are separate callers, and a sheet left up on an unattended machine
+        // outlives the interval between them, so without this a second sheet
+        // queues behind the first and the person answers the same question
+        // twice.
+        guard !offering else { return }
+        guard UpdatePolicy.shouldOffer(tag: tag, declined: Prefs.updateDeclinedTag) else { return }
+        guard let host = promptHost else {
+            coordinator.onNextShow = { [weak self] in self?.offerUpdate(tag) }
+            return
+        }
+        offering = true
+        UpdatePrompt.present(tag: tag,
+                             hasUnwrittenBytes: coordinator.hasUnwrittenBytes,
+                             on: host) { [weak self] answer in
+            guard let self else { return }
+            self.offering = false
+            guard answer == .install else {
+                // Remembered so this version is not raised again. A NEWER one
+                // still will be: that is different news.
+                Prefs.updateDeclinedTag = tag
+                return
+            }
+            self.installUpdate()
+        }
+    }
+
+    /// The window to hang the offer on, or nil when Jot has none on screen.
+    ///
+    /// The key window first, which is what makes Check Now work: that button
+    /// is in Settings, and the panel behind it may well be hidden, so an offer
+    /// that only ever attached to the panel would answer a press by putting
+    /// the sheet somewhere nobody is looking, or by holding it until the next
+    /// summon and looking like a button that does nothing.
+    private var promptHost: NSWindow? {
+        if let key = NSApp.keyWindow, key.isVisible { return key }
+        return coordinator.isOnScreen ? coordinator.promptWindow : nil
+    }
+
+    /// Download, verify and arm the swap, then quit so it can run.
+    private func installUpdate() {
         guard let release = updater.available else { return }
-        let alert = NSAlert()
-        alert.messageText = "\(AppFlavor.current.displayName) \(tag) is available."
-        alert.informativeText = "It will be downloaded, checked, and installed, and Jot will restart. "
-            + "Your note is written first and is not touched."
-        alert.addButton(withTitle: "Install and Restart")
-        alert.addButton(withTitle: "Later")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
         updater.install(release) { ok in
             // Quitting is what performs the swap: the staged script waits for
             // this process to go. Through the ordinary
@@ -351,6 +406,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keeps the release build current. Held here rather than on the
     /// coordinator because it outlives any window and belongs to the app.
     let updater = Updater()
+    /// Retained so it is not deallocated the moment it is scheduled.
+    private var updateTimer: Timer?
+    /// Whether an update offer is on screen right now.
+    private var offering = false
 
     @objc func menuOpenSettings() {
         if settingsWindow == nil {

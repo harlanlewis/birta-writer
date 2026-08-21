@@ -45,8 +45,11 @@ final class WelcomeView: NSView {
     private let dockSwitch = NSSwitch()
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption("")
+    private let updateSwitch = NSSwitch()
+    private let updateCaption = Caption("")
     private var locationGroup: NSView?
     private var column: NSStackView?
+    private let hero = NSImageView()
 
     init(onHotkeyChange: @escaping () -> OSStatus) {
         self.onHotkeyChange = onHotkeyChange
@@ -64,19 +67,58 @@ final class WelcomeView: NSView {
     /// row pinned to the top would sit under the traffic lights.
     private static let topInset: CGFloat = 44
 
-    /// The brand's paper, and the one literal colour in this app.
+    /// The brand's paper, and the only literal colours in this app.
     ///
-    /// It is the ground the mark itself is drawn on (`birta-writer-jot-logo-light.svg`),
-    /// so the squircle above sits on the same paper rather than on a card
-    /// floating over a different one. Fixed rather than theme-derived, and in
-    /// both appearances: this is a brand moment on first run, the way a splash
-    /// screen is, and a paper that changed with the system would not be the
-    /// mark's paper any more. Everything after this screen is the system's
-    /// colours, which is why there is exactly one of these.
-    private static let brandPaper = NSColor(srgbRed: 0xF3 / 255.0,
-                                            green: 0xEF / 255.0,
-                                            blue: 0xE3 / 255.0,
-                                            alpha: 1)
+    /// Each is the ground the MARK is drawn on, taken from the artwork rather
+    /// than picked to go with it: `#F3EFE3` is the light logo's paper and
+    /// `#373D34` is the dark one's. That is what lets the squircle above sit
+    /// on the same paper as the screen instead of on a card floating over a
+    /// different one, and it is why these are two literals rather than
+    /// `windowBackgroundColor`: the system's ground is not the mark's ground,
+    /// and the join would be visible in both directions.
+    ///
+    /// Brand-fixed but appearance-AWARE, which is the pair of decisions worth
+    /// keeping apart. It does not follow the theme, because this is a splash
+    /// moment and a paper that drifted with an accent colour would not be the
+    /// mark's paper any more. It does follow light and dark, because a screen
+    /// that stays cream while the rest of the machine is dark is not a brand
+    /// moment, it is a screen that forgot to look. Everything after this one
+    /// is the system's colours, which is why there is exactly one of these.
+    private static let brandPaper = NSColor(name: "birtaJotWelcomePaper") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0x37 / 255.0, green: 0x3D / 255.0, blue: 0x34 / 255.0, alpha: 1)
+            : NSColor(srgbRed: 0xF3 / 255.0, green: 0xEF / 255.0, blue: 0xE3 / 255.0, alpha: 1)
+    }
+
+    /// The ground, for the check that it differs between appearances. The
+    /// colour itself stays private: what is exposed is a reader, so a test
+    /// cannot become a second place the value is written down.
+    static var brandPaperForTesting: NSColor { brandPaper }
+
+    /// The mark, in the appearance now in force.
+    ///
+    /// Two files rather than one tinted image: the mark is not a glyph, it has
+    /// its own ground and its own ink, and the dark artwork is drawn rather
+    /// than derived.
+    ///
+    /// NOT `NSApp.applicationIconImage`, which is what this screen used to
+    /// draw and is where the white border and the drop shadow came from: macOS
+    /// composites its own treatment onto an application's icon so a Dock tile
+    /// reads as a tile, and on a screen where the mark sits on its own paper
+    /// that treatment is chrome around a join that should be invisible.
+    ///
+    /// The fallback is for a process with no bundle around it, which is every
+    /// test host: the screen still builds, and what it draws there is not what
+    /// the check is about.
+    private static func heroImage(for appearance: NSAppearance) -> NSImage? {
+        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let name = dark ? "WelcomeHeroDark" : "WelcomeHero"
+        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        return NSApp.applicationIconImage
+    }
 
     /// Painted rather than set on the layer.
     ///
@@ -95,6 +137,7 @@ final class WelcomeView: NSView {
             (iCloudSwitch, Prefs.noteHome == .iCloud, #selector(toggleICloud)),
             (dockSwitch, Prefs.showInDock, #selector(toggleDock)),
             (loginSwitch, false, #selector(toggleLogin)),
+            (updateSwitch, Prefs.autoUpdate, #selector(toggleAutoUpdate)),
         ] {
             control.controlSize = .small
             control.state = on ? .on : .off
@@ -104,12 +147,11 @@ final class WelcomeView: NSView {
 
         hotkeyRecorder.onCombo = { [weak self] combo in self?.hotkeyChosen(combo) }
 
-        let hero = NSImageView()
-        // The app's own icon, which `make-icons.sh` has already cut to the
-        // squircle macOS does not apply for you. Nothing is added over it: a
-        // shadow or a border would be chrome around a mark that is drawn on
-        // the same paper this screen is, and the join should not be visible.
-        hero.image = NSApp.applicationIconImage
+        // Our own file, cut to the squircle macOS does not apply for you.
+        // Nothing is added over it: a shadow or a border would be chrome
+        // around a mark drawn on the same paper this screen is, and the join
+        // should not be visible.
+        hero.image = Self.heroImage(for: effectiveAppearance)
         hero.imageScaling = .scaleProportionallyUpOrDown
         hero.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -146,17 +188,18 @@ final class WelcomeView: NSView {
             SettingsForm.welcome.firstIndex(where: { $0.rows.contains(.location) }) ?? 1]
         form.orientation = .vertical
         form.alignment = .leading
-        form.spacing = 8
+        // ONE gap between cards, and that is the whole of it. This used to set
+        // 8 here and then 18 after every second arranged view, which is the
+        // rule Settings needs, where a heading and its card alternate and the
+        // wider gap starts a section. This screen draws no headings, so every
+        // arranged view is a card and that rule put 8 between the first pair
+        // and 18 between the second: three groups, two gaps, visibly unequal.
+        form.spacing = 18
         form.translatesAutoresizingMaskIntoConstraints = false
         form.widthAnchor.constraint(equalToConstant: SettingsWindowController.Metrics.content).isActive = true
         for view in form.arrangedSubviews {
             view.widthAnchor.constraint(equalTo: form.widthAnchor).isActive = true
         }
-        // A heading belongs to the card under it, not between two of them.
-        for index in form.arrangedSubviews.indices where index > 0 && index % 2 == 0 {
-            form.setCustomSpacing(18, after: form.arrangedSubviews[index - 1])
-        }
-
         let stack = NSStackView(views: [hero, title, form, buttons])
         stack.orientation = .vertical
         stack.alignment = .centerX
@@ -219,6 +262,12 @@ final class WelcomeView: NSView {
             return (SettingsWindowController.pathControl(locationPath, self, #selector(chooseLocation)), nil)
         case .showInDock: return (dockSwitch, nil)
         case .startAtLogin: return (loginSwitch, loginCaption)
+        // No Check Now button here, unlike the Settings row this shares a
+        // label with. A first run is a question about what Jot should do from
+        // now on, and a button that goes to the network the moment somebody
+        // opens the app for the first time is an answer to a question nobody
+        // asked yet.
+        case .autoUpdate: return (updateSwitch, updateCaption)
         }
     }
 
@@ -254,8 +303,34 @@ final class WelcomeView: NSView {
         iCloudSwitch.state = Prefs.noteHome == .iCloud ? .on : .off
         iCloudSwitch.isEnabled = Prefs.iCloudAvailable
         dockSwitch.state = Prefs.showInDock ? .on : .off
+        showAutoUpdate()
         showLoginItem(LoginItem.state)
         showLocation()
+    }
+
+    /// The update row, which a development build cannot honour.
+    ///
+    /// Said out loud rather than left switched on and doing nothing: replacing
+    /// a development build would delete the change it was installed to show.
+    /// The same words Settings uses, because it is the same fact.
+    private func showAutoUpdate() {
+        let canUpdate = AppFlavor.current.updatesItself
+        updateSwitch.isEnabled = canUpdate
+        updateSwitch.state = Prefs.autoUpdate && canUpdate ? .on : .off
+        updateCaption.say(canUpdate ? "" : "A development build does not replace itself.", bad: false)
+    }
+
+    @objc private func toggleAutoUpdate() {
+        Prefs.autoUpdate = updateSwitch.state == .on
+    }
+
+    /// The mark follows the system between light and dark. The ground does so
+    /// on its own, being a dynamic colour drawn in `draw`; an `NSImage` in an
+    /// image view does not, so it is swapped here.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        hero.image = Self.heroImage(for: effectiveAppearance)
+        needsDisplay = true
     }
 
     /// The location row exists only when the answer above is no.

@@ -44,8 +44,16 @@ final class SettingsFormTests: XCTestCase {
         // The floor that stops this file passing on an empty enumeration, and
         // the guard that a case added to `SettingsRow` was placed on a screen
         // rather than declared and forgotten.
-        let placed = SettingsForm.rows(of: SettingsForm.general)
-            + SettingsForm.rows(of: SettingsForm.advanced)
+        //
+        // Over `SettingsForm.panes` rather than a sum written out here, and
+        // that is the point rather than a tidiness: this test named `general`
+        // and `advanced` by hand, so adding an Editor pane made every row on
+        // it read as UNPLACED. A guard that names the arrays it reads is a
+        // guard that a new array is invisible to, and the failure could just
+        // as easily have gone the other way, with a pane quietly uncovered.
+        // The panes are what `panes` IS, so it cannot be left out of itself.
+        XCTAssertGreaterThanOrEqual(SettingsForm.panes.count, 3)
+        let placed = SettingsForm.panes.flatMap(SettingsForm.rows(of:))
         XCTAssertEqual(Set(placed).count, placed.count, "a row is drawn twice in Settings")
         XCTAssertEqual(Set(placed), Set(SettingsRow.allCases),
                        "every row must be on exactly one Settings pane; unplaced: "
@@ -60,21 +68,49 @@ final class SettingsFormTests: XCTestCase {
         XCTAssertFalse(labels.contains(where: \.isEmpty))
     }
 
-    func testTheLocationRowShouldBeFoundByNameRatherThanByCount() {
-        // Both values are read by production code: `SettingsWindowController`
-        // and `WelcomeView` each hide their own Location row by asking.
+    func testAConditionalRowShouldBeFoundByNameRatherThanByCount() {
+        // Every one of these is read by production code to hide a row under
+        // the answer above it, so a wrong index here is a row that vanishes
+        // with the wrong switch or refuses to.
         XCTAssertEqual(SettingsForm.index(of: SettingsRow.location, inGroupOf: SettingsForm.general), 1)
         XCTAssertEqual(SettingsForm.index(of: WelcomeRow.location, inGroupOf: SettingsForm.welcome), 1)
-        XCTAssertNil(SettingsForm.index(of: SettingsRow.autosave, inGroupOf: SettingsForm.general.filter {
-            $0.heading == "Where your notes live"
-        }))
+        XCTAssertEqual(SettingsForm.index(of: SettingsRow.newNoteName, inGroupOf: SettingsForm.editor), 1)
+        XCTAssertEqual(SettingsForm.index(of: SettingsRow.agentCommand, inGroupOf: SettingsForm.editor), 1)
+        // A row in ANOTHER card of the same pane is not found, which is what
+        // makes the three above claims about one card rather than about a
+        // position on the pane.
+        XCTAssertNil(SettingsForm.index(of: SettingsRow.summon,
+                                        inGroupOf: SettingsForm.general.filter { $0.rows.contains(.location) }))
+        XCTAssertNil(SettingsForm.index(of: SettingsRow.agentCommand,
+                                        inGroupOf: SettingsForm.editor.filter { $0.rows.contains(.opens) }))
     }
 
-    func testEveryHeadedGroupShouldHaveRowsAndTheWelcomeShouldHaveNoHeadings() {
-        for group in SettingsForm.general + SettingsForm.advanced {
+    /// A heading is now the EXCEPTION rather than the rule, and this test
+    /// changed with it rather than being relaxed to let a red through.
+    ///
+    /// It used to require one on every Settings group. Most cards lost theirs
+    /// deliberately: a card of plain switches is bounded by its own fill, and
+    /// a title over it names what the rows already say. What is still worth
+    /// holding is that a heading, where there is one, is real, and that an
+    /// intro cannot float above a card with no heading to belong to.
+    func testEveryGroupShouldHaveRowsAndAnyHeadingShouldBeReal() {
+        var headed = 0
+        for group in SettingsForm.panes.flatMap({ $0 }) {
             XCTAssertFalse(group.rows.isEmpty)
-            XCTAssertNotNil(group.heading)
+            if let heading = group.heading {
+                headed += 1
+                XCTAssertFalse(heading.isEmpty)
+            }
+            // An intro is a sentence under a heading. Without one it is a
+            // paragraph floating over a card, which is the layout this type
+            // exists to stop being written by hand at each screen.
+            if group.intro != nil { XCTAssertNotNil(group.heading) }
         }
+        // A floor, so this cannot pass by there being no headings at all: the
+        // agent group has one because it is a subject somebody opts into.
+        XCTAssertGreaterThan(headed, 0)
+        XCTAssertEqual(SettingsForm.editor.first(where: { $0.rows.contains(.agentEnabled) })?.heading,
+                       "AI Agent")
         // The first-run groups carry no heading field at all, which is the
         // type saying what a comment used to.
         for group in SettingsForm.welcome { XCTAssertFalse(group.rows.isEmpty) }
