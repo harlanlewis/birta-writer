@@ -2,7 +2,7 @@
  * Guard for the session-teardown hook: it stays registered, and the script it
  * names stays runnable.
  *
- * The hook clears what a Birta Writer Jot run leaves on the machine, and its
+ * The hook clears what a Birta Writer run leaves on the machine, and its
  * failure mode is a teardown that silently stops running. Nothing goes red, no
  * run reports anything, and the litter accumulates somewhere nobody is looking
  * until a person notices a row of menu-bar icons or a directory of stale
@@ -78,10 +78,10 @@ describe("session teardown hook", () => {
             .join("\n");
         // It selects a RUNNING development build, by the executable inside the
         // bundle. Both flavours match, since the development bundle is
-        // "Birta Writer Jot [DEV].app"; a build command does not, and both
+        // "Birta Writer [DEV].app"; a build command does not, and both
         // `codesign` and `ditto` carry that bundle path in argv while running
         // from inside the checkout, so a looser pattern reaches them.
-        expect(code).toContain('jot/build/Birta Writer Jot[^/]*\\.app/Contents/MacOS/');
+        expect(code).toContain('jot/build/Birta Writer[^/]*\\.app/Contents/MacOS/');
         // Only one branch may delete, and it is the one the caller asked for.
         // `rm -f`, which is the form the script actually uses: an assertion
         // written against `rm -rf` passes here whatever the script does, and

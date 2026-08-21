@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or update Birta Writer Jot on a Mac that does not build it: fetch the app
+# Install or update Birta Writer on a Mac that does not build it: fetch the app
 # attached to the newest GitHub Release, verify its checksum, and install it.
 #
 #   bash jot/scripts/update-jot.sh              # newest release
@@ -50,7 +50,7 @@ ZIP_URL="$(url_for '')"
 SUM_URL="$(url_for '.sha256')"
 if [ -z "$ZIP_URL" ]; then
     NAME="$(printf '%s' "$JSON" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)"
-    echo "that release (${NAME:-unknown}) has no Birta Writer Jot app attached." >&2
+    echo "that release (${NAME:-unknown}) has no Birta Writer app attached." >&2
     echo "Releases before the app was first attached do not carry one; pass a newer tag." >&2
     exit 1
 fi
@@ -80,7 +80,7 @@ else
 fi
 
 ditto -x -k "$TMP/jot.zip" "$TMP/unpacked"
-APP="$TMP/unpacked/Birta Writer Jot.app"
+APP="$TMP/unpacked/Birta Writer.app"
 [ -x "$APP/Contents/MacOS/BirtaJot" ] || { echo "the archive did not contain the app" >&2; exit 1; }
 
 # Can this Mac launch what was just downloaded? Asked BEFORE the running copy
@@ -146,27 +146,27 @@ if [ ! -w "$DEST_DIR" ]; then
     mkdir -p "$DEST_DIR"
     echo "note: /Applications is not writable; installing to $DEST_DIR"
 fi
-DEST="$DEST_DIR/Birta Writer Jot.app"
+DEST="$DEST_DIR/Birta Writer.app"
 
 WAS_RUNNING=0
 if pgrep -x BirtaJot >/dev/null 2>&1; then
     WAS_RUNNING=1
-    echo "→ asking the running Birta Writer Jot to quit (it flushes its buffer first)"
+    echo "→ asking the running Birta Writer to quit (it flushes its buffer first)"
     pkill -TERM -x BirtaJot || true
     for _ in $(seq 1 100); do
         pgrep -x BirtaJot >/dev/null 2>&1 || break
         sleep 0.1
     done
     if pgrep -x BirtaJot >/dev/null 2>&1; then
-        echo "update-jot: Birta Writer Jot is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
+        echo "update-jot: Birta Writer is still running after 10s. Quit it from the menu bar and re-run; nothing was replaced." >&2
         exit 1
     fi
 fi
 
 # Old copy aside, new copy in, then remove the old: deleting first leaves a
 # window where a failed move means no app at all.
-STAGE="$DEST_DIR/.Birta Writer Jot.app.incoming"
-OLD="$DEST_DIR/.Birta Writer Jot.app.previous"
+STAGE="$DEST_DIR/.Birta Writer.app.incoming"
+OLD="$DEST_DIR/.Birta Writer.app.previous"
 rm -rf "$STAGE" "$OLD"
 ditto "$APP" "$STAGE"
 if [ -d "$DEST" ]; then mv "$DEST" "$OLD"; fi
@@ -183,8 +183,8 @@ rm -rf "$OLD"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$DEST/Contents/Info.plist" 2>/dev/null || echo unknown)"
 if [ "$WAS_RUNNING" = 1 ]; then
     open "$DEST"
-    echo "✓ Birta Writer Jot $VERSION installed and relaunched."
+    echo "✓ Birta Writer $VERSION installed and relaunched."
 else
     open "$DEST"
-    echo "✓ Birta Writer Jot $VERSION installed and started. Press the hotkey (default ⌘⌥⌃J) to summon it."
+    echo "✓ Birta Writer $VERSION installed and started. Press the hotkey (default ⌘⌥⌃J) to summon it."
 fi

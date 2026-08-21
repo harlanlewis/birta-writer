@@ -44,8 +44,8 @@ final class UpdatePolicyTests: XCTestCase {
     }
 
     func testTheConfirmButtonShouldNameTheSaveOnlyWhenThereIsOneToName() {
-        XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: true), "Save and Restart Jot")
-        XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: false), "Restart Jot")
+        XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: true), "Save and Restart Birta Writer")
+        XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: false), "Restart Birta Writer")
     }
 
     /// The sentence must not claim the OTHER button is what protects the work.
@@ -67,8 +67,8 @@ final class UpdatePolicyTests: XCTestCase {
     }
 
     func testTheTitleShouldNameTheAppAndTheVersion() {
-        XCTAssertEqual(UpdatePolicy.title(appName: "Birta Writer Jot", tag: "v2026.821.0"),
-                       "Birta Writer Jot v2026.821.0 is available.")
+        XCTAssertEqual(UpdatePolicy.title(appName: "Birta Writer", tag: "v2026.821.0"),
+                       "Birta Writer v2026.821.0 is available.")
     }
 
     func testTheArmingDelayShouldBeLongEnoughToOutlastAKeystrokeAndShortEnoughToWaitOut() {

@@ -4,8 +4,8 @@ import XCTest
 /// What moves when the notes location changes, and what deliberately does not.
 final class NotesMoveTests: XCTestCase {
 
-    private let from = URL(fileURLWithPath: "/Users/me/Documents/Birta Writer Jot", isDirectory: true)
-    private let to = URL(fileURLWithPath: "/Users/me/iCloud/Birta Writer Jot", isDirectory: true)
+    private let from = URL(fileURLWithPath: "/Users/me/Documents/Birta Writer", isDirectory: true)
+    private let to = URL(fileURLWithPath: "/Users/me/iCloud/Birta Writer", isDirectory: true)
 
     private func file(_ name: String) -> URL { from.appendingPathComponent(name) }
     private func attachment(_ name: String) -> URL {
@@ -147,7 +147,7 @@ final class NotesMoveTests: XCTestCase {
     }
 
     func testAPathThatOnlyLooksDifferentIsStillTheSameDirectory() {
-        let scenic = URL(fileURLWithPath: "/Users/me/Documents/Birta Writer Jot/./", isDirectory: true)
+        let scenic = URL(fileURLWithPath: "/Users/me/Documents/Birta Writer/./", isDirectory: true)
 
         let plan = NotesMove.plan(from: from, to: scenic, entries: [file("a.md")], occupied: empty)
 

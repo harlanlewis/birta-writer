@@ -1,7 +1,7 @@
 #!/bin/bash
 # SessionEnd hook: clear the development litter a Jot run leaves on the machine.
 #
-# Running Birta Writer Jot puts two things outside every repo that no repo owns
+# Running Birta Writer puts two things outside every repo that no repo owns
 # and the harness lock cannot see: WebKit helper processes, and a throwaway
 # defaults domain per run. Both outlive the session that made them and belong
 # to nobody a later reader can name, which is how a red suite becomes nobody's

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clear the development litter a Birta Writer Jot run leaves outside every repo.
+# Clear the development litter a Birta Writer run leaves outside every repo.
 #
 # Running the app puts two things on the machine that no repo owns and the
 # harness lock cannot see: WebKit helper processes, and a throwaway defaults
@@ -59,12 +59,12 @@ CLEARED=0
 #
 # Anchored on the EXECUTABLE inside the bundle, which is what makes it a
 # running app rather than a mention. Both flavours match, since the
-# development bundle is "Birta Writer Jot [DEV].app"; a build command does not,
-# and `codesign --force --deep --sign - ".../Birta Writer Jot [DEV].app"` and
-# `ditto ".../Birta Writer Jot [DEV].app" ...` both carry that bundle path in
+# development bundle is "Birta Writer [DEV].app"; a build command does not,
+# and `codesign --force --deep --sign - ".../Birta Writer [DEV].app"` and
+# `ditto ".../Birta Writer [DEV].app" ...` both carry that bundle path in
 # argv and both run from inside the checkout, so a looser pattern reaches
 # them: a signature or a staged bundle killed half way through.
-for pid in $(pgrep -f "jot/build/Birta Writer Jot[^/]*\.app/Contents/MacOS/" || true); do
+for pid in $(pgrep -f "jot/build/Birta Writer[^/]*\.app/Contents/MacOS/" || true); do
     cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)"
     if [ -z "$cwd" ]; then
         echo "  process $pid: cannot tell which checkout started it, leaving it alone"

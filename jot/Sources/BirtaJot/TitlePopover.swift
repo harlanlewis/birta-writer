@@ -5,7 +5,7 @@ import BirtaJotCore
 /// window's title.
 ///
 ///     ┌──────────────────────────────────┐
-///     │  Name:  [ Birta Writer Jot.md         ] │
+///     │  Name:  [ Birta Writer.md         ] │
 ///     │  Tags:  [                      ] │
 ///     │ Where:  [ 📁 Birta Writer    ⌄ ] │
 ///     └──────────────────────────────────┘

@@ -1,6 +1,6 @@
 import AppKit
 
-/// Birta Writer Jot: a menu-bar agent (LSUIElement). The activation policy is
+/// Birta Writer: a menu-bar agent (LSUIElement). The activation policy is
 /// set here as well as in Info.plist so `swift run` during development behaves
 /// like the bundled app, and because the "Show in Dock" setting can raise it
 /// to `.regular`; the plist keeps the accessory default so a launch never

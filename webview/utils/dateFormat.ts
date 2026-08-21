@@ -105,7 +105,7 @@ export function sameCalendarDate(a: CalendarDate, b: CalendarDate): boolean {
 /**
  * The characters a date insertion puts in the document.
  *
- * The one formatter both surfaces use. Birta Writer Jot's native picker
+ * The one formatter both surfaces use. Birta Writer's native picker
  * reports the day it was given and never spells it, so the app and the editor
  * cannot drift into two spellings of the same date.
  */

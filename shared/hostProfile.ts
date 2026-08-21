@@ -262,7 +262,7 @@ export type HostArrangement =
     /**
      * `/date` opens the host's own date picker instead of the editor's
      * calendar. For a surface that is an application and has a system one to
-     * show (Birta Writer Jot presents an `NSDatePicker`).
+     * show (Birta Writer presents an `NSDatePicker`).
      *
      * An arrangement and not a capability, which is worth stating because the
      * opposite reading is the tempting one. A capability means the host

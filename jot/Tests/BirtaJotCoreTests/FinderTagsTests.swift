@@ -12,7 +12,7 @@ final class FinderTagsTests: XCTestCase {
         dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("jot-tags-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        file = dir.appendingPathComponent("Birta Writer Jot.md")
+        file = dir.appendingPathComponent("Birta Writer.md")
         try AtomicFile.writeString("note", to: file)
     }
 

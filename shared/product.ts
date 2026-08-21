@@ -13,19 +13,31 @@
 export const PRODUCT_NAME = "Birta Writer";
 
 /**
- * Jot's name, as its own bundle says it: the app in `/Applications`, the
- * folder it keeps notes in, and the menu it hangs off the menu bar.
+ * The Mac app's name, as its own bundle says it: the app in `/Applications`,
+ * the folder it keeps notes in, and the menu it hangs off the menu bar.
  *
- * Separate from PRODUCT_NAME because the settings row that names Jot names a
- * different program from the one that names the extension, and both expand
- * through SETTINGS_TITLE_TEMPLATE. Three surfaces carry that expansion as a
- * literal (the command table, package.nls.json and the NSWindow title in
- * `jot/Sources/BirtaJot/SettingsWindow.swift`), and the drift test in
- * `shared/__tests__/editorCommandsContributions.test.ts` holds all three to
- * this constant. The fourth, `e2e/jotHost/checks.mjs`, is an assertion rather
- * than a declaration, so it fails on its own when the label moves.
+ * The same string as PRODUCT_NAME, and a separate constant on purpose. Every
+ * surface is called Birta Writer, so the two spellings have converged; what
+ * has not converged is what they MEAN. This one names one program, and it
+ * reaches the filesystem: `ScratchpadLocation` builds the note's own name out
+ * of it. PRODUCT_NAME names the line. Collapsing them would make a future
+ * divergence, which "Jot" is reserved for, a rename of paths rather than of a
+ * label, and would leave the settings row that names the app reading the
+ * constant for the suite.
+ *
+ * Because the two values are now equal, the drift test in
+ * `shared/__tests__/editorCommandsContributions.test.ts` can no longer tell
+ * them apart by value. It pins the STRUCTURE instead: which constant each
+ * `folderName` branch reads, and that the note's name interpolates this one.
+ *
+ * Three surfaces carry the settings-title expansion as a literal (the command
+ * table, package.nls.json and the NSWindow title in
+ * `jot/Sources/BirtaJot/SettingsWindow.swift`), and that same drift test holds
+ * all three to this constant. The fourth, `e2e/jotHost/checks.mjs`, is an
+ * assertion rather than a declaration, so it fails on its own when the label
+ * moves.
  */
-export const JOT_PRODUCT_NAME = "Birta Writer Jot";
+export const JOT_PRODUCT_NAME = "Birta Writer";
 
 /**
  * The published release history, opened by the gear menu's What's New row.

@@ -11,7 +11,7 @@ test/
 !src/test/**
 *.vsix
 releases/
-# Birta Writer Jot (jot/): SwiftPM build products and the assembled .app
+# Birta Writer (jot/): SwiftPM build products and the assembled .app
 jot/.build/
 jot/build/
 .DS_Store

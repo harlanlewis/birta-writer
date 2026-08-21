@@ -15,7 +15,7 @@ final class NoteReadTests: XCTestCase {
         dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("note-read-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        note = dir.appendingPathComponent("Birta Writer Jot.md")
+        note = dir.appendingPathComponent("Birta Writer.md")
     }
 
     override func tearDownWithError() throws {
@@ -42,12 +42,12 @@ final class NoteReadTests: XCTestCase {
 
     // MARK: the case the old reader got wrong
 
-    /// THE bug. macOS evicts the note and leaves `.Birta Writer Jot.md.icloud`
+    /// THE bug. macOS evicts the note and leaves `.Birta Writer.md.icloud`
     /// beside it, so the note's own path stops existing while the note does
     /// not. The old reader answered "" here, Jot mounted an empty buffer, and
     /// the next write put that buffer where the note had been.
     func testAnEvictedFileShouldBeUnreadableRatherThanAbsent() throws {
-        let placeholder = dir.appendingPathComponent(".Birta Writer Jot.md.icloud")
+        let placeholder = dir.appendingPathComponent(".Birta Writer.md.icloud")
         try Data().write(to: placeholder)
         XCTAssertFalse(FileManager.default.fileExists(atPath: note.path),
                        "the note's own path must be gone, or this is not the evicted case")
@@ -59,7 +59,7 @@ final class NoteReadTests: XCTestCase {
     /// for every evicted note, so the ORDER is the thing under test and this
     /// pins it.
     func testThePlaceholderShouldBeCheckedBeforePlainAbsence() throws {
-        let placeholder = dir.appendingPathComponent(".Birta Writer Jot.md.icloud")
+        let placeholder = dir.appendingPathComponent(".Birta Writer.md.icloud")
         try Data().write(to: placeholder)
         let read = NoteRead.read(at: note)
         XCTAssertNotEqual(read, .absent)
@@ -115,8 +115,8 @@ final class NoteReadTests: XCTestCase {
     }
 
     func testThePlaceholderNameShouldFollowTheFilesOwnName() {
-        XCTAssertEqual(NoteRead.placeholderName(for: "Birta Writer Jot.md"),
-                       ".Birta Writer Jot.md.icloud")
+        XCTAssertEqual(NoteRead.placeholderName(for: "Birta Writer.md"),
+                       ".Birta Writer.md.icloud")
         XCTAssertEqual(NoteRead.placeholderName(for: "a.md"), ".a.md.icloud")
     }
 }

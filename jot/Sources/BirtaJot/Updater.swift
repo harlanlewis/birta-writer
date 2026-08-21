@@ -334,7 +334,7 @@ final class Updater {
             onStatus?("Installing \(release.tag)…")
             done(true)
         } catch {
-            NSLog("Birta Writer Jot: update failed: \(error)")
+            NSLog("Birta Writer: update failed: \(error)")
             onStatus?("Could not install the update.")
             installing = false
             done(false)

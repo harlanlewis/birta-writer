@@ -159,7 +159,7 @@ enum Prefs {
     ///
     /// The file is named after the app rather than after what it is for. It is
     /// the one document a person who has changed no settings ever sees, its
-    /// name is what the window titles itself with, and "Birta Writer Jot" is
+    /// name is what the window titles itself with, and "Birta Writer" is
     /// what they would call the thing that window is. A description of the
     /// file's role is a word they never chose and would have to learn.
     ///

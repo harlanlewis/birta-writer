@@ -5,7 +5,7 @@
  * which picker asks for it.
  *
  * Three gestures end here: `/today` and its two siblings, the editor's own
- * calendar, and Birta Writer Jot's `NSDatePicker`. They agree on the bytes
+ * calendar, and Birta Writer's `NSDatePicker`. They agree on the bytes
  * because none of them writes any: each produces a `CalendarDate`, and
  * `insertDateAtCaret` is the only function that spells one. The native picker
  * in particular reports a DAY and never a string, so the app cannot drift into

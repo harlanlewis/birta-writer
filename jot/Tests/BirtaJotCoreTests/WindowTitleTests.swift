@@ -63,7 +63,7 @@ final class WindowTitleTests: XCTestCase {
     /// LENGTH as a truncated one at the same ceiling, so a check on width
     /// cannot tell them apart. The ellipsis is the only thing that can.
     func testAClippedNameAndATruncatedOneDifferOnlyInTheEllipsis() {
-        let name = "Birta Writer Jot.md"
+        let name = "Birta Writer.md"
         let runs = WindowTitle.runs(name: name, edited: false,
                                     fitting: 8, measure: perCharacter)
         XCTAssertEqual(runs.map(\.text).joined(), "Birta W" + WindowTitle.ellipsis)

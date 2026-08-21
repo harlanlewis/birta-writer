@@ -1,5 +1,5 @@
 // swift-tools-version:5.10
-// Birta Writer Jot: the macOS menu-bar scratchpad shell around dist/webview.js.
+// Birta Writer: the macOS menu-bar scratchpad shell around dist/webview.js.
 // Two targets on purpose: BirtaJotCore holds what is decidable with no host at
 // all (hotkey parsing, the flush/seq guard, atomic writes, the bridge codec);
 // BirtaJot is the AppKit/WebKit app that composes it. Both are tested, and the
