@@ -678,7 +678,7 @@ const topbarTb = topbar
         { getLineMap, getMarkdownSource },
         async (file: File, altText: string) => handleImageFile(file, altText),
         async (id: string) => handleGetProjectImages(id),
-        () => findBar.open(),
+        { open: () => findBar.open(), toggle: () => findBar.toggle() },
         // A host with no text editor to switch to gets no Edit Raw Markdown
         // button; the same gate makes the `editRawMarkdown` command inert.
         hostHas("textEditor") ? switchToSource : undefined,

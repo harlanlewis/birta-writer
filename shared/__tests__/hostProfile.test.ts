@@ -4,7 +4,7 @@
  * guard over the three declarers that restate it by hand.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -33,6 +33,24 @@ function declareArrangements(arrangements: readonly HostArrangement[]): void {
 const WITHDRAWN = EDITOR_COMMANDS.filter(
     (m): m is typeof m & { absentUnder: HostArrangement } =>
         "absentUnder" in m && !!m.absentUnder);
+
+/** The repository root, for the two checks that read the tree. */
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/** Every `.ts` under the given roots, concatenated, tests excluded. */
+function readSource(roots: readonly string[]): string {
+    const parts: string[] = [];
+    const walk = (dir: string) => {
+        for (const name of readdirSync(dir)) {
+            if (name === "node_modules" || name === "__tests__" || name.startsWith(".")) continue;
+            const full = join(dir, name);
+            if (statSync(full).isDirectory()) walk(full);
+            else if (name.endsWith(".ts")) parts.push(readFileSync(full, "utf8"));
+        }
+    };
+    for (const root of roots) walk(join(ROOT, root));
+    return parts.join("\n");
+}
 
 const GATED = EDITOR_COMMANDS.filter((m) => "hostCapability" in m && m.hostCapability);
 const UNGATED = EDITOR_COMMANDS.filter((m) => !("hostCapability" in m) || !m.hostCapability);
@@ -106,9 +124,34 @@ describe("HOST_PROFILES", () => {
         }
     });
 
-    it("every capability should gate at least one command, or it names nothing", () => {
-        const used = new Set(GATED.map((m) => (m as { hostCapability: HostCapability }).hostCapability));
-        for (const cap of ALL_HOST_CAPABILITIES) { expect(used.has(cap), cap).toBe(true); }
+    /**
+     * A capability nothing reads is a fact about a host that decides nothing,
+     * and it reads exactly like one that does.
+     *
+     * TWO kinds of reader count, and the second is why this is not simply a
+     * walk over the command table. Most capabilities gate a command, so they
+     * appear in `EDITOR_COMMANDS`. One does not: `notifications` decides
+     * whether the page reports a failed `/ai` run in its own corner or leaves
+     * it to a host that has already said so, which is a behaviour inside a
+     * plugin rather than a command anyone can run. Its reader is `hostHas`,
+     * which is the ONE reader of the declaration (AGENTS.md, "One declaration,
+     * one reader"), so a call to it is exactly as good a use as a command gate.
+     *
+     * The teeth are unchanged: a capability that neither gates a command nor
+     * appears in a `hostHas` call anywhere in the tree still fails here.
+     */
+    it("every capability should be read by a command gate or by hostHas, or it names nothing", () => {
+        const gates = new Set(GATED.map((m) => (m as { hostCapability: HostCapability }).hostCapability));
+        const source = readSource(["webview", "shared", "src"]);
+        const readers = new Set(
+            [...source.matchAll(/hostHas\(\s*["'`]([A-Za-z]+)["'`]\s*\)/g)].map((m) => m[1]!));
+        // The sweep reached something, or every capability below would be
+        // failing for the same reason and this would be reporting a broken
+        // instrument as a broken profile.
+        expect(readers.size, "no hostHas call sites found; the sweep read nothing").toBeGreaterThan(2);
+        for (const cap of ALL_HOST_CAPABILITIES) {
+            expect(gates.has(cap) || readers.has(cap), cap).toBe(true);
+        }
     });
 });
 
@@ -209,7 +252,7 @@ describe("hostHasCommand", () => {
  * check parses its file rather than trusting a comment to be obeyed.
  */
 describe("the Jot profile's copies", () => {
-    const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const repoRoot = ROOT;
     const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");
 
     /** The elements of the first `<key>: [ ... ]` literal in `src`. */

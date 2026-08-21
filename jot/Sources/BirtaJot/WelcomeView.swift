@@ -48,6 +48,9 @@ final class WelcomeView: NSView {
     private let updateSwitch = NSSwitch()
     private let updateCaption = Caption("")
     private var locationGroup: NSView?
+    /// The rows on screen, so availability reaches the label and the caption
+    /// together. The same map Settings keeps, for the same reason.
+    private var rowViews: [SettingsRow: SettingsRowView] = [:]
     private var column: NSStackView?
     private let hero = NSImageView()
 
@@ -159,10 +162,10 @@ final class WelcomeView: NSView {
             hero.heightAnchor.constraint(equalToConstant: Self.heroSide),
         ])
 
-        let title = NSTextField(labelWithString: AppFlavor.current.displayName)
-        title.font = .systemFont(ofSize: 22, weight: .semibold)
-        title.alignment = .center
-
+        // No title. The mark above says the app's name in the app's own
+        // lettering, and a heading under it is that name a second time in the
+        // system font: the reader is being told once, and shown once, which
+        // reads as two headings rather than one.
         let buttons = buildButtons()
 
         // The rows, as their own column. Leading-aligned and pinned to one
@@ -181,7 +184,10 @@ final class WelcomeView: NSView {
         let form = NSStackView(views: SettingsForm.welcome.map { group in
             SettingsWindowController.group(group.rows.map { row in
                 let (control, caption) = wiring(for: row)
-                return SettingsWindowController.row(row.settingsRow, control: control, caption: caption)
+                let view = SettingsWindowController.row(row.settingsRow, control: control,
+                                                       caption: caption)
+                rowViews[row.settingsRow] = view
+                return view
             })
         })
         locationGroup = form.arrangedSubviews[
@@ -200,12 +206,11 @@ final class WelcomeView: NSView {
         for view in form.arrangedSubviews {
             view.widthAnchor.constraint(equalTo: form.widthAnchor).isActive = true
         }
-        let stack = NSStackView(views: [hero, title, form, buttons])
+        let stack = NSStackView(views: [hero, form, buttons])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 10
-        stack.setCustomSpacing(14, after: hero)
-        stack.setCustomSpacing(24, after: title)
+        stack.setCustomSpacing(24, after: hero)
         stack.setCustomSpacing(24, after: form)
         stack.translatesAutoresizingMaskIntoConstraints = false
         column = stack
@@ -314,10 +319,14 @@ final class WelcomeView: NSView {
     /// a development build would delete the change it was installed to show.
     /// The same words Settings uses, because it is the same fact.
     private func showAutoUpdate() {
-        let canUpdate = AppFlavor.current.updatesItself
-        updateSwitch.isEnabled = canUpdate
-        updateSwitch.state = Prefs.autoUpdate && canUpdate ? .on : .off
-        updateCaption.say(canUpdate ? "" : "A development build does not replace itself.", bad: false)
+        // `problemsOnly`, because this screen asks questions rather than
+        // documenting the answers: a row that works needs no sentence here,
+        // and one that cannot needs the same sentence Settings gives it.
+        let availability = RowAvailability
+            .autoUpdate(updatesItself: AppFlavor.current.updatesItself).problemsOnly
+        updateSwitch.isEnabled = availability.isEnabled
+        updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
+        rowViews[.autoUpdate]?.apply(availability)
     }
 
     @objc private func toggleAutoUpdate() {
@@ -361,16 +370,18 @@ final class WelcomeView: NSView {
     /// says the request was declined when it was only pending. Settings reads
     /// it this way and so must this, or the same row means two things.
     private func showLoginItem(_ state: LoginItemState) {
+        let availability = RowAvailability.startAtLogin(state).problemsOnly
         loginSwitch.state = state.isOn ? .on : .off
-        loginSwitch.isEnabled = state.isEnabled
-        loginCaption.say(state.caption, bad: state.isWarning)
+        loginSwitch.isEnabled = availability.isEnabled
+        rowViews[.startAtLogin]?.apply(availability)
     }
 
     private func hotkeyChosen(_ combo: HotkeyCombo) {
         Prefs.hotkey = combo
         let status = onHotkeyChange()
-        hotkeyCaption.say(status == noErr ? "" : "That combination is taken by another app.",
-                          bad: status != noErr)
+        rowViews[.summon]?.apply(status == noErr
+            ? .available()
+            : .warning("That combination is taken by another app."))
     }
 
     /// The same gesture Settings' row makes, and it has to stay the same one.
@@ -403,7 +414,8 @@ final class WelcomeView: NSView {
             showLoginItem(try LoginItem.set(loginSwitch.state == .on))
         } catch {
             showLoginItem(LoginItem.state)
-            loginCaption.say("macOS refused: \(error.localizedDescription)", bad: true)
+            rowViews[.startAtLogin]?.apply(
+                .warning("macOS refused: \(error.localizedDescription)"))
         }
     }
 

@@ -208,12 +208,15 @@
    one: a rectangular field with a blue ring, a strip of four toggles beside
    it, and an ✕. What follows draws what macOS draws instead — a capsule with
    the magnifier inside it, the count at the field's trailing end, two
-   chevrons, and Done.
+   chevrons, Show Replace and Done, over a second row holding a matching
+   capsule and a segmented Replace / Replace All.
 
-   The four option toggles are not removed, only re-held: `index.ts` builds
-   them into a ⋯ popover instead of into the row. That is what keeps this an
-   arrangement rather than a capability — the same buttons, running the same
-   code, in a different place. */
+   Nothing is added or taken away: every option, every action and every key is
+   the same on both surfaces, and what differs is which holder each control was
+   built into. That is what keeps this an arrangement rather than a capability.
+   The four options move furthest — from a strip of toggles into rows of a
+   dropdown — and they run the same code either way, because `index.ts`
+   declares them once and builds them twice. */
 .find-bar--native {
     align-items: center;
     gap: var(--ui-space-2);
@@ -225,7 +228,22 @@
        A widget border is drawn to sit against an editor's ground; this one
        floats over a page. */
     border-color: var(--ui-card-border);
-    min-width: 320px;
+    /* Wider than the VS Code bar and wider than this one used to be, because
+       both fields have to be worth typing into: this row now carries the
+       field, two chevrons, the options opener, the replace toggle and Done,
+       and the row under it a field and a segmented pair. At the old width the
+       field was the part that gave way.
+
+       Written as a width that yields rather than as a floor, and that is the
+       load-bearing half: this bar is fixed to a window whose own minimum is
+       360pt (`JotPanel.minSize`), and a `min-width` past that is a bar that
+       hangs off the leading edge with its field unreachable. The old 320
+       floor happened to fit that window and this one does not, so the wanted
+       width is a ceiling and the window is the other. `min-width: 0` clears
+       the floor the shared rule above sets. */
+    min-width: 0;
+    width: min(480px, calc(100vw - 32px));
+    max-width: none;
 }
 
 /* The field: input, magnifier and count as one capsule, so the focus ring
@@ -282,9 +300,13 @@
 /* An invalid pattern colours the CAPSULE, since that is what now carries the
    edge. The rules above put it on the input, which no longer has one, so both
    halves are restated here: the field takes the error, and the input is held
-   flat under every state that would otherwise redraw its box. */
-.find-bar--native.find-bar--no-results .find-bar__field,
-.find-bar--native:has(.find-bar__input[aria-invalid="true"]) .find-bar__field {
+   flat under every state that would otherwise redraw its box.
+
+   The FIND field alone. Both rows are capsules now, and neither the match
+   count nor a bad pattern is anything to do with the text being substituted
+   in. */
+.find-bar--native.find-bar--no-results .find-bar__field--find,
+.find-bar--native:has(.find-bar__input[aria-invalid="true"]) .find-bar__field--find {
     border-color: var(--vscode-inputValidation-errorBorder);
     background: var(--vscode-inputValidation-errorBackground);
 }
@@ -306,11 +328,16 @@
     white-space: nowrap;
 }
 
-/* ─── The ⋯ options popover ───
-   The four toggles, in the same horizontal strip they formed beside the field,
-   moved behind a button. Deliberately NOT redrawn as menu rows: they are the
-   same four elements, with the same handlers and the same `--active` class, so
-   a check that asserts one is on keeps working wherever it is held. */
+/* ─── The ⋯ options menu ───
+   The four options, behind a button, drawn as the rows every other dropdown in
+   this webview draws: a leading icon column, a label, and a switch. The rows
+   are built by `toolbar/menuPrimitives.ts`, so their anatomy and ink come from
+   `.ui-menu-row` in chrome.css and their switch and icon column from
+   `toolbar/toolbar.css` (`.tb-switch-item`, `.tb-list-item-icon`), which this
+   bar therefore depends on without importing: both are in the eager graph
+   because the toolbar always is. What this file adds is the surface they sit
+   on and the one thing those rows have never carried, an icon column holding
+   two characters of text rather than an SVG. */
 .find-bar--native .find-bar__options-wrap {
     position: relative;
     display: flex;
@@ -323,9 +350,11 @@
     right: 0;
     z-index: 1;
     display: flex;
-    align-items: center;
-    gap: var(--ui-space-1);
-    padding: var(--ui-space-2);
+    flex-direction: column;
+    /* Wide enough for the longest label and its switch without the rows
+       measuring themselves against the bar above, which is far wider. */
+    min-width: 220px;
+    padding: var(--ui-space-1);
     /* The floating-card recipe (ui/chrome.css): a menu that goes away again. */
     background: var(--ui-card-bg);
     border: 1px solid var(--ui-card-border);
@@ -337,17 +366,82 @@
     }
 }
 
+/* The mnemonic in the icon column. `.tb-list-item-icon` is sized for a 14px
+   SVG, and two characters of text in that slot need the size and the centring
+   an SVG carried in its own geometry. */
+.find-bar--native .find-bar__option-mnemonic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--ui-fs-m);
+    font-weight: 600;
+    color: var(--ui-menu-ink-dim);
+}
+
 /* Open, the ⋯ takes the same quiet pressed treatment its toggles take, so the
-   button says the popover below it is the thing it opened. Chained, not bare:
+   button says the menu below it is the thing it opened. Chained, not bare:
    `toolbar.activeBackground` has a null default outside high-contrast themes,
    so a bare `var()` resolves to the initial value and nothing paints. */
 .find-bar--native .find-bar__options-btn[aria-expanded="true"] {
     background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
-/* The replace disclosure spans one row here, not two: the native bar's rows
-   are taller, and a chevron stretched over both reads as a bracket. */
-.find-bar--native .find-bar__toggle {
-    align-self: center;
+/* ─── Show Replace ───
+   A word rather than a chevron, so it says what it opens; `ui-btn--icon` is
+   deliberately not composed, for the same reason Done does not compose it. */
+.find-bar--native .find-bar__show-replace {
     height: 24px;
+    padding: 0 var(--ui-space-3);
+    font-size: var(--ui-fs-m);
+    font-weight: 500;
+    letter-spacing: 0;
+    white-space: nowrap;
+    color: var(--vscode-icon-foreground);
+}
+
+/* On, it wears the quiet pressed pair every persistent toggle in this bar
+   wears — the same tokens the option toggles take. */
+.find-bar--native .find-bar__show-replace[aria-pressed="true"] {
+    background: var(--vscode-inputOption-activeBackground);
+    border-color: var(--vscode-contrastActiveBorder, transparent);
+    color: var(--vscode-inputOption-activeForeground);
+}
+
+/* ─── The replace row ───
+   Its field is the find field's capsule with nothing inside it but the input,
+   so the two rows read as two fields of one form. */
+.find-bar--native .find-bar__field--replace {
+    flex: 1;
+}
+
+/* Replace and Replace All as one segmented pair: they do the same thing at two
+   scales, which two adjacent buttons do not say. Drawn as the platform draws a
+   segment — one outline around the pair, one hairline between them — rather
+   than as two bordered buttons touching. */
+.find-bar--native .find-bar__segment {
+    display: flex;
+    align-items: stretch;
+    flex: none;
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: var(--ui-radius-m);
+    overflow: hidden;
+}
+
+.find-bar--native .find-bar__segment-btn {
+    height: 22px;
+    padding: 0 var(--ui-space-3);
+    font-size: var(--ui-fs-m);
+    font-weight: 500;
+    letter-spacing: 0;
+    white-space: nowrap;
+    color: var(--vscode-icon-foreground);
+    /* The pair carries the outline; a member drawing its own would put a box
+       inside a box, and the primitive's radius would round the inner corners
+       away from the edge they sit against. */
+    border: none;
+    border-radius: 0;
+}
+
+.find-bar--native .find-bar__segment-btn + .find-bar__segment-btn {
+    border-left: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
 }

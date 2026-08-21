@@ -29,17 +29,24 @@ public enum NoteNameTemplate {
     /// are a link away rather than a wall of text under a settings row, and
     /// they all work: this is a shortlist, not the supported set.
     public static let helpText =
-        "%Y year, %m month, %d day, %H hour, %M minute, %S second. "
-        + "Any other strftime format works too."
+        "%Y year, %m month, %d day, %H hour, %M minute, %S second."
 
-    /// Where the full list lives.
+    /// Where the rest of the vocabulary lives, since the six above are a
+    /// shortlist rather than the supported set.
     ///
-    /// The POSIX specification rather than a man page on one host or a blog:
-    /// it is the document every implementation is written against, including
-    /// the one this calls, and it is the least likely of the candidates to
-    /// move.
-    public static let referenceURL = URL(
-        string: "https://pubs.opengroup.org/onlinepubs/9699919799/functions/strftime.html")!
+    /// A page that shows each token beside what it produces, which is the
+    /// question somebody standing at this field actually has. The POSIX
+    /// specification is the document every implementation is written against
+    /// and would be the more durable citation, but it answers a different
+    /// question: it is a conformance text, and reading a filename out of it
+    /// takes longer than guessing.
+    ///
+    /// The link is titled `referenceLinkTitle` so the label and the
+    /// destination stay together.
+    public static let referenceURL = URL(string: "https://strftime.net")!
+
+    /// What the link under the field is called.
+    public static let referenceLinkTitle = "Reference"
 
     /// The characters a filename may not carry.
     ///

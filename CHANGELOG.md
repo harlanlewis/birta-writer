@@ -4,7 +4,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- An `/ai` request that fails no longer leaves a small red marker in the margin beside the block you asked from. The notification, which names the tool, the file and the reason and offers Show Output, was already the report; the marker said the same thing worse, with the reason only on hover and a click needed to clear it, and there is nothing left to stop by the time it appears. The marker still shows while a request is running, where its click does something: it stops the run. The same applies to a run whose changes overlapped edits you made while it worked, which the notification already explains.
+
+- Pressing the toolbar's magnifier while the find bar is open now closes it. It is a button showing something, so a second press puts it away; ⌘F is unchanged, because pressing it twice is reaching for the field rather than asking for it to go.
+
 ### Fixed
+
+- The insertion line drawn while you drag an image over the document no longer stays behind when the drag ends somewhere else. Releasing over another application, or over something that does not take the drop, left the line across the document until the next drag: neither of those says anything to the page the line was drawn on, and an external drag never reports its own end there. Any release, and the first movement of the mouse after the drag is over, takes it down.
 
 - Changing whether two adjacent bold runs are one run or two is written to the file, in both directions. Making `**a** **b**` into `**a b**`, or the reverse, looked right on screen and was then dropped by the save, which compared the two spellings, judged them the same, and wrote nothing. The file kept whichever form it already had and the next open showed it back. No other emphasis edit was affected.
 

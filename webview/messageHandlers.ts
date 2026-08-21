@@ -12,7 +12,6 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "./pm";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
-import { hostHas } from "../shared/hostProfile";
 // The extension always sends `lineMap`, so this only ever runs when it somehow
 // did not — and then computing it locally, from the very content the message
 // carried, is strictly better than the empty map that used to be substituted.
@@ -379,32 +378,21 @@ export function createMessageHandlers(
                     markAgentRunning(view, msg.requestId, msg.harness);
                     return;
                 case "failed":
-                    failAgentRun(view, msg.requestId, msg.message ?? "");
+                    failAgentRun(view, msg.requestId, msg.message ?? "", msg.harness);
                     return;
                 case "done": {
                     if (msg.text !== undefined) {
-                        const outcome = mergeAgentResult(msg.requestId, msg.text);
-                        notifyAgentMergeResult(msg.requestId, outcome);
-                        // WHERE the agent's version survives is the host's
-                        // answer, not the page's. VS Code leaves it in the
-                        // file, because it does not save without being asked,
-                        // and offers Compare on the drift badge. A host that
-                        // saves on its own cannot promise either, so it says
-                        // what happened and leaves its own surface to say
-                        // where (Jot: `Coordinator.settleAgentRescue`).
-                        const keepsTheFile = hostHas("textEditor");
-                        if (outcome === "conflict") {
-                            failAgentRun(view, msg.requestId, keepsTheFile
-                                ? t("its changes overlap yours; the file on disk holds them, and Compare in the drift badge shows both")
-                                : t("its changes overlap yours and were left out"));
-                            return;
-                        }
-                        if (outcome === "partial") {
-                            failAgentRun(view, msg.requestId, keepsTheFile
-                                ? t("some of its changes overlapped yours and were left out; the file on disk holds them all")
-                                : t("some of its changes overlapped yours and were left out"));
-                            return;
-                        }
+                        // The MERGE is the page's; saying what it did is not.
+                        // Both hosts already report a merge that left changes
+                        // out, and each says something the page cannot: VS
+                        // Code that the file on disk holds the agent's full
+                        // version and Compare on the drift badge shows both
+                        // (`reportAgentMerge`), Jot which file its copy was
+                        // kept in (`Coordinator.settleAgentRescue`). A second
+                        // account from here would be the same event twice, in
+                        // the vaguer of the two voices.
+                        notifyAgentMergeResult(
+                            msg.requestId, mergeAgentResult(msg.requestId, msg.text));
                     }
                     settleAgentRun(view, msg.requestId);
                     return;

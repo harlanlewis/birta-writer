@@ -81,6 +81,21 @@ export type HostCapability =
     /** A coding agent to hand a prompt to (Ask Agent). */
     | "agent"
     /**
+     * A notification surface of the host's own, which the page can leave a
+     * failure to rather than saying it in the corner itself.
+     *
+     * VS Code raises a real notification for a failed `/ai` run, carrying a
+     * Show Output action the page cannot offer; a message in the editor's
+     * corner beside it would be the same event reported twice. Jot's shell has
+     * no such surface for the page's own failures, so there the corner IS the
+     * notification.
+     *
+     * What this names is the HOST's ability to speak, never whether a given
+     * message is worth speaking. A page-level message that no host duplicates
+     * (the content guard's veto) is not gated on this.
+     */
+    | "notifications"
+    /**
      * An editor font of the host's own for the content to inherit, which is
      * what the "Editor font" preset names. A host with no editor behind the
      * page (Jot is a window with a document in it) has no such font, so the
@@ -112,6 +127,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "toc",
     "imageUpload",
     "agent",
+    "notifications",
     "editorFont",
     "contentMeasure",
     "appPreferences",
@@ -206,22 +222,23 @@ export type HostArrangement =
      */
     | "barMenusOnClick"
     /**
-     * The find bar is drawn the way the platform draws one, and its search
-     * OPTIONS (match case, whole word, regular expression, find in selection)
-     * live behind a ⋯ button rather than as a strip of toggles beside the
-     * field.
+     * The find bar is drawn the way the platform draws one: a capsule field
+     * with the magnifier and the count inside it, Done rather than an ✕, the
+     * search OPTIONS (match case, whole word, regular expression, find in
+     * selection) in a dropdown rather than as a strip of toggles beside the
+     * field, and the replace row disclosed by a labelled toggle on the bar's
+     * own row rather than by a chevron spanning both rows.
      *
      * A layout fact and not a capability, which is the distinction that
-     * decides where this belongs: every option is still there and still runs
-     * the same code, and a surface that declared this would be claiming
-     * nothing about what it can do. What it claims is that a window whose
-     * every other control is a native one should not carry an editor's
-     * toolbelt across the top of its search field.
+     * decides where this belongs: every option and every action is still
+     * there and still runs the same code, and a surface that declared this
+     * would be claiming nothing about what it can do. What it claims is that
+     * a window whose every other control is a native one should not carry an
+     * editor's toolbelt across the top of its search field.
      *
-     * The four options are the ones that move, and the count, the two
-     * chevrons and the replace disclosure are the ones that stay: an option
-     * is a mode you set once and forget, and the rest are read or pressed on
-     * every search.
+     * What stays put is the count and the two chevrons: they are read or
+     * pressed on every search, where an option is a mode you set once and
+     * forget and the replace row is a second half you ask for.
      */
     | "nativeFindBar"
     /**

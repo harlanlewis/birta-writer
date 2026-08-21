@@ -216,14 +216,45 @@ export function initImageFileDrop(
     eventManager.onDocument("dragenter", track, { capture: true });
     eventManager.onDocument("dragover", track, { capture: true });
 
+    // Departure is judged from the event's own geometry, NOT from what the
+    // drag is still carrying. `items` is the drag-time payload view, and a
+    // host that stops exposing it once the pointer is on its way out leaves a
+    // `dragCarriesImageFile` gate here answering false for the one event that
+    // means "gone". Nothing is lost by dropping the gate: with no aim up,
+    // `end` resets a measurer and hides an already-hidden line.
     eventManager.onDocument("dragleave", (e) => {
-        if (dragCarriesImageFile(e) && dragLeftDocument(e)) {
+        if (dragLeftDocument(e)) {
             end();
         }
     }, { capture: true });
 
     // The drag was abandoned (Escape, or released outside): take the line
-    // down. A successful drop is torn down by the commit path instead, which
-    // has to read the aim first.
+    // down. Only ever fires for a drag that STARTED in this document, so it
+    // covers none of the file drags this module exists for — those begin in
+    // Finder, and `dragend` is delivered to the source document alone.
     eventManager.onDocument("dragend", () => end(), { capture: true });
+
+    // A drop that landed here but was not ours. The commit path
+    // (plugins/imagePaste.ts) reads the aim and clears it, and it runs on the
+    // editor's own element, so this bubble-phase listener sees the event after
+    // it and finds nothing left to do. What it is here for is every other
+    // release inside this document: over chrome, over a NodeView that refuses
+    // it, or carrying files ProseMirror declines. None of those clear the aim,
+    // and none of them are followed by a `dragend` here either.
+    eventManager.onDocument("drop", () => end());
+
+    // The last resort, and the one that catches an ending nothing announced:
+    // a drag released over another application. No `drop` arrives, no
+    // `dragend` is ours, and a `dragleave` on the way out is the only notice
+    // there is, so the line outlives the drag whenever that one event does
+    // not arrive or does not read as departure.
+    //
+    // A mouse move is proof the drag is over, because a drag session swallows
+    // them: the platform delivers drag events while one is in flight and mouse
+    // events only once it is not. Guarded on this module's OWN aim, which is
+    // what keeps it clear of the block and outline drags that share the
+    // indicator element and DO move the mouse.
+    eventManager.onDocument("mousemove", () => {
+        if (aimed !== null) { end(); }
+    });
 }

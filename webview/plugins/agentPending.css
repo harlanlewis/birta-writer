@@ -1,14 +1,17 @@
 /**
  * The `/ai` run marker (plugins/agentPending.ts): a filled pill in the gutter
- * beside the request's block while a background agent works, carrying a
- * stop square (its one verb: click to stop the run), and an error pill with
- * an exclamation once it fails. Chrome, not content: it sits in the margin on
+ * beside the request's block while a background agent works, carrying a stop
+ * square, which is its one verb. Chrome, not content: it sits in the margin on
  * the same geometry contract as the block gutter (see .heading-fold-gutter
  * in style.css), and in the block marker's own column: a block with a run in
  * flight offers no grab handle, so the pill stands in that slot rather than
- * beside it. Filled rather than outlined, in the theme's button and error
- * inks, so it reads at a glance on any theme; the pulse is a gentle breathe
- * of the whole pill, never below a legible opacity.
+ * beside it. Filled rather than outlined, in the theme's button ink, so it
+ * reads at a glance on any theme; the pulse is a gentle breathe of the whole
+ * pill, never below a legible opacity.
+ *
+ * A run only ever appears here while it is RUNNING. A failure is news and
+ * goes to .agent-toast at the foot of this file, because the marker's only
+ * gesture is stopping something and there is nothing left to stop.
  */
 .milkdown .editor .agent-pending {
     position: absolute;
@@ -67,13 +70,6 @@
     background: var(--vscode-button-hoverBackground);
 }
 
-.milkdown .editor .agent-pending__glyph--error {
-    animation: none;
-    background: var(--vscode-inputValidation-errorBackground);
-    color: var(--vscode-inputValidation-errorForeground);
-    border: 1px solid var(--vscode-inputValidation-errorBorder);
-}
-
 @keyframes agent-pending-breathe {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
@@ -127,3 +123,36 @@
 }
 
 
+
+/* The failure toast (ui/toast.ts, surface "agent-toast"): what a run that
+   could not finish says instead of leaving a marker behind.
+
+   Composes .ui-notice for the pill and .ui-notice--error for the ink; local
+   here are the corner it sits in and how it leaves. Bottom TRAILING, which is
+   where a host without its own notifications already puts transient news.
+   Viewport-fixed rather than anchored to the block, because the block a
+   request was typed in is usually gone by the time a run fails.
+
+   It takes the pointer, unlike the content guard's notice, because a click on
+   it takes it away. The cost is that a click meant for the document under this
+   corner reaches the message instead; that click is what dismisses it, so the
+   second attempt lands where it was aimed. */
+.agent-toast {
+    position: fixed;
+    right: 16px;
+    /* Above the window's own bottom edge rather than against it. A host that
+       has no notification surface for the page's failures can still draw a
+       status line of its OWN over the page down there, which is exactly what
+       Jot does ("Saved." in the same trailing corner, floating over the web
+       view). The page cannot see it, so the clearance is the only thing that
+       keeps the two off each other. */
+    bottom: 40px;
+    max-width: 44ch;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: opacity 200ms ease-out;
+}
+
+.agent-toast--visible {
+    opacity: 1;
+}

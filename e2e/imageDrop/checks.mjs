@@ -7,6 +7,9 @@
  *   - the line re-aims after the page scrolls mid-drag,
  *   - resting near the bottom edge auto-scrolls, with no further drag events,
  *   - crossing between elements doesn't clear the line; leaving does,
+ *   - a drag that ends with nothing announcing it still takes the line down:
+ *     released over another application, or released here on something that
+ *     declines it,
  *   - a non-image file drag is left alone entirely,
  *   - a drag carrying SEVERAL images lands all of them, in drag order, as one
  *     undo step (MAR-281) — a real multi-file DataTransfer through a real drop
@@ -201,6 +204,38 @@ export async function run({ page, check, baseUrl }) {
         (await indicator(page)) !== null);
     await fireDrag(page, "dragleave", bravo.x, bravo.top + 4);
     check("a dragleave that leaves the document clears the line",
+        (await indicator(page)) === null);
+
+    // ── 4b. A drag that ends with nothing announcing it ──
+    // The line outliving its drag was a real report, and there are two ways
+    // in. Neither is reachable from the drag events alone, which is why both
+    // are checked here rather than in jsdom.
+    //
+    // First: released over another application. `dragend` fires in the
+    // document the drag STARTED in, which for a file from Finder is nowhere;
+    // a `dragleave` on the way out is the only notice there is, and where it
+    // does not arrive, or does not read as a departure, nothing else ever
+    // says the drag is over. A mouse move is the proof, because a drag
+    // session swallows them.
+    await fireDrag(page, "dragenter", bravo.x, bravo.top + 4);
+    await fireDrag(page, "dragover", bravo.x, bravo.top + 4);
+    check("the drop line is up before the drag is abandoned",
+        (await indicator(page)) !== null);
+    await page.mouse.move(bravo.x, bravo.top + 20);
+    check("a drag abandoned with no dragleave clears on the next mouse move",
+        (await indicator(page)) === null);
+
+    // Second: released HERE, on something that does not take it. The commit
+    // path clears the aim, and it only runs for a drop ProseMirror handles,
+    // so a release the editor declines used to leave the line up with no
+    // dragleave and no dragend behind it. Aimed with an image drag and
+    // released with a payload the editor refuses, which is the shape of it.
+    await fireDrag(page, "dragenter", bravo.x, bravo.top + 4);
+    await fireDrag(page, "dragover", bravo.x, bravo.top + 4);
+    check("the drop line is up before the declined drop",
+        (await indicator(page)) !== null);
+    await fireDrag(page, "drop", bravo.x, bravo.top + 4, { mime: "text/markdown" });
+    check("a drop the editor declines still clears the line",
         (await indicator(page)) === null);
 
     // ── 5. The drop lands at the aimed-at boundary, not at the caret ──

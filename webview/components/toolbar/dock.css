@@ -88,16 +88,10 @@
     padding: 0 var(--ui-space-2);
 }
 
-/* Open, the letter takes the pressed treatment every toggle in this bar takes.
-   The row's presence below the bar is the other half of the answer, and
-   between them there is nothing a chevron would add. */
-.tb-dock-toggle[data-expanded="true"] {
-    /* Chained, not bare: `toolbar.activeBackground` has a null default outside
-       high-contrast themes, so a bare `var()` resolves to the property's
-       initial value and the pressed state simply does not paint. The same
-       chain `chrome.css` uses for the primitive's active state. */
-    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
-}
+/* Open, the letter is drawn exactly as it is closed. The row either is or is
+   not below the bar, and that is a whole answer: a pressed wash under the
+   letter says the same thing a second time, in the one place on this bar where
+   a filled square sits over the window's own titlebar band. */
 
 .tb-dock-row {
     display: flex;

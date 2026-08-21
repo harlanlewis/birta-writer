@@ -439,6 +439,17 @@
     transition: opacity 120ms ease-out;
 }
 
+/* The error tone: same pill, saying something went wrong. The theme's own
+   validation inks, so it reads as an error in a theme's own vocabulary rather
+   than in a red we picked. Applied by ui/toast.ts from a caller's `tone`, and
+   deliberately here rather than on a surface: what a message IS should not be
+   spelled differently in each corner it can appear in. */
+.ui-notice--error {
+    border-color: var(--vscode-inputValidation-errorBorder);
+    background: var(--vscode-inputValidation-errorBackground);
+    color: var(--vscode-inputValidation-errorForeground);
+}
+
 /* The pill's icon-only × dismiss (compose with .ui-btn .ui-btn--icon). */
 .ui-notice__dismiss {
     --ui-btn-size: 18px;

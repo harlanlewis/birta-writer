@@ -12,6 +12,7 @@ import { history, undo } from "../pm";
 import { TextSelection } from "../pm";
 import type { EditorView, Node as ProseNode } from "../pm";
 import { $prose } from "@milkdown/utils";
+import { HOST_PROFILES } from "../../shared/hostProfile";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     agentPendingPlugin,
@@ -19,6 +20,7 @@ import {
     applyAgentResult,
     beginAgentRun,
     failAgentRun,
+    AGENT_TOAST_SURFACE,
     markAgentRunning,
     recordsExternalInHistory,
     settleAgentRun,
@@ -182,19 +184,88 @@ describe("agent run marker", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "agentCancel", requestId: id });
     });
 
-    it("a failed run should show an error marker that a click dismisses", () => {
+    /**
+     * The toast is for a host with no notification surface of its own.
+     *
+     * A jsdom page declares nothing, which means the VS Code profile, and VS
+     * Code raises its own error notification for a failed run. So the arms
+     * below declare Jot's profile explicitly, and the last one puts the VS
+     * Code profile back and checks the corner stays empty. That pair is what
+     * makes any of this discriminate: without it a version that always spoke
+     * and a version that never spoke would both pass one of them.
+     */
+    const asJot = (): void => {
+        (globalThis as { __i18n?: unknown }).__i18n = {
+            host: { capabilities: HOST_PROFILES.jot },
+        };
+    };
+
+    afterEach(() => { delete (globalThis as { __i18n?: unknown }).__i18n; });
+
+    it("a failed run on a host with its own notifications should say nothing in the corner", () => {
+        // The VS Code profile, which is what declaring nothing means.
         placeCaret(v, endOfBlock(v, 1));
         const id = beginAgentRun(v);
-        markAgentRunning(v, id);
+        markAgentRunning(v, id, "claude");
+
+        failAgentRun(v, id, "exit 1", "claude");
+
+        expect(markers()).toHaveLength(0, "the marker still goes: it is for a run that can be stopped");
+        const toast = document.querySelector(`.${AGENT_TOAST_SURFACE}`);
+        expect(toast?.classList.contains(`${AGENT_TOAST_SURFACE}--visible`) ?? false).toBe(false);
+    });
+
+    it("a failed run should leave no marker and say why in a toast", () => {
+        asJot();
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id, "claude");
+        // The instrument reached something: while it was running there WAS a
+        // marker, so an empty gutter below is the failure clearing it rather
+        // than a run that never showed one.
+        expect(markers()).toHaveLength(1);
 
         failAgentRun(v, id, "exit 1");
 
-        const el = markers()[0];
-        expect(el.classList.contains("agent-pending--error")).toBe(true);
-        expect(el.title).toContain("exit 1");
-        el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
         expect(markers()).toHaveLength(0);
         expect(agentRun(v, id)).toBeNull();
+        const toast = document.querySelector(`.${AGENT_TOAST_SURFACE}`);
+        expect(toast?.textContent).toContain("exit 1");
+        // The tool is named, or the reason belongs to nothing the reader can
+        // act on.
+        expect(toast?.textContent).toContain("claude");
+        expect(toast?.classList.contains("ui-notice--error")).toBe(true);
+        expect(toast?.classList.contains(`${AGENT_TOAST_SURFACE}--visible`)).toBe(true);
+    });
+
+    /// A command that is not installed fails before anything reports what is
+    /// running it, which is exactly the failure people meet first.
+    it("a failure reported before the run was confirmed should still name the tool", () => {
+        asJot();
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        // No markAgentRunning: the run is still `armed`, so nothing in state
+        // knows the harness and only the report can say.
+        expect(agentRun(v, id)?.harness).toBeUndefined();
+
+        failAgentRun(v, id, "command not found", "claude");
+
+        expect(document.querySelector(`.${AGENT_TOAST_SURFACE}`)?.textContent)
+            .toContain("claude");
+    });
+
+    it("a failed run with no reason should still name the tool in the toast", () => {
+        asJot();
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id, "codex");
+
+        failAgentRun(v, id, "   ");
+
+        const toast = document.querySelector(`.${AGENT_TOAST_SURFACE}`);
+        expect(toast?.textContent).toContain("codex");
+        // Never a bare "codex: " with nothing after the colon.
+        expect(toast?.textContent?.trim().endsWith(":")).toBe(false);
     });
 
     it("deleting the marker's block should drop the marker", () => {

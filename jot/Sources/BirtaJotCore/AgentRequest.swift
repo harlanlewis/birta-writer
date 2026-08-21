@@ -11,6 +11,14 @@ import Foundation
 public enum AgentRequest {
     public static let promptPlaceholder = "{prompt}"
 
+    /// What Settings' Test button asks the tool to do.
+    ///
+    /// The smallest request that still exercises the whole path: the command
+    /// starts, the tool authenticates, and it prints something back. Nothing
+    /// about a file, because the test runs in a folder of its own and a
+    /// request naming the note would be a test that edits it.
+    public static let probePrompt = "say hello!"
+
     /// The one line handed over: the request, whitespace collapsed so it stays
     /// a single shell argument, prefixed with where it applies. Every major
     /// agent reads `relative/path.md#L12` as a location.

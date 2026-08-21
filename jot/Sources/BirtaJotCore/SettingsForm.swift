@@ -10,7 +10,7 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case summon = "Show and hide Jot"
     case storeInICloud = "Store in iCloud Drive"
     case location = "Location"
-    case autosave = "Autosave"
+    case autosave = "Automatically save changes"
     case showInDock = "Show in Dock"
     case startAtLogin = "Start at login"
     case autoUpdate = "Automatically update"
@@ -52,27 +52,36 @@ public struct WelcomeGroup: Sendable {
     public init(rows: [WelcomeRow]) { self.rows = rows }
 }
 
-/// One card: the rows in it, the heading above it, and the sentence between
-/// the two.
+/// One card: the rows in it, and nothing else.
 ///
-/// Both optional, and they are different kinds of absent. Most groups carry no
-/// heading, because a card of plain switches is bounded by its own fill and a
-/// title over it would name what the rows already say. A heading earns its
-/// place where a card is a SUBJECT rather than a list, which today is the
-/// agent group: it holds a capability somebody has to opt into, and the intro
-/// beneath the heading is where the thing being opted into is explained.
+/// A card carries no heading of its own, and that is a decision rather than an
+/// omission. A card of plain switches is bounded by its own fill, so a title
+/// over it names what the rows already say; and where a pane really does need
+/// explaining, the thing being explained is the pane, whose tab already names
+/// it. That sentence belongs to `SettingsPane.intro`.
 public struct SettingsGroup: Sendable {
-    public let heading: String?
-    /// A sentence under the heading and above the card. For a group whose rows
-    /// cannot explain themselves; never a caption belonging to one row, which
-    /// is the row's own.
-    public let intro: String?
     public let rows: [SettingsRow]
 
-    public init(heading: String? = nil, intro: String? = nil, rows: [SettingsRow]) {
-        self.heading = heading
-        self.intro = intro
+    public init(rows: [SettingsRow]) {
         self.rows = rows
+    }
+}
+
+/// One Settings pane: what it says before the first card, and the cards.
+///
+/// The intro sits under the pane's own tab title, which is the heading it
+/// belongs to. It is for a pane holding a capability somebody has to opt into
+/// and would otherwise have to guess at; a pane of ordinary settings has none,
+/// because a paragraph over a list of switches is a preamble nobody reads on
+/// the way to a control they can already see.
+public struct SettingsPane: Sendable {
+    /// Paragraphs above the first card. Empty for most panes.
+    public let intro: [String]
+    public let groups: [SettingsGroup]
+
+    public init(intro: [String] = [], groups: [SettingsGroup]) {
+        self.intro = intro
+        self.groups = groups
     }
 }
 
@@ -96,32 +105,54 @@ public enum SettingsForm {
         WelcomeGroup(rows: [.showInDock, .startAtLogin, .autoUpdate]),
     ]
 
-    /// What Jot IS: how you reach it, where it puts your bytes, and how it
-    /// behaves as an application on this Mac. Every first-run question is
-    /// here, in the order it was asked.
-    public static let general: [SettingsGroup] = [
+    /// What Jot IS: how you reach it, where it puts your bytes, which note a
+    /// summon opens, and how it behaves as an application on this Mac. Every
+    /// first-run question is here, in the order it was asked.
+    ///
+    /// Which note a summon opens is a General question and not an editor one,
+    /// under the same argument that keeps Autosave here: both are about which
+    /// file your typing ends up in, which is settled before the editor sees
+    /// anything.
+    public static let general = SettingsPane(groups: [
         SettingsGroup(rows: [.summon]),
         SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
-        SettingsGroup(rows: [.showInDock, .startAtLogin, .autoUpdate, .richLinks]),
-    ]
-
-    /// What happens INSIDE the panel: which note a summon opens, what a new
-    /// one is called, and the agent `/ai` hands a prompt to.
-    public static let editor: [SettingsGroup] = [
         SettingsGroup(rows: [.opens, .newNoteName]),
-        SettingsGroup(heading: "AI Agent",
-                      intro: "Jot can hand a prompt to a command-line coding agent you have "
-                           + "already installed, and write what it says back into the note. It "
-                           + "runs on this Mac under your own subscription or API key; Jot adds "
-                           + "no account of its own and sends nothing anywhere else.",
-                      rows: [.agentEnabled, .agentCommand]),
-    ]
+        SettingsGroup(rows: [.showInDock, .startAtLogin, .autoUpdate, .richLinks]),
+    ])
 
-    /// The two gestures that undo rather than set: see the first run again,
-    /// and put every setting back.
-    public static let advanced: [SettingsGroup] = [
-        SettingsGroup(rows: [.welcomeScreen, .resetSettings]),
-    ]
+    /// The agent `/ai` hands a prompt to.
+    ///
+    /// The only pane with an intro, and it earns one: everything on it is off
+    /// until somebody turns it on, and what they would be turning on runs a
+    /// program on their Mac and may cost them money. The tab is the heading
+    /// the paragraphs sit under, which is why no card here carries one.
+    public static let aiAgent = SettingsPane(
+        intro: [
+            "Optionally enable Jot to use your existing AI agent CLI tool to read and edit "
+                + "your note files. Requires the tool to be installed and runnable from Terminal.",
+            "Jot /ai command uses your existing authentication and needs no additional "
+                + "configuration.",
+            "Your AI provider (OpenAI, Anthropic, etc) may charge standard API or subscription "
+                + "utilization when used.",
+        ],
+        groups: [SettingsGroup(rows: [.agentEnabled, .agentCommand])])
+
+    /// The gestures that undo rather than set: put every setting back, and see
+    /// the first run again.
+    ///
+    /// Take the flavour rather than reading it, so both arms are checkable
+    /// without a defaults domain or a second bundle.
+    public static func advanced(showsWelcomeScreen: Bool) -> SettingsPane {
+        SettingsPane(groups: [
+            SettingsGroup(rows: showsWelcomeScreen ? [.welcomeScreen, .resetSettings]
+                                                   : [.resetSettings]),
+        ])
+    }
+
+    /// The Advanced pane this build actually draws.
+    public static var advanced: SettingsPane {
+        advanced(showsWelcomeScreen: AppFlavor.current.showsWelcomeScreen)
+    }
 
     /// Every pane, in toolbar order. `SettingsFormTests` sums these to check
     /// that a case added to `SettingsRow` was actually placed on a screen, and
@@ -129,12 +160,18 @@ public enum SettingsForm {
     /// being invisible to that guard: an array left out of a hand-written sum
     /// reads as rows unplaced, and an array left out of this one cannot be
     /// left out, because the panes are what this is.
-    public static let panes: [[SettingsGroup]] = [general, editor, advanced]
+    ///
+    /// Advanced appears in its WIDEST form, because what this list is read for
+    /// is coverage: a row some build hides is still a row that has to be
+    /// placed somewhere, and a `panes` that hid it would report it unplaced.
+    public static var panes: [SettingsPane] {
+        [general, aiAgent, advanced(showsWelcomeScreen: true)]
+    }
 
     /// The rows of a Settings pane, top to bottom, with the cards flattened
     /// away.
-    public static func rows(of groups: [SettingsGroup]) -> [SettingsRow] {
-        groups.flatMap(\.rows)
+    public static func rows(of pane: SettingsPane) -> [SettingsRow] {
+        pane.groups.flatMap(\.rows)
     }
 
     /// The same for the first-run screen, as Settings rows, which is what makes
@@ -145,8 +182,8 @@ public enum SettingsForm {
 
     /// Where a row sits in its own card, so the code that shows and hides one
     /// under the answer above it asks rather than counting.
-    public static func index(of row: SettingsRow, inGroupOf groups: [SettingsGroup]) -> Int? {
-        groups.first { $0.rows.contains(row) }?.rows.firstIndex(of: row)
+    public static func index(of row: SettingsRow, inPane pane: SettingsPane) -> Int? {
+        pane.groups.first { $0.rows.contains(row) }?.rows.firstIndex(of: row)
     }
 
     public static func index(of row: WelcomeRow, inGroupOf groups: [WelcomeGroup]) -> Int? {

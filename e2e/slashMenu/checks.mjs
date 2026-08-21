@@ -331,8 +331,18 @@ export async function run({ page, check, baseUrl }) {
     check("clicking the marker asks the extension to cancel that run", cancels.length === 1 && cancels[0].requestId === second, JSON.stringify(cancels));
     await page.evaluate((id) => window.postMessage({ type: "agentRun", requestId: id, status: "failed", message: "exit 1" }, "*"), second);
     await page.waitForTimeout(150);
-    check("a failed run turns the marker into an error marker",
-        await page.evaluate(() => document.querySelectorAll(".ProseMirror .agent-pending--error").length) === 1);
+    // The gutter is for a run that can still be stopped, so a failure leaves
+    // it. WHERE the reason appears depends on the host: this page is the VS
+    // Code profile, which raises its own notification, so nothing is drawn in
+    // the corner. e2e/jotHost holds the arm where the corner is the only place
+    // it can appear.
+    const afterFailure = await page.evaluate(() => ({
+        markers: document.querySelectorAll(".ProseMirror .agent-pending").length,
+        toast: document.querySelector(".agent-toast") !== null,
+    }));
+    check("a failed run leaves the gutter and says nothing over the host",
+        afterFailure.markers === 0 && afterFailure.toast === false,
+        JSON.stringify(afterFailure));
 
     // Space on an ordinary row is still a filter character: the browser
     // inserts it and the construct ends.

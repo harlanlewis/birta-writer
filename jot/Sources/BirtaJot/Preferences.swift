@@ -373,7 +373,8 @@ enum Prefs {
     /// login item is not a preference, and a system registration has no
     /// default to agree with.
     ///
-    /// Rich link previews are the row this function must never grow back. It
+    /// Link previews and embeds is the row this function must never grow back.
+    /// It
     /// is the only setting that reaches the network, it ships off, and the
     /// first-run screen does not ask about it, so nothing here may switch it
     /// on. That is the whole of the claim in `docs/NETWORK_POSTURE.md`.
