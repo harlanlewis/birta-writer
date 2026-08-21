@@ -9,6 +9,14 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"flushResult","id":"f1","content":"x","baseSyncVersion":1,"seq":4}"#),
                        .flushResult(id: "f1", content: "x", baseSyncVersion: 1, seq: 4))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openUrl","url":"https://a.b"}"#), .openUrl("https://a.b"))
+        // The wire name the page actually posts (`notifyAgentCancel`). The
+        // parse table used to say `stopAgentRun`, which nothing sends, so a
+        // click on the gutter marker reached `.other` and cancelled nothing.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentCancel","requestId":"r1"}"#),
+                       .agentCancel(requestId: "r1"))
+        // The old spelling must not quietly work again.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"stopAgentRun","requestId":"r1"}"#),
+                       .other(type: "stopAgentRun"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"clipboardWrite","format":"markdown","data":"**b**"}"#),
                        .clipboardWrite(format: "markdown", data: "**b**"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setToolbarLayout","item":{"id":"bold","placement":"hidden"},"order":["italic","bold"]}"#),

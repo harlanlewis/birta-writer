@@ -750,7 +750,7 @@ final class Coordinator {
             openPreferences?()
         case let .askAgent(prompt, requestId, model, effort):
             runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort)
-        case let .stopAgentRun(requestId):
+        case let .agentCancel(requestId):
             agent.stop(requestId: requestId) { [weak self] status in
                 self?.reportAgent(requestId: requestId, status)
             }
