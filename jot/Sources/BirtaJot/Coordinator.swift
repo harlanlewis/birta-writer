@@ -171,7 +171,7 @@ final class Coordinator {
         let webRoot = Coordinator.locateWebRoot()
         host = WebHost(webRoot: webRoot, documentDirectory: Prefs.activeURL.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
-            NSLog("Birta Writer Jot: write failed: \(error)")
+            NSLog("Birta Writer: write failed: \(error)")
         })
         hotkey = GlobalHotkey()
     }
@@ -275,7 +275,7 @@ final class Coordinator {
         hotkey.onPress = { [weak self] in self?.hotkeyPressed() }
         let status = hotkey.register(Prefs.hotkey)
         if status != noErr {
-            NSLog("Birta Writer Jot: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
+            NSLog("Birta Writer: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
         }
         installEscapeMonitor()
         if measure.enabled { installDebugSignals() }
@@ -545,7 +545,7 @@ final class Coordinator {
     }
 
     private func contentProcessDied() {
-        NSLog("Birta Writer Jot: web content process terminated; remounting")
+        NSLog("Birta Writer: web content process terminated; remounting")
         measure.mark("terminate")
         state = .cold
         loadPage()
@@ -782,7 +782,7 @@ final class Coordinator {
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
-            NSLog("Birta Writer Jot: webview crash (\(source)): \(message)")
+            NSLog("Birta Writer: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
             saveAttachment(id: id, data: data, mimeType: mimeType)
         case let .agentAttachment(id, name, bytes):
@@ -868,9 +868,9 @@ final class Coordinator {
             let reference = try attachments.save(data, mimeType: mimeType, besideDocument: boundURL)
             host.send(.imageUploaded(id: id, url: reference))
         } catch AttachmentStore.StoreError.unsupportedType(let type) {
-            host.send(.imageUploadError(id: id, error: "Jot cannot save a \(type) image."))
+            host.send(.imageUploadError(id: id, error: "Birta Writer cannot save a \(type) image."))
         } catch {
-            NSLog("Birta Writer Jot: attachment save failed: \(error)")
+            NSLog("Birta Writer: attachment save failed: \(error)")
             host.send(.imageUploadError(id: id, error: "The image could not be saved beside this document."))
         }
     }
@@ -903,7 +903,7 @@ final class Coordinator {
                 try bytes.write(to: target, options: .atomic)
                 path = target.path
             } catch {
-                NSLog("Birta Writer Jot: agent attachment save failed: \(error)")
+                NSLog("Birta Writer: agent attachment save failed: \(error)")
                 path = nil
             }
             let resolved = path
@@ -925,7 +925,7 @@ final class Coordinator {
         guard !plan.isEmpty else { return }
         let failed = AttachmentReferences.apply(plan)
         guard !failed.isEmpty else { return }
-        NSLog("Birta Writer Jot: \(failed.count) attachment(s) could not be copied: \(failed.joined(separator: ", "))")
+        NSLog("Birta Writer: \(failed.count) attachment(s) could not be copied: \(failed.joined(separator: ", "))")
         let alert = NSAlert()
         alert.messageText = failed.count == 1
             ? "One image could not be copied"
@@ -1055,7 +1055,7 @@ final class Coordinator {
         host.send(.flushSave(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
-            NSLog("Birta Writer Jot: flush timed out; running against the last admitted content")
+            NSLog("Birta Writer: flush timed out; running against the last admitted content")
             finish()
         }
     }
@@ -1178,9 +1178,9 @@ final class Coordinator {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try AtomicFile.writeString(latest, to: target)
-            NSLog("Birta Writer Jot: the deleted note's unwritten text is in \(target.path)")
+            NSLog("Birta Writer: the deleted note's unwritten text is in \(target.path)")
         } catch {
-            NSLog("Birta Writer Jot: could not rescue the deleted note: \(error)")
+            NSLog("Birta Writer: could not rescue the deleted note: \(error)")
         }
     }
 
@@ -1428,7 +1428,7 @@ final class Coordinator {
             try AtomicFile.writeString(text, to: target)
             agentRescues[requestId] = target
         } catch {
-            NSLog("Birta Writer Jot: could not keep the agent's version: \(error)")
+            NSLog("Birta Writer: could not keep the agent's version: \(error)")
         }
     }
 
@@ -1488,7 +1488,7 @@ final class Coordinator {
     /// to lose what was typed into it.
     func backToNotes() {
         guard Prefs.documentURL != nil else {
-            statusOverlay.flash("Jot is already on your notes.")
+            statusOverlay.flash("Birta Writer is already on your notes.")
             return
         }
         flushThen { [weak self] in
@@ -1527,7 +1527,7 @@ final class Coordinator {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             } catch {
-                NSLog("Birta Writer Jot: could not create \(directory.path): \(error)")
+                NSLog("Birta Writer: could not create \(directory.path): \(error)")
                 self.statusOverlay.flash("Could not make a new note in \(directory.lastPathComponent).")
                 return
             }
@@ -1537,7 +1537,7 @@ final class Coordinator {
                 // one the next launch cannot find its way back to.
                 try AtomicFile.writeString("", to: target)
             } catch {
-                NSLog("Birta Writer Jot: could not write \(target.path): \(error)")
+                NSLog("Birta Writer: could not write \(target.path): \(error)")
                 self.statusOverlay.flash("Could not make a new note.")
                 return
             }
@@ -1560,7 +1560,7 @@ final class Coordinator {
         } catch {
             // The scratchpad is the fallback, and it is a good one: the setting
             // says where to START, not that the old note may be lost.
-            NSLog("Birta Writer Jot: could not start a blank note in \(directory.path): \(error)")
+            NSLog("Birta Writer: could not start a blank note in \(directory.path): \(error)")
         }
     }
 
@@ -1650,7 +1650,7 @@ final class Coordinator {
         host.send(.requestEditorContext(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, let pending = self.pendingContexts.removeValue(forKey: id) else { return }
-            NSLog("Birta Writer Jot: the page did not answer requestEditorContext in time")
+            NSLog("Birta Writer: the page did not answer requestEditorContext in time")
             pending(nil)
         }
     }
@@ -1784,15 +1784,61 @@ final class Coordinator {
     /// `hasSeenWelcome` is set HERE rather than when the screen appears, so a
     /// crash during a first launch does not spend the one chance to ask.
     private func finishWelcome() {
+        // Read before the write below, because the seed depends on it.
+        let wasFirstRun = !Prefs.hasSeenWelcome
         Prefs.hasSeenWelcome = true
         welcome?.isHidden = true
         restorePanelAfterWelcome()
         host.webView.isHidden = false
+        seedFirstRunNote(isFirstRun: wasFirstRun)
         missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
         layoutMissingFileBar()
         refreshTitle()
         panel.makeFirstResponder(host.webView)
         host.focusEditor()
+    }
+
+    /// Put the tour in the note, so a first launch opens on something rather
+    /// than on an empty panel. `FirstRunNote` holds the text and the rule.
+    ///
+    /// HERE rather than at launch, and the first-run screen is the reason:
+    /// that screen is what settles where notes live, and `AtomicFile.write`
+    /// creates every directory above its target. Seeding before the screen is
+    /// answered would build the folder for a location it is still asking
+    /// about, and toggling the iCloud switch would then leave a tour in iCloud
+    /// Drive and another in Documents. It is the same trap `writeLatest`
+    /// guards with `isWelcoming`, reached from the other side.
+    ///
+    /// Failure is silent on purpose. Nothing is lost by not having the tour:
+    /// the panel opens empty, which is what it did before there was one, and a
+    /// error the first time somebody sees this app would be worse than the
+    /// absence it is reporting.
+    private func seedFirstRunNote(isFirstRun: Bool) {
+        let url = boundURL
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path))
+            .flatMap { $0[.size] as? NSNumber }
+        let existing: FirstRunNote.Existing
+        if let bytes = size {
+            existing = bytes.intValue == 0 ? .empty : .hasContent
+        } else {
+            existing = .absent
+        }
+        guard FirstRunNote.shouldWrite(existing: existing,
+                                       bufferIsEmpty: latest.isEmpty,
+                                       isFirstRun: isFirstRun) else { return }
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try AtomicFile.writeString(FirstRunNote.markdown, to: url)
+        } catch {
+            NSLog("Birta Writer: could not write the first-run note to \(url.path): \(error)")
+            return
+        }
+        // The file is on disk now, so a later write must treat its absence as
+        // a deletion rather than as a note never written. `writeLatest` sets
+        // this for its own writes; this one bypasses it.
+        everSeenOnDisk = true
+        bindTo(url, content: FirstRunNote.markdown)
     }
 
     /// Whether the panel is showing the first-run screen instead of a document.
@@ -1988,7 +2034,7 @@ final class Coordinator {
                     try AtomicFile.writeString(self.latest, to: target)
                 }
             } catch {
-                NSLog("Birta Writer Jot: could not move \(source.path) to \(target.path): \(error)")
+                NSLog("Birta Writer: could not move \(source.path) to \(target.path): \(error)")
                 self.measure.trace("relocate failed \(target.lastPathComponent)")
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
@@ -2549,7 +2595,7 @@ final class Coordinator {
             let web = res.appendingPathComponent("web", isDirectory: true)
             if FileManager.default.fileExists(atPath: web.appendingPathComponent("index.html").path) { return web }
         }
-        NSLog("Birta Writer Jot: no web assets found; set BIRTA_JOT_WEB_DIR or run jot/scripts/build-app.sh")
+        NSLog("Birta Writer: no web assets found; set BIRTA_JOT_WEB_DIR or run jot/scripts/build-app.sh")
         return URL(fileURLWithPath: "/nonexistent", isDirectory: true)
     }
 }
