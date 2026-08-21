@@ -1,14 +1,26 @@
-# Changelog: Birta Writer Jot
+# Changelog: Birta Writer for Mac
 
-Birta Writer Jot is the macOS menu-bar scratchpad in `jot/`. It runs the same editor the Birta Writer extension does, out of the same `dist/webview.js`, so every editor change reaches it and those are recorded in [`../CHANGELOG.md`](../CHANGELOG.md) rather than repeated here. This file records the app AROUND that editor: its panel and window, menu bar, settings, file handling, packaging and install.
+Birta Writer for Mac is the macOS menu-bar app in `jot/`. It runs the same editor Birta Writer for VS Code does, out of the same `dist/webview.js`, so every editor change reaches it and those are recorded in [`../CHANGELOG.md`](../CHANGELOG.md) rather than repeated here. This file records the app AROUND that editor: its panel and window, menu bar, settings, file handling, packaging and install.
 
-The two are separate because they have different readers and different ways in. The extension is installed from the VS Code Marketplace and Open VSX, both of which render `CHANGELOG.md` out of the VSIX; Jot is installable from neither, and arrives as an app attached to a GitHub Release. An entry a Marketplace reader cannot act on spends the attention the ones they can act on need.
+The two are separate because they have different readers and different ways in. The extension is installed from the VS Code Marketplace and Open VSX, both of which render `CHANGELOG.md` out of the VSIX; the Mac app is installable from neither, and arrives as an app attached to a GitHub Release. An entry a Marketplace reader cannot act on spends the attention the ones they can act on need.
+
+Both surfaces are now called Birta Writer, so an entry here that needs to name its subject calls it Birta Writer for Mac. That is not a second product name; it is the disambiguator the word Jot used to be, moved into the convention now that the two products share a name. `shared/__tests__/changelogSplit.test.ts` matches that spelling, and it is the only thing holding the split up from this side: a bare "Birta Writer" opening cannot be matched there without firing on most of the editor's own entries. Entries below the rename keep the spelling they shipped under.
 
 Versions are shared. Both files are stamped with the same release version, and a version appears here only when something about the app changed in it.
 
 ---
 
 ## [Unreleased]
+
+### Changed
+
+- Breaking: the app is called Birta Writer now, everywhere it names itself. The menu bar, the settings window, the update offer and the copy in `/Applications` all drop "Jot", which is kept back as a name for a future quick-entry surface rather than retired. Nothing about the editor changed.
+- Breaking: the default note moved with the name. It is `~/Documents/Birta Writer/Birta Writer.md` on this Mac, and the iCloud Drive folder is `Birta Writer` rather than `Birta Writer Jot`. An existing note is neither carried across nor deleted: it stays exactly where it was, under its old name, and opening or moving it is a manual job. Notes you make yourself are unaffected, and a new dated note is still called `Jot <date>.md`, because that word is a stem in front of a date rather than the app signing its work.
+- Breaking: an already-installed `Birta Writer Jot.app` cannot update itself to this release. It looks inside the download for a bundle under its own old name and does not find one, so it stops rather than installing anything. Replace it by hand, and delete the old copy once you have: left alone it goes on claiming the summon hotkey, which is first come first served, and autosaving the note it was already bound to.
+
+### Added
+
+- A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math and the cards that links turn into. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.
 
 ---
 
