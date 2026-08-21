@@ -6,7 +6,7 @@ Bindings for the shared `/grind` loop (harlanlewis plugin). Deltas only.
 
 - Linear team `MAR`.
 - Derive the queue from Linear at the start of every session: the groomed union of `Todo`, `In Progress` and `Backlog`, ordered by the doctrine below. A stored ordering is a cache, and a stale one reads exactly like a considered one.
-- `git fetch` BEFORE you groom, not just before you open the PR. Grooming reads the tree to decide what has silently shipped, and an unfetched `main` answers that question about a tree hours old. 2026-08-18: a session picked a ticket, measured `main` unpackageable, and wrote the fix, while the same fix had already landed upstream as #356; the collision surfaced only at merge. `git log` looked authoritative and was local.
+- `git fetch` BEFORE you groom, not just before you open the PR. Grooming reads the tree to decide what has silently shipped, and an unfetched `main` answers that question about a tree hours old; `git log` looks authoritative and is local.
 - Maintainer-only kinds: none.
 
 ## Findings
@@ -26,6 +26,7 @@ A war story is not a finding. The finding is the sentence that changes what the 
 ## Landing
 
 - One PR per session with the tickets and the verification done. The session completes the merge: wait for CI, squash, delete branch, pull `main`, and end there.
+- `gh pr merge --squash --delete-branch` exits NONZERO from a worktree, with `fatal: 'main' is already used by worktree at ...`, and the merge has already happened on GitHub. The failure is its local checkout step, not the merge. Read `gh pr view <n> --json state --jq .state` before believing the error; re-running it is what a session does next if it does not, and there is nothing left to merge.
 - Merging deploys: no.
 - `pnpm run install:local` is the LAST act, after the pull, and then tell the user to reload. Run it before the merge and the user reloads into whatever the tree held at that moment; a session that keeps working afterwards hands them a build its own later commits contradict. Install from the merged default branch or the install is a lie about what shipped.
 - Before opening the PR, `git fetch` and diff `origin/main`'s `CHANGELOG.md` against the branch base. The nightly Release job stamps `[Unreleased]` into a version heading at 11:35 UTC, and a squash merge of a branch based before the stamp resolves the file by placing the session's new entries under that released heading, not the empty `[Unreleased]` above it (2026-08-17b, repaired in #341). Merge `main` in and re-seat the entries first.
@@ -33,7 +34,7 @@ A war story is not a finding. The finding is the sentence that changes what the 
 ## Lanes
 
 - The default shape; ceiling 2, because the harness lock is machine-wide, refuses rather than queues (the loser exits 2 naming the holder), and a lane's gates are the bulk of its wall clock: a third lane spends its time failing gates and retrying. The ceiling prices the machine, not the session, so a live peer session's lanes (`ListAgents`) count against it. Integration branch `lewish/<slug>`.
-- Brief a lane to commit BEFORE its `pnpm test:e2e` sweep, not after: the sweep is a seven-minute call and a lane that stops mid-sweep leaves nothing on its branch (2026-08-18, resumed with "commit what you have, first").
+- Brief a lane to commit BEFORE its `pnpm test:e2e` sweep, not after: the sweep is a seven-minute call and a lane that stops mid-sweep leaves nothing on its branch.
 - Session target: 7 to 9 tickets.
 - Hot files: `webview/editor.ts`, `serialization.ts`, `utils/minimalDiff.ts`, the fold plugins.
 - Orchestrator-only files: `CHANGELOG.md`, `docs/BENEFITS.md`, written once over the reconciled diff, plus BENEFITS only if a capability's story changed.
