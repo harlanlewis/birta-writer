@@ -163,7 +163,25 @@ function findCitations(): string[] {
     return violations;
 }
 
-describe("z-index values are never quoted in comments", () => {
+/**
+ * Two tests in this suite walk every file under `webview/` and read each one,
+ * once to harvest the declared values and once to scan the comments. That is
+ * filesystem work whose cost grows with the tree, and it runs alongside the
+ * rest of the webview jsdom suite, so what it competes with decides how long
+ * it takes rather than what it does.
+ *
+ * Measure it with `npx vitest run webview/__tests__/noZIndexInComments.test.ts`,
+ * which is the only honest way to know what it costs on a given machine. Run
+ * alone it fits the 5 s default; inside a full CI run it has exceeded it, and
+ * the budget below is what stops a scheduling result from reading as a defect
+ * in the sweep.
+ *
+ * Scoped to this describe on purpose, so the tight default still catches an
+ * ordinary test that becomes slow.
+ */
+const SWEEP_TIMEOUT_MS = 30_000;
+
+describe("z-index values are never quoted in comments", { timeout: SWEEP_TIMEOUT_MS }, () => {
     it("the sweep should actually reach the source it claims to guard", () => {
         expect(collectFiles(webviewRoot).length).toBeGreaterThan(50);
     });
