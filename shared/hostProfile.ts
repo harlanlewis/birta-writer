@@ -206,22 +206,23 @@ export type HostArrangement =
      */
     | "barMenusOnClick"
     /**
-     * The find bar is drawn the way the platform draws one, and its search
-     * OPTIONS (match case, whole word, regular expression, find in selection)
-     * live behind a ⋯ button rather than as a strip of toggles beside the
-     * field.
+     * The find bar is drawn the way the platform draws one: a capsule field
+     * with the magnifier and the count inside it, Done rather than an ✕, the
+     * search OPTIONS (match case, whole word, regular expression, find in
+     * selection) in a dropdown rather than as a strip of toggles beside the
+     * field, and the replace row disclosed by a labelled toggle on the bar's
+     * own row rather than by a chevron spanning both rows.
      *
      * A layout fact and not a capability, which is the distinction that
-     * decides where this belongs: every option is still there and still runs
-     * the same code, and a surface that declared this would be claiming
-     * nothing about what it can do. What it claims is that a window whose
-     * every other control is a native one should not carry an editor's
-     * toolbelt across the top of its search field.
+     * decides where this belongs: every option and every action is still
+     * there and still runs the same code, and a surface that declared this
+     * would be claiming nothing about what it can do. What it claims is that
+     * a window whose every other control is a native one should not carry an
+     * editor's toolbelt across the top of its search field.
      *
-     * The four options are the ones that move, and the count, the two
-     * chevrons and the replace disclosure are the ones that stay: an option
-     * is a mode you set once and forget, and the rest are read or pressed on
-     * every search.
+     * What stays put is the count and the two chevrons: they are read or
+     * pressed on every search, where an option is a mode you set once and
+     * forget and the replace row is a second half you ask for.
      */
     | "nativeFindBar"
     /**

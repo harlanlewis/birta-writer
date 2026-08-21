@@ -1043,7 +1043,15 @@ final class Coordinator {
         flushThen { [weak self] in
             guard let self else { done(true); return }
             self.decideFinalWrite { answer in
-                guard answer != .cancel else { done(false); return }
+                guard answer != .cancel else {
+                    // A refused quit leaves nothing decided. The flag exists
+                    // so the last-chance write on the way out does not undo an
+                    // answer, and a `true` left over from a quit that never
+                    // happened would suppress the write on a later one.
+                    self.quitDecided = false
+                    done(false)
+                    return
+                }
                 self.hotkey.unregister()
                 // A child process outliving the app is litter nobody can
                 // attribute.
@@ -1680,9 +1688,9 @@ final class Coordinator {
         // anything after it runs before the reply. Putting the screen up there
         // sets `isWelcoming` in the same turn, and the write embargo then
         // refuses the very write this is here to make. On a first launch there
-        // is nothing to write; Settings can re-show this screen at any time,
-        // and with autosave off the text typed before the button was pressed
-        // is what would be lost.
+        // is nothing to write; a development build's Settings can re-show this
+        // screen at any time, and with autosave off the text typed before the
+        // button was pressed is what would be lost.
         flushThen { [weak self] in
             self?.write(.explicitSave)
             self?.presentWelcome()

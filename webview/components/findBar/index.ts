@@ -384,6 +384,21 @@ export function initFindBar(
         item.el.setAttribute("aria-label", opts.label);
         item.el.title = title;
         item.el.addEventListener("click", opts.run);
+        // A row is a div, so it is focusable and activatable only because
+        // these two lines say so. On the strip these were buttons and the
+        // keyboard reached them for free; a menu that can only be worked with
+        // a mouse would be the arrangement taking something away, which is
+        // the one thing an arrangement may not do. A hidden menu is out of
+        // the tab order on its own, so there are no stops here while it is
+        // shut, and nothing focuses a row on open: the caret belongs in the
+        // field until somebody tabs out of it.
+        item.el.tabIndex = 0;
+        item.el.addEventListener("keydown", (e) => {
+            if (e.key !== "Enter" && e.key !== " ") { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            opts.run();
+        });
         return {
             el: item.el,
             activate: () => item.el.click(),

@@ -232,9 +232,18 @@
        both fields have to be worth typing into: this row now carries the
        field, two chevrons, the options opener, the replace toggle and Done,
        and the row under it a field and a segmented pair. At the old width the
-       field was the part that gave way. */
-    min-width: 480px;
-    max-width: 560px;
+       field was the part that gave way.
+
+       Written as a width that yields rather than as a floor, and that is the
+       load-bearing half: this bar is fixed to a window whose own minimum is
+       360pt (`JotPanel.minSize`), and a `min-width` past that is a bar that
+       hangs off the leading edge with its field unreachable. The old 320
+       floor happened to fit that window and this one does not, so the wanted
+       width is a ceiling and the window is the other. `min-width: 0` clears
+       the floor the shared rule above sets. */
+    min-width: 0;
+    width: min(480px, calc(100vw - 32px));
+    max-width: none;
 }
 
 /* The field: input, magnifier and count as one capsule, so the focus ring
@@ -322,10 +331,13 @@
 /* ─── The ⋯ options menu ───
    The four options, behind a button, drawn as the rows every other dropdown in
    this webview draws: a leading icon column, a label, and a switch. The rows
-   are built from `toolbar/menuPrimitives.ts`, so their anatomy, ink and hover
-   wash come from `.ui-menu-row` and nothing is re-authored here. What this
-   file adds is the surface they sit on and the one thing those rows have never
-   carried, an icon column holding two characters of text rather than an SVG. */
+   are built by `toolbar/menuPrimitives.ts`, so their anatomy and ink come from
+   `.ui-menu-row` in chrome.css and their switch and icon column from
+   `toolbar/toolbar.css` (`.tb-switch-item`, `.tb-list-item-icon`), which this
+   bar therefore depends on without importing: both are in the eager graph
+   because the toolbar always is. What this file adds is the surface they sit
+   on and the one thing those rows have never carried, an icon column holding
+   two characters of text rather than an SVG. */
 .find-bar--native .find-bar__options-wrap {
     position: relative;
     display: flex;

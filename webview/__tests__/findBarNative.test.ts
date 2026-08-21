@@ -147,6 +147,22 @@ describe("the find bar under nativeFindBar", () => {
         }
     });
 
+    // On the strip the options were buttons and the keyboard reached them for
+    // free. As rows of a menu they are divs, so a Tab stop and an Enter are
+    // something the bar has to say out loud, and an arrangement that could
+    // only be worked with a mouse would be taking a control away rather than
+    // moving it.
+    it("an option row should be reachable and activatable from the keyboard", () => {
+        const bar = mount(true);
+        const row = option(bar, "Match Whole Word");
+        expect(row.tabIndex).toBe(0);
+        expect(row.getAttribute("aria-checked")).toBe("false");
+        row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        expect(row.getAttribute("aria-checked")).toBe("true");
+        row.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+        expect(row.getAttribute("aria-checked")).toBe("false");
+    });
+
     // Every option carries the icon column a menu row in this webview has;
     // three of them hold the two-character mark the option wears everywhere it
     // appears, and Find in Selection holds an SVG.
