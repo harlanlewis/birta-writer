@@ -38,6 +38,7 @@ const plist = read("jot/Resources/Info.plist");
 const readme = read("jot/README.md");
 const updater = read("jot/scripts/update-jot.sh");
 const workflow = read(".github/workflows/jot.yml");
+const release = read(".github/workflows/release.yml");
 const inApp = read("jot/Sources/BirtaJot/Updater.swift");
 const requirements = read("jot/Sources/BirtaJotCore/SystemRequirements.swift");
 
@@ -65,6 +66,25 @@ function code(source: string, marker: string): string {
 function workflowStep(name: string): string {
     const block = workflow.split(/^\s*- name: /m).find((part) => part.startsWith(name));
     return code(block ?? "", "#");
+}
+
+/**
+ * The `runs-on` label one job declares, or undefined when the job is gone.
+ *
+ * A rename returns undefined rather than an empty string, so the assertion
+ * below fails naming the job instead of comparing two absences and passing.
+ */
+function jobRunner(source: string, job: string): string | undefined {
+    const lines = source.split("\n");
+    const start = lines.findIndex((line) => line.startsWith(`  ${job}:`));
+    if (start === -1) { return undefined; }
+    for (const line of lines.slice(start + 1)) {
+        // The next job at the same indent ends this one's block.
+        if (/^ {2}\S/.test(line)) { return undefined; }
+        const runner = line.match(/^\s*runs-on:\s*(\S+)/);
+        if (runner) { return runner[1]; }
+    }
+    return undefined;
 }
 
 /**
@@ -249,5 +269,23 @@ describe("what the update paths refuse", () => {
             checks.length,
             "CI reads both facts but does not assert both of them",
         ).toBeGreaterThanOrEqual(2);
+    });
+
+    it("the job that asserts the architecture should build on the runner that publishes it", () => {
+        // The README's Apple Silicon sentence is about the app attached to a
+        // release, and the assertion above runs in `jot.yml`, which builds a
+        // different app in a different workflow. That stands only while both
+        // build on the same kind of machine, since neither passes `--arch` and
+        // the runner is therefore what decides. Nothing else relates them: move
+        // `jot-app` to an Intel runner and the published download changes
+        // architecture while the guard on the claim keeps passing.
+        const asserted = jobRunner(workflow, "jot-test");
+        const published = jobRunner(release, "jot-app");
+        expect(asserted, "jot.yml no longer declares a jot-test job with a runner").toBeDefined();
+        expect(published, "release.yml no longer declares a jot-app job with a runner").toBeDefined();
+        expect(
+            published,
+            `release.yml builds the published app on ${published} and jot.yml asserts its architecture on ${asserted}`,
+        ).toBe(asserted);
     });
 });

@@ -85,6 +85,18 @@ describe("Jot's About window", () => {
         expect(updater).not.toContain(`"${swiftConstant("repository")}"`);
     });
 
+    it("should leave the updater with no unstamped-version string of its own", () => {
+        // The same shape as the repository above, and the same failure. Both
+        // sides read the sentinel a build carries until the release job stamps
+        // a real version over it: the About window decides on it whether to
+        // say a number or "Development build", and `Updater` compares every
+        // published release against it. Two literals are free to drift, and
+        // the day one moved the window would name a version the updater did
+        // not recognise as unstamped.
+        expect(updater).toContain("AboutInfo.unstampedVersion");
+        expect(updater).not.toContain(`"${swiftConstant("unstampedVersion")}"`);
+    });
+
     it("should link to an https website", () => {
         expect(new URL(swiftConstant("website")).protocol).toBe("https:");
     });

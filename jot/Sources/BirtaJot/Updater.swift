@@ -80,7 +80,8 @@ final class Updater {
         var lastCheck: () -> Date? = { Prefs.lastUpdateCheck }
         var recordCheck: (Date) -> Void = { Prefs.lastUpdateCheck = $0 }
         var currentVersion: () -> String = {
-            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+                ?? AboutInfo.unstampedVersion
         }
         /// Answers with the body and the HTTP status, 0 for a transport
         /// failure. One closure rather than a URLSession subclass: what a test
