@@ -49,9 +49,6 @@ export type FoldMeta =
      */
     | { type: "window"; window: { from: number; to: number } | null };
 
-/** Back-compat alias from when only headings folded. */
-export type HeadingFoldMeta = FoldMeta;
-
 /**
  * Plugin state: the folded block positions (headings AND callouts — one
  * fold grammar) PLUS the cached decoration set and the structural
@@ -80,9 +77,4 @@ export interface FoldPluginState {
     readonly pinned: { from: number; to: number } | null;
 }
 
-/** Back-compat alias from when only headings folded. */
-export type HeadingFoldState = FoldPluginState;
-
 export const foldPluginKey = new PluginKey<FoldPluginState>("heading-fold");
-/** Back-compat alias from when only headings folded. */
-export const headingFoldPluginKey = foldPluginKey;

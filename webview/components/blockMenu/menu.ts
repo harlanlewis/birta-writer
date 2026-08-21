@@ -40,10 +40,10 @@ import {
     foldAllCommand,
     foldedSectionEnd,
     foldedSectionEnds,
-    headingFoldPluginKey,
+    foldPluginKey,
     tagContentGuard,
     unfoldAllCommand,
-    type HeadingFoldMeta,
+    type FoldMeta,
 } from "../../editing/blockOps";
 import { getHeadingLevel, selectionCoverRange } from "../../plugins/headingFold";
 import { sinkItemKeepingChildren } from "../../plugins/tabKeymap";
@@ -116,7 +116,7 @@ import {
     repaintLinkCards,
     soleLinkHref,
 } from "../../linkCards";
-import { providerCardGateOpen, recognizeProvider } from "../../utils/embedProviders";
+import { providerCardGateOpen, recognizeEmbed } from "../../utils/embedProviders";
 import {
     canConvert,
     canConvertRange,
@@ -210,7 +210,7 @@ export function moveRangeAt(view: EditorView, pos: number): { from: number; to: 
     // The depth guard is stated HERE, not inherited: foldedSectionEnd reaches
     // findHeadingFoldRange, which walks TOP-LEVEL offsets, so asking it about
     // a heading nested in a container would return an end outside that
-    // container and moveBlockTo's deleteRange would destroy everything up to
+    // container and moveBlocks's deleteRange would destroy everything up to
     // the next top-level heading (the same trap outlineRangeAt names). The
     // fold plugin holds no fold for a nested heading (foldHiddenRange misses
     // for one), so a heading at depth carries no hidden section and moves as
@@ -237,7 +237,7 @@ export function outlineRangeAt(view: EditorView, pos: number): { from: number; t
     const nodeEnd = pos + node.nodeSize;
     // Section semantics are a TOP-LEVEL concept: findHeadingFoldRange walks
     // top-level offsets, so for a heading nested in a container it would
-    // return an end OUTSIDE the container — moveBlockTo's deleteRange would
+    // return an end OUTSIDE the container — moveBlocks's deleteRange would
     // then destroy everything up to the next top-level heading. A nested
     // heading moves as a single block.
     if (node.type.name === "heading" && view.state.doc.resolve(pos).depth === 0) {
@@ -267,7 +267,7 @@ export function duplicateBlockRange(
     const { state } = view;
     const { doc } = state;
     // Collect the copied children directly from their common parent (the
-    // moveBlockTo idiom): a doc.slice through a LIST would wrap the items
+    // moveBlocks idiom): a doc.slice through a LIST would wrap the items
     // in a phantom open list node. Works uniformly for top-level blocks
     // (parent = doc) and list items (parent = list).
     const $from = doc.resolve(range.from);
@@ -379,11 +379,11 @@ export function deleteBlockRange(
         return false;
     }
     const tr = view.state.tr.deleteRange(range.from, range.to);
-    tr.setMeta(headingFoldPluginKey, {
+    tr.setMeta(foldPluginKey, {
         type: "delete",
         from: range.from,
         to: range.to,
-    } satisfies HeadingFoldMeta);
+    } satisfies FoldMeta);
     view.dispatch(tr);
     view.focus();
     return true;
@@ -491,13 +491,12 @@ function moveNestedTarget(view: EditorView, itemPos: number, dir: -1 | 1): numbe
     return $pos.posAtIndex(index + 1) + parent.child(index + 1).nodeSize;
 }
 
-// The move primitive was extracted to editing/moveBlocks (MAR-112): the
-// hardened structural contract — source-range integrity, explicit canReplace
-// fit, fold-hidden target legality, the content-guard tag, and the fold move
-// meta — lives there. Re-exported under its historical name so the menu's
-// Move rows, drag-drop, the keyboard layer, and the test surface keep one
-// import site.
-export { moveBlocks as moveBlockTo } from "../../editing/moveBlocks";
+// The move primitive lives in editing/moveBlocks (MAR-112): the hardened
+// structural contract — source-range integrity, explicit canReplace fit,
+// fold-hidden target legality, the content-guard tag, and the fold move meta.
+// Re-exported here so the menu's Move rows, drag-drop, the keyboard layer,
+// and the test surface keep one import site.
+export { moveBlocks } from "../../editing/moveBlocks";
 
 /**
  * Whether the move range at `pos` reaches past the block itself — i.e. it
@@ -943,7 +942,7 @@ function isProviderCard(view: EditorView, pos: number): boolean {
     if (!node || href === null || node.textContent !== href) {
         return false;
     }
-    const match = recognizeProvider(href);
+    const match = recognizeEmbed(href);
     return match !== null && providerCardGateOpen(match);
 }
 
@@ -1673,11 +1672,11 @@ export function openBlockMenu(
                     null,
                     attrsFromMarker(marker, node.attrs["attached"] as boolean),
                 );
-                tr.setMeta(headingFoldPluginKey, {
+                tr.setMeta(foldPluginKey, {
                     type: "set",
                     pos: blockPos,
                     folded: nextFold === "-",
-                } satisfies HeadingFoldMeta);
+                } satisfies FoldMeta);
                 view.dispatch(tr);
                 view.focus();
             },

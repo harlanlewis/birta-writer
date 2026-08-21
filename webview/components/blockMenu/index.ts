@@ -31,7 +31,7 @@ export {
     indentTargetFor,
     LOSS_NOTES,
     moveBlockAt,
-    moveBlockTo,
+    moveBlocks,
     moveRangeAt,
     openBlockMenu,
     outdentBlockAt,

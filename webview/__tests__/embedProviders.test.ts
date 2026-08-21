@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-    recognizeProvider,
+    recognizeEmbed,
     providerFor,
     youtubeId,
     youtubeThumbnailUrl,
@@ -508,36 +508,36 @@ describe("stackblitzId — recognized URL forms", () => {
     }
 });
 
-describe("recognizeProvider", () => {
+describe("recognizeEmbed", () => {
     it("a YouTube URL should resolve to a youtube match with the id", () => {
-        expect(recognizeProvider(`https://youtu.be/${ID}`)).toEqual({ kind: "youtube", id: ID });
+        expect(recognizeEmbed(`https://youtu.be/${ID}`)).toEqual({ kind: "youtube", id: ID });
     });
     it("a Loom URL should resolve to a loom match with the id", () => {
-        expect(recognizeProvider(`https://www.loom.com/share/${LOOM}`)).toEqual({
+        expect(recognizeEmbed(`https://www.loom.com/share/${LOOM}`)).toEqual({
             kind: "loom",
             id: LOOM,
         });
     });
     it("a Figma URL should resolve to a figma match with the composite id", () => {
-        expect(recognizeProvider(`https://www.figma.com/design/${FKEY}/Title`)).toEqual({
+        expect(recognizeEmbed(`https://www.figma.com/design/${FKEY}/Title`)).toEqual({
             kind: "figma",
             id: `design/${FKEY}`,
         });
     });
     it("a GitHub URL should resolve to a github match with the path id", () => {
-        expect(recognizeProvider("https://github.com/owner/repo/pull/9")).toEqual({
+        expect(recognizeEmbed("https://github.com/owner/repo/pull/9")).toEqual({
             kind: "github",
             id: "owner/repo/pull/9",
         });
     });
     it("a non-provider URL should resolve to null", () => {
-        expect(recognizeProvider("https://example.com/page")).toBeNull();
+        expect(recognizeEmbed("https://example.com/page")).toBeNull();
     });
     it("a Vimeo video URL should resolve to the vimeo provider", () => {
-        expect(recognizeProvider("https://vimeo.com/76979871")).toEqual({ kind: "vimeo", id: "76979871" });
+        expect(recognizeEmbed("https://vimeo.com/76979871")).toEqual({ kind: "vimeo", id: "76979871" });
     });
     it("a Drive file URL should resolve to the googledrive provider", () => {
-        expect(recognizeProvider(`https://drive.google.com/file/d/${GFILE}/view`)).toEqual({
+        expect(recognizeEmbed(`https://drive.google.com/file/d/${GFILE}/view`)).toEqual({
             kind: "googledrive",
             id: GFILE,
         });
@@ -545,28 +545,28 @@ describe("recognizeProvider", () => {
     it("the Google sharing-mode split: published URLs card as players, edit URLs as the info card", () => {
         // The same document, two sharing modes, two DIFFERENT kinds — the
         // published form is framable, the ordinary form never is (MAR-186).
-        expect(recognizeProvider(`https://docs.google.com/document/d/e/${GPUB}/pub`)).toEqual({
+        expect(recognizeEmbed(`https://docs.google.com/document/d/e/${GPUB}/pub`)).toEqual({
             kind: "googledocs",
             id: GPUB,
         });
-        expect(recognizeProvider(`https://docs.google.com/presentation/d/e/${GPUB}/pub`)).toEqual({
+        expect(recognizeEmbed(`https://docs.google.com/presentation/d/e/${GPUB}/pub`)).toEqual({
             kind: "googleslides",
             id: GPUB,
         });
-        expect(recognizeProvider(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pubhtml`)).toEqual({
+        expect(recognizeEmbed(`https://docs.google.com/spreadsheets/d/e/${GPUB}/pubhtml`)).toEqual({
             kind: "googlesheets",
             id: GPUB,
         });
-        expect(recognizeProvider(`https://docs.google.com/document/d/${GFILE}/edit`)).toEqual({
+        expect(recognizeEmbed(`https://docs.google.com/document/d/${GFILE}/edit`)).toEqual({
             kind: "googlefile",
             id: `document/${GFILE}`,
         });
     });
     it("a Miro board URL should resolve to the miro provider", () => {
-        expect(recognizeProvider(`https://miro.com/app/board/${MIRO}/`)).toEqual({ kind: "miro", id: MIRO });
+        expect(recognizeEmbed(`https://miro.com/app/board/${MIRO}/`)).toEqual({ kind: "miro", id: MIRO });
     });
     it("a Linear issue URL should resolve to the linear provider", () => {
-        expect(recognizeProvider("https://linear.app/birta/issue/MAR-186/embed-provider-roadmap")).toEqual({
+        expect(recognizeEmbed("https://linear.app/birta/issue/MAR-186/embed-provider-roadmap")).toEqual({
             kind: "linear",
             id: "birta/issue/MAR-186/embed-provider-roadmap",
         });

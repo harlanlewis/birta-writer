@@ -25,7 +25,7 @@ import {
 } from "./config";
 import { SaveFlushController, type BaseRejection, type FlushBackend } from "../shared/saveFlushController";
 import { watchExternalDocumentChanges } from "./externalChanges";
-import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtmlAttr } from "./webviewHtml";
+import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting } from "./webviewHtml";
 import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { detectLogseq } from "./utils/logseqDetect";
@@ -107,10 +107,6 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
         return false;
     }
 }
-
-// Re-exported for existing consumers/tests; the implementation moved to
-// src/webviewHtml.ts with the rest of the HTML bootstrap (MAR-168).
-export { escapeHtmlAttr };
 
 /**
  * Paste-unfurl fetch bounds (MAR-178). The webview shows the bare link the

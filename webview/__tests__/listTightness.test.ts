@@ -11,7 +11,7 @@ import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
-import { moveBlockAt, moveBlockTo } from "../components/blockMenu";
+import { moveBlockAt, moveBlocks } from "../components/blockMenu";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 
 let editors: Editor[] = [];
@@ -81,11 +81,11 @@ describe("tight nested lists stay tight (MAR-87 net)", () => {
         const v = view(e);
         const sub = itemPos(v, "Sub-step a");
         const node = v.state.doc.nodeAt(sub)!;
-        moveBlockTo(v, { from: sub, to: sub + node.nodeSize }, itemPos(v, "Third step"));
+        moveBlocks(v, { from: sub, to: sub + node.nodeSize }, itemPos(v, "Third step"));
         expect(md(e)).not.toContain("\n\n");
         const first = itemPos(v, "First step");
         const firstNode = v.state.doc.nodeAt(first)!;
-        moveBlockTo(v, { from: first, to: first + firstNode.nodeSize }, itemPos(v, "Sub-step b"));
+        moveBlocks(v, { from: first, to: first + firstNode.nodeSize }, itemPos(v, "Sub-step b"));
         expect(md(e)).not.toContain("\n\n");
     });
 

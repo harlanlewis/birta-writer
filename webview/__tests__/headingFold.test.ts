@@ -322,13 +322,13 @@ describe("heading gutter level menu", () => {
     });
 
     it("a selection-only transaction should return the identical plugin state", async () => {
-        const { headingFoldPluginKey } = await import("../plugins/headingFold");
+        const { foldPluginKey } = await import("../plugins/headingFold");
         const { TextSelection } = await import("../pm");
         const editor = await makeEditor("## Title\n\nBody");
         const v = view(editor);
-        const before = headingFoldPluginKey.getState(v.state);
+        const before = foldPluginKey.getState(v.state);
         v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(3))));
-        expect(headingFoldPluginKey.getState(v.state)).toBe(before);
+        expect(foldPluginKey.getState(v.state)).toBe(before);
     });
 
     it("a marker clicked AFTER earlier-block edits should still target its own block", async () => {

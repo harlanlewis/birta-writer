@@ -14,15 +14,12 @@
  *
  * The key, state shape, and meta vocabulary live in ../foldState (a
  * dependency-light module NodeViews can import without cycling through the
- * menu component graph); re-exported here as the historical import surface.
+ * menu component graph); re-exported here so the fold layer has one barrel.
  */
 export {
     foldPluginKey,
-    headingFoldPluginKey,
     type FoldMeta,
     type FoldPluginState,
-    type HeadingFoldMeta,
-    type HeadingFoldState,
 } from "../foldState";
 
 // Trimmed to names with consumers OUTSIDE this directory — internal-only

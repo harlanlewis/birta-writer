@@ -100,9 +100,6 @@ import {
 } from "./plugins";
 
 export { registerSelectionChangeHandler, setLogTableSel } from "./plugins";
-// Moved to the markdown FormatModule (MAR-41); re-exported for existing
-// consumers (tests) that import it from here.
-export { createHtmlView } from "./format/markdown";
 
 // ── The active format ───────────────────────────────────────────────────────
 // Everything format-specific the editor consumes — parsing presets, stringify

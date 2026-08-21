@@ -16,21 +16,15 @@ import type { Node as ProseNode } from "../pm";
 import { TextSelection } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { headingFoldPlugin, foldPluginKey } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { insertCalloutCommand } from "../plugins/callouts";
 import { listSpreadNormalizePlugin } from "../plugins/list";
 import { mathInlineEditPlugin } from "../plugins/mathInlineEdit";
 import { trailingHrParagraphPlugin as hrTrailingPlugin } from "../plugins/horizontalRule";
-import {
-    checkConversion,
-    contentGuardPlugin,
-    diffFingerprints,
-    fingerprintDoc,
-    formatFingerprintDiff,
-    tagContentGuard,
-} from "../plugins/contentGuard";
-import { moveBlockTo, moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
+import { checkConversion, contentGuardPlugin, tagContentGuard } from "../plugins/contentGuard";
+import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
+import { moveBlocks, moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { convertAt } from "../blockCapabilities";
 import { flashRange } from "../editing/rangeIndicator";
 
@@ -120,7 +114,7 @@ describe("fingerprintDoc", () => {
         const v = view(editor);
         const before = fingerprintDoc(v.state.doc);
         const range = moveRangeAt(v, blockPos(v, "Bravo"))!;
-        expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
+        expect(moveBlocks(v, range, v.state.doc.content.size)).toBe(true);
         expect(new Map(fingerprintDoc(v.state.doc))).toEqual(new Map(before));
     });
 
@@ -236,7 +230,7 @@ describe("guard veto — tagged moves", () => {
         });
         const range = moveRangeAt(v, 0)!;
         vi.mocked(flashRange).mockClear();
-        expect(moveBlockTo(v, range, codeTextPos)).toBe(false);
+        expect(moveBlocks(v, range, codeTextPos)).toBe(false);
         expect(markdown(editor)).toBe(before);
         expect(flashRange).not.toHaveBeenCalled();
         // Refused structurally, loudly, upstream of the guard: a [moveBlocks]
@@ -319,7 +313,7 @@ describe("guard veto — tagged moves", () => {
         const v = view(editor);
         const range = moveRangeAt(v, blockPos(v, "Alpha"))!;
         vi.mocked(flashRange).mockClear();
-        expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
+        expect(moveBlocks(v, range, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("Bravo\n\nAlpha");
         expect(flashRange).toHaveBeenCalledTimes(1);
         expect(guardErrors()).toEqual([]);
@@ -421,8 +415,8 @@ describe("guard veto — native drops", () => {
             }
         });
         expect(hPos).toBeGreaterThan(-1);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: hPos }));
+        expect(foldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
         return { editor, v, headingEnd: hEnd, sectionEnd };
     }
 

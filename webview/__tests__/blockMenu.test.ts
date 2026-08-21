@@ -11,7 +11,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { headingFoldPlugin, foldPluginKey } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 import { insertCalloutCommand } from "../plugins/callouts";
@@ -24,7 +24,7 @@ import {
     indentSelection,
     moveRangeAt,
     moveBlockAt,
-    moveBlockTo,
+    moveBlocks,
     outdentBlockAt,
     outdentSelection,
     outlineRangeAt,
@@ -688,7 +688,7 @@ describe("block markers for every top-level type", () => {
         expect(() => v.state.doc.check()).not.toThrow();
     });
 
-    it("moveBlockTo can extract a nested block to the top level and nest one back in", async () => {
+    it("moveBlocks can extract a nested block to the top level and nest one back in", async () => {
         const editor = await makeEditor("> alpha\n>\n> ```js\n> one\n> ```\n\nOutside");
         const v = view(editor);
         const { getMarkdown } = await import("@milkdown/utils");
@@ -699,7 +699,7 @@ describe("block markers for every top-level type", () => {
         });
         const codeSize = v.state.doc.nodeAt(codePos)!.nodeSize;
         // Extract: drop at the document end (a top-level slot).
-        expect(moveBlockTo(v, { from: codePos, to: codePos + codeSize }, v.state.doc.content.size)).toBe(true);
+        expect(moveBlocks(v, { from: codePos, to: codePos + codeSize }, v.state.doc.content.size)).toBe(true);
         expect(() => v.state.doc.check()).not.toThrow();
         expect(editor.action(getMarkdown()).trimEnd()).toBe(
             "> alpha\n\nOutside\n\n```js\none\n```",
@@ -716,7 +716,7 @@ describe("block markers for every top-level type", () => {
             return alphaEnd === -1;
         });
         const outsideSize = v.state.doc.nodeAt(outsidePos)!.nodeSize;
-        expect(moveBlockTo(v, { from: outsidePos, to: outsidePos + outsideSize }, alphaEnd)).toBe(true);
+        expect(moveBlocks(v, { from: outsidePos, to: outsidePos + outsideSize }, alphaEnd)).toBe(true);
         expect(() => v.state.doc.check()).not.toThrow();
         expect(editor.action(getMarkdown()).trimEnd()).toBe(
             "> alpha\n>\n> Outside\n\n```js\none\n```",
@@ -1137,9 +1137,9 @@ describe("keyboard highlight with disabled rows", () => {
 describe("fold state across moves and deletes", () => {
     const DOC = "# A\n\ncontent A\n\n# B\n\ncontent B";
     const foldedSet = (v: ReturnType<typeof view>) =>
-        headingFoldPluginKey.getState(v.state)?.folded ?? new Set<number>();
+        foldPluginKey.getState(v.state)?.folded ?? new Set<number>();
     const collapse = (v: ReturnType<typeof view>, pos: number) =>
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos }));
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos }));
 
     it("a collapsed section should stay collapsed after Move Section Down", async () => {
         const editor = await makeEditor(DOC);
@@ -1190,9 +1190,9 @@ describe("fold state across moves and deletes", () => {
 
 describe("fold state vs insertions at the heading's start", () => {
     const collapse = (v: ReturnType<typeof view>, pos: number) =>
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos }));
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos }));
     const foldedSet = (v: ReturnType<typeof view>) =>
-        headingFoldPluginKey.getState(v.state)?.folded ?? new Set<number>();
+        foldPluginKey.getState(v.state)?.folded ?? new Set<number>();
 
     it("duplicating the block above a collapsed heading keeps it collapsed", async () => {
         const editor = await makeEditor("Para\n\n# B\n\ncontent B");
@@ -1271,11 +1271,11 @@ describe("fold state through undo", () => {
         // pinned here) is that no OTHER heading inherits the collapse.
         const editor = await makeEditor("# A\n\ncontent A\n\n# B\n\ncontent B");
         const v = view(editor);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: 0 }));
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: 0 }));
         expect(moveBlockAt(v, 0, 1)).toBe(true);
         undo(v.state, v.dispatch);
         expect(markdown(editor)).toBe("# A\n\ncontent A\n\n# B\n\ncontent B");
-        expect(headingFoldPluginKey.getState(v.state)!.folded.size).toBe(0);
+        expect(foldPluginKey.getState(v.state)!.folded.size).toBe(0);
     });
 });
 
@@ -1437,8 +1437,8 @@ describe("moves around collapsed sections (fold-aware moveTargetFor)", () => {
             if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
         });
         expect(hPos).toBeGreaterThan(-1);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: hPos }));
+        expect(foldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
         return editor;
     }
 
@@ -1538,7 +1538,7 @@ describe("Collapsed by default (callout fold marker, MAR-110)", () => {
         v.state.doc.forEach((node, offset) => {
             if (node.type.name === "callout") calloutPos = offset;
         });
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(calloutPos)).toBe(true);
+        expect(foldPluginKey.getState(v.state)!.folded.has(calloutPos)).toBe(true);
         undo(v.state, v.dispatch);
         expect(markdown(editor)).toBe("> [!note] Title\n> Body.");
     });
@@ -1557,7 +1557,7 @@ describe("Collapsed by default (callout fold marker, MAR-110)", () => {
 
         // Assert
         expect(markdown(editor)).toBe("> [!TIP] Kept title\n> Body.");
-        expect(headingFoldPluginKey.getState(v.state)!.folded.size).toBe(0);
+        expect(foldPluginKey.getState(v.state)!.folded.size).toBe(0);
     });
 
     it("a non-callout block's menu should not offer the row", async () => {

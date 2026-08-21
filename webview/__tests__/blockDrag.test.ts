@@ -13,7 +13,7 @@ import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 import { undo } from "../pm";
-import { moveBlockTo, moveRangeAt, outlineRangeAt, setBlockMenuContext } from "../components/blockMenu";
+import { moveBlocks, moveRangeAt, outlineRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { mockVscodeApi } from "./setup";
 import {
     blockBoundaryPositions,
@@ -23,7 +23,7 @@ import {
     type DropZoneProvider,
 } from "../components/blockMenu";
 import { BlockRangeSelection } from "../plugins/blockRange";
-import { headingFoldPluginKey } from "../plugins/headingFold";
+import { foldPluginKey } from "../plugins/headingFold";
 import { dispatchMouseGesture } from "./helpers/pointerGesture";
 
 let editors: Editor[] = [];
@@ -172,7 +172,7 @@ describe("per-item list drag/menu (MAR-86)", () => {
         expect(markdown(editor)).toBe("para");
     });
 
-    it("moveBlockTo can refile an item into ANOTHER list", async () => {
+    it("moveBlocks can refile an item into ANOTHER list", async () => {
         const editor = await makeEditor("- a1\n- a2\n\n1. b1");
         const v = view(editor);
         // Find the second item of list A and the slot before b1.
@@ -186,7 +186,7 @@ describe("per-item list drag/menu (MAR-86)", () => {
             return true;
         });
         const item = v.state.doc.nodeAt(a2Pos)!;
-        expect(moveBlockTo(v, { from: a2Pos, to: a2Pos + item.nodeSize }, b1Pos)).toBe(true);
+        expect(moveBlocks(v, { from: a2Pos, to: a2Pos + item.nodeSize }, b1Pos)).toBe(true);
         expect(markdown(editor)).toBe("- a1\n\n1. a2\n2. b1");
     });
 
@@ -543,8 +543,8 @@ describe("selectionCoverRange (multi-block drag)", () => {
         expect(cover.from).toBe(0);
         expect(v.state.doc.resolve(cover.to).nodeAfter?.textContent).toBe("Gamma");
         // Moving the cover to the end moves BOTH blocks.
-        const { moveBlockTo } = await import("../components/blockMenu");
-        expect(moveBlockTo(v, cover, v.state.doc.content.size)).toBe(true);
+        const { moveBlocks } = await import("../components/blockMenu");
+        expect(moveBlocks(v, cover, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("Gamma\n\nAlpha\n\nBeta");
     });
 
@@ -559,12 +559,12 @@ describe("selectionCoverRange (multi-block drag)", () => {
     });
 });
 
-describe("moveBlockTo", () => {
+describe("moveBlocks", () => {
     it("moving the first block to the end should reorder the doc", async () => {
         const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
         const v = view(editor);
         const range = moveRangeAt(v, 0)!;
-        expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
+        expect(moveBlocks(v, range, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("Beta\n\nGamma\n\nAlpha");
     });
 
@@ -576,7 +576,7 @@ describe("moveBlockTo", () => {
             lastPos = offset;
         });
         const range = moveRangeAt(v, lastPos)!;
-        expect(moveBlockTo(v, range, 0)).toBe(true);
+        expect(moveBlocks(v, range, 0)).toBe(true);
         expect(markdown(editor)).toBe("Gamma\n\nAlpha\n\nBeta");
     });
 
@@ -584,7 +584,7 @@ describe("moveBlockTo", () => {
         const editor = await makeEditor("# A\n\ncontent A\n\n# B\n\ncontent B");
         const v = view(editor);
         const range = moveRangeAt(v, 0)!;
-        expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
+        expect(moveBlocks(v, range, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("content A\n\n# B\n\ncontent B\n\n# A");
     });
 
@@ -594,7 +594,7 @@ describe("moveBlockTo", () => {
         // The scope a TOC drop uses — the same session, re-scoped by the zone
         // the pointer is over (components/blockMenu/drag, DropZoneProvider).
         const range = outlineRangeAt(v, 0)!;
-        expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
+        expect(moveBlocks(v, range, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
     });
 
@@ -603,8 +603,8 @@ describe("moveBlockTo", () => {
         const v = view(editor);
         const before = markdown(editor);
         const range = moveRangeAt(v, 0)!;
-        expect(moveBlockTo(v, range, 0)).toBe(false);
-        expect(moveBlockTo(v, range, range.to)).toBe(false);
+        expect(moveBlocks(v, range, 0)).toBe(false);
+        expect(moveBlocks(v, range, range.to)).toBe(false);
         expect(markdown(editor)).toBe(before);
     });
 
@@ -612,7 +612,7 @@ describe("moveBlockTo", () => {
         const editor = await makeEditor("Alpha\n\nBeta");
         const v = view(editor);
         const range = moveRangeAt(v, 0)!;
-        expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
+        expect(moveBlocks(v, range, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("Beta\n\nAlpha");
         undo(v.state, v.dispatch);
         expect(markdown(editor)).toBe("Alpha\n\nBeta");
@@ -641,8 +641,8 @@ describe("visibleBoundaryPositions (collapsed sections)", () => {
             }
         });
         expect(hPos).toBeGreaterThan(-1);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: hPos }));
+        expect(foldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
         return { v, headingEnd: hEnd, sectionEnd };
     }
 
@@ -670,7 +670,7 @@ describe("visibleBoundaryPositions (collapsed sections)", () => {
     });
 });
 
-describe("moveBlockTo silent-insert guard", () => {
+describe("moveBlocks silent-insert guard", () => {
     it("a target where the block cannot fit should be a no-op, not a deletion", async () => {
         const editor = await makeEditor("Alpha\n\n```js\nconst x = 1;\n```");
         const v = view(editor);
@@ -682,7 +682,7 @@ describe("moveBlockTo silent-insert guard", () => {
         });
         expect(codeTextPos).toBeGreaterThan(-1);
         const range = moveRangeAt(v, 0)!; // the "Alpha" paragraph
-        const moved = moveBlockTo(v, range, codeTextPos);
+        const moved = moveBlocks(v, range, codeTextPos);
         // Whatever the outcome, the paragraph must still exist: a failed
         // insert (silent replaceStep null) must never dispatch its DELETE
         // half alone.

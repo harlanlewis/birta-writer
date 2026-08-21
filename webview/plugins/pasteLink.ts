@@ -42,7 +42,7 @@ import { openLinkEditor } from "@/components/linkPopup";
 import { offerNetworkOptIn } from "@/components/networkOptIn";
 import { notifyUnfurl } from "@/messaging";
 import { registerPendingUnfurl } from "@/unfurl";
-import { embedProviderOn, providerFor, recognizeProvider } from "@/utils/embedProviders";
+import { embedProviderOn, providerFor, recognizeEmbed } from "@/utils/embedProviders";
 import { linkCardWanted, soleLinkHref } from "@/linkCards";
 import { t } from "@/i18n";
 
@@ -253,7 +253,7 @@ function handleEmptySelectionPaste(
     // the feature flag does: no card will ever render for them, so unfurl
     // titles them like any other URL. Ownership has to track the roster or a
     // disabled provider's links become untouchable — no card, and no title.
-    const recognized = embedsFeatureEnabled() ? recognizeProvider(href) : null;
+    const recognized = embedsFeatureEnabled() ? recognizeEmbed(href) : null;
     const providerMatch = recognized && embedProviderOn(recognized.kind) ? recognized : null;
     if (providerMatch) {
         if (!networkEnabled() && providerFor(providerMatch.kind).needsNetwork) {

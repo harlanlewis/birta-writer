@@ -178,17 +178,20 @@ describe("applyMinimalChanges — untouched formatting is preserved", () => {
         );
     });
 
-    it("adjacent strong runs split by the serializer should compare as unchanged", () => {
-        const saved = "**bold [link](https://a.b) text**\n";
-        const serialized = "**bold [link](https://a.b)** **text**\n";
+    it("merging two adjacent strong runs into one should be written to the file", () => {
+        // The serializer keeps two strong nodes apart, so `**a** **b**` and
+        // `**a b**` are different documents and the edit must survive the
+        // merge. They were once keyed as equal, which silently discarded it.
+        const saved = "**a** **b**\n";
+        const serialized = "**a b**\n";
 
-        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
     });
 
-    it("legacy whole-link emphasis vs the new emphasis-inside form should compare as unchanged", () => {
-        // Older builds (and hand-written files) wrap the emphasis around the
-        // whole link; the fidelity serializer emits emphasis inside the link
-        // text. On kept lines the saved bytes must win.
+    it("hand-written whole-link emphasis vs the emphasis-inside form should compare as unchanged", () => {
+        // A hand-written file wraps the emphasis around the whole link; the
+        // fidelity serializer emits emphasis inside the link text. On kept
+        // lines the saved bytes must win.
         const cases: Array<[saved: string, serialized: string]> = [
             ["**[x](https://a.b)**\n", "[**x**](https://a.b)\n"],
             ["*[x](https://a.b)*\n", "[*x*](https://a.b)\n"],
@@ -200,17 +203,7 @@ describe("applyMinimalChanges — untouched formatting is preserved", () => {
         }
     });
 
-    it("legacy split-strong around a link vs the new merged form should compare as unchanged", () => {
-        // normalizeSplitStrong must run FIRST: the legacy split form merges
-        // into `**a [l](u) b**`, which the wrapped-emphasis rewrite then
-        // leaves alone (the markers are not flush against the link).
-        const saved = "**a** **[l](https://a.b)** **b**\n";
-        const serialized = "**a [l](https://a.b) b**\n";
-
-        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
-    });
-
-    it("an edit elsewhere should not rewrite an untouched legacy wrapped-emphasis link", () => {
+    it("an edit elsewhere should not rewrite an untouched wrapped-emphasis link", () => {
         const saved = "**[x](https://a.b)**\n\npara old\n";
         const serialized = "[**x**](https://a.b)\n\npara new\n";
 
@@ -470,8 +463,8 @@ describe("applyMinimalChanges — an edited line keeps the parts the user didn't
     });
 
     it("editing one table cell should keep an untouched sibling cell's `<br />` bytes", () => {
-        // MAR-214. `<br />` keys equal to an empty cell (older saves wrote
-        // empty cells that way), so a zero-edit save is a plain `keep` and no
+        // MAR-214. `<br />` keys equal to an empty cell, because that is what
+        // it parses to, so a zero-edit save is a plain `keep` and no
         // protection region ever forms — the loss is purely that editing ANY
         // cell re-emitted the whole row, emptying a cell the user never
         // visited.

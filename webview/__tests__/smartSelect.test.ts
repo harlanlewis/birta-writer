@@ -12,7 +12,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import { NodeSelection, TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/headingFold";
+import { headingFoldPlugin, foldPluginKey, type FoldMeta } from "../plugins/headingFold";
 import { expandSelection, shrinkSelection, smartSelectKeymapPlugin } from "../plugins/smartSelect";
 import { BlockRangeSelection } from "../plugins/blockRange";
 
@@ -327,10 +327,10 @@ describe("shrinkSelection over a collapsed heading", () => {
         // that bounds it. "Heading" spans [0,9); "Body" [9,15); "Next" at 15.
         const view = await makeEditor("# Heading\n\nBody\n\n# Next");
         view.dispatch(
-            view.state.tr.setMeta(headingFoldPluginKey, {
+            view.state.tr.setMeta(foldPluginKey, {
                 type: "toggle",
                 pos: 0,
-            } satisfies HeadingFoldMeta),
+            } satisfies FoldMeta),
         );
         // The unit for the collapsed heading spans its hidden section too.
         const unit = BlockRangeSelection.tryCreate(view.state.doc, 0, 15);

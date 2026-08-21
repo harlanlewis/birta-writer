@@ -26,11 +26,6 @@ import { configureSerialization, gfmFidelity, pureCommonmark } from "../../seria
 import { markdownProfile } from "../../utils/minimalDiff";
 import type { FormatModule } from "../types";
 
-// The HTML NodeView (rendered preview, comment chips, source-panel editing)
-// lives in components/htmlView (MAR-14); re-exported here because editor.ts
-// republishes it as part of the format surface.
-export { createHtmlView };
-
 /** The markdown format: presets, serializer config, NodeViews, and
  * minimal-diff profile. */
 export const markdownFormat: FormatModule = {

@@ -35,10 +35,6 @@ import {
 // "true"` — must be overridden too, or they compute `false` for every list
 // (`true === "true"` is false) and tighten loose lists on save. bullet_list's
 // stock toMarkdown passes the attr through untouched, so it needs no override.
-// `attrSpreadBool` accepts either form, so a doc still carrying a string
-// `spread` (e.g. from Milkdown's ordered-list-detection plugin, which writes
-// "true" on edit) also serializes correctly.
-//
 // Registered AFTER the preset so they override the stock definitions (the same
 // override-by-registration-order pattern math.ts uses for `code_block`);
 // list_item registers after gfm — see its schema doc below.
@@ -305,10 +301,6 @@ function correctItemSpread(children: unknown): void {
     }
 }
 
-/** A PM `spread` attr as a real boolean, tolerating the legacy string form. */
-function attrSpreadBool(spread: unknown): boolean {
-    return spread === true || spread === "true";
-}
 
 export const bulletListSpreadBoolSchema = bulletListSchema.extendSchema((prev) => (ctx) => {
     const base = prev(ctx);
@@ -343,7 +335,7 @@ export const bulletListSpreadBoolSchema = bulletListSchema.extendSchema((prev) =
                 state
                     .openNode("list", undefined, {
                         ordered: false,
-                        spread: attrSpreadBool(node.attrs["spread"]),
+                        spread: node.attrs["spread"] === true,
                         // Absent, not null, when unrecorded — `serializeList`
                         // then falls back to the configured default.
                         ...(typeof marker === "string" ? { marker } : {}),
@@ -426,7 +418,7 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
                     .openNode("list", undefined, {
                         ordered: true,
                         start: node.attrs["order"] ?? 1,
-                        spread: attrSpreadBool(node.attrs["spread"]),
+                        spread: node.attrs["spread"] === true,
                         ...(typeof marker === "string" ? { marker } : {}),
                         ...(typeof increment === "boolean"
                             ? { incrementMarker: increment }
@@ -633,8 +625,6 @@ function ridesMarkerLineSafely(list: ProseNode): boolean {
  *
  * The `spread` coercion that named this schema is now belt-and-braces: as of
  * Milkdown 7.22.0 (#2419, #2423) upstream's own runners store a real boolean.
- * `attrSpreadBool` still accepts the string spelling, which is what a document
- * parsed from OLD `data-spread` markup can still carry.
  */
 export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema(
     (prev) => (ctx) => {
@@ -699,7 +689,7 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
             toMarkdown: {
                 match: base.toMarkdown.match,
                 runner: (state, node) => {
-                    const spread = attrSpreadBool(node.attrs["spread"]);
+                    const spread = node.attrs["spread"] === true;
                     const blankBefore = node.attrs["blankBefore"];
                     // Only pass a real boolean through; anything else leaves the
                     // prop absent, which is what tells `listItemGapJoin` to read
@@ -1149,11 +1139,11 @@ export function listTreeIsLoose(doc: any, listPos: number): boolean {
     if (!list || !isListNode(list)) {
         return false;
     }
-    let loose = attrSpreadBool(list.attrs.spread);
+    let loose = list.attrs.spread === true;
     list.descendants((n: any, _pos: number, _parent: any, index: number) => {
         if (
             (isListNode(n) || n.type.name === "list_item") &&
-            attrSpreadBool(n.attrs.spread)
+            n.attrs.spread === true
         ) {
             loose = true;
         }
@@ -1287,9 +1277,9 @@ export const listSpreadNormalizePlugin = $prose((ctx) => {
                 let listNeedsSpread = false;
                 let offset = 1;
                 node.forEach((item) => {
-                    // Force-only: raise to true when required, otherwise keep
-                    // the author's character (coercing a legacy string form).
-                    const target = itemRequiresSpread(item) || attrSpreadBool(item.attrs.spread);
+                    // Force-only: raise to true when required, otherwise
+                    // keep the author's character.
+                    const target = itemRequiresSpread(item) || item.attrs.spread === true;
                     if (item.attrs.spread !== target) {
                         tr.setNodeMarkup(pos + offset, undefined, {
                             ...item.attrs,
@@ -1300,7 +1290,7 @@ export const listSpreadNormalizePlugin = $prose((ctx) => {
                     if (target) listNeedsSpread = true;
                     offset += item.nodeSize;
                 });
-                const listTarget = listNeedsSpread || attrSpreadBool(node.attrs.spread);
+                const listTarget = listNeedsSpread || node.attrs.spread === true;
                 if (node.attrs.spread !== listTarget) {
                     tr.setNodeMarkup(pos, undefined, {
                         ...node.attrs,
