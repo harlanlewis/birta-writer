@@ -547,6 +547,8 @@ function startBackground(
                 document = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
             }
             if (!run.landed && document?.isDirty && document.getText() !== disk) {
+                // Before the report, never after: see `rescueAgentVersion`.
+                await rescueAgentVersion(requestId, uri, disk);
                 report(uri, { type: "agentRun", requestId, status: "done", text: disk, harness });
                 return;
             }
@@ -565,18 +567,108 @@ export function cancelAgentRun(requestId: string): void {
 }
 
 /**
+ * The agent's own version, kept beside the document while the webview decides
+ * what to do with it. Keyed by request.
+ */
+const agentRescues = new Map<string, vscode.Uri>();
+
+/**
+ * The first name nothing occupies: `stem.ext`, then `stem 2.ext`, and so on.
+ *
+ * BOUNDED, and the bound is not decoration. The loop's exit condition is a
+ * `stat` that throws, so a filesystem layer that answers every stat, real or
+ * mocked, turns an unbounded version into a spin that never returns and never
+ * writes. The fallback name collides only with itself.
+ */
+const RESCUE_NAME_TRIES = 200;
+
+async function unusedUri(directory: vscode.Uri, stem: string, ext: string): Promise<vscode.Uri> {
+    for (let n = 1; n <= RESCUE_NAME_TRIES; n++) {
+        const candidate = vscode.Uri.joinPath(directory, n === 1 ? `${stem}.${ext}` : `${stem} ${n}.${ext}`);
+        try {
+            await vscode.workspace.fs.stat(candidate);
+        } catch {
+            return candidate;
+        }
+    }
+    return vscode.Uri.joinPath(directory, `${stem} ${Date.now().toString(36)}.${ext}`);
+}
+
+/**
+ * Keep the agent's version beside the document while the webview merges.
+ *
+ * Written BEFORE the webview is told, not after it answers, and that ordering
+ * is the whole point. The merge dispatches a transaction, the sync writes the
+ * merged buffer back, and with `files.autoSave` set to `afterDelay` that
+ * reaches disk about a second later, over the file the agent wrote. Waiting
+ * for `agentMergeResult` to decide whether a copy is wanted would be racing
+ * that write with an IPC round trip. So the copy is made unconditionally here
+ * and removed again when the webview reports that nothing was left out.
+ *
+ * A failure is not worth interrupting the run for: what it costs is the copy,
+ * and the merge still happens.
+ */
+async function rescueAgentVersion(requestId: string, uri: vscode.Uri, text: string): Promise<void> {
+    try {
+        const directory = vscode.Uri.joinPath(uri, "..");
+        const name = uri.path.split("/").pop() ?? "document.md";
+        const dot = name.lastIndexOf(".");
+        const stem = dot > 0 ? name.slice(0, dot) : name;
+        const ext = dot > 0 ? name.slice(dot + 1) : "md";
+        const target = await unusedUri(directory, `${stem} (agent)`, ext);
+        await vscode.workspace.fs.writeFile(target, Buffer.from(text, "utf8"));
+        agentRescues.set(requestId, target);
+    } catch (err) {
+        reportError("agent rescue", err);
+    }
+}
+
+/**
+ * The webview has said what its merge did, so the copy is either unnecessary
+ * or is the only place the agent's work still exists.
+ *
+ * Returns the path to name in the message, or undefined when there is nothing
+ * to keep.
+ */
+async function settleAgentRescue(requestId: string | undefined, outcome: string): Promise<string | undefined> {
+    const target = requestId === undefined ? undefined : agentRescues.get(requestId);
+    if (!target || requestId === undefined) { return undefined; }
+    agentRescues.delete(requestId);
+    if (outcome === "applied" || outcome === "unchanged") {
+        try {
+            await vscode.workspace.fs.delete(target);
+        } catch (err) {
+            reportError("agent rescue cleanup", err);
+        }
+        return undefined;
+    }
+    return vscode.workspace.asRelativePath(target, false);
+}
+
+/**
  * The webview's verdict on a dirty-document merge, so the finish line in the
  * status bar says what happened rather than what was hoped.
  */
-export function reportAgentMerge(uri: vscode.Uri, outcome: string): void {
+export async function reportAgentMerge(uri: vscode.Uri, outcome: string, requestId?: string): Promise<void> {
     const relPath = vscode.workspace.asRelativePath(uri, false);
-    if (outcome === "applied" || outcome === "unchanged") {
-        vscode.window.setStatusBarMessage(vscode.l10n.t("Agent finished: {0} updated around your edits", relPath), 5000);
-        return;
+    {
+        const kept = await settleAgentRescue(requestId, outcome);
+        if (outcome === "applied" || outcome === "unchanged") {
+            vscode.window.setStatusBarMessage(vscode.l10n.t("Agent finished: {0} updated around your edits", relPath), 5000);
+            return;
+        }
+        // The kept copy is named, because the file the agent wrote is NOT a
+        // durable place to point at: the merged buffer is written back over it,
+        // within about a second when `files.autoSave` is `afterDelay`. Without
+        // a copy there is nothing honest to say, so the message says the part
+        // that is still true and stops promising a comparison.
+        const left = outcome === "partial"
+            ? vscode.l10n.t("The agent's changes to {0} overlapped yours in places; those were left out.", relPath)
+            : vscode.l10n.t("The agent's changes to {0} overlap yours and could not be merged.", relPath);
+        void vscode.window.showWarningMessage(kept
+            ? vscode.l10n.t("{0} Its full version is kept in {1}.", left, kept)
+            : left);
     }
-    void vscode.window.showWarningMessage(outcome === "partial"
-        ? vscode.l10n.t("The agent's changes to {0} overlapped yours in places; those were left out. Its full version is on disk: use Compare in the drift badge to see both.", relPath)
-        : vscode.l10n.t("The agent's changes to {0} overlap yours and could not be merged. Its version is on disk: use Compare in the drift badge to see both.", relPath));
 }
 
 /** Hand the composed line to the configured route. */
@@ -822,8 +914,11 @@ export function registerAskAgent(
         vscode.commands.registerCommand(CANCEL_AGENT_COMMAND, (requestId?: unknown) => {
             if (typeof requestId === "string") { cancelAgentRun(requestId); }
         }),
-        vscode.commands.registerCommand(MERGE_RESULT_COMMAND, (uri?: unknown, outcome?: unknown) => {
-            if (uri && typeof (uri as vscode.Uri).fsPath === "string" && typeof outcome === "string") { reportAgentMerge(uri as vscode.Uri, outcome); }
+        vscode.commands.registerCommand(MERGE_RESULT_COMMAND, (uri?: unknown, outcome?: unknown, requestId?: unknown) => {
+            if (uri && typeof (uri as vscode.Uri).fsPath === "string" && typeof outcome === "string") {
+                void reportAgentMerge(uri as vscode.Uri, outcome,
+                    typeof requestId === "string" ? requestId : undefined);
+            }
         }),
         vscode.commands.registerCommand(STOP_ALL_COMMAND, () => cancelAllAgentRuns()),
         vscode.window.onDidEndTerminalShellExecution((e) => { busyTerminals.delete(e.terminal); }),
