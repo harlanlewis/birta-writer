@@ -315,18 +315,131 @@ describe("saveAgentAttachment", () => {
 describe("reportAgentMerge (the webview's verdict on a dirty-document merge)", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("applied should be a status-bar line, not a toast", () => {
-        reportAgentMerge(noteUri, "applied");
+    it("applied should be a status-bar line, not a toast", async () => {
+        await reportAgentMerge(noteUri, "applied");
         expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(expect.stringContaining("updated around your edits"), 5000);
         expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
     });
 
-    it("partial and conflict should warn and point at Compare", () => {
-        reportAgentMerge(noteUri, "partial");
-        reportAgentMerge(noteUri, "conflict");
+    it("partial and conflict should each warn about what was left behind", async () => {
+        await reportAgentMerge(noteUri, "partial");
+        await reportAgentMerge(noteUri, "conflict");
         expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
         expect(vscode.window.showWarningMessage).toHaveBeenNthCalledWith(1, expect.stringContaining("left out"));
         expect(vscode.window.showWarningMessage).toHaveBeenNthCalledWith(2, expect.stringContaining("could not be merged"));
+    });
+
+    // With no rescued copy there is nothing durable to point at, so the
+    // message must not promise one. The file the agent wrote is not it: the
+    // merged buffer is written back over it, within about a second under
+    // `files.autoSave: "afterDelay"`.
+    it("a merge with no kept copy should not send the reader to a comparison", async () => {
+        await reportAgentMerge(noteUri, "partial");
+
+        const [message] = vi.mocked(vscode.window.showWarningMessage).mock.calls[0]!;
+        expect(message).not.toContain("Compare");
+        expect(message).not.toContain("on disk");
+    });
+});
+
+/**
+ * The agent's version is kept while the webview merges (MAR-387).
+ *
+ * The ordering is the substance: the copy has to exist BEFORE the webview is
+ * told, because the merge dispatches a transaction and the sync writes the
+ * merged buffer back over the file the agent wrote, within about a second
+ * under `files.autoSave: "afterDelay"`.
+ */
+describe("the agent's version kept beside a dirty document", () => {
+    let live: FakeChild[] = [];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        resetTextDocumentMocks();
+        live = [];
+        spawnMock.mockImplementation(() => {
+            const child = new FakeChild();
+            live.push(child);
+            return child;
+        });
+        // `unusedUri` stops at the first name that does NOT stat, so a mock
+        // that resolves every stat would walk its whole bound.
+        vi.mocked(vscode.workspace.fs.stat).mockRejectedValue(new Error("ENOENT"));
+    });
+
+    /** Run an agent that rewrites the file while the user is mid-edit. */
+    const runOverDirtyDocument = async (): Promise<string> => {
+        configureRoute("claude -p {prompt}");
+        const doc = makeFakeTextDocument("# Plan\n", noteUri);
+        await askAgentAdvanced(() => Promise.resolve(activeAt(1)), reporter().report, {
+            prompt: "tighten this", requestId: "ai-rescue",
+        });
+        // The user keeps typing, which is the whole premise of a background run.
+        doc.applyReplace(new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0)), "mine ");
+        for (const child of live) {
+            vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n\nthe agent's version\n"));
+            child.emit("close", 0);
+        }
+        await flush();
+        return "ai-rescue";
+    };
+
+    it("a dirty-document handoff should write the agent's version beside the note first", async () => {
+        await runOverDirtyDocument();
+
+        const writes = vi.mocked(vscode.workspace.fs.writeFile).mock.calls;
+        expect(writes.length).toBeGreaterThan(0);
+        const [target, bytes] = writes[0]!;
+        expect((target as { path: string }).path).toContain("plan (agent).md");
+        expect(Buffer.from(bytes as Uint8Array).toString("utf8")).toContain("the agent's version");
+    });
+
+    it("a merge that left nothing out should take the copy away again", async () => {
+        const requestId = await runOverDirtyDocument();
+
+        await reportAgentMerge(noteUri, "applied", requestId);
+
+        expect(vscode.workspace.fs.delete).toHaveBeenCalledTimes(1);
+        expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    it("a partial merge should keep the copy and name it", async () => {
+        const requestId = await runOverDirtyDocument();
+
+        await reportAgentMerge(noteUri, "partial", requestId);
+
+        expect(vscode.workspace.fs.delete).not.toHaveBeenCalled();
+        const [message] = vi.mocked(vscode.window.showWarningMessage).mock.calls[0]!;
+        expect(message).toContain("plan (agent).md");
+        expect(message).toContain("left out");
+    });
+
+    it("a conflict should keep the copy too, since that is the only place the work survives", async () => {
+        const requestId = await runOverDirtyDocument();
+
+        await reportAgentMerge(noteUri, "conflict", requestId);
+
+        expect(vscode.workspace.fs.delete).not.toHaveBeenCalled();
+        expect(vi.mocked(vscode.window.showWarningMessage).mock.calls[0]![0]).toContain("plan (agent).md");
+    });
+
+    // Settling twice must not delete a second time: the second report has no
+    // copy of its own, and a stale key would reach for a file another run owns.
+    it("a second verdict for one request should find nothing left to settle", async () => {
+        const requestId = await runOverDirtyDocument();
+
+        await reportAgentMerge(noteUri, "applied", requestId);
+        await reportAgentMerge(noteUri, "applied", requestId);
+
+        expect(vscode.workspace.fs.delete).toHaveBeenCalledTimes(1);
+    });
+
+    it("a verdict with no request id should settle nothing rather than guess", async () => {
+        await runOverDirtyDocument();
+
+        await reportAgentMerge(noteUri, "applied", undefined);
+
+        expect(vscode.workspace.fs.delete).not.toHaveBeenCalled();
     });
 });
 

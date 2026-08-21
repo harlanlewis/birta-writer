@@ -130,12 +130,15 @@ describe("MarkdownEditorProvider askAgent routing", () => {
         expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.askAgent", "add a diagram", "ai1");
     });
 
-    it("an agentMergeResult message should run birta.agentMergeResult with the document's uri and the outcome", async () => {
+    // The REQUEST ID is the load-bearing part and was dropped here until
+    // MAR-387. It is the key the agent's rescued version is filed under, so a
+    // verdict arriving without it settles nothing and the copy is orphaned.
+    it("an agentMergeResult message should run birta.agentMergeResult with the uri, the outcome and the request id", async () => {
         const { panel, uri } = await withActivePanel();
 
         await messageHandler(panel)({ type: "agentMergeResult", requestId: "ai1", outcome: "partial" });
 
-        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.agentMergeResult", uri, "partial");
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("birta.agentMergeResult", uri, "partial", "ai1");
     });
 
     it("an askAgent message without a prompt should run the command with none", async () => {

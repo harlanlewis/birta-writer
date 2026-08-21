@@ -23,6 +23,23 @@ final class BridgeTests: XCTestCase {
                        .agentMergeResult(requestId: "r1", outcome: "conflict"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentMergeResult","requestId":"r1"}"#),
                        .other(type: "agentMergeResult"))
+        // An attachment's bytes are a plain base64 STRING, not the `$bytes`
+        // wrapper `uploadImage` uses: the composer encodes this one itself
+        // (`shared/messages.ts`).
+        XCTAssertEqual(
+            WebviewMessage.parse(#"{"type":"agentAttachment","id":"a1","name":"shot.png","bytes":"AQID"}"#),
+            .agentAttachment(id: "a1", name: "shot.png", bytes: Data([1, 2, 3])))
+        // Undecodable or absent bytes still PARSE, and that is deliberate. The
+        // composer disables Send until every attachment resolves, so the one
+        // outcome that must not happen is falling through to `.other` and
+        // never answering: an empty payload is answered with a null path,
+        // which frees the button.
+        XCTAssertEqual(
+            WebviewMessage.parse(#"{"type":"agentAttachment","id":"a1","name":"x"}"#),
+            .agentAttachment(id: "a1", name: "x", bytes: Data()))
+        XCTAssertEqual(
+            WebviewMessage.parse(#"{"type":"agentAttachment","name":"x","bytes":"AQID"}"#),
+            .other(type: "agentAttachment"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"clipboardWrite","format":"markdown","data":"**b**"}"#),
                        .clipboardWrite(format: "markdown", data: "**b**"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setToolbarLayout","item":{"id":"bold","placement":"hidden"},"order":["italic","bold"]}"#),
@@ -237,5 +254,19 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"resolveEmbedMeta","id":"e1","url":"https://a.b"}"#),
                        .resolveEmbedMeta(id: "e1", url: "https://a.b"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"unfurlUrl","id":"u1"}"#), .other(type: "unfurlUrl"))
+    }
+
+    /// The reply the composer is waiting on. `path` is null on failure rather
+    /// than absent: the page reads it to decide between a resolved chip and a
+    /// failed one, and both stop the Send button waiting.
+    func testAgentAttachmentSavedCarriesItsPathOrAnExplicitNull() {
+        let ok = HostMessage.agentAttachmentSaved(id: "a1", path: "/tmp/birta-ai-1/1-shot.png").jsonObject()
+        XCTAssertEqual(ok["type"] as? String, "agentAttachmentSaved")
+        XCTAssertEqual(ok["id"] as? String, "a1")
+        XCTAssertEqual(ok["path"] as? String, "/tmp/birta-ai-1/1-shot.png")
+
+        let failed = HostMessage.agentAttachmentSaved(id: "a1", path: nil).jsonObject()
+        XCTAssertTrue(failed["path"] is NSNull)
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(failed))
     }
 }

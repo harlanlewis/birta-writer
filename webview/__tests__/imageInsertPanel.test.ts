@@ -16,6 +16,9 @@ const key = (target: Element, init: KeyboardEventInit): KeyboardEvent => {
 const panel = () => document.querySelector(".img-insert-panel");
 const lightbox = () => document.querySelector(".img-lightbox");
 const flush = () => new Promise((r) => setTimeout(r, 0));
+const tabs = () => [...document.querySelectorAll<HTMLButtonElement>(".img-insert-tab")];
+const projectTab = () => tabs().find((b) => b.textContent === "Browse Project") ?? null;
+const ACTIVE = "img-insert-tab--active";
 
 describe("image insert panel escape layers", () => {
     beforeEach(() => {
@@ -97,5 +100,67 @@ describe("image insert panel escape layers", () => {
         expect(lightbox()).toBeNull();
         expect(closeTopmostLayer()).toBe(true); // the panel, not a dead lightbox entry
         expect(panel()).toBeNull();
+    });
+});
+
+/**
+ * A host with no project to enumerate (MAR-401). The panel is handed no
+ * loader, which is the state `webview/index.ts` leaves it in when the host
+ * declines `projectImages`, and a tab it cannot fill must not be the one it
+ * opens on.
+ *
+ * The second case is what stops the first from passing on a panel that had
+ * simply stopped asking anybody.
+ */
+describe("image insert panel project tab against the host", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        while (closeTopmostLayer()) { /* drain */ }
+        document.body.innerHTML = "";
+    });
+    afterEach(() => {
+        while (closeTopmostLayer()) { /* drain */ }
+        document.body.innerHTML = "";
+    });
+
+    it("no project-image loader should hide the Project tab and leave it unselected", async () => {
+        showImageInsertPanel(vi.fn());
+        await flush();
+
+        const project = projectTab();
+        expect(project, "the tab is still built, only hidden").not.toBeNull();
+        expect(project!.style.display).toBe("none");
+        expect(project!.classList.contains(ACTIVE)).toBe(false);
+    });
+
+    it("a project-image loader should show the Project tab, select it, and ask it for images", async () => {
+        const load = vi.fn().mockResolvedValue([]);
+
+        showImageInsertPanel(vi.fn(), undefined, load);
+        await flush();
+
+        const project = projectTab();
+        expect(project!.style.display).not.toBe("none");
+        expect(project!.classList.contains(ACTIVE)).toBe(true);
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it("no project-image loader should mean the panel asks nothing and waits on nothing", async () => {
+        const load = vi.fn().mockResolvedValue([]);
+
+        showImageInsertPanel(vi.fn(), undefined, undefined);
+        await flush();
+
+        expect(load).not.toHaveBeenCalled();
+    });
+
+    it("every tab should compose the button primitive its skin needs", () => {
+        showImageInsertPanel(vi.fn(), vi.fn(), vi.fn().mockResolvedValue([]));
+
+        const all = tabs();
+        expect(all.length).toBeGreaterThan(0);
+        for (const tab of all) {
+            expect(tab.classList.contains("ui-btn"), tab.textContent ?? "").toBe(true);
+        }
     });
 });

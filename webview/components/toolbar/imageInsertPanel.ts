@@ -46,7 +46,7 @@ export function showImageInsertPanel(
     tabsRow.className = "img-insert-tabs";
 
     const tabProject = document.createElement("button");
-    tabProject.className = "img-insert-tab img-insert-tab--active";
+    tabProject.className = "ui-btn img-insert-tab img-insert-tab--active";
     tabProject.textContent = t("Browse Project");
     tabProject.type = "button";
 

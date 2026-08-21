@@ -10,6 +10,18 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Changing where Birta Writer Jot keeps your notes now offers to bring them with you. Turning on Store in iCloud Drive, or choosing a folder, used to point Jot at the new place and move nothing: the notes stayed safe exactly where they were and left the panel without a word, which is indistinguishable from losing them. Jot now asks, naming how many notes are involved and the folder they are in, and Leave Them is a real answer that has already told you where to find them. It asks only when there is something to carry, so a folder with no notes in it changes silently as before, and renaming a note without changing its folder is not a move and is never asked about.
+
+  Images travel with the notes that use them, which is the part that would otherwise break quietly: a note whose picture stayed behind still opens perfectly and shows nothing. Nothing is ever overwritten. A note whose name is already taken at the destination is numbered, and an image whose name is taken by a different file is left where it is and reported, because renaming that one would break every note pointing at it. Files that are not notes are not touched at all: the folder is one Jot shares rather than owns. Everything is copied and checked before the original is removed, so an interrupted move into iCloud Drive leaves you with a copy rather than a gap, and anything that could not be copied stays where it was and is named.
+
+### Fixed
+
+- Attaching a file to an `/ai-advanced` request in Birta Writer Jot works, and stops locking the composer when it did not. Jot never wrote the bytes anywhere and never answered to say so, and the composer holds Send disabled, reading Waiting for attachments, until every attachment reports back. So a single dropped or pasted file left the panel unable to send anything at all, the prompt you had already typed included, with no way out but removing the chip. Jot now writes the file to a per-session temporary folder and hands the agent its path, the way the extension does. A file too large, or one that cannot be written, marks that chip failed and gives you Send back rather than waiting forever.
+
+- Insert Image in Birta Writer Jot opens on a tab it can fill. It opened on Browse Project, which read Loading for ten seconds and then showed an empty grid, because there is no project behind Jot to list images from and nothing ever answered. That tab is gone on Jot and the panel opens on URL; dragging a file in and pasting one both worked before and are unchanged. In VS Code, where there is a workspace to browse, nothing about the panel changes.
+
 ---
 
 ## [2026.821.0] - 2026, August 21

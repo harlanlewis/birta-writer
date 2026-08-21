@@ -35,7 +35,7 @@ final class WelcomeView: NSView {
     var onAllSettings: (() -> Void)?
     /// Reload the panel against a changed file location, which is the only
     /// setting here that decides which bytes the editor will open.
-    var onChange: (() -> Void)?
+    var onChange: ((BeforeReload?) -> Void)?
 
     private let hotkeyRecorder = HotkeyRecorderView(combo: Prefs.hotkey)
     private let hotkeyCaption = Caption("")
@@ -391,6 +391,7 @@ final class WelcomeView: NSView {
     /// switch on while the notes stayed in their folder, with the Location row
     /// now hidden and nothing on screen naming where they are.
     @objc private func toggleICloud() {
+        let previous = Prefs.notesDirectory
         if iCloudSwitch.state == .on {
             Prefs.scratchpadURL = nil
             Prefs.storeInICloud = true
@@ -398,7 +399,8 @@ final class WelcomeView: NSView {
             Prefs.storeInICloud = false
         }
         showLocation()
-        onChange?()
+        NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                             in: window) { [weak self] work in self?.onChange?(work) }
     }
 
     @objc private func toggleDock() {
@@ -428,9 +430,11 @@ final class WelcomeView: NSView {
         panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
+            let previous = Prefs.notesDirectory
             Prefs.scratchpadURL = url
             self.showLocation()
-            self.onChange?()
+            NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                                 in: self.window) { [weak self] work in self?.onChange?(work) }
         }
     }
 

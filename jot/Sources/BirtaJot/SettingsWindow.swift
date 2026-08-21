@@ -174,7 +174,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let agentProbe = AgentRunner()
 
     private let onHotkeyChange: () -> OSStatus
-    private let onChange: () -> Void
+    /// Re-read the preferences. The argument is work to run between the
+    /// buffer's flush and the page's reload; only a location change uses it.
+    private let onChange: (BeforeReload?) -> Void
     /// Show the welcome window. Injected rather than built here: the window is
     /// the app delegate's, so it survives this one being closed.
     private let onShowWelcome: () -> Void
@@ -183,7 +185,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let onCheckForUpdates: () -> Void
 
     init(onHotkeyChange: @escaping () -> OSStatus,
-         onChange: @escaping () -> Void,
+         onChange: @escaping (BeforeReload?) -> Void,
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void) {
         self.onHotkeyChange = onHotkeyChange
@@ -1192,6 +1194,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// is what makes iCloud reachable again, since a chosen path outranks both
     /// homes and would otherwise overrule this switch invisibly.
     @objc private func toggleICloud() {
+        // Read BEFORE the write: the old location is the thing being left, and
+        // once the pref moves there is nothing left to compute it from.
+        let previous = Prefs.notesDirectory
         if iCloudSwitch.state == .on {
             Prefs.scratchpadURL = nil
             Prefs.storeInICloud = true
@@ -1199,7 +1204,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             Prefs.storeInICloud = false
         }
         showFiles()
-        onChange()
+        NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                             in: window) { [weak self] work in self?.onChange(work) }
     }
 
     /// A template is a SHORTCUT INTO the field below, never a second place the
@@ -1211,7 +1217,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.agentCommand = preset.template
         agentField.stringValue = preset.template
         showAgentPreset()
-        onChange()
+        onChange(nil)
     }
 
     @objc private func toggleAgentEnabled() {
@@ -1220,7 +1226,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // The page is reloaded because this withdraws a host CAPABILITY rather
         // than flipping an editor setting: the slash row and the command are
         // built from the profile at boot, so the panel has to be told again.
-        onChange()
+        onChange(nil)
     }
 
     /// Everything back to defaults, in the order that leaves nothing stale.
@@ -1247,7 +1253,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             AppDelegate.applyActivationPolicy()
             _ = self.onHotkeyChange()
             self.syncControlsFromPrefs()
-            self.onChange()
+            self.onChange(nil)
         }
     }
 
@@ -1266,11 +1272,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
         panel.beginSheetModal(for: window!) { [weak self] resp in
             guard resp == .OK, let url = panel.url, let self else { return }
+            let previous = Prefs.notesDirectory
             Prefs.scratchpadURL = url
             // The iCloud row above stops deciding anything the moment a path
             // is chosen here, and has to say so in the same gesture.
             self.showFiles()
-            self.onChange()
+            NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                                 in: self.window) { [weak self] work in self?.onChange(work) }
         }
     }
 
@@ -1463,7 +1471,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     @objc private func toggleNetwork() {
         Prefs.networkEnabled = networkSwitch.state == .on
-        onChange()
+        onChange(nil)
     }
 }
 

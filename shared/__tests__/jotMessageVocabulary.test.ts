@@ -28,6 +28,7 @@ import ts from "typescript";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ALL_HOST_CAPABILITIES, HOST_PROFILES, type HostCapability } from "../hostProfile";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
@@ -95,9 +96,9 @@ function bridgeParsedTypes(): string[] {
 const DELIBERATELY_UNPARSED: Record<string, string> = {
     // Capabilities Jot does not declare, so the commands that post these are
     // never offered. `HOST_PROFILES.jot` is the declaration.
-    connectService: "no `connectors` capability: Jot has no SecretStorage to hold a token",
+    connectService: "posted only by a locked embed card's Connect affordance, and no card ever resolves in Jot, so the affordance is never drawn",
     openFile: "no `textEditor` capability: there is no editor to open a file into",
-    openKeybindings: "no `keybindings` capability: the hotkey is Jot's own setting",
+    openKeybindings: "no `hostSettings` capability, which is what gates `openKeyboardShortcuts`: the hotkey is Jot's own setting",
     openSettings: "the extension's own settings window; Jot answers `openHostPreferences` instead",
     switchToTextEditor: "no `textEditor` capability: the panel is the only surface",
     resolveSyncConflict: "Jot never sends `setSyncConflict`, so the badge that posts this cannot appear",
@@ -106,10 +107,17 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     getPathSuggestions: "no workspace to suggest paths from, so the field offers nothing and stays typable rather than hanging",
     resolveLinkTarget: "no workspace: a link to a project file cannot resolve",
     resolveImagePath: "images are stored relatively beside the note; nothing to resolve against a workspace",
-    resolveEmbedCard: "only posted for a provider the host has said is connected, and Jot connects none: it declines the `connectors` capability",
+    getProjectImages: "no `projectImages` capability, so the insert panel is handed no loader and hides its Project tab: the question is never asked",
     requestFmSuggestions: "frontmatter suggestions come from a workspace's other documents",
     exportHtml: "no export destination: Jot has no Save As for a rendered file",
     whatsNewSeen: "the extension's release notes; Jot's update offer is its own",
+
+    // ASKED IN JOT, and deliberately not answered, because the page's own
+    // documented behaviour without an answer is the behaviour Jot wants. This
+    // is the third category rather than a variety of the first: the question
+    // IS put, so a reason here has to argue that the silence is right, not
+    // that nothing asks.
+    requestAgentCapabilities: "the panel renders no model or effort control when capabilities are absent, which is what `shared/messages.ts` says absent means, and is correct for a host that runs no harness probe: `openAgentPanel` does not wait on the reply, so nothing is blocked by it never coming",
 
     // Editor state the extension persists into workspace/global storage. Jot
     // persists what it wants through its own `viewState` and `setToolbar*`
@@ -141,12 +149,8 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
  * the fix rather than a tidy-up.
  */
 const KNOWN_GAPS: Record<string, string> = {
-    getProjectImages:
-        "MAR-401: Jot declares `imageUpload`, so the image toolbar item is offered (`registry.ts`, `image: \"imageUpload\"`). The insert panel is handed `onGetProjectImages` unconditionally, so its Project tab is shown AND is the default, and it calls `loadProjectImages()` on open. Nothing answers, so the panel reads Loading for the ten-second timeout in `imageUpload.ts` and then shows an empty grid. Was filed here as declined with the reason `no workspace to enumerate images in`, which explains why Jot has nothing to REPLY with and not why the question is never asked. It is asked",
-    requestAgentCapabilities:
-        "MAR-390: Jot declares the `agent` capability, so `/ai-advanced` opens there, and the composer asks for model and effort pickers it never receives. It degrades to no pickers rather than to nothing, which is why this is a gap and not the same severity as the two above it",
-    agentAttachment:
-        "MAR-390: Jot declares the `agent` capability, so the `/ai-advanced` composer offers attaching a file, and the bytes go nowhere. Same class as `copyAgentReference`",
+    resolveEmbedCard:
+        "MAR-390: `queueEmbedCardResolution` states in its own header that it is deliberately NOT gated on the connection, because the extension reads a public resource anonymously. So the page asks for a card on every connector-capable embed it finds, on every host, and Jot answers none: each request settles null at `CARD_REPLY_TIMEOUT_MS` and no card is drawn where the extension would draw one. Quieter than `getProjectImages`, which sat on Loading, but the same class",
 };
 
 describe("Jot's parse table against the page's outbound vocabulary", () => {
@@ -196,6 +200,29 @@ describe("Jot's parse table against the page's outbound vocabulary", () => {
             unclassified,
             "add a case to Bridge.swift, or a reason to DELIBERATELY_UNPARSED, or a ticket to KNOWN_GAPS",
         ).toEqual([]);
+    });
+
+    /**
+     * A reason may cite a capability, and citing one is a checkable claim.
+     *
+     * Two kinds of rot this catches, both of which were live in this list: a
+     * capability that does not exist at all (`connectors`, `keybindings`),
+     * which no reader can verify and no rename would have updated; and one Jot
+     * declares, which would make the reason argue the opposite of the truth.
+     */
+    it("a reason citing a capability should name a real one Jot declines", () => {
+        const cited = Object.entries(DELIBERATELY_UNPARSED).flatMap(([type, reason]) =>
+            [...reason.matchAll(/`([a-zA-Z]+)` capability/g)].map((m) => [type, m[1]!] as const));
+
+        // The sweep reached something: no citations at all would make the loop
+        // below vacuous and this test would pass having checked nothing.
+        expect(cited.length).toBeGreaterThan(0);
+        for (const [type, cap] of cited) {
+            expect(ALL_HOST_CAPABILITIES, `${type} cites a capability that does not exist`)
+                .toContain(cap as HostCapability);
+            expect(HOST_PROFILES.jot, `${type} cites a capability Jot declares`)
+                .not.toContain(cap as HostCapability);
+        }
     });
 
     /** A reason that is not a reason is the loose wording this list exists to prevent. */
