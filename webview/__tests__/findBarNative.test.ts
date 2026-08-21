@@ -30,7 +30,7 @@ const schema = new Schema({
     },
 });
 
-type Declared = { __i18n?: { host?: { arrangements?: string[] } } };
+type Declared = { __i18n?: { isMac?: boolean; host?: { arrangements?: string[] } } };
 const g = globalThis as Declared;
 
 let disposeEvents: (() => void) | null = null;
@@ -39,7 +39,11 @@ let disposeEvents: (() => void) | null = null;
 function mount(native: boolean): HTMLElement {
     document.body.innerHTML = "";
     if (native) {
-        g.__i18n = { host: { arrangements: ["nativeFindBar"] } };
+        // `isMac` alongside the arrangement, because the surface that declares
+        // it is a macOS application: the bar reads this to decide whether its
+        // option accelerators are Alt or Cmd+Alt, and jsdom reports a platform
+        // that is neither.
+        g.__i18n = { isMac: true, host: { arrangements: ["nativeFindBar"] } };
     } else {
         delete g.__i18n;
     }
@@ -67,12 +71,24 @@ function mount(native: boolean): HTMLElement {
     return document.querySelector(".find-bar") as HTMLElement;
 }
 
-/** Every control on the bar, by the accessible name that identifies it. */
+/**
+ * Every control on the bar, by the accessible name that identifies it.
+ *
+ * `[role=switch]` is in the selector because a control is not a tag: under
+ * this arrangement the four options are menu rows rather than buttons, and a
+ * selector naming only tags would have read their disappearance as the
+ * arrangement having dropped them.
+ */
 function controlNames(bar: HTMLElement): string[] {
-    return [...bar.querySelectorAll<HTMLElement>("button, input")]
+    return [...bar.querySelectorAll<HTMLElement>('button, input, [role="switch"]')]
         .map((el) => el.getAttribute("aria-label") ?? "")
         .filter(Boolean)
         .sort();
+}
+
+/** One option, wherever this surface put it. */
+function option(bar: HTMLElement, name: string): HTMLElement {
+    return bar.querySelector(`[aria-label="${name}"]`) as HTMLElement;
 }
 
 const OPTIONS = ["Match Case", "Match Whole Word", "Use Regular Expression", "Find in Selection"];
@@ -116,31 +132,147 @@ describe("the find bar under nativeFindBar", () => {
         expect(bar.querySelector(".find-bar__glyph")!.getAttribute("aria-hidden")).toBe("true");
     });
 
-    it("the four options should move into the popover, and nothing else should", () => {
+    it("the four options should move into the menu, and nothing else should", () => {
         const bar = mount(true);
         const menu = bar.querySelector(".find-bar__options");
         expect(menu).toBeTruthy();
-        const inMenu = [...menu!.querySelectorAll("button")]
+        const inMenu = [...menu!.querySelectorAll('[role="switch"]')]
             .map((el) => el.getAttribute("aria-label"));
         expect(inMenu.sort()).toEqual([...OPTIONS].sort());
+        // Rows of a dropdown, built from the same primitive every other menu
+        // in this webview builds one from, rather than the strip's buttons
+        // reparented into a box.
+        for (const name of OPTIONS) {
+            expect(option(bar, name).classList.contains("ui-menu-row"), name).toBe(true);
+        }
+    });
+
+    // On the strip the options were buttons and the keyboard reached them for
+    // free. As rows of a menu they are divs, so a Tab stop and an Enter are
+    // something the bar has to say out loud, and an arrangement that could
+    // only be worked with a mouse would be taking a control away rather than
+    // moving it.
+    it("an option row should be reachable and activatable from the keyboard", () => {
+        const bar = mount(true);
+        const row = option(bar, "Match Whole Word");
+        expect(row.tabIndex).toBe(0);
+        expect(row.getAttribute("aria-checked")).toBe("false");
+        row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        expect(row.getAttribute("aria-checked")).toBe("true");
+        row.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+        expect(row.getAttribute("aria-checked")).toBe("false");
+    });
+
+    // Every option carries the icon column a menu row in this webview has;
+    // three of them hold the two-character mark the option wears everywhere it
+    // appears, and Find in Selection holds an SVG.
+    it("every option row should have a leading icon", () => {
+        const bar = mount(true);
+        for (const name of OPTIONS) {
+            const icon = option(bar, name).querySelector(".tb-list-item-icon");
+            expect(icon, name).toBeTruthy();
+            expect(icon!.textContent!.length + icon!.querySelectorAll("svg").length, name)
+                .toBeGreaterThan(0);
+        }
+    });
+
+    // The opener carries NO tooltip, and that is the fix rather than a
+    // detail: `createButton` places a tooltip directly under the button,
+    // which is where this menu opens, so the label sat over the first row the
+    // press had just revealed. Every menu opener in this webview is built by
+    // `createMenuTrigger` for that reason.
+    it("the options opener should carry no tooltip", () => {
+        const bar = mount(true);
+        const opener = bar.querySelector(".find-bar__options-btn") as HTMLElement;
+        expect(opener.getAttribute("aria-label")).toBe("Search Options");
+        expect(document.querySelector(".ui-tooltip")).toBeNull();
+        opener.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        opener.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        expect(document.querySelector(".ui-tooltip")).toBeNull();
     });
 
     // THE claim that makes this an arrangement rather than a capability: no
     // search control is added or taken away, and only their holders differ.
     //
-    // The native bar carries exactly one control the other does not, and it is
-    // the ⋯ that opens the popover: a HOLDER, which exists only because the
-    // options moved into one. Naming it as the single permitted difference is
-    // what keeps this assertion sharp — a second addition, or any subtraction,
-    // fails. Compared against the real undeclared bar rather than a list
-    // written here, which a dropped control would not have joined either.
-    it("the two surfaces should differ by the popover opener and nothing else", () => {
+    // Two differences are permitted and both are named, because a difference
+    // nobody names is how a dropped control would pass. The ⋯ is a HOLDER,
+    // which exists only because the options moved into one. Show Replace is
+    // the chevron's replacement rather than an addition, so it is written as
+    // one name going out and another coming in. Anything else, in either
+    // direction, fails. Compared against the real undeclared bar rather than
+    // a list written here, which a dropped control would not have joined
+    // either.
+    it("the two surfaces should differ by the menu opener and the replace toggle's spelling", () => {
         const plain = controlNames(mount(false));
         disposeEvents?.();
         const native = controlNames(mount(true));
-        expect(native).toEqual([...plain, "Search Options"].sort());
+        expect(plain).toContain("Toggle Replace");
+        expect(native).toEqual(
+            [...plain.filter((n) => n !== "Toggle Replace"), "Show Replace", "Search Options"].sort(),
+        );
         // A floor, so the comparison is not two empty lists agreeing.
         expect(plain.length).toBeGreaterThanOrEqual(OPTIONS.length + 2);
+    });
+
+    describe("the replace row", () => {
+        it("its input should sit in the same capsule the find input does", () => {
+            const bar = mount(true);
+            const input = bar.querySelector('input[aria-label="Replace"]') as HTMLElement;
+            // Without a field of its own the input drew no edge at all: the
+            // rules that flatten the find input, so its field can carry the
+            // ground and the focus ring, reach every input on the bar.
+            expect(input.closest(".find-bar__field")).toBeTruthy();
+            expect(input.closest(".find-bar__field--find")).toBeNull();
+        });
+
+        it("its two actions should be a labelled segmented pair", () => {
+            const bar = mount(true);
+            const segment = bar.querySelector(".find-bar__segment") as HTMLElement;
+            expect(segment).toBeTruthy();
+            const labels = [...segment.querySelectorAll("button")].map((b) => b.textContent);
+            expect(labels).toEqual(["Replace", "Replace All"]);
+        });
+
+        it("should stay two icon buttons on the surface that did not declare it", () => {
+            const bar = mount(false);
+            expect(bar.querySelector(".find-bar__segment")).toBeNull();
+            const replace = bar.querySelector('button[aria-label="Replace"]') as HTMLElement;
+            expect(replace.querySelector("svg")).toBeTruthy();
+        });
+    });
+
+    describe("the replace disclosure", () => {
+        it("should be a labelled toggle on the find row, not a chevron beside the rows", () => {
+            const bar = mount(true);
+            expect(bar.querySelector(".find-bar__toggle")).toBeNull();
+            const toggle = bar.querySelector(".find-bar__show-replace") as HTMLButtonElement;
+            expect(toggle.textContent).toBe("Show Replace");
+            // On the row rather than outside it, which is what stops it
+            // moving down half a row when the row it opens appears.
+            expect(toggle.closest(".find-bar__row")).toBeTruthy();
+        });
+
+        it("pressing it should show the replace row and light the toggle", () => {
+            const bar = mount(true);
+            const toggle = bar.querySelector(".find-bar__show-replace") as HTMLButtonElement;
+            expect(toggle.getAttribute("aria-pressed")).toBe("false");
+            toggle.click();
+            expect(toggle.getAttribute("aria-pressed")).toBe("true");
+            expect(bar.classList.contains("find-bar--replace-visible")).toBe(true);
+            toggle.click();
+            expect(toggle.getAttribute("aria-pressed")).toBe("false");
+            expect(bar.classList.contains("find-bar--replace-visible")).toBe(false);
+        });
+
+        it("should stay a chevron on the surface that did not declare it", () => {
+            const bar = mount(false);
+            const chevron = bar.querySelector(".find-bar__toggle") as HTMLButtonElement;
+            expect(chevron).toBeTruthy();
+            expect(chevron.querySelector("svg")).toBeTruthy();
+            expect(chevron.getAttribute("aria-expanded")).toBe("false");
+            chevron.click();
+            expect(chevron.getAttribute("aria-expanded")).toBe("true");
+        });
     });
 
     it("Close should be a Done button rather than a square icon", () => {
@@ -200,7 +332,7 @@ describe("the find bar under nativeFindBar", () => {
             const bar = mount(true);
             const { menu, button } = parts(bar);
             press(button);
-            press(bar.querySelector('button[aria-label="Match Case"]') as HTMLElement);
+            press(option(bar, "Match Case"));
             expect(menu.hidden).toBe(false);
         });
 
@@ -208,10 +340,25 @@ describe("the find bar under nativeFindBar", () => {
             const bar = mount(true);
             const { button } = parts(bar);
             press(button);
-            const btnCase = bar.querySelector('button[aria-label="Match Case"]') as HTMLButtonElement;
-            expect(btnCase.getAttribute("aria-pressed")).toBe("false");
-            btnCase.click();
-            expect(btnCase.getAttribute("aria-pressed")).toBe("true");
+            const row = option(bar, "Match Case");
+            expect(row.getAttribute("aria-checked")).toBe("false");
+            row.click();
+            expect(row.getAttribute("aria-checked")).toBe("true");
+        });
+
+        // The accelerators VS Code's find widget binds reach the options
+        // through the same path a press does, so they keep working after the
+        // options changed shape. Mod+Alt rather than a bare Option on a Mac,
+        // where Option types a dead character.
+        it("the toggle accelerator should still reach an option in the menu", () => {
+            const bar = mount(true);
+            const row = option(bar, "Use Regular Expression");
+            expect(row.getAttribute("aria-checked")).toBe("false");
+            bar.dispatchEvent(new KeyboardEvent("keydown", {
+                code: "KeyR", bubbles: true, cancelable: true,
+                metaKey: true, altKey: true,
+            }));
+            expect(row.getAttribute("aria-checked")).toBe("true");
         });
 
         it("closing should leave no Escape layer behind", () => {

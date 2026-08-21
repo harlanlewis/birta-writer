@@ -47,7 +47,7 @@ final class SettingsFormTests: XCTestCase {
         //
         // Over `SettingsForm.panes` rather than a sum written out here, and
         // that is the point rather than a tidiness: this test named `general`
-        // and `advanced` by hand, so adding an Editor pane made every row on
+        // and `advanced` by hand, so adding a third pane made every row on
         // it read as UNPLACED. A guard that names the arrays it reads is a
         // guard that a new array is invisible to, and the failure could just
         // as easily have gone the other way, with a pane quietly uncovered.
@@ -72,47 +72,83 @@ final class SettingsFormTests: XCTestCase {
         // Every one of these is read by production code to hide a row under
         // the answer above it, so a wrong index here is a row that vanishes
         // with the wrong switch or refuses to.
-        XCTAssertEqual(SettingsForm.index(of: SettingsRow.location, inGroupOf: SettingsForm.general), 1)
+        XCTAssertEqual(SettingsForm.index(of: SettingsRow.location, inPane: SettingsForm.general), 1)
         XCTAssertEqual(SettingsForm.index(of: WelcomeRow.location, inGroupOf: SettingsForm.welcome), 1)
-        XCTAssertEqual(SettingsForm.index(of: SettingsRow.newNoteName, inGroupOf: SettingsForm.editor), 1)
-        XCTAssertEqual(SettingsForm.index(of: SettingsRow.agentCommand, inGroupOf: SettingsForm.editor), 1)
+        XCTAssertEqual(SettingsForm.index(of: SettingsRow.newNoteName, inPane: SettingsForm.general), 1)
+        XCTAssertEqual(SettingsForm.index(of: SettingsRow.agentCommand, inPane: SettingsForm.aiAgent), 1)
         // A row in ANOTHER card of the same pane is not found, which is what
         // makes the three above claims about one card rather than about a
         // position on the pane.
-        XCTAssertNil(SettingsForm.index(of: SettingsRow.summon,
-                                        inGroupOf: SettingsForm.general.filter { $0.rows.contains(.location) }))
-        XCTAssertNil(SettingsForm.index(of: SettingsRow.agentCommand,
-                                        inGroupOf: SettingsForm.editor.filter { $0.rows.contains(.opens) }))
+        XCTAssertNil(SettingsForm.index(
+            of: SettingsRow.summon,
+            inPane: SettingsPane(groups: SettingsForm.general.groups.filter {
+                $0.rows.contains(.location)
+            })))
+        XCTAssertNil(SettingsForm.index(
+            of: SettingsRow.newNoteName,
+            inPane: SettingsPane(groups: SettingsForm.general.groups.filter {
+                $0.rows.contains(.summon)
+            })))
     }
 
-    /// A heading is now the EXCEPTION rather than the rule, and this test
-    /// changed with it rather than being relaxed to let a red through.
+    /// A row whose control is a dependent of the row above it has to be in the
+    /// SAME card, because that is what the hiding reaches into.
     ///
-    /// It used to require one on every Settings group. Most cards lost theirs
-    /// deliberately: a card of plain switches is bounded by its own fill, and
-    /// a title over it names what the rows already say. What is still worth
-    /// holding is that a heading, where there is one, is real, and that an
-    /// intro cannot float above a card with no heading to belong to.
-    func testEveryGroupShouldHaveRowsAndAnyHeadingShouldBeReal() {
-        var headed = 0
-        for group in SettingsForm.panes.flatMap({ $0 }) {
-            XCTAssertFalse(group.rows.isEmpty)
-            if let heading = group.heading {
-                headed += 1
-                XCTAssertFalse(heading.isEmpty)
-            }
-            // An intro is a sentence under a heading. Without one it is a
-            // paragraph floating over a card, which is the layout this type
-            // exists to stop being written by hand at each screen.
-            if group.intro != nil { XCTAssertNotNil(group.heading) }
+    /// Asserted as adjacency rather than as an index, so it survives the cards
+    /// being reordered: File name exists only when a summon makes a new note,
+    /// and the Terminal command only when `/ai` is switched on.
+    func testADependentRowShouldSitDirectlyUnderTheRowItDependsOn() {
+        let pairs: [(SettingsPane, SettingsRow, SettingsRow)] = [
+            (SettingsForm.general, .opens, .newNoteName),
+            (SettingsForm.aiAgent, .agentEnabled, .agentCommand),
+        ]
+        for (pane, above, below) in pairs {
+            let card = pane.groups.first { $0.rows.contains(below) }
+            XCTAssertNotNil(card, "\(below.rawValue) is on no card")
+            guard let rows = card?.rows,
+                  let index = rows.firstIndex(of: below) else { continue }
+            XCTAssertEqual(index > 0 ? rows[index - 1] : nil, above,
+                           "\(below.rawValue) must sit under \(above.rawValue) in one card")
         }
-        // A floor, so this cannot pass by there being no headings at all: the
-        // agent group has one because it is a subject somebody opts into.
-        XCTAssertGreaterThan(headed, 0)
-        XCTAssertEqual(SettingsForm.editor.first(where: { $0.rows.contains(.agentEnabled) })?.heading,
-                       "AI Agent")
-        // The first-run groups carry no heading field at all, which is the
-        // type saying what a comment used to.
+    }
+
+    func testEveryGroupShouldHaveRows() {
+        for group in SettingsForm.panes.flatMap(\.groups) {
+            XCTAssertFalse(group.rows.isEmpty)
+        }
         for group in SettingsForm.welcome { XCTAssertFalse(group.rows.isEmpty) }
+    }
+
+    /// An intro belongs to a PANE, whose tab title is the heading it sits
+    /// under, and it is for a pane holding something somebody has to opt into.
+    ///
+    /// The floor is what stops this passing on a form with no prose at all,
+    /// and it names the pane: the agent is the one that needs explaining,
+    /// because everything on it is off until it is turned on and what it turns
+    /// on runs a program and may cost money.
+    func testTheAgentPaneShouldExplainItselfAndTheOthersShouldNot() {
+        XCTAssertFalse(SettingsForm.aiAgent.intro.isEmpty)
+        for paragraph in SettingsForm.aiAgent.intro {
+            XCTAssertFalse(paragraph.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        XCTAssertTrue(SettingsForm.general.intro.isEmpty)
+        XCTAssertTrue(SettingsForm.advanced(showsWelcomeScreen: true).intro.isEmpty)
+    }
+
+    /// Replaying the first run is a development affordance, and the reason is
+    /// this file's own invariant: every question that screen asks is a row on
+    /// General, so for somebody using Jot it is a slower way to reach settings
+    /// they can already see.
+    func testTheWelcomeRowShouldBeOfferedOnlyByABuildThatShowsIt() {
+        XCTAssertTrue(SettingsForm.rows(of: SettingsForm.advanced(showsWelcomeScreen: true))
+            .contains(.welcomeScreen))
+        XCTAssertFalse(SettingsForm.rows(of: SettingsForm.advanced(showsWelcomeScreen: false))
+            .contains(.welcomeScreen))
+        // The rest of the pane is the same either way: this hides one row, it
+        // does not hide the pane.
+        XCTAssertTrue(SettingsForm.rows(of: SettingsForm.advanced(showsWelcomeScreen: false))
+            .contains(.resetSettings))
+        XCTAssertEqual(AppFlavor.dev.showsWelcomeScreen, true)
+        XCTAssertEqual(AppFlavor.release.showsWelcomeScreen, false)
     }
 }

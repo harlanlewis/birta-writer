@@ -98,6 +98,16 @@ public enum AppFlavor: String, CaseIterable, Sendable {
         }
     }
 
+    /// Whether Settings offers to see the first-run screen again.
+    ///
+    /// Development only, and the reason is this app's own invariant rather
+    /// than caution about a button: every question the first run asks is a row
+    /// on the General pane, in the same words and the same order
+    /// (`SettingsForm`). So for somebody using Jot the screen is a second,
+    /// slower route to settings they can already see, and its one real use is
+    /// looking at the screen itself, which is what a development build is for.
+    public var showsWelcomeScreen: Bool { self == .dev }
+
     /// Whether this build may replace itself with a newer one.
     ///
     /// False for a development build, and not as a precaution: replacing it

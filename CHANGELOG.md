@@ -4,7 +4,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Pressing the toolbar's magnifier while the find bar is open now closes it. It is a button showing something, so a second press puts it away; ⌘F is unchanged, because pressing it twice is reaching for the field rather than asking for it to go.
+
 ### Fixed
+
+- The insertion line drawn while you drag an image over the document no longer stays behind when the drag ends somewhere else. Releasing over another application, or over something that does not take the drop, left the line across the document until the next drag: neither of those says anything to the page the line was drawn on, and an external drag never reports its own end there. Any release, and the first movement of the mouse after the drag is over, takes it down.
 
 - Changing whether two adjacent bold runs are one run or two is written to the file, in both directions. Making `**a** **b**` into `**a b**`, or the reverse, looked right on screen and was then dropped by the save, which compared the two spellings, judged them the same, and wrote nothing. The file kept whichever form it already had and the next open showed it back. No other emphasis edit was affected.
 

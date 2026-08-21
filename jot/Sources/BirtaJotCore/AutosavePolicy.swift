@@ -12,25 +12,46 @@ public enum WriteTrigger: Equatable, Sendable, CaseIterable {
     case terminating
 }
 
-/// Whether a write happens now, later, or not at all.
+/// Whether a write happens now, later, not at all, or only if the user says so.
 public enum WriteAction: Equatable, Sendable {
     /// Write immediately, before whatever comes next.
     case now
     /// Write once the edits settle. Only an edit defers.
     case deferred
-    /// Do not write. Only reachable for an edit with autosave off.
+    /// Do not write.
     case skip
+    /// Put the question to the user: save, discard, or do not go.
+    ///
+    /// Where nobody can be asked, WRITE. A quit nobody initiated (a SIGTERM
+    /// from an installer, the swap at the end of a self-update) has no one in
+    /// front of it to answer a sheet, and the choice there is between keeping
+    /// somebody's typing and throwing it away to honour a preference about
+    /// when files are written. The bytes win.
+    case ask
 }
 
 /// When Jot writes the buffer to disk, as one pure function.
 ///
-/// The setting a user sees is "autosave", and its whole scope is the EDIT
-/// trigger. Everything else writes whatever the setting says, because the
-/// alternative is a preference that quietly means "lose my work": a person who
-/// turns autosave off is asking Jot to stop writing while they type, never to
-/// drop the buffer on the floor when the panel hides or the app quits. That
-/// distinction is the reason this is a tested function rather than an `if` in
-/// a completion handler, and `AutosavePolicyTests` pins it.
+/// The setting a user sees is "Automatically save while editing", and with it
+/// ON nothing here is a question: an edit is deferred a beat and everything
+/// else writes at once.
+///
+/// OFF means what the platform means by it, which is the part worth being
+/// careful about, because it is a promise in both directions. Jot does not
+/// write while you type, and it does not write behind your back when the panel
+/// goes away either: the buffer stays in memory, the title says Edited, and
+/// Cmd+S is what puts it on disk. That is how every macOS application with
+/// unsaved changes behaves, and it is the whole reason somebody switches this
+/// off: a note they are not ready to keep should not already be a file on
+/// disk they have to go and undo.
+///
+/// Hiding and quitting are the two that look alike and are not. Hiding the
+/// panel is putting a window away in an application that is still running, so
+/// there is nothing to lose and nothing to ask about; a prompt on a gesture
+/// somebody makes twenty times a day is a prompt they learn to dismiss without
+/// reading. Quitting is the end of the buffer, so it is the moment the
+/// question has to be asked, and macOS asks it as a sheet on the window with
+/// Save, Discard and Cancel. `.ask` is that sheet.
 ///
 /// Deferral is separate from permission. An edit that is allowed to be written
 /// is still not written on the keystroke: `Debounce` in the coordinator holds
@@ -41,7 +62,13 @@ public enum AutosavePolicy {
         switch trigger {
         case .edit:
             return autosaveEnabled ? .deferred : .skip
-        case .explicitSave, .panelHidden, .terminating:
+        case .panelHidden:
+            return autosaveEnabled ? .now : .skip
+        case .terminating:
+            return autosaveEnabled ? .now : .ask
+        case .explicitSave:
+            // The one trigger the setting has nothing to say about: it IS the
+            // user saying so.
             return .now
         }
     }

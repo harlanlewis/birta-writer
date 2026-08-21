@@ -986,12 +986,22 @@ final class Coordinator {
         }
     }
 
-    /// Ask the page for its freshest bytes, write them, then run `then`.
-    /// Bounded: on timeout the latest admitted content is written instead
-    /// (at most one scheduler window stale, see webview/syncScheduler.ts).
+    /// Ask the page for its freshest bytes, then run `then`.
+    ///
+    /// Bounded: a page that does not answer within `flushTimeout`, and a page
+    /// that is not warm enough to be asked, run `then` anyway against the
+    /// latest admitted content (at most one scheduler window stale, see
+    /// webview/syncScheduler.ts).
+    ///
+    /// It writes NOTHING itself, and that is the point rather than an
+    /// omission. Both fallbacks used to write here as well as in `then`,
+    /// which was invisible while every caller wrote too: it was a second copy
+    /// of a decision `AutosavePolicy` owns, and with autosave off it meant a
+    /// wedged web process turned hiding the panel into a write nobody asked
+    /// for. `write(_:)` is the one funnel, and every caller that wants bytes
+    /// on disk goes through it in `then`.
     private func flushThen(_ then: @escaping () -> Void) {
         guard state == .warm else {
-            writeLatest()
             then()
             return
         }
@@ -1002,19 +1012,105 @@ final class Coordinator {
         host.send(.flushSave(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
-            NSLog("Birta Writer Jot: flush timed out; writing the last admitted content")
-            self.writeLatest()
+            NSLog("Birta Writer Jot: flush timed out; running against the last admitted content")
             finish()
         }
     }
 
-    func prepareToTerminate(_ done: @escaping () -> Void) {
-        hotkey.unregister()
-        // A child process outliving the app is litter nobody can attribute.
-        agent.stopAll()
+    /// Whether the quit now in flight has anybody in front of it.
+    ///
+    /// Set by the two paths that quit the app without a person asking: the
+    /// SIGTERM handler, which is how an installer replaces a running copy, and
+    /// the self-update swap. Neither has anyone to answer a sheet, and both
+    /// have something waiting on the process to go, so a question there is a
+    /// hang rather than a choice. Those quits write the buffer instead.
+    var quitIsUnattended = false
+
+    /// Set once the way out has been decided, so the last-chance write on the
+    /// way through `applicationWillTerminate` does not undo the answer.
+    private var quitDecided = false
+
+    /// Everything that has to happen before the app may go, and the one place
+    /// a quit can be refused.
+    ///
+    /// `done(false)` means the user cancelled: the app stays up, and nothing
+    /// may have been torn down on the way to asking. That ordering is the
+    /// whole shape of this method. The hotkey and the running agents used to
+    /// be dropped first, which is invisible while every quit succeeds and is a
+    /// summon key that stops working for the rest of the session the first
+    /// time somebody presses Cancel.
+    func prepareToTerminate(_ done: @escaping (Bool) -> Void) {
         flushThen { [weak self] in
-            self?.rescueMissingNote()
-            done()
+            guard let self else { done(true); return }
+            self.decideFinalWrite { answer in
+                guard answer != .cancel else {
+                    // A refused quit leaves nothing decided. The flag exists
+                    // so the last-chance write on the way out does not undo an
+                    // answer, and a `true` left over from a quit that never
+                    // happened would suppress the write on a later one.
+                    self.quitDecided = false
+                    done(false)
+                    return
+                }
+                self.hotkey.unregister()
+                // A child process outliving the app is litter nobody can
+                // attribute.
+                self.agent.stopAll()
+                // Not for a buffer somebody has just said to throw away: this
+                // writes it beside the deleted file, which is the opposite of
+                // the answer they gave.
+                if answer != .discard { self.rescueMissingNote() }
+                done(true)
+            }
+        }
+    }
+
+    /// Decide what happens to the buffer on the way out, asking if the setting
+    /// says to ask and there is somebody there to answer.
+    private func decideFinalWrite(_ then: @escaping (UnsavedChanges.Answer) -> Void) {
+        let keep: (UnsavedChanges.Answer) -> Void = { [weak self] answer in
+            self?.quitDecided = true
+            then(answer)
+        }
+        switch AutosavePolicy.action(for: .terminating, autosaveEnabled: Prefs.autosave) {
+        case .now, .deferred, .skip:
+            cancelPendingAutosave()
+            writeLatest()
+            keep(.save)
+        case .ask:
+            cancelPendingAutosave()
+            // Nothing to ask about: the file already has these bytes, so
+            // there is nothing to write and nothing to throw away either.
+            // NOT reported as a discard, which is what the caller reads to
+            // decide whether to rescue a note that was deleted underneath us:
+            // a buffer nobody edited is still the only copy of one of those.
+            guard isEdited else { keep(.save); return }
+            guard !quitIsUnattended else {
+                writeLatest()
+                keep(.save)
+                return
+            }
+            // Show what is about to be lost. The panel is hidden most of the
+            // time, and a sheet needs a window on screen; summoning it is also
+            // the honest thing to do, since the question names a document the
+            // person cannot otherwise see.
+            if !isOnScreen { show() }
+            // And if it still is not up, keep the bytes rather than asking a
+            // window that cannot answer. A sheet begun on a window that never
+            // appears never calls back, and this quit is waiting on that call
+            // (`applicationShouldTerminate` answered `.terminateLater`), so
+            // the failure would be an app that cannot be quit.
+            guard promptWindow.isVisible else {
+                writeLatest()
+                keep(.save)
+                return
+            }
+            UnsavedChangesPrompt.present(document: boundURL.lastPathComponent,
+                                         on: promptWindow) { [weak self] answer in
+                guard let self else { keep(answer); return }
+                if answer == .save { self.writeLatest() }
+                keep(answer)
+            }
         }
     }
 
@@ -1047,6 +1143,11 @@ final class Coordinator {
 
     /// Last-chance synchronous write, idempotent after `prepareToTerminate`.
     func finalWrite() {
+        // What happens to the buffer was settled in `prepareToTerminate`,
+        // possibly by the user. Asking the policy again here would write a
+        // buffer they have just said to discard, at the one moment nothing is
+        // left to undo it.
+        guard !quitDecided else { return }
         write(.terminating)
     }
 
@@ -1113,6 +1214,15 @@ final class Coordinator {
             scheduleAutosave()
         case .skip:
             cancelPendingAutosave()
+        case .ask:
+            // Nobody is being asked on this path, and the policy says what
+            // that means: the question exists to protect the bytes, so where
+            // it cannot be put, the bytes are kept. The only trigger that
+            // reaches `.ask` is a quit, and `prepareToTerminate` asks properly
+            // before this is ever reached; what lands here is the quit that
+            // did not go through it, which is a quit nobody initiated.
+            cancelPendingAutosave()
+            writeLatest()
         }
     }
 
@@ -1578,9 +1688,9 @@ final class Coordinator {
         // anything after it runs before the reply. Putting the screen up there
         // sets `isWelcoming` in the same turn, and the write embargo then
         // refuses the very write this is here to make. On a first launch there
-        // is nothing to write; Settings can re-show this screen at any time,
-        // and with autosave off the text typed before the button was pressed
-        // is what would be lost.
+        // is nothing to write; a development build's Settings can re-show this
+        // screen at any time, and with autosave off the text typed before the
+        // button was pressed is what would be lost.
         flushThen { [weak self] in
             self?.write(.explicitSave)
             self?.presentWelcome()

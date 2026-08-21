@@ -117,7 +117,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installTerminationSignal() {
         signal(SIGTERM, SIG_IGN) // the source below handles it, not the default action
         let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-        source.setEventHandler {
+        source.setEventHandler { [weak self] in
+            // Nobody sent this by hand, and something is waiting on the
+            // process to go: with autosave off the quit writes the buffer
+            // rather than putting a sheet in front of an installer.
+            self?.coordinator.quitIsUnattended = true
             NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
         }
         source.resume()
@@ -125,8 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        coordinator.prepareToTerminate {
-            NSApp.reply(toApplicationShouldTerminate: true)
+        // The reply can be NO: with autosave off and unwritten bytes, the
+        // coordinator puts the Save / Discard Changes / Cancel sheet on the
+        // panel, and Cancel means the app stays up.
+        coordinator.prepareToTerminate { proceed in
+            NSApp.reply(toApplicationShouldTerminate: proceed)
         }
         return .terminateLater
     }
@@ -394,6 +401,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // NOT `prepareToTerminate` directly either: `applicationShouldTerminate`
             // is its only caller, and calling it here would run the flush twice.
             guard ok else { return }
+            // The swap script is already staged and polling for this pid, so
+            // this quit has nothing to ask and nobody waiting to answer.
+            self.coordinator.quitIsUnattended = true
             NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
         }
     }

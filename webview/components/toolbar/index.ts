@@ -62,6 +62,16 @@ import { type ContentWidthMode } from "../../../shared/contentWidth";
 import { type BlockHandlesMode } from "../../../shared/blockHandles";
 import './toolbar.css';
 
+/**
+ * The find bar, as the two gestures the toolbar needs from it. `open` is what
+ * every command path runs; `toggle` is the magnifier's own press, which puts
+ * an open bar away again.
+ */
+export interface FindControl {
+    open: () => void;
+    toggle: () => void;
+}
+
 export function initToolbar(
     topbar: HTMLElement,
     getEditor: GetEditor,
@@ -74,7 +84,7 @@ export function initToolbar(
         webviewUri: string;
         name: string;
     }> | null>,
-    onOpenFind?: () => void,
+    find?: FindControl,
     onSwitchToSource?: () => void,
     onShowProofreading?: () => void,
 ): {
@@ -351,8 +361,14 @@ export function initToolbar(
             onSwitchToSource,
         ));
     }
-    if (onOpenFind) {
-        items.find = wrap("find", btn(IconSearch, t("Find"), onOpenFind));
+    if (find) {
+        // The BUTTON toggles and the command opens, and the two are different
+        // gestures rather than an inconsistency. Pressing the magnifier a
+        // second time is a press on a control that is visibly showing
+        // something, so it puts it away; Cmd+F pressed twice is somebody
+        // reaching for the field, and closing it under them is the wrong
+        // answer to that (VS Code's find widget makes the same split).
+        items.find = wrap("find", btn(IconSearch, t("Find"), find.toggle));
     }
     // Settings gear is a hover dropdown: open the native settings, or enter the
     // drag-and-drop "Customize toolbar" mode. Its two layout actions are
@@ -382,7 +398,7 @@ export function initToolbar(
     setEditorCommandHost({
         openLinkPrompt,
         openImagePanel,
-        ...(onOpenFind ? { openFind: onOpenFind } : {}),
+        ...(find ? { openFind: find.open } : {}),
         // Toolbar right-click menu entries (mirroring the settings gear).
         hideToolbar: () => layout.setToolbarVisible(false),
         showToolbar: () => layout.setToolbarVisible(true),
