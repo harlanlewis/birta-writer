@@ -57,38 +57,6 @@ enum Prefs {
         case updateDeclinedTag
     }
 
-    /// Keys no accessor reads any more.
-    ///
-    /// A removed setting leaves its value behind, and a value nothing reads is
-    /// invisible until the name comes back meaning something else. Swept once
-    /// at launch so the domain holds only what is live, and cleared again by
-    /// `reset()`, which walks `Key` and would otherwise leave behind exactly
-    /// the keys a reset is for.
-    static let retiredKeys = [
-        "floatAboveOtherWindows",
-        "hideWhenInactive",
-    ]
-
-    /// Drop the retired keys. Cheap, idempotent, and called before anything
-    /// reads a preference.
-    static func sweepRetiredKeys() {
-        for key in retiredKeys { d.removeObject(forKey: key) }
-    }
-
-    /// Settle `/ai` for an install that predates the switch.
-    ///
-    /// Called at launch BEFORE anything reads or writes a preference, because
-    /// the signal it needs is `isFirstLaunch` and a single write destroys it.
-    /// `AgentAvailability` holds the argument; the short version is that a
-    /// default of off is right for a new install and is a silent removal for
-    /// everybody who already had `/ai` working.
-    static func settleAgentEnabledForExistingInstall() {
-        guard d.object(forKey: Key.agentEnabled.rawValue) == nil else { return }
-        guard AgentAvailability.enabledForInstallThatNeverAnswered(isFirstLaunch: isFirstLaunch)
-        else { return }
-        agentEnabled = true
-    }
-
     /// Put every setting back to its default, and touch no file on disk.
     ///
     /// The note is deliberately not in scope. A reset is about the settings a
@@ -97,11 +65,9 @@ enum Prefs {
     /// it is, and Jot rebinds to the default location, so the old note is one
     /// Choose away rather than gone.
     ///
-    /// Three things beyond `Key` that a reset has to reach, each of which
+    /// Two things beyond `Key` that a reset has to reach, each of which
     /// would otherwise survive it and make the reset a lie:
     ///
-    ///   - the retired keys, which no accessor reads and no walk of `Key`
-    ///     covers,
     ///   - AppKit's own window-frame autosave, which writes to the standard
     ///     domain whatever `BIRTA_JOT_DEFAULTS_SUITE` says, so a reset that
     ///     used `d` alone would leave the panel at whatever size it was
@@ -124,13 +90,6 @@ enum Prefs {
         // says every setting goes back to its default, and that is what a
         // default IS here; seeing the screen again is its own button.
         hasSeenWelcome = true
-        // Written rather than left cleared, for the same reason and in the
-        // opposite direction: a cleared key is what
-        // `settleAgentEnabledForExistingInstall` reads as "never answered", so
-        // a reset that removed it would switch `/ai` back ON one launch later,
-        // on a machine where somebody has just asked for the defaults.
-        agentEnabled = false
-        sweepRetiredKeys()
         UserDefaults.standard.removeObject(forKey: panelFrameAutosaveDefaultsKey)
         // Deliberately discarded: the caller re-reads `LoginItem.state` to
         // redraw its row, and a reset that stopped because macOS declined to

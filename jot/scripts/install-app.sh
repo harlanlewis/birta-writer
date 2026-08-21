@@ -142,20 +142,12 @@ rm -rf "$OLD"
 # into: the rename is what makes the old bundle a stranger, and it can be
 # sitting in either place from an earlier install.
 #
-# Scoped to THIS FLAVOUR, which is the whole point of there being two. The
-# sweep used to name the release bundle literally, so a development install
-# deleted `~/Applications/Birta Writer Jot.app`: the release copy, removed by
-# the flavour that exists so the release is never touched.
-#
-# The legacy names belong to the release alone. A development build has no
-# predecessor, so there is nothing of its own to clean up under an old name,
-# and reaching for one would be reaching at somebody else's app again.
+# Scoped to THIS FLAVOUR, which is the whole point of there being two: a
+# development install must never reach for `Birta Writer Jot.app`, the release
+# copy, which is the one this flavour exists so as not to touch.
 OTHER_DIR=/Applications
 [ "$DEST_DIR" = /Applications ] && OTHER_DIR="$HOME/Applications"
 STALE=("$OTHER_DIR/$APP_NAME.app")
-if [ "$FLAVOR" = release ]; then
-    STALE+=("$DEST_DIR/Birta Jot.app" "$OTHER_DIR/Birta Jot.app")
-fi
 for stale in "${STALE[@]}"; do
     if [ -d "$stale" ]; then
         echo "→ removing the other copy at $stale"

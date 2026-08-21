@@ -23,10 +23,6 @@ const CURRENT_ID = "BirtaLabs.birta-writer";
 // messages here naming an app that no longer existed. `appFlavor.test.ts`
 // holds this literal to the composed name.
 const JOT_APP_NAME = "Birta Writer Jot [DEV]";
-// Pre-org / pre-rebrand ids. Removing these guarantees VS Code never runs two
-// copies of this editor over the same .md files.
-const LEGACY_IDS = ["harlanlewis.birta-writer", "harlanlewis.md-wysiwyg-editor"];
-
 // The VS Code `code` CLI is often not on PATH on macOS even when VS Code is
 // installed — fall back to the app-bundle binary before giving up.
 const CODE_FALLBACK =
@@ -134,13 +130,6 @@ if (code === null) {
 
 step(`installing ${VSIX} (${code === "code" ? "code on PATH" : "app-bundle binary"})`);
 run(code, ["--install-extension", VSIX, "--force"]);
-
-step("removing legacy copies (ignore \"not installed\")");
-for (const id of LEGACY_IDS) {
-    // Tolerate "not installed" — it just means the cleanup already happened.
-    const out = tryCapture(code, ["--uninstall-extension", id]);
-    if (out !== null) process.stdout.write(out);
-}
 
 // 4. Verify exactly one copy of this editor remains.
 step("verifying a single installed copy");

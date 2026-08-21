@@ -84,8 +84,8 @@ Do it while the change is fresh. It is the one step you can't reconstruct later.
 
 `pnpm build` only rebuilds `dist/`; the user's editor runs an installed copy, so a window reload alone never picks up source changes. `pnpm run install:local` is the path, and `scripts/install-local.mjs` is the reference for the individual steps. Three things it handles that are easy to get wrong by hand:
 
-- Never edit or delete the user's `settings.json` as part of an install. Neither the `--force` install nor the legacy uninstalls touch it, so their `birta.*` config carries across every reinstall.
-- Uninstall the pre-rebrand ids (`harlanlewis.birta-writer`, `harlanlewis.md-wysiwyg-editor`) so VS Code never runs two copies over the same `.md` files, then confirm only `birtalabs.birta-writer` remains.
+- Never edit or delete the user's `settings.json` as part of an install. The `--force` install does not touch it, so their `birta.*` config carries across every reinstall.
+- Confirm exactly one copy of the editor is installed, `birtalabs.birta-writer`. The check stands on its own: nothing uninstalls an older id first, so two copies over the same `.md` files is a state the verification has to catch rather than one the install has already prevented.
 - The `code` CLI is often not on `PATH` on this machine; the script falls back to `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`. If VS Code truly isn't installed, skip and say so rather than failing the handoff.
 
 For iterative debugging, F5 (Extension Development Host) is faster, with no packaging step.

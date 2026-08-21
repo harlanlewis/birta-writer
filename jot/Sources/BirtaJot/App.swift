@@ -32,11 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Before anything reads a preference, and before the panel is built.
-        Prefs.sweepRetiredKeys()
-        // Also before anything writes one: the signal it reads is that this
-        // domain is empty, and the first write destroys it.
-        Prefs.settleAgentEnabledForExistingInstall()
         buildMainMenu()
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
