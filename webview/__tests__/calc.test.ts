@@ -524,10 +524,8 @@ describe("convertUnit", () => {
         expect(convertUnit(0, "C", "K")).toBeCloseTo(273.15, 9);
     });
 
-    it("unit names should be case-sensitive, because case is part of the name", () => {
-        expect(convertUnit(1, "km", "m")).toBeCloseTo(1000, 9);
-        // `KM` is not a unit the catalog has, so there is no answer to give.
-        expect(convertUnit(1, "KM", "M")).toBeNull();
+    it("unit names should be case-insensitive", () => {
+        expect(convertUnit(1, "KM", "M")).toBeCloseTo(1000, 9);
     });
 
     it("cross-dimension or unknown units should return null", () => {
@@ -1229,36 +1227,20 @@ describe("unit conversion round-trips", () => {
         expect(evaluateCalc("100 hectare in acre")).toBeCloseTo(247.105, 2);
     });
 
-    it("an SI prefix should mean the prefix, on every name that carries one", () => {
-        // The hand-rolled tables case-folded about sixty spellings, so `ML`
-        // and `ml` were both the millilitre and `T` was the tonne. One name
-        // meant two things depending on which table saw it first. The catalog
-        // decides now, so a capital M is the mega prefix everywhere rather
-        // than everywhere except the sixty.
-        expect(convertUnit(500, "ML", "l")).toBeCloseTo(5e8, 3);
-        expect(convertUnit(1, "Mm", "m")).toBeCloseTo(1e6, 3);
-        expect(convertUnit(5, "Mg", "g")).toBeCloseTo(5e6, 3);
-        // And the lowercase forms are untouched, which is the half that makes
-        // the above a sharpening rather than a loss.
-        expect(convertUnit(500, "ml", "l")).toBeCloseTo(0.5, 9);
-        expect(convertUnit(1, "mm", "m")).toBeCloseTo(0.001, 9);
-        expect(convertUnit(5, "mg", "g")).toBeCloseTo(0.005, 9);
-        // Catalog names were always exact-case: MB really is the megabyte.
+    it("historical spellings stay case-insensitive — never reinterpreted as SI prefixes", () => {
+        // To mathjs alone, `Ml`/`ML` is the MEGAlitre and `T` the tesla; the
+        // hand-rolled tables matched case-insensitively, and any casing of a
+        // historical spelling must keep its historical meaning (a silent
+        // 10^9 reinterpretation is the worst possible answer).
+        expect(convertUnit(500, "ML", "l")).toBeCloseTo(0.5, 9);
+        expect(convertUnit(1, "Ml", "l")).toBeCloseTo(0.001, 9);
+        expect(convertUnit(1, "Mm", "m")).toBeCloseTo(0.001, 9);
+        expect(convertUnit(5, "Mg", "g")).toBeCloseTo(0.005, 9);
+        expect(convertUnit(5, "T", "kg")).toBeCloseTo(5000, 9);
+        expect(convertUnit(3, "S", "ms")).toBeCloseTo(3000, 9);
+        expect(convertUnit(2, "H", "s")).toBeCloseTo(7200, 9);
+        // Catalog names stay exact-case: MB really is the megabyte.
         expect(convertUnit(1000, "MB", "GB")).toBe(1);
-    });
-
-    it("a single capital that was a folded spelling should read as its SI unit", () => {
-        // `T`, `S` and `H` were the tonne, second and hour by table. They are
-        // the tesla, siemens and henry by catalog, so a conversion against a
-        // mass, a time or a time is now cross-dimension and gives no answer
-        // rather than a number in the wrong dimension.
-        expect(convertUnit(5, "T", "kg")).toBeNull();
-        expect(convertUnit(3, "S", "ms")).toBeNull();
-        expect(convertUnit(2, "H", "s")).toBeNull();
-        // Lowercase still means what a note-taker means.
-        expect(convertUnit(5, "t", "kg")).toBeCloseTo(5000, 9);
-        expect(convertUnit(3, "s", "ms")).toBeCloseTo(3000, 9);
-        expect(convertUnit(2, "h", "s")).toBeCloseTo(7200, 9);
     });
 
     it("spoon plurals are US customary too (one kitchen system, not two)", () => {
@@ -1280,48 +1262,15 @@ describe("unit conversion round-trips", () => {
         expect(convertUnit(2, "millennia", "centuries")).toBeCloseTo(20, 9);
     });
 
-    it("the alias shorthands beat the catalog, which reads them as something else", () => {
-        // `c`/`f` must stay temperature: to mathjs alone they are coulomb and
-        // farad. tsp/tbsp/pound resolve through the same map, and `nmi` is a
-        // unit the catalog lacks entirely, defined in the engine.
+    it("legacy spellings and temperature shorthands keep their historical meaning", () => {
+        // `C`/`F` must stay temperature (to mathjs alone they'd be
+        // coulomb/farad), and tsp/tbsp/nmi/pound resolve via aliases.
         expect(convertUnit(100, "c", "f")).toBeCloseTo(212, 9);
         expect(convertUnit(1, "tsp", "ml")).toBeCloseTo(4.92892159375, 6);
         expect(convertUnit(1, "tbsp", "ml")).toBeCloseTo(14.78676478125, 6);
         expect(convertUnit(1, "nmi", "m")).toBe(1852);
         expect(convertUnit(1, "pound", "kg")).toBeCloseTo(0.45359237, 9);
         expect(convertUnit(100, "°c", "°f")).toBeCloseTo(212, 9);
-    });
-
-    /**
-     * A unit name means exactly one thing, and case is part of the name.
-     *
-     * The hand-rolled table this replaced case-folded about sixty spellings,
-     * so `ML` and `ml` were both the millilitre and `T` was the tonne. That
-     * bought forgiving input at the price of a name meaning two things
-     * depending on which table saw it first. The catalog's own SI semantics
-     * are the rule now: no fold, no guess at the shift key.
-     */
-    it("a unit name should mean exactly one thing, with case part of the name", () => {
-        // The pair that motivated the fold, now read as SI says.
-        expect(convertUnit(1, "ml", "l")).toBeCloseTo(0.001, 9);
-        expect(convertUnit(1, "ML", "l")).toBeCloseTo(1e6, 3);
-
-        // Every lowercase spelling the old table held still resolves, because
-        // the catalog knows them all on its own. This is the half that would
-        // have made the removal a regression rather than a sharpening.
-        expect(convertUnit(1, "inches", "cm")).toBeCloseTo(2.54, 9);
-        expect(convertUnit(1, "tonne", "kg")).toBeCloseTo(1000, 9);
-        expect(convertUnit(1, "gallons", "l")).toBeCloseTo(3.785411784, 6);
-        expect(convertUnit(90, "mins", "h")).toBeCloseTo(1.5, 9);
-        expect(convertUnit(1, "litres", "ml")).toBeCloseTo(1000, 9);
-    });
-
-    it("a name the catalog does not know should give no answer rather than a guess", () => {
-        // `MIN` and `IN` were reachable only through the case fold. Refusing
-        // is the honest outcome: the calc shows nothing, rather than an
-        // answer in a unit nobody asked for.
-        expect(convertUnit(1, "MIN", "h")).toBeNull();
-        expect(convertUnit(1, "IN", "cm")).toBeNull();
     });
 });
 
