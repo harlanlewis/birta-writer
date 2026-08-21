@@ -151,7 +151,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
 
         let appMenu = NSMenu(title: AppFlavor.current.displayName)
-        appMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        // Targeted at the delegate, so it opens Jot's own About window rather
+        // than travelling up to `NSApplication`'s standard panel.
+        let about = appMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)",
+                                    action: #selector(menuOpenAbout), keyEquivalent: "")
+        about.target = self
         appMenu.addItem(.separator())
         JotMenu.add(.app, to: appMenu, target: self)
         appMenu.addItem(.separator())
@@ -227,6 +231,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the window, next to the note it would act on.
         showItem = menu.addItem(withTitle: "Show \(AppFlavor.current.displayName)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(.separator())
+        // With no Dock icon the app menu is invisible, so this menu is the only
+        // route to About for most of the people who have Jot: the row belongs
+        // in both places rather than in the one an accessory app rarely shows.
+        menu.addItem(withTitle: "About \(AppFlavor.current.displayName)", action: #selector(menuOpenAbout), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
@@ -415,6 +423,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateTimer: Timer?
     /// Whether an update offer is on screen right now.
     private var offering = false
+
+    /// Kept between openings, like the settings window: reopening puts the same
+    /// window back where the user left it rather than building a second one.
+    private var aboutWindow: AboutWindowController?
+
+    @objc func menuOpenAbout() {
+        if aboutWindow == nil { aboutWindow = AboutWindowController() }
+        // An accessory app is not frontmost when its status menu is used, and
+        // an ordinary-level window ordered front from a background app opens
+        // behind whatever is in front of it.
+        NSApp.activate(ignoringOtherApps: true)
+        aboutWindow?.showWindow(nil)
+        aboutWindow?.window?.makeKeyAndOrderFront(nil)
+    }
 
     @objc func menuOpenSettings() {
         if settingsWindow == nil {

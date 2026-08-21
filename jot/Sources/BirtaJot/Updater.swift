@@ -57,7 +57,11 @@ final class Updater {
     /// `install-app.sh` flavours its staging paths to avoid, one layer up.
     private var installing = false
 
-    private let repo = ProcessInfo.processInfo.environment["BIRTA_JOT_REPO"] ?? "harlanlewis/birta-writer"
+    /// The repository releases are fetched from, which must be the one the
+    /// About window sends bug reports to: `AboutInfo.repository` is that one
+    /// string, and an app that updated from one repository and filed issues
+    /// against another would be wrong in a way nobody would notice.
+    private let repo = ProcessInfo.processInfo.environment["BIRTA_JOT_REPO"] ?? AboutInfo.repository
 
     /// Everything `check` needs that is not this type's own state.
     ///
