@@ -4,13 +4,18 @@ import BirtaJotCore
 /// Jot's About window: the app's mark, its name, its version, where it comes
 /// from and how to report something about it.
 ///
-/// Built rather than left to `orderFrontStandardAboutPanel`, and the reason is
-/// the links. The standard panel takes text through its credits attribute,
-/// where a URL is an attributed-string link inside a text view: not in the key
-/// view loop, so it is reachable by mouse alone. `LinkButton` is a real button,
-/// which is the same argument the Settings window's documentation links are
-/// built on. Everything else here follows the panel's own shape, because that
-/// shape is what people recognise: mark, name, version, then the small print.
+/// The shape is the one these windows share, in this order and centred: the
+/// icon, the name, the version, then the small print. Where an app has
+/// somewhere to send you, that sits between the version and the copyright, as
+/// buttons of one width stacked under each other. A row of link text is the one
+/// shape none of them uses, and it reads as a web page rather than as a Mac
+/// window.
+///
+/// Built rather than left to `orderFrontStandardAboutPanel`, and the links are
+/// the reason. That panel takes them through its credits attribute, where a URL
+/// is an attributed-string link inside a text view: not in the key view loop,
+/// so it is reachable by mouse alone. `LinkButton` is a real button, which is
+/// the same argument the Settings window's documentation links are built on.
 ///
 /// Modeless and closable, like every About window on the system. It is left
 /// out of the Window menu, since a window nobody navigates between does not
@@ -20,13 +25,13 @@ final class AboutWindowController: NSWindowController {
     enum Metrics {
         /// The mark, at the size the standard panel draws one.
         static let icon: CGFloat = 128
-        /// A floor rather than the width: the window is as wide as its widest
-        /// row needs, and the row of links is that row. A fixed width would
-        /// clip a link the day one is added or renamed.
-        static let minWidth: CGFloat = 320
+        /// A floor rather than the width. The column is as wide as the widest
+        /// button needs, so a link added or renamed past this widens the window
+        /// instead of being clipped by it.
+        static let minColumnWidth: CGFloat = 264
         static let horizontalPadding: CGFloat = 24
-        static let topPadding: CGFloat = 16
-        static let bottomPadding: CGFloat = 22
+        static let topPadding: CGFloat = 24
+        static let bottomPadding: CGFloat = 24
     }
 
     /// `info` is injectable so the window can be built and read back without a
@@ -37,7 +42,7 @@ final class AboutWindowController: NSWindowController {
     /// nothing about a build changes while it is running.
     init(info: AboutInfo = .current) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: Metrics.minWidth, height: Metrics.icon),
+            contentRect: NSRect(x: 0, y: 0, width: Metrics.minColumnWidth, height: Metrics.icon),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         // Set for VoiceOver and never drawn: the titlebar of an About window is
@@ -61,7 +66,6 @@ final class AboutWindowController: NSWindowController {
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -Metrics.bottomPadding),
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Metrics.horizontalPadding),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Metrics.horizontalPadding),
-            content.widthAnchor.constraint(greaterThanOrEqualToConstant: Metrics.minWidth),
         ])
         window.contentView = content
         content.layoutSubtreeIfNeeded()
@@ -85,40 +89,77 @@ final class AboutWindowController: NSWindowController {
         ])
 
         let name = NSTextField(labelWithString: info.name)
-        name.font = .systemFont(ofSize: 18, weight: .semibold)
+        name.font = .systemFont(ofSize: 16, weight: .semibold)
         name.alignment = .center
 
-        // Selectable, so the version can be copied into a bug report rather
-        // than transcribed from the screen.
+        // At the reading size the version lines in these windows are drawn at,
+        // and selectable, so it can be copied into a bug report rather than
+        // transcribed from the screen.
         let version = NSTextField(labelWithString: info.versionLine)
-        version.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        version.font = .systemFont(ofSize: NSFont.systemFontSize)
         version.textColor = .secondaryLabelColor
         version.alignment = .center
         version.isSelectable = true
 
-        let buttons: [NSView] = AboutLink.allCases.map { LinkButton(title: $0.title, url: $0.url) }
-        let links = NSStackView(views: buttons)
-        links.orientation = .horizontal
-        links.spacing = 14
+        let links = linkColumn()
 
         let stack = NSStackView(views: [iconView, name, version, links])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 6
-        stack.setCustomSpacing(14, after: iconView)
-        stack.setCustomSpacing(16, after: version)
+        stack.setCustomSpacing(16, after: iconView)
+        stack.setCustomSpacing(22, after: version)
 
         // Drawn only when there is one. An empty label would reserve its line
         // and leave the window looking as though something failed to load.
         if let copyright = info.copyright {
             let line = NSTextField(labelWithString: copyright)
-            line.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            line.textColor = .tertiaryLabelColor
+            line.font = .systemFont(ofSize: 12)
+            line.textColor = .secondaryLabelColor
             line.alignment = .center
             stack.addArrangedSubview(line)
-            stack.setCustomSpacing(14, after: links)
+            stack.setCustomSpacing(20, after: links)
         }
         return stack
+    }
+
+    /// The links, as buttons of one width stacked under each other.
+    ///
+    /// One width because they are a group and a ragged stack of three would
+    /// read as three unrelated controls; that width is the widest title's, so
+    /// nothing here can be clipped by a number chosen in advance.
+    private static func linkColumn() -> NSStackView {
+        let buttons = AboutLink.allCases.map { link -> LinkButton in
+            let button = LinkButton(title: link.title, url: link.url)
+            // The same button, bezelled. What is worth reusing from
+            // `LinkButton` is the half that matters here: a button that OWNS
+            // its destination rather than looking one up by its own address.
+            // Every line below undoes something it sets to be a caption beside
+            // a settings field, the link tint and the small size among them.
+            button.isBordered = true
+            button.bezelStyle = .rounded
+            button.controlSize = .regular
+            button.contentTintColor = nil
+            button.font = .systemFont(ofSize: NSFont.systemFontSize)
+            return button
+        }
+        // The widest TITLE, taken before any width constraint exists: once one
+        // does, a button reports it back as its fitting size and this would be
+        // the column measuring itself.
+        let width = max(Metrics.minColumnWidth, buttons.map(\.intrinsicContentSize.width).max() ?? 0)
+        for button in buttons {
+            // As with the icon: the stack sets this for an arranged subview,
+            // and a view carrying both an autoresizing mask and a width has
+            // conflicting constraints until it does.
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
+
+        let column = NSStackView(views: buttons.map { $0 as NSView })
+        column.orientation = .vertical
+        column.alignment = .centerX
+        column.spacing = 10
+        return column
     }
 
     /// The app's own icon, with the treatment macOS composites onto it.

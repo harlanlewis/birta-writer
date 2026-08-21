@@ -75,24 +75,48 @@ final class AboutWindowTests: XCTestCase {
         XCTAssertTrue(drawnWithout.contains("Version 2026.821.0"))
     }
 
-    /// The window is as wide as the row of links needs.
+    /// The window is as wide as the column of links needs.
     ///
     /// The failure this exists for is a link added or renamed past the width a
-    /// fixed window was drawn to, which clips the last one: the row still lays
+    /// fixed window was drawn to, which clips its title: the column still lays
     /// out, and nothing else in the app has an opinion about it.
-    func testTheWindowShouldBeWideEnoughForTheRowOfLinksItDraws() throws {
+    func testTheWindowShouldBeWideEnoughForTheLinksItDraws() throws {
         let controller = AboutWindowController(info: Self.info)
         let contentView = try laidOutContent(of: controller)
         let window = try XCTUnwrap(controller.window)
-        let row = try XCTUnwrap(rowOfLinks(in: contentView))
+        let column = try XCTUnwrap(columnOfLinks(in: contentView))
 
+        // `intrinsicContentSize` rather than `fittingSize`: each button carries
+        // a required width constraint, which fittingSize reports back, so the
+        // comparison would be the column against itself.
+        for button in column.arrangedSubviews {
+            XCTAssertGreaterThanOrEqual(button.frame.width, button.intrinsicContentSize.width,
+                                        "\((button as? NSButton)?.title ?? "?") is drawn narrower than its title")
+        }
         let available = window.contentRect(forFrameRect: window.frame).width
         XCTAssertGreaterThanOrEqual(
             available,
-            row.fittingSize.width + AboutWindowController.Metrics.horizontalPadding * 2,
-            "the links row is wider than the window drawing it")
+            column.fittingSize.width + AboutWindowController.Metrics.horizontalPadding * 2,
+            "the links are wider than the window drawing them")
         XCTAssertGreaterThanOrEqual(available, contentView.fittingSize.width)
-        XCTAssertGreaterThanOrEqual(available, AboutWindowController.Metrics.minWidth)
+    }
+
+    /// The links are one stack of same-width buttons rather than a ragged set
+    /// of three, which is what makes them read as a group.
+    ///
+    /// Bordered, which is the part worth pinning: the same class draws link
+    /// text beside a settings field, and this window turns that off. A row of
+    /// link text is the one shape the About windows this follows never use.
+    func testTheLinksShouldBeButtonsOfOneWidth() throws {
+        let column = try XCTUnwrap(columnOfLinks(in: laidOutContent(of: AboutWindowController(info: Self.info))))
+        let widths = Set(column.arrangedSubviews.map(\.frame.width))
+
+        XCTAssertEqual(column.arrangedSubviews.count, AboutLink.allCases.count)
+        XCTAssertEqual(widths.count, 1, "the links are drawn at \(widths.count) different widths")
+        XCTAssertGreaterThanOrEqual(widths.first ?? 0, AboutWindowController.Metrics.minColumnWidth)
+        for button in column.arrangedSubviews {
+            XCTAssertTrue((button as? NSButton)?.isBordered == true)
+        }
     }
 
     /// Modeless, closable, and out of the Window menu: the shape every About
@@ -110,13 +134,13 @@ final class AboutWindowTests: XCTestCase {
         XCTAssertEqual(window.titleVisibility, .hidden)
     }
 
-    private func rowOfLinks(in view: NSView) -> NSStackView? {
+    private func columnOfLinks(in view: NSView) -> NSStackView? {
         if let stack = view as? NSStackView, !stack.arrangedSubviews.isEmpty,
            stack.arrangedSubviews.allSatisfy({ $0 is LinkButton }) {
             return stack
         }
         for subview in view.subviews {
-            if let found = rowOfLinks(in: subview) { return found }
+            if let found = columnOfLinks(in: subview) { return found }
         }
         return nil
     }
