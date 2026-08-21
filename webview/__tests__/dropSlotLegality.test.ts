@@ -32,8 +32,8 @@ import { visibleBoundaryPositions } from "../components/blockMenu";
 import {
     allFoldablePositions,
     headingFoldPlugin,
-    headingFoldPluginKey,
-    type HeadingFoldMeta,
+    foldPluginKey,
+    type FoldMeta,
 } from "../plugins/headingFold";
 import {
     editorView,
@@ -110,9 +110,9 @@ describe("every offered drop slot is one the primitive accepts", () => {
             if (positions.length === 0) {
                 return; // nothing foldable — the unfolded case above is the whole story
             }
-            v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            v.dispatch(v.state.tr.setMeta(foldPluginKey, {
                 type: "setMany", positions, folded: true,
-            } satisfies HeadingFoldMeta));
+            } satisfies FoldMeta));
             expect(refusedOfferings(editor)).toEqual([]);
         }, SWEEP_TIMEOUT);
     }

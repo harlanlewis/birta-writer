@@ -361,13 +361,13 @@ export function createBlockGutter(
         gutter.style.setProperty("--nested-gutter-depth", String(nestedDepth));
     }
 
-    // --paragraph kept as the P marker's stable test/back-compat hook; every
-    // hover-revealed marker (including P) carries --block for shared styling.
+    // Every hover-revealed marker carries --block for shared styling; which
+    // KIND it is reads off data-key, set below from the spec.
     const marker = createMarkerButton(
         view,
         gutter,
         spec.label,
-        `heading-fold-marker heading-fold-marker--block${spec.key === "P" ? " heading-fold-marker--paragraph" : ""}`,
+        "heading-fold-marker heading-fold-marker--block",
         (el) => {
             if (spec.text !== undefined) {
                 el.textContent = spec.text;

@@ -240,32 +240,11 @@ function normalizeSepRow(line: string): string {
     return "|" + cells.join("|") + "|";
 }
 
-// Normalize adjacent strong runs: `**a** **b**` → `**a b**`. Milkdown's
-// serializer used to split a strong node into two `**...**` runs when it
-// contained a link child; it no longer does (7.22.0 keeps a mark open across
-// adjacent nodes), but files saved by older builds still contain the split
-// form, which is semantically identical.
-function normalizeSplitStrong(line: string): string {
-    let prev: string;
-    do {
-        prev = line;
-        line = line.replace(
-            /\*\*((?:[^*]|\*(?!\*))*)\*\* \*\*((?:[^*]|\*(?!\*))*)\*\*/g,
-            "**$1 $2**",
-        );
-    } while (line !== prev);
-    return line;
-}
-
 // Normalize whole-link emphasis to the emphasis-inside canonical form:
 // `**[x](u)**` → `[**x**](u)` (same for `*…*`, `~~…~~`, `***…***`). The
 // fidelity serializer opens link marks outermost, so a fully emphasized link
 // re-serializes with the emphasis INSIDE the link text — semantically
-// identical to the wrapped form saved by older builds or written by hand.
-// Applied AFTER normalizeSplitStrong so that legacy split runs like
-// `**a** **[l](u)** **b**` first merge into `**a [l](u) b**` (which this
-// rewrite then correctly leaves alone: the markers are not flush against
-// the link).
+// identical to the wrapped form a person writes by hand.
 function normalizeWrappedLinkEmphasis(line: string): string {
     // Fixpoint: stacked wrappers (`**~~[x](u)~~**`) unwrap one layer per
     // pass until the emphasis-inside form is reached.
@@ -281,17 +260,20 @@ function normalizeWrappedLinkEmphasis(line: string): string {
 }
 
 // Normalize ONE table cell: strip its padding, treat a lone `<br />` as an
-// empty cell (older saves wrote empty cells as `<br />`), and canonicalize the
-// `<br>` / `<br/>` / `<br />` line-break spellings within its text (MAR-17) so
-// a lost or changed variant attr degrades to no churn instead of a spurious
-// diff. Per-cell rather than inline in the row normalizer because the merge
-// also compares cells one at a time, to salvage the ones an edit elsewhere in
-// the row would otherwise rewrite (carrySavedTableCells, MAR-214) — one
-// definition of "these two cells say the same thing", used by both.
+// empty cell, and canonicalize the `<br>` / `<br/>` / `<br />` line-break
+// spellings within its text (MAR-17) so a lost or changed variant attr
+// degrades to no churn instead of a spurious diff. Per-cell rather than inline
+// in the row normalizer because the merge also compares cells one at a time,
+// to salvage the ones an edit elsewhere in the row would otherwise rewrite
+// (carrySavedTableCells, MAR-214) — one definition of "these two cells say the
+// same thing", used by both.
 function normalizeTableCell(cell: string): string {
     const v = cell.trim();
-    // Legacy: an empty table cell used to be saved as the exact bytes
-    // `<br />`. Kept before canonicalization so it still collapses to "".
+    // A cell whose whole content is `<br />` parses to an EMPTY cell, so the
+    // serializer emits `|  |` and the saved bytes can never be reproduced.
+    // Collapsing both spellings to "" is what stops an edit elsewhere in the
+    // document rewriting such a cell. Before canonicalization, so the lone
+    // form is recognised rather than becoming `<br>`.
     if (v === "<br />") return "";
     return v.replace(/<br\s*\/?>/gi, "<br>");
 }
@@ -565,7 +547,7 @@ function normLineForCompare(line: string, cls: LineClass): string {
         // how the pair is spelled.
         return indentOf(line) + "\x00Q" + t.slice(fence[1].length).trim();
     }
-    return normalizeWrappedLinkEmphasis(normalizeSplitStrong(normalizeOrgCookieEscape(line)));
+    return normalizeWrappedLinkEmphasis(normalizeOrgCookieEscape(line));
 }
 
 // ─── Replacement reconciliation (MAR-213 / MAR-214) ─────────────────────────

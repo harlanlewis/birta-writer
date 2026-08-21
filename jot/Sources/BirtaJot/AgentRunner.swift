@@ -9,13 +9,11 @@ import Foundation
 /// relative `path.md#L12` reference resolves for the agent the same way it
 /// does for the editor.
 ///
-/// What this deliberately does NOT do, and what the extension does instead:
-/// there is no merge of the agent's edit around what you typed while it ran.
-/// Jot reloads the file when the run finishes, so an edit made in the panel
-/// during a run is the losing side. That is a real difference and the reason
-/// `jot/README.md` says so rather than leaving it to be discovered; the merge
-/// engine lives in the extension's TypeScript and porting it is a larger job
-/// than making the feature reachable.
+/// What this deliberately does NOT decide is where the edit lands. This runs
+/// a child process and reads what it printed; it never sees the buffer, so it
+/// cannot tell an edit typed during the run from one the agent made.
+/// `Coordinator.finishAgentRun` asks `BirtaJotCore.AgentLandingPolicy` that,
+/// and is the only thing that fills a report's `text`.
 @MainActor
 final class AgentRunner {
     /// Runs in flight, so the panel can stop them and quitting can too.
@@ -82,10 +80,10 @@ final class AgentRunner {
                 if finished.terminationReason == .uncaughtSignal {
                     report(.init(status: "cancelled", harness: harness, text: nil, message: nil))
                 } else if finished.terminationStatus == 0 {
-                    report(.init(status: "done", harness: harness, text: output, message: nil))
+                    report(.init(status: "done", harness: harness, text: nil, message: nil))
                 } else {
                     report(.init(
-                        status: "failed", harness: harness, text: output,
+                        status: "failed", harness: harness, text: nil,
                         message: Self.failureMessage(status: finished.terminationStatus,
                                                      output: output, harness: harness)))
                 }
@@ -130,8 +128,21 @@ final class AgentRunner {
 struct AgentRunStatus {
     let status: String
     let harness: String?
+    /// The DOCUMENT's bytes, for the page to merge around whatever was typed
+    /// while the run was live, and nothing else. `AgentRunner` always leaves
+    /// this nil: it watches a child process rather than the buffer, so it
+    /// cannot answer the question this field is the answer to. The one filler
+    /// is `Coordinator.finishAgentRun`, through `merging(_:)`.
+    ///
+    /// A console transcript must never reach it. The page treats what arrives
+    /// here as the file and merges it into the note.
     let text: String?
     let message: String?
+
+    /// The same report, carrying the file's bytes for the page's merge.
+    func merging(_ diskText: String) -> AgentRunStatus {
+        AgentRunStatus(status: status, harness: harness, text: diskText, message: message)
+    }
 }
 
 

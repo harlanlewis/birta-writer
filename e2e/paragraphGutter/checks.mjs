@@ -24,7 +24,7 @@ const OWNED_KEYS = Object.entries(JSON.parse(readFileSync(new URL("../gutterKeys
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
-    await page.waitForSelector(".heading-fold-marker--paragraph", { timeout: 10000 });
+    await page.waitForSelector('.heading-fold-marker[data-key="P"]', { timeout: 10000 });
     // The fixture's code block pulls the lazy grammar chunk and re-highlights
     // asynchronously; those late DOM mutations clear Chromium's hover chain
     // out from under a synthetic mouse position. Wait for the DETERMINISTIC
@@ -39,17 +39,17 @@ export async function run({ page, check, baseUrl }) {
         () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
 
-    const pMarker = ".ProseMirror > p .heading-fold-marker--paragraph";
+    const pMarker = '.ProseMirror > p .heading-fold-marker[data-key="P"]';
     const opacity = () => page.$eval(pMarker, (el) => getComputedStyle(el).opacity);
 
 
     // ── 1. P markers on the two top-level TEXT paragraphs only. The fixture
     // also carries an image-only line and a raw-html line — both parse as
     // top-level paragraphs but must NOT get the P marker (MAR-79). ──
-    const markerCount = await page.$$eval(".heading-fold-marker--paragraph", (els) => els.length);
+    const markerCount = await page.$$eval('.heading-fold-marker[data-key="P"]', (els) => els.length);
     check("only the top-level text paragraphs get P markers (not image/html blocks)", markerCount === 2, `count=${markerCount}`);
     const inListOrQuote = await page.$$eval(
-        "li .heading-fold-marker--paragraph, blockquote .heading-fold-marker--paragraph",
+        'li .heading-fold-marker[data-key="P"], blockquote .heading-fold-marker[data-key="P"]',
         (els) => els.length,
     );
     check("no P marker inside list or quote", inListOrQuote === 0);
@@ -120,7 +120,7 @@ export async function run({ page, check, baseUrl }) {
         `tooltip=${tipText}`);
 
     // ── 4c. Heading hash marker: same enlargement, chevron untouched ──
-    const hMarker = ".ProseMirror h2 .heading-fold-marker:not(.heading-fold-marker--paragraph)";
+    const hMarker = '.ProseMirror h2 .heading-fold-marker:not([data-key="P"])';
     const hGeom = await markerGeometry(hMarker);
     check("## marker box is padded beyond the glyph", hGeom.padX >= 10 && hGeom.padY >= 8,
         `padX=${hGeom.padX.toFixed(1)} padY=${hGeom.padY.toFixed(1)}`);
@@ -490,7 +490,7 @@ export async function run({ page, check, baseUrl }) {
         // font size cannot fail this for the wrong reason.
         const glyphs = await page.evaluate(() => {
             const em = parseFloat(getComputedStyle(document.getElementById("editor")).fontSize);
-            const icon = document.querySelector(".ProseMirror > p .heading-fold-marker--paragraph svg");
+            const icon = document.querySelector('.ProseMirror > p .heading-fold-marker[data-key="P"] svg');
             const badge = document.querySelector(".ProseMirror > .heading-fold-heading .heading-fold-marker");
             const toggle = document.querySelector(".ProseMirror > .heading-fold-heading .heading-fold-toggle");
             const w = (el) => (el ? el.getBoundingClientRect().width : null);
@@ -762,6 +762,6 @@ export async function run({ page, check, baseUrl }) {
     // The promoted block is now a heading — it gets the heading gutter, and
     // the P-marker count drops by one (the footnote-body paragraph keeps its).
     await page.waitForTimeout(150);
-    const after = await page.$$eval(".heading-fold-marker--paragraph", (els) => els.length);
+    const after = await page.$$eval('.heading-fold-marker[data-key="P"]', (els) => els.length);
     check("promoted block no longer carries a P marker", after === 1, `count=${after}`);
 }

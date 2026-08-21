@@ -23,19 +23,13 @@ import {
     allFoldablePositions,
     foldedHiddenRanges,
     headingFoldPlugin,
-    headingFoldPluginKey,
+    foldPluginKey,
     isHiddenTargetPos,
-    type HeadingFoldMeta,
+    type FoldMeta,
 } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
-import {
-    checkMove,
-    contentGuardKey,
-    contentGuardPlugin,
-    diffFingerprints,
-    fingerprintDoc,
-    formatFingerprintDiff,
-} from "../plugins/contentGuard";
+import { checkMove, contentGuardKey, contentGuardPlugin } from "../plugins/contentGuard";
+import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { dissolvedMarkersFor, moveBlocks, moveFits } from "../editing/moveBlocks";
 import {
     blockBoundaryPositions,
@@ -344,11 +338,11 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const hPos = nodePos(v, "Section", "heading");
         const headingEnd = hPos + v.state.doc.nodeAt(hPos)!.nodeSize;
         const sectionEnd = nodePos(v, "Next", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "toggle",
             pos: hPos,
-        } satisfies HeadingFoldMeta));
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
+        } satisfies FoldMeta));
+        expect(foldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
         return { editor, v, headingEnd, sectionEnd };
     }
 
@@ -387,7 +381,7 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const hPos = nodePos(v, "Section", "heading");
         expect(moveBlocks(v, moveRangeAt(v, 0)!, sectionEnd)).toBe(true);
 
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(false);
+        expect(foldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(false);
         // Asserted on the DECORATION, not the fold set: the set is what the
         // fix manipulates, so checking it (or foldedHiddenRanges, which is
         // derived from it) only restates the mechanism. The class the fold
@@ -411,9 +405,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const editor = await makeEditor("## Deep\n\ndeep body\n\n## Mover\n\nmover body");
         const v = view(editor);
         const deepPos = nodePos(v, "Deep", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: deepPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         expect(hiddenBlockTexts(v)).toEqual(["deep body"]);
 
         // The TOC's "make this a child of the one above" gesture: an in-place
@@ -464,9 +458,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         );
         const v = view(editor);
         const deepPos = nodePos(v, "Deep", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: deepPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         expect(hiddenBlockTexts(v)).toEqual(["deep text"]);
 
         // Move the collapsed unit (heading + hidden body) up so it lands
@@ -491,9 +485,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         );
         const v = view(editor);
         const deepPos = nodePos(v, "Deep", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: deepPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         expect(hiddenBlockTexts(v)).toEqual(["deep text"]);
 
         // Move the collapsed unit to the top of the document: `# One`
@@ -524,9 +518,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const editor = await makeEditor("## Alpha\n\nxx\n\n# Bravo\n\nyy");
         const v = view(editor);
         const alphaPos = nodePos(v, "Alpha", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: alphaPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         expect(hiddenBlockTexts(v)).toEqual(["xx"]);
 
         // Bare heading range: exactly the node, not the collapsed unit.
@@ -553,9 +547,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const editor = await makeEditor("## A\n\na body\n\n## B\n\nb body");
         const v = view(editor);
         const aPos = nodePos(v, "A", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: aPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         expect(hiddenBlockTexts(v)).toEqual(["a body"]);
 
         expect(moveBlocks(v, moveRangeAt(v, aPos)!, aPos, { relevelDelta: -1 })).toBe(true);
@@ -568,9 +562,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const editor = await makeEditor("## Deep\n\ndeep body\n\n# Mover\n\nmover body");
         const v = view(editor);
         const deepPos = nodePos(v, "Deep", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: deepPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
 
         // H1 -> H2 ties Deep's rank, so it still ends Deep's section: visible
         // where it lands, and Deep stays folded.
@@ -590,9 +584,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const editor = await makeEditor("# One\n\nalpha\n\n# Last\n\nlast body");
         const v = view(editor);
         const lastPos = nodePos(v, "Last", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: lastPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         expect(foldedHiddenRanges(v.state)).toHaveLength(1);
 
         const alpha = moveRangeAt(v, nodePos(v, "alpha", "paragraph"))!;
@@ -619,9 +613,9 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const editor = await makeEditor("# Mover\n\nmover body\n\n# Keep\n\nkept body");
         const v = view(editor);
         const keepPos = nodePos(v, "Keep", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: keepPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         // Keep is the LAST section, so its range runs to doc end and the end
         // slot lands "inside" it — but `# Mover` ties Keep's rank, ending its
         // section where it lands, so it needs no reveal to stay visible.
@@ -631,7 +625,7 @@ describe("moveBlocks — fold-hidden target legality", () => {
 
         expect(markdown(editor)).toBe("# Keep\n\nkept body\n\n# Mover\n\nmover body");
         expect(
-            headingFoldPluginKey.getState(v.state)!.folded.size,
+            foldPluginKey.getState(v.state)!.folded.size,
             "moving a section past a collapsed one must not reveal it",
         ).toBe(1);
     });
@@ -641,11 +635,11 @@ describe("moveBlocks — fold-hidden target legality", () => {
         const v = view(editor);
         const calloutPos = nodePos(v, "callout body", "callout");
         expect(calloutPos).toBeGreaterThan(-1);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set",
             pos: calloutPos,
             folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         const hidden = foldedHiddenRanges(v.state).find((r) => r.pos === calloutPos);
         expect(hidden).toBeDefined();
         const before = markdown(editor);
@@ -693,16 +687,16 @@ describe("moveBlocks — allowed normalization and side-state", () => {
         const editor = await makeEditor("## A\n\nbody A\n\n## B\n\nbody B");
         const v = view(editor);
         const aPos = nodePos(v, "A", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "toggle",
             pos: aPos,
-        } satisfies HeadingFoldMeta));
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(aPos)).toBe(true);
+        } satisfies FoldMeta));
+        expect(foldPluginKey.getState(v.state)!.folded.has(aPos)).toBe(true);
         // Move section A (heading + hidden body) to the document end.
         expect(moveBlocks(v, moveRangeAt(v, aPos)!, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("## B\n\nbody B\n\n## A\n\nbody A");
         const newAPos = nodePos(v, "A", "heading");
-        const folded = headingFoldPluginKey.getState(v.state)!.folded;
+        const folded = foldPluginKey.getState(v.state)!.folded;
         expect(folded.has(newAPos)).toBe(true); // the fold followed the section
         expect(folded.size).toBe(1); // and nothing else inherited it
     });
@@ -824,9 +818,9 @@ describe("moveBlocks — veto awareness", () => {
         const editor = await makeEditor("# One\n\nalpha\n\n# Last\n\nlast body");
         const v = view(editor);
         const lastPos = nodePos(v, "Last", "heading");
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "set", pos: lastPos, folded: true,
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         v.updateState(v.state.reconfigure({
             plugins: [
                 ...v.state.plugins,
@@ -896,9 +890,9 @@ describe("hidden-range registry exhaustiveness", () => {
         const v = view(editor);
         const foldables = allFoldablePositions(v.state.doc);
         expect(foldables.length).toBeGreaterThan(1);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "foldAll",
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         const hidden = foldedHiddenRanges(v.state);
         const before = markdown(editor);
         for (const pos of foldables) {
@@ -918,9 +912,9 @@ describe("hidden-range registry exhaustiveness", () => {
     it("drag slots and primitive legality should agree boundary-for-boundary", async () => {
         const editor = await makeEditor(KITCHEN_SINK);
         const v = view(editor);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, {
             type: "foldAll",
-        } satisfies HeadingFoldMeta));
+        } satisfies FoldMeta));
         // The drag UI's slot list must be EXACTLY the full boundary list
         // minus the positions the shared registry declares hidden — any
         // other relationship means UI slots and primitive legality drifted.

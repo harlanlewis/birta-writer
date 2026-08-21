@@ -2,7 +2,7 @@
  * Tests for the block keyboard model (MAR-22 move keys / MAR-82 keyboard
  * remainder): Escape's caret↔block toggle, Shift+arrow block-wise
  * extend/shrink (and its never-steal-text-selection gate), and Alt+arrow
- * moves through the shared moveBlockTo machinery.
+ * moves through the shared moveBlocks machinery.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
@@ -25,7 +25,7 @@ import {
 } from "../plugins/blockKeys";
 import { registerEscapeLayer, closeTopmostLayer } from "../ui/escapeLayers";
 import { BlockRangeSelection } from "../plugins/blockRange";
-import { headingFoldPluginKey } from "../plugins/headingFold";
+import { foldPluginKey } from "../plugins/headingFold";
 import { NodeSelection } from "../pm";
 
 let editors: Editor[] = [];
@@ -530,8 +530,8 @@ describe("fold-aware block units (collapsed headings)", () => {
             if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
         });
         expect(hPos).toBeGreaterThan(-1);
-        view.dispatch(view.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
-        expect(headingFoldPluginKey.getState(view.state)!.folded.has(hPos)).toBe(true);
+        view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: hPos }));
+        expect(foldPluginKey.getState(view.state)!.folded.has(hPos)).toBe(true);
         return view;
     }
 
@@ -672,8 +672,8 @@ describe("duplicateSelectedBlocks (Shift+Alt+arrows / palette)", () => {
         view.state.doc.forEach((node, offset) => {
             if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
         });
-        view.dispatch(view.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
-        expect(headingFoldPluginKey.getState(view.state)!.folded.has(hPos)).toBe(true);
+        view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: hPos }));
+        expect(foldPluginKey.getState(view.state)!.folded.has(hPos)).toBe(true);
         placeCaretIn(view, "Section");
         expect(duplicateSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
         // The copy must not vanish into the fold's hidden run.
@@ -757,7 +757,7 @@ describe("deleteSelectedBlocks (Cmd+Shift+K / palette)", () => {
         view.state.doc.forEach((node, offset) => {
             if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
         });
-        view.dispatch(view.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
+        view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: hPos }));
         placeCaretIn(view, "Section");
         expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
         expect(blockOrder(view)).toEqual(["Intro", "Body one", "Tail"]);

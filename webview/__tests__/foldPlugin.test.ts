@@ -469,6 +469,7 @@ describe("persistence anchors", () => {
         const restored = resolveFoldAnchors(v.state.doc, {
             headings: ["setup:0", "missing:3"],
             callouts: ["9/9", "not-a-path", "0"],
+            blocks: [],
         });
 
         // Assert

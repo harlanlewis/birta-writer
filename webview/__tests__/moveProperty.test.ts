@@ -31,14 +31,8 @@ import type { EditorView } from "../pm";
 import type { Node as ProseNode } from "../pm";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
-import {
-    checkDuplicate,
-    checkMove,
-    contentGuardPlugin,
-    diffFingerprints,
-    fingerprintDoc,
-    formatFingerprintDiff,
-} from "../plugins/contentGuard";
+import { checkDuplicate, checkMove, contentGuardPlugin } from "../plugins/contentGuard";
+import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { duplicateBlockRange } from "../components/blockMenu";
 import {

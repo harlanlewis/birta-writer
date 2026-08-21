@@ -23,7 +23,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { insertCalloutCommand } from "../plugins/callouts";
-import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { headingFoldPlugin, foldPluginKey } from "../plugins/headingFold";
 import { runEditorCommand } from "../editorCommands";
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";
@@ -312,7 +312,7 @@ describe("quoting a collapsed heading", () => {
 
     /** Collapse the top-level heading at `pos`. */
     function collapse(v: EditorView, pos: number): void {
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos }));
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos }));
     }
 
     // A collapsed heading is inseparable from its hidden section — the rule

@@ -949,18 +949,14 @@ describe("Fold All scope (one grammar, every foldable)", () => {
         expect(restored).toEqual(foldedSet);
     });
 
-    it("stale block anchors (and pre-MAR-125 bags without a blocks array) resolve silently", async () => {
+    it("stale block anchors should resolve to nothing rather than an invisible fold", async () => {
         // Arrange
         const editor = await makeEditor("just a paragraph");
         const v = view(editor);
 
-        // Act + Assert: garbage paths drop; a legacy bag missing `blocks`
-        // must not throw.
+        // Act + Assert: paths naming nodes this doc does not have are dropped.
         expect(
             resolveFoldAnchors(v.state.doc, { headings: [], callouts: [], blocks: ["9/9", "0", "x"] }).size,
-        ).toBe(0);
-        expect(
-            resolveFoldAnchors(v.state.doc, { headings: [], callouts: [] } as never).size,
         ).toBe(0);
     });
 });

@@ -15,9 +15,8 @@
  * deletions, paste — cost one meta lookup and are never fingerprinted.
  *
  * The fingerprint itself (the identity multiset, its diff, and the console
- * formatter) lives in ./fingerprints — a neutral module shared with the
- * reparseHazard save-survival check — and is re-exported here for its
- * historical consumers.
+ * formatter) lives in ./fingerprints, a neutral module shared with the
+ * reparseHazard save-survival check. Import it from there, not through here.
  */
 import { Plugin, PluginKey, type EditorState, type Transaction } from "../pm";
 import { Fragment, type Node as ProseNode } from "../pm";
@@ -39,19 +38,6 @@ import {
     diffFingerprints,
     fingerprintDoc,
     formatFingerprintDiff,
-    type Fingerprint,
-    type FingerprintDelta,
-} from "./fingerprints";
-
-// Re-exported from their new neutral home (./fingerprints) for the
-// historical consumers of this module's fingerprint surface (the move
-// primitive's markerKeyOf, the generative move suites' oracle imports).
-export {
-    diffFingerprints,
-    fingerprintDoc,
-    formatFingerprintDiff,
-    isBlankParagraph,
-    markerKeyOf,
     type Fingerprint,
     type FingerprintDelta,
 } from "./fingerprints";

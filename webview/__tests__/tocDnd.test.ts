@@ -11,7 +11,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { headingFoldPlugin, foldPluginKey } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 import { setBlockMenuContext } from "../components/blockMenu";
@@ -170,8 +170,8 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
     it("a collapsed section dragged via its toc item should carry its hidden body", async () => {
         const editor = await makeEditor("# A\n\nhidden body\n\n# B\n\nb body");
         const v = view(editor);
-        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: 0 }));
-        expect(headingFoldPluginKey.getState(v.state)!.folded.has(0)).toBe(true);
+        v.dispatch(v.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: 0 }));
+        expect(foldPluginKey.getState(v.state)!.folded.has(0)).toBe(true);
         const dom = buildTocDom(v);
         const dnd = initDnd(v, dom);
         const [entryA] = headingsOf(v);

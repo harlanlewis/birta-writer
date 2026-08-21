@@ -47,7 +47,7 @@ async function markerCenter(page, sel, text) {
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
-    await page.waitForSelector(".heading-fold-marker--paragraph", { timeout: 10000 });
+    await page.waitForSelector('.heading-fold-marker[data-key="P"]', { timeout: 10000 });
     await page.waitForTimeout(500);
 
     // ── 1. Drag the first paragraph below the list ──

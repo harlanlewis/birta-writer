@@ -97,7 +97,7 @@ export async function run({ page, check, baseUrl }) {
         Math.abs(marker.cy - hr.cy) <= 2, `marker.cy=${marker.cy} hr.cy=${hr.cy}`);
     // Calibration net: the P marker of the paragraph above keeps the same
     // column, so the two markers align to within a pixel.
-    const pMarker = await rect(page, ".ProseMirror > p .heading-fold-marker--paragraph");
+    const pMarker = await rect(page, '.ProseMirror > p .heading-fold-marker[data-key="P"]');
     check("marker sits in the same gutter column as the paragraph's P marker",
         Math.abs(marker.right - pMarker.right) <= 1 && Math.abs(marker.x - pMarker.x) <= 1,
         `hr marker right=${marker.right} P right=${pMarker.right}`);
@@ -340,7 +340,7 @@ export async function run({ page, check, baseUrl }) {
     const mdxHost = await rect(page, MDX_HOST);
     check("mdx marker is seated on the block's label line",
         Math.abs(mdxMarker.cy - label.cy) <= 3, `marker.cy=${mdxMarker.cy} label.cy=${label.cy} host=${JSON.stringify(mdxHost)}`);
-    const pM = await rect(page, ".ProseMirror > p .heading-fold-marker--paragraph");
+    const pM = await rect(page, '.ProseMirror > p .heading-fold-marker[data-key="P"]');
     check("mdx marker keeps the shared gutter column",
         Math.abs(mdxMarker.right - pM.right) <= 1, `mdx right=${mdxMarker.right} P right=${pM.right}`);
     measuredKeys.add(await page.$eval(`${MDX_GUTTER} .heading-fold-marker`, (el) => el.dataset.key));

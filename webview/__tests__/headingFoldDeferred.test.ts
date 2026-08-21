@@ -14,7 +14,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { headingFoldPlugin, foldPluginKey } from "../plugins/headingFold";
 
 let editors: Editor[] = [];
 let idleCallbacks: Array<() => void> = [];
@@ -58,7 +58,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
 }
 
 const view = (editor: Editor): EditorView => editor.action((ctx) => ctx.get(editorViewCtx));
-const foldState = (editor: Editor) => headingFoldPluginKey.getState(view(editor).state)!;
+const foldState = (editor: Editor) => foldPluginKey.getState(view(editor).state)!;
 
 const HEADING_DOC = "# One\n\ntext\n\n## Two\n\ntext\n\n### Three\n\ntext\n";
 

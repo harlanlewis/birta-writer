@@ -43,7 +43,7 @@ export {
 
 // The fold plugin's key and transaction-meta vocabulary, for operations that
 // must carry fold side-state (move/delete metas) with their edit.
-export { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState";
+export { foldPluginKey, type FoldMeta } from "../plugins/foldState";
 
 // The content-conservation guard's tagging protocol: every structural
 // operation declares its contract on the transaction it dispatches.

@@ -395,7 +395,7 @@ export async function run({ page, check, baseUrl }) {
             toggleShown: shown(document.querySelector(".tb-dock-toggle")),
             glyph: document.querySelector(".tb-dock-glyph")?.textContent,
             overflows: row ? row.scrollWidth > row.clientWidth + 1 : null,
-            saved: window.__state?.formattingDockExpanded,
+            saved: window.__state?.formattingRowExpanded,
             barHeight: bar?.getBoundingClientRect().height ?? null,
         };
     });
@@ -937,12 +937,12 @@ export async function run({ page, check, baseUrl }) {
     // `getState` in its document-start script (Bridge.userScript), and the
     // dock reads it while it is being built, which is before `init` arrives.
     // Seeded here the same way, so the ORDER is the one the panel has.
-    await page.addInitScript(() => { window.__seedState = { formattingDockExpanded: true }; });
+    await page.addInitScript(() => { window.__seedState = { formattingRowExpanded: true }; });
     await mount("index.html");
     const booted = await page.evaluate(() => ({
         expanded: document.querySelector(".tb-dock")?.dataset.expanded,
         rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
-        seeded: window.__state?.formattingDockExpanded,
+        seeded: window.__state?.formattingRowExpanded,
     }));
     check("jot: a saved expanded flag boots the dock open, without a click",
         booted.expanded === "true" && booted.rowShown === true, JSON.stringify(booted));

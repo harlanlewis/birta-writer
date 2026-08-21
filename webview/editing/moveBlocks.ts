@@ -74,13 +74,14 @@ import type { EditorView } from "../pm";
 import { Fragment, type Node as ProseNode } from "../pm";
 import { TextSelection, type EditorState, type Selection, type Transaction } from "../pm";
 import { BlockRangeSelection } from "../plugins/blockRange";
-import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState";
+import { foldPluginKey, type FoldMeta } from "../plugins/foldState";
 // Runtime-only cycle (moveBlocks → headingFold → blockMenu → moveBlocks):
 // these are only called inside function bodies, matching the established
 // contentGuard ↔ headingFold precedent. Together they are `isHiddenTargetPos`
 // taken apart, so a caller judging many targets pays the list once.
 import { foldedHiddenRanges, hiddenRangeCoversTarget } from "../plugins/headingFold";
-import { isBlankParagraph, markerKeyOf, showGuardNotice, tagContentGuard } from "../plugins/contentGuard";
+import { showGuardNotice, tagContentGuard } from "../plugins/contentGuard";
+import { isBlankParagraph, markerKeyOf } from "../plugins/fingerprints";
 import { reparseRefusal } from "../plugins/reparseHazard";
 import { flashRange } from "./rangeIndicator";
 import { t } from "../i18n";
@@ -529,12 +530,12 @@ export function appendMove(
     // ── 5. Side-state rides along ──
     // The fold-preserving move meta: a collapsed section stays collapsed at
     // its destination, and nothing else inherits its fold.
-    tr.setMeta(headingFoldPluginKey, {
+    tr.setMeta(foldPluginKey, {
         type: "move",
         from: source.from,
         to: source.to,
         insertAt,
-    } satisfies HeadingFoldMeta);
+    } satisfies FoldMeta);
 
     // ── 1. Content-guard tag ──
     // Content-guard contract (MAR-108): a move conserves content exactly

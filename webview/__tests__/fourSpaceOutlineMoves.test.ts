@@ -27,12 +27,8 @@ import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges } from "@birta/minimal-diff";
 import type { Node as ProseNode } from "../pm";
 import { Slice, TextSelection } from "../pm";
-import {
-    contentGuardPlugin,
-    diffFingerprints,
-    fingerprintDoc,
-    formatFingerprintDiff,
-} from "../plugins/contentGuard";
+import { contentGuardPlugin } from "../plugins/contentGuard";
+import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { moveBlocks } from "../editing/moveBlocks";
 import { markdownProfile, computeRoundTripProtection } from "../utils/minimalDiff";
 import { mergeVerified } from "../utils/verifiedMerge";

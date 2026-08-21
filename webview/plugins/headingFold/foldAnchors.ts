@@ -34,8 +34,10 @@ export interface FoldAnchors {
     callouts: string[];
     /** Same path encoding for every other node-anchored foldable (list
      * items, tables, code blocks, blockquotes, Notion asides, directives,
-     * footnote definitions). A separate array (not merged into `callouts`)
-     * so older persisted bags round-trip untouched. */
+     * footnote definitions). A separate array because the two resolve under
+     * DIFFERENT predicates: a callout anchor must still name a foldable
+     * callout, and a block anchor must name a non-heading with a hidden
+     * range. Merged, neither predicate could be applied. */
     blocks: string[];
 }
 
@@ -127,17 +129,15 @@ export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> 
         });
     }
     // Same predicates as the live layers: an anchor persisted for a block
-    // that is no longer foldable (or never was — e.g. a list-item-nested
-    // one from an older build) is dropped, never restored into an
-    // invisible fold. `?? []` tolerates pre-MAR-125 anchor bags with no
-    // `blocks` array.
-    for (const encoded of anchors.callouts ?? []) {
+    // that is no longer foldable is dropped, never restored into an
+    // invisible fold.
+    for (const encoded of anchors.callouts) {
         const hit = resolveChildPath(doc, encoded);
         if (hit && isFoldableCallout(doc, hit.pos, hit.node)) {
             folded.add(hit.pos);
         }
     }
-    for (const encoded of anchors.blocks ?? []) {
+    for (const encoded of anchors.blocks) {
         const hit = resolveChildPath(doc, encoded);
         if (hit && !isHeadingNode(hit.node) && foldHiddenRange(doc, hit.pos) !== null) {
             folded.add(hit.pos);

@@ -44,17 +44,12 @@ import type { Node as ProseNode } from "../pm";
 import {
     allFoldablePositions,
     headingFoldPlugin,
-    headingFoldPluginKey,
-    type HeadingFoldMeta,
+    foldPluginKey,
+    type FoldMeta,
 } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
-import {
-    checkMove,
-    contentGuardPlugin,
-    diffFingerprints,
-    fingerprintDoc,
-    formatFingerprintDiff,
-} from "../plugins/contentGuard";
+import { checkMove, contentGuardPlugin } from "../plugins/contentGuard";
+import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { isBlankParagraph } from "../plugins/fingerprints";
 import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { applyMinimalChanges, computeRoundTripProtection, markdownProfile } from "../utils/minimalDiff";
@@ -1202,21 +1197,21 @@ describe("corpus move-sampling gate — folded variant", { timeout: CORPUS_TIMEO
                 return; // nothing foldable in this fixture — base tier covers it
             }
             v.dispatch(
-                v.state.tr.setMeta(headingFoldPluginKey, {
+                v.state.tr.setMeta(foldPluginKey, {
                     type: "set",
                     pos: foldables[0]!,
                     folded: true,
-                } satisfies HeadingFoldMeta),
+                } satisfies FoldMeta),
             );
             // has(), not size === 1: fixtures may declare their own folded
             // callouts (`[!tip]-` collapses by default).
-            expect(headingFoldPluginKey.getState(v.state)!.folded.has(foldables[0]!)).toBe(true);
+            expect(foldPluginKey.getState(v.state)!.folded.has(foldables[0]!)).toBe(true);
 
             sampleMoves(editor, v, fixture, protection, (context) => {
                 // The fold entry must still resolve to a foldable block —
                 // never to whatever filled the gap (the B5 class).
                 const foldableNow = new Set(allFoldablePositions(v.state.doc));
-                for (const pos of headingFoldPluginKey.getState(v.state)!.folded) {
+                for (const pos of foldPluginKey.getState(v.state)!.folded) {
                     expect(
                         foldableNow.has(pos),
                         `fold entry at ${pos} no longer resolves to a foldable — ${context}`,

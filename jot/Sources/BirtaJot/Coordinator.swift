@@ -86,6 +86,9 @@ final class Coordinator {
     /// the coordinator for the life of the app.
     private var pendingContexts: [String: (AgentReference.Selection?) -> Void] = [:]
     private let agent = AgentRunner()
+    /// Per run, the file holding the agent's own version while the page's
+    /// merge decides whether the document ended up with all of it.
+    private var agentRescues: [String: URL] = [:]
     private var autosaveTimer: Timer?
     private var autosaveDeadline: Date?
     /// The typing pause that ends a burst, and the ceiling a burst cannot pass.
@@ -750,7 +753,9 @@ final class Coordinator {
             openPreferences?()
         case let .askAgent(prompt, requestId, model, effort):
             runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort)
-        case let .stopAgentRun(requestId):
+        case let .agentMergeResult(requestId, outcome):
+            settleAgentRescue(requestId: requestId, outcome: outcome)
+        case let .agentCancel(requestId):
             agent.stop(requestId: requestId) { [weak self] status in
                 self?.reportAgent(requestId: requestId, status)
             }
@@ -1192,6 +1197,12 @@ final class Coordinator {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
+            // The bytes the agent opens, and the file they belong to. A
+            // finished run compares against both: the bytes to tell its own
+            // edit from one typed into the panel while it ran, the file
+            // because Settings can rebind the panel to another one meanwhile.
+            let handoff = self.latest
+            let handoffURL = self.boundURL
             let directory = self.boundURL.deletingLastPathComponent()
             let reference = "\(self.boundURL.lastPathComponent)#L1"
             let line = AgentRequest.compose(prompt: request, reference: reference)
@@ -1199,14 +1210,85 @@ final class Coordinator {
                            workingDirectory: directory) { [weak self] status in
                 guard let self else { return }
                 if status.status == "done" {
-                    // The agent edited the file; bring it back into the panel.
-                    // Whatever was typed during the run is the losing side,
-                    // which jot/README.md says out loud.
-                    self.reloadFromDiskIntoBuffer()
+                    self.finishAgentRun(requestId: id, status, handoff: handoff, handoffURL: handoffURL)
+                } else {
+                    self.reportAgent(requestId: id, status)
                 }
-                self.reportAgent(requestId: id, status)
             }
         }
+    }
+
+    /// Land a finished run's edit, by `BirtaJotCore.AgentLandingPolicy`.
+    ///
+    /// The reload comes BEFORE the report, so the page still has the run live
+    /// when the change arrives and takes it into the undo history
+    /// (`recordsExternalInHistory`); `settleAgentRun` runs on the report and
+    /// would end that.
+    private func finishAgentRun(requestId: String, _ status: AgentRunStatus, handoff: String,
+                                handoffURL: URL) {
+        // The panel moved to another file while the run worked, so the file it
+        // edited is not the one on screen. Neither answer below is available:
+        // reading it in would replace the note the user switched to, and
+        // handing its bytes to the page would merge one document into another.
+        guard boundURL == handoffURL else {
+            reportAgent(requestId: requestId, status)
+            return
+        }
+        guard !noteMissing, case .contents(let onDisk) = readActiveNote() else {
+            // A note that is missing, unreadable, or has never been written:
+            // `reloadFromDiskIntoBuffer` holds the judgement for all three,
+            // and there is nothing to hand the page either way.
+            reloadFromDiskIntoBuffer()
+            reportAgent(requestId: requestId, status)
+            return
+        }
+        let landing = AgentLandingPolicy.landing(handoff: handoff, onDisk: onDisk, buffer: latest)
+        if landing.reloadsBuffer { reloadFromDiskIntoBuffer() }
+        if let diskText = landing.pageText {
+            // Written BEFORE the page is told, not after it answers. The page
+            // merges, dispatches a transaction, and that restarts the autosave
+            // debounce, so the buffer is on its way over the agent's file
+            // within half a second. Waiting for `agentMergeResult` to decide
+            // whether to keep a copy would be racing that write with an IPC
+            // round trip. So the copy is made unconditionally here and removed
+            // again when the page reports that nothing was left out.
+            rescueAgentVersion(requestId: requestId, text: diskText)
+            reportAgent(requestId: requestId, status.merging(diskText))
+        } else {
+            reportAgent(requestId: requestId, status)
+        }
+    }
+
+    /// Keep the agent's own version beside the note while the page decides.
+    ///
+    /// Same answer, and the same spelling, as the rescue for a note deleted
+    /// underneath us: a numbered file beside the original, so nothing is ever
+    /// overwritten. A failure here is not worth interrupting the run for; what
+    /// it costs is the copy, and the run still lands.
+    private func rescueAgentVersion(requestId: String, text: String) {
+        let directory = boundURL.deletingLastPathComponent()
+        let stem = boundURL.deletingPathExtension().lastPathComponent
+        let ext = boundURL.pathExtension.isEmpty ? "md" : boundURL.pathExtension
+        let target = Coordinator.unusedURL(in: directory, stem: "\(stem) (agent)", extension: ext)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try AtomicFile.writeString(text, to: target)
+            agentRescues[requestId] = target
+        } catch {
+            NSLog("Birta Writer Jot: could not keep the agent's version: \(error)")
+        }
+    }
+
+    /// The page has said what its merge did, so the copy is either unnecessary
+    /// or is the only place the agent's work still exists.
+    private func settleAgentRescue(requestId: String, outcome: String) {
+        guard let target = agentRescues.removeValue(forKey: requestId) else { return }
+        if AgentRescuePolicy.keepsAgentVersion(outcome: outcome) {
+            statusOverlay.flash("Some of the agent's changes overlapped yours. Its version is in \(target.lastPathComponent).")
+            return
+        }
+        // Everything it wrote is in the document, so the copy is noise.
+        try? FileManager.default.removeItem(at: target)
     }
 
     private func reportAgent(requestId: String, _ status: AgentRunStatus) {

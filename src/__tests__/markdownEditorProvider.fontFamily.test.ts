@@ -13,7 +13,8 @@ import * as vscode from "vscode";
 import { makeFakeTextDocument, resetTextDocumentMocks } from "../../__mocks__/vscode";
 import { FONT_PRESET_STACKS } from "../../shared/fontPresets";
 
-import { MarkdownEditorProvider, escapeHtmlAttr } from "../MarkdownEditorProvider";
+import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
+import { escapeHtmlAttr } from "../webviewHtml";
 
 const makeContext = () =>
     ({

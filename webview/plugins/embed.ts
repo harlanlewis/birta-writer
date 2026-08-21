@@ -19,7 +19,7 @@
  *
  * Trigger (unambiguous, round-trip-safe): a top-level paragraph whose ENTIRE
  * content is one text node carrying exactly one `link` mark whose href equals the
- * text (a bare autolink), AND recognizeProvider(href) matches. That excludes
+ * text (a bare autolink), AND recognizeEmbed(href) matches. That excludes
  * `[label](url)` (text != href) and URLs mixed into prose.
  *
  * LINK CARDS (MAR-185) ride the same plugin as a second card kind: a lone web
@@ -48,7 +48,7 @@ import type { Command, EditorState, EditorView, Node as ProseNode } from "../pm"
 import { Decoration, DecorationSet, keymap, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
-import { providerCardGateOpen, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
+import { providerCardGateOpen, recognizeEmbed, type EmbedMatch } from "../utils/embedProviders";
 // messaging is in the eager bundle already; referencing it here adds nothing.
 import { notifyOpenUrl } from "../messaging";
 // The metadata store is eager (messageHandlers routes replies through it);
@@ -279,14 +279,14 @@ function embedWidget(match: CardMatch, sourceUrl: string): (view: EditorView, ge
 }
 
 /**
- * `recognizeProvider` memoized on the URL (MAR-215). The walk below runs on
+ * `recognizeEmbed` memoized on the URL (MAR-215). The walk below runs on
  * every doc-changing transaction, and provider recognition — a URL parse plus
  * a regex per provider, per bare link — was the expensive half: on the
  * link-heavy typing fixture (360 bare autolinks) it dominated the plugin's
  * per-keystroke cost, re-deriving the identical answer for every link the
  * keystroke did not touch.
  *
- * A memo rather than a changed-range walk because `recognizeProvider` is a
+ * A memo rather than a changed-range walk because `recognizeEmbed` is a
  * pure function of its URL: same string, same answer, no document coordinates
  * involved — so there is nothing to forward-map and no old-vs-new side to get
  * wrong. Results are treated as immutable (frozen) since callers now share one
@@ -299,12 +299,12 @@ function embedWidget(match: CardMatch, sourceUrl: string): (view: EditorView, ge
 const RECOGNIZE_CACHE_LIMIT = 512;
 let recognizeCache = new Map<string, EmbedMatch | null>();
 
-function recognizeProviderCached(url: string): EmbedMatch | null {
+function recognizeEmbedCached(url: string): EmbedMatch | null {
     const hit = recognizeCache.get(url);
     if (hit !== undefined) {
         return hit;
     }
-    const match = recognizeProvider(url);
+    const match = recognizeEmbed(url);
     if (recognizeCache.size >= RECOGNIZE_CACHE_LIMIT) {
         recognizeCache = new Map();
     }
@@ -367,7 +367,7 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         // Recognized independently of the feature key: a provider link is
         // a provider link whether or not embeds are on, and the link-card
         // default must not re-card it (below) just because they are off.
-        const recognized = bareLinkHref(node) !== null ? recognizeProviderCached(href) : null;
+        const recognized = bareLinkHref(node) !== null ? recognizeEmbedCached(href) : null;
         if (providers && recognized && providerCardGateOpen(recognized)) {
             push(recognized, href, pos, node);
             return;

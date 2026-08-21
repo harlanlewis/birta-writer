@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, nodeViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { createHtmlView } from "../editor";
+import { createHtmlView } from "../components/htmlView";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 

@@ -10,7 +10,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import type { EditorView } from "../pm";
 import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { foldedHiddenRanges, headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { foldedHiddenRanges, headingFoldPlugin, foldPluginKey } from "../plugins/headingFold";
 import { setStickyContent, headingStickyPlugin, stickyAncestors, stickyHeadingFoldable } from "../plugins/headingSticky";
 import { setBlockMenuContext, closeBlockMenu } from "../components/blockMenu";
 
@@ -328,7 +328,7 @@ describe("sticky heading rescan scheduling", () => {
         const docBefore = editorView.state.doc;
 
         editorView.dispatch(
-            editorView.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: 0 }),
+            editorView.state.tr.setMeta(foldPluginKey, { type: "toggle", pos: 0 }),
         );
 
         // The branch this pins exists precisely because collapsing a section

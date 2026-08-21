@@ -65,6 +65,7 @@ export {
     loomId,
     miroEmbedUrl,
     miroId,
+    recognizeEmbed,
     stackblitzEmbedUrl,
     stackblitzId,
     vimeoEmbedUrl,
@@ -364,13 +365,6 @@ export function providerFor(kind: EmbedKind): EmbedProvider {
     // The map is total over EmbedKind by construction.
     return PROVIDER_BY_KIND.get(kind)!;
 }
-
-/**
- * Recognize which provider (if any) a bare link href points at — the shared
- * core's recognizeEmbed under its historical webview name. Callers that need
- * per-URL memoization use the embed plugin's cache (MAR-215) on top of this.
- */
-export const recognizeProvider: (url: string) => EmbedMatch | null = recognizeEmbed;
 
 /**
  * Whether a recognized provider match renders as a provider card right now:

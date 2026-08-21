@@ -6,9 +6,9 @@ import { applyTooltip, hideTooltip } from "../ui/tooltip";
 import {
     foldHiddenRange,
     foldSubtreeAt,
-    headingFoldPluginKey,
+    foldPluginKey,
     wireMarkerButtonProtocol,
-    type HeadingFoldMeta,
+    type FoldMeta,
 } from "./headingFold";
 import { t } from "../i18n";
 import {
@@ -35,7 +35,7 @@ const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
  * "Collapse content" and never did anything. Exported for unit testing.
  */
 export function stickyHeadingFoldable(state: EditorState, headingPos: number): boolean {
-    const foldState = headingFoldPluginKey.getState(state);
+    const foldState = foldPluginKey.getState(state);
     return (foldState?.enabled ?? false) && foldHiddenRange(state.doc, headingPos) !== null;
 }
 
@@ -255,7 +255,7 @@ export function setStickyContent(
             }
 
             const tr = view.state.tr
-                .setMeta(headingFoldPluginKey, { type: "toggle", pos: livePos } satisfies HeadingFoldMeta)
+                .setMeta(foldPluginKey, { type: "toggle", pos: livePos } satisfies FoldMeta)
                 .setMeta("addToHistory", false);
 
             if (!collapsed) {
@@ -463,7 +463,7 @@ export const headingStickyPlugin = $prose(() =>
                 // definition, and since MAR-215 the gutter chrome is only
                 // materialized near the viewport — the class would simply be
                 // missing and the sticky badge would lose its chevron.
-                const foldState = headingFoldPluginKey.getState(view.state);
+                const foldState = foldPluginKey.getState(view.state);
                 const foldable = stickyHeadingFoldable(view.state, headingPos);
                 const collapsed = foldState?.folded.has(headingPos) ?? false;
                 const rect = heading.getBoundingClientRect();
@@ -578,8 +578,8 @@ export const headingStickyPlugin = $prose(() =>
                 // compared by identity, the same way headingFold's own plugin
                 // does it.
                 update(updatedView, prevState) {
-                    const fold = headingFoldPluginKey.getState(updatedView.state);
-                    const prevFold = headingFoldPluginKey.getState(prevState);
+                    const fold = foldPluginKey.getState(updatedView.state);
+                    const prevFold = foldPluginKey.getState(prevState);
                     if (
                         updatedView.state.doc !== prevState.doc ||
                         fold?.folded !== prevFold?.folded ||
