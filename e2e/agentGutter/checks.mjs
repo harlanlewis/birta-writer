@@ -99,8 +99,35 @@ export async function run({ page, check, baseUrl }) {
         };
     });
 
-    // ── 1. A run on a plain top-level paragraph ──────────────────────
+    // ── 1. A run that FAILS ─────────────────────────────────────────
+    // Nothing is left in the gutter. This page declares nothing, which means
+    // the VS Code profile, and VS Code raises its own error notification for a
+    // failed run, so the corner stays empty here: the message in the corner is
+    // for a host that has no way to say it. e2e/jotHost drives the other arm.
     let id = await runOn("plain paragraph.");
+    check("a run was started before failing it", id !== null, String(id));
+    const markerBefore = await page.evaluate(
+        () => document.querySelectorAll(".ProseMirror .agent-pending").length);
+    // The instrument reached something: an empty gutter below is the failure
+    // clearing the marker rather than a run that never drew one.
+    check("the run drew a marker while it was running", markerBefore === 1, String(markerBefore));
+
+    await page.evaluate((rid) => window.postMessage(
+        { type: "agentRun", requestId: rid, status: "failed", harness: "claude",
+          message: "command not found" }, "*"), id);
+    await page.waitForTimeout(300);
+
+    const failure = await page.evaluate(() => ({
+        markers: document.querySelectorAll(".ProseMirror .agent-pending").length,
+        toast: document.querySelector(".agent-toast") !== null,
+    }));
+    check("the failure takes the marker out of the gutter",
+        failure.markers === 0, JSON.stringify(failure));
+    check("and says nothing in the corner, because this host says it itself",
+        failure.toast === false, JSON.stringify(failure));
+
+    // ── 2. A run on a plain top-level paragraph ──────────────────────
+    id = await runOn("plain paragraph.");
     check("a run was started on the paragraph", id !== null, String(id));
     await page.mouse.move(400, 300); // hover the content so at-rest handles would reveal
     await page.waitForTimeout(150);
@@ -111,7 +138,7 @@ export async function run({ page, check, baseUrl }) {
         para !== null && !para.markerShown, JSON.stringify(para));
     await endRun(id);
 
-    // ── 2. A run on a list item's first line ─────────────────────────
+    // ── 3. A run on a list item's first line ─────────────────────────
     // The case a `>` selector silently missed: the item's gutter hangs off the
     // <li>, and the marked block is the <p> inside it, so the rule has to reach
     // a gutter that is the marked block's SIBLING rather than its child.
@@ -127,7 +154,7 @@ export async function run({ page, check, baseUrl }) {
         item !== null && !item.markerShown, JSON.stringify(item));
     await endRun(id);
 
-    // ── 3. A heading folded WHILE a run is live ─────────────────────
+    // ── 4. A heading folded WHILE a run is live ─────────────────────
     // Order matters and the first draft had it backwards: typing `/ai` into a
     // collapsed heading expands it, so a run cannot be started on one. The
     // reachable case, and the one the defect was about, is folding a heading

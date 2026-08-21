@@ -6,6 +6,8 @@
 
 ### Changed
 
+- An `/ai` request that fails no longer leaves a small red marker in the margin beside the block you asked from. The notification, which names the tool, the file and the reason and offers Show Output, was already the report; the marker said the same thing worse, with the reason only on hover and a click needed to clear it, and there is nothing left to stop by the time it appears. The marker still shows while a request is running, where its click does something: it stops the run. The same applies to a run whose changes overlapped edits you made while it worked, which the notification already explains.
+
 - Pressing the toolbar's magnifier while the find bar is open now closes it. It is a button showing something, so a second press puts it away; ⌘F is unchanged, because pressing it twice is reaching for the field rather than asking for it to go.
 
 ### Fixed

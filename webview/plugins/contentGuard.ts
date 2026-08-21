@@ -25,6 +25,7 @@ import { ReplaceAroundStep, ReplaceStep } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { ContentEffect, FingerprintKey } from "../blockCapabilities";
 import { t } from "../i18n";
+import { showToast } from "../ui/toast";
 import { parseCalloutMarker } from "./callouts";
 import { parseOpenFence } from "./directives";
 // Runtime-only cycle (contentGuard → headingFold → blockCapabilities →
@@ -483,33 +484,14 @@ function checkDrop(
 // ── Quiet veto notice ───────────────────────────────────────────────────────
 
 // Advisory and quiet per docs/DESIGN_PRINCIPLES.md: a small transient status
-// pill (no button, no focus steal, aria-live polite), the webview's first —
-// there is no shared toast utility to reuse.
-let noticeEl: HTMLElement | null = null;
-let noticeTimer: ReturnType<typeof setTimeout> | undefined;
-
+// pill, no button, no focus steal. The mechanics are ui/toast.ts; what belongs
+// here is which surface a veto speaks on and for how long.
 export function showGuardNotice(message: string): void {
-    if (typeof document === "undefined") {
-        return;
-    }
-    if (!noticeEl || !noticeEl.isConnected) {
-        noticeEl = document.createElement("div");
-        noticeEl.className = "ui-notice content-guard-notice";
-        noticeEl.setAttribute("role", "status");
-        noticeEl.setAttribute("aria-live", "polite");
-        document.body.appendChild(noticeEl);
-    }
-    // Clear before setting: aria-live announces on CHANGE, so a repeat veto
-    // with the identical message on the reused node would otherwise be
-    // silent to screen readers.
-    noticeEl.textContent = "";
-    noticeEl.textContent = message;
-    noticeEl.classList.add("content-guard-notice--visible");
-    clearTimeout(noticeTimer);
-    noticeTimer = setTimeout(() => {
-        noticeEl?.classList.remove("content-guard-notice--visible");
-    }, 4000);
+    showToast(message, { surface: GUARD_NOTICE_SURFACE });
 }
+
+/** The surface class this notice is drawn on: bottom-centre, over the page. */
+const GUARD_NOTICE_SURFACE = "content-guard-notice";
 
 // ── The plugin ──────────────────────────────────────────────────────────────
 

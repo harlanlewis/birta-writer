@@ -1090,4 +1090,64 @@ export async function run({ page, check, baseUrl }) {
     check("control: hovering a bar trigger still opens its menu where the arrangement is absent",
         ctlHover.after, JSON.stringify(ctlHover));
 
+    // ── A failed /ai run, on a host that cannot raise a notification ──
+    //
+    // Jot's shell has no notification surface for the page's own failures, so
+    // the editor's corner IS the notification and the reason has to appear
+    // there. The VS Code arm is in e2e/agentGutter and e2e/slashMenu, both of
+    // which assert the corner stays EMPTY; without this one, a build that
+    // never showed the message anywhere would pass all three.
+    //
+    // Driven by the report alone rather than through the slash menu: the
+    // message is what the page reacts to, and a run id it does not recognise
+    // reaches the same path, so this needs no editor state at all.
+    await mount("index.html");
+    const failure = await (async () => {
+        await page.evaluate(() => window.postMessage(
+            { type: "agentRun", requestId: "no-such-run", status: "failed",
+              harness: "claude", message: "command not found" }, "*"));
+        await page.waitForTimeout(300);
+        const el = await page.evaluate(() => {
+            const node = document.querySelector(".agent-toast");
+            if (!node) { return null; }
+            const box = node.getBoundingClientRect();
+            return {
+                text: node.textContent,
+                opacity: Number(getComputedStyle(node).opacity),
+                position: getComputedStyle(node).position,
+                fromRight: window.innerWidth - box.right,
+                fromBottom: window.innerHeight - box.bottom,
+                width: box.width,
+                height: box.height,
+            };
+        });
+        return el;
+    })();
+    check("jot: a failed /ai run says which tool failed and why, in the corner",
+        failure !== null && /claude/.test(failure.text) && /command not found/.test(failure.text),
+        JSON.stringify(failure));
+    check("jot: the message is drawn rather than transparent",
+        failure !== null && failure.opacity > 0.9 && failure.width > 0 && failure.height > 0,
+        JSON.stringify(failure));
+    // Bounded on BOTH sides. Near the corner, and not against it: a host with
+    // no notification surface can still draw a status line of its own over the
+    // page's bottom edge, and Jot does. An upper bound alone would pass a
+    // message sitting on top of that line.
+    check("jot: it sits near the bottom trailing corner, clear of the window's own edge",
+        failure !== null && failure.position === "fixed"
+            && failure.fromRight >= 0 && failure.fromRight < 40
+            && failure.fromBottom >= 30 && failure.fromBottom < 80,
+        JSON.stringify(failure));
+
+    // A click takes it away early. The dwell is long, because the reason is
+    // something to read; this is the way out for somebody who has read it.
+    await page.evaluate(() => document.querySelector(".agent-toast")
+        ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true })));
+    await page.waitForTimeout(300);
+    const dismissed = await page.evaluate(() => {
+        const el = document.querySelector(".agent-toast");
+        return el === null ? null : Number(getComputedStyle(el).opacity);
+    });
+    check("jot: a click takes the message away", dismissed !== null && dismissed < 0.1,
+        String(dismissed));
 }

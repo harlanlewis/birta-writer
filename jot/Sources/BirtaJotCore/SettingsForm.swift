@@ -10,11 +10,11 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case summon = "Show and hide Jot"
     case storeInICloud = "Store in iCloud Drive"
     case location = "Location"
-    case autosave = "Automatically save while editing"
+    case autosave = "Automatically save changes"
     case showInDock = "Show in Dock"
     case startAtLogin = "Start at login"
     case autoUpdate = "Automatically update"
-    case richLinks = "Link previews and embeds"
+    case richLinks = "Rich link previews and embeds"
     case opens = "New windows open with"
     case newNoteName = "File name"
     case agentEnabled = "Enable /ai commands"
@@ -128,9 +128,9 @@ public enum SettingsForm {
     /// the paragraphs sit under, which is why no card here carries one.
     public static let aiAgent = SettingsPane(
         intro: [
-            "Jot can use your existing AI agent CLI tool to read and edit your note files. "
-                + "Requires the tool to be installed and runnable from Terminal.",
-            "The Jot /ai commands use your existing authentication and need no additional "
+            "Optionally enable Jot to use your existing AI agent CLI tool to read and edit "
+                + "your note files. Requires the tool to be installed and runnable from Terminal.",
+            "Jot /ai command uses your existing authentication and needs no additional "
                 + "configuration.",
             "Your AI provider (OpenAI, Anthropic, etc) may charge standard API or subscription "
                 + "utilization when used.",

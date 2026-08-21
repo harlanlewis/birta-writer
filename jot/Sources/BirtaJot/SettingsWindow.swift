@@ -93,6 +93,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
     }
 
+    /// The rows on screen, by the row they are, so availability reaches the
+    /// label and the caption together (`SettingsRowView.apply`). Rebuilt with
+    /// each pane; a pane is built once and kept, so an entry is live for as
+    /// long as the window is.
+    private var rowViews: [SettingsRow: SettingsRowView] = [:]
+
     private let scrollView = NSScrollView()
     /// Built on first visit and kept, so switching back does not rebuild the
     /// controls and lose the state they are showing.
@@ -114,6 +120,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// (`AgentPreset.matching`), so an edited flag cannot make it lie and a
     /// command of somebody's own puts it back to asking.
     private let agentPresetPopup = NSPopUpButton()
+    /// Runs the command once with a trivial prompt and shows what came back.
+    /// A command is a shell line somebody typed, and until it has been run
+    /// nothing on this pane can tell an installed tool from a typo.
+    private let agentTestButton = NSButton(title: "Test", target: nil, action: nil)
+    /// The selected tool's own documentation, under the command field.
+    ///
+    /// One button that MOVES rather than a link per preset: what it points at
+    /// is read back out of the command (`AgentPreset.matching`), so it names
+    /// the tool being run rather than the last entry anybody picked, and a
+    /// command this build does not recognise leaves nothing to link to.
+    private let agentDocLink = LinkButton(title: AgentPreset.fallback.title,
+                                          url: AgentPreset.fallback.documentation)
+    /// What the row's stack is arranging, so the link can be taken out of the
+    /// layout entirely rather than left as a blank line.
+    private var agentDocLinkHolder: NSView?
     private let agentEnabledSwitch = NSSwitch()
     private let newNoteField = NSTextField(string: Prefs.newNoteNameTemplate)
     private let dockSwitch = NSSwitch()
@@ -143,6 +164,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption(LoginItemState.off.caption)
     private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
+
+    /// A runner of this window's own, for the Test button and nothing else.
+    ///
+    /// Not the Coordinator's. A probe is not a `/ai` run: it is not registered
+    /// as one, cannot be cancelled from the panel, and never reaches the note,
+    /// so sharing the object that tracks live runs would only give this a way
+    /// to interfere with them.
+    private let agentProbe = AgentRunner()
 
     private let onHotkeyChange: () -> OSStatus
     private let onChange: () -> Void
@@ -346,6 +375,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
     }
 
+    /// One row of the pane on screen, so a check can read back the label and
+    /// the caption availability was applied to rather than assert against the
+    /// rule that produced it.
+    ///
+    /// The thing worth checking here is the WIRING: `RowAvailability` is
+    /// checkable on its own, and what it cannot tell you is whether the pane
+    /// ever hands a row its answer.
+    func rowForTesting(_ row: SettingsRow) -> SettingsRowView? { rowViews[row] }
+
     /// Show a pane by name, for `BIRTA_JOT_OPEN_SETTINGS`. Unknown names are
     /// ignored rather than fatal: the variable is a probe, and a typo in it
     /// should not stop the app.
@@ -382,7 +420,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // The captions that only appear on some machines, said here so the
         // measurement carries their height too.
         iCloudCaption.say("iCloud Drive is off in System Settings, so notes stay on this Mac.", bad: false)
-        loginCaption.say(LoginItemState.blocked.caption, bad: true)
+        rowViews[.startAtLogin]?.apply(.startAtLogin(.blocked))
         fitWindowToPane()
     }
 
@@ -440,6 +478,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         updateButton.target = self
         updateButton.action = #selector(checkForUpdatesNow)
         updateButton.controlSize = .small
+        agentTestButton.target = self
+        agentTestButton.action = #selector(testAgentCommand)
+        agentTestButton.controlSize = .small
         resetButton.target = self
         resetButton.action = #selector(resetAllSettings)
         resetButton.controlSize = .small
@@ -460,6 +501,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         newNoteField.placeholderString = NoteNameTemplate.default
         newNoteField.alignment = .right
         newNoteField.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        // Aligned with the field it answers rather than with the prose, so the
+        // template and the name it produces sit in one column.
+        newNoteCaption.alignment = .right
 
         loginSettingsButton.target = self
         loginSettingsButton.action = #selector(openLoginItemSettings)
@@ -498,8 +542,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// the values it was built with while the app ran on the defaults.
     private func syncControlsFromPrefs() {
         networkSwitch.state = Prefs.networkEnabled ? .on : .off
-        networkCaption.say("Requires network access.", bad: false)
-        showAutoUpdate()
+        // Not `showAutoUpdate` and `showLoginItem` here: both draw through
+        // `rowViews`, so they are `showRowAvailability`'s and are called again
+        // once the pane exists. What stays here is the switch positions, which
+        // are properties and are safe to set before anything is laid out.
+        networkCaption.say("Renders some YouTube, Loom, Figma, Google Docs, and links from "
+                           + "other services as interactive embedded content. Requires internet "
+                           + "access.", bad: false)
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         dockSwitch.state = Prefs.showInDock ? .on : .off
         hotkeyRecorder.setCombo(Prefs.hotkey)
@@ -508,10 +557,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         agentEnabledSwitch.state = Prefs.agentEnabled ? .on : .off
         showAgentPreset()
         showAgent()
+        showRowAvailability()
         showNoteMode()
         showNoteNamePreview()
-        showLoginItem(LoginItem.state)
         showFiles()
+    }
+
+    /// The rows whose availability is a fact about the build or the system
+    /// rather than a stored setting.
+    ///
+    /// Together, because they are the two rows that can be dead, and both draw
+    /// through `rowViews`: what they set is a label's ink and a sentence, so
+    /// they can only run once the pane holding those views exists.
+    private func showRowAvailability() {
+        showAutoUpdate()
+        showLoginItem(LoginItem.state)
     }
 
     /// The agent command exists only when the switch above it is on.
@@ -577,14 +637,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// than sitting there switched on and doing nothing: replacing it would
     /// delete the change it was installed to show.
     private func showAutoUpdate() {
-        let canUpdate = AppFlavor.current.updatesItself
-        updateSwitch.isEnabled = canUpdate
-        updateButton.isEnabled = canUpdate
-        updateSwitch.state = Prefs.autoUpdate && canUpdate ? .on : .off
-        updateCaption.say(canUpdate
-                          ? "Asks the project's own release page what the newest version is. Installing is always a click."
-                          : "A development build does not replace itself.",
-                          bad: false)
+        let availability = RowAvailability.autoUpdate(updatesItself: AppFlavor.current.updatesItself)
+        updateSwitch.isEnabled = availability.isEnabled
+        updateButton.isEnabled = availability.isEnabled
+        updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
+        rowViews[.autoUpdate]?.apply(availability)
     }
 
     @objc private func toggleAutoUpdate() {
@@ -614,11 +671,30 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// Put the pull-down's title back in step with the command field.
     private func showAgentPreset() {
-        agentPresetPopup.item(at: 0)?.title = Self.presetMenuTitle(for: Prefs.agentCommand)
+        showAgentPreset(for: Prefs.agentCommand)
+    }
+
+    /// Draw the pull-down and the link against `command`, whatever is stored.
+    ///
+    /// Split out so a check can drive both against a command of its own
+    /// without writing a setting: what is worth checking is that the pane
+    /// FOLLOWS the command, and a version that read `Prefs` once at build time
+    /// would look identical against the default.
+    func showAgentPreset(for command: String) {
+        agentPresetPopup.item(at: 0)?.title = Self.presetMenuTitle(for: command)
         // Item 0 IS the button's title under `pullsDown`, and AppKit caches
         // what it drew: without this the button keeps the old word until
         // something else makes it re-lay out.
         agentPresetPopup.synchronizeTitleAndSelectedItem()
+        // The link follows the same answer the pull-down's title does, so a
+        // command naming a tool this build does not know leaves no link rather
+        // than one pointing at somebody else's documentation.
+        let preset = AgentPreset.matching(command: command)
+        if let preset {
+            agentDocLink.point(at: preset.documentation, titled: preset.title)
+        }
+        agentDocLinkHolder?.isHidden = preset == nil
+        fitWindowToPane()
     }
 
     /// Draw a screen from its declaration.
@@ -638,7 +714,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         for group in pane.groups {
             let box = Self.group(group.rows.map { row in
                 let parts = wiring(for: row)
-                return Self.row(row, control: parts.control, below: parts.below, caption: parts.caption)
+                let view = Self.row(row, control: parts.control, below: parts.below,
+                                    caption: parts.caption)
+                rowViews[row] = view
+                return view
             })
             // Remembered, because each of these cards holds a row that is
             // shown and hidden by the answer above it, and hiding a row means
@@ -663,29 +742,41 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .storeInICloud: return (iCloudSwitch, [], iCloudCaption)
         case .location:
             return (Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad)), [], nil)
-        case .autosave:
-            return (autosaveSwitch, [],
-                    Caption("Off keeps your changes in the panel until you save them with "
-                            + "Command-S. Hiding Jot leaves them there; quitting asks."))
+        // No caption. The label is the whole of it, and what OFF means is
+        // what off means in every other Mac application: nothing is written
+        // until you ask. `AutosavePolicy` is where that promise is kept.
+        case .autosave: return (autosaveSwitch, [], nil)
         case .showInDock: return (dockSwitch, [], nil)
         case .startAtLogin:
-            return (Self.pairedControl(loginSettingsButton, loginSwitch), [], loginCaption)
+            return (Self.trailingControls([loginSettingsButton, loginSwitch]), [], loginCaption)
         case .autoUpdate:
-            return (Self.pairedControl(updateButton, updateSwitch), [], updateCaption)
+            return (Self.trailingControls([updateButton, updateSwitch]), [], updateCaption)
         case .richLinks: return (networkSwitch, [], networkCaption)
         case .opens: return (opensPopup, [], nil)
         case .newNoteName:
+            // The worked example goes FIRST, under the field and aligned with
+            // it, because it is the field's own answer rather than a note
+            // about the syntax: the eye reads the template and then what it
+            // produces, in the same column. The vocabulary follows, in the
+            // caption column where reference text belongs.
             return (newNoteField,
-                    [Self.help(NoteNameTemplate.helpText),
-                     Self.link("strftime reference", to: NoteNameTemplate.referenceURL)],
-                    newNoteCaption)
+                    [Self.captionRow(newNoteCaption),
+                     Self.helpWithLink(NoteNameTemplate.helpText,
+                                       linkTitle: NoteNameTemplate.referenceLinkTitle,
+                                       to: NoteNameTemplate.referenceURL)],
+                    nil)
         case .agentEnabled: return (agentEnabledSwitch, [], nil)
         case .agentCommand:
             // The field is BELOW rather than beside: a shell command is long
             // and monospaced, and the pull-down is what sits at the trailing
-            // edge because it is the shortcut rather than the setting.
-            return (agentPresetPopup, [agentField],
-                    Caption("What /ai runs. {prompt} is replaced by the request, quoted."))
+            // edge because it is the shortcut rather than the setting. Test is
+            // beside the pull-down, since both act on the command rather than
+            // describing it.
+            let link = Self.link(agentDocLink)
+            agentDocLinkHolder = link
+            return (Self.trailingControls([agentTestButton, agentPresetPopup]),
+                    [agentField, link],
+                    Caption("Terminal command executed by /ai in Jot."))
         case .resetSettings:
             return (resetButton, [],
                     Caption("Revert \(AppFlavor.current.displayName) to default settings. Will not "
@@ -716,7 +807,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         showFiles()
         showNoteMode()
         showAgent()
+        // After the pane exists, or the documentation link is never told what
+        // the command names: `wireControls` runs once, from the FIRST pane
+        // built, and the link is a view the AI Agent pane creates later. Left
+        // out, a command naming no tool still shows the link the button was
+        // constructed with, pointing at the wrong tool's documentation.
+        showAgentPreset()
         showNoteNamePreview()
+        // Also after, and for a second reason: these two write through
+        // `rowViews`, which `render` is what fills. Called from
+        // `syncControlsFromPrefs` alone they would reach an empty map and the
+        // rows would be drawn with no sentence and no dimming at all.
+        showRowAvailability()
         return Self.pane(sections)
     }
 
@@ -794,13 +896,54 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         inset(Caption(text))
     }
 
+    /// Reference text with its link at the end of the sentence.
+    ///
+    /// One line rather than two, because the link is part of what the sentence
+    /// says: the tokens above are a shortlist and this is where the rest are.
+    /// A separate line under it reads as a second, unrelated thing to read.
+    ///
+    /// Still a real button rather than an attributed string, for the reason
+    /// `link` gives. Baseline-aligned, so the link sits on the sentence's line
+    /// rather than on the centre of a caption that has wrapped.
+    static func helpWithLink(_ text: String, linkTitle: String, to url: URL) -> NSView {
+        let caption = Caption(text)
+        // Free to wrap if the sentence outgrows the row, which keeps the link
+        // at the end rather than pushing it off the card.
+        caption.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let button = LinkButton(title: linkTitle, url: url)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        let stack = NSStackView(views: [caption, button])
+        stack.orientation = .horizontal
+        stack.alignment = .firstBaseline
+        // The link button carries its own bezel inset, so the gap here is
+        // narrower than the space between two words would suggest.
+        stack.spacing = 0
+        let holder = NSView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: Metrics.rowInset),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: holder.trailingAnchor,
+                                            constant: -Metrics.rowInset),
+            stack.topAnchor.constraint(equalTo: holder.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+        ])
+        return holder
+    }
+
     /// A caption-sized link out to documentation we do not own.
     ///
     /// A real button rather than an attributed-string link: this has to be
     /// reachable from the keyboard, and an `NSTextField` carrying a link is
     /// not in the key view loop.
     static func link(_ title: String, to url: URL) -> NSView {
-        let button = LinkButton(title: title, url: url)
+        link(LinkButton(title: title, url: url))
+    }
+
+    /// The same, around a link that already exists, for one whose destination
+    /// moves with a selection above it.
+    static func link(_ button: LinkButton) -> NSView {
         // Leading-aligned with the label above it, and hugging its own title
         // so the clickable area is the words rather than the row.
         let holder = NSView()
@@ -829,6 +972,30 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             view.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
         ])
         return holder
+    }
+
+    /// A caption drawn as one of a row's `below` views rather than as its
+    /// trailing sentence.
+    ///
+    /// It has to be inset by hand, because `row` insets a `below` view only
+    /// when it is a plain field: a Caption there would otherwise run to the
+    /// card's own edges, which is a whole `rowInset` further out than the
+    /// column every other sentence starts in. The holder is wired up so an
+    /// empty caption still takes itself out of the layout.
+    static func captionRow(_ caption: Caption) -> NSView {
+        let holder = inset(caption)
+        caption.holder = holder
+        holder.isHidden = caption.isHidden
+        return holder
+    }
+
+    /// Several controls as one trailing control, in the order given.
+    static func trailingControls(_ views: [NSView]) -> NSView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .horizontal
+        stack.spacing = 8
+        stack.alignment = .centerY
+        return stack
     }
 
     /// One rounded section. Rows are separated by a hairline, inset from the
@@ -907,7 +1074,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// A row, labelled from the shared vocabulary. Every row on either screen
     /// goes through here, so a label has one spelling.
     static func row(_ row: SettingsRow, control: NSView, below: [NSView] = [],
-                    caption: Caption? = nil) -> NSView {
+                    caption: Caption? = nil) -> SettingsRowView {
         self.row(row.rawValue, control: control, below: below, caption: caption)
     }
 
@@ -921,7 +1088,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// collapse to nothing meanwhile, and under plain constraints a hidden
     /// NSTextField keeps its line height and leaves a blank gap.
     static func row(_ title: String, control: NSView, below: [NSView] = [],
-                    caption: Caption? = nil) -> NSView {
+                    caption: Caption? = nil) -> SettingsRowView {
         let label = NSTextField(labelWithString: title)
         let line = NSView()
         for view in [label, control] {
@@ -967,7 +1134,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             arranged.append(holder)
         }
 
-        let stack = NSStackView(views: arranged)
+        let stack = SettingsRowView(label: label, caption: caption, arranged: arranged)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 4
@@ -990,29 +1157,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         pathControl(path, NSButton(title: "Choose…", target: target, action: action))
     }
 
-    /// A button and its switch as one trailing control. The button is the
-    /// occasional half: `isHidden` takes a view out of an NSStackView's layout
-    /// entirely, so the switch sits alone at the trailing edge when there is
-    /// nothing to say.
-    private static func pairedControl(_ button: NSButton, _ toggle: NSSwitch) -> NSView {
-        let stack = NSStackView(views: [button, toggle])
-        stack.orientation = .horizontal
-        stack.spacing = 8
-        stack.alignment = .centerY
-        return stack
-    }
-
     // MARK: hotkey
+
+    /// Choose a hotkey the way the recorder does, for a check over what the
+    /// row says when macOS refuses one. Nothing else reaches this path: the
+    /// refusal is the system's answer and cannot be provoked by hand.
+    func chooseHotkeyForTesting(_ combo: HotkeyCombo) { hotkeyChosen(combo) }
 
     private func hotkeyChosen(_ combo: HotkeyCombo) {
         guard combo != Prefs.hotkey else { return }
         Prefs.hotkey = combo
         let status = onHotkeyChange()
-        if status == 0 {
-            hotkeyCaption.say("", bad: false)
-        } else {
-            hotkeyCaption.say("macOS refused \(combo.symbols); another app may own it.", bad: true)
-        }
+        rowViews[.summon]?.apply(status == 0
+            ? .available()
+            : .warning("macOS refused \(combo.symbols); another app may own it."))
         hotkeyRecorder.setCombo(combo)
     }
 
@@ -1121,10 +1279,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// whenever the window comes forward, because System Settings changes the
     /// same registration and Jot is never told.
     private func showLoginItem(_ state: LoginItemState) {
+        let availability = RowAvailability.startAtLogin(state)
         loginSwitch.state = state.isOn ? .on : .off
-        loginSwitch.isEnabled = state.isEnabled
+        loginSwitch.isEnabled = availability.isEnabled
         loginSettingsButton.isHidden = state != .blocked
-        loginCaption.say(state.caption, bad: state.isWarning)
+        rowViews[.startAtLogin]?.apply(availability)
     }
 
     @objc private func toggleLoginItem() {
@@ -1135,7 +1294,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             // happened. A switch left where the user pushed it would claim a
             // registration that does not exist.
             showLoginItem(LoginItem.state)
-            loginCaption.say("macOS refused: \(error.localizedDescription)", bad: true)
+            rowViews[.startAtLogin]?.apply(
+                .warning("macOS refused: \(error.localizedDescription)"))
         }
     }
 
@@ -1179,7 +1339,113 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// only obvious to somebody who already knows, and the one question a
     /// person actually has here is what their file will be called.
     private func showNoteNamePreview() {
-        newNoteCaption.say("Today: \(NoteNameTemplate.expand(Prefs.newNoteNameTemplate))", bad: false)
+        newNoteCaption.say(NoteNameTemplate.expand(Prefs.newNoteNameTemplate), bad: false)
+    }
+
+    // MARK: the agent test
+
+    /// Run the command in the field once, with a trivial prompt, and show what
+    /// came back.
+    ///
+    /// The one thing on this pane that can tell an installed tool from a typo.
+    /// Everything else here is a claim about a shell line nobody has run: the
+    /// pull-down names the program, the link points at its documentation, and
+    /// both are just as confident about a command that is not on PATH.
+    @objc private func testAgentCommand() {
+        let template = Prefs.agentCommand.trimmingCharacters(in: .whitespaces)
+        let name = Self.toolName(for: template)
+        guard !template.isEmpty else {
+            showAgentTestResult(name: name, result: AgentProbeResult(
+                succeeded: false, transcript: "",
+                failure: "There is no command to run. Choose a tool, or type one."))
+            return
+        }
+        // The button IS the progress indicator. A run takes as long as the
+        // tool takes to answer, which is seconds, and a spinner beside a
+        // button that still says Test invites a second click that starts a
+        // second child process.
+        agentTestButton.isEnabled = false
+        agentTestButton.title = "Testing…"
+        agentProbe.probe(template: template) { [weak self] result in
+            guard let self else { return }
+            self.agentTestButton.isEnabled = true
+            self.agentTestButton.title = "Test"
+            self.showAgentTestResult(name: name, result: result)
+        }
+    }
+
+    /// What to call the tool in the sheet: the preset's name where the command
+    /// names one, and otherwise the program it runs, which is the most this
+    /// can honestly say about somebody's own command line.
+    private static func toolName(for command: String) -> String {
+        AgentPreset.matching(command: command)?.title
+            ?? AgentRequest.harnessName(from: command)
+            ?? "The agent"
+    }
+
+    /// The sheet: what happened, which tool it was, and what it printed.
+    ///
+    /// The transcript is in an accessory view rather than in `informativeText`
+    /// because an agent's answer is arbitrarily long and a sheet built around
+    /// one label grows until it is taller than the screen. It is selectable,
+    /// so a failure can be copied into a search.
+    private func showAgentTestResult(name: String, result: AgentProbeResult) {
+        // Only onto a window that is still on screen. A test takes as long as
+        // the tool takes, and Settings can be shut in the meantime: a sheet
+        // begun on a closed window either goes nowhere or brings the window
+        // back, and neither is an answer to a question the person stopped
+        // asking.
+        guard let window, window.isVisible else { return }
+        Self.agentTestAlert(name: name, result: result).beginSheetModal(for: window)
+    }
+
+    /// The sheet itself, built rather than presented, so what it says is
+    /// checkable without a window and without anything appearing on screen.
+    static func agentTestAlert(name: String, result: AgentProbeResult) -> NSAlert {
+        let alert = NSAlert()
+        // Not "did not run": a command that started, authenticated and then
+        // exited with an error DID run, and that is the ordinary failure here.
+        // The pair says what the person asked, which is whether it works.
+        alert.messageText = result.succeeded ? "It works!" : "It did not work."
+        // The tool's name above whatever it printed, because the answer means
+        // nothing without knowing which tool gave it.
+        alert.informativeText = name
+        alert.alertStyle = result.succeeded ? .informational : .warning
+        // What the tool said, and where it said nothing, our own account of
+        // how it ended. Never both: two explanations of one failure read as
+        // two failures.
+        let body = result.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        alert.accessoryView = transcript(body.isEmpty ? (result.failure ?? "") : body)
+        // Acknowledge and nothing else. A test that has finished leaves
+        // nothing to decide, so a second button would be a question with no
+        // question behind it.
+        alert.addButton(withTitle: "Close")
+        return alert
+    }
+
+    /// A scrollable, selectable, monospaced block of whatever a command
+    /// printed.
+    static func transcript(_ text: String) -> NSView {
+        let view = NSTextView()
+        view.string = text
+        view.isEditable = false
+        view.isSelectable = true
+        view.drawsBackground = false
+        view.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        view.textContainerInset = NSSize(width: 4, height: 4)
+        let scroll = NSScrollView()
+        scroll.documentView = view
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.borderType = .bezelBorder
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            // Wide enough for a wrapped shell line, tall enough for a short
+            // answer without becoming a window of its own.
+            scroll.widthAnchor.constraint(equalToConstant: 380),
+            scroll.heightAnchor.constraint(equalToConstant: 140),
+        ])
+        return scroll
     }
 
     @objc private func toggleAutosave() {
@@ -1198,6 +1464,41 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     @objc private func toggleNetwork() {
         Prefs.networkEnabled = networkSwitch.state == .on
         onChange()
+    }
+}
+
+/// One settings row, holding the two views availability is drawn on.
+///
+/// A row is otherwise a stack of anonymous views, so a surface wanting to dim
+/// one had to keep a reference to its label and its caption separately and
+/// remember to move both. This keeps them together and gives the pairing one
+/// implementation, which is the whole of what `RowAvailability` means on
+/// screen: the label follows `isEnabled`, the sentence follows `tone`.
+@MainActor
+final class SettingsRowView: NSStackView {
+    /// The row's name, dimmed when the row cannot be operated.
+    let titleLabel: NSTextField
+    /// The sentence under it, when it has one.
+    let caption: Caption?
+
+    init(label: NSTextField, caption: Caption?, arranged: [NSView]) {
+        self.titleLabel = label
+        self.caption = caption
+        super.init(frame: .zero)
+        for view in arranged { addArrangedSubview(view) }
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Draw the row as `availability` says it stands.
+    ///
+    /// The label is the part worth insisting on. A disabled switch is dim on
+    /// its own and easy to read as a switch that is simply off, so the NAME
+    /// goes to the system's disabled ink too: the row reads as unavailable
+    /// before anybody looks at the control.
+    func apply(_ availability: RowAvailability) {
+        titleLabel.textColor = availability.isEnabled ? .labelColor : .disabledControlTextColor
+        caption?.say(availability.note, bad: availability.isProblem)
     }
 }
 
@@ -1238,6 +1539,12 @@ final class Caption: NSTextField {
     /// An empty caption is HIDDEN, not blank, and hiding it collapses the row
     /// because the row's vertical axis is a stack. Both this and the holder
     /// have to go, or the stack keeps arranging an empty box.
+    ///
+    /// Called directly only for a sentence that is always ordinary prose. A
+    /// row whose sentence can turn RED goes through `SettingsRowView.apply`
+    /// instead, so the ink and the row's own availability are decided by one
+    /// `RowAvailability` rather than by two call sites that can disagree about
+    /// whether something is wrong.
     func say(_ text: String, bad: Bool) {
         stringValue = text
         textColor = bad ? .systemRed : .secondaryLabelColor
@@ -1305,7 +1612,18 @@ final class BackgroundView: NSView {
 /// the key view loop.
 @MainActor
 final class LinkButton: NSButton {
-    private let url: URL
+    /// Settable, because one of these follows the agent pull-down and has to
+    /// point at whichever tool the command below it names. Still OWNED by the
+    /// button rather than looked up from a table keyed on its address.
+    private(set) var url: URL
+
+    /// Point at somewhere else, title and destination together, so the two
+    /// cannot be moved separately and disagree.
+    func point(at url: URL, titled title: String) {
+        self.url = url
+        self.title = title
+        toolTip = url.absoluteString
+    }
 
     init(title: String, url: URL) {
         self.url = url

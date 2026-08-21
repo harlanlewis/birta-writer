@@ -12,8 +12,14 @@
  *     (the imageUploadProgress idiom). It lives in the gutter, not the
  *     content, because a placeholder in the text is something you would type
  *     into and around, and the request's own line has usually just been
- *     removed. Clicking it cancels the run. A failure turns it into an error
- *     marker with the reason on hover, dismissed by a click.
+ *     removed. Clicking it cancels the run.
+ *
+ *     It shows a RUNNING run and nothing else. A failure is news rather than
+ *     a control: there is nothing left to stop, the reason is a sentence that
+ *     does not fit in a gutter, and a marker that has to be clicked away is a
+ *     chore left behind by something that already went wrong. So a failed run
+ *     leaves the state entirely, and WHO says why is the host's to decide:
+ *     see `failAgentRun`.
  *
  *   - THE UNDO POLICY. An agent's write reaches the editor as an external
  *     change (VS Code reloads the file), which the sync path keeps OUT of the
@@ -41,6 +47,8 @@ import { closeHistory, Decoration, DecorationSet, Mapping, Plugin, PluginKey } f
 import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "../i18n";
 import { notifyAgentCancel } from "../messaging";
+import { hostHas } from "../../shared/hostProfile";
+import { showToast } from "../ui/toast";
 import "./agentPending.css";
 
 export const agentPendingKey = new PluginKey<AgentPendingState>("birta-agent-pending");
@@ -58,8 +66,6 @@ export interface AgentRun {
     status: "armed" | "running";
     /** The harness running it (`claude`, `codex`), for the tooltip; unknown until `running`. */
     harness?: string;
-    /** Set once the run fails; the marker switches to an error until dismissed. */
-    error?: string;
 }
 
 interface AgentPendingState {
@@ -70,37 +76,29 @@ interface AgentPendingState {
 type AgentAction =
     | { kind: "begin"; id: string; pos: number; base: ProseNode }
     | { kind: "running"; id: string; harness?: string }
-    | { kind: "settle"; id: string }
-    | { kind: "fail"; id: string; error: string };
+    | { kind: "settle"; id: string };
 
-function markerWidget(run: AgentRun, view: EditorView): HTMLElement {
+function markerWidget(run: AgentRun): HTMLElement {
     const el = document.createElement("span");
-    el.className = "agent-pending" + (run.error ? " agent-pending--error" : "");
+    el.className = "agent-pending";
     el.setAttribute("aria-live", "polite");
     el.setAttribute("role", "button");
     el.tabIndex = -1;
     const who = run.harness ?? t("Your agent");
-    el.title = run.error
-        ? `${who}: ${t("request failed")} (${run.error}). ${t("Click to dismiss.")}`
-        : `${who} ${t("is working on this request. Click to stop it.")}`;
-    // A filled pill carrying a stop square while running (the one verb the
-    // marker has), an exclamation once failed. Both draw in the theme's own
-    // button and error inks, so the pill reads at a glance on any theme.
+    el.title = `${who} ${t("is working on this request. Click to stop it.")}`;
+    // A filled pill carrying a stop square, which is the marker's one verb.
+    // It draws in the theme's own button ink, so it reads at a glance on any
+    // theme.
     const glyph = document.createElement("span");
-    glyph.className = run.error ? "agent-pending__glyph agent-pending__glyph--error" : "agent-pending__glyph agent-pending__glyph--stop";
+    glyph.className = "agent-pending__glyph agent-pending__glyph--stop";
     glyph.setAttribute("aria-hidden", "true");
-    if (run.error) { glyph.textContent = "!"; }
     el.append(glyph);
     // The marker is chrome: its click is not a document edit and must not
     // move the caret or enter the undo history.
     el.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (run.error) {
-            settleAgentRun(view, run.id);
-        } else {
-            notifyAgentCancel(run.id);
-        }
+        notifyAgentCancel(run.id);
     });
     return el;
 }
@@ -109,11 +107,11 @@ function buildDecorations(runs: readonly AgentRun[], view: EditorView | null, do
     if (runs.length === 0 || !view) { return DecorationSet.empty; }
     const live = runs
         // An armed run has not been confirmed as one the editor can follow.
-        .filter((r) => r.status === "running" || r.error !== undefined)
+        .filter((r) => r.status === "running")
         .filter((r) => r.pos >= 0 && r.pos <= doc.content.size);
-    const decos = live.map((r) => Decoration.widget(r.pos, () => markerWidget(r, view), {
+    const decos = live.map((r) => Decoration.widget(r.pos, () => markerWidget(r), {
         side: -1,
-        key: `${r.id}:${r.status}:${r.harness ?? ""}:${r.error ?? ""}`,
+        key: `${r.id}:${r.status}:${r.harness ?? ""}`,
     }));
     // Mark the block the marker sits beside, so its gutter can stand down for
     // the run's duration. The pill occupies the marker's own column rather
@@ -166,8 +164,6 @@ export const agentPendingPlugin = $prose(() => {
                     runs = runs.map((r) => (r.id === action.id ? { ...r, status: "running", harness: action.harness ?? r.harness } : r));
                 } else if (action?.kind === "settle") {
                     runs = runs.filter((r) => r.id !== action.id);
-                } else if (action?.kind === "fail") {
-                    runs = runs.map((r) => (r.id === action.id ? { ...r, status: "running", error: action.error } : r));
                 }
                 if (runs === prev.runs && !tr.docChanged) { return prev; }
                 return { runs, decorations: buildDecorations(runs, liveView, newState.doc) };
@@ -205,8 +201,51 @@ export function settleAgentRun(view: EditorView, id: string): void {
     dispatchIfLive(view, { kind: "settle", id });
 }
 
-export function failAgentRun(view: EditorView, id: string, error: string): void {
-    dispatchIfLive(view, { kind: "fail", id, error });
+/**
+ * The surface class the failure toast is drawn on: the editor's bottom
+ * trailing corner. Where exactly, and why it is held clear of the window's
+ * own bottom edge, is `agentPending.css`.
+ */
+export const AGENT_TOAST_SURFACE = "agent-toast";
+
+/**
+ * How long a failure stays. Longer than an ordinary notice, because this one
+ * carries a reason somebody has to read and act on rather than an
+ * acknowledgement they already expected.
+ */
+export const AGENT_TOAST_DWELL_MS = 9000;
+
+/**
+ * End a run that failed, and say why.
+ *
+ * The run leaves the state rather than staying in it as an error, so nothing
+ * is left in the gutter to dismiss and `recordsExternalInHistory` stops
+ * counting it the moment it stops running.
+ *
+ * WHO says why depends on the host. A host with a notification surface of its
+ * own has already spoken by the time this runs (VS Code raises an error
+ * notification carrying a Show Output action the page cannot offer), so a
+ * message in the corner beside it would be the same event reported twice.
+ * Where the host has no such surface, the corner is the only place the reason
+ * can appear at all, and this is it.
+ */
+export function failAgentRun(view: EditorView, id: string, error: string,
+                             harness?: string): void {
+    // The REPORT's harness first, then the run's. A request that never reached
+    // `running` has no harness in state, which is exactly the case a failure
+    // is most likely to be: a command that is not installed fails before the
+    // editor is ever told what is running it. Read BEFORE the settle below,
+    // which takes the run out of state.
+    const who = harness ?? agentRun(view, id)?.harness ?? t("Your agent");
+    dispatchIfLive(view, { kind: "settle", id });
+    if (hostHas("notifications")) { return; }
+    const reason = error.trim();
+    showToast(reason ? `${who}: ${reason}` : `${who}: ${t("request failed")}`, {
+        surface: AGENT_TOAST_SURFACE,
+        tone: "error",
+        dwellMs: AGENT_TOAST_DWELL_MS,
+        dismissible: true,
+    });
 }
 
 /** The run with this id, or null once it has settled. */
@@ -220,7 +259,7 @@ export function agentRun(view: EditorView, id: string): AgentRun | null {
  * the agent's answer to a request the user made here.
  */
 export function recordsExternalInHistory(view: EditorView): boolean {
-    return agentPendingKey.getState(view.state)?.runs.some((r) => r.status === "running" && !r.error) ?? false;
+    return agentPendingKey.getState(view.state)?.runs.some((r) => r.status === "running") ?? false;
 }
 
 export type AgentMergeOutcome = "applied" | "partial" | "conflict" | "unchanged";

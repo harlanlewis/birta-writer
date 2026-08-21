@@ -96,6 +96,8 @@ public enum AgentPreset: String, CaseIterable, Sendable {
     case aider
     case amp
     case goose
+    case pi
+    case hermes
 
     public var title: String {
         switch self {
@@ -108,6 +110,37 @@ public enum AgentPreset: String, CaseIterable, Sendable {
         case .aider: return "Aider"
         case .amp: return "Amp"
         case .goose: return "Goose"
+        case .pi: return "Pi"
+        case .hermes: return "Hermes"
+        }
+    }
+
+    /// Where the tool's own documentation is, for the link Settings draws
+    /// under the command field.
+    ///
+    /// The vendor's page rather than a wrapper or a mirror, and the entry
+    /// point somebody who has not installed the tool needs: an install and a
+    /// first run. What is NOT here is a deep link to the flag in `template`,
+    /// which is the thing most likely to move under us; a quickstart is the
+    /// most durable page any of these projects have.
+    ///
+    /// Exhaustive rather than optional, so a preset added without a
+    /// destination is a compile error rather than a link that quietly stops
+    /// appearing. `AgentPresetTests` asks every case for one.
+    public var documentation: URL {
+        switch self {
+        case .claudeCode: return URL(string: "https://code.claude.com/docs/en/quickstart")!
+        case .codex: return URL(string: "https://learn.chatgpt.com/docs/codex/cli")!
+        case .cursor: return URL(string: "https://cursor.com/cli")!
+        case .gemini: return URL(string: "https://google-gemini.github.io/gemini-cli/docs/")!
+        case .copilot: return URL(string: "https://docs.github.com/en/copilot/how-tos/copilot-cli")!
+        case .opencode: return URL(string: "https://opencode.ai/docs/cli/")!
+        case .aider: return URL(string: "https://aider.chat/docs/")!
+        case .amp: return URL(string: "https://ampcode.com/manual")!
+        case .goose: return URL(string: "https://goose-docs.ai/docs/quickstart/")!
+        case .pi: return URL(string: "https://pi.dev/docs/latest/quickstart")!
+        case .hermes:
+            return URL(string: "https://hermes-agent.nousresearch.com/docs/getting-started/quickstart")!
         }
     }
 
@@ -124,6 +157,8 @@ public enum AgentPreset: String, CaseIterable, Sendable {
         case .aider: return "aider --message {prompt}"
         case .amp: return "amp -x {prompt}"
         case .goose: return "goose run -t {prompt}"
+        case .pi: return "pi -p {prompt}"
+        case .hermes: return "hermes -z {prompt}"
         }
     }
 

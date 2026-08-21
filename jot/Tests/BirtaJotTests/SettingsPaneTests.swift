@@ -176,6 +176,153 @@ final class SettingsPaneTests: XCTestCase {
         XCTAssertTrue(popup.pullsDown)
     }
 
+    /// The agent command has a link to the tool it names, and the link goes
+    /// where that tool's documentation is.
+    ///
+    /// Read off the live button rather than from `AgentPreset.documentation`,
+    /// which is what makes this a check that the link REACHED the pane: the
+    /// table can be right and the pane can be drawing a link that never moves.
+    func testTheAgentPaneShouldLinkToTheToolTheCommandRuns() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("aiAgent")
+        guard let content = controller.window?.contentView else {
+            return XCTFail("the settings window has no content view")
+        }
+        content.layoutSubtreeIfNeeded()
+
+        guard let expected = AgentPreset.matching(command: Prefs.agentCommand) else {
+            return XCTFail("the default command names no tool, so this checks nothing")
+        }
+        guard let link = linkButton(in: content) else {
+            return XCTFail("the AI Agent pane draws no documentation link")
+        }
+        XCTAssertEqual(link.url, expected.documentation)
+        XCTAssertEqual(link.title, expected.title)
+        // Its own holder, not `isHiddenOrHasHiddenAncestor`: with `/ai` off
+        // the whole card row is hidden, which is a different question and
+        // would make this pass or fail for the wrong reason.
+        XCTAssertEqual(link.superview?.isHidden, false,
+                       "the link is drawn for a command that names a tool")
+    }
+
+    /// A command naming nothing takes the link away rather than leaving one
+    /// pointing at somebody else's documentation.
+    func testACommandNamingNoToolShouldLeaveNoLink() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("aiAgent")
+        guard let content = controller.window?.contentView else {
+            return XCTFail("the settings window has no content view")
+        }
+        content.layoutSubtreeIfNeeded()
+        guard let link = linkButton(in: content) else {
+            return XCTFail("the AI Agent pane draws no documentation link")
+        }
+        // The precondition, so this cannot pass on a link that was never
+        // drawn in the first place.
+        XCTAssertEqual(link.superview?.isHidden, false)
+
+        controller.showAgentPreset(for: "my-own-agent --run {prompt}")
+
+        XCTAssertEqual(link.superview?.isHidden, true)
+    }
+
+    /// The link has to be right the FIRST time the pane is drawn.
+    ///
+    /// The pane is built lazily, on its first visit, and the controls are
+    /// wired once from whichever pane was built first. So a link that is only
+    /// put in step by an edit shows whatever it was constructed with until
+    /// somebody types, which for a command naming no tool is a link to
+    /// somebody else's documentation.
+    func testACommandNamingNoToolShouldNotShowALinkOnTheFirstDraw() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        // General first, which is what wires the controls, then AI Agent,
+        // which is what builds the link. That order is the one the failure
+        // needs, and it is also the order a person opening Settings gets.
+        // Through the STORED command, because that is what the pane reads
+        // when it builds itself, and reading it is the step that was missing.
+        // Restored, since the runner's defaults domain outlives this run.
+        let original = Prefs.agentCommand
+        defer { Prefs.agentCommand = original }
+        Prefs.agentCommand = "my-own-agent --run {prompt}"
+        controller.selectTabForTesting("general")
+        controller.selectTabForTesting("aiAgent")
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+
+        guard let link = linkButton(in: controller.window!.contentView!) else {
+            return XCTFail("the AI Agent pane draws no documentation link")
+        }
+        XCTAssertEqual(link.superview?.isHidden, true,
+                       "the pane drew a link for a command that names no tool")
+    }
+
+    /// The one control on the pane that can tell an installed tool from a typo.
+    func testTheAgentPaneShouldOfferAWayToRunTheCommand() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("aiAgent")
+        guard let content = controller.window?.contentView else {
+            return XCTFail("the settings window has no content view")
+        }
+        content.layoutSubtreeIfNeeded()
+
+        let titles = buttonTitles(in: content)
+        XCTAssertTrue(titles.contains("Test"),
+                      "the AI Agent pane draws no Test button; drew: "
+                      + titles.joined(separator: " | "))
+    }
+
+    /// What the file-name template would produce, drawn under the field and
+    /// aligned with it.
+    ///
+    /// Three claims in one, and each is a separate way for it to be wrong: it
+    /// is the FIRST thing under the row (not below the reference text), it is
+    /// aligned with the field rather than with the prose, and it is the name
+    /// itself rather than a sentence about it.
+    func testTheFileNameRowShouldShowTodaysNameUnderTheField() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("general")
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+
+        guard let row = controller.rowForTesting(.newNoteName) else {
+            return XCTFail("the General pane draws no file-name row")
+        }
+        guard let preview = captions(in: row).first else {
+            return XCTFail("the file-name row draws no preview")
+        }
+        XCTAssertEqual(preview.stringValue,
+                       NoteNameTemplate.expand(Prefs.newNoteNameTemplate))
+        XCTAssertEqual(preview.alignment, .right)
+    }
+
+    /// Every Caption inside `view`, in the order they are drawn.
+    private func captions(in view: NSView) -> [Caption] {
+        var found: [Caption] = []
+        if let caption = view as? Caption { found.append(caption) }
+        for subview in view.subviews { found += captions(in: subview) }
+        return found
+    }
+
+    /// Every button title inside `view`.
+    private func buttonTitles(in view: NSView) -> [String] {
+        var found: [String] = []
+        if let button = view as? NSButton { found.append(button.title) }
+        for subview in view.subviews { found += buttonTitles(in: subview) }
+        return found
+    }
+
+    /// The first documentation link anywhere in `view`.
+    private func linkButton(in view: NSView) -> LinkButton? {
+        if let found = view as? LinkButton { return found }
+        for subview in view.subviews {
+            if let found = linkButton(in: subview) { return found }
+        }
+        return nil
+    }
+
     /// The first pull-down anywhere in `view`.
     private func pullDown(in view: NSView) -> NSPopUpButton? {
         if let found = view as? NSPopUpButton, found.pullsDown { return found }

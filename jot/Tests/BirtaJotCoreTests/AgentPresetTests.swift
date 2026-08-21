@@ -35,6 +35,52 @@ final class AgentPresetTests: XCTestCase {
                        "two presets run the same program: \(programs.sorted())")
     }
 
+    /// Every preset has somewhere to send a reader, and it is a real
+    /// destination rather than a placeholder.
+    ///
+    /// Derived from `allCases` rather than a hand-written list, so a preset
+    /// added later is covered the day it lands. What this cannot check is
+    /// whether a page has MOVED, which is why the value is a documentation
+    /// entry point rather than a deep link to a flag.
+    func testEveryPresetShouldLinkToItsOwnDocumentation() {
+        var checked = 0
+        for preset in AgentPreset.allCases {
+            let url = preset.documentation
+            XCTAssertEqual(url.scheme, "https",
+                           "\(preset.title) documentation is not served over https")
+            XCTAssertFalse(url.host?.isEmpty ?? true,
+                           "\(preset.title) documentation names no host")
+            checked += 1
+        }
+        XCTAssertEqual(checked, AgentPreset.allCases.count)
+        XCTAssertGreaterThanOrEqual(checked, 5)
+    }
+
+    /// Two presets pointing at one page means one of them was copied and not
+    /// finished, which reads on screen as a link that quietly sends somebody
+    /// to the wrong tool's documentation.
+    func testEveryPresetShouldLinkSomewhereOfItsOwn() {
+        let links = AgentPreset.allCases.map(\.documentation.absoluteString)
+        XCTAssertEqual(Set(links).count, links.count,
+                       "two presets share a documentation link: \(links.sorted())")
+    }
+
+    /// Every template hands the request over through the placeholder.
+    ///
+    /// `AgentRequest.expand` appends the prompt to a template without one,
+    /// which works and is the fallback for a command somebody wrote; a preset
+    /// WE ship should say where the prompt goes, because for several of these
+    /// tools a trailing argument is not the prompt.
+    func testEveryPresetTemplateShouldSayWhereThePromptGoes() {
+        var checked = 0
+        for preset in AgentPreset.allCases {
+            XCTAssertTrue(preset.template.contains(AgentRequest.promptPlaceholder),
+                          "\(preset.title) has no {prompt} in its template")
+            checked += 1
+        }
+        XCTAssertEqual(checked, AgentPreset.allCases.count)
+    }
+
     func testChangedArgumentsShouldStillNameTheTool() {
         XCTAssertEqual(AgentPreset.matching(command: "claude -p {prompt}"), .claudeCode)
         XCTAssertEqual(AgentPreset.matching(command: "claude --model opus -p {prompt}"), .claudeCode)
@@ -51,6 +97,8 @@ final class AgentPresetTests: XCTestCase {
 
     func testLeadingSpaceAndCaseShouldNotDecideIt() {
         XCTAssertEqual(AgentPreset.matching(command: "   gemini -p {prompt}"), .gemini)
+        XCTAssertEqual(AgentPreset.matching(command: "  pi -p {prompt}"), .pi)
+        XCTAssertEqual(AgentPreset.matching(command: "hermes -z {prompt}"), .hermes)
         XCTAssertEqual(AgentPreset.matching(command: "GEMINI -p {prompt}"), .gemini)
     }
 

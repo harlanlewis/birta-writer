@@ -32,7 +32,7 @@ public enum WriteAction: Equatable, Sendable {
 
 /// When Jot writes the buffer to disk, as one pure function.
 ///
-/// The setting a user sees is "Automatically save while editing", and with it
+/// The setting a user sees is "Automatically save changes", and with it
 /// ON nothing here is a question: an edit is deferred a beat and everything
 /// else writes at once.
 ///

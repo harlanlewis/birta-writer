@@ -57,6 +57,32 @@ final class WelcomeScreenTests: XCTestCase {
                        + drawn.joined(separator: " | "))
     }
 
+    /// The mark is the only place the app says its own name here.
+    ///
+    /// A heading under the logo is that name twice, once drawn and once set,
+    /// and the two never quite agree. Checked as an ABSENCE, which is the kind
+    /// of claim nothing else on this screen can make: every other check here
+    /// asks whether something is drawn.
+    func testTheFirstRunScreenShouldNotWriteTheAppsNameUnderItsOwnMark() {
+        let welcome = WelcomeView(onHotkeyChange: { 0 })
+        welcome.layoutSubtreeIfNeeded()
+
+        var text: [String] = []
+        func walk(_ view: NSView) {
+            if let field = view as? NSTextField { text.append(field.stringValue) }
+            for subview in view.subviews { walk(subview) }
+        }
+        walk(welcome)
+
+        // The instrument reached the screen: the row labels ARE fields, so an
+        // empty sweep would mean the walk found nothing rather than that the
+        // title is gone.
+        XCTAssertTrue(text.contains(SettingsRow.showInDock.rawValue),
+                      "the walk read no rows, so it cannot say anything about a title")
+        XCTAssertFalse(text.contains(AppFlavor.current.displayName),
+                       "the first-run screen writes the app's name under its own logo")
+    }
+
     /// The two screens, compared as DRAWN rather than as declared.
     ///
     /// `SettingsFormTests` makes this comparison between two arrays, which is

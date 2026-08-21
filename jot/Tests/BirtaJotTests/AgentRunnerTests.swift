@@ -71,6 +71,90 @@ final class AgentRunnerTests: XCTestCase {
         XCTAssertNil(final.text, "a failure is a sentence, never a document")
     }
 
+    /// Runs one probe to completion and returns what it found.
+    private func probe(template: String) -> AgentProbeResult? {
+        let runner = AgentRunner()
+        var result: AgentProbeResult?
+        let finished = expectation(description: "the probe reports")
+        runner.probe(template: template) {
+            result = $0
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 30)
+        return result
+    }
+
+    func testASuccessfulProbeShouldHandBackWhatTheToolPrinted() throws {
+        let result = try XCTUnwrap(probe(
+            template: "true {prompt} ; printf 'Hello!\\n' ; printf 'on stderr\\n' >&2"))
+
+        XCTAssertTrue(result.succeeded)
+        XCTAssertNil(result.failure)
+        // Both streams, interleaved: the person reading this wants everything
+        // the tool said, and several of these CLIs answer on stderr.
+        XCTAssertTrue(result.transcript.contains("Hello!"), result.transcript)
+        XCTAssertTrue(result.transcript.contains("on stderr"), result.transcript)
+    }
+
+    func testAProbeShouldReachTheToolWithTheHelloPrompt() throws {
+        // The prompt is what makes this a test of the whole path rather than
+        // of the binary existing, so the tool has to actually receive it.
+        let result = try XCTUnwrap(probe(template: "printf '%s' {prompt}"))
+
+        XCTAssertTrue(result.succeeded)
+        XCTAssertEqual(result.transcript, AgentRequest.probePrompt)
+    }
+
+    func testAFailingProbeShouldKeepTheToolsOwnErrorAndSayItFailed() throws {
+        let result = try XCTUnwrap(probe(
+            template: "true {prompt} ; printf 'not logged in\\n' >&2 ; exit 4"))
+
+        XCTAssertFalse(result.succeeded)
+        XCTAssertNotNil(result.failure)
+        XCTAssertTrue(result.transcript.contains("not logged in"), result.transcript)
+    }
+
+    /// A command that is not installed, which is the whole reason the button
+    /// exists. `/bin/sh` reports it rather than refusing to start, so this
+    /// arrives as a nonzero exit with the shell's own sentence.
+    func testAProbeOfACommandThatIsNotInstalledShouldFailWithSomethingToRead() throws {
+        let result = try XCTUnwrap(probe(template: "birta-no-such-agent-xyz {prompt}"))
+
+        XCTAssertFalse(result.succeeded)
+        let said = result.transcript + (result.failure ?? "")
+        XCTAssertFalse(said.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       "a failure with nothing to read is the sheet saying nothing")
+    }
+
+    /// The probe must not write where the notes are. It runs in a folder of
+    /// its own, and that folder is gone afterwards.
+    func testAProbeShouldRunInAFolderOfItsOwnAndLeaveNothingBehind() throws {
+        let result = try XCTUnwrap(probe(
+            template: "true {prompt} ; printf 'x' > wrote.txt ; pwd"))
+
+        XCTAssertTrue(result.succeeded)
+        let directory = result.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertFalse(directory.isEmpty, "the probe reported no working directory")
+        // The instrument reached something: the child really did write there,
+        // so an absent directory below is the cleanup rather than a child that
+        // never ran.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory),
+                       "the probe left \(directory) on disk")
+    }
+
+    /// A tool that asks a question sees EOF rather than a terminal, so it
+    /// gives up instead of hanging with nothing on screen saying why.
+    ///
+    /// Driven rather than asserted about the property: `read` blocks forever
+    /// on an inherited stdin and returns at once on `/dev/null`, so a probe
+    /// that came back at all is the answer.
+    func testAToolThatWaitsForInputShouldSeeNothingRatherThanHang() throws {
+        let result = try XCTUnwrap(probe(
+            template: "true {prompt} ; read line ; printf 'read returned\\n'"))
+
+        XCTAssertTrue(result.transcript.contains("read returned"), result.transcript)
+    }
+
     func testTheFirstReportShouldBeRunningWithTheHarnessName() throws {
         let dir = try makeNote("# Note\n")
         defer { try? FileManager.default.removeItem(at: dir) }

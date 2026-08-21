@@ -81,6 +81,21 @@ export type HostCapability =
     /** A coding agent to hand a prompt to (Ask Agent). */
     | "agent"
     /**
+     * A notification surface of the host's own, which the page can leave a
+     * failure to rather than saying it in the corner itself.
+     *
+     * VS Code raises a real notification for a failed `/ai` run, carrying a
+     * Show Output action the page cannot offer; a message in the editor's
+     * corner beside it would be the same event reported twice. Jot's shell has
+     * no such surface for the page's own failures, so there the corner IS the
+     * notification.
+     *
+     * What this names is the HOST's ability to speak, never whether a given
+     * message is worth speaking. A page-level message that no host duplicates
+     * (the content guard's veto) is not gated on this.
+     */
+    | "notifications"
+    /**
      * An editor font of the host's own for the content to inherit, which is
      * what the "Editor font" preset names. A host with no editor behind the
      * page (Jot is a window with a document in it) has no such font, so the
@@ -112,6 +127,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "toc",
     "imageUpload",
     "agent",
+    "notifications",
     "editorFont",
     "contentMeasure",
     "appPreferences",
