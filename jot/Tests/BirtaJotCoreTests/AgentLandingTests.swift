@@ -71,3 +71,28 @@ final class AgentLandingTests: XCTestCase {
         }
     }
 }
+
+/// Whether the agent's own version has to be kept, once the page has said what
+/// its merge did.
+///
+/// The asymmetry is the whole point and is what the default arm asserts: a
+/// copy nobody needed is noise, and bytes nobody kept are gone.
+final class AgentRescuePolicyTests: XCTestCase {
+    func testAnOutcomeThatLeftChangesOutShouldKeepTheAgentVersion() {
+        XCTAssertTrue(AgentRescuePolicy.keepsAgentVersion(outcome: "conflict"))
+        XCTAssertTrue(AgentRescuePolicy.keepsAgentVersion(outcome: "partial"))
+    }
+
+    func testAnOutcomeThatTookEverythingShouldNotKeepIt() {
+        XCTAssertFalse(AgentRescuePolicy.keepsAgentVersion(outcome: "applied"))
+        XCTAssertFalse(AgentRescuePolicy.keepsAgentVersion(outcome: "unchanged"))
+    }
+
+    /// A vocabulary this does not know must fail towards keeping the bytes.
+    /// If the page grows a fifth outcome and nobody updates this, the copy
+    /// survives rather than the agent's work being dropped silently.
+    func testAnUnrecognisedOutcomeShouldKeepTheAgentVersion() {
+        XCTAssertTrue(AgentRescuePolicy.keepsAgentVersion(outcome: "somethingNew"))
+        XCTAssertTrue(AgentRescuePolicy.keepsAgentVersion(outcome: ""))
+    }
+}

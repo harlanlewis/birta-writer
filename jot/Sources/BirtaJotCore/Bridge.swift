@@ -42,6 +42,11 @@ public enum WebviewMessage: Equatable {
     /// `agentCancel`, which is what `notifyAgentCancel` posts; a case
     /// spelled anything else is a case nothing ever reaches.
     case agentCancel(requestId: String)
+    /// What the page's merge did with a finished run: `applied`, `partial`,
+    /// `conflict` or `unchanged`. Jot acts on it because `partial` and
+    /// `conflict` leave the agent's version only in the file, and Jot's
+    /// autosave is about to write the buffer over it (`AgentRescuePolicy`).
+    case agentMergeResult(requestId: String, outcome: String)
     case clipboardWrite(format: String, data: String)
     /// The selection palette's button: put a reference to where the caret is,
     /// and the selected lines, on the clipboard. Answered by asking the page
@@ -124,6 +129,9 @@ public enum WebviewMessage: Equatable {
                              model: str("model"), effort: str("effort"))
         case "agentCancel":
             return str("requestId").map { .agentCancel(requestId: $0) } ?? .other(type: type)
+        case "agentMergeResult":
+            guard let id = str("requestId"), let outcome = str("outcome") else { return .other(type: type) }
+            return .agentMergeResult(requestId: id, outcome: outcome)
         case "clipboardWrite":
             guard let f = str("format"), let d = str("data") else { return .other(type: type) }
             return .clipboardWrite(format: f, data: d)

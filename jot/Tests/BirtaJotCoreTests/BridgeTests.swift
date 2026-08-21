@@ -17,6 +17,12 @@ final class BridgeTests: XCTestCase {
         // The old spelling must not quietly work again.
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"stopAgentRun","requestId":"r1"}"#),
                        .other(type: "stopAgentRun"))
+        // Jot acts on the merge outcome now: `partial` and `conflict` leave
+        // the agent's version only in the copy beside the note.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentMergeResult","requestId":"r1","outcome":"conflict"}"#),
+                       .agentMergeResult(requestId: "r1", outcome: "conflict"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentMergeResult","requestId":"r1"}"#),
+                       .other(type: "agentMergeResult"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"clipboardWrite","format":"markdown","data":"**b**"}"#),
                        .clipboardWrite(format: "markdown", data: "**b**"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setToolbarLayout","item":{"id":"bold","placement":"hidden"},"order":["italic","bold"]}"#),

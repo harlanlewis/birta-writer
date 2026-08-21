@@ -42,6 +42,34 @@ public enum AgentLanding: Equatable, Sendable {
 /// own `isEdited` flag cannot answer the second one, because with autosave on
 /// it clears every time the debounce fires, so a burst typed during a run
 /// reads as a buffer in step with the file.
+/// Whether the agent's own version has to be kept somewhere the user can
+/// reach, once the page has reported what its merge did.
+///
+/// This exists for a difference between the two surfaces that the shared merge
+/// cannot see. On `partial` and `conflict` the page deliberately leaves some or
+/// all of the agent's changes out of the document, and both hosts are then
+/// holding the agent's full version in the FILE and the user's version in the
+/// buffer. In VS Code that is a safe resting state, because `files.autoSave` is
+/// off by default and the file keeps the agent's bytes until somebody decides.
+/// Jot autosaves by default, within half a second of the last keystroke, so the
+/// buffer goes over the agent's file almost at once and its output is gone with
+/// nothing having said so.
+///
+/// So Jot keeps a copy beside the note, which is the answer it already gives
+/// for a note deleted underneath it. `applied` and `unchanged` mean the
+/// document holds everything the agent produced and no copy is needed.
+///
+/// An outcome this does not recognise KEEPS the copy, because the costs are not
+/// symmetric: a file nobody needed is noise, and bytes nobody kept are gone.
+public enum AgentRescuePolicy {
+    public static func keepsAgentVersion(outcome: String) -> Bool {
+        switch outcome {
+        case "applied", "unchanged": return false
+        default: return true
+        }
+    }
+}
+
 public enum AgentLandingPolicy {
     public static func landing(handoff: String, onDisk: String, buffer: String) -> AgentLanding {
         // Nothing was written, so there is nothing to bring in and nothing to

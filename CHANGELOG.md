@@ -6,7 +6,7 @@
 
 ### Fixed
 
-- Merging two adjacent bold runs into one is written to the file. Selecting across `**a** **b**` and making it `**a b**` looked right on screen and was then dropped by the save, which compared the two spellings, judged them the same, and wrote nothing. The file kept the split form and the next open showed it back. Splitting one run into two was never affected, and neither was any other emphasis edit.
+- Changing whether two adjacent bold runs are one run or two is written to the file, in both directions. Making `**a** **b**` into `**a b**`, or the reverse, looked right on screen and was then dropped by the save, which compared the two spellings, judged them the same, and wrote nothing. The file kept whichever form it already had and the next open showed it back. No other emphasis edit was affected.
 
 - The `/date` calendar is drawn as a floating card, on its own ground, instead of as a bare grid of numbers over the text underneath it. It arrived with no background, no border and no shadow at all, so the document showed straight through the days.
 

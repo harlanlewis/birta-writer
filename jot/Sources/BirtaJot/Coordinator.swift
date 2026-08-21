@@ -86,6 +86,9 @@ final class Coordinator {
     /// the coordinator for the life of the app.
     private var pendingContexts: [String: (AgentReference.Selection?) -> Void] = [:]
     private let agent = AgentRunner()
+    /// Per run, the file holding the agent's own version while the page's
+    /// merge decides whether the document ended up with all of it.
+    private var agentRescues: [String: URL] = [:]
     private var autosaveTimer: Timer?
     private var autosaveDeadline: Date?
     /// The typing pause that ends a burst, and the ceiling a burst cannot pass.
@@ -750,6 +753,8 @@ final class Coordinator {
             openPreferences?()
         case let .askAgent(prompt, requestId, model, effort):
             runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort)
+        case let .agentMergeResult(requestId, outcome):
+            settleAgentRescue(requestId: requestId, outcome: outcome)
         case let .agentCancel(requestId):
             agent.stop(requestId: requestId) { [weak self] status in
                 self?.reportAgent(requestId: requestId, status)
@@ -1240,10 +1245,50 @@ final class Coordinator {
         let landing = AgentLandingPolicy.landing(handoff: handoff, onDisk: onDisk, buffer: latest)
         if landing.reloadsBuffer { reloadFromDiskIntoBuffer() }
         if let diskText = landing.pageText {
+            // Written BEFORE the page is told, not after it answers. The page
+            // merges, dispatches a transaction, and that restarts the autosave
+            // debounce, so the buffer is on its way over the agent's file
+            // within half a second. Waiting for `agentMergeResult` to decide
+            // whether to keep a copy would be racing that write with an IPC
+            // round trip. So the copy is made unconditionally here and removed
+            // again when the page reports that nothing was left out.
+            rescueAgentVersion(requestId: requestId, text: diskText)
             reportAgent(requestId: requestId, status.merging(diskText))
         } else {
             reportAgent(requestId: requestId, status)
         }
+    }
+
+    /// Keep the agent's own version beside the note while the page decides.
+    ///
+    /// Same answer, and the same spelling, as the rescue for a note deleted
+    /// underneath us: a numbered file beside the original, so nothing is ever
+    /// overwritten. A failure here is not worth interrupting the run for; what
+    /// it costs is the copy, and the run still lands.
+    private func rescueAgentVersion(requestId: String, text: String) {
+        let directory = boundURL.deletingLastPathComponent()
+        let stem = boundURL.deletingPathExtension().lastPathComponent
+        let ext = boundURL.pathExtension.isEmpty ? "md" : boundURL.pathExtension
+        let target = Coordinator.unusedURL(in: directory, stem: "\(stem) (agent)", extension: ext)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try AtomicFile.writeString(text, to: target)
+            agentRescues[requestId] = target
+        } catch {
+            NSLog("Birta Writer Jot: could not keep the agent's version: \(error)")
+        }
+    }
+
+    /// The page has said what its merge did, so the copy is either unnecessary
+    /// or is the only place the agent's work still exists.
+    private func settleAgentRescue(requestId: String, outcome: String) {
+        guard let target = agentRescues.removeValue(forKey: requestId) else { return }
+        if AgentRescuePolicy.keepsAgentVersion(outcome: outcome) {
+            statusOverlay.flash("Some of the agent's changes overlapped yours. Its version is in \(target.lastPathComponent).")
+            return
+        }
+        // Everything it wrote is in the document, so the copy is noise.
+        try? FileManager.default.removeItem(at: target)
     }
 
     private func reportAgent(requestId: String, _ status: AgentRunStatus) {

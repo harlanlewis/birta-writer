@@ -103,11 +103,10 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     resolveSyncConflict: "Jot never sends `setSyncConflict`, so the badge that posts this cannot appear",
     pickLinkTarget: "no workspace to pick a target from",
     getLinkTargetSuggestions: "no workspace to suggest targets from",
-    getPathSuggestions: "no workspace to suggest paths from",
+    getPathSuggestions: "no workspace to suggest paths from, so the field offers nothing and stays typable rather than hanging",
     resolveLinkTarget: "no workspace: a link to a project file cannot resolve",
-    getProjectImages: "no workspace to enumerate images in",
     resolveImagePath: "images are stored relatively beside the note; nothing to resolve against a workspace",
-    resolveEmbedCard: "embeds resolve through the network switch, which Jot answers with `setNetworkEnabled`'s default",
+    resolveEmbedCard: "only posted for a provider the host has said is connected, and Jot connects none: it declines the `connectors` capability",
     requestFmSuggestions: "frontmatter suggestions come from a workspace's other documents",
     exportHtml: "no export destination: Jot has no Save As for a rendered file",
     whatsNewSeen: "the extension's release notes; Jot's update offer is its own",
@@ -132,9 +131,6 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     frontmatterUpdate: "the extension mirrors frontmatter into its own state; Jot has no mirror",
     wordCount: "the extension's status bar; Jot has no status bar to put it in",
     fatalParse: "the extension's error sink; Jot reports a crash through its own path",
-
-    // Answered, but not by parsing: the page's own transaction is the record.
-    agentMergeResult: "lands in `.other` on purpose: the merge is a doc-changing transaction the ordinary sync path already reports as `update`, so `latest` and `isEdited` stay honest without it. Its only extension use is a status-bar sentence",
 };
 
 /**
@@ -145,6 +141,8 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
  * the fix rather than a tidy-up.
  */
 const KNOWN_GAPS: Record<string, string> = {
+    getProjectImages:
+        "MAR-401: Jot declares `imageUpload`, so the image toolbar item is offered (`registry.ts`, `image: \"imageUpload\"`). The insert panel is handed `onGetProjectImages` unconditionally, so its Project tab is shown AND is the default, and it calls `loadProjectImages()` on open. Nothing answers, so the panel reads Loading for the ten-second timeout in `imageUpload.ts` and then shows an empty grid. Was filed here as declined with the reason `no workspace to enumerate images in`, which explains why Jot has nothing to REPLY with and not why the question is never asked. It is asked",
     requestAgentCapabilities:
         "MAR-390: Jot declares the `agent` capability, so `/ai-advanced` opens there, and the composer asks for model and effort pickers it never receives. It degrades to no pickers rather than to nothing, which is why this is a gap and not the same severity as the two above it",
     agentAttachment:
