@@ -109,6 +109,40 @@ final class BridgeTests: XCTestCase {
                 isEmpty: false)))
     }
 
+    /// The fallback arm of the entry choice. Today's page cannot reach it:
+    /// `webview/agentContext.ts` posts one selection and `primary` 0, which is
+    /// what `EditorSelectionContext` says it does. The arm is there for the
+    /// multi-entry shape that type already permits, and this pins what it does
+    /// when the index and the list disagree, which is to place the caret
+    /// somewhere rather than answer nil. The two-selection case above is
+    /// unreachable for the same reason.
+    func testAPrimaryIndexPastTheEndShouldFallBackToTheFirstSelection() {
+        let json = #"""
+        {"type":"editorContextResult","id":"c1","context":{"selections":[
+          {"anchor":{"line":9,"column":2},"active":{"line":9,"column":7},"text":"y"}],
+          "primary":4,"isEmpty":false}}
+        """#
+        XCTAssertEqual(
+            WebviewMessage.parse(json),
+            .editorContextResult(id: "c1", selection: .init(
+                anchor: .init(line: 9, column: 2),
+                active: .init(line: 9, column: 7),
+                isEmpty: false)))
+    }
+
+    /// The other end of that fallback: with nothing in the list there is no
+    /// first entry to fall back to, and the reply carries no selection. It is
+    /// still a reply, for the reason the null-context case above gives, rather
+    /// than an `.other` the caller's pending closure would wait out.
+    func testAnEmptySelectionListShouldBeAnAnswerCarryingNoSelection() {
+        let json = #"""
+        {"type":"editorContextResult","id":"c1","context":{"selections":[],
+          "primary":0,"isEmpty":true}}
+        """#
+        XCTAssertEqual(WebviewMessage.parse(json),
+                       .editorContextResult(id: "c1", selection: nil))
+    }
+
     func testAContextRequestNamesTheIdItWillBeAnsweredWith() {
         let object = HostMessage.requestEditorContext(id: "c1").jsonObject()
         XCTAssertEqual(object["type"] as? String, "requestEditorContext")
