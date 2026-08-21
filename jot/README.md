@@ -4,9 +4,19 @@ A hotkey-summoned macOS scratchpad running Birta Writer's real editor: full rend
 
 Jot ships zero behavior the extension lacks. It loads the same `dist/webview.js`, with `webview/ui/hostPalette.css` in place of the palette VS Code injects and a host profile (`shared/hostProfile.ts`) that leaves out what only means something inside VS Code: the raw markdown view, the settings UI, proofreading, the read-only toggle, the TOC sidebar. Images are in, because the shell has its own store for them (see "Images" below). The profile also carries the layout choices that differ between the two surfaces, of which the panel's are the formatting row, the fixed toolbar, menus that open on a click, and a find bar drawn the way macOS draws one.
 
+## Requirements
+
+Two facts decide whether a Mac can run Jot, and each is declared once, in a place something reads.
+
+macOS 14 or later. `Resources/Info.plist`'s `LSMinimumSystemVersion` is the one macOS itself checks before launching the app, and `Package.swift`'s `platforms: [.macOS(.v14)]` is what makes the claim true rather than advertised: SwiftPM compiles every target against that floor, so reaching for an API that arrived later is a build error and not a crash on somebody's older Mac. The extension's pair is the same shape, `engines.vscode` stating the floor and `@types/vscode` pinned to it keeping the compiler honest about it, and the two Jot declarations and this sentence are held in step by `shared/__tests__/jotSystemRequirements.test.ts`.
+
+Apple Silicon, for the published app. The release job runs `swift build` with no `--arch`, so the bundle carries the build machine's own architecture and nothing else; the runner is Apple Silicon, which `.github/workflows/jot.yml` asserts off the built binary rather than leaving it as a claim here. Nothing chose this, and it is one flag away from being universal: `swift build --arch arm64 --arch x86_64` produces a bundle that suits both, at roughly twice the build. A checkout builds for whatever machine you are on, so an Intel Mac can build and run Jot; only the download is one-sided.
+
+Neither update path will install a build this Mac cannot launch. The in-app updater and `scripts/update-jot.sh` both ask the downloaded bundle about its own floor and its own architecture before the running copy is quit and replaced, and refuse with what the build wants and what this Mac is. That check earns its place because the swap is designed so a failure leaves the app where it was, and macOS reports an incompatible bundle only after the working copy is already gone. `BirtaJotCore.SystemRequirements` is the whole of the decision, and it holds no floor of its own: the bundle being installed is what answers, so a release that raises the floor is judged against its own number.
+
 ## Build and run
 
-Requires macOS 14 or later and Swift 6 (the Command Line Tools are enough to build; `swift test` needs Xcode for XCTest, and `jot/scripts/test.sh` points at `/Applications/Xcode.app` when it is installed). No Apple developer account: the app is ad-hoc signed, which is fine on machines you own and is not fine to hand to anyone else (see "Other machines" below).
+Building needs Swift 6 and the same macOS 14 floor. The Command Line Tools are enough to build; `swift test` needs Xcode for XCTest, and `jot/scripts/test.sh` points at `/Applications/Xcode.app` when it is installed. No Apple developer account: the app is ad-hoc signed, which is fine on machines you own and is not fine to hand to anyone else (see "Other machines" below).
 
 ```bash
 pnpm jot:build     # production esbuild, swift build, assemble jot/build/Birta Writer Jot.app

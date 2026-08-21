@@ -270,6 +270,20 @@ final class Updater {
                 installing = false
                 return done(false)
             }
+            // Ask the downloaded bundle whether this Mac can launch it, before
+            // anything replaces the copy that is running. The swap below is
+            // built so a failure never leaves somebody with no app; an update
+            // the machine refuses defeats that from outside, because the move
+            // succeeds and macOS only says no afterwards, with the working
+            // copy already gone. This is the one place the question can be
+            // asked, and the bundle is what answers it, so a release that
+            // raises the floor is judged against its own number.
+            let verdict = compatibility(of: staged)
+            if let refusal = SystemRequirements.refusal(verdict, productName: AppFlavor.current.displayName) {
+                onStatus?(refusal)
+                installing = false
+                return done(false)
+            }
             // Ad-hoc signed, so Gatekeeper cannot attribute it to anyone and
             // would refuse to open it at all. Same trade `update-jot.sh` makes,
             // and its header is where the argument lives.
@@ -324,6 +338,61 @@ final class Updater {
             installing = false
             done(false)
         }
+    }
+
+    /// What a downloaded bundle says about the machines it can run on.
+    ///
+    /// Both facts come off the bundle: the floor from its `Info.plist`, and
+    /// the architectures from its executable's Mach-O header. Only a header's
+    /// worth of that binary is read, because the answer is in the first bytes
+    /// and the file runs to tens of megabytes.
+    ///
+    /// A bundle whose executable cannot be found or read reads as
+    /// `.unreadable`, which refuses. That is the same bias as the rest of this
+    /// path: a refusal costs a version, and an install that will not open
+    /// costs the app.
+    private func compatibility(of bundle: URL) -> SystemRequirements.Verdict {
+        let plist = bundle.appendingPathComponent("Contents/Info.plist")
+        var declaredMinimum: String?
+        var executable: String?
+        if let data = try? Data(contentsOf: plist),
+           let root = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
+            declaredMinimum = root["LSMinimumSystemVersion"] as? String
+            executable = root["CFBundleExecutable"] as? String
+        }
+        var built: Set<SystemRequirements.Architecture> = []
+        if let executable {
+            let binary = bundle.appendingPathComponent("Contents/MacOS/\(executable)")
+            if let handle = try? FileHandle(forReadingFrom: binary) {
+                defer { try? handle.close() }
+                // Enough for a fat header naming a generous number of slices,
+                // and far short of the binary itself.
+                let header = (try? handle.read(upToCount: 4096)) ?? Data()
+                built = SystemRequirements.architectures(machO: header)
+            }
+        }
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let running = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
+        return SystemRequirements.verdict(
+            declaredMinimum: declaredMinimum,
+            builtFor: built,
+            running: running,
+            machine: Self.machineName())
+    }
+
+    /// What this Mac calls its own architecture, as `uname -m` reports it.
+    ///
+    /// Read as bytes up to the first NUL rather than through `String(cString:)`
+    /// over a rebound pointer: `machine` is a fixed 256-byte tuple, and
+    /// rebinding it while also asking its size is two accesses to the same
+    /// storage in one expression.
+    private static func machineName() -> String {
+        var info = utsname()
+        guard uname(&info) == 0 else { return "" }
+        let bytes = withUnsafeBytes(of: &info.machine) { raw in
+            Array(raw.prefix(while: { $0 != 0 }))
+        }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     @discardableResult

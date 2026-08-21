@@ -156,6 +156,7 @@ jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes, when it does not
 jot/Sources/BirtaJotCore/RowAvailability.swift Whether a settings row can do what it says, and what colour the sentence under it is; the two are independent and both surfaces read them here
 jot/Sources/BirtaJotCore/UnsavedChanges.swift What the quit sheet says when autosave is off and the buffer is ahead of the file
 jot/Sources/BirtaJotCore/AboutInfo.swift      What the About window says, and THE repository string its two GitHub links and the updater's release feed all derive from
+jot/Sources/BirtaJotCore/SystemRequirements.swift  Which Macs a build of Jot runs on, decided off the bundle rather than off a floor written here; the two update paths' preflight
 jot/Sources/BirtaJotCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
 jot/Sources/BirtaJotCore/AgentReference.swift What Copy Reference puts on the clipboard, a port of src/agentBridge/format.ts; mirrored test cases, and its header names the two places the two deliberately differ
 jot/scripts/update-jot.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
