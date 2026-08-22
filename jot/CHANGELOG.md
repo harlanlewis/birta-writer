@@ -10,6 +10,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.822.0] - 2026, August 22
+
 ### Added
 
 - Birta Writer Jot will not install a version this Mac cannot run. Before either update path replaces the copy you are using, it asks the download what macOS it needs and which processors it was built for, and stops with both numbers if this Mac is not one of them, leaving the working copy where it is. Jot needs macOS 14 or later, and the app attached to a release is built for Apple Silicon, so an Intel Mac has to build it from the source. Nothing here changed which Macs Jot runs on; what changed is that being told is no longer the same as losing the app, since macOS reports an app it cannot open only after the old one is gone.

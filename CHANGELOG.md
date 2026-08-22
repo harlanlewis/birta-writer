@@ -6,6 +6,12 @@
 
 ---
 
+## [2026.822.0] - 2026, August 22
+
+_No user-visible changes; internal work only._
+
+---
+
 ## [2026.821.1] - 2026, August 21
 
 ### Fixed
