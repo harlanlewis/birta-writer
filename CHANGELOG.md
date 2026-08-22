@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Actual Size, a command that puts the content font size back to its default. Increase Font Size and Decrease Font Size could walk it away from 100% and nothing walked it back in one step. It has no default keyboard shortcut, because the chord a Mac app would use for it is the editor window's own zoom inside VS Code and this editor does not take keys from the window around it; bind one in Keyboard Shortcuts if you want it.
+
 ---
 
 ## [2026.821.1] - 2026, August 21

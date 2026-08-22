@@ -12,9 +12,23 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
+- Birta Writer Jot has a Format menu, and everything the panel's formatting row can do is in it: bold, italic, strikethrough, inline code, highlight and clear formatting, then Paragraph Style for the body and the six heading levels, Lists for the three list kinds with Toggle Task Done and Uncheck All Tasks, Indent and Outdent, and an Insert submenu holding links, tables, images, callouts, math, footnotes, rules and dates. Nearly all of it was already in the panel and none of it was on the keyboard: Jot bound seven keys in total, so the heading, list and indent chords the extension ships did nothing here. They work now, and they are the same chords, which is checked by a test rather than by memory.
+
+- A View menu: Zoom In, Zoom Out and Actual Size for the content font size, a Font submenu for sans-serif, serif and monospaced, Fold and Unfold with Fold All and Unfold All, and Focus Mode.
+
+- A Help menu, holding Keyboard Shortcuts, which opens the same cheatsheet the panel has, and the three destinations the About window names. macOS puts its own search field at the top of a Help menu, and that field searches menu items, which is worth having now that the menu bar holds about sixty of them.
+
+- The keyboard cheatsheet lists every key the app binds, under the menu each one lives in. It listed them as one flat run before, which was fine for seven keys and would not have been for forty.
+
+- Tooltips in the panel print the key that runs them. The link button says ⌘K, and the same is true wherever the app binds a key for what the control does. Inside VS Code these stay as they were: the binding there is yours to change and the editor cannot read what you changed it to, so a printed key could be wrong.
+
 - Birta Writer Jot will not install a version this Mac cannot run. Before either update path replaces the copy you are using, it asks the download what macOS it needs and which processors it was built for, and stops with both numbers if this Mac is not one of them, leaving the working copy where it is. Jot needs macOS 14 or later, and the app attached to a release is built for Apple Silicon, so an Intel Mac has to build it from the source. Nothing here changed which Macs Jot runs on; what changed is that being told is no longer the same as losing the app, since macOS reports an app it cannot open only after the old one is gone.
 
 - Birta Writer Jot has an About window: its mark, its name, the version you are running, and links to the Birta Labs website, the project's source, and the page for reporting something wrong with it. It opens from the menu-bar icon's menu, on a Control-click or a right-click, and from the app menu when Jot is showing a Dock icon. A copy that did not come from a release says Development build instead of a version number, so what you quote in a bug report is either a release or plainly not one.
+
+### Changed
+
+- The Window menu carries Minimize, Zoom and Bring All to Front. It had Minimize alone, and macOS adds Fill, Center, Move & Resize and Full Screen Tile to any app's Window menu, so those arrived with nothing above or below them and read as being in a strange order. Those rows are still the system's, with the system's own keys: what changed is the rows around them.
 
 ---
 

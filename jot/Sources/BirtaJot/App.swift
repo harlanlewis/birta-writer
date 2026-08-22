@@ -202,11 +202,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         JotMenu.add(.edit, to: editMenu, target: self)
         let editItem = NSMenuItem(); editItem.submenu = editMenu; main.addItem(editItem)
 
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        // File, Edit, Format, View, Window, Help: the standard order, whose
+        // rule is that the menus naming the more universal object sit to the
+        // left. Any menu of Jot's own would land between View and Window,
+        // where the app-specific ones go; there is none today.
+        let formatMenu = NSMenu(title: "Format")
+        JotMenu.add(.format, to: formatMenu, target: self)
+        let formatItem = NSMenuItem(); formatItem.submenu = formatMenu; main.addItem(formatItem)
+
+        let viewMenu = NSMenu(title: "View")
+        JotMenu.add(.view, to: viewMenu, target: self)
+        let viewItem = NSMenuItem(); viewItem.submenu = viewMenu; main.addItem(viewItem)
+
+        let windowMenu = JotMenu.windowMenu()
         let windowItem = NSMenuItem(); windowItem.submenu = windowMenu; main.addItem(windowItem)
+        // The assignment is what makes AppKit insert its own rows and append
+        // the window list; see `JotMenu.windowMenu`.
         NSApp.windowsMenu = windowMenu
 
+        // The system's search field arrives with the assignment, and it
+        // searches menu items: worth more now that the Format menu holds thirty
+        // rows than it was when the menu bar held twelve.
+        let helpMenu = NSMenu(title: "Help")
+        JotMenu.add(.help, to: helpMenu, target: self)
+        let helpItem = NSMenuItem(); helpItem.submenu = helpMenu; main.addItem(helpItem)
+        NSApp.helpMenu = helpMenu
+
+        // Once over the whole tree, submenus included. The file and status
+        // menus also clear theirs on every opening through `menuNeedsUpdate`,
+        // which is where a menu whose ITEMS change needs it; these are built
+        // once and do not change, so once is where it belongs.
+        AppDelegate.suppressAutomaticIcons(in: main)
         NSApp.mainMenu = main
     }
 
@@ -319,9 +345,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuNewNote() { coordinator.newNote() }
     @objc func menuSaveAs() { coordinator.saveAs() }
     @objc private func revealLastSave() { coordinator.revealLastSave() }
-    @objc func menuFind() { coordinator.runEditorCommand("openFind") }
-    @objc func menuInsertLink() { coordinator.runEditorCommand("insertLink") }
-    @objc func menuToggleTaskChecked() { coordinator.runEditorCommand("toggleTaskChecked") }
+    /// Run the editor command a menu row carries.
+    ///
+    /// ONE selector for every command row, with the id in `representedObject`,
+    /// so a new row is a line in `JotMenu` and nothing here. The three methods
+    /// this replaced (Find, Insert Link, Toggle Task Done) were a method each,
+    /// which is a shape that does not survive a Format menu.
+    @objc func menuRunEditorCommand(_ sender: NSMenuItem) {
+        guard let command = sender.representedObject as? String else { return }
+        coordinator.runEditorCommand(command)
+    }
+
+    /// Open the destination a Help row carries, in the browser.
+    @objc func menuOpenLink(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.open(url)
+    }
 
 
     @objc private func shareNote() { coordinator.shareNote() }
@@ -498,7 +537,6 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     private static let documentCommands: Set<Selector> = [
         #selector(menuNewNote), #selector(menuSaveNow), #selector(menuSaveAs),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
-        #selector(menuBackToNotes), #selector(menuFind), #selector(menuInsertLink),
-        #selector(menuToggleTaskChecked),
+        #selector(menuBackToNotes), #selector(menuRunEditorCommand(_:)),
     ]
 }

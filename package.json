@@ -569,6 +569,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.resetFontSize",
+                "title": "%command.editor.resetFontSize.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.toggleSpellCheck",
                 "title": "%command.editor.toggleSpellCheck.title%",
                 "category": "Birta Writer"
@@ -1305,6 +1310,10 @@
                 },
                 {
                     "command": "birta.editor.decreaseFontSize",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.resetFontSize",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

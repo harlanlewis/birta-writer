@@ -41,7 +41,8 @@ import {
     IconCheckSquare,
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
-import { t, kbd } from "@/i18n";
+import { t } from "@/i18n";
+import { withChord } from "@/commandChords";
 import { runEditorCommand } from "@/editorCommands";
 import { createButton, createSeparator } from "@/ui/dom";
 import { BlockRangeSelection } from "@/plugins/blockRange";
@@ -446,20 +447,20 @@ export function setupSelectionToolbar(
     toolbar.appendChild(textFmtSep);
 
     // ── Inline format buttons (shown in both text and table modes) ──────
-    const boldBtn = sBtn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
+    const boldBtn = sBtn(IconBold, withChord(t("Bold"), "toggleBold"), () =>
         callCmd(getEditor, toggleStrongCommand),
     );
-    const italicBtn = sBtn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
+    const italicBtn = sBtn(IconItalic, withChord(t("Italic"), "toggleItalic"), () =>
         callCmd(getEditor, toggleEmphasisCommand),
     );
     const strikeBtn = sBtn(
         IconStrikethrough,
-        t("Strikethrough") + " " + kbd("Mod-Shift-x"),
+        withChord(t("Strikethrough"), "toggleStrikethrough"),
         () => callCmd(getEditor, toggleStrikethroughCommand),
     );
     const codeBtn = sBtn(
         IconCode,
-        t("Inline Code") + " " + kbd("Mod-e"),
+        withChord(t("Inline Code"), "toggleInlineCode"),
         () => {
             const v = getView();
             if (v) {
@@ -470,10 +471,10 @@ export function setupSelectionToolbar(
     // Inline math sits with the mark buttons, right after inline code: it's an
     // inline construct like code, not a block insert, so it reads better beside
     // the marks than off in the clear-formatting group.
-    const mathBtn = sBtn(IconMath, t("Inline Math"), () =>
+    const mathBtn = sBtn(IconMath, withChord(t("Inline Math"), "insertMath"), () =>
         runEditorCommand("insertMath", getEditor),
     );
-    const highlightBtn = sBtn(IconHighlighter, t("Highlight"), () =>
+    const highlightBtn = sBtn(IconHighlighter, withChord(t("Highlight"), "toggleHighlight"), () =>
         runEditorCommand("toggleHighlight", getEditor),
     );
     toolbar.appendChild(boldBtn);

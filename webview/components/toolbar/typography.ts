@@ -59,6 +59,8 @@ export interface TypographyControl {
     chooseFontPreset: (preset: FontPreset) => void;
     /** Step the size one notch, as the stepper does (palette and slash menu). */
     stepFontSize: (delta: 1 | -1) => void;
+    /** Return the content font size to its default (View > Actual Size). */
+    resetFontSize: () => void;
 }
 
 export function createTypographyControl(): TypographyControl {
@@ -441,6 +443,9 @@ export function createTypographyControl(): TypographyControl {
         },
         stepFontSize: (delta: 1 | -1): void => {
             pickFontSize(stepFontSizePercent(currentFontSize, delta));
+        },
+        resetFontSize: (): void => {
+            pickFontSize(DEFAULT_FONT_SIZE_PERCENT);
         },
     };
 }
