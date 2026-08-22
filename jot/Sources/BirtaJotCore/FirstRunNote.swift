@@ -49,9 +49,39 @@ public enum FirstRunNote {
 
     /// The tour itself.
     ///
-    /// Deliberately short. It is the first thing somebody sees, and a tour
-    /// long enough to scroll reads as work rather than as a welcome; what is
-    /// not here is reachable from the slash menu, which the tour points at.
+    /// Deliberately short, and ordered by what a first run has to establish
+    /// rather than by feature. It opens on the summon, because that gesture IS
+    /// the product: somebody who does not learn it has installed a thing that
+    /// opened once. The reader has just performed it to get here, so the first
+    /// line names what they did rather than instructing them.
+    ///
+    /// The first thing it ASKS for is typing, not reading. A pre-rendered
+    /// heading could be a picture of an editor; a heading that appears under
+    /// somebody's own fingers cannot be. That is the one claim this product
+    /// has to land, so it is spent first and on a gesture rather than a
+    /// sentence.
+    ///
+    /// Two constraints on that type-along, both found by driving it rather
+    /// than by reading, and both silent if broken:
+    ///
+    ///   - The target line must be a TOP-LEVEL paragraph. Return from inside a
+    ///     list continues the list, and `## ` typed there is escaped to a
+    ///     literal `\##` instead of becoming a heading, so a tour that put its
+    ///     type-along inside the checklist would demonstrate the opposite of
+    ///     what it claims.
+    ///   - The demo line must NOT already carry the character the reader is
+    ///     told to type. `340 + 12 =` plus a typed `=` is `==`, which computes
+    ///     nothing.
+    ///
+    /// The calc line says to press Tab, because the answer is ADVISORY: the
+    /// `=` offers a result and Tab confirms it, while Enter deliberately stays
+    /// a newline (`webview/plugins/calc.ts`). A tour promising the answer
+    /// simply arrives would be describing the auto-insert setting rather than
+    /// the default.
+    ///
+    /// Every operator here avoids `*`, which the serializer escapes mid-line:
+    /// `340 * 12` reaches the user's own file as `340 \* 12`, which is a
+    /// backslash nobody typed in the first document they ever open.
     ///
     /// The two embed links are PLACEHOLDERS with no content behind them, and
     /// they are shaped so the cards recognise them (`shared/embedProviders.ts`
@@ -61,29 +91,45 @@ public enum FirstRunNote {
     /// somebody opens them; that is the behaviour the note goes on to explain,
     /// so it is being shown rather than described.
     public static let markdown = """
-    # Welcome to Birta Writer
+    # You're in
 
-    This is a real Markdown file on your Mac, and it is yours. Work down the
-    list, then select all and delete when you are done. It will not come back.
+    Press the same keys again and this panel goes away. Press them once more
+    and it is back, exactly as you left it. That is Birta Writer: it lives in
+    your menu bar, so it is always one keystroke away and never in your Dock.
 
-    ## The basics
+    What you are typing into is a real Markdown file on your Mac. Plain text,
+    yours, and readable by anything.
+
+    ## See what it does
+
+    Put the caret at the end of the next line, press Return, then type two hash
+    marks, a space, and a word.
+
+    Try it here.
+
+    The hashes disappear and leave a heading behind. That is the whole idea:
+    you write Markdown and you see the document. On disk the file still says
+    `##`, so it opens the same way everywhere else.
+
+    ## The rest of the basics
 
     - [ ] Click the box at the start of this line to tick it off.
-    - [ ] Tick this one from the keyboard instead: put the caret on it and press Cmd+Shift+D.
-    - [ ] Start a new line and type `/` to open the slash menu. Everything below came from it.
+    - [ ] Or put the caret on a line and press Cmd+Shift+D.
     - [ ] Select this sentence, and use the toolbar that appears to make a word bold.
     - [ ] Take hold of the handle at this line's left edge and drag it somewhere else.
     - [ ] Press Cmd+F and look for the word Figma.
+    - [ ] Type `/` on a new line to reach everything else.
 
     ## Numbers that answer themselves
 
-    - [ ] Put the caret at the end of the next line and type `=`
+    Put the caret at the end of the next line, type an equals sign, then press
+    Tab to take the answer it offers.
 
-    340 * 12 =
+    340 + 12
 
-    The answer is worked out here on your Mac, and what lands in the file is an
-    ordinary number. Nothing in the Markdown marks it as special, so it reads
-    the same anywhere else you open this file.
+    It is worked out here on your Mac, and what lands in the file is an
+    ordinary number. Nothing marks it as special, so it reads the same
+    anywhere else you open this file.
 
     ## A table
 
@@ -93,8 +139,6 @@ public enum FirstRunNote {
     | Diagrams | below | no |
     | Math | below | no |
     | Embeds | below | yes |
-
-    - [ ] Hover the table's edge for the grips that add, remove and reorder rows.
 
     ## A diagram
 
@@ -124,9 +168,9 @@ public enum FirstRunNote {
 
     ## When you are ready
 
-    - [ ] Press your summon hotkey to put this panel away, and again to bring it back.
-    - [ ] Press Cmd+, to choose where your notes live.
-    - [ ] Press Cmd+N to start a note of your own, and leave this one to come back to.
+    - [ ] Press Cmd+, to see where these notes are kept, and to change it.
+    - [ ] Press Cmd+N to start a note of your own.
+    - [ ] Select all and delete to clear this one. It will not come back.
 
     """
 }
