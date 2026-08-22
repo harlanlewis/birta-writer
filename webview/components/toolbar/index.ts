@@ -41,7 +41,8 @@ import {
     IconPencil,
     IconEye,
 } from "@/ui/icons";
-import { t, kbd } from "@/i18n";
+import { t } from "@/i18n";
+import { withChord } from "@/commandChords";
 import { btn } from "./menuPrimitives";
 import { showImageInsertPanel } from "./imageInsertPanel";
 import { createLinkPrompt } from "./linkPrompt";
@@ -110,6 +111,8 @@ export function initToolbar(
     chooseFontPreset: (preset: FontPreset) => void;
     /** Step the content font size up/down (slash-menu action; works with the bar hidden). */
     stepFontSize: (delta: 1 | -1) => void;
+    /** Put the content font size back to its default (works with the bar hidden). */
+    resetFontSize: () => void;
     /** Toggle a proofread option (slash-menu action; works with the bar hidden). */
     toggleProofread: (key: ProofreadOptionKey) => void;
     /** Whether the bar is currently shown (drives the slash toggle's label). */
@@ -155,25 +158,25 @@ export function initToolbar(
     // ── Inline formatting ─────────────────────────────
     // Button refs kept so onSelectionChange can light up the mark currently under
     // the caret (the toolbar reflects the selection's state).
-    const boldBtn = btn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
+    const boldBtn = btn(IconBold, withChord(t("Bold"), "toggleBold"), () =>
         runEditorCommand("toggleBold", getEditor));
     items.bold = wrap("bold", boldBtn);
-    const italicBtn = btn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
+    const italicBtn = btn(IconItalic, withChord(t("Italic"), "toggleItalic"), () =>
         runEditorCommand("toggleItalic", getEditor));
     items.italic = wrap("italic", italicBtn);
     const strikeBtn = btn(
         IconStrikethrough,
-        t("Strikethrough") + " " + kbd("Mod-Shift-x"),
+        withChord(t("Strikethrough"), "toggleStrikethrough"),
         () => runEditorCommand("toggleStrikethrough", getEditor),
     );
     items.strikethrough = wrap("strikethrough", strikeBtn);
-    const highlightBtn = btn(IconHighlighter, t("Highlight"), () =>
+    const highlightBtn = btn(IconHighlighter, withChord(t("Highlight"), "toggleHighlight"), () =>
         runEditorCommand("toggleHighlight", getEditor));
     items.highlight = wrap("highlight", highlightBtn);
-    const inlineCodeBtn = btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () =>
+    const inlineCodeBtn = btn(IconCode, withChord(t("Inline Code"), "toggleInlineCode"), () =>
         runEditorCommand("toggleInlineCode", getEditor));
     items.inlineCode = wrap("inlineCode", inlineCodeBtn);
-    items.clearFormatting = wrap("clearFormatting", btn(IconEraser, t("Clear Formatting"), () =>
+    items.clearFormatting = wrap("clearFormatting", btn(IconEraser, withChord(t("Clear Formatting"), "clearFormatting"), () =>
         runEditorCommand("clearFormatting", getEditor),
     ));
 
@@ -186,11 +189,13 @@ export function initToolbar(
         getEditor,
         () => (linkBtnEl.isConnected ? linkBtnEl : layout.toolbar),
     );
-    // No shortcut label: insert-link is a user-rebindable contributed
-    // keybinding and the webview cannot query its effective binding.
+    // The chord prints only where it cannot be wrong: inside VS Code the
+    // binding is rebindable and unreadable from here, so `withChord` omits it;
+    // on a host whose menu IS the binding it resolves to that key
+    // (webview/commandChords.ts).
     linkBtnEl = btn(
         IconLink,
-        t("Insert/Edit Link"),
+        withChord(t("Insert/Edit Link"), "insertLink"),
         openLinkPrompt,
     );
     items.link = wrap("link", linkBtnEl);
@@ -222,16 +227,16 @@ export function initToolbar(
     // Host-gated (shared/hostProfile.ts): the image button needs a store
     // to upload to, and a host without one gets no button at all. The panel
     // itself stays wired, because `insertImage` is gated at runEditorCommand.
-    const imgBtnEl = available.has("image") ? btn(IconImage, t("Insert Image"), openImagePanel) : null;
+    const imgBtnEl = available.has("image") ? btn(IconImage, withChord(t("Insert Image"), "insertImage"), openImagePanel) : null;
     if (imgBtnEl) { items.image = wrap("image", imgBtnEl); }
-    const tableBtn = btn(IconTable, t("Insert Table"), () =>
+    const tableBtn = btn(IconTable, withChord(t("Insert Table"), "insertTable"), () =>
         runEditorCommand("insertTable", getEditor));
     items.table = wrap("table", tableBtn);
-    const footnoteBtnEl = btn(IconFootnote, t("Insert Footnote"), () =>
+    const footnoteBtnEl = btn(IconFootnote, withChord(t("Insert Footnote"), "insertFootnote"), () =>
         runEditorCommand("insertFootnote", getEditor),
     );
     items.footnote = wrap("footnote", footnoteBtnEl);
-    const mathBtnEl = btn(IconMath, t("Inline Math"), () =>
+    const mathBtnEl = btn(IconMath, withChord(t("Inline Math"), "insertMath"), () =>
         runEditorCommand("insertMath", getEditor),
     );
     items.math = wrap("math", mathBtnEl);
@@ -243,7 +248,7 @@ export function initToolbar(
     items.listMenu = wrap("listMenu", listPicker.el);
     const codePicker = createCodeMenu(getEditor);
     items.codeBlock = wrap("codeBlock", codePicker.el);
-    const hrBtnEl = btn(IconMinus, t("Horizontal Rule"), () =>
+    const hrBtnEl = btn(IconMinus, withChord(t("Horizontal Rule"), "insertHorizontalRule"), () =>
         runEditorCommand("insertHorizontalRule", getEditor),
     );
     items.horizontalRule = wrap("horizontalRule", hrBtnEl);
@@ -368,7 +373,7 @@ export function initToolbar(
         // something, so it puts it away; Cmd+F pressed twice is somebody
         // reaching for the field, and closing it under them is the wrong
         // answer to that (VS Code's find widget makes the same split).
-        items.find = wrap("find", btn(IconSearch, t("Find"), find.toggle));
+        items.find = wrap("find", btn(IconSearch, withChord(t("Find"), "openFind"), find.toggle));
     }
     // Settings gear is a hover dropdown: open the native settings, or enter the
     // drag-and-drop "Customize toolbar" mode. Its two layout actions are
@@ -409,6 +414,7 @@ export function initToolbar(
         // the slash menu, reachable from the palette even with the bar hidden.
         chooseFontPreset: typography.chooseFontPreset,
         stepFontSize: typography.stepFontSize,
+        resetFontSize: typography.resetFontSize,
         ...(checks ? { toggleProofread: checks.toggleProofread, toggleNoteHighlights: checks.toggleNoteHighlights } : {}),
         toggleToolbar: () => layout.setToolbarVisible(!layout.isVisible()),
     });
@@ -477,6 +483,7 @@ export function initToolbar(
         // usable while the bar itself is hidden.
         chooseFontPreset: typography.chooseFontPreset,
         stepFontSize: typography.stepFontSize,
+        resetFontSize: typography.resetFontSize,
         toggleProofread: (key) => checks?.toggleProofread(key),
         isVisible: layout.isVisible,
         applyToolbarVisible: layout.applyToolbarVisible,

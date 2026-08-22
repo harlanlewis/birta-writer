@@ -255,6 +255,10 @@ export const EDITOR_COMMANDS = [
     { id: "fontMono", title: "Monospace Font", palette: true, sections: [] },
     { id: "increaseFontSize", title: "Increase Font Size", palette: true, sections: [] },
     { id: "decreaseFontSize", title: "Decrease Font Size", palette: true, sections: [] },
+    // The third of the zoom trio, and the one a stepper alone cannot give: a
+    // way back. Named for what the reader sees rather than for the number it
+    // writes, which is the vocabulary every macOS View menu uses.
+    { id: "resetFontSize", title: "Actual Size", palette: true, sections: [] },
     { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [], hostCapability: "proofreading" },
     { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [], hostCapability: "proofreading" },
     { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [], hostCapability: "proofreading" },

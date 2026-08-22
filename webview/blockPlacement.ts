@@ -181,6 +181,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     fontSerif: NONE,
     fontMono: NONE,
     increaseFontSize: NONE,
+    resetFontSize: NONE,
     decreaseFontSize: NONE,
 
     // ── Proofreading toggles ────────────────────────────────────────────────

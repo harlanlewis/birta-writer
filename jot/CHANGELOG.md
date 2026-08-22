@@ -16,11 +16,22 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math and the cards that links turn into. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.
 
+- Birta Writer for Mac has a Format menu, and everything the panel's formatting row can do is in it: bold, italic, strikethrough, inline code, highlight and clear formatting, then Paragraph Style for the body, the six heading levels, blockquote and code block, Lists for the three list kinds with Toggle Task Done and Uncheck All Tasks, Indent and Outdent, and an Insert submenu holding links, tables, images, callouts, math, footnotes, rules and dates. Nearly all of it was already in the panel and none of it was on the keyboard: the app bound seven keys in total, so the heading, list and indent chords the extension ships did nothing here. They work now, and they are the same chords, which is checked by a test rather than by memory.
+
+- A View menu: Zoom In, Zoom Out and Actual Size for the content font size, a Font submenu for sans-serif, serif and monospaced, Fold and Unfold with Fold All and Unfold All, and Focus Mode.
+
+- A Help menu, holding Keyboard Shortcuts, which opens the same cheatsheet the panel has, and the three destinations the About window names. macOS puts its own search field at the top of a Help menu, and that field searches menu items, which is how you find a row now that most of them live in a submenu.
+
+- The keyboard cheatsheet lists every key the app binds, under the menu each one lives in. It listed them as one flat run, which was fine for the seven keys the app used to bind and is not for a whole menu bar.
+
+- A toolbar button's tooltip prints the key that runs it. The link button says ⌘K, and so do bold, italic, strikethrough, inline code and find, which are the toolbar buttons the app binds a key for. The slash menu and the block menu still print none. In Birta Writer for VS Code a tooltip prints a key only for the four marks the editor binds itself, and never for a command you can rebind: the binding there is yours to change and the editor cannot read what you changed it to, so a printed key could be wrong.
+
 ### Changed
 
 - Breaking: the app is called Birta Writer now, everywhere it names itself. The menu bar, the settings window, the update offer and the copy in `/Applications` all drop "Jot", which is kept back as a name for a future quick-entry surface rather than retired. Nothing about the editor changed.
 - Breaking: the default note moved with the name. It is `~/Documents/Birta Writer/Birta Writer.md` on this Mac, and the iCloud Drive folder is `Birta Writer` rather than `Birta Writer Jot`. An existing note is neither carried across nor deleted: it stays exactly where it was, under its old name, and opening or moving it is a manual job. Notes you make yourself are unaffected, and a new dated note is still called `Jot <date>.md`, because that word is a stem in front of a date rather than the app signing its work.
 - Breaking: an already-installed `Birta Writer Jot.app` cannot update itself to this release. It looks inside the download for a bundle under its own old name and does not find one, so it stops rather than installing anything. Replace it by hand, and delete the old copy once you have: left alone it goes on claiming the summon hotkey, which is first come first served, and autosaving the note it was already bound to.
+- The Window menu carries Minimize, Zoom and Bring All to Front. It had Minimize alone, and macOS adds Fill, Center, Move & Resize and Full Screen Tile to any app's Window menu, so those arrived with nothing above or below them and read as being in a strange order. Those rows are still the system's, with the system's own keys: what changed is the rows around them.
 
 ---
 

@@ -177,8 +177,16 @@ export const LABEL_CHORDS: Readonly<Record<string, readonly string[]>> = {
         "Shift-ArrowUp",
         "Shift-Tab",
     ],
-    "webview/components/selectionToolbar/index.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
-    "webview/components/toolbar/index.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
+    // Nothing else. Chrome no longer spells a chord at all: every surface asks
+    // `webview/commandChords.ts` for a printable one, and the table it reads is
+    // `shared/fixedChords.ts`, outside this scan's reach on purpose, where
+    // `menuChordParity.test.ts` holds it against the keymap inventory above and
+    // against Jot's menu. So a `kbd("Mod-…")` reappearing under `webview/`
+    // outside the three panel-local entries above fails here, which is what
+    // keeps the printing rule ONE decision rather than one per button. The
+    // toolbar and the selection toolbar carried four literals each until then,
+    // and the thirty other controls printed nothing, because each site judged
+    // separately and only the obvious four got judged.
 };
 
 /** Every chord literal allowed in webview source, per file, sorted. */

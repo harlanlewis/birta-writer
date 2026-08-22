@@ -126,6 +126,8 @@ export interface EditorCommandHost {
     chooseFontPreset(preset: FontPreset): void;
     chooseContentWidth(mode: import("../shared/contentWidth").ContentWidthMode): void;
     stepFontSize(delta: 1 | -1): void;
+    /** Return the content font size to its default (the View menu's Actual Size). */
+    resetFontSize(): void;
     toggleProofread(key: ProofreadOptionKey): void;
     /** The in-text editor-note highlight (birta.notes.highlightMarkers) — not a
      *  proofread option, so it has its own hook rather than a key. */
@@ -903,6 +905,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     fontMono: () => host.chooseFontPreset?.("mono"),
     increaseFontSize: () => host.stepFontSize?.(1),
     decreaseFontSize: () => host.stepFontSize?.(-1),
+    resetFontSize: () => host.resetFontSize?.(),
     toggleSpellCheck: () => host.toggleProofread?.("spellCheck"),
     toggleGrammarCheck: () => host.toggleProofread?.("grammarCheck"),
     toggleStyleCheck: () => host.toggleProofread?.("styleCheck"),
