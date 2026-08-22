@@ -83,32 +83,49 @@ public enum FirstRunNote {
     /// `340 * 12` reaches the user's own file as `340 \* 12`, which is a
     /// backslash nobody typed in the first document they ever open.
     ///
-    /// The two embed links are this project's own repository and a file in it,
-    /// which is the one pair of URLs that cannot rot out from under a note
-    /// somebody has already been given: we own them, and a repository move
-    /// fails `shared/__tests__/firstRunNote.test.ts` rather than shipping a
-    /// dead card. They draw two different GitHub cards, a repository and a
-    /// file, so the section demonstrates the shape rather than one provider.
-    /// The prose above them names the range instead of printing a link per
-    /// provider, because a link nobody owns is a link that eventually 404s in
-    /// the first document a new user opens.
+    /// The two embed links are the SAME pair `samples/content-inventory.md`
+    /// demonstrates, and that is what makes them checkable rather than hoped
+    /// for. The Figma one is Figma's own public Embed Kit examples file, so
+    /// the preview genuinely loads; the Loom one is a real recording. Nothing
+    /// in this repository can prove a third-party URL is alive, so the guard
+    /// in `shared/__tests__/firstRunNote.test.ts` does the next best thing and
+    /// requires every link here to be one the sample also carries: there is
+    /// one list of known-live embed URLs, and a link retired from the sample
+    /// takes this note red rather than leaving it pointing at nothing.
     ///
     /// Nothing is fetched for them on a first run whatever they point at,
     /// because the network ships off and the cards stay closed until somebody
     /// opens them; that is the behaviour the note goes on to explain, so it is
     /// being shown rather than described. The links still have to resolve,
     /// because the reader can turn the network on and the note is the first
-    /// thing they will try it against.
+    /// thing they will try it against, which is exactly what a placeholder
+    /// could not survive.
     ///
     /// The Cmd+F item names a word that has to appear elsewhere in the note,
     /// or the gesture it teaches finds nothing. That coupling is invisible in
     /// the text and is guarded in the same file.
+    ///
+    /// The network callout is scoped to the NOTE, and the scope is the whole
+    /// accuracy of it. `Prefs.autoUpdate` ships on, so a release build asks
+    /// `api.github.com` for the newest version at launch, before anybody has
+    /// read this far: rung 0c in `docs/NETWORK_POSTURE.md`, which carries
+    /// nothing of the user's and is on by default. An unqualified "makes no
+    /// network request" is therefore false the moment it is read. What is
+    /// true, and is what the section is about, is that nothing in a document
+    /// reaches out until the network switch is on.
+    ///
+    /// The opening says where the app lives and says nothing about the Dock.
+    /// `Prefs.showInDock` ships off, but the first-run screen offers it one
+    /// screen before this note is written, so a reader who took it would find
+    /// the note's first paragraph contradicting the switch they just moved.
+    /// Nothing here may assert a setting the welcome screen has just let
+    /// somebody change.
     public static let markdown = """
     # You're in
 
     Press the same keys again and this panel goes away. Press them once more
     and it is back, exactly as you left it. That is Birta Writer: it lives in
-    your menu bar, so it is always one keystroke away and never in your Dock.
+    your menu bar, so it is always one keystroke away.
 
     What you are typing into is a real Markdown file on your Mac. Plain text,
     yours, and readable by anything.
@@ -168,16 +185,17 @@ public enum FirstRunNote {
 
     ## Things from elsewhere
 
-    A link alone on its own line becomes a card: a video, a Figma file, a
-    repository, a document. These two are this editor's own source.
+    A link alone on its own line becomes a card. Here is a Loom recording and
+    a Figma file, and the same happens to YouTube, GitHub, Google Docs and the
+    rest.
 
-    https://github.com/harlanlewis/birta-writer
+    https://www.loom.com/share/e41353f2fe1c43eba6c6829693e0f2c5
 
-    https://github.com/harlanlewis/birta-writer/blob/main/README.md
+    https://www.figma.com/design/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
     > [!NOTE]
-    > Those cards are closed, and they stay closed. Birta Writer makes no
-    > network request until you turn that on yourself, in Settings.
+    > Those cards are closed, and they stay closed. Nothing in this note
+    > reaches the network until you turn that on yourself, in Settings.
 
     ## When you are ready
 

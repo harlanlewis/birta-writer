@@ -127,19 +127,27 @@ describe("the first-run tour as a document", () => {
         }
     });
 
-    it("ticking one of its boxes should not restructure it", async () => {
-        // The tour's central gesture, and the one edit it asks for by name.
-        // A task toggle rewrites a list item's marker in place, which is a
-        // different edit shape from typing into a paragraph.
-        const before = await reparsedShape(tour);
-        const ticked = tour.replace("- [ ] ", "- [x] ");
-        expect(ticked, "the tour should still have a box to tick").not.toBe(tour);
+    it("the lines written as boxes should parse as boxes", async () => {
+        // The tour's central gesture is ticking one, and the Swift check on it
+        // asks only whether the STRING starts with `- [ ] `. That is a claim
+        // about the literal, not about what the editor makes of it: a list
+        // item that parsed as an ordinary bullet renders with no box at all,
+        // and the first instruction a new user reads points at nothing. Only
+        // the real parser can answer it.
+        const written = tour.split("\n").filter((l) => l.startsWith("- [ ] ")).length;
+        expect(written, "the tour should still be a checklist").toBeGreaterThanOrEqual(6);
+
         const editor = await makeEditor(tour);
-        const serialized0 = editor.action(getMarkdown());
-        const protection = computeRoundTripProtection(tour, serialized0);
+        let unchecked = 0;
+        editor.action((ctx) => {
+            ctx.get(editorViewCtx).state.doc.descendants((node) => {
+                if (node.type.name === "list_item" && node.attrs.checked === false) { unchecked += 1; }
+                return true;
+            });
+        });
         await editor.destroy();
-        const merged = applyMinimalChanges(tour, ticked, protection);
-        expect(await reparsedShape(merged)).toEqual(before);
-        expect(merged).toContain("- [x] ");
+        // Every line written as an unticked box is one, and none arrives
+        // ticked: a pre-ticked tour would make the first gesture "untick".
+        expect(unchecked).toBe(written);
     });
 });

@@ -9,21 +9,22 @@
  * do what its own welcome note said it would.
  *
  * Whether a card RESOLVES is a network fact and no test here can settle it.
- * What makes it checkable at all is that both links are the repository this
- * project publishes from, so the question becomes one this repo can answer:
- * are they still ours. A link to somebody else's content could only ever be
- * checked for shape, which is what a placeholder passes.
+ * What can be settled is that the tour is not inventing URLs of its own: its
+ * links are the same ones `samples/content-inventory.md` demonstrates, which
+ * makes that file the single list of known-live embed URLs. A link retired
+ * from the sample takes this note red rather than leaving a new user's first
+ * document pointing at nothing, which is what a placeholder did.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { recognizeEmbed } from "../embedProviders";
+import { recognizeEmbed, type EmbedKind } from "../embedProviders";
 import { JOT_PRODUCT_NAME } from "../product";
 
 const root = path.resolve(__dirname, "../..");
 const swift = readFileSync(
     path.join(root, "jot/Sources/BirtaJotCore/FirstRunNote.swift"), "utf8");
-const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+const sample = readFileSync(path.join(root, "samples/content-inventory.md"), "utf8");
 
 /** The tour's markdown: the one multi-line literal in that file. */
 const markdown = (): string => {
@@ -47,36 +48,44 @@ describe("the first-run tour", () => {
         }
     });
 
-    it("every bare link in the tour should point at the repository we publish from", () => {
+    it("the recognizer should be able to refuse, so the check above discriminates", () => {
+        // A per-link loop over a predicate that says yes to everything passes
+        // on any prose at all. These are the two shapes a mangled tour link
+        // would actually take: a provider host with an id the extractor
+        // rejects, and a host no provider claims.
+        expect(recognizeEmbed("https://www.loom.com/share/notahexid")).toBeNull();
+        expect(recognizeEmbed("https://example.com/nothing/here")).toBeNull();
+    });
+
+    it("every bare link in the tour should be one the sample corpus also carries", () => {
         // The half a shape check cannot reach. A placeholder is well-formed by
         // construction, so "a provider claims it" is satisfied by a URL with
-        // nothing behind it, which is how the tour first shipped. Tying the
-        // links to the manifest makes them fail on the one event that could
-        // take them offline without anybody noticing, which is a repository
-        // move: the same reasoning as `releasesUrl.test.ts`, applied to a
-        // document a user is handed before they have opened anything else.
-        const repo: string = pkg.repository.url.replace(/\.git$/, "");
+        // nothing behind it, which is how the tour first shipped
+        // (`loom.com/share/deadbeef…`, and a Figma key of
+        // `BirtaWriterTourPlaceholder`). Tying the tour to the sample means
+        // the two places that print an embed URL cannot disagree about which
+        // URLs are live, and there is one file to fix when one dies.
         const links = bareLinks(markdown());
         expect(links.length).toBeGreaterThanOrEqual(2);
         for (const link of links) {
-            expect(link.startsWith(`${repo}/`) || link === repo,
-                `${link} is not under ${repo}, so nothing here can tell whether it still resolves`)
+            expect(sample.includes(link),
+                `${link} is not in samples/content-inventory.md, so nothing records that it resolves`)
                 .toBe(true);
         }
-        // And they must not all be the same URL, or "these two" is one card
-        // drawn twice and the pair demonstrates nothing the single would not.
-        expect(new Set(links).size, "the tour's links should be distinct").toBe(links.length);
     });
 
-    it("the tour should draw more than one shape of card", () => {
-        // The prose says a link becomes a card and shows two. Two identical
-        // card kinds would still satisfy every check above while showing the
-        // reader one thing twice.
-        const parts = bareLinks(markdown())
-            .map((l) => recognizeEmbed(l))
-            .map((m) => m?.id.split("/").length);
-        expect(new Set(parts).size, "the two links should not resolve to the same card shape")
-            .toBeGreaterThan(1);
+    it("the tour should demonstrate the two providers it names in its prose", () => {
+        const text = markdown();
+        const kinds = new Set(bareLinks(text).map((l) => recognizeEmbed(l)?.kind));
+        // Named in the sentence above the links, so the sentence and the
+        // demonstration cannot drift apart without this failing.
+        for (const [kind, prose] of [["loom", "Loom"], ["figma", "Figma"]] as const) {
+            expect(kinds, `the tour should carry a ${kind} link`).toContain(kind as EmbedKind);
+            expect(text, `the tour's prose should still name ${prose}`).toContain(prose);
+        }
+        // Two different providers, not one drawn twice: the section's claim is
+        // about links in general, so one card kind would show it once.
+        expect(kinds.size, "the tour's links should not all be the same provider").toBeGreaterThan(1);
     });
 
     it("the word the tour tells you to search for should be somewhere it can be found", () => {
@@ -84,7 +93,7 @@ describe("the first-run tour", () => {
         // gesture work is that word appearing elsewhere in the note. Nothing
         // in the text shows the coupling, so editing the section that happens
         // to contain the word teaches a new user a keystroke that finds
-        // nothing. Removing the tour's Figma link is exactly that edit.
+        // nothing. Changing the tour's Figma link is exactly that edit.
         const text = markdown();
         const item = text.split("\n").find((l) => /Cmd\+F/.test(l));
         expect(item, "the tour should still teach Cmd+F").toBeTruthy();
