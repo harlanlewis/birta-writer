@@ -201,6 +201,7 @@
   "command.editor.fontMono.title": "Monospace Font",
   "command.editor.increaseFontSize.title": "Increase Font Size",
   "command.editor.decreaseFontSize.title": "Decrease Font Size",
+  "command.editor.resetFontSize.title": "Actual Size",
   "command.editor.toggleSpellCheck.title": "Check Spelling",
   "command.editor.toggleGrammarCheck.title": "Check Grammar",
   "command.editor.toggleStyleCheck.title": "Check Style",

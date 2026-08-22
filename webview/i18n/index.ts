@@ -134,16 +134,25 @@ export const productName: string = PRODUCT_NAME;
 /**
  * Convert a shortcut string into the display format for the current platform.
  * The input format follows the ProseMirror keymap convention, e.g. 'Mod-b', 'Mod-Shift-z', 'Alt-k'.
- * Mac:  Mod→⌘  Shift→⇧  Alt→⌥  other characters uppercased, no separator
+ * Mac:  Mod→⌘  Ctrl→⌃  Shift→⇧  Alt→⌥  other characters uppercased, no separator
  * Win:  Mod→Ctrl  Shift→Shift  Alt→Alt  other characters uppercased, joined with '+'
+ *
+ * The separator is split the way prosemirror-keymap's own `normalizeKeyName`
+ * splits it, on a hyphen that is not the last character. The notation uses the
+ * hyphen for both jobs, so a chord whose KEY is a hyphen ("Mod--", the zoom-out
+ * key every View menu binds) otherwise came apart into empty segments and
+ * rendered as ⌘ with the key silently gone.
  */
 export function kbd(shortcut: string): string {
-    const parts = shortcut.split("-");
+    const parts = shortcut.split(/-(?!$)/);
     if (_isMac) {
         return parts
             .map((p) => {
                 if (p === "Mod") {
                     return "⌘";
+                }
+                if (p === "Ctrl") {
+                    return "⌃";
                 }
                 if (p === "Shift") {
                     return "⇧";
@@ -157,7 +166,7 @@ export function kbd(shortcut: string): string {
     } else {
         return parts
             .map((p) => {
-                if (p === "Mod") {
+                if (p === "Mod" || p === "Ctrl") {
                     return "Ctrl";
                 }
                 if (p === "Shift") {

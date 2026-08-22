@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { parseJotMenu, keyedRows, MENU_SECTIONS } from "./jotMenuTable";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -358,12 +359,26 @@ describe("the Jot profile's copies", () => {
         // rather than a literal, so it is still not a fourth copy. Without it
         // the harness can assert whatever it likes about a cheatsheet the app
         // never ships, and be right about neither.
-        const menu = read("jot/Sources/BirtaJot/JotMenu.swift");
-        const bound = [...menu.matchAll(/\.init\(title: "([^"]+)"/g)].map((m) => m[1]!);
-        expect(bound.length).toBeGreaterThan(2);
+        //
+        // Every field, not only the label. The page now carries the chord, the
+        // command each key runs and the section it prints under, and a
+        // label-only comparison would have let all three drift while agreeing:
+        // the command is what decides whether the link button's tooltip says
+        // ⌘K, so a harness that got it wrong would be testing a surface the app
+        // does not have.
+        const bound = keyedRows(parseJotMenu(repoRoot)).map((row) => ({
+            keys: row.chord!,
+            label: row.title,
+            ...(row.command !== null ? { command: row.command } : {}),
+            section: MENU_SECTIONS[row.menu]!,
+        }));
+        expect(bound.length).toBeGreaterThan(20);
 
         const page = bootstrapLine(read("e2e/jotHost/index.html"));
-        const declared = [...page.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]!);
+        const shortcuts = /shortcuts:\s*(\[[\s\S]*?\])\s*\}\s*\}/.exec(page);
+        expect(shortcuts, "no shortcuts literal in the e2e page's bootstrap").not.toBeNull();
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval
+        const declared = new Function(`return ${shortcuts![1]!}`)() as unknown[];
         expect(declared).toEqual(bound);
     });
 });

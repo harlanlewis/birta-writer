@@ -325,10 +325,22 @@ public struct HostShortcut: Equatable, Sendable {
     public let keys: String
     /// What it does, in the words the menu uses.
     public let label: String
+    /// The editor command the key runs (`shared/editorCommands.ts`), or nil
+    /// where the key is the shell's own gesture and reaches no command.
+    ///
+    /// What the page does with it: chrome resolves a command to a printable
+    /// chord through this field (`webview/commandChords.ts`), so the link
+    /// button's tooltip says ⌘K here and says nothing inside VS Code, where the
+    /// binding is the user's to change and unreadable from the page.
+    public let command: String?
+    /// The menu the key lives in, as the cheatsheet's section heading.
+    public let section: String?
 
-    public init(keys: String, label: String) {
+    public init(keys: String, label: String, command: String? = nil, section: String? = nil) {
         self.keys = keys
         self.label = label
+        self.command = command
+        self.section = section
     }
 
     /// A chord in the ProseMirror keymap notation the page already speaks
@@ -421,7 +433,15 @@ public struct BootConfig: Equatable {
             "host": [
                 "capabilities": hostCapabilities,
                 "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker"],
-                "shortcuts": hostShortcuts.map { ["keys": $0.keys, "label": $0.label] },
+                "shortcuts": hostShortcuts.map { shortcut -> [String: Any] in
+                // The optional halves are omitted rather than sent as null: an
+                // absent `command` is the claim "this key runs no editor
+                // command", which is what the page's own optional field means.
+                var row: [String: Any] = ["keys": shortcut.keys, "label": shortcut.label]
+                if let command = shortcut.command { row["command"] = command }
+                if let section = shortcut.section { row["section"] = section }
+                return row
+            },
             ],
             "fontPreset": fontPreset,
             "fontSize": fontSize,

@@ -63,7 +63,7 @@
  * webview import it; the read goes through `globalThis`, which is `window` in
  * every webview.
  */
-import { EDITOR_COMMANDS } from "./editorCommands";
+import { EDITOR_COMMANDS, type EditorCommandId } from "./editorCommands";
 
 export type HostCapability =
     /** A raw text editor to switch to (Edit Raw Markdown). */
@@ -294,6 +294,26 @@ export interface HostShortcut {
     readonly keys: string;
     /** What it does, in the words the host's own menu uses. */
     readonly label: string;
+    /**
+     * The editor command the key runs, where it runs one.
+     *
+     * Absent on a key that is the HOST's own gesture and reaches no command
+     * (Save, New Note, the Settings window). Present, it is what lets chrome
+     * print the key beside the control that runs the same thing:
+     * `webview/commandChords.ts` resolves a command to a chord through this
+     * field, so a host that binds ⌘K to Insert Link puts ⌘K in the link
+     * button's tooltip without the button knowing which host it is on.
+     */
+    readonly command?: EditorCommandId;
+    /**
+     * The host menu the key lives in, which the cheatsheet prints as a section
+     * heading above it.
+     *
+     * Optional because a host with a handful of keys has nothing to group; the
+     * panel falls back to one generic heading, so a host that declares less is
+     * not a host whose keys disappear.
+     */
+    readonly section?: string;
 }
 
 /** Everything a host says about itself, in one object. */
