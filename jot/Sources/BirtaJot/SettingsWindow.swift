@@ -784,7 +784,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                     Caption("Revert \(AppFlavor.current.displayName) to default settings. Will not "
                             + "move, delete, or modify any of your files."))
         case .welcomeScreen:
-            return (welcomeButton, [], Caption("The questions Birta Writer asks the first time it runs."))
+            return (welcomeButton, [], Caption("The questions Birta Writer asks the first time it runs. An empty note gets the welcome note back too."))
         }
     }
 

@@ -1785,6 +1785,19 @@ final class Coordinator {
     /// crash during a first launch does not spend the one chance to ask.
     private func finishWelcome() {
         // Read before the write below, because the seed depends on it.
+        //
+        // A PROXY for a genuine first launch, and Show Welcome forges it on
+        // purpose: that button clears the flag before opening this screen, so
+        // the tour is offered again to somebody replaying their first run.
+        // Deliberate rather than leaked, because it is the only route back to
+        // the tour that exists, and `shouldWrite` is what keeps the forgery
+        // harmless by refusing any note with writing in it. Do not tighten
+        // this to a real first-launch flag without replacing that route; the
+        // Settings caption promises it.
+        //
+        // Reset all settings does NOT reach here. `Prefs.reset` keeps
+        // `hasSeenWelcome` set, for its own older reason, so the screen never
+        // reopens and the seed is never asked.
         let wasFirstRun = !Prefs.hasSeenWelcome
         Prefs.hasSeenWelcome = true
         welcome?.isHidden = true
