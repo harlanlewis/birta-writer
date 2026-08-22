@@ -82,10 +82,83 @@ final class FirstRunNoteTests: XCTestCase {
     }
 
     /// It says the product's name, and says it the way everything else does.
+    ///
+    /// Not pinned to the heading. The tour opens on what the reader just DID
+    /// rather than on a masthead, so the name lands in the first paragraph;
+    /// what matters is that the name appears and is the shared spelling.
     func testTheTourShouldNameTheProduct() {
-        XCTAssertTrue(FirstRunNote.markdown.contains("# Welcome to \(ScratchpadLocation.productName)"))
+        XCTAssertTrue(FirstRunNote.markdown.contains(ScratchpadLocation.productName))
         // The old name is retired. A tour still carrying it would be the
         // last surface telling somebody they had installed something else.
         XCTAssertFalse(FirstRunNote.markdown.contains("Jot"))
+    }
+
+    // ── The two traps the tour can fall into silently ─────────────────────
+
+    /// Lines outside a fence carry no bare `*`.
+    ///
+    /// The serializer escapes one mid-paragraph, so a demo written `340 * 12`
+    /// reaches the reader's own file as `340 \* 12`: a backslash nobody typed,
+    /// in the first document they ever open, in the one document whose whole
+    /// job is to claim the file stays clean. Nothing else notices, because the
+    /// tour is a string here and the escaping happens on the way to disk.
+    func testTheTourShouldCarryNoCharacterTheSerializerWillEscape() {
+        var fenced = false
+        var offenders: [String] = []
+        for line in FirstRunNote.markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("```") { fenced.toggle(); continue }
+            if fenced { continue }
+            if line.contains("*") { offenders.append(String(line)) }
+        }
+        XCTAssertEqual(offenders, [], "these reach the file with a backslash in front")
+    }
+
+    /// No line the reader is told to type INTO already carries what they are
+    /// told to type.
+    ///
+    /// `340 + 12 =` plus a typed `=` is `==`, which computes nothing and
+    /// leaves somebody staring at a demo that does not work. The tour says to
+    /// type an equals sign, so no demo line may end in one.
+    func testNoDemoLineShouldAlreadyCarryTheCharacterTheReaderTypes() {
+        XCTAssertTrue(FirstRunNote.markdown.contains("type an equals sign"),
+                      "the instruction this guards should still be here")
+        let ends = FirstRunNote.markdown
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.hasSuffix("=") && !$0.hasPrefix("|") }
+        XCTAssertEqual(ends.map(String.init), [], "a demo line already ends with the character to type")
+    }
+
+    /// The type-along happens at the TOP LEVEL, never inside the checklist.
+    ///
+    /// Return from inside a list continues the list, and `## ` typed there is
+    /// escaped to a literal rather than becoming a heading. A tour whose
+    /// central move sat one indent deeper would demonstrate the exact opposite
+    /// of the claim it is making, and would look completely reasonable in the
+    /// source.
+    func testTheTypeAlongShouldSitAtTheTopLevel() {
+        let lines = FirstRunNote.markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let i = lines.firstIndex(where: { $0.contains("press Return") }) else {
+            return XCTFail("the type-along instruction should still be here")
+        }
+        let isTopLevel = { (l: Substring) in
+            !l.hasPrefix("- ") && !l.hasPrefix("* ") && !l.hasPrefix(" ") && !l.hasPrefix(">")
+        }
+        XCTAssertTrue(isTopLevel(lines[i]), "the instruction itself is inside a list")
+        // The line it sends the reader to is the next PARAGRAPH, so the search
+        // has to clear the rest of this one first. Taking the next non-blank
+        // line instead finds the instruction's own second line, which is
+        // top-level whatever the target does, and the guard passes on a
+        // question it never asked.
+        guard let blank = lines[(i + 1)...].firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespaces).isEmpty
+        }) else {
+            return XCTFail("the instruction paragraph never ends")
+        }
+        guard let target = lines[(blank + 1)...].first(where: {
+            !$0.trimmingCharacters(in: .whitespaces).isEmpty
+        }) else {
+            return XCTFail("the instruction points at nothing")
+        }
+        XCTAssertTrue(isTopLevel(target), "the type-along target is inside a list: \(target)")
     }
 }

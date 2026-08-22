@@ -58,6 +58,9 @@ describe("the first-run tour", () => {
     });
 
     it("the tour should call the product what every other surface calls it", () => {
-        expect(markdown()).toContain(`# Welcome to ${JOT_PRODUCT_NAME}`);
+        // Not pinned to the heading: the tour opens on what the reader just
+        // DID rather than on a masthead, so the name lands in the prose. What
+        // matters is that it appears and is the shared spelling.
+        expect(markdown()).toContain(JOT_PRODUCT_NAME);
     });
 });
