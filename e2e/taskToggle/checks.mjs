@@ -118,10 +118,12 @@ export async function run({ page, check, baseUrl }) {
     // Every check above drives `toggleTaskChecked`, the command both surfaces
     // route a keybinding through. Clicking the drawn box is a different path
     // entirely: a capture-phase document listener in `webview/index.ts` with an
-    // x-coordinate hit test (`utils/taskCheckbox.ts`), because the box is a CSS
-    // pseudo-element and cannot be an event target of its own. Nothing here
-    // exercised it, so a change to that hit test, to the padding it measures
-    // against, or to the listener's phase would have left this suite green.
+    // x-coordinate hit test (`isTaskCheckboxClick` in `utils/taskCheckbox.ts`,
+    // which measures against its own `CHECKBOX_COLUMN_WIDTH` rather than
+    // against the item's CSS padding), because the box is a pseudo-element and
+    // cannot be an event target of its own. Nothing here exercised it, so a
+    // change to that constant, to the column the box is drawn in, or to the
+    // listener's phase would have left this suite green.
     //
     // It is pinned rather than merely covered because the tour a first launch
     // opens on now instructs somebody to click that box, and a broken gesture
@@ -132,7 +134,7 @@ export async function run({ page, check, baseUrl }) {
             .find((el) => (el.textContent ?? "").includes("open task"));
         if (!li) { throw new Error("no open task item"); }
         const r = li.getBoundingClientRect();
-        // Inside the 22px padding the box is drawn in, left of the text.
+        // Inside the column the box is drawn in, left of the text.
         return { x: r.left + 7, y: r.top + 12 };
     });
     await page.mouse.click(target.x, target.y);
