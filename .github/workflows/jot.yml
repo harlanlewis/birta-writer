@@ -83,7 +83,7 @@ jobs:
       # launches on anything, and the crash would land on the oldest Mac.
       - name: what the built app runs on
         run: |
-          APP="jot/build/Birta Writer Jot.app"
+          APP="jot/build/Birta Writer.app"
           ARCHS="$(lipo -archs "$APP/Contents/MacOS/BirtaJot")"
           echo "built for: $ARCHS"
           test "$ARCHS" = "arm64"

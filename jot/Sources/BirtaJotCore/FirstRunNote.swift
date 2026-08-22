@@ -83,13 +83,26 @@ public enum FirstRunNote {
     /// `340 * 12` reaches the user's own file as `340 \* 12`, which is a
     /// backslash nobody typed in the first document they ever open.
     ///
-    /// The two embed links are PLACEHOLDERS with no content behind them, and
-    /// they are shaped so the cards recognise them (`shared/embedProviders.ts`
-    /// wants 32 hex characters for Loom and 10 or more alphanumerics for a
-    /// Figma key). Nothing is fetched for them on a first run whatever they
-    /// point at, because the network ships off and the cards stay closed until
-    /// somebody opens them; that is the behaviour the note goes on to explain,
-    /// so it is being shown rather than described.
+    /// The two embed links are this project's own repository and a file in it,
+    /// which is the one pair of URLs that cannot rot out from under a note
+    /// somebody has already been given: we own them, and a repository move
+    /// fails `shared/__tests__/firstRunNote.test.ts` rather than shipping a
+    /// dead card. They draw two different GitHub cards, a repository and a
+    /// file, so the section demonstrates the shape rather than one provider.
+    /// The prose above them names the range instead of printing a link per
+    /// provider, because a link nobody owns is a link that eventually 404s in
+    /// the first document a new user opens.
+    ///
+    /// Nothing is fetched for them on a first run whatever they point at,
+    /// because the network ships off and the cards stay closed until somebody
+    /// opens them; that is the behaviour the note goes on to explain, so it is
+    /// being shown rather than described. The links still have to resolve,
+    /// because the reader can turn the network on and the note is the first
+    /// thing they will try it against.
+    ///
+    /// The Cmd+F item names a word that has to appear elsewhere in the note,
+    /// or the gesture it teaches finds nothing. That coupling is invisible in
+    /// the text and is guarded in the same file.
     public static let markdown = """
     # You're in
 
@@ -155,12 +168,12 @@ public enum FirstRunNote {
 
     ## Things from elsewhere
 
-    A link alone on its own line becomes a card. These two point at nothing:
-    replace them with a Loom and a Figma file of your own.
+    A link alone on its own line becomes a card: a video, a Figma file, a
+    repository, a document. These two are this editor's own source.
 
-    https://www.loom.com/share/deadbeefdeadbeefdeadbeefdeadbeef
+    https://github.com/harlanlewis/birta-writer
 
-    https://www.figma.com/design/BirtaWriterTourPlaceholder/Birta-Writer-Tour
+    https://github.com/harlanlewis/birta-writer/blob/main/README.md
 
     > [!NOTE]
     > Those cards are closed, and they stay closed. Birta Writer makes no

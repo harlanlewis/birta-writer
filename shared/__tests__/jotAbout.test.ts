@@ -1,5 +1,5 @@
 /**
- * Drift guard for what Birta Writer Jot's About window points at.
+ * Drift guard for what the Mac app's About window points at.
  *
  * The window names one repository twice, for source and for bug reports, and
  * `Updater` polls that same repository for releases. Swift cannot read

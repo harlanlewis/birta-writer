@@ -13,11 +13,18 @@ import Foundation
 /// folder is a file the app can open and its owner cannot, and the first thing
 /// anybody asks of a note is where it went.
 ///
-/// The folder names differ between the two on purpose, and it is not an
-/// oversight to tidy up. iCloud Drive's top level is a list of applications,
-/// so a folder there is named after the app; `~/Documents` is the user's own,
-/// where a folder named after the app would claim more than Jot is, and the
-/// note sits with anything else Birta Writer keeps.
+/// The two folders are named after different things and spelled the same, and
+/// the two branches of `folderName` are what keep that straight. iCloud
+/// Drive's top level is a list of applications, so a folder there is named
+/// after the app; `~/Documents` is the user's own, where the note sits with
+/// anything else the product line keeps, so that folder is named after the
+/// line. Both words are Birta Writer today, so the paths are byte-identical
+/// and no runtime check can tell one branch from the other. The drift test in
+/// `shared/__tests__/editorCommandsContributions.test.ts` reads this file and
+/// pins which branch reads which constant, which is the only signal left.
+///
+/// What still separates the two homes at runtime is the flavour suffix, which
+/// reaches the iCloud folder and not the local one; `AppFlavorTests` holds it.
 ///
 /// Pure, and takes its two roots as arguments rather than reading
 /// `FileManager` for them, so a test names a temporary directory and gets a

@@ -58,21 +58,24 @@ final class ScratchpadLocationTests: XCTestCase {
             tmp.appendingPathComponent("Birta Writer/Birta Writer.md").path)
     }
 
-    /// The folders differ and the FILE does not. A note that renamed itself
+    /// The FILE is named the same in both homes. A note that renamed itself
     /// when the setting moved would be a different note to anyone reading the
-    /// window title.
+    /// window title, and the setting is one somebody flips back and forth.
+    ///
+    /// The folders are not asserted to differ, because they no longer do: both
+    /// are named Birta Writer, one after the app and one after the product
+    /// line. What still separates the two homes is the flavour suffix, and
+    /// `AppFlavorTests.testOnlyTheICloudFolderShouldCarryTheFlavourSuffix`
+    /// is where that lives.
     func testTheNoteShouldBeNamedTheSameInBothHomes() {
         var names = Set<String>()
-        var folders = Set<String>()
         for location in ScratchpadLocation.allCases {
             names.insert(location.url(root: tmp).lastPathComponent)
-            folders.insert(location.folderName)
         }
         XCTAssertEqual(names, [ScratchpadLocation.fileName])
-        XCTAssertEqual(folders.count, ScratchpadLocation.allCases.count,
-                       "each home should have a folder of its own")
-        // A floor on the sweep: `allCases` is the enumeration, and a version of
-        // this that reached one case would satisfy both sets above.
+        // A floor on the sweep. A one-element set satisfies the assertion
+        // above whether it was built from two homes or from one, so the
+        // enumeration has to report its own size.
         XCTAssertGreaterThanOrEqual(ScratchpadLocation.allCases.count, 2)
     }
 
@@ -106,11 +109,17 @@ final class ScratchpadLocationTests: XCTestCase {
     /// rename cannot reach the label and miss the filesystem. The drift test in
     /// `shared/__tests__/editorCommandsContributions.test.ts` holds them to
     /// `product.ts`; this holds the paths to them.
-    func testTheProductNameShouldReachBothTheFileAndTheICloudFolder() {
+    ///
+    /// The two constants hold the same string, so these three assertions are
+    /// one assertion by value and cannot say which branch reads which. What
+    /// they still catch is a path that stopped being derived at all: spell any
+    /// of the three as a literal and it drifts the moment a name changes,
+    /// whichever constant it was meant to follow. WHICH branch reads which is
+    /// pinned on the source text by that same drift test, which is the only
+    /// place the answer survives the names converging.
+    func testTheNamesShouldReachTheFileAndBothFolders() {
         XCTAssertEqual(ScratchpadLocation.fileName, "\(ScratchpadLocation.productName).md")
         XCTAssertEqual(ScratchpadLocation.iCloud.folderName, ScratchpadLocation.productName)
         XCTAssertEqual(ScratchpadLocation.local.folderName, ScratchpadLocation.suiteName)
-        XCTAssertNotEqual(ScratchpadLocation.productName, ScratchpadLocation.suiteName,
-                          "the two constants must be distinct, or the assertions above are one")
     }
 }

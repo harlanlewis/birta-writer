@@ -34,6 +34,15 @@ final class FirstRunNoteShortcutsTests: XCTestCase {
         return found
     }
 
+    /// The rows a chord matches, which must be exactly one.
+    private func rowsBinding(_ chord: (shift: Bool, key: String)) -> [JotMenu.Shortcut] {
+        JotMenu.shortcuts.filter { row in
+            row.modifiers.contains(.command)
+                && row.modifiers.contains(.shift) == chord.shift
+                && row.key.lowercased() == chord.key
+        }
+    }
+
     func testEveryChordTheTourNamesShouldBeBoundInTheMenu() {
         let chords = chordsNamedInTheTour()
         // The instrument has to have reached something. A regex that stopped
@@ -41,14 +50,37 @@ final class FirstRunNoteShortcutsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(chords.count, 3, "the tour should still be naming chords")
 
         for chord in chords {
-            let bound = JotMenu.shortcuts.contains { row in
-                row.modifiers.contains(.command)
-                    && row.modifiers.contains(.shift) == chord.shift
-                    && row.key.lowercased() == chord.key
-            }
             let spelling = "Cmd+\(chord.shift ? "Shift+" : "")\(chord.key)"
-            XCTAssertTrue(bound, "the tour names \(spelling), which JotMenu.shortcuts does not bind")
+            let rows = rowsBinding(chord)
+            // EXACTLY one, not at least one. As the table grows, "something
+            // binds this" gets easier to satisfy by accident, and a chord
+            // bound twice is one whose behaviour depends on menu order rather
+            // than on what the tour says it does.
+            XCTAssertEqual(rows.count, 1,
+                           "the tour names \(spelling); JotMenu.shortcuts binds it \(rows.count) times"
+                            + (rows.isEmpty ? "" : " (\(rows.map(\.title).joined(separator: ", ")))"))
         }
+    }
+
+    /// The chord the tour spends its central gesture on, tied to the command
+    /// it claims that chord runs.
+    ///
+    /// The test above only asks whether something binds a chord, which stops
+    /// the tour naming a dead key and does not stop it naming a live one that
+    /// does something else. That distinction is not hypothetical as the menu
+    /// grows: move Toggle Task Done to another chord while any new row takes
+    /// Cmd+Shift+D and the tour goes on telling somebody to press it to tick a
+    /// box, with every other check here green.
+    ///
+    /// One pair rather than a table of them, because this is the only chord in
+    /// the tour whose sentence names an outcome the menu row also names. The
+    /// others send the reader to a surface (Settings, a new note, find) that
+    /// the row title already is.
+    func testTheChordTheTourTicksABoxWithShouldBeTheTaskCommand() {
+        XCTAssertTrue(FirstRunNote.markdown.contains("Cmd+Shift+D"),
+                      "the tour should still teach a chord for ticking a box")
+        let rows = rowsBinding((shift: true, key: "d"))
+        XCTAssertEqual(rows.map(\.title), ["Toggle Task Done"])
     }
 
     /// And that the match above can fail. A predicate that says yes to
