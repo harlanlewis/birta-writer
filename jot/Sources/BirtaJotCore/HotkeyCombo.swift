@@ -123,7 +123,8 @@ public struct HotkeyCombo: Equatable, Sendable {
         return try? parse(parts.joined(separator: "+")).get()
     }
 
-    /// The symbol form for menus: ⌘⌥⌃J.
+    /// The symbol form for menus: ⌃⌥⇧⌘J, Apple's order, which is what the code
+    /// below emits and what AppKit draws a key equivalent in.
     public var symbols: String {
         var s = ""
         if modifiers & HotkeyCombo.controlKey != 0 { s += "⌃" }

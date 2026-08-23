@@ -142,9 +142,46 @@ export const productName: string = PRODUCT_NAME;
  * hyphen for both jobs, so a chord whose KEY is a hyphen ("Mod--", the zoom-out
  * key every View menu binds) otherwise came apart into empty segments and
  * rendered as ⌘ with the key silently gone.
+ *
+ * Modifiers are printed in the PLATFORM's order rather than the order they were
+ * declared in, which is what `MODIFIER_ORDER` is for. Keymap notation carries no
+ * ordering semantics — `Mod-Alt-1` and `Alt-Mod-1` are one chord — so the
+ * declaration cannot be the authority on how it reads, and every other place
+ * this product prints a chord already uses the platform's order: AppKit renders
+ * a menu item's key equivalent that way whatever order the mask was built in,
+ * and `BirtaJotCore/HotkeyCombo.swift` emits ⌃⌥⇧⌘ for the summon hotkey. Left
+ * to the declaration, the Format menu's Heading 1 row read ⌥⌘1 while the
+ * tooltip on the same command read ⌘⌥1 (MAR-412).
  */
+
+/**
+ * The order each platform prints modifiers in, and they are NOT the same list
+ * reordered: `Mod` is a different key on each side. On a Mac it is Command,
+ * which Apple puts last (⌃⌥⇧⌘). Everywhere else it IS Ctrl, which comes first
+ * (Ctrl+Alt+Shift+K), so ranking it last there would print Alt+Shift+Ctrl.
+ *
+ * Anything not a modifier sorts last and keeps its relative position, so a
+ * malformed chord degrades to the old output instead of being reordered into
+ * nonsense.
+ */
+const MODIFIER_ORDER_MAC = ["Ctrl", "Alt", "Shift", "Mod"];
+const MODIFIER_ORDER_OTHER = ["Mod", "Ctrl", "Alt", "Shift"];
+
+function inPlatformOrder(parts: string[]): string[] {
+    const order = _isMac ? MODIFIER_ORDER_MAC : MODIFIER_ORDER_OTHER;
+    // The final segment is the KEY, never a modifier, and it stays put: a chord
+    // whose key is itself "Shift" or a hyphen must not be sorted into the run.
+    const key = parts[parts.length - 1] ?? "";
+    const rank = (p: string): number => {
+        const i = order.indexOf(p);
+        return i === -1 ? order.length : i;
+    };
+    const mods = parts.slice(0, -1).sort((a, b) => rank(a) - rank(b));
+    return [...mods, key];
+}
+
 export function kbd(shortcut: string): string {
-    const parts = shortcut.split(/-(?!$)/);
+    const parts = inPlatformOrder(shortcut.split(/-(?!$)/));
     if (_isMac) {
         return parts
             .map((p) => {

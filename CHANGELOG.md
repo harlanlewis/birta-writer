@@ -16,6 +16,8 @@
 
 ### Fixed
 
+- A printed keyboard shortcut now puts its modifiers in the order the platform does, so ⌥⌘1 rather than ⌘⌥1 and ⇧⌘X rather than ⌘⇧X on a Mac, and Ctrl+Alt+Shift elsewhere. Tooltips, menu rows and the keyboard cheatsheet all print through one place and all followed whatever order the key happened to be written down in, which on a Mac meant the Format menu's Heading 1 row disagreed with the tooltip for the same command. Which keys do what has not changed.
+
 - A task list now reports its ticks to assistive technology. Every task item carries a checkbox with a checked state, so a screen reader can tell a done task from an open one; the tick is drawn in CSS, which reaches nothing that reads a page, so the two were indistinguishable there. Nothing changes visually and the box adds no tab stop, with Cmd+Shift+D (Ctrl+Shift+D on Windows and Linux) and a click on the box toggling it as before. The state is there to be read rather than spoken, so a toggle is still not announced at the moment it happens.
 
 - A screen reader announced the toolbar's Bold, Italic, Strikethrough and Inline Code buttons by name and then read out the shortcut glyphs after it, so Bold was announced as "Bold ⌘B". The four buttons now announce their name alone; the shortcut stays in the tooltip, where it was always meant to be. This affected only the icon-only buttons that derive their name from their tooltip.
