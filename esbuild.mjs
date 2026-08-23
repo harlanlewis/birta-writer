@@ -1,6 +1,7 @@
 import * as esbuild from 'esbuild';
 import fs from 'fs';
 import path from 'path';
+import { MANIFEST_FILE, metafileFor } from './scripts/bundleManifest.mjs';
 
 const isProduction = process.argv.includes('--production');
 const isWatch = process.argv.includes('--watch');
@@ -13,10 +14,11 @@ const isWatch = process.argv.includes('--watch');
 if (isProduction && !isWatch) {
     fs.rmSync('dist', { recursive: true, force: true });
 }
-// `--metafile` writes one dist/<entry>.meta.json per shipped bundle.
-// The webview one drives bundle analysis (see e2e/perf-bundle.mjs); both drive
-// the third-party attribution generator (scripts/generate-third-party-notices.mjs),
-// which needs the union of what BOTH bundles inline to know what actually ships.
+// `--metafile` writes one dist/<bundle>.meta.json per shipped bundle, plus the
+// manifest naming them. The webview one drives bundle analysis (see
+// e2e/perf-bundle.mjs); all of them drive the third-party attribution generator
+// (scripts/generate-third-party-notices.mjs), which needs the union of what
+// EVERY bundle inlines to know what actually ships.
 // Off by default so normal builds stay lean.
 const withMetafile = process.argv.includes('--metafile');
 
@@ -162,30 +164,41 @@ const webviewBuild = {
     metafile: withMetafile,
 };
 
+/**
+ * Every bundle we ship, as ONE list.
+ *
+ * The builds, the metafile paths, and the manifest the attribution generator
+ * reads all derive from this array, so a new bundle joins the appendix by the
+ * same edit that adds it to the build. Adding one anywhere else is what
+ * scripts/bundleManifest.mjs refuses; its header has the argument.
+ */
+const BUNDLES = [
+    { name: 'extension', config: extensionBuild },
+    { name: 'webview', config: webviewBuild },
+];
+
 copyHarperWasm();
 
 if (isWatch) {
-    const [ctx1, ctx2] = await Promise.all([
-        esbuild.context(extensionBuild),
-        esbuild.context(webviewBuild),
-    ]);
-    await Promise.all([ctx1.watch(), ctx2.watch()]);
+    const contexts = await Promise.all(BUNDLES.map(({ config }) => esbuild.context(config)));
+    await Promise.all(contexts.map((ctx) => ctx.watch()));
     console.log('Watching for changes...');
 } else {
-    const [extensionResult, webviewResult] = await Promise.all([
-        esbuild.build(extensionBuild),
-        esbuild.build(webviewBuild),
-    ]);
-    if (withMetafile && webviewResult.metafile) {
+    const results = await Promise.all(BUNDLES.map(({ config }) => esbuild.build(config)));
+    if (withMetafile) {
+        const written = BUNDLES.map(({ name }, i) => {
+            const { metafile } = results[i];
+            // Asked for and not produced means the build config lost its
+            // `metafile: withMetafile` line. Loud, because the generator would
+            // otherwise report an appendix missing a whole bundle.
+            if (!metafile) throw new Error(`--metafile was requested but the ${name} build produced none.`);
+            const file = metafileFor(name);
+            fs.writeFileSync(path.resolve(file), JSON.stringify(metafile));
+            return { name, metafile: file };
+        });
         fs.writeFileSync(
-            path.resolve('./dist/webview.meta.json'),
-            JSON.stringify(webviewResult.metafile),
-        );
-    }
-    if (withMetafile && extensionResult.metafile) {
-        fs.writeFileSync(
-            path.resolve('./dist/extension.meta.json'),
-            JSON.stringify(extensionResult.metafile),
+            path.resolve(MANIFEST_FILE),
+            `${JSON.stringify({ bundles: written }, null, 2)}\n`,
         );
     }
 }

@@ -44,9 +44,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EMBEDDED_COMPONENTS } from "./generate-third-party-notices.mjs";
+import { BundleManifestError, shippedMetafiles } from "./bundleManifest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const METAFILES = ["dist/webview.meta.json", "dist/extension.meta.json"];
 const BIG_INPUT_BYTES = 250_000;
 const BIG_DATA_BYTES = 300_000;
 
@@ -105,16 +105,16 @@ const sameFamily = (declared, id) =>
     declared.includes(id) || (id === "BSD" && /BSD/.test(declared)) || (id === "MIT" && /MIT/.test(declared));
 
 function collectPackages() {
-    const missing = METAFILES.filter((f) => !fs.existsSync(path.join(repoRoot, f)));
-    if (missing.length) {
-        console.error(
-            `Missing ${missing.join(", ")}.\n` +
-                "Run `node esbuild.mjs --production --metafile` first; this reads what that writes.",
-        );
+    let metafiles;
+    try {
+        metafiles = shippedMetafiles(repoRoot);
+    } catch (err) {
+        if (!(err instanceof BundleManifestError)) throw err;
+        console.error(err.message);
         process.exit(2);
     }
     const pkgs = new Map();
-    for (const metaPath of METAFILES) {
+    for (const metaPath of metafiles) {
         const meta = JSON.parse(fs.readFileSync(path.join(repoRoot, metaPath), "utf8"));
         for (const [input, info] of Object.entries(meta.inputs)) {
             const name = packageNameFromInput(input);
@@ -125,7 +125,7 @@ function collectPackages() {
             pkgs.set(name, entry);
         }
     }
-    return [...pkgs.values()].sort((a, b) => b.bytes - a.bytes);
+    return { packages: [...pkgs.values()].sort((a, b) => b.bytes - a.bytes), metafiles };
 }
 
 function auditPackage(entry) {
@@ -188,10 +188,10 @@ function auditPackage(entry) {
 }
 
 function main() {
-    const packages = collectPackages();
+    const { packages, metafiles } = collectPackages();
     const rows = packages.map(auditPackage);
     const flagged = rows.filter((r) => r.flags.length);
-    console.log(`inspected ${rows.length} bundled packages (from ${METAFILES.join(", ")}); ${flagged.length} carry a shape worth reading`);
+    console.log(`inspected ${rows.length} bundled packages (from ${metafiles.join(", ")}); ${flagged.length} carry a shape worth reading`);
     console.log("");
     for (const r of flagged) {
         const known = EMBEDDED_COMPONENTS[r.name];

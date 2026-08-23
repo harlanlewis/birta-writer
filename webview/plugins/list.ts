@@ -4,11 +4,13 @@ import {
     orderedListSchema,
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
-import type { Node as ProseNode } from "../pm";
+import type { Node as ProseNode, Transaction } from "../pm";
 import { canJoin, Fragment, keymap, Mapping } from "../pm";
+import { Decoration, DecorationSet } from "../pm";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { joinTextblockBackward, liftListItem, undoInputRule } from "../pm";
 import { $prose } from "@milkdown/utils";
+import { t } from "../i18n";
 import {
     isListNode,
     isSameTypeListBoundary,
@@ -718,6 +720,236 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
     },
 );
 
+// ── The task checkbox, for assistive tech (MAR-403) ─────────────────────────
+//
+// A task item's tick is drawn entirely in CSS: `li[data-item-type="task"]`
+// carries `data-checked` and its box and glyph are `::before`/`::after` with
+// `content: ""`. None of that reaches the accessibility tree, and neither does
+// the `text-decoration: line-through` on a done item's paragraph, so a done
+// task and an open one are byte-identical to anything reading the tree.
+//
+// The control below is what a screen reader reads instead: one real element
+// per task item, carrying `role="checkbox"` and `aria-checked`, sitting inside
+// the item beside the paragraph. It has no ink of its own; the drawn design is
+// untouched.
+//
+// It is a WIDGET DECORATION rather than markup from the schema's `toDOM`, and
+// that is forced rather than chosen. ProseMirror's `renderSpec` refuses a spec
+// whose content hole has a sibling ("Content hole must be the only child of its
+// parent node"), so `toDOM` can only reach the `li`'s own attributes; giving
+// the content its own wrapper element to make room would move every `li > …`
+// selector in the tree (the gutter, the fold chrome, the done-item strike) off
+// its target.
+//
+// Putting the role on the `li` itself, which is the obvious cheaper move, was
+// measured in both engines and is worse than the gap it closes. `role=checkbox`
+// is name-from-contents and children-presentational, so the item stops being a
+// listitem, its accessible name absorbs everything inside it (the block-options
+// button's own label included), and a parent task's nested sub-list is folded
+// into that name instead of being a list. `aria-checked` on the `li` with no
+// role is simply dropped, by Chromium and WebKit alike. `e2e/taskToggle` reads
+// the COMPUTED tree rather than the attributes, so a move back to the `li`
+// turns it red rather than looking like a simplification.
+//
+// FOCUS is deliberately left alone: no `tabindex`, and the control is inert to
+// the pointer. The chord (`toggleTaskChecked`) and the click on the drawn box
+// already operate the checkbox from both surfaces, and a focusable control
+// inside `contenteditable` fights the caret for a gesture nobody is missing.
+// The consequence is that a toggle is not announced on the spot; the state is
+// there to be read, not spoken as it changes.
+//
+// The COST of choosing a decoration is a per-transaction one, on the keystroke
+// path of every document rather than only of the checklists. That is not a
+// theoretical worry: the first cut walked the document per doc-changing
+// transaction, and `pnpm perf:typing:ab` failed `xlarge` over two interleaved
+// passes for it. What is here now decides from the transaction's own changed
+// ranges (`taskListItemsTouched`), so an ordinary keystroke pays a look at
+// what it touched plus mapping the existing set.
+
+/** Class on the offscreen control; `webview/style.css` positions it. */
+const TASK_CHECKBOX_A11Y_CLASS = "task-check-a11y";
+
+/** The offscreen control for one task item. */
+function taskCheckboxA11yDom(checked: boolean): HTMLElement {
+    const box = document.createElement("span");
+    box.className = TASK_CHECKBOX_A11Y_CLASS;
+    box.setAttribute("role", "checkbox");
+    box.setAttribute("aria-checked", checked ? "true" : "false");
+    // Named, so it is not an anonymous checkbox. The state is `aria-checked`'s
+    // job, never the name's: a name that said "done" would go stale the moment
+    // the widget's DOM was reused.
+    box.setAttribute("aria-label", t("Task"));
+    box.contentEditable = "false";
+    return box;
+}
+
+/** One task item: where it starts, and whether it is ticked. */
+interface TaskItemMark {
+    pos: number;
+    checked: boolean;
+}
+
+/**
+ * Every task item in `doc`, in document order.
+ *
+ * A WHOLE-DOCUMENT walk, and the only place one is left: the initial build,
+ * and a rebuild after a transaction that changed which items exist or what
+ * they are ticked to. It prunes at textblocks, which hold every text and
+ * inline node in a document and can contain no list item, so it visits the
+ * block skeleton rather than the document.
+ *
+ * It must NOT go back on the keystroke path. Running it per doc-changing
+ * transaction, pruned, is what `pnpm perf:typing:ab` failed `xlarge` for, and
+ * is the whole reason `taskListItemsTouched` below exists.
+ */
+function taskItemMarks(doc: ProseNode): TaskItemMark[] {
+    const marks: TaskItemMark[] = [];
+    doc.descendants((node, pos) => {
+        if (node.isTextblock) { return false; }
+        const checked = node.attrs["checked"];
+        if (node.type.name === "list_item" && typeof checked === "boolean") {
+            marks.push({ pos, checked });
+        }
+        return true;
+    });
+    return marks;
+}
+
+/**
+ * Where the control for a task item goes: just inside the item, the position
+ * the item's own block-handle gutter is a widget at.
+ */
+function taskCheckboxPos(mark: TaskItemMark): number {
+    return mark.pos + 1;
+}
+
+/**
+ * Whether this transaction could have changed WHICH controls belong in the
+ * document, as opposed to only where they sit.
+ *
+ * This is the whole per-keystroke cost of the plugin, so it reads the
+ * transaction's own changed ranges and nothing else. Everything it has to
+ * catch is local to one of them, by construction:
+ *
+ *   - An item APPEARS (typed, pasted, split off another, undone into
+ *     existence). It starts inside a changed range of the new document.
+ *   - An item's TICK changes, in either direction, including to and from `null`
+ *     when a task becomes a plain bullet or stops being one. Attributes move
+ *     only through `setNodeMarkup`, whose step covers the node's own start.
+ *   - An item DISAPPEARS. This one needs no rebuild at all: its control sat
+ *     inside it, so the mapping reports that control deleted and drops it,
+ *     which is the same answer a rebuild gives. That is why a pure deletion,
+ *     whose changed range in the new document is a single point, is allowed to
+ *     go unnoticed here.
+ *
+ * The predicate is any `list_item` STARTING in a range, not any task item:
+ * an item on its way out of being a task no longer answers to `checked`, and
+ * asking about ticks would leave its control behind on a plain bullet.
+ *
+ * Typing is what it is built to say no to. A character lands at least two
+ * positions inside its item (past the item's own start and its paragraph's),
+ * so no item starts in the range and the answer is no without the document
+ * being touched.
+ *
+ * Exported because it IS the decision this plugin is made of, and because a
+ * "no" is invisible from the outside: a mapped set and a rebuilt one render
+ * identically, so nothing about the DOM could tell a test which one it got.
+ */
+export function taskListItemsTouched(tr: Transaction): boolean {
+    const doc = tr.doc;
+    const { maps } = tr.mapping;
+    for (let i = 0; i < maps.length; i++) {
+        // The step's range lands in the document THAT STEP produced, so it is
+        // carried through the steps after it to reach `tr.doc`'s coordinates.
+        const rest = tr.mapping.slice(i + 1);
+        let touched = false;
+        maps[i]!.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+            if (touched) { return; }
+            const from = rest.map(newStart, -1);
+            const to = rest.map(newEnd, 1);
+            doc.nodesBetween(from, to, (node, pos) => {
+                if (touched || node.isTextblock) { return false; }
+                // `nodesBetween` hands back the ancestors the range is inside
+                // as well as the nodes within it; an ancestor starts before the
+                // range and is not something this transaction introduced.
+                if (pos >= from && node.type.name === "list_item") {
+                    touched = true;
+                    return false;
+                }
+                return true;
+            });
+        });
+        if (touched) { return true; }
+    }
+    return false;
+}
+
+function taskCheckboxDecorations(doc: ProseNode, marks: readonly TaskItemMark[]): DecorationSet {
+    if (marks.length === 0) { return DecorationSet.empty; }
+    return DecorationSet.create(
+        doc,
+        marks.map((mark) =>
+            Decoration.widget(taskCheckboxPos(mark), () => taskCheckboxA11yDom(mark.checked), {
+                // -1, the side the item's own block-handle gutter already
+                // takes at this position. Every widget this editor puts in
+                // front of content takes a negative side, so it sorts before
+                // the caret rather than after it; plugins/emptyLineHint.ts
+                // holds what WebKit does otherwise, and e2e/enterCaret pins
+                // the gesture in both engines.
+                side: -1,
+                // The state is IN the key, so a tick re-renders the control
+                // instead of reusing DOM that still says `aria-checked`
+                // whatever it said before.
+                key: `task-a11y:${mark.checked ? "x" : "o"}`,
+                ignoreSelection: true,
+            })
+        ),
+    );
+}
+
+const taskCheckboxA11yKey = new PluginKey<DecorationSet>("MD_TASK_CHECKBOX_A11Y");
+
+/**
+ * Publishes the offscreen checkbox for every task item. Registered with the
+ * `list_item` schema override (listItemSpreadBoolPlugins), because it is about
+ * the same node and must see gfm's `checked` attr.
+ *
+ * The per-transaction cost is meant to scale with the CHANGE and not with the
+ * document, because this sits on the keystroke path of every document, most of
+ * which hold no task list at all. Two things carry that:
+ * `taskListItemsTouched` decides from the transaction's own ranges, and the
+ * map below is the whole of what an ordinary keystroke pays.
+ */
+const taskCheckboxA11yPlugin = $prose(
+    () =>
+        new Plugin<DecorationSet>({
+            key: taskCheckboxA11yKey,
+            state: {
+                init: (_config, state) =>
+                    taskCheckboxDecorations(state.doc, taskItemMarks(state.doc)),
+                apply: (tr, previous) => {
+                    if (!tr.docChanged) { return previous; }
+                    if (taskListItemsTouched(tr)) {
+                        return taskCheckboxDecorations(tr.doc, taskItemMarks(tr.doc));
+                    }
+                    // The same controls, carried to where the edit put them.
+                    // The map is not optional: a DecorationSet is a tree shaped
+                    // to the document it was built from, and one kept across an
+                    // edit describes a document that no longer exists, so its
+                    // controls stop resolving onto the items they belong to. An
+                    // EMPTY set maps to itself and allocates nothing, which is
+                    // what a document with no task list in it pays.
+                    return previous.map(tr.mapping, tr.doc);
+                },
+            },
+            props: {
+                decorations(state) {
+                    return taskCheckboxA11yKey.getState(state) ?? DecorationSet.empty;
+                },
+            },
+        }),
+);
+
 /**
  * bullet_list / ordered_list overrides, flattened for pureCommonmark (they
  * replace the stock commonmark schemas — see listSpreadReplacedPlugins). The
@@ -729,8 +961,15 @@ export const listSpreadBooleanPlugins = [
     orderedListSpreadBoolSchema,
 ].flat();
 
-/** The list_item override, registered AFTER gfm (see the schema doc above). */
-export const listItemSpreadBoolPlugins = [listItemSpreadBoolSchema].flat();
+/**
+ * The `list_item` layer that must register AFTER gfm (see the schema doc
+ * above): the schema override itself, plus the task item's accessibility
+ * control, which reads the `checked` attr that override carries.
+ */
+export const listItemSpreadBoolPlugins = [
+    listItemSpreadBoolSchema,
+    taskCheckboxA11yPlugin,
+].flat();
 
 /**
  * The stock commonmark list schemas the bullet/ordered overrides replace.
