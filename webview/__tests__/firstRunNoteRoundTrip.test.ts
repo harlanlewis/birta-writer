@@ -22,13 +22,28 @@
  * The invariants are the corpus's own A and C, using the same helpers, so the
  * tour is held to the bar every other document in the repo is held to.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 import { makeCorpusEditor as makeEditor } from "./helpers/moveFuzz";
+
+// Vitest's 5s default is not a fit for the paragraph sweep below, and the
+// mechanism says so without a measurement: it builds TWO full production
+// editors for every paragraph in the tour, one to type into and one to reparse
+// what was saved, and the tour has dozens. Alone on a laptop it clears the
+// default comfortably; under `pnpm test:coverage` on a CI runner, with
+// instrumentation on and four hundred files across parallel workers, it does
+// not, and that is where it first went red. Nothing about the sweep can be
+// trimmed without giving up the thing it exists to assert, which is that the
+// tour survives an edit ANYWHERE in it rather than at a sampled few places.
+//
+// Per-file, not project-wide, so a genuine hang in an ordinary webview test
+// still trips the 5s default. `npx vitest run
+// webview/__tests__/firstRunNoteRoundTrip.test.ts` is how to see the real cost.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const root = path.resolve(__dirname, "../..");
 
