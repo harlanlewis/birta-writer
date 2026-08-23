@@ -1,5 +1,5 @@
 /**
- * Ticking the task the caret is in.
+ * Ticking the task the caret is in, and what the tick says to a screen reader.
  *
  * Driven through the `editorCommand` message, which is the path BOTH surfaces
  * use: a VS Code keybinding routes through it, and Jot's Edit-menu item routes
@@ -63,6 +63,52 @@ export async function run({ page, check, baseUrl }) {
         ).catch(() => {});
     };
 
+    /**
+     * The ACCESSIBILITY state of every list item, in document order: its own
+     * first line, and the `aria-checked` of the control inside it (null when
+     * there is no control).
+     *
+     * Read off the `li` elements rather than off a list of texts we expect, so
+     * an item that lost its control shows up as a row with a null in it rather
+     * than as a row nobody looked for.
+     */
+    const ariaStates = () => page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror li")].map((li) => ({
+            text: (li.querySelector(":scope > p")?.textContent ?? "").trim(),
+            aria: li.querySelector(":scope > [role=checkbox]")?.getAttribute("aria-checked") ?? null,
+        })));
+
+    /**
+     * The same thing, read off the MARKDOWN the flush returns.
+     *
+     * The document is the oracle, which is what stops this being a check that a
+     * once-correct attribute is still there. Every assertion above already
+     * establishes what the markdown says; comparing the accessibility tree
+     * against it asks whether the two agree AFTER the gesture, which an
+     * `aria-checked` frozen at the value it was first painted with cannot do.
+     */
+    const ariaFromMarkdown = (md) =>
+        (md ?? "").split("\n")
+            .filter((line) => /^\s*[-*]\s/.test(line))
+            .map((line) => {
+                const task = /^\s*[-*]\s+\[([ x])\]\s+(.*)$/.exec(line);
+                if (task) { return { text: task[2], aria: task[1] === "x" ? "true" : "false" }; }
+                return { text: line.replace(/^\s*[-*]\s+/, ""), aria: null };
+            });
+
+    /** Assert the two agree, and that the reading found any task at all. */
+    async function checkAria(when) {
+        const [tree, md] = [await ariaStates(), await doc()];
+        const expected = ariaFromMarkdown(md);
+        check(`${when}: every task's accessible state is the state on disk`,
+            JSON.stringify(tree) === JSON.stringify(expected),
+            JSON.stringify({ tree, expected, md }));
+        // A reading that found no control would agree with a markdown parse
+        // that found no task, so pin the count the fixture actually has.
+        check(`${when}: …read off four real checkbox controls`,
+            tree.filter((row) => row.aria !== null).length === 4, JSON.stringify(tree));
+    }
+
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
     await page.waitForFunction(
@@ -75,6 +121,37 @@ export async function run({ page, check, baseUrl }) {
     const start = await page.evaluate(
         () => document.querySelectorAll(".ProseMirror li").length);
     check("the harness mounted the task list", start >= 5, `list items=${start}`);
+
+    // ── What a screen reader is handed (MAR-403) ──
+    //
+    // The tick is drawn in `::before`/`::after` with `content: ""` and the
+    // completion cue is `text-decoration: line-through`; neither reaches the
+    // accessibility tree, so the tree is the only place this can be asked. Only
+    // a real engine computes it, which is why it is asked here rather than in a
+    // jsdom unit test.
+    const snapshot = await page.locator(".ProseMirror ul").first().ariaSnapshot();
+    check("the accessibility tree tells a done task from an open one",
+        /checkbox[^\n]*\[checked\]/.test(snapshot) && /- checkbox "Task"\s*$/m.test(snapshot),
+        snapshot);
+    // The control must not have been put on the `li` itself: `role=checkbox` is
+    // name-from-contents and children-presentational there, so the item stops
+    // being a listitem and its name swallows its own text and the
+    // block-options button's label with it.
+    check("…and a task item is still a list item holding its own text",
+        /- listitem:/.test(snapshot) && /paragraph: open task/.test(snapshot)
+        && !/checkbox "[^"]*open task/.test(snapshot), snapshot);
+    // Every control names ITSELF. A role on the `li` takes its name from the
+    // item's contents instead, so each one comes back carrying the item's text
+    // and the labels of whatever chrome is inside it.
+    const names = [...snapshot.matchAll(/- checkbox "([^"]*)"/g)].map((m) => m[1]);
+    check("…and every checkbox is named for the control, not for the item",
+        names.length === 4 && names.every((name) => name === "Task"), JSON.stringify(names));
+    // The nested task, between its parent's line and its own, is still an item
+    // of a list rather than something folded into the parent's name.
+    const parentToNested = snapshot.split("paragraph: parent")[1]?.split("paragraph: nested task")[0] ?? "";
+    check("…and a parent task's sub-list is still a list of items",
+        /- list:/.test(parentToNested) && /- listitem:/.test(parentToNested), snapshot);
+    await checkAria("at first paint");
 
     // ── An open task ticks ──
     await caretIn("open task");
@@ -100,6 +177,9 @@ export async function run({ page, check, baseUrl }) {
     md = await doc();
     check("a nested task ticks itself", /- \[x\] nested task/.test(md ?? ""), JSON.stringify(md));
     check("…and leaves its parent alone", /- \[ \] parent/.test(md ?? ""), JSON.stringify(md));
+    // Four ticks have moved by now, in both directions, so a control rendered
+    // once and never re-rendered no longer matches the file.
+    await checkAria("after the command route");
 
     // ── A plain bullet is not a task and must not become one ──
     const before = await doc();
@@ -159,6 +239,7 @@ export async function run({ page, check, baseUrl }) {
     const afterText = await doc();
     check("a click in the text does not toggle", afterText === md,
         JSON.stringify({ md, afterText }));
+    await checkAria("after the mouse route");
 
     const errors = await page.evaluate(() => window.__pageErrors ?? []);
     check("no page errors", errors.length === 0, JSON.stringify(errors));

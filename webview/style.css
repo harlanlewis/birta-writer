@@ -1615,6 +1615,26 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
                 opacity: 0.6;
                 text-decoration: line-through;
             }
+
+            /* The same checkbox, for assistive tech. Everything above draws the
+               box in pseudo-elements, which carry no role and no state, so this
+               is the only thing in a task item an accessibility tree can read
+               the tick off (plugins/list.ts holds the argument, MAR-403).
+
+               Out of flow and one pixel square, so it adds no ink and no
+               layout; NOT `display: none` or `visibility: hidden`, either of
+               which would take it back out of the tree and leave nothing. It is
+               inert to the pointer so the checkbox column's click hit test
+               (utils/taskCheckbox.ts) never sees it as a target. */
+            & > .task-check-a11y {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 1px;
+                height: 1px;
+                overflow: hidden;
+                pointer-events: none;
+            }
         }
 
         /* Links — underlined at rest (the conventional link affordance, and the
