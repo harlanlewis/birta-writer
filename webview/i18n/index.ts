@@ -132,6 +132,44 @@ export function t(key: string): string {
 export const productName: string = PRODUCT_NAME;
 
 /**
+ * The order each platform prints modifiers in, and the two are NOT one list
+ * reversed: `Mod` is a different key on each side. On a Mac it is Command,
+ * which Apple puts last (⌃⌥⇧⌘). Everywhere else it IS Ctrl, which comes first
+ * (Ctrl+Alt+Shift+K), so ranking it last there prints Alt+Shift+Ctrl.
+ */
+const MODIFIER_ORDER_MAC = ["Ctrl", "Alt", "Shift", "Mod"];
+const MODIFIER_ORDER_OTHER = ["Mod", "Ctrl", "Alt", "Shift"];
+
+/**
+ * A chord's parts, with its modifier run put into the platform's order.
+ *
+ * Keymap notation carries no ordering semantics, so `Mod-Alt-1` and `Alt-Mod-1`
+ * are one chord and the declaration cannot be the authority on how it reads.
+ * Every other place this product prints a chord already uses the platform's
+ * order: AppKit draws a menu item's key equivalent that way whatever order the
+ * mask was built in, and `BirtaJotCore/HotkeyCombo.swift` emits ⌃⌥⇧⌘ for the
+ * summon hotkey. Left to the declaration, the Mac app's Format menu drew its
+ * Heading 1 row as ⌥⌘1 while the tooltip on the same command read ⌘⌥1
+ * (MAR-412).
+ *
+ * Anything that is not a modifier sorts last and keeps its relative position,
+ * so a malformed chord degrades to the old output rather than being reordered
+ * into nonsense.
+ */
+function inPlatformOrder(parts: string[]): string[] {
+    const order = _isMac ? MODIFIER_ORDER_MAC : MODIFIER_ORDER_OTHER;
+    // The final segment is the KEY, never a modifier, and it stays put: a chord
+    // whose key is itself "Shift" or a hyphen must not be sorted into the run.
+    const key = parts[parts.length - 1] ?? "";
+    const rank = (p: string): number => {
+        const i = order.indexOf(p);
+        return i === -1 ? order.length : i;
+    };
+    const mods = parts.slice(0, -1).sort((a, b) => rank(a) - rank(b));
+    return [...mods, key];
+}
+
+/**
  * Convert a shortcut string into the display format for the current platform.
  * The input format follows the ProseMirror keymap convention, e.g. 'Mod-b', 'Mod-Shift-z', 'Alt-k'.
  * Mac:  Mod→⌘  Ctrl→⌃  Shift→⇧  Alt→⌥  other characters uppercased, no separator
@@ -142,9 +180,13 @@ export const productName: string = PRODUCT_NAME;
  * hyphen for both jobs, so a chord whose KEY is a hyphen ("Mod--", the zoom-out
  * key every View menu binds) otherwise came apart into empty segments and
  * rendered as ⌘ with the key silently gone.
+ *
+ * Modifiers print in the PLATFORM's order rather than the order they were
+ * declared in; `inPlatformOrder` above carries the argument for that.
  */
+
 export function kbd(shortcut: string): string {
-    const parts = shortcut.split(/-(?!$)/);
+    const parts = inPlatformOrder(shortcut.split(/-(?!$)/));
     if (_isMac) {
         return parts
             .map((p) => {

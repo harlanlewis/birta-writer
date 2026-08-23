@@ -246,7 +246,14 @@
     border-radius: var(--ui-radius-l);
     box-shadow: var(--ui-card-shadow);
     overflow: hidden;
-    min-width: 52px;
+    /* Sized for the narrowest menu that carries chords, which is Format: a
+       two-character label ("H1") against a three-glyph chord ("⌘⌥1"). Without a
+       floor the menu shrinks to its content and the only thing between label
+       and chord is .ui-menu-row's own gap, which is a minimum rather than a
+       comfortable one. 52px was the floor when these rows were bare labels
+       (MAR-406 gave them chords). A menu whose labels are already wide, the
+       Lists and Quote pickers, is unaffected. */
+    min-width: 168px;
     /* The stepper/segment buttons are .ui-btn primitives; these vars retheme
        them onto the menu ground (the rows already track --ui-menu-* at root). */
     --ui-btn-ink: var(--ui-menu-ink);
@@ -269,6 +276,23 @@
     color: var(--ui-menu-ink-dim);
     font-size: var(--ui-fs-xs);
     flex: none;
+}
+
+/* The Format rows' leading glyph, which is the column the Lists and Quote rows
+   put their icon in. Sized to the widest of them ("H1" through "H6") so the
+   names beside them line up, and dimmed like the icons it stands in for: the
+   row is called Heading 1, and P/H1 is the compact form of that rather than a
+   second name for it. */
+.tb-fmt-fill-glyph {
+    flex: none;
+    min-width: 20px;
+    color: var(--ui-menu-ink-dim);
+}
+
+/* An active row fills with the accent, so its glyph takes the row's ink rather
+   than staying dim against a ground built for the opposite contrast. */
+.tb-fmt-item--on .tb-fmt-fill-glyph {
+    color: inherit;
 }
 
 /* Callout dropdown rows: a leading kind icon beside the type label. Unlike the

@@ -74,19 +74,22 @@ export function createFormatMenu(getEditor: GetEditor): FormatPicker {
     fmtMenu.className = "tb-fmt-menu";
     fmtMenu.style.display = "none";
 
-    const formats: [string, EditorCommandId][] = [
-        ["P", "setParagraph"],
-        ["H1", "setHeading1"],
-        ["H2", "setHeading2"],
-        ["H3", "setHeading3"],
-        ["H4", "setHeading4"],
-        ["H5", "setHeading5"],
-        ["H6", "setHeading6"],
+    // Glyph, name, command. The glyph is what the trigger wears and what the
+    // active row is read back by; the name is what the row is called, and it is
+    // the Mac menu's wording so the two surfaces agree (menuPrimitives.ts).
+    const formats: [string, string, EditorCommandId][] = [
+        ["P", t("Body"), "setParagraph"],
+        ["H1", t("Heading 1"), "setHeading1"],
+        ["H2", t("Heading 2"), "setHeading2"],
+        ["H3", t("Heading 3"), "setHeading3"],
+        ["H4", t("Heading 4"), "setHeading4"],
+        ["H5", t("Heading 5"), "setHeading5"],
+        ["H6", t("Heading 6"), "setHeading6"],
     ];
 
     const fmtItems: FillItem[] = [];
-    formats.forEach(([label, command]) => {
-        const item = createFillItem(label, command);
+    formats.forEach(([glyph, label, command]) => {
+        const item = createFillItem(glyph, label, command);
         item.el.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();

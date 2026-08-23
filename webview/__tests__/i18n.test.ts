@@ -83,8 +83,44 @@ describe("kbd", () => {
     it("an ordinary chord should be unchanged by the separator rule", async () => {
         window.__i18n = { translations: {}, isMac: true };
         const { kbd } = await import("../i18n");
-        expect(kbd("Mod-Shift-x")).toBe("⌘⇧X");
-        expect(kbd("Mod-Alt-1")).toBe("⌘⌥1");
+        expect(kbd("Mod-Shift-x")).toBe("⇧⌘X");
+        expect(kbd("Mod-Alt-1")).toBe("⌥⌘1");
         expect(kbd("Mod-[")).toBe("⌘[");
+    });
+
+    it("modifiers should print in the platform's order, not the order declared", async () => {
+        // Keymap notation carries no ordering semantics, so these are one chord
+        // and must read identically. They did not: whichever way the host
+        // happened to spell it came straight out (MAR-412).
+        window.__i18n = { translations: {}, isMac: true };
+        const { kbd } = await import("../i18n");
+        expect(kbd("Mod-Alt-1")).toBe(kbd("Alt-Mod-1"));
+        expect(kbd("Mod-Shift-x")).toBe(kbd("Shift-Mod-x"));
+    });
+
+    it("the mac order should be Apple's, which puts Command last", async () => {
+        // ⌃⌥⇧⌘, the order AppKit draws a key equivalent in and the order
+        // BirtaJotCore/HotkeyCombo.swift emits for the summon hotkey. Asserted
+        // against a chord using every modifier, so a partial ordering cannot
+        // pass by accident.
+        window.__i18n = { translations: {}, isMac: true };
+        const { kbd } = await import("../i18n");
+        expect(kbd("Mod-Shift-Alt-Ctrl-k")).toBe("⌃⌥⇧⌘K");
+        expect(kbd("Ctrl-Alt-Shift-Mod-k")).toBe("⌃⌥⇧⌘K");
+    });
+
+    it("the windows order should be Ctrl, Alt, Shift", async () => {
+        window.__i18n = { translations: {}, isMac: false };
+        const { kbd } = await import("../i18n");
+        expect(kbd("Shift-Alt-Mod-k")).toBe("Ctrl+Alt+Shift+K");
+    });
+
+    it("a chord whose KEY is a modifier's name should keep it as the key", async () => {
+        // The final segment is never sorted into the modifier run. Without that
+        // rule "Mod-Shift" would print as ⇧⌘ with the key gone.
+        window.__i18n = { translations: {}, isMac: true };
+        const { kbd } = await import("../i18n");
+        expect(kbd("Mod-Shift")).toBe("⌘⇧");
+        expect(kbd("Mod--")).toBe("⌘-");
     });
 });

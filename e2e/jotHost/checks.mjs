@@ -831,7 +831,7 @@ export async function run({ page, check, baseUrl }) {
     // handler is, and still anchored, so it cannot start matching H3 inside
     // some longer label later.
     await page.locator('.tb-dock-row [data-item-id="format"] .tb-fmt-item')
-        .filter({ has: page.locator(".tb-fmt-fill-label", { hasText: /^H3$/ }) })
+        .filter({ has: page.locator(".tb-fmt-fill-label", { hasText: /^Heading 3$/ }) })
         .dispatchEvent("mousedown");
     await page.waitForTimeout(250);
     const becameHeading = await page.evaluate(() =>

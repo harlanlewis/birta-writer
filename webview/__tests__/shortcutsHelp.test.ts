@@ -165,7 +165,7 @@ describe("shortcutsHelp — the host's own keys", () => {
 
         expect(bySection["Application"]).toEqual(["⌘,"]);
         expect(bySection["File"]).toEqual(["⌘N", "⌘S"]);
-        expect(bySection["View"]).toEqual(["⌘⌥["]);
+        expect(bySection["View"]).toEqual(["⌥⌘["]);
         // The fallback heading, which is what stops a host that declares less
         // from being a host whose keys disappear.
         expect(bySection["This app"]).toEqual(["⌘J"]);
@@ -292,24 +292,24 @@ describe("shortcutsHelp — content", () => {
         expect(panel()!.classList.contains("shortcuts-help--mac")).toBe(true);
     });
 
-    it("macOS should render symbol chords (⌘B, ⌃⇧⌘→, ⇧⌥↓)", async () => {
+    it("macOS should render symbol chords (⌘B, ⌃⇧⌘→, ⌥⇧↓)", async () => {
         const h = await loadHarness(true);
         h.openShortcutsHelp();
         const chips = [...panel()!.querySelectorAll("kbd")].map((k) => k.textContent);
         expect(chips).toContain("⌘B");
         expect(chips).toContain("⌃⇧⌘→");
-        expect(chips).toContain("⇧⌥↓");
+        expect(chips).toContain("⌥⇧↓");
         expect(chips).toContain("⌘Enter");
         expect(chips).toContain("⇧Tab");
         expect(chips).toContain("Esc");
     });
 
-    it("Windows/Linux should render Ctrl+ chords and the Shift+Alt smart-select pair", async () => {
+    it("Windows/Linux should render Ctrl+ chords and the Alt+Shift smart-select pair", async () => {
         const h = await loadHarness(false);
         h.openShortcutsHelp();
         const chips = [...panel()!.querySelectorAll("kbd")].map((k) => k.textContent);
         expect(chips).toContain("Ctrl+B");
-        expect(chips).toContain("Shift+Alt+→");
+        expect(chips).toContain("Alt+Shift+→");
         expect(chips).toContain("Alt+↑");
         // Ctrl+Shift+↑ is the platform's native selection chord, no longer
         // a listed block-move alternative.
@@ -461,19 +461,36 @@ describe("shortcutsHelp — every printed chord is a live keymap binding", () =>
         // here without listing its chord, or a chord listed here with its
         // row gone, fails.
         const { LABEL_CHORDS } = await import("../../shared/__tests__/keymapChords");
-        const printed = [...LABEL_CHORDS["webview/components/shortcutsHelp/index.ts"]!].sort();
+        const printed = LABEL_CHORDS["webview/components/shortcutsHelp/index.ts"]!
+            .map(sameChord).sort();
         const rendered = new Set<string>();
         for (const isMac of [true, false]) {
             const h = await loadHarness(isMac);
             h.openShortcutsHelp();
             for (const k of panel()!.querySelectorAll("kbd")) {
                 const chord = chordOf(k.textContent!, isMac);
-                if (chord) rendered.add(chord);
+                if (chord) rendered.add(sameChord(chord));
             }
         }
         expect([...rendered].sort()).toEqual(printed);
     });
 });
+
+/**
+ * A chord's identity, independent of the order its modifiers were written in.
+ *
+ * Both sides of the comparison above need this because they spell the same
+ * chord differently on purpose: the fixture records the keymap's own spelling
+ * (`Mod-Alt-[`), while `chordOf` reads the modifiers back off the RENDERED
+ * panel, which prints them in the platform's order (`⌥⌘[`, so `Alt-Mod-[`).
+ * Keymap notation carries no ordering semantics, so those are one chord and the
+ * test's subject is which chords appear, never how they were declared.
+ */
+function sameChord(chord: string): string {
+    const parts = chord.split(/-(?!$)/);
+    const key = parts[parts.length - 1] ?? "";
+    return [...parts.slice(0, -1).sort(), key].join("-");
+}
 
 /**
  * Invert the panel's display form back to the ProseMirror chord spelling
@@ -523,11 +540,11 @@ describe("shortcutsHelp — one platform source", () => {
             h.openShortcutsHelp();
 
             // Assert: no macOS column, no macOS chord anywhere; the printed
-            // smart-select row is the Shift+Alt one kbd() can spell.
+            // smart-select row is the Alt+Shift one kbd() can spell.
             expect(panel()!.classList.contains("shortcuts-help--mac")).toBe(false);
             const chips = [...panel()!.querySelectorAll("kbd")].map((k) => k.textContent!);
             expect(chips.some((c) => c.includes("⌘") || c.includes("⌃"))).toBe(false);
-            expect(chips).toContain("Shift+Alt+→");
+            expect(chips).toContain("Alt+Shift+→");
         } finally {
             if (platform) {
                 Object.defineProperty(navigator, "platform", platform);
