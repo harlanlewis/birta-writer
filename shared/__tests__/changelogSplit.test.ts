@@ -34,6 +34,28 @@ const entries = (text: string): string[] => {
     return out;
 };
 
+/**
+ * An entry written as an APP entry: the subject opens the sentence, after at
+ * most one of the prefixes the convention allows.
+ *
+ * Two spellings, because the app's name changed under this guard and both have
+ * to stay matched. `Jot` is what every entry already in `jot/CHANGELOG.md`
+ * opens with and is the shape a misfile would still take from an older draft;
+ * `for Mac` is the shape the convention now asks for, and it exists BECAUSE of
+ * the rename. Both surfaces are called Birta Writer, so a bare "Birta Writer"
+ * opening no longer says which product an entry is about and cannot be matched
+ * here without firing on most of the editor's own entries. The disambiguator
+ * moved from the product name into the convention, and this pattern is the
+ * only thing holding that convention up.
+ *
+ * Deliberately narrow: it catches the way app entries are actually written
+ * without firing on an editor entry that mentions the app in passing, which is
+ * legitimate and exists. It cannot catch an app entry phrased to avoid the
+ * opening, so it is a floor rather than a proof, and the test below is what
+ * says how high the floor actually is.
+ */
+const MISFILE = /^(Breaking, in |Breaking: |In )?Birta (Writer )?(Jot|for Mac)\b/;
+
 describe("the changelog split", () => {
     it("every version in Jot's changelog should exist in the extension's", () => {
         // One release stamps both, so Jot can never carry a version the
@@ -54,29 +76,41 @@ describe("the changelog split", () => {
     });
 
     it("no entry in the extension's changelog should be written as an app entry", () => {
-        // A shape check, not a semantic one, and deliberately narrow: it catches
-        // the way app entries are actually written (the subject opens the
-        // sentence) without firing on an editor entry that mentions the app in
-        // passing, which is legitimate and exists. It cannot catch an app entry
-        // phrased to avoid the opening, so it is a floor rather than a proof.
-        //
-        // TWO spellings, because the app's name changed under this guard and
-        // both have to stay matched. `Jot` is what every entry already in
-        // `jot/CHANGELOG.md` opens with and is the shape a misfile would still
-        // take from an older draft; `for Mac` is the shape the convention now
-        // asks for, and it exists BECAUSE of the rename. Both surfaces are
-        // called Birta Writer, so a bare "Birta Writer" opening no longer says
-        // which product an entry is about and cannot be matched here without
-        // firing on most of the editor's own entries. The disambiguator moved
-        // from the product name into the convention, and this pattern is the
-        // only thing holding that convention up.
-        const misfiled = entries(extension).filter((e) =>
-            /^(Breaking, in |In )?Birta (Writer )?(Jot|for Mac)\b/.test(e));
+        const misfiled = entries(extension).filter((e) => MISFILE.test(e));
         expect(misfiled, `app entries in CHANGELOG.md: ${misfiled.map((e) => e.slice(0, 60)).join(" | ")}`)
             .toEqual([]);
         // The sweep has to have read something, or an empty parse reports clean.
         expect(entries(extension).length).toBeGreaterThan(100);
         expect(entries(jot).length).toBeGreaterThan(10);
+    });
+
+    it("the misfile pattern should fire on each opening it knows, and on nothing else", () => {
+        // The half the check above cannot supply. `toEqual([])` over a filter is
+        // satisfied by a pattern that matches nothing at all, so a prefix
+        // silently falling out of the alternation reads exactly like a clean
+        // changelog. `Breaking: ` was such a prefix: `jot/CHANGELOG.md` moved
+        // from `Breaking, in <subject>:` to a bare `Breaking: ` and this was
+        // never widened, so the one shape a new breaking misfile would take was
+        // the one shape it could not see.
+        for (const opening of [
+            "Birta Writer Jot has a Format menu, and everything the panel can do is in it.",
+            "Birta Writer for Mac has a Format menu, and everything the panel can do is in it.",
+            "In Birta Writer for Mac, the default note moved with the name.",
+            "Breaking, in Birta Writer for Mac: the default note moved with the name.",
+            "Breaking: Birta Writer for Mac cannot update itself to this release.",
+        ]) {
+            expect(MISFILE.test(opening), `${opening.slice(0, 40)} should be caught`).toBe(true);
+        }
+        // And it refuses an editor entry that names the app in passing, which is
+        // legitimate and lives in `CHANGELOG.md` today: a pattern that caught
+        // those would be deleted the first time somebody wrote one.
+        for (const legitimate of [
+            "Toggle a task item done from the keyboard, and the same chord on Birta Writer Jot's Edit menu.",
+            "Actual Size, a command that puts the content font size back to its default.",
+            "Birta Writer now reads the theme from the workbench.",
+        ]) {
+            expect(MISFILE.test(legitimate), `${legitimate.slice(0, 40)} should be left alone`).toBe(false);
+        }
     });
 
     it("neither changelog should have a heading or rule glued to the line above it", () => {

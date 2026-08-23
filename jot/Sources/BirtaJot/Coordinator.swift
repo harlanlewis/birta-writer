@@ -1828,15 +1828,7 @@ final class Coordinator {
     /// absence it is reporting.
     private func seedFirstRunNote(isFirstRun: Bool) {
         let url = boundURL
-        let size = (try? FileManager.default.attributesOfItem(atPath: url.path))
-            .flatMap { $0[.size] as? NSNumber }
-        let existing: FirstRunNote.Existing
-        if let bytes = size {
-            existing = bytes.intValue == 0 ? .empty : .hasContent
-        } else {
-            existing = .absent
-        }
-        guard FirstRunNote.shouldWrite(existing: existing,
+        guard FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
                                        bufferIsEmpty: latest.isEmpty,
                                        isFirstRun: isFirstRun) else { return }
         do {

@@ -31,6 +31,11 @@ import { HOST_PROFILES, hostHasCommand, type HostArrangement } from "../hostProf
 import { FIXED_COMMAND_CHORDS } from "../fixedChords";
 import { KEYMAP_CHORDS } from "./keymapChords";
 import { parseJotMenu, keyedRows, type JotMenuRow } from "./jotMenuTable";
+import {
+    ITEM_COMMANDS,
+    computeDockPartition,
+    hostAvailableItems,
+} from "../../webview/components/toolbar/registry";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -103,6 +108,9 @@ function contributedMacChords(): Map<string, Set<string>> {
 const CONTRIBUTED = contributedMacChords();
 const COMMAND_IDS = new Set(EDITOR_COMMANDS.map((c) => c.id as string));
 const COMMAND_ROWS = keyedRows(ROWS).filter((r) => r.command !== null);
+/** Every command any menu row runs, keyed or not: a row with no chord is
+ *  still a way in, and coverage is about reachability rather than keys. */
+const COMMAND_IDS_ON_MENUS = ROWS.filter((r) => r.command !== null).map((r) => r.command!);
 
 /**
  * Chords Jot binds that the extension does not contribute for the same
@@ -320,6 +328,108 @@ describe("chord parity with the extension", () => {
         for (const [id, reason] of Object.entries(NOT_BOUND_IN_JOT)) {
             expect(COMMAND_IDS.has(id), `${id} is not a command`).toBe(true);
             expect(reason.length, `${id} has no reason`).toBeGreaterThan(40);
+        }
+    });
+});
+
+/**
+ * The menus against the panel's own controls.
+ *
+ * The parity checks above ask whether Jot's chords agree with the extension's.
+ * This asks the other question, and nothing was asking it: whether the menu
+ * REACHES what the panel already offers. A control the user can click and
+ * cannot find in a menu is not a broken keyboard, it is a menu bar that is
+ * quietly a subset of the toolbar, and the only thing that had ever said
+ * otherwise was a changelog sentence.
+ *
+ * Derived from the two registry tables rather than from a list here, so a new
+ * item added to the formatting row joins this by existing. Both are exhaustive
+ * by type (`Record<ToolbarItemId, …>`), and `toolbarRegistry.test.ts` already
+ * ties them to each other, so the enumeration cannot silently shrink.
+ *
+ * The row itself is asked of `computeDockPartition`, the function that builds
+ * it, rather than re-derived: a guard that re-implements the partition agrees
+ * with its own copy of the rule and not with the panel.
+ */
+describe("the menus against the panel's formatting row", () => {
+    /**
+     * Dock commands with no menu row, each with the reason there is none.
+     *
+     * Checked in both directions, like the two tables above: an entry that
+     * gains a row fails, so an exemption cannot outlive the gap it records.
+     */
+    const NOT_ON_A_MENU: Record<string, string> = {
+        toggleCallout:
+            "It takes the callout KIND as an argument, supplied by the control " +
+            "that runs it (the quote picker's turn-into rows). A menu row carries " +
+            "a command id and nothing else, so the row would have no kind to " +
+            "apply; Insert > Callout is `insertCallout`, the plain insert, which " +
+            "is the whole of the gesture a menu can offer.",
+    };
+
+    /** The dock as the panel builds it, under Jot's own profile. */
+    function jotDock(): string[] {
+        const declared = (globalThis as { __i18n?: unknown }).__i18n;
+        (globalThis as { __i18n?: unknown }).__i18n = {
+            host: {
+                capabilities: HOST_PROFILES.jot,
+                arrangements: jotArrangements(),
+                shortcuts: [],
+            },
+        };
+        try {
+            return computeDockPartition(hostAvailableItems()).dock;
+        } finally {
+            (globalThis as { __i18n?: unknown }).__i18n = declared;
+        }
+    }
+
+    const DOCK = jotDock();
+    const ON_A_MENU = new Set(COMMAND_IDS_ON_MENUS);
+
+    it("every command the formatting row runs should be reachable from a menu", () => {
+        // The sweep has to have met a row. An empty partition satisfies every
+        // per-item assertion below and reports a menu bar that covers
+        // everything, having compared nothing.
+        expect(DOCK.length, "the formatting row came back empty").toBeGreaterThan(10);
+
+        let checked = 0;
+        const missing: string[] = [];
+        for (const item of DOCK) {
+            const commands = ITEM_COMMANDS[item as keyof typeof ITEM_COMMANDS];
+            expect(commands, `${item} runs no command`).toBeDefined();
+            for (const command of commands) {
+                checked += 1;
+                if (ON_A_MENU.has(command)) { continue; }
+                if (command in NOT_ON_A_MENU) { continue; }
+                missing.push(`${item} → ${command}`);
+            }
+        }
+        expect(checked, "the formatting row's items name almost no commands")
+            .toBeGreaterThan(20);
+        expect(
+            missing,
+            "A control on the panel's formatting row runs a command no menu row " +
+                "offers. Add the row, or record it in NOT_ON_A_MENU with the reason " +
+                `it cannot be one:\n${missing.join("\n")}`,
+        ).toEqual([]);
+    });
+
+    it("every recorded absence should still be one", () => {
+        for (const [command, reason] of Object.entries(NOT_ON_A_MENU)) {
+            expect(COMMAND_IDS.has(command), `${command} is not a command`).toBe(true);
+            expect(reason.length, `${command} has no reason`).toBeGreaterThan(40);
+            expect(
+                ON_A_MENU.has(command),
+                `${command} is now on a menu — drop the exemption`,
+            ).toBe(false);
+            // And it is a command the formatting row actually runs, or the
+            // exemption is about something this check never looks at.
+            const owner = DOCK.find((item) =>
+                (ITEM_COMMANDS[item as keyof typeof ITEM_COMMANDS] as readonly string[])
+                    .includes(command));
+            expect(owner, `${command} is not run by anything on the formatting row`)
+                .toBeDefined();
         }
     });
 });

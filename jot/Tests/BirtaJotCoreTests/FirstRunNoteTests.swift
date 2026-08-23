@@ -57,6 +57,103 @@ final class FirstRunNoteTests: XCTestCase {
         }
     }
 
+
+    // ── Reading the note off disk ─────────────────────────────────────────
+
+    /// A real file, because the whole question is what the filesystem says.
+    ///
+    /// The rule above is covered over its entire space and was from the start;
+    /// this is the half nothing could reach, because it lived on a type that
+    /// needs a panel and a preferences domain to exist. It is also the half
+    /// that decides whether somebody's writing counts as writing.
+    private func inTemporaryDirectory(_ body: (URL) throws -> Void) rethrows {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("first-run-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try body(dir)
+    }
+
+    func testAPathWithNoFileAtItShouldReadAsAbsent() {
+        inTemporaryDirectory { dir in
+            XCTAssertEqual(FirstRunNote.existing(at: dir.appendingPathComponent("Nothing.md")),
+                           .absent)
+        }
+    }
+
+    func testAZeroByteFileShouldReadAsEmpty() throws {
+        try inTemporaryDirectory { dir in
+            let note = dir.appendingPathComponent("Birta Writer.md")
+            // The new-file-each-session mode makes its note before anything
+            // binds to it, so this case is reachable on a real first run and is
+            // the one `Existing.empty` exists for.
+            try Data().write(to: note)
+            XCTAssertEqual(FirstRunNote.existing(at: note), .empty)
+        }
+    }
+
+    func testAFileWithAnythingInItShouldReadAsHavingContent() throws {
+        try inTemporaryDirectory { dir in
+            let note = dir.appendingPathComponent("Birta Writer.md")
+            // One space, which is the sharp end of it: judged on SIZE, so a
+            // note holding only whitespace is a note somebody made and the tour
+            // does not land on top of it. A blank-content test would have to
+            // decide what counts as writing, which is not this type's call.
+            try " ".write(to: note, atomically: true, encoding: .utf8)
+            XCTAssertEqual(FirstRunNote.existing(at: note), .hasContent)
+        }
+    }
+
+    /// The three answers together, driven through the rule the caller applies,
+    /// so this says what the SEED does rather than what the reader returns.
+    ///
+    /// A first run with an empty buffer is the only state the tour is written
+    /// in, and each file state has to reach the right side of that. Asserting
+    /// the reader alone would leave the two halves correct and their joining
+    /// untested, which is where the whole thing has always been.
+    func testOnlyANoteWithNothingInItShouldBeSeeded() throws {
+        try inTemporaryDirectory { dir in
+            let absent = dir.appendingPathComponent("Absent.md")
+            let empty = dir.appendingPathComponent("Empty.md")
+            let written = dir.appendingPathComponent("Written.md")
+            try Data().write(to: empty)
+            try "notes I made".write(to: written, atomically: true, encoding: .utf8)
+
+            let seeds = { (url: URL) in
+                FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
+                                         bufferIsEmpty: true, isFirstRun: true)
+            }
+            XCTAssertTrue(seeds(absent), "a note that is not there yet")
+            XCTAssertTrue(seeds(empty), "a note created empty by the session mode")
+            XCTAssertFalse(seeds(written), "a note with writing in it is never written over")
+
+            // And every one of the three is refused when it is not a first run,
+            // or the assertions above are agreeing with a rule that says yes to
+            // everything.
+            for url in [absent, empty, written] {
+                XCTAssertFalse(
+                    FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
+                                             bufferIsEmpty: true, isFirstRun: false),
+                    "deleting the tour has to be final for \(url.lastPathComponent)")
+            }
+        }
+    }
+
+    /// A directory where the note should be. `attributesOfItem` answers for one
+    /// happily, so the reader cannot tell it from a file by whether the call
+    /// succeeded, and a directory's size is not zero: it reads as content and
+    /// the tour is refused. Refusing is the right answer, and it is worth
+    /// pinning because the alternative is a write into a path that is a folder.
+    func testADirectoryWhereTheNoteShouldBeShouldNotBeSeeded() throws {
+        try inTemporaryDirectory { dir in
+            let note = dir.appendingPathComponent("Birta Writer.md")
+            try FileManager.default.createDirectory(at: note, withIntermediateDirectories: true)
+            XCTAssertEqual(FirstRunNote.existing(at: note), .hasContent)
+            XCTAssertFalse(FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: note),
+                                                    bufferIsEmpty: true, isFirstRun: true))
+        }
+    }
+
     // ── The note ──────────────────────────────────────────────────────────
 
     /// The tour is a checklist, and the checklist is the thing it teaches

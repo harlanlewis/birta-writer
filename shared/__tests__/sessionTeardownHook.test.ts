@@ -24,6 +24,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { JOT_PRODUCT_NAME } from "../product";
 
 const REPO = join(__dirname, "..", "..");
 const SETTINGS = join(REPO, ".claude", "settings.json");
@@ -81,7 +82,15 @@ describe("session teardown hook", () => {
         // "Birta Writer [DEV].app"; a build command does not, and both
         // `codesign` and `ditto` carry that bundle path in argv while running
         // from inside the checkout, so a looser pattern reaches them.
-        expect(code).toContain('jot/build/Birta Writer[^/]*\\.app/Contents/MacOS/');
+        //
+        // Built from `JOT_PRODUCT_NAME` rather than spelled here, because a
+        // literal on both sides is a check that compares the script to a copy
+        // of itself. `build-app.sh` and `install-app.sh` both derive their
+        // bundle name from that constant and `appFlavor.test.ts` holds them to
+        // it; this script was the one producer of the same name whose spelling
+        // nothing related to it, so a rename that missed it would leave the
+        // reaper matching nothing, forever, reporting a clean machine.
+        expect(code).toContain(`jot/build/${JOT_PRODUCT_NAME}[^/]*\\.app/Contents/MacOS/`);
         // Only one branch may delete, and it is the one the caller asked for.
         // `rm -f`, which is the form the script actually uses: an assertion
         // written against `rm -rf` passes here whatever the script does, and
