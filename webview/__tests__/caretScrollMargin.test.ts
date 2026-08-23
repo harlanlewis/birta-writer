@@ -2,6 +2,13 @@
  * Tests for the caret scroll-margin plugin: per-side scrollThreshold /
  * scrollMargin insets that keep the caret clear of the fixed topbar and
  * sticky heading title, plus the scroll-padding CSS-var mirror.
+ *
+ * This is the ARITHMETIC layer and nothing more. jsdom has no layout engine,
+ * so nothing here can answer whether the number reaches the viewport, which is
+ * the plugin's whole claim: every inset below can be right while the caret
+ * still settles under the topbar. `e2e/caretScrollBand` is the half that
+ * measures the caret against real chrome, and it is verified against the
+ * `top = 0` mutation rather than against a green run.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
