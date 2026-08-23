@@ -179,7 +179,7 @@ export async function run({ page, check, baseUrl }) {
     check("jot: gear menu offers the typography presets, the cheatsheet and the shell's own Settings",
         JSON.stringify(gear.labels) === JSON.stringify(
             ["Sans serif", "Serif", "Monospace",
-             "Show Keyboard Shortcuts", "Birta Writer Jot Settings"]),
+             "Show Keyboard Shortcuts", "Birta Writer Settings"]),
         JSON.stringify(gear.labels));
     // The typography rows stay at the TOP with the layout rows withdrawn. They
     // are what a reader opens this menu for, and the rule that placed them

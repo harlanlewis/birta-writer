@@ -21,7 +21,7 @@ final class AboutWindowTests: XCTestCase {
         _ = NSApplication.shared
     }
 
-    private static let info = AboutInfo(name: "Birta Writer Jot [TEST]",
+    private static let info = AboutInfo(name: "Birta Writer [TEST]",
                                         shortVersion: "2026.821.0",
                                         copyright: "Copyright © 2026 Somebody")
 

@@ -1,6 +1,6 @@
 name: Jot
 
-# Builds the Birta Writer Jot shell (jot/, SwiftPM) and runs its Swift tests on
+# Builds the Birta Writer shell (jot/, SwiftPM) and runs its Swift tests on
 # a macOS runner: the core target's, and the app target's, which build real
 # AppKit windows headlessly. A separate workflow with a paths filter for the
 # same reason as typing-perf: macOS minutes are the expensive ones, and most
@@ -60,15 +60,15 @@ jobs:
         run: |
           node esbuild.mjs --production
           bash jot/scripts/build-app.sh
-          test -x "jot/build/Birta Writer Jot.app/Contents/MacOS/BirtaJot"
-          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/web/dist/webview.js"
-          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/web/dist/hostPalette.css"
+          test -x "jot/build/Birta Writer.app/Contents/MacOS/BirtaJot"
+          test -f "jot/build/Birta Writer.app/Contents/Resources/web/dist/webview.js"
+          test -f "jot/build/Birta Writer.app/Contents/Resources/web/dist/hostPalette.css"
           # The icons are committed, not generated here, so what this proves is
           # that build-app.sh still copies them in: an app with no AppIcon.icns
           # gets the blank document icon, and one with no MenuBarTemplate.pdf
           # falls back to a stock symbol, both silently.
-          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/AppIcon.icns"
-          test -f "jot/build/Birta Writer Jot.app/Contents/Resources/MenuBarTemplate.pdf"
+          test -f "jot/build/Birta Writer.app/Contents/Resources/AppIcon.icns"
+          test -f "jot/build/Birta Writer.app/Contents/Resources/MenuBarTemplate.pdf"
 
       # What the published app can actually run on. jot/README.md tells people
       # the download is Apple Silicon only, and that is a consequence of the
@@ -83,7 +83,7 @@ jobs:
       # launches on anything, and the crash would land on the oldest Mac.
       - name: what the built app runs on
         run: |
-          APP="jot/build/Birta Writer Jot.app"
+          APP="jot/build/Birta Writer.app"
           ARCHS="$(lipo -archs "$APP/Contents/MacOS/BirtaJot")"
           echo "built for: $ARCHS"
           test "$ARCHS" = "arm64"

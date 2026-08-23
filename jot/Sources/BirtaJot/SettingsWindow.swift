@@ -778,13 +778,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             agentDocLinkHolder = link
             return (Self.trailingControls([agentTestButton, agentPresetPopup]),
                     [agentField, link],
-                    Caption("Terminal command executed by /ai in Jot."))
+                    Caption("Terminal command executed by /ai in Birta Writer."))
         case .resetSettings:
             return (resetButton, [],
                     Caption("Revert \(AppFlavor.current.displayName) to default settings. Will not "
                             + "move, delete, or modify any of your files."))
         case .welcomeScreen:
-            return (welcomeButton, [], Caption("The questions Jot asks the first time it runs."))
+            return (welcomeButton, [], Caption("The questions Birta Writer asks the first time it runs. An empty note gets the welcome note back too."))
         }
     }
 
@@ -1242,7 +1242,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         let alert = NSAlert()
         alert.messageText = "Reset all settings?"
         alert.informativeText = "Every setting goes back to its default, including the hotkey. "
-            + "Your notes are left exactly where they are, and Jot reopens the default one."
+            + "Your notes are left exactly where they are, and Birta Writer reopens the default one."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Reset")
         alert.addButton(withTitle: "Cancel")

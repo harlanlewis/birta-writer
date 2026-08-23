@@ -497,7 +497,7 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: pnpm ovsx publish --packagePath releases/*.vsix --skip-duplicate
 
-  # The Birta Writer Jot app, attached to the same GitHub Release as the VSIX.
+  # The Birta Writer app, attached to the same GitHub Release as the VSIX.
   #
   # A separate job for the same reason publishing is: it needs a macOS runner
   # (Swift, codesign) and it must not be able to hold up the tag, the release
@@ -510,7 +510,7 @@ jobs:
   # personal-machines rung of the ladder, and the honest name for it is "not
   # distributed to other people yet".
   jot-app:
-    name: Attach Birta Writer Jot to the release
+    name: Attach Birta Writer to the release
     needs: release
     timeout-minutes: 20
     if: needs.release.outputs.release == 'true'
@@ -544,11 +544,11 @@ jobs:
         env:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          PLIST="jot/build/Birta Writer Jot.app/Contents/Info.plist"
+          PLIST="jot/build/Birta Writer.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
           # Editing the plist invalidates the signature the build applied.
-          codesign --force --deep --sign - "jot/build/Birta Writer Jot.app"
+          codesign --force --deep --sign - "jot/build/Birta Writer.app"
 
       # ditto, not zip: it preserves the bundle's symlinks and extended
       # attributes, and a zip(1) archive of an .app can arrive unopenable.
@@ -557,7 +557,7 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           cd jot/build
-          ditto -c -k --keepParent "Birta Writer Jot.app" "BirtaJot-$VERSION.zip"
+          ditto -c -k --keepParent "Birta Writer.app" "BirtaJot-$VERSION.zip"
           shasum -a 256 "BirtaJot-$VERSION.zip" > "BirtaJot-$VERSION.zip.sha256"
 
       # `gh release upload` rather than the action the release job uses: this

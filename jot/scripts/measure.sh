@@ -41,7 +41,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-APP="jot/build/Birta Writer Jot.app/Contents/MacOS/BirtaJot"
+APP="jot/build/Birta Writer.app/Contents/MacOS/BirtaJot"
 [ -x "$APP" ] || { echo "build first: bash jot/scripts/build-app.sh" >&2; exit 1; }
 
 # A throwaway scratchpad: the probes below type into it, and the user's real
@@ -458,7 +458,7 @@ fi
 # The box is compared against what the CELL needs, not against what the string
 # measures. Those are different numbers, the cell's is the larger, and the gap
 # between them is one glyph: a label sized to the string draws the tail of the
-# name outside its own box and the titlebar clips it. `Birta Writer Jot.md`
+# name outside its own box and the titlebar clips it. `Birta Writer.md`
 # lost the `d` that way, with `needW`, `gotW` and `inkW` all agreeing it was
 # fine, because all three describe the string.
 if awk "BEGIN{exit !($TB_NEED_W > 0)}" \

@@ -63,12 +63,12 @@ public enum UpdatePolicy {
     /// them; implying that the OTHER button is what protects them would not
     /// be.
     public static func confirmTitle(hasUnwrittenBytes: Bool) -> String {
-        hasUnwrittenBytes ? "Save and Restart Jot" : "Restart Jot"
+        hasUnwrittenBytes ? "Save and Restart Birta Writer" : "Restart Birta Writer"
     }
 
     /// The sentence under the offer.
     public static func detail(hasUnwrittenBytes: Bool) -> String {
-        let common = "Jot will download the update, check it, replace itself and reopen this note."
+        let common = "Birta Writer will download the update, check it, replace itself and reopen this note."
         return hasUnwrittenBytes
             ? common + " Your unsaved changes are written to disk first."
             : common

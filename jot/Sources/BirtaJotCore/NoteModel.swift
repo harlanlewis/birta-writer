@@ -8,7 +8,7 @@ import Foundation
 /// each is what makes a settings pane impossible to reason about, because
 /// there is then no question a row is the answer to.
 
-/// What summoning Birta Writer Jot opens.
+/// What summoning Birta Writer opens.
 public enum NoteMode: String, CaseIterable, Sendable {
     /// The same note every time, wherever it lives. A scratchpad that survives
     /// a restart is what most people summon a scratchpad for.
@@ -31,7 +31,7 @@ public enum NoteMode: String, CaseIterable, Sendable {
     }
 }
 
-/// Where Birta Writer Jot keeps its notes.
+/// Where Birta Writer keeps its notes.
 ///
 /// Three answers, and the third outranks the other two: a folder of your own
 /// is where notes are whatever the iCloud preference says. The surfaces show

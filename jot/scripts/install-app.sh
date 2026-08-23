@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install "Birta Writer Jot.app" where macOS expects to find it, replacing a running
+# Install "Birta Writer.app" where macOS expects to find it, replacing a running
 # copy safely.
 #
 #   pnpm jot:install                       # production build, then this
@@ -32,10 +32,10 @@ done
 # The three names a flavour changes, and every one of them has to move
 # together: the bundle, the executable inside it, and therefore what to ask to
 # quit. `BirtaJotCore.AppFlavor` is where the reasoning lives.
-APP_NAME="Birta Writer Jot"
+APP_NAME="Birta Writer"
 EXEC_NAME="BirtaJot"
 if [ "$FLAVOR" = dev ]; then
-    APP_NAME="Birta Writer Jot [DEV]"
+    APP_NAME="Birta Writer [DEV]"
     EXEC_NAME="BirtaJotDev"
 fi
 SRC="jot/build/$APP_NAME.app"
@@ -133,17 +133,18 @@ if ! mv "$STAGE" "$DEST"; then
 fi
 rm -rf "$OLD"
 
-# One copy only, and there are two ways to end up with more than one: a copy in
-# the other standard location, and a copy under the name the app used to have.
-# Either is a second app for Launch Services to choose between, and the hotkey
+# One copy only. The way to end up with two is a copy of this same flavour in
+# the other standard location, left by an install that chose the other one:
+# that is a second app for Launch Services to choose between, and the hotkey
 # belongs to whichever happens to be running.
 #
-# Both directories are swept for the old name, not just the one being installed
-# into: the rename is what makes the old bundle a stranger, and it can be
-# sitting in either place from an earlier install.
+# A bundle under a name the app no longer uses is NOT swept, and that is the
+# standing rule rather than an omission. Nothing here reaches for an old name,
+# so a copy left over from before a rename stays where it is and is removed by
+# hand; `jot/CHANGELOG.md` is where the user is told to, and told why.
 #
 # Scoped to THIS FLAVOUR, which is the whole point of there being two: a
-# development install must never reach for `Birta Writer Jot.app`, the release
+# development install must never reach for `Birta Writer.app`, the release
 # copy, which is the one this flavour exists so as not to touch.
 OTHER_DIR=/Applications
 [ "$DEST_DIR" = /Applications ] && OTHER_DIR="$HOME/Applications"
