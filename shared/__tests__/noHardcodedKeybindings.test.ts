@@ -155,7 +155,39 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
      */
     const CHORD_ALLOWLIST = chordAllowlist();
 
-    const CHORD_RE = /["'](?:Mod|Ctrl|Cmd|Meta|Alt|Shift)-[\w-]+["']/g;
+    /**
+     * A chord literal: one or more modifiers, then the key.
+     *
+     * The key half is `\w+` OR a single non-word character, and the second
+     * alternative is what a `[\w-]+` tail could not express. Every punctuation
+     * key was invisible to this scan — `Mod-+`, `Mod-[`, `Mod-]`, `Mod-,`,
+     * `Mod-/`, `Mod-Alt-[` — which is most of the keyboard the View, Format and
+     * Edit menus bind, so a hand-written `kbd("Mod-[")` back in a component
+     * could not fail here and `webview/commandChords.ts` says outright that it
+     * would. `Mod--` was the exception that hid it, since the hyphen is also
+     * the separator and `[\w-]` happens to contain it.
+     */
+    const CHORD_RE =
+        /["'](?:(?:Mod|Ctrl|Cmd|Meta|Alt|Shift)-)+(?:\w+|[^\w\s"'])["']/g;
+
+    it("the scan should see a punctuation key, not only a word one", () => {
+        // The half that was missing, asserted rather than assumed: a chord
+        // whose key is punctuation is the shape a menu binds and a tooltip
+        // could print, and it has to be reachable by this scan before the
+        // allowlist below means anything.
+        const seen = (src: string): string[] => src.match(CHORD_RE) ?? [];
+        for (const chord of ["Mod-b", "Mod-Shift-x", "Alt-ArrowUp", "Shift-Alt-ArrowUp",
+                             "Mod--", "Mod-+", "Mod-[", "Mod-]", "Mod-,", "Mod-/",
+                             "Mod-Alt-[", "Ctrl-Shift-Cmd-ArrowLeft"]) {
+            expect(seen(`kbd("${chord}")`), `${chord} is invisible to the scan`)
+                .toEqual([`"${chord}"`]);
+        }
+        // And it still refuses what is not a chord, or the sweep below reports
+        // every string in the webview as a keybinding.
+        for (const notAChord of ['t("Modify")', 't("Alternate")', 'x("Mod-")', 'y("bold")']) {
+            expect(seen(notAChord), `${notAChord} is not a chord`).toEqual([]);
+        }
+    });
 
     it("only allowlisted chord literals may appear in webview source", () => {
         const found: Record<string, string[]> = {};

@@ -311,7 +311,7 @@ final class Updater {
             [ -d "$staged" ] || exit 1
             # Every failure below puts the app back on screen and takes its
             # own litter with it. This runs AFTER the app has quit, so a bare
-            # exit leaves the user with no Jot, no message, and a part-written
+            # exit leaves the user with no app, no message, and a part-written
             # bundle beside the one that should be there.
             give_up() {
                 rm -rf "$dest.incoming" "$work"

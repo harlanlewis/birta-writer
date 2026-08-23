@@ -14,7 +14,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
-- A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math and the cards that links turn into. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.
+- A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math, and the card a link on its own line becomes once you turn the network on. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.
 
 - Birta Writer for Mac has a Format menu, and everything the panel's formatting row can do is in it: bold, italic, strikethrough, inline code, highlight and clear formatting, then Paragraph Style for the body, the six heading levels, blockquote and code block, Lists for the three list kinds with Toggle Task Done and Uncheck All Tasks, Indent and Outdent, and an Insert submenu holding links, tables, images, callouts, math, footnotes, rules and dates. Nearly all of it was already in the panel and none of it was on the keyboard: the app bound seven keys in total, so the heading, list and indent chords the extension ships did nothing here. They work now, and they are the same chords, which is checked by a test rather than by memory.
 

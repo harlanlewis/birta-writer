@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { parseJotMenu, keyedRows, MENU_SECTIONS } from "./jotMenuTable";
+import { parseJotMenu, keyedRows, menuSections } from "./jotMenuTable";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -417,11 +417,16 @@ describe("the Jot profile's copies", () => {
         // the command is what decides whether the link button's tooltip says
         // ⌘K, so a harness that got it wrong would be testing a surface the app
         // does not have.
+        // The headings come out of `Menu.sectionTitle` too. Written here as a
+        // literal they were a mirror nothing compared to its source, so a
+        // heading renamed in the shell left the app printing one word and this
+        // check demanding the other of the page, with both green.
+        const sections = menuSections(repoRoot);
         const bound = keyedRows(parseJotMenu(repoRoot)).map((row) => ({
             keys: row.chord!,
             label: row.title,
             ...(row.command !== null ? { command: row.command } : {}),
-            section: MENU_SECTIONS[row.menu]!,
+            section: sections[row.menu]!,
         }));
         expect(bound.length).toBeGreaterThan(20);
 

@@ -51,7 +51,7 @@ enum NotesMoveOffer {
         alert.messageText = "Move your notes to the new location?"
         alert.informativeText = """
             \(count == 1 ? "One note is" : "\(count) notes are") in \(display(oldDirectory)), \
-            with any images they use. Jot writes to the new location either way.
+            with any images they use. Birta Writer writes to the new location either way.
             """
         alert.addButton(withTitle: count == 1 ? "Move Note" : "Move \(count) Notes")
         alert.addButton(withTitle: "Leave Them")

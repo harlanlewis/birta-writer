@@ -32,6 +32,32 @@ public enum FirstRunNote {
         case hasContent
     }
 
+    /// What the note at `url` holds, as the rule below asks the question.
+    ///
+    /// HERE rather than at the call site, and the caller is shorter for it,
+    /// which is not the reason. `shouldWrite` is the rule and was covered over
+    /// its whole space from the day it landed; the mapping from a file to an
+    /// `Existing` is the OTHER half of the same decision and sat in a private
+    /// method on a `Coordinator` that needs a panel, a web view and a
+    /// preferences domain to construct. So the arm that decides whether a note
+    /// counts as written-in was the one arm nothing could reach, and it is the
+    /// arm standing between the tour and somebody's writing.
+    ///
+    /// Size rather than contents, and `.hasContent` for any non-zero file: a
+    /// note holding one space is a note somebody made, and reading the bytes to
+    /// judge whether they are blank would be this type deciding what counts as
+    /// writing. Anything it cannot stat is `.absent`, which is the same answer
+    /// as a path that is not there and the safe one either way, because
+    /// `bufferIsEmpty` is a second refusal the caller still has to clear.
+    public static func existing(at url: URL,
+                                fileManager: FileManager = .default) -> Existing {
+        guard let size = (try? fileManager.attributesOfItem(atPath: url.path))?[.size]
+                as? NSNumber else {
+            return .absent
+        }
+        return size.intValue == 0 ? .empty : .hasContent
+    }
+
     /// Whether the tour may be written into a note in state `existing`.
     ///
     /// Every argument is a refusal. `isFirstRun` is the caller's, and it is
@@ -93,10 +119,15 @@ public enum FirstRunNote {
     /// one list of known-live embed URLs, and a link retired from the sample
     /// takes this note red rather than leaving it pointing at nothing.
     ///
-    /// Nothing is fetched for them on a first run whatever they point at,
-    /// because the network ships off and the cards stay closed until somebody
-    /// opens them; that is the behaviour the note goes on to explain, so it is
-    /// being shown rather than described. The links still have to resolve,
+    /// On a first run neither link is a card at all, and the section says so.
+    /// `providerCardGateOpen` refuses a provider whose card would fetch while
+    /// the network switch is off, and both of these are such providers, so
+    /// what the reader sees is two plain links. The section is written to
+    /// demonstrate that rather than to promise around it: prose saying the
+    /// cards are merely closed describes a card that was never drawn, which is
+    /// what shipped, and the reader's own screen is what contradicts it.
+    /// `firstRunNote.test.ts` holds the gate's answer against the default, so
+    /// a change to either takes the sentence red. The links still have to resolve,
     /// because the reader can turn the network on and the note is the first
     /// thing they will try it against, which is exactly what a placeholder
     /// could not survive.
@@ -185,17 +216,17 @@ public enum FirstRunNote {
 
     ## Things from elsewhere
 
-    A link alone on its own line becomes a card. Here is a Loom recording and
-    a Figma file, and the same happens to YouTube, GitHub, Google Docs and the
-    rest.
+    A link alone on its own line can become a card: a Loom recording, a Figma
+    file, and the same for YouTube, GitHub, Google Docs and the rest.
 
     https://www.loom.com/share/e41353f2fe1c43eba6c6829693e0f2c5
 
     https://www.figma.com/design/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
     > [!NOTE]
-    > Those cards are closed, and they stay closed. Nothing in this note
-    > reaches the network until you turn that on yourself, in Settings.
+    > Those two are still plain links. A card is drawn from the site it points
+    > at, so nothing in this note reaches the network until you turn that on
+    > yourself, in Settings.
 
     ## When you are ready
 

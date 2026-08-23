@@ -1,0 +1,77 @@
+<!doctype html>
+<!-- e2e harness: the first-run tour, RENDERED.
+
+     The tour is the first document a new user ever opens, and until this
+     existed nothing had drawn it. Every check on it was a string check over a
+     Swift literal or a headless parse-and-serialize: whether the markdown
+     contains a `*`, whether it round-trips, what node types it produces. None
+     of those can answer whether the mermaid diagram draws, whether the math
+     lays out, whether the table becomes a table, or whether the boxes are
+     boxes on screen — and the tour opens by telling somebody to click one.
+
+     The document is NOT written here. `checks.mjs` reads it out of
+     `jot/Sources/BirtaJotCore/FirstRunNote.swift` and hands it over as
+     `window.__TOUR` before this page runs, so there is one source and a
+     fixture cannot drift away from the note that ships.
+
+     No `host` profile is declared, deliberately. Three surfaces restate that
+     profile and `shared/__tests__/hostProfile.test.ts` compares them by path;
+     a fourth declarer here would be one nothing compares, which is the exact
+     failure that guard exists for. Nothing the tour renders is host-specific.
+
+     The network switch is OFF, as it ships. That is not incidental: the tour
+     tells the reader its cards stay closed until they turn it on, so the
+     closed card IS the claim under test. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-list-hoverBackground: #2a2d2e; --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31);
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #1177bb; --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-input-background: #3c3c3c; --vscode-input-foreground: #cccccc;
+    --vscode-textLink-foreground: #3794ff; --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-editor-selectionBackground: #264f78; --vscode-icon-foreground: #cccccc;
+    --vscode-textCodeBlock-background: #2a2a2a; --vscode-editorLineNumber-foreground: #858585;
+    --vscode-inputOption-activeBackground: rgba(14,99,156,0.4);
+    --vscode-inputOption-activeBorder: #007fd4;
+    --vscode-editor-hoverHighlightBackground: rgba(90,93,94,0.25);
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = {
+    translations: {}, isMac: true,
+    mermaidTheme: "auto",
+    toolbar: { placements: {}, order: [] },
+    // As shipped: the master switch off, and the card features on behind it.
+    // A card that opens here would mean the tour's own callout is false.
+    network: false, embedsEnabled: true, linkCardsEnabled: true,
+  };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        // `__TOUR` is injected by checks.mjs before this script runs. Failing
+        // loudly beats mounting an empty editor, which renders perfectly and
+        // passes nothing.
+        if (typeof window.__TOUR !== "string" || window.__TOUR.length === 0) {
+          throw new Error("window.__TOUR was not injected: the harness has no document");
+        }
+        window.postMessage({ type: "init", content: window.__TOUR, syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

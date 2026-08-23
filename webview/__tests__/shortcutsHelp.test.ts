@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
+import type { HostShortcut } from "../../shared/hostProfile";
 
 type ShortcutsHelpModule = typeof import("../components/shortcutsHelp");
 type EscapeLayersModule = typeof import("../ui/escapeLayers");
@@ -26,13 +27,25 @@ interface Harness {
  * Fresh module graph + a focusable fake .ProseMirror host. `isMac: undefined`
  * ships an `__i18n` with no platform hint at all.
  */
-async function loadHarness(isMac: boolean | undefined): Promise<Harness> {
+async function loadHarness(
+    isMac: boolean | undefined,
+    shortcuts?: readonly HostShortcut[],
+): Promise<Harness> {
     vi.resetModules();
     document.body.innerHTML = "";
     document.getElementById(STYLE_ID)?.remove();
-    (window as unknown as { __i18n: { translations: Record<string, string>; isMac?: boolean } }).__i18n = {
+    (window as unknown as {
+        __i18n: {
+            translations: Record<string, string>;
+            isMac?: boolean;
+            host?: { capabilities: never[]; arrangements: never[]; shortcuts: readonly HostShortcut[] };
+        };
+    }).__i18n = {
         translations: {},
         ...(isMac === undefined ? {} : { isMac }),
+        ...(shortcuts === undefined
+            ? {}
+            : { host: { capabilities: [], arrangements: [], shortcuts } }),
     };
     const editorDom = document.createElement("div");
     editorDom.className = "ProseMirror";
@@ -92,6 +105,105 @@ describe("shortcutsHelp — lazy build and toggling", () => {
         expect(isOpen()).toBe(false);
         // No stale escape-layer entry left behind
         expect(h.closeTopmostLayer()).toBe(false);
+    });
+});
+
+/**
+ * The host's own keys, printed under the menu each one comes from.
+ *
+ * Every other test in this file loads a harness with no `host` key at all, so
+ * `hostShortcuts()` answers `[]` and the whole of this loop was dead in jsdom:
+ * the section-change detection, the fallback heading, and whether a declared
+ * key prints at all. The one thing exercising it was `e2e/jotHost`, which is
+ * advisory, paths filtered, and cannot block a pull request.
+ *
+ * The contract these hold, as the panel states it: one heading per section, in
+ * the order the host declares them, every declared key under its own, and a
+ * key that names no section still printed rather than dropped.
+ */
+describe("shortcutsHelp — the host's own keys", () => {
+    /** The heading a row sits under, by walking back up the panel. */
+    function rowsBySection(): Record<string, string[]> {
+        const out: Record<string, string[]> = {};
+        let current = "";
+        for (const el of panel()!.querySelectorAll<HTMLElement>(
+            ".shortcuts-help__section-title, .shortcuts-help__row")) {
+            if (el.classList.contains("shortcuts-help__section-title")) {
+                current = el.textContent ?? "";
+                out[current] ??= [];
+                continue;
+            }
+            const chip = el.querySelector("kbd");
+            if (chip) { (out[current] ??= []).push(chip.textContent ?? ""); }
+        }
+        return out;
+    }
+
+    const DECLARED: readonly HostShortcut[] = [
+        { keys: "Mod-,", label: "Settings…", section: "Application" },
+        { keys: "Mod-n", label: "New Note", section: "File" },
+        { keys: "Mod-s", label: "Save", section: "File" },
+        { keys: "Mod-Alt-[", label: "Fold", command: "fold", section: "View" },
+        // No section: a host with a handful of keys has nothing to group by,
+        // and the panel must still print it rather than drop it.
+        { keys: "Mod-j", label: "Ungrouped" },
+    ];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("every declared key should print under the section it declares", async () => {
+        const h = await loadHarness(true, DECLARED);
+        h.openShortcutsHelp();
+        const bySection = rowsBySection();
+
+        // The instrument first: a panel that rendered no host rows at all would
+        // satisfy a per-section loop over nothing.
+        const printed = Object.values(bySection).flat();
+        expect(printed.length, "the panel printed no rows").toBeGreaterThan(DECLARED.length);
+
+        expect(bySection["Application"]).toEqual(["⌘,"]);
+        expect(bySection["File"]).toEqual(["⌘N", "⌘S"]);
+        expect(bySection["View"]).toEqual(["⌘⌥["]);
+        // The fallback heading, which is what stops a host that declares less
+        // from being a host whose keys disappear.
+        expect(bySection["This app"]).toEqual(["⌘J"]);
+    });
+
+    it("a section should be opened once, after the editor's own", async () => {
+        const h = await loadHarness(true, DECLARED);
+        h.openShortcutsHelp();
+        const headings = [...panel()!.querySelectorAll(".shortcuts-help__section-title")]
+            .map((s) => s.textContent);
+        // The editor's fixed grammar comes first and is unchanged by a host
+        // declaring anything: these are appended, not interleaved.
+        expect(headings.slice(0, 3)).toEqual(["Selection", "Blocks", "Formatting & history"]);
+        expect(headings.slice(3)).toEqual(["Application", "File", "View", "This app"]);
+        // And each exactly once. A heading drawn twice is what a section-change
+        // check produces when the same section arrives in two runs, and it
+        // reads as a rendering glitch rather than as a wrong panel.
+        expect(new Set(headings).size).toBe(headings.length);
+    });
+
+    it("a host that declares nothing should add no section at all", async () => {
+        // The discriminating half: without it every assertion above could be
+        // describing a panel that always prints those headings.
+        const h = await loadHarness(true, []);
+        h.openShortcutsHelp();
+        const headings = [...panel()!.querySelectorAll(".shortcuts-help__section-title")]
+            .map((s) => s.textContent);
+        expect(headings).toEqual(["Selection", "Blocks", "Formatting & history"]);
+    });
+
+    it("a declared chord should render through the shared helper, not as its notation", async () => {
+        const h = await loadHarness(false, DECLARED);
+        h.openShortcutsHelp();
+        const printed = Object.values(rowsBySection()).flat();
+        // Windows spelling, so this is asking whether the label went through
+        // `kbd()` at all rather than whether one glyph came out.
+        expect(printed).toContain("Ctrl+N");
+        expect(printed.some((k) => /Mod-/.test(k)), "raw notation reached the panel").toBe(false);
     });
 });
 
