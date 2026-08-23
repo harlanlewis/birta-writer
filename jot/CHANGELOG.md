@@ -12,23 +12,25 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
----
-
-## [2026.822.0] - 2026, August 22
-
 ### Added
 
 - A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math and the cards that links turn into. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.
-
-- Birta Writer for Mac has an About window: its mark, its name, the version you are running, and links to the Birta Labs website, the project's source, and the page for reporting something wrong with it. It opens from the menu-bar icon's menu, on a Control-click or a right-click, and from the app menu when the app is showing a Dock icon. A copy that did not come from a release says Development build instead of a version number, so what you quote in a bug report is either a release or plainly not one.
-
-- Birta Writer for Mac will not install a version this Mac cannot run. Before either update path replaces the copy you are using, it asks the download what macOS it needs and which processors it was built for, and stops with both numbers if this Mac is not one of them, leaving the working copy where it is. The app needs macOS 14 or later, and the copy attached to a release is built for Apple Silicon, so an Intel Mac has to build it from the source. Nothing here changed which Macs it runs on; what changed is that being told is no longer the same as losing the app, since macOS reports an app it cannot open only after the old one is gone.
 
 ### Changed
 
 - Breaking: the app is called Birta Writer now, everywhere it names itself. The menu bar, the settings window, the update offer and the copy in `/Applications` all drop "Jot", which is kept back as a name for a future quick-entry surface rather than retired. Nothing about the editor changed.
 - Breaking: the default note moved with the name. It is `~/Documents/Birta Writer/Birta Writer.md` on this Mac, and the iCloud Drive folder is `Birta Writer` rather than `Birta Writer Jot`. An existing note is neither carried across nor deleted: it stays exactly where it was, under its old name, and opening or moving it is a manual job. Notes you make yourself are unaffected, and a new dated note is still called `Jot <date>.md`, because that word is a stem in front of a date rather than the app signing its work.
 - Breaking: an already-installed `Birta Writer Jot.app` cannot update itself to this release. It looks inside the download for a bundle under its own old name and does not find one, so it stops rather than installing anything. Replace it by hand, and delete the old copy once you have: left alone it goes on claiming the summon hotkey, which is first come first served, and autosaving the note it was already bound to.
+
+---
+
+## [2026.822.0] - 2026, August 22
+
+### Added
+
+- Birta Writer Jot will not install a version this Mac cannot run. Before either update path replaces the copy you are using, it asks the download what macOS it needs and which processors it was built for, and stops with both numbers if this Mac is not one of them, leaving the working copy where it is. Jot needs macOS 14 or later, and the app attached to a release is built for Apple Silicon, so an Intel Mac has to build it from the source. Nothing here changed which Macs Jot runs on; what changed is that being told is no longer the same as losing the app, since macOS reports an app it cannot open only after the old one is gone.
+
+- Birta Writer Jot has an About window: its mark, its name, the version you are running, and links to the Birta Labs website, the project's source, and the page for reporting something wrong with it. It opens from the menu-bar icon's menu, on a Control-click or a right-click, and from the app menu when Jot is showing a Dock icon. A copy that did not come from a release says Development build instead of a version number, so what you quote in a bug report is either a release or plainly not one.
 
 ---
 
