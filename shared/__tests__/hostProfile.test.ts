@@ -364,14 +364,21 @@ describe("the Jot profile's copies", () => {
         expect(declaredIn(bootstrapLine(read("e2e/jotHost/index.html")))).toEqual([...HOST_PROFILES.jot]);
     });
 
-    it("the VS Code page should import its capabilities and declare the other two empty", () => {
+    it("the VS Code page should import its capabilities, declare no arrangement, and resolve its shortcuts", () => {
         // The one declarer that does NOT restate the profile: it imports
         // `HOST_PROFILES.vscode`, so its capabilities cannot drift. The pair
-        // beside them are bare literals, and this is the only thing that reads
-        // them; without it they are unguarded, which no run reports.
+        // beside them is the part with no other reader; without this the two
+        // could stop being declared and no run would report it.
+        //
+        // `shortcuts` stopped being a bare `[]` in MAR-405: VS Code now answers
+        // it from the user's effective keybindings, and `src/keybindings.ts`
+        // returns an empty list wherever that lookup cannot be completed. So
+        // what is guarded here is that the field is still wired to the
+        // resolver, which is the thing a refactor can quietly drop.
         const html = read("src/webviewHtml.ts");
         expect(html).toContain("HOST_PROFILES.vscode");
-        expect(html).toContain("arrangements: [], shortcuts: []");
+        expect(html).toContain("arrangements: []");
+        expect(html).toMatch(/shortcuts:\s*hostShortcutsFor\(/);
     });
 
     it("the e2e control page should declare nothing at all, which is what absent-means-the-vscode-profile needs", () => {

@@ -257,6 +257,20 @@
 /* .tb-fmt-item is the bare .ui-menu-row primitive (ink from the menu's
    --ui-menu-ink above); the class remains for the --on state and variants. */
 
+/* The row's keyboard chord, at the trailing edge the way a native menu draws
+   one. --ui-menu-ink-dim is the row's own secondary ink, so the chord reads as
+   subordinate to the label on whatever ground the row currently has, the accent
+   fill of an active row included; a fixed color would go invisible there.
+   `margin-left: auto` is the whole layout: it pushes the chord to the trailing
+   edge, and a row with no chord keeps exactly the layout it had. Separation
+   from the label is .ui-menu-row's own gap, not a padding here. */
+.tb-menu-chord {
+    margin-left: auto;
+    color: var(--ui-menu-ink-dim);
+    font-size: var(--ui-fs-xs);
+    flex: none;
+}
+
 /* Callout dropdown rows: a leading kind icon beside the type label. Unlike the
    label-only Format rows, these are <button>s with an SVG + a name span. */
 /* Composes .ui-menu-row; local: the kind icon's size. */

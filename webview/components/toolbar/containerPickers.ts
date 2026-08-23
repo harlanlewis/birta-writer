@@ -31,7 +31,8 @@ import { t } from "@/i18n";
 import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
 import { isChecklistSinkEnabled, setChecklistSinkEnabled } from "@/editing/checklistSink";
-import { createFillItem, createMenuTrigger, createSwitchItem, makeSep, type FillItem } from "./menuPrimitives";
+import { appendRowChord, createFillItem, createMenuTrigger, createSwitchItem, makeSep, type FillItem } from "./menuPrimitives";
+import type { EditorCommandId } from "../../../shared/editorCommands";
 import { wireHoverMenu } from "./hoverMenu";
 
 export interface ContainerPicker {
@@ -73,23 +74,23 @@ export function createFormatMenu(getEditor: GetEditor): FormatPicker {
     fmtMenu.className = "tb-fmt-menu";
     fmtMenu.style.display = "none";
 
-    const formats: [string, () => void][] = [
-        ["P", () => runEditorCommand("setParagraph", getEditor)],
-        ["H1", () => runEditorCommand("setHeading1", getEditor)],
-        ["H2", () => runEditorCommand("setHeading2", getEditor)],
-        ["H3", () => runEditorCommand("setHeading3", getEditor)],
-        ["H4", () => runEditorCommand("setHeading4", getEditor)],
-        ["H5", () => runEditorCommand("setHeading5", getEditor)],
-        ["H6", () => runEditorCommand("setHeading6", getEditor)],
+    const formats: [string, EditorCommandId][] = [
+        ["P", "setParagraph"],
+        ["H1", "setHeading1"],
+        ["H2", "setHeading2"],
+        ["H3", "setHeading3"],
+        ["H4", "setHeading4"],
+        ["H5", "setHeading5"],
+        ["H6", "setHeading6"],
     ];
 
     const fmtItems: FillItem[] = [];
-    formats.forEach(([label, action]) => {
-        const item = createFillItem(label);
+    formats.forEach(([label, command]) => {
+        const item = createFillItem(label, command);
         item.el.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            action();
+            runEditorCommand(command, getEditor);
             // Shared close (owns the Escape-layer unregister) — never a
             // direct hide, which would leak the layer entry.
             closeFmtMenu();
@@ -152,7 +153,7 @@ export function createListMenu(getEditor: GetEditor): ContainerPicker {
         listMenu.style.display = "none";
         listMenu.setAttribute("role", "menu");
 
-        const choices: { type: ListType; icon: string; label: string; command: string }[] = [
+        const choices: { type: ListType; icon: string; label: string; command: EditorCommandId }[] = [
             { type: "bullet", icon: IconList, label: t("Bullet List"), command: "toggleBulletList" },
             { type: "ordered", icon: IconListOrdered, label: t("Ordered List"), command: "toggleOrderedList" },
             { type: "task", icon: IconCheckSquare, label: t("Task List"), command: "toggleTaskList" },
@@ -170,6 +171,7 @@ export function createListMenu(getEditor: GetEditor): ContainerPicker {
             labelEl.className = "tb-list-item-label";
             labelEl.textContent = label;
             row.append(iconEl, labelEl);
+            appendRowChord(row, command);
             row.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -257,7 +259,11 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
 
         // `key` matches computeToolbarActiveState().code so onSelectionChange can
         // fill the row for the code block you're inside.
-        const addRow = (key: CodeRowKey, icon: string, label: string, run: () => void): void => {
+        // `command` only where the row IS that command with no argument. The
+        // Mermaid and Math rows run insertCodeBlock with a language, which is
+        // not what the chord does, so printing it there would name a key that
+        // produces a different block.
+        const addRow = (key: CodeRowKey, icon: string, label: string, run: () => void, command?: EditorCommandId): void => {
             const row = document.createElement("button");
             row.type = "button";
             row.className = "ui-menu-row tb-fmt-item tb-callout-item";
@@ -267,6 +273,7 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
             const name = document.createElement("span");
             name.textContent = label;
             row.appendChild(name);
+            if (command !== undefined) appendRowChord(row, command);
             row.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -284,7 +291,7 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
         };
 
         // Plain code block first — the common case and the dropdown's identity.
-        addRow("code", IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor));
+        addRow("code", IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor), "insertCodeBlock");
 
         codeMenu.appendChild(makeSep());
 
@@ -339,7 +346,10 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
 
         // `key` matches computeToolbarActiveState().quote ("blockquote" or a
         // callout kind) so onSelectionChange can fill the row you're inside.
-        const addRow = (key: string, icon: string, label: string, run: () => void): void => {
+        // `command` only where the row IS that command with no argument: every
+        // callout row runs toggleCallout with a different kind, so a shared
+        // chord would claim each of them does what one of them does.
+        const addRow = (key: string, icon: string, label: string, run: () => void, command?: EditorCommandId): void => {
             const row = document.createElement("button");
             row.type = "button";
             row.className = "ui-menu-row tb-fmt-item tb-callout-item";
@@ -349,6 +359,7 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
             const name = document.createElement("span");
             name.textContent = label;
             row.appendChild(name);
+            if (command !== undefined) appendRowChord(row, command);
             // mousedown (not click): wireHoverMenu activates rows via a
             // synthetic mousedown.
             row.addEventListener("mousedown", (e) => {
@@ -368,7 +379,7 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
         };
 
         // Plain blockquote first — the common case, and the dropdown's identity.
-        addRow("blockquote", IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor));
+        addRow("blockquote", IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor), "toggleBlockquote");
 
         quoteMenu.appendChild(makeSep());
 

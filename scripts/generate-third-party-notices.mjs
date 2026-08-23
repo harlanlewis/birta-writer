@@ -23,8 +23,11 @@
  *
  * WHAT IT ATTRIBUTES
  * ------------------
- * The set of packages esbuild actually inlined — read from the two metafiles,
- * NOT from the dependency closure. Tree-shaking is why that distinction matters:
+ * The set of packages esbuild actually inlined — read from every shipped
+ * bundle's metafile, NOT from the dependency closure. Which bundles those are
+ * comes from the manifest esbuild writes, so this cannot read a narrower set
+ * than the build produced; `scripts/bundleManifest.mjs` has the argument.
+ * Tree-shaking is why the closure distinction matters:
  * the production closure is ~263 packages, of which ~170 reach a bundle. The
  * rest (mathjs's `chevrotain` parser, for instance) are resolved but never
  * emitted, and attributing them would claim we ship code we do not.
@@ -49,13 +52,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { BundleManifestError, shippedMetafiles } from "./bundleManifest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const OUT_FILE = path.join(repoRoot, "licenses", "THIRD_PARTY_LICENSES.md");
-// Every bundle we SHIP, because the appendix's claim is that it reports what
-// the bundles inline. A new entry point in esbuild.mjs has to join this list,
-// or the claim quietly narrows to the bundles that happen to be named here.
-const METAFILES = ["dist/webview.meta.json", "dist/extension.meta.json"];
 
 /**
  * Licenses that let us ship a bundled binary at all. Anything outside this set
@@ -425,17 +425,17 @@ function copyrightFrom(text) {
 }
 
 function collect() {
-    const missingMeta = METAFILES.filter((f) => !fs.existsSync(path.join(repoRoot, f)));
-    if (missingMeta.length) {
-        console.error(
-            `Missing ${missingMeta.join(", ")}.\n` +
-                "Run `node esbuild.mjs --production --metafile` first — this reads what that writes.",
-        );
+    let metafiles;
+    try {
+        metafiles = shippedMetafiles(repoRoot);
+    } catch (err) {
+        if (!(err instanceof BundleManifestError)) throw err;
+        console.error(err.message);
         process.exit(2);
     }
 
     const bundled = new Map(); // name -> { dir }
-    for (const metaPath of METAFILES) {
+    for (const metaPath of metafiles) {
         const meta = JSON.parse(fs.readFileSync(path.join(repoRoot, metaPath), "utf8"));
         for (const input of Object.keys(meta.inputs)) {
             const name = packageNameFromInput(input);

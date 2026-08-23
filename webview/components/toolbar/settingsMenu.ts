@@ -8,7 +8,8 @@ import { IconSettings, IconChevronDown } from "@/ui/icons";
 import { t, productName } from "@/i18n";
 import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifyWhatsNewSeen, notifyOpenHostPreferences } from "@/messaging";
 import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
-import { createMenuTrigger, makeSep } from "./menuPrimitives";
+import { appendRowChord, createMenuTrigger, makeSep } from "./menuPrimitives";
+import type { EditorCommandId } from "../../../shared/editorCommands";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
 import { hostArranges, hostHasCommand } from "../../../shared/hostProfile";
@@ -64,10 +65,13 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
         menu.className = "tb-fmt-menu tb-settings-menu";
         menu.style.display = "none";
 
-        const addEntry = (label: string, onSelect: () => void): void => {
+        const addEntry = (label: string, onSelect: () => void, command?: EditorCommandId): void => {
             const entry = document.createElement("div");
             entry.className = "ui-menu-row tb-fmt-item";
-            entry.textContent = label;
+            const labelEl = document.createElement("span");
+            labelEl.textContent = label;
+            entry.appendChild(labelEl);
+            if (command !== undefined) appendRowChord(entry, command);
             entry.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -134,7 +138,7 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
             const label = meta.id === "openExtensionSettings"
                 ? settingsMenuTitle(productName)
                 : t(meta.title);
-            addEntry(label, action);
+            addEntry(label, action, meta.id);
         }
 
         // A menu with no group boundary after the layout rows would never reach
