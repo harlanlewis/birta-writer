@@ -122,7 +122,7 @@ describe("the first-run tour as a document", () => {
             await editor.destroy();
             expect(
                 await reparsedShape(merged),
-                `typing at ${at} restructured the tour — the saved bytes reparse differently`,
+                `typing at ${at} restructured the tour: the saved bytes reparse differently`,
             ).toEqual(before);
         }
     });
