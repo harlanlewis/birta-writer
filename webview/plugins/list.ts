@@ -747,7 +747,9 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
 // listitem, its accessible name absorbs everything inside it (the block-options
 // button's own label included), and a parent task's nested sub-list is folded
 // into that name instead of being a list. `aria-checked` on the `li` with no
-// role is simply dropped, by Chromium and WebKit alike.
+// role is simply dropped, by Chromium and WebKit alike. `e2e/taskToggle` reads
+// the COMPUTED tree rather than the attributes, so a move back to the `li`
+// turns it red rather than looking like a simplification.
 //
 // FOCUS is deliberately left alone: no `tabindex`, and the control is inert to
 // the pointer. The chord (`toggleTaskChecked`) and the click on the drawn box
@@ -759,8 +761,8 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
 /** Class on the offscreen control; `webview/style.css` positions it. */
 const TASK_CHECKBOX_A11Y_CLASS = "task-check-a11y";
 
-/** The offscreen control for one task item. Exported for tests. */
-export function taskCheckboxA11yDom(checked: boolean): HTMLElement {
+/** The offscreen control for one task item. */
+function taskCheckboxA11yDom(checked: boolean): HTMLElement {
     const box = document.createElement("span");
     box.className = TASK_CHECKBOX_A11Y_CLASS;
     box.setAttribute("role", "checkbox");
@@ -782,12 +784,12 @@ interface TaskItemMark {
 /**
  * Every task item in `doc`, in document order.
  *
- * The walk prunes at textblocks, which hold every text and inline node in a
- * document and can contain no list item, so it visits the block skeleton
- * rather than the document. It runs once per doc-changing transaction, which
- * is why it is worth the prune: gfm's own `keepTableAlignPlugin` used to walk
- * the whole document unpruned on the same schedule, and that is the cost
- * MAR-137 removed.
+ * This runs once per doc-changing transaction, so it is on the keystroke path
+ * and the prune is load-bearing: it stops at textblocks, which hold every text
+ * and inline node in a document and can contain no list item, so the walk
+ * visits the block skeleton rather than the document. The cost of the same
+ * walk WITHOUT that prune is what MAR-137 is about (serialization.ts,
+ * `gfmFidelity`).
  */
 function taskItemMarks(doc: ProseNode): TaskItemMark[] {
     const marks: TaskItemMark[] = [];
@@ -817,8 +819,9 @@ function taskCheckboxPos(mark: TaskItemMark): number {
  * When they do, mapping the old set forward is not an optimistic shortcut: it
  * is the same answer a rebuild would give, for a fraction of the work.
  * Rebuilding means a `Decoration` per task item plus a `DecorationSet.create`,
- * which walks the whole document again to build its tree, and the typing
- * fixture this runs against on every keystroke holds hundreds of task items.
+ * which walks the whole document again to build its tree. That is not a
+ * hypothetical shape of document: the `xlarge` fixture the typing gate types
+ * into is built from a section that contains two task items, repeated.
  *
  * The mapping is asked the same question ProseMirror asks of a widget it is
  * mapping itself: `mapResult` with the widget's own `side` as the association,
@@ -857,10 +860,12 @@ function taskCheckboxDecorations(doc: ProseNode, marks: readonly TaskItemMark[])
         doc,
         marks.map((mark) =>
             Decoration.widget(taskCheckboxPos(mark), () => taskCheckboxA11yDom(mark.checked), {
-                // Negative, matching the item's block-handle gutter at this
-                // same position: a widget must sort before the caret rather
-                // than after it, or WebKit re-anchors an insertion point that
-                // has nothing but widgets in front of it.
+                // -1, the side the item's own block-handle gutter already
+                // takes at this position. Every widget this editor puts in
+                // front of content takes a negative side, so it sorts before
+                // the caret rather than after it; plugins/emptyLineHint.ts
+                // holds what WebKit does otherwise, and e2e/enterCaret pins
+                // the gesture in both engines.
                 side: -1,
                 // The state is IN the key, so a tick re-renders the control
                 // instead of reusing DOM that still says `aria-checked`
@@ -890,7 +895,7 @@ const taskCheckboxA11yKey = new PluginKey<TaskCheckboxA11yState>("MD_TASK_CHECKB
  * `list_item` schema override (listItemSpreadBoolPlugins), because it is about
  * the same node and must see gfm's `checked` attr.
  */
-export const taskCheckboxA11yPlugin = $prose(
+const taskCheckboxA11yPlugin = $prose(
     () =>
         new Plugin<TaskCheckboxA11yState>({
             key: taskCheckboxA11yKey,

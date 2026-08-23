@@ -1,17 +1,19 @@
 /**
  * The task checkbox as assistive tech reads it (MAR-403).
  *
- * A task item draws its tick in `::before`/`::after` with `content: ""`, and
- * marks completion with `text-decoration: line-through`. Neither reaches the
- * accessibility tree, so before this the only difference between a done task
- * and an open one was invisible to anything but an eye. `plugins/list.ts` adds
- * one real element per task item carrying `role="checkbox"` and `aria-checked`.
+ * A task item draws its tick in `::before`/`::after` with `content: ""` and
+ * marks completion with `text-decoration: line-through`, and neither reaches
+ * the accessibility tree, so the drawing tells nothing that reads a page which
+ * of two items is done. `plugins/list.ts` puts one real element per task item
+ * inside it, carrying `role="checkbox"` and `aria-checked`; these hold that it
+ * is there, that it says what the item says, and that it stays that way.
  *
  * Drives the REAL Milkdown editor — real parser, real schema, the production
- * serialization config — so these read the DOM the browser would get. What
- * jsdom cannot answer is the computed accessibility TREE (whether a role
- * swallows the item's text, whether a nested list survives); `e2e/taskToggle`
- * asks Chromium and WebKit that, with `ariaSnapshot`.
+ * serialization config — so these read the DOM a browser would get. What jsdom
+ * cannot answer is the computed accessibility TREE: whether a role swallows the
+ * item's text, whether a nested list survives. `e2e/taskToggle` asks a real
+ * engine that with `ariaSnapshot`, in Chromium and, under
+ * `BIRTA_E2E_BROWSER=webkit`, in WebKit.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
