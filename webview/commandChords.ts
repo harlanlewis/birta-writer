@@ -12,7 +12,7 @@
  *
  *   1. the HOST's own bindings, which it declares (shared/hostProfile.ts).
  *      A standalone app whose MENU is the binding knows its keys exactly, so
- *      Birta Writer Jot's ⌘K is printable where VS Code's is not.
+ *      Birta Writer for Mac's ⌘K is printable where VS Code's is not.
  *   2. the editor's own fixed ProseMirror keymap, which is the same on every
  *      surface and is not rebindable anywhere.
  *

@@ -35,11 +35,22 @@ final class FirstRunNoteShortcutsTests: XCTestCase {
     }
 
     /// The rows a chord matches, which must be exactly one.
-    private func rowsBinding(_ chord: (shift: Bool, key: String)) -> [JotMenu.Shortcut] {
-        JotMenu.shortcuts.filter { row in
-            row.modifiers.contains(.command)
-                && row.modifiers.contains(.shift) == chord.shift
-                && row.key.lowercased() == chord.key
+    ///
+    /// Asked of `JotMenu.rows`, the whole table, rather than of the keyed
+    /// subset the page is told about: a chord bound twice is the thing being
+    /// ruled out, and a filter over the subset would miss a second binding
+    /// that the subset happens not to carry.
+    ///
+    /// The WHOLE modifier mask has to match, not the two flags the tour can
+    /// spell. `Cmd+F` and `Cmd+Alt+F` are different chords that AppKit tells
+    /// apart, so a predicate reading only Command and Shift counts the second
+    /// as a duplicate binding of the first and fails on a table that is
+    /// correct. The tour's vocabulary is `Cmd+X` and `Cmd+Shift+X`, so the mask
+    /// it names is exactly one of these two.
+    private func rowsBinding(_ chord: (shift: Bool, key: String)) -> [JotMenu.Row] {
+        let named: NSEvent.ModifierFlags = chord.shift ? [.command, .shift] : [.command]
+        return JotMenu.rows.filter { row in
+            row.modifiers == named && row.key.lowercased() == chord.key
         }
     }
 
@@ -57,7 +68,7 @@ final class FirstRunNoteShortcutsTests: XCTestCase {
             // bound twice is one whose behaviour depends on menu order rather
             // than on what the tour says it does.
             XCTAssertEqual(rows.count, 1,
-                           "the tour names \(spelling); JotMenu.shortcuts binds it \(rows.count) times"
+                           "the tour names \(spelling); JotMenu.rows binds it \(rows.count) times"
                             + (rows.isEmpty ? "" : " (\(rows.map(\.title).joined(separator: ", ")))"))
         }
     }
@@ -86,7 +97,7 @@ final class FirstRunNoteShortcutsTests: XCTestCase {
     /// And that the match above can fail. A predicate that says yes to
     /// everything would pass the test above on any prose at all.
     func testAChordNothingBindsShouldNotMatch() {
-        let bound = JotMenu.shortcuts.contains { row in
+        let bound = JotMenu.rows.contains { row in
             row.modifiers.contains(.command)
                 && row.modifiers.contains(.shift) == false
                 && row.key.lowercased() == "q"
