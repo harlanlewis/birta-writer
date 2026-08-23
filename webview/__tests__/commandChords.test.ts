@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { commandChord, withChord } from "../commandChords";
+import { createButton } from "../ui/dom";
 
 interface HostWindow {
     __i18n?: { host?: { capabilities?: string[]; arrangements?: string[]; shortcuts?: unknown[] } };
@@ -77,11 +78,17 @@ describe("withChord", () => {
         expect(out.endsWith(")")).toBe(true);
     });
 
-    it("the chord should be parenthesised, so the aria-label stripper removes it", () => {
-        // createButton derives an icon button's accessible name by stripping a
-        // trailing parenthesised run (webview/ui/dom.ts). The bare-space form
-        // this replaced left the glyphs in the name a screen reader reads.
-        const stripped = withChord("Bold", "toggleBold").replace(/\s*\([^()]*\)\s*$/, "");
-        expect(stripped).toBe("Bold");
+    it("the chord should stay out of the accessible name the button derives", () => {
+        // Asked of `createButton` itself rather than of a copy of its stripper:
+        // the shape `withChord` returns is only correct if the real derivation
+        // removes it, and a regex restated here would agree with a stripper
+        // that had stopped matching. An icon-only button is the case that
+        // derives a name at all (webview/ui/dom.ts).
+        const btn = createButton({
+            className: "tb-btn",
+            icon: "<svg></svg>",
+            title: withChord("Bold", "toggleBold"),
+        });
+        expect(btn.getAttribute("aria-label")).toBe("Bold");
     });
 });

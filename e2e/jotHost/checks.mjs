@@ -279,12 +279,12 @@ export async function run({ page, check, baseUrl }) {
     //
     // The sections are read off the DECLARATION rather than named here. A
     // heading spelled in this file is a string outside the vocabulary of the
-    // thing it guards: the headings were renamed when the app grew menus, and a
-    // check pinned to the old one fails for a reason that says nothing about
-    // the panel, or worse, silently measures nothing.
+    // thing it guards, so renaming one on the host side leaves a check that
+    // either fails for a reason saying nothing about the panel, or silently
+    // measures nothing.
     const hostRows = await page.evaluate(() => {
-        const declared = [...new Set((window.__i18n?.host?.shortcuts ?? [])
-            .map((s) => s.section).filter(Boolean))];
+        const sectioned = (window.__i18n?.host?.shortcuts ?? []).filter((s) => s.section);
+        const declared = [...new Set(sectioned.map((s) => s.section))];
         const heads = [...document.querySelectorAll(".shortcuts-help__section-title")];
         const found = {};
         for (const name of declared) {
@@ -299,15 +299,19 @@ export async function run({ page, check, baseUrl }) {
             }
             found[name] = rows;
         }
-        return { declared, found };
+        return { declared, expected: sectioned.length, found };
     });
     const sectionNames = hostRows?.declared ?? [];
     const printed = Object.values(hostRows?.found ?? {}).flat();
     check("jot: the cheatsheet prints a section for every menu the host binds keys in",
         sectionNames.length > 0 && Object.keys(hostRows.found).length === sectionNames.length,
         JSON.stringify({ declared: sectionNames, found: Object.keys(hostRows?.found ?? {}) }));
-    check("jot: …with the host's keys under them",
-        printed.length >= sectionNames.length, JSON.stringify(printed.slice(0, 8)));
+    // Every declared key, not merely some: a count compared against the
+    // declaration is what a floor cannot be, since a panel that dropped all but
+    // one row per section would clear any floor these sections can set.
+    check("jot: …with every key the host declares under them",
+        printed.length === hostRows?.expected,
+        JSON.stringify({ expected: hostRows?.expected, printed: printed.length }));
     check("jot: …rendered as glyphs by the shared helper, not the raw notation",
         printed.some((k) => /⌘/.test(k)) && !printed.some((k) => /Mod-/.test(k)),
         JSON.stringify(printed.slice(0, 8)));

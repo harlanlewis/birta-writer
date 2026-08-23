@@ -17,11 +17,12 @@
  *      surface and is not rebindable anywhere.
  *
  * Everything else resolves to null, and a caller prints the plain label. That
- * is the CONSISTENCY this module is for: before it, four tooltips carried a
- * chord and thirty did not, because each site made the judgement separately
- * and only the four obvious ones got made. One resolver means a site cannot
- * make a different call than its neighbour, and a host that grows a binding
- * lights up every surface at once.
+ * is the CONSISTENCY this module is for: the judgement is made once rather
+ * than once per control, so a button cannot make a different call than the one
+ * beside it, and a host that grows a binding lights up every tooltip that asks.
+ * Asking is the chrome's own move; the slash menu, the block menu and the
+ * container pickers name commands and print no key, because each of those has
+ * a column of its own already competing for that end of the row.
  *
  * Guarded twice. No chord literal is spelled here at all: the editor's own are
  * `shared/fixedChords.ts`, so `noHardcodedKeybindings.test.ts` now expects NO
@@ -58,12 +59,11 @@ export function commandChord(id: EditorCommandId): string | null {
  * uses, so the spacing and the omission rule are decided once.
  *
  * Parenthesised for a reason that is not typographic: `createButton` derives an
- * icon button's `aria-label` from its tooltip and strips a trailing
- * parenthesised run (`webview/ui/dom.ts`), so this form gives a screen reader
- * "Bold" where the bare-space form gave it "Bold ⌘B" — a glyph run read out as
- * part of the name. The find bar's two labelled buttons already used this
- * shape; the four marks used the other one, which is how the difference stayed
- * invisible while only four controls printed anything.
+ * icon button's `aria-label` from its tooltip by stripping a trailing
+ * parenthesised run (`webview/ui/dom.ts`). This form therefore gives a screen
+ * reader "Bold"; a bare-space form gives it "Bold ⌘B", a run of glyphs read out
+ * as part of the button's name. `commandChords.test.ts` asks `createButton`
+ * itself rather than restating its stripper.
  */
 export function withChord(label: string, id: EditorCommandId): string {
     const chord = commandChord(id);

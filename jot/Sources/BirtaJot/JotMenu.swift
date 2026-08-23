@@ -102,6 +102,13 @@ enum JotMenu {
             if case let .command(id) = self { return id }
             return nil
         }
+
+        /// Whether this row only opens a submenu, so the count of them can be
+        /// derived from the table rather than written down beside it.
+        var opensSubmenu: Bool {
+            if case .submenu = self { return true }
+            return false
+        }
     }
 
     struct Row {
@@ -195,8 +202,8 @@ enum JotMenu {
 
     /// The formatting controls the panel's second toolbar row carries, in a
     /// menu. The marks sit on the menu itself, as they do in every macOS text
-    /// app; the block types, the lists and the inserts are submenus, because a
-    /// flat Format menu of thirty rows is a menu nobody reads to the bottom of.
+    /// app; the block types, the lists and the inserts are submenus, because this
+    /// table gives Format more rows than a flat menu is read to the bottom of.
     private static let formatRows: [Row] = [
         .init(title: "Bold", key: "b", modifiers: [.command],
               action: .command("toggleBold"), menu: .format, group: 0),
@@ -327,8 +334,8 @@ enum JotMenu {
     /// already names, from the same declaration so they cannot drift.
     ///
     /// The system's own search field arrives with `NSApp.helpMenu`, and it
-    /// searches menu items, which is worth more here than it was: this app now
-    /// has a Format menu with thirty rows in it.
+    /// searches menu items, which is what a reader who cannot find a row in the
+    /// Format menu and its three submenus reaches for.
     private static let helpRows: [Row] = [
         .init(title: "Keyboard Shortcuts",
               action: .command("openShortcutsHelp"), menu: .help, group: 0),
@@ -361,10 +368,9 @@ enum JotMenu {
     /// are the system's to choose (they are fn and Control based, and they
     /// moved between releases).
     ///
-    /// What the menu had before this was Minimize alone, which is why the
-    /// system's rows read as arriving in a strange order: there was nothing
-    /// for them to arrive after, and no Zoom or Bring All to Front to bracket
-    /// them.
+    /// The app's own rows are also what gives the system's a place in the
+    /// order: inserted into a menu holding only Minimize they have nothing to
+    /// arrive after and nothing to be bracketed by, and read as arbitrary.
     ///
     /// Zoom is what a double click on the titlebar already does
     /// (`TitlebarDrag`). Enter Full Screen is deliberately absent: the panel is

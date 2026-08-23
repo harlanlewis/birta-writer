@@ -291,11 +291,11 @@ function buildPanel(): HTMLDivElement {
     // menu IS the binding is the case this exists for.
     //
     // One section per menu the keys come from, in the order the host declares
-    // them, because that host now has six menus and forty keys: a single flat
-    // list of them would be the longest section in the panel and the only one
-    // with no organising idea. A key that names no section still prints, under
-    // the generic heading, so a host that declares less is not a host whose
-    // keys disappear.
+    // them. A host that binds its whole menu bar declares more keys than any
+    // other section here holds, and a flat list of them would be the only
+    // section in the panel with no organising idea. A key that names no section
+    // still prints, under the generic heading, so a host that declares less is
+    // not a host whose keys disappear.
     let openSection: string | null = null;
     for (const shortcut of hostShortcuts()) {
         const section = shortcut.section ?? t("This app");

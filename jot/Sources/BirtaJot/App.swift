@@ -221,8 +221,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.windowsMenu = windowMenu
 
         // The system's search field arrives with the assignment, and it
-        // searches menu items: worth more now that the Format menu holds thirty
-        // rows than it was when the menu bar held twelve.
+        // searches menu items, which is how a reader finds a row buried in a
+        // submenu of Format.
         let helpMenu = NSMenu(title: "Help")
         JotMenu.add(.help, to: helpMenu, target: self)
         let helpItem = NSMenuItem(); helpItem.submenu = helpMenu; main.addItem(helpItem)
@@ -348,9 +348,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Run the editor command a menu row carries.
     ///
     /// ONE selector for every command row, with the id in `representedObject`,
-    /// so a new row is a line in `JotMenu` and nothing here. The three methods
-    /// this replaced (Find, Insert Link, Toggle Task Done) were a method each,
-    /// which is a shape that does not survive a Format menu.
+    /// so a new row is a line in `JotMenu` and nothing here. A method per
+    /// command is the shape this replaces, and it does not survive a table
+    /// this size.
     @objc func menuRunEditorCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else { return }
         coordinator.runEditorCommand(command)

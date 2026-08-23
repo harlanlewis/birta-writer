@@ -244,6 +244,35 @@ final class BridgeTests: XCTestCase {
         XCTAssertFalse(script.contains("<"), "script text is inline-safe")
     }
 
+    /// A shortcut row's optional halves crossing into the page.
+    ///
+    /// `JotMenuTests` holds `JotMenu.shortcuts` against the menu table and
+    /// `hostProfile.test.ts` holds the e2e page against that same table, and
+    /// NEITHER of them looks at the dictionary this builds. Drop `command` here
+    /// and every one of those stays green while the panel's tooltips stop
+    /// naming keys: the page resolves a tooltip's chord BY command
+    /// (`webview/commandChords.ts`) and groups the cheatsheet BY section.
+    func testAShortcutRowShouldCarryItsCommandAndSectionAndOmitWhatItHasNot() {
+        let cfg = BootConfig(hostShortcuts: [
+            HostShortcut(keys: "Mod-k", label: "Link…", command: "insertLink", section: "Format"),
+            HostShortcut(keys: "Mod-s", label: "Save"),
+        ])
+        let host = cfg.i18nObject()["host"] as? [String: Any]
+        let rows = host?["shortcuts"] as? [[String: Any]]
+        XCTAssertEqual(rows?.count, 2)
+        XCTAssertEqual(rows?.first?["keys"] as? String, "Mod-k")
+        XCTAssertEqual(rows?.first?["label"] as? String, "Link…")
+        XCTAssertEqual(rows?.first?["command"] as? String, "insertLink")
+        XCTAssertEqual(rows?.first?["section"] as? String, "Format")
+        // Omitted rather than sent as null, because the page's field is
+        // optional and its absence is the claim "this key runs no command".
+        XCTAssertEqual(rows?.last?.keys.sorted(), ["keys", "label"])
+        // And it survives serialization, which is the form the page reads.
+        let script = cfg.userScript(themeClass: "vscode-dark")
+        XCTAssertTrue(script.contains(#""command":"insertLink""#), script)
+        XCTAssertTrue(script.contains(#""section":"Format""#), script)
+    }
+
     func testEveryNetworkFeatureRidesTheOneSwitch() {
         let on = BootConfig(networkEnabled: true).i18nObject()
         XCTAssertEqual(on["network"] as? Bool, true)

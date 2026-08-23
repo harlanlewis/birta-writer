@@ -50,7 +50,12 @@ interface Keybinding {
  * form rather than one being rewritten into the other's dialect.
  */
 function normalizeVsCode(chord: string): string {
-    const tokens = chord.split("+").map((t) => t.trim().toLowerCase());
+    // Split on a "+" that is not the last character, for the reason
+    // `normalizeChord` splits on a hyphen that way: each notation spells its
+    // separator and one of its keys with the same character, so a chord whose
+    // KEY is that character comes apart into empty segments and normalizes to
+    // the modifiers alone, which is a value another chord can equal.
+    const tokens = chord.split(/\+(?!$)/).map((t) => t.trim().toLowerCase());
     const key = tokens[tokens.length - 1]!;
     const mods = tokens.slice(0, -1).filter((t) => t !== "").sort();
     return [...mods, key].join("+");
@@ -135,6 +140,25 @@ const NOT_BOUND_IN_JOT: Record<string, string> = {
         "command id and nothing else, so the row would be a no-op; in WebKit " +
         "the page's own Shift+paste path already covers the gesture.",
 };
+
+describe("the comparable form both notations reduce to", () => {
+    it("a chord whose key is its own notation's separator should keep that key", () => {
+        // The zoom trio is the case that needs it: "+" separates a VS Code
+        // chord and "-" separates a page chord, and each is also a key the View
+        // menu binds. Split on every occurrence and the key leaves with the
+        // separator, so the chord reduces to its modifiers alone: a real match
+        // reads as a mismatch, and "every recorded divergence should still be
+        // one" can never retire the exemption it exists for.
+        expect(normalizeVsCode("cmd++")).toBe("cmd++");
+        expect(normalizeVsCode("cmd+-")).toBe("cmd+-");
+        expect(normalizeChord("Mod-+")).toBe("cmd++");
+        expect(normalizeChord("Mod--")).toBe("cmd+-");
+        // And the whole point of two normalizers: one gesture, one string,
+        // whichever dialect spelled it.
+        expect(normalizeVsCode("shift+cmd+m")).toBe(normalizeChord("Mod-Shift-m"));
+        expect(normalizeVsCode("cmd+alt+1")).toBe(normalizeChord("Mod-Alt-1"));
+    });
+});
 
 describe("Jot's menu rows", () => {
     it("the table should have been read whole", () => {
@@ -221,6 +245,43 @@ describe("chord parity with the extension", () => {
             }
         }
         expect(mismatched).toEqual([]);
+    });
+
+    it("a menu chord the editor already binds should run that same binding", () => {
+        // The third table, and the one the two above cannot see. AppKit takes
+        // a menu key equivalent before the page sees the keydown, so a row
+        // binding a chord some ProseMirror keymap owns REPLACES that binding in
+        // Jot. Harmless where the row runs what the keymap runs, and silent
+        // breakage otherwise: the keymap's binding stops happening, in one
+        // surface, with nothing failing anywhere. `KEYMAP_CHORDS` records the
+        // chords without their commands, so `FIXED_COMMAND_CHORDS` is the
+        // command-to-chord half a row has to be found in.
+        const owned = new Set(
+            Object.values(KEYMAP_CHORDS)
+                .flatMap((file) => Object.keys(file))
+                .map(normalizeChord),
+        );
+        const stolen: string[] = [];
+        let overlapping = 0;
+        for (const row of keyedRows(ROWS)) {
+            const jot = normalizeChord(row.chord!);
+            if (!owned.has(jot)) { continue; }
+            overlapping += 1;
+            const fixed = row.command === null
+                ? undefined
+                : FIXED_COMMAND_CHORDS[row.command as keyof typeof FIXED_COMMAND_CHORDS];
+            if (fixed === undefined || normalizeChord(fixed) !== jot) {
+                stolen.push(
+                    `${row.title} binds ${jot}, which a webview keymap already binds for ` +
+                        "something else, so the menu takes that key and the editor's own " +
+                        "binding stops firing in Jot",
+                );
+            }
+        }
+        expect(stolen).toEqual([]);
+        // And the sweep has to have met the overlap it is written about: zero
+        // rows compared is the state in which every line above is decoration.
+        expect(overlapping).toBe(Object.keys(FIXED_COMMAND_CHORDS).length);
     });
 
     it("the fixed-chord table should agree with the keymap that binds them", () => {

@@ -59,9 +59,33 @@ final class JotMenuTests: XCTestCase {
             let item = format.items.first { $0.title == title }
             XCTAssertNotNil(item?.submenu, "\(title) has no submenu")
             XCTAssertFalse(item?.submenu?.items.isEmpty ?? true, "\(title)'s submenu is empty")
-            // A row that opens a submenu must not also fire something.
-            XCTAssertNil(item?.action, "\(title) both opens a submenu and has an action")
         }
+    }
+
+    func testASubmenuRowShouldOpenItsSubmenuAndRouteNothingElse() {
+        // "A submenu row has no action" is not the invariant and cannot be:
+        // attaching a submenu to an item whose action is nil makes AppKit
+        // install its OWN `submenuAction:`, so every submenu row has one. What
+        // must hold is that the action is that opener rather than one of ours,
+        // because AppKit leaves an action already in place alone, so a row
+        // given a router keeps it AND opens the submenu, and picking the
+        // parent would fire a command the reader was only navigating past.
+        let opener = #selector(NSMenu.submenuAction(_:))
+        var seen = 0
+        for menu in JotMenu.Menu.allCases {
+            for item in allItems(of: build(menu)) where item.submenu != nil {
+                XCTAssertEqual(item.action, opener,
+                               "\(item.title) opens a submenu and routes \(item.action.map(NSStringFromSelector) ?? "nothing")")
+                XCTAssertFalse(item.submenu!.items.isEmpty, "\(item.title)'s submenu is empty")
+                seen += 1
+            }
+        }
+        // The sweep says what it reached, against the table rather than a
+        // number: a build that attached no submenu at all would otherwise
+        // satisfy every assertion above by never running one.
+        XCTAssertEqual(seen, JotMenu.rows.filter { $0.action.opensSubmenu }.count,
+                       "the sweep did not reach every submenu row the table declares")
+        XCTAssertGreaterThan(seen, 0)
     }
 
     func testTheHeadingRowsShouldCarryTheirOwnChords() {
