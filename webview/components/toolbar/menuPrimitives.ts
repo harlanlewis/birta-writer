@@ -127,22 +127,35 @@ export interface FillItem {
 }
 
 /**
- * A fill-idiom menu row: a label whose active state is an accent-filled row (the
- * `.tb-list-item--on` treatment shared by the Lists/Quote/Code pickers), not a
- * leading checkmark. The Format (P / H1–H6) menu uses this so it reads the same
- * as the other container pickers — a single-select where the current row lights.
+ * A fill-idiom menu row: a leading glyph, a label, and the row's chord, whose
+ * active state is an accent-filled row (the `.tb-list-item--on` treatment shared
+ * by the Lists/Quote/Code pickers) rather than a leading checkmark. The Format
+ * menu uses this so it reads the same as the other container pickers, a
+ * single-select where the current row lights.
+ *
+ * The glyph and the label are two things, and conflating them is what this
+ * signature exists to stop. `P` and `H1` are the compact FORM of a paragraph
+ * style, which is why the trigger button wears one; they are not what the style
+ * is called. A row showing the glyph alone puts a two-character token where
+ * every sibling menu puts an icon and a name, so the Format menu was the one
+ * picker missing its label column, and its chord had nothing to be spaced away
+ * from. `Body` and `Heading 1` to `Heading 6` are the same words the Mac app's
+ * own Paragraph Style menu uses (`jot/Sources/BirtaJot/JotMenu.swift`), so the
+ * two surfaces name a style identically.
  */
-export function createFillItem(label: string, command?: EditorCommandId): FillItem {
+export function createFillItem(glyph: string, label: string, command?: EditorCommandId): FillItem {
     const el = document.createElement("div");
     el.className = "ui-menu-row tb-fmt-item tb-fmt-fill-item";
     el.setAttribute("role", "menuitemradio");
     el.setAttribute("aria-checked", "false");
-    // A label span rather than bare text, so the chord has a sibling to be
-    // pushed away from and the row keeps working when there is no chord.
+    const glyphEl = document.createElement("span");
+    glyphEl.className = "tb-fmt-fill-glyph";
+    glyphEl.setAttribute("aria-hidden", "true");
+    glyphEl.textContent = glyph;
     const labelEl = document.createElement("span");
     labelEl.className = "tb-fmt-fill-label";
     labelEl.textContent = label;
-    el.appendChild(labelEl);
+    el.append(glyphEl, labelEl);
     if (command !== undefined) appendRowChord(el, command);
     return {
         el,

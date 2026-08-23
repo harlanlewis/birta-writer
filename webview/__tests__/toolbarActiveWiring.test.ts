@@ -198,7 +198,11 @@ describe("toolbar reflects caret state", () => {
         // idiom, not a checkmark: the Format menu has no .menu-check column.
         const filled = topbar.querySelectorAll<HTMLElement>('[data-item-id="format"] .tb-fmt-item--on');
         expect(filled.length).toBe(1);
-        expect(filled[0]!.textContent!.trim()).toBe("P");
+        // The glyph, not the row: the row is "P" plus the name "Body" plus, on
+        // a surface that binds one, a chord, so whole-row text would pin the
+        // wording of two other things to answer which row is filled.
+        expect(filled[0]!.querySelector(".tb-fmt-fill-glyph")!.textContent!.trim()).toBe("P");
+        expect(filled[0]!.querySelector(".tb-fmt-fill-label")!.textContent!.trim()).toBe("Body");
         expect(topbar.querySelectorAll('[data-item-id="format"] .menu-check').length).toBe(0);
     });
 });

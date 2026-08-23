@@ -12,6 +12,8 @@
 
 - Toolbar tooltips inside VS Code now name the key that actually runs the command, including one you rebound yourself in Keyboard Shortcuts. Four were named before, the four the editor binds outright, because there is no way to ask VS Code what a contributed keybinding is currently set to; the extension now reads your keybindings file, and it reads the right one under a profile, including a profile that takes its keyboard shortcuts from another. Where it cannot establish which file is in force, a tooltip shows the plain label rather than a key that might be wrong, which is what every one of them did before.
 
+- The Format menu names the style each row applies: Body, and Heading 1 through Heading 6. The rows carried only the compact form, P and H1 through H6, which is what the button itself wears and is not what the style is called, so the one picker in the toolbar without a name column was the one whose rows were hardest to read. The compact form stays, in the column the other pickers put an icon in, and the words are the ones the Mac app's own Paragraph Style menu already used.
+
 - Dropdown menu rows name their shortcut too, at the trailing edge the way a menu draws one. Heading 1 through 6 and the three list kinds exist only as rows, so their keys were invisible even on a surface that binds them. A row whose command takes an argument still shows nothing: a callout kind and a code block's language share one key with the row above them, and printing it on each would say every row does what one of them does.
 
 ### Fixed

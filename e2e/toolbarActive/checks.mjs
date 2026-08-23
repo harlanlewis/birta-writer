@@ -96,7 +96,11 @@ export async function run({ page, check, baseUrl }) {
     // ── 1. Heading: label H1, menu row FILLED, and no checkmark column ──
     await clickText("Heading One");
     check("heading → format label H1", (await fmtLabel()) === "H1", `label=${await fmtLabel()}`);
-    check("heading → H1 menu row is filled", (await filled("format", "tb-fmt-item--on", "x")).includes("H1"));
+    // Read the row's GLYPH rather than its whole text: the row is "H1" plus the
+    // name "Heading 1" plus, on a surface that binds one, a chord, and an
+    // exact-match include over all of that would fail for reasons unrelated to
+    // which row is filled.
+    check("heading → H1 menu row is filled", (await filled("format", "tb-fmt-item--on", "tb-fmt-fill-glyph")).includes("H1"));
     const checks = await page.$$eval('[data-item-id="format"] .menu-check', (e) => e.length);
     check("Format menu has NO checkmark column (fill idiom)", checks === 0, `menu-check=${checks}`);
     check("heading → no bar buttons active", eq(await activeIds(), []));
