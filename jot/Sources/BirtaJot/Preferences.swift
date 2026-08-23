@@ -562,7 +562,7 @@ enum Prefs {
             hostCapabilities: ["imageUpload", "appPreferences", "agent"]
                 .filter { $0 != "agent" || agentAvailable },
             viewStateJSON: viewStateJSON,
-            hostShortcuts: JotMenu.shortcuts.map { HostShortcut(keys: $0.chord, label: $0.title) }
+            hostShortcuts: JotMenu.shortcuts
         )
     }
 }

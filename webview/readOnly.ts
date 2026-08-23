@@ -205,6 +205,7 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     fontSerif: "reads",
     fontMono: "reads",
     increaseFontSize: "reads",
+    resetFontSize: "reads",
     decreaseFontSize: "reads",
     toggleSpellCheck: "reads",
     toggleGrammarCheck: "reads",

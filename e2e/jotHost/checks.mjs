@@ -273,28 +273,71 @@ export async function run({ page, check, baseUrl }) {
     check("jot: the shortcuts cheatsheet still opens", help.open, JSON.stringify(help));
     check("jot: the cheatsheet has no Edit Keyboard Shortcuts footer", !help.footer, JSON.stringify(help));
 
-    // The host's own shortcuts print in the cheatsheet, rendered by the same
-    // helper as every other row rather than as a raw string in the same
-    // column. The harness declares two, which is enough to prove both the
-    // section and the rendering; the real shell declares its whole menu.
+    // The host's own shortcuts print in the cheatsheet, under the menu each one
+    // comes from, and rendered by the same helper as every other row rather
+    // than as a raw string in the same column.
+    //
+    // The sections are read off the DECLARATION rather than named here. A
+    // heading spelled in this file is a string outside the vocabulary of the
+    // thing it guards, so renaming one on the host side leaves a check that
+    // either fails for a reason saying nothing about the panel, or silently
+    // measures nothing.
     const hostRows = await page.evaluate(() => {
+        const sectioned = (window.__i18n?.host?.shortcuts ?? []).filter((s) => s.section);
+        const declared = [...new Set(sectioned.map((s) => s.section))];
         const heads = [...document.querySelectorAll(".shortcuts-help__section-title")];
-        const section = heads.find((h) => h.textContent === "This app");
-        if (!section) { return null; }
-        const rows = [];
-        for (let el = section.nextElementSibling;
-             el && !el.classList.contains("shortcuts-help__section-title");
-             el = el.nextElementSibling) {
-            const chip = el.querySelector("kbd");
-            if (chip) { rows.push(chip.textContent); }
+        const found = {};
+        for (const name of declared) {
+            const section = heads.find((h) => h.textContent === name);
+            if (!section) { continue; }
+            const rows = [];
+            for (let el = section.nextElementSibling;
+                 el && !el.classList.contains("shortcuts-help__section-title");
+                 el = el.nextElementSibling) {
+                const chip = el.querySelector("kbd");
+                if (chip) { rows.push(chip.textContent); }
+            }
+            found[name] = rows;
         }
-        return rows;
+        return { declared, expected: sectioned.length, found };
     });
-    check("jot: the cheatsheet prints a section for the host's own shortcuts",
-        Array.isArray(hostRows) && hostRows.length > 0, JSON.stringify(hostRows));
+    const sectionNames = hostRows?.declared ?? [];
+    const printed = Object.values(hostRows?.found ?? {}).flat();
+    check("jot: the cheatsheet prints a section for every menu the host binds keys in",
+        sectionNames.length > 0 && Object.keys(hostRows.found).length === sectionNames.length,
+        JSON.stringify({ declared: sectionNames, found: Object.keys(hostRows?.found ?? {}) }));
+    // Every declared key, not merely some: a count compared against the
+    // declaration is what a floor cannot be, since a panel that dropped all but
+    // one row per section would clear any floor these sections can set.
+    check("jot: …with every key the host declares under them",
+        printed.length === hostRows?.expected,
+        JSON.stringify({ expected: hostRows?.expected, printed: printed.length }));
     check("jot: …rendered as glyphs by the shared helper, not the raw notation",
-        Array.isArray(hostRows) && hostRows.some((k) => /⌘/.test(k)) && !hostRows.some((k) => /Mod-/.test(k)),
-        JSON.stringify(hostRows));
+        printed.some((k) => /⌘/.test(k)) && !printed.some((k) => /Mod-/.test(k)),
+        JSON.stringify(printed.slice(0, 8)));
+    // The chord a menu key equivalent gives a command reaches the tooltip of
+    // the control that runs it: the link button says ⌘K here and says nothing
+    // inside VS Code, where the binding is the user's and unreadable from the
+    // page (webview/commandChords.ts).
+    //
+    // Read off `aria-label` rather than `title`: `applyTooltip` REMOVES the
+    // title attribute and draws the tooltip itself, so a probe reading `title`
+    // finds nothing on every button in the bar and reports the tooltip missing
+    // when it is only somewhere else. The accessible name is the same string
+    // minus the parenthesised chord, so this asserts both halves at once: the
+    // key is in the tooltip, and it is NOT in the name a screen reader reads.
+    const linkTitle = await page.evaluate(() => {
+        const btn = [...document.querySelectorAll(".tb-btn")]
+            .find((b) => (b.getAttribute("aria-label") ?? "").startsWith("Insert/Edit Link"));
+        if (!btn) { return null; }
+        btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
+        const tip = document.querySelector(".ui-tooltip, [class*='tooltip']");
+        return { name: btn.getAttribute("aria-label"), tip: tip?.textContent ?? null };
+    });
+    check("jot: the link button's tooltip prints the key the app binds for it",
+        !!linkTitle && /⌘K/.test(linkTitle.tip ?? ""), JSON.stringify(linkTitle));
+    check("jot: …and the key stays out of the button's accessible name",
+        !!linkTitle && linkTitle.name === "Insert/Edit Link", JSON.stringify(linkTitle));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 

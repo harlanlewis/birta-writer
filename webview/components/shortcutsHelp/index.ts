@@ -289,12 +289,21 @@ function buildPanel(): HTMLDivElement {
     // is why the extension declares none of these and the footer below sends
     // the reader to the one accurate inventory instead. A standalone app whose
     // menu IS the binding is the case this exists for.
-    const shortcuts = hostShortcuts();
-    if (shortcuts.length > 0) {
-        addSection(t("This app"));
-        for (const shortcut of shortcuts) {
-            addRow([[keys(shortcut.keys)]], shortcut.label);
+    //
+    // One section per menu the keys come from, in the order the host declares
+    // them. A host that binds its whole menu bar declares more keys than any
+    // other section here holds, and a flat list of them would be the only
+    // section in the panel with no organising idea. A key that names no section
+    // still prints, under the generic heading, so a host that declares less is
+    // not a host whose keys disappear.
+    let openSection: string | null = null;
+    for (const shortcut of hostShortcuts()) {
+        const section = shortcut.section ?? t("This app");
+        if (section !== openSection) {
+            addSection(section);
+            openSection = section;
         }
+        addRow([[keys(shortcut.keys)]], shortcut.label);
     }
 
     // Rebindable commands are deliberately NOT inventoried here: a names-only

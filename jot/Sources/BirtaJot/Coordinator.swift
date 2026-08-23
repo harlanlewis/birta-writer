@@ -2507,8 +2507,13 @@ final class Coordinator {
         }
     }
 
-    /// Run an editor command in the page (the Edit menu's Find and Insert
-    /// Link, which the extension binds as VS Code keybindings).
+    /// Run an editor command in the page: the one path every command row in
+    /// `JotMenu` reaches, whether it was picked from a menu or fired by its key
+    /// equivalent, which AppKit takes before the page sees the keydown.
+    ///
+    /// Summoning first is what makes the key equivalents work at all from the
+    /// Settings or About window, whose responder chain reaches this menu and
+    /// not the panel's editor.
     func runEditorCommand(_ command: String) {
         guard state == .warm else { return }
         show()
