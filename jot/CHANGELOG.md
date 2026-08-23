@@ -24,7 +24,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - The keyboard cheatsheet lists every key the app binds, under the menu each one lives in. It listed them as one flat run, which was fine for the seven keys the app used to bind and is not for a whole menu bar.
 
-- A toolbar button's tooltip prints the key that runs it. The link button says ⌘K, and so do bold, italic, strikethrough, inline code and find, which are the toolbar buttons the app binds a key for. The slash menu and the block menu still print none. In Birta Writer for VS Code a tooltip prints a key only for the four marks the editor binds itself, and never for a command you can rebind: the binding there is yours to change and the editor cannot read what you changed it to, so a printed key could be wrong.
+- A toolbar button's tooltip prints the key that runs it. The link button says ⌘K, and so do bold, italic, strikethrough, inline code and find, which are the toolbar buttons the app binds a key for. The slash menu and the block menu still print none. Birta Writer for VS Code prints a key too, including one you rebound yourself, which it works out by reading your own keybindings rather than assuming its defaults; where it cannot establish which file is in force it prints the plain label instead.
 
 ### Changed
 
