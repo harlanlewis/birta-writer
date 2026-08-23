@@ -825,7 +825,13 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(250);
 
     // A row in it still edits the document, which is the point of the dock.
-    await page.locator('.tb-dock-row [data-item-id="format"] .tb-fmt-item', { hasText: /^H3$/ })
+    // Matched on the row's LABEL rather than the row, because the row also
+    // carries its chord now (MAR-406) and this surface binds ⌥⌘3, so the row's
+    // own text is "H3⌥⌘3". Still dispatched on the row, which is where the
+    // handler is, and still anchored, so it cannot start matching H3 inside
+    // some longer label later.
+    await page.locator('.tb-dock-row [data-item-id="format"] .tb-fmt-item')
+        .filter({ has: page.locator(".tb-fmt-fill-label", { hasText: /^H3$/ }) })
         .dispatchEvent("mousedown");
     await page.waitForTimeout(250);
     const becameHeading = await page.evaluate(() =>
