@@ -11,8 +11,9 @@
  * The parser is deliberately strict about the row's SHAPE rather than lenient:
  * a row written differently is not silently skipped, because `parseJotMenu`
  * asserts that what it found accounts for every row the file declares, counted
- * in a vocabulary the parser itself does not use. A lenient parser is the
- * failure mode here, since a guard that quietly reads zero rows passes.
+ * by a pattern strictly more permissive than the one that reads a row. A
+ * lenient parser is the failure mode here, since a guard that quietly reads
+ * zero rows passes.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -122,19 +123,29 @@ export function parseJotMenu(repoRoot: string): JotMenuRow[] {
     // every check built on it would pass having examined a fraction of the
     // menus.
     //
-    // The denominator is deliberately in a DIFFERENT vocabulary from the
-    // parser's own opening. Counting `.init(title: "` was the tautology this
-    // replaces: `ROW_RE` starts with that same text, so a row written in Swift's
-    // other legal form (`Row(title: …)`, which the file already uses) is
-    // subtracted from both sides and the check compares two numbers that fell
-    // by one together. `, menu: .` is what every row must carry whatever
-    // spelling constructed it, so counting those is a claim about the FILE.
+    // The property the denominator has to have is not that it is spelled
+    // differently from `ROW_RE`, it is that it is strictly MORE PERMISSIVE than
+    // anything `ROW_RE` requires. A denominator that shares one of the
+    // numerator's requirements falls with it, and two numbers that fall
+    // together are the tautology whatever they are made of: counting
+    // `.init(title: "` was one, and counting the literal `, menu: .` was the
+    // same one respelled, since `ROW_RE` carries those exact bytes and a row
+    // that merely wraps before `menu:` or writes it ahead of `action:` leaves
+    // both sides. So the count tolerates the whitespace and the ordering
+    // `ROW_RE` insists on, and `jotMenuTable.test.ts` reformats a real row
+    // three ways and requires each to throw.
+    //
+    // The whitespace is optional on BOTH sides of the colon for the same
+    // reason: every space `ROW_RE` insists on is a way the two counts could
+    // fall together again. `\bmenu` and not `menu` keeps `submenu:` from being
+    // counted twice, and the `\.` keeps the type's own `let menu: Menu` and the
+    // two `menu: menu` arguments in `add`/`fill` out of it.
     //
     // A row whose title is not a literal cannot be parsed and is subtracted
     // once, by counting the constructions that have one rather than by a number
     // written here: the Help menu's links are built by mapping over
     // `AboutLink.allCases`, and a second such map joins this on its own.
-    const declared = source.match(/, menu: \./g)?.length ?? 0;
+    const declared = source.match(/\bmenu\s*:\s*\./g)?.length ?? 0;
     const unnamed = source.match(/Row\(title: (?!")/g)?.length ?? 0;
     if (rows.length !== declared - unnamed) {
         throw new Error(

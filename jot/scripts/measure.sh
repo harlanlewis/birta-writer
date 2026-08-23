@@ -185,6 +185,49 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# A menu key equivalent, from the chord to the bytes.
+#
+# The half `typeKeys` says outright it does not cover, and the only check
+# anywhere that runs the menu bar. Everything else about the menus is decided
+# before one exists: the table is parsed by `shared/__tests__/jotMenuTable.ts`,
+# the built NSMenus are read back by `JotMenuTests`, and the chords are compared
+# to the extension's by `menuChordParity.test.ts`. Not one of them presses a
+# key, so until this existed nothing had established that a chord on a menu
+# reaches the page at all.
+#
+# An XCTest cannot stand in for it. `NSMenu.performKeyEquivalent` compares an
+# event's `charactersIgnoringModifiers` to the item's `keyEquivalent` verbatim,
+# so a synthesized event carrying the shifted character a keyboard really sends
+# (⇧⌘S carries "S"; the item binds "s") reads as no match, and a check built on
+# it reports a broken menu on a working one.
+#
+# ⇧⌘8 is the chord for what it rules out. The page binds nothing for it, and the
+# command branch of `typeKeys` never hands the event to the web view, so a
+# bullet in the file can only have arrived through the menu: AppKit claiming the
+# chord, validating the item against the delegate, and the command reaching the
+# page from there. It also sits in the Lists SUBMENU, so a pass says
+# `performKeyEquivalent` walked into one.
+#
+# What this does NOT cover is an ⌘⌥ row, and that is a live defect rather than a
+# limitation of the probe (MAR-409): ⌘⌥1 leaves the paragraph alone here while
+# `{"type":"editorCommand","command":"setHeading1"}` on the same buffer makes the
+# heading, so the page half is not what is wrong. Asserting the Option half
+# would fail today; asserting it is what closes that ticket.
+show_panel
+printf '{"type":"__jotKeys","keys":["End","Enter","Enter","B","u","l","l"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2
+printf '{"type":"__jotKeys","keys":["cmd+shift+8"]}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 2
+hide_panel
+if grep -qE "^[-*] Bull$" "$SCRATCH_DIR/Scratch pad.md"; then
+    echo "menu chord           ok: ⇧⌘8 reached the page through the menu bar"
+else
+    echo "menu chord           FAILED: expected a bulleted 'Bull', so a menu key" >&2
+    echo "                     equivalent did not reach the page:" >&2
+    cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
+fi
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
 # Paste an image into a panel that was just summoned and not touched, which is
 # the ordinary opening gesture: the real pasteboard, the real paste, the base64
 # bridge and the attachment store, and the only check that covers all four at
