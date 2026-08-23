@@ -19,8 +19,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import type { Node as ProseNode } from "../pm";
+import { TextSelection } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
+import { taskListItemsTouched } from "../plugins/list";
 
 let editors: Editor[] = [];
 
@@ -242,6 +244,102 @@ describe("task checkbox accessibility", () => {
         // The sub-list is still a list inside the item, not something inside a
         // control.
         expect(parent.querySelector(":scope > ul > li")).not.toBeNull();
+    });
+
+    /**
+     * The per-keystroke decision, asked directly.
+     *
+     * It cannot be asked any other way: a mapped set and a rebuilt one render
+     * the same controls in the same places, so every assertion above holds
+     * whichever branch ran, and a change that quietly went back to walking the
+     * whole document on every keystroke would leave all of them green. That is
+     * exactly what happened once (`pnpm perf:typing:ab` on `xlarge` is what
+     * caught it), so the cheap answer is pinned here rather than left to a gate
+     * that runs on a different machine.
+     */
+    describe("the per-transaction decision", () => {
+        /** Run `edit`, and report what the resulting transaction was judged to be. */
+        async function verdictOf(
+            markdown: string,
+            edit: (v: EditorView) => void,
+        ): Promise<boolean> {
+            const editor = await makeEditor(markdown);
+            const v = view(editor);
+            let seen: boolean | null = null;
+            const original = v.dispatch.bind(v);
+            v.dispatch = (tr) => {
+                if (seen === null) { seen = taskListItemsTouched(tr); }
+                original(tr);
+            };
+            edit(v);
+            expect(seen, "the edit dispatched no transaction").not.toBeNull();
+            return seen!;
+        }
+
+        it("typing inside a task item should not ask the document anything", async () => {
+            const verdict = await verdictOf(FIXTURE, (v) => {
+                const pos = itemPos(v, "done task");
+                v.dispatch(v.state.tr.insertText("Z", pos + 2));
+            });
+            expect(verdict).toBe(false);
+        });
+
+        it("typing in a paragraph outside every list should not either", async () => {
+            const verdict = await verdictOf(`intro\n\n${FIXTURE}`, (v) => {
+                v.dispatch(v.state.tr.insertText("Z", 1));
+            });
+            expect(verdict).toBe(false);
+        });
+
+        it("ticking an item should be seen", async () => {
+            const verdict = await verdictOf(FIXTURE, (v) => {
+                const pos = itemPos(v, "open task");
+                const node = v.state.doc.nodeAt(pos)!;
+                v.dispatch(v.state.tr.setNodeMarkup(pos, undefined, {
+                    ...node.attrs,
+                    checked: true,
+                }));
+            });
+            expect(verdict).toBe(true);
+        });
+
+        it("a task item ceasing to be one should be seen", async () => {
+            // The tick going to `null` is a plain bullet again. Asking about
+            // ticks rather than about items would leave its control behind.
+            const verdict = await verdictOf(FIXTURE, (v) => {
+                const pos = itemPos(v, "done task");
+                const node = v.state.doc.nodeAt(pos)!;
+                v.dispatch(v.state.tr.setNodeMarkup(pos, undefined, {
+                    ...node.attrs,
+                    checked: null,
+                }));
+            });
+            expect(verdict).toBe(true);
+        });
+
+        it("splitting a task item into two should be seen", async () => {
+            const verdict = await verdictOf(FIXTURE, (v) => {
+                const pos = itemPos(v, "open task");
+                v.dispatch(v.state.tr
+                    .setSelection(TextSelection.create(v.state.doc, pos + 4))
+                    .split(pos + 4, 2));
+            });
+            expect(verdict).toBe(true);
+        });
+
+        it("replacing an item with another of the same tick should be seen", async () => {
+            const verdict = await verdictOf(FIXTURE, (v) => {
+                const pos = itemPos(v, "done task");
+                const node = v.state.doc.nodeAt(pos)!;
+                const replacement = node.type.create(
+                    node.attrs,
+                    v.state.schema.nodes["paragraph"]!.create(
+                        null, v.state.schema.text("swapped in")),
+                );
+                v.dispatch(v.state.tr.replaceWith(pos, pos + node.nodeSize, replacement));
+            });
+            expect(verdict).toBe(true);
+        });
     });
 
     it("the control should be view-only, never reaching the saved markdown", async () => {

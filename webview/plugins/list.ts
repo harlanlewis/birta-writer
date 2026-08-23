@@ -4,7 +4,7 @@ import {
     orderedListSchema,
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
-import type { Node as ProseNode } from "../pm";
+import type { Node as ProseNode, Transaction } from "../pm";
 import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Decoration, DecorationSet } from "../pm";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
@@ -757,6 +757,14 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
 // inside `contenteditable` fights the caret for a gesture nobody is missing.
 // The consequence is that a toggle is not announced on the spot; the state is
 // there to be read, not spoken as it changes.
+//
+// The COST of choosing a decoration is a per-transaction one, on the keystroke
+// path of every document rather than only of the checklists. That is not a
+// theoretical worry: the first cut walked the document per doc-changing
+// transaction, and `pnpm perf:typing:ab` failed `xlarge` over two interleaved
+// passes for it. What is here now decides from the transaction's own changed
+// ranges (`taskListItemsTouched`), so an ordinary keystroke pays a look at
+// what it touched plus mapping the existing set.
 
 /** Class on the offscreen control; `webview/style.css` positions it. */
 const TASK_CHECKBOX_A11Y_CLASS = "task-check-a11y";
@@ -784,12 +792,15 @@ interface TaskItemMark {
 /**
  * Every task item in `doc`, in document order.
  *
- * This runs once per doc-changing transaction, so it is on the keystroke path
- * and the prune is load-bearing: it stops at textblocks, which hold every text
- * and inline node in a document and can contain no list item, so the walk
- * visits the block skeleton rather than the document. The cost of the same
- * walk WITHOUT that prune is what MAR-137 is about (serialization.ts,
- * `gfmFidelity`).
+ * A WHOLE-DOCUMENT walk, and the only place one is left: the initial build,
+ * and a rebuild after a transaction that changed which items exist or what
+ * they are ticked to. It prunes at textblocks, which hold every text and
+ * inline node in a document and can contain no list item, so it visits the
+ * block skeleton rather than the document.
+ *
+ * It must NOT go back on the keystroke path. Running it per doc-changing
+ * transaction, pruned, is what `pnpm perf:typing:ab` failed `xlarge` for, and
+ * is the whole reason `taskListItemsTouched` below exists.
  */
 function taskItemMarks(doc: ProseNode): TaskItemMark[] {
     const marks: TaskItemMark[] = [];
@@ -813,45 +824,64 @@ function taskCheckboxPos(mark: TaskItemMark): number {
 }
 
 /**
- * Whether the controls built for `previous`, carried through this
- * transaction's mapping, land on exactly `marks`.
+ * Whether this transaction could have changed WHICH controls belong in the
+ * document, as opposed to only where they sit.
  *
- * When they do, mapping the old set forward is not an optimistic shortcut: it
- * is the same answer a rebuild would give, for a fraction of the work.
- * Rebuilding means a `Decoration` per task item plus a `DecorationSet.create`,
- * which walks the whole document again to build its tree. That is not a
- * hypothetical shape of document: the `xlarge` fixture the typing gate types
- * into is built from a section that contains two task items, repeated.
+ * This is the whole per-keystroke cost of the plugin, so it reads the
+ * transaction's own changed ranges and nothing else. Everything it has to
+ * catch is local to one of them, by construction:
  *
- * The mapping is asked the same question ProseMirror asks of a widget it is
- * mapping itself: `mapResult` with the widget's own `side` as the association,
- * and a deleted result means the control is gone. Reproducing that rule here
- * is what makes "the mapped set is right" a fact rather than a hope, and it is
- * what catches the case a comparison of ticks alone would miss — one item
- * deleted and another with the same tick inserted in the same transaction,
- * which leaves the sequence of ticks identical and the new item with no
- * control at all.
+ *   - An item APPEARS (typed, pasted, split off another, undone into
+ *     existence). It starts inside a changed range of the new document.
+ *   - An item's TICK changes, in either direction, including to and from `null`
+ *     when a task becomes a plain bullet or stops being one. Attributes move
+ *     only through `setNodeMarkup`, whose step covers the node's own start.
+ *   - An item DISAPPEARS. This one needs no rebuild at all: its control sat
+ *     inside it, so the mapping reports that control deleted and drops it,
+ *     which is the same answer a rebuild gives. That is why a pure deletion,
+ *     whose changed range in the new document is a single point, is allowed to
+ *     go unnoticed here.
  *
- * The landing position is compared rather than derived. A deleted control is
- * the only way this is known to come apart, and an argument that nothing else
- * can shuffle the items without deleting one is an argument that has to hold
- * for every future edit primitive; asking where the controls actually landed
- * costs one comparison and needs no such argument.
+ * The predicate is any `list_item` STARTING in a range, not any task item:
+ * an item on its way out of being a task no longer answers to `checked`, and
+ * asking about ticks would leave its control behind on a plain bullet.
+ *
+ * Typing is what it is built to say no to. A character lands at least two
+ * positions inside its item (past the item's own start and its paragraph's),
+ * so no item starts in the range and the answer is no without the document
+ * being touched.
+ *
+ * Exported because it IS the decision this plugin is made of, and because a
+ * "no" is invisible from the outside: a mapped set and a rebuilt one render
+ * identically, so nothing about the DOM could tell a test which one it got.
  */
-function taskCheckboxesSurvive(
-    mapping: Mapping,
-    previous: readonly TaskItemMark[],
-    marks: readonly TaskItemMark[],
-): boolean {
-    if (previous.length !== marks.length) { return false; }
-    for (let i = 0; i < marks.length; i++) {
-        const was = previous[i]!;
-        const now = marks[i]!;
-        if (was.checked !== now.checked) { return false; }
-        const mapped = mapping.mapResult(taskCheckboxPos(was), -1);
-        if (mapped.deleted || mapped.pos !== taskCheckboxPos(now)) { return false; }
+export function taskListItemsTouched(tr: Transaction): boolean {
+    const doc = tr.doc;
+    const { maps } = tr.mapping;
+    for (let i = 0; i < maps.length; i++) {
+        // The step's range lands in the document THAT STEP produced, so it is
+        // carried through the steps after it to reach `tr.doc`'s coordinates.
+        const rest = tr.mapping.slice(i + 1);
+        let touched = false;
+        maps[i]!.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+            if (touched) { return; }
+            const from = rest.map(newStart, -1);
+            const to = rest.map(newEnd, 1);
+            doc.nodesBetween(from, to, (node, pos) => {
+                if (touched || node.isTextblock) { return false; }
+                // `nodesBetween` hands back the ancestors the range is inside
+                // as well as the nodes within it; an ancestor starts before the
+                // range and is not something this transaction introduced.
+                if (pos >= from && node.type.name === "list_item") {
+                    touched = true;
+                    return false;
+                }
+                return true;
+            });
+        });
+        if (touched) { return true; }
     }
-    return true;
+    return false;
 }
 
 function taskCheckboxDecorations(doc: ProseNode, marks: readonly TaskItemMark[]): DecorationSet {
@@ -877,49 +907,44 @@ function taskCheckboxDecorations(doc: ProseNode, marks: readonly TaskItemMark[])
     );
 }
 
-interface TaskCheckboxA11yState {
-    /** The items the current set was built for, in document order. */
-    marks: readonly TaskItemMark[];
-    decorations: DecorationSet;
-}
-
-function buildTaskCheckboxA11y(doc: ProseNode): TaskCheckboxA11yState {
-    const marks = taskItemMarks(doc);
-    return { marks, decorations: taskCheckboxDecorations(doc, marks) };
-}
-
-const taskCheckboxA11yKey = new PluginKey<TaskCheckboxA11yState>("MD_TASK_CHECKBOX_A11Y");
+const taskCheckboxA11yKey = new PluginKey<DecorationSet>("MD_TASK_CHECKBOX_A11Y");
 
 /**
  * Publishes the offscreen checkbox for every task item. Registered with the
  * `list_item` schema override (listItemSpreadBoolPlugins), because it is about
  * the same node and must see gfm's `checked` attr.
+ *
+ * The per-transaction cost is meant to scale with the CHANGE and not with the
+ * document, because this sits on the keystroke path of every document, most of
+ * which hold no task list at all. Two things carry that:
+ * `taskListItemsTouched` decides from the transaction's own ranges, and the
+ * map below is the whole of what an ordinary keystroke pays.
  */
 const taskCheckboxA11yPlugin = $prose(
     () =>
-        new Plugin<TaskCheckboxA11yState>({
+        new Plugin<DecorationSet>({
             key: taskCheckboxA11yKey,
             state: {
-                init: (_config, state) => buildTaskCheckboxA11y(state.doc),
+                init: (_config, state) =>
+                    taskCheckboxDecorations(state.doc, taskItemMarks(state.doc)),
                 apply: (tr, previous) => {
                     if (!tr.docChanged) { return previous; }
-                    const marks = taskItemMarks(tr.doc);
-                    if (!taskCheckboxesSurvive(tr.mapping, previous.marks, marks)) {
-                        return { marks, decorations: taskCheckboxDecorations(tr.doc, marks) };
+                    if (taskListItemsTouched(tr)) {
+                        return taskCheckboxDecorations(tr.doc, taskItemMarks(tr.doc));
                     }
                     // The same controls, carried to where the edit put them.
                     // The map is not optional: a DecorationSet is a tree shaped
                     // to the document it was built from, and one kept across an
                     // edit describes a document that no longer exists, so its
                     // controls stop resolving onto the items they belong to. An
-                    // EMPTY set maps to itself, which is what makes this free
-                    // for a document with no task list in it.
-                    return { marks, decorations: previous.decorations.map(tr.mapping, tr.doc) };
+                    // EMPTY set maps to itself and allocates nothing, which is
+                    // what a document with no task list in it pays.
+                    return previous.map(tr.mapping, tr.doc);
                 },
             },
             props: {
                 decorations(state) {
-                    return taskCheckboxA11yKey.getState(state)?.decorations ?? DecorationSet.empty;
+                    return taskCheckboxA11yKey.getState(state) ?? DecorationSet.empty;
                 },
             },
         }),
