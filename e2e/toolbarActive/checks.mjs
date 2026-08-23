@@ -108,7 +108,7 @@ export async function run({ page, check, baseUrl }) {
     // ── 2. Plain paragraph ──
     await clickText("paragraph with");
     check("paragraph → format label P", (await fmtLabel()) === "P", `label=${await fmtLabel()}`);
-    check("paragraph → P row filled", (await filled("format", "tb-fmt-item--on", "x")).includes("P"));
+    check("paragraph → P row filled", (await filled("format", "tb-fmt-item--on", "tb-fmt-fill-glyph")).includes("P"));
     check("paragraph → format applicable (enabled)", (await fmtDisabled()) === false);
 
     // ── 3. Real markdown link (a mark): Link button lights, per-char caret ──
