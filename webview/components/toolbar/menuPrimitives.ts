@@ -11,6 +11,32 @@
  * row does.
  */
 import { createButton } from "@/ui/dom";
+import { commandChord } from "@/commandChords";
+import { kbd } from "@/i18n";
+import type { EditorCommandId } from "../../../shared/editorCommands";
+
+/**
+ * Print the row's chord at its trailing edge, the way a native menu draws one,
+ * where the command has one that cannot be wrong.
+ *
+ * `commandChord` is the only source, so a row and the toolbar button beside it
+ * make the same call and a surface that binds no key adds nothing: the row
+ * looks exactly as it did. Nothing here decides whether a chord is printable.
+ *
+ * The span is `aria-hidden`, matching the decision already made for buttons:
+ * `createButton` strips the parenthesised chord out of the `aria-label` it
+ * derives, so no control in this toolbar reads its key aloud, and a row that
+ * did would be the odd one out with a run of glyphs in its accessible name.
+ */
+export function appendRowChord(el: HTMLElement, command: EditorCommandId): void {
+    const chord = commandChord(command);
+    if (chord === null) return;
+    const span = document.createElement("span");
+    span.className = "tb-menu-chord";
+    span.setAttribute("aria-hidden", "true");
+    span.textContent = kbd(chord);
+    el.appendChild(span);
+}
 
 export function btn(
     icon: string,
@@ -106,12 +132,18 @@ export interface FillItem {
  * leading checkmark. The Format (P / H1–H6) menu uses this so it reads the same
  * as the other container pickers — a single-select where the current row lights.
  */
-export function createFillItem(label: string): FillItem {
+export function createFillItem(label: string, command?: EditorCommandId): FillItem {
     const el = document.createElement("div");
     el.className = "ui-menu-row tb-fmt-item tb-fmt-fill-item";
     el.setAttribute("role", "menuitemradio");
     el.setAttribute("aria-checked", "false");
-    el.textContent = label;
+    // A label span rather than bare text, so the chord has a sibling to be
+    // pushed away from and the row keeps working when there is no chord.
+    const labelEl = document.createElement("span");
+    labelEl.className = "tb-fmt-fill-label";
+    labelEl.textContent = label;
+    el.appendChild(labelEl);
+    if (command !== undefined) appendRowChord(el, command);
     return {
         el,
         setActive: (on: boolean): void => {
