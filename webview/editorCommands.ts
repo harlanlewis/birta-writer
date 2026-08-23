@@ -273,12 +273,53 @@ function liftOutOfLists(view: EditorView, typeName: string): void {
     }
 }
 
-/** Set the current block's heading level, lifting a list line out first. */
+/**
+ * The heading level the cursor sits in, 0 for anything that is not a heading.
+ *
+ * Deliberately the same innermost-ancestor walk `computeToolbarActiveState`
+ * does to fill the Format picker's row, so the row a user sees lit and the
+ * level `setHeading` toggles against are one number rather than two walks that
+ * happen to agree.
+ */
+function headingLevelAtCursor(view: EditorView): number {
+    const { $from } = view.state.selection;
+    for (let depth = $from.depth; depth >= 0; depth--) {
+        const node = $from.node(depth);
+        if (node.type.name === "heading") {
+            return typeof node.attrs["level"] === "number" ? node.attrs["level"] : 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * Heading toggle: retype to the level, or demote back to a paragraph when the
+ * cursor's own block is already at it, lifting a list line out first.
+ *
+ * A toggle rather than a set because every other block-type family in the
+ * toolbar is one — `toggleBlockquote` below, and the three list kinds — and
+ * headings were the exception. The Format picker fills the row for the current
+ * level, so a lit row that did nothing when clicked was the visible half of it.
+ *
+ * DECIDED from the cursor's block, APPLIED to the selection. The read is the
+ * one the lit row comes from, so no surface can disagree about what a second
+ * press does; the demotion then covers every heading the selection spans, which
+ * is the range `wrapInHeadingCommand` retypes on the way in. A selection whose
+ * start is an H1 and whose end is an H2 demotes both, rather than leaving the
+ * H2 as the one block the gesture silently missed.
+ *
+ * `setParagraph` is untouched and stays the unconditional way to say paragraph.
+ */
 function setHeading(getEditor: GetEditor, level: number): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
         const view = getView(ctx);
+        if (headingLevelAtCursor(view) === level) {
+            demoteHeadingsInSelection(view);
+            view.focus();
+            return;
+        }
         liftOutOfLists(view, "heading");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ctx.get(commandsCtx).call(wrapInHeadingCommand.key as any, level);
