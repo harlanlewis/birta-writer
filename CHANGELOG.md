@@ -8,7 +8,15 @@
 
 - Actual Size, a command that puts the content font size back to its default. Increase Font Size and Decrease Font Size could walk it away from 100% and nothing walked it back in one step. It has no default keyboard shortcut, because the chord a Mac app would use for it is the editor window's own zoom inside VS Code and this editor does not take keys from the window around it; bind one in Keyboard Shortcuts if you want it.
 
+### Changed
+
+- Toolbar tooltips inside VS Code now name the key that actually runs the command, including one you rebound yourself in Keyboard Shortcuts. Four were named before, the four the editor binds outright, because there is no way to ask VS Code what a contributed keybinding is currently set to; the extension now reads your keybindings file, and it reads the right one under a profile, including a profile that takes its keyboard shortcuts from another. Where it cannot establish which file is in force, a tooltip shows the plain label rather than a key that might be wrong, which is what every one of them did before.
+
+- Dropdown menu rows name their shortcut too, at the trailing edge the way a menu draws one. Heading 1 through 6 and the three list kinds exist only as rows, so their keys were invisible even on a surface that binds them. A row whose command takes an argument still shows nothing: a callout kind and a code block's language share one key with the row above them, and printing it on each would say every row does what one of them does.
+
 ### Fixed
+
+- A task list now reports its ticks to assistive technology. Every task item carries a checkbox with a checked state, so a screen reader can tell a done task from an open one; the tick is drawn in CSS, which reaches nothing that reads a page, so the two were indistinguishable there. Nothing changes visually and the box adds no tab stop, with Cmd+Shift+D (Ctrl+Shift+D on Windows and Linux) and a click on the box toggling it as before. The state is there to be read rather than spoken, so a toggle is still not announced at the moment it happens.
 
 - A screen reader announced the toolbar's Bold, Italic, Strikethrough and Inline Code buttons by name and then read out the shortcut glyphs after it, so Bold was announced as "Bold ⌘B". The four buttons now announce their name alone; the shortcut stays in the tooltip, where it was always meant to be. This affected only the icon-only buttons that derive their name from their tooltip.
 
