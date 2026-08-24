@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.824.0] - 2026, August 24
+
 ### Added
 
 - `/help` works in Birta Writer for Mac, and draws as a sheet on the window that asked. The feedback flow was reachable only from the VS Code command palette, which this app does not have, so there was no way to report anything from here at all. The four questions arrive one at a time, Escape at any of them leaves the note untouched, and the destinations are the same three: a prefilled GitHub issue, a prefilled mail draft, or the clipboard. What it reports about your setup is this app and macOS rather than an extension and a VS Code that was never running, and the settings it names are this app's own. It is never given the note, its filename, or the folder it is in.
