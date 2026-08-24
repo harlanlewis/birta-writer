@@ -82,7 +82,16 @@ export function filterStyleAttribute(value: string): string {
             if (colon === -1) return false;
             const property = decl.slice(0, colon).trim().toLowerCase();
             if (ESCAPING_PROPERTIES.has(property)) return false;
-            return !VIEWPORT_UNIT_RE.test(decl.slice(colon + 1));
+            const declValue = decl.slice(colon + 1);
+            // A remote `url()` is dropped DECLARATION BY DECLARATION rather
+            // than by removing the whole attribute, which is what the
+            // afterSanitizeAttributes hook below would otherwise do to it.
+            // Same reason this is a blocklist at all: an author's inline CSS
+            // is mostly legitimate, and taking `color: red` away because a
+            // `background` beside it named a tracker is the over-broad failure
+            // the header above refuses.
+            if (hasRemoteCssUrl(declValue)) return false;
+            return !VIEWPORT_UNIT_RE.test(declValue);
         })
         .map((decl) => decl.trim())
         .filter(Boolean)
@@ -145,6 +154,21 @@ const REMOTE_REFERENCE_RE = /^(?!data:)(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 const CSS_URL_RE = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
 
 /**
+ * Whether any `url(...)` in `value` names something off this machine.
+ *
+ * Whitespace is collapsed first, since it is legal inside a `url()` and is the
+ * obvious way to hide a scheme from a matcher.
+ */
+function hasRemoteCssUrl(value: string): boolean {
+    const collapsed = value.replace(/\s+/g, "");
+    CSS_URL_RE.lastIndex = 0;
+    for (let m = CSS_URL_RE.exec(collapsed); m; m = CSS_URL_RE.exec(collapsed)) {
+        if (REMOTE_REFERENCE_RE.test(m[2]!)) return true;
+    }
+    return false;
+}
+
+/**
  * Should this attribute be dropped for pointing off the machine?
  *
  * Two shapes, because a URL reaches an SVG two ways: as the whole value of
@@ -171,11 +195,12 @@ export function isRemoteReferenceAttribute(
     ) {
         return true;
     }
-    CSS_URL_RE.lastIndex = 0;
-    for (let m = CSS_URL_RE.exec(collapsed); m; m = CSS_URL_RE.exec(collapsed)) {
-        if (REMOTE_REFERENCE_RE.test(m[2])) return true;
-    }
-    return false;
+    // `style` is deliberately not answered here even though it can carry one:
+    // `filterStyleAttribute` has already run on it (uponSanitizeAttribute fires
+    // before this hook) and dropped the offending declaration on its own,
+    // leaving the rest of the author's CSS in place. Answering true for it
+    // would take the whole attribute instead.
+    return attrName.toLowerCase() !== "style" && hasRemoteCssUrl(value);
 }
 
 let purifyPromise: Promise<DOMPurifyModule> | null = null;
@@ -190,13 +215,23 @@ export function loadSanitizer(): Promise<DOMPurifyModule> {
                 data.attrValue = filterStyleAttribute(data.attrValue);
                 if (!data.attrValue) data.keepAttr = false;
             });
-            // Remote references, dropped for the svg profile only. Installed
-            // with the module like the style policy above, so a future SVG sink
-            // cannot write its own config without it; gated on the profile the
-            // CALL asked for, so inline HTML (`htmlView`, `{ html: true }`) is
-            // untouched and its images still resolve.
-            purify.addHook("afterSanitizeAttributes", (node, _event, config) => {
-                if (config.USE_PROFILES === false || config.USE_PROFILES?.svg !== true) return;
+            // Remote references, dropped for EVERY sink this loader serves.
+            // Installed with the module like the style policy above, so a
+            // future sink cannot write its own config without it.
+            //
+            // Not gated on the svg profile, though it was written for the
+            // ```svg fence (MAR-402). Inline HTML reaches the same sink by the
+            // other door: a `<img src="https://…">` or a
+            // `style="background:url(https://…)"` in a markdown body is refused
+            // by the CSP in the editor and LIVE in an exported HTML file, which
+            // has no CSP at all. Driven rather than reasoned: before this, the
+            // exported file issued both requests, and the `style` case is the
+            // quiet one, because it renders as nothing a reader would look at.
+            //
+            // Ordinary markdown constructs already behave this way, which is
+            // what makes inline HTML the outlier rather than this the new rule:
+            // a `![](https://…)` image does not reach the exported file at all.
+            purify.addHook("afterSanitizeAttributes", (node) => {
                 for (const attr of Array.from(node.attributes)) {
                     if (isRemoteReferenceAttribute(node.localName, attr.name, attr.value)) {
                         node.removeAttribute(attr.name);

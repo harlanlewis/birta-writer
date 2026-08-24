@@ -159,6 +159,38 @@ export async function run({ page, check, baseUrl }) {
     // sanitizer, and neither can fire inside the editor's CSP.
     check("nothing from the fence executed in the exported file",
         svgOut.pwn === null, String(svgOut.pwn));
+    // Inline HTML reaches the sanitizer by a different door than the fence, and
+    // it leaked here until the remote strip stopped being gated on the svg
+    // profile. Named rather than left to the blanket request check below, so a
+    // failure says which door opened.
+    const inlineOut = await out.evaluate(() => {
+        const img = Array.from(document.querySelectorAll("img"))
+            .map((i) => i.getAttribute("src"))
+            .filter((s) => s && /tracker\.example/.test(s));
+        // The styled div BY ITS OWN TEXT, not the first `div[style]` on the
+        // page: its style attribute is emptied and then dropped, so a generic
+        // selector matches some other element entirely and the check passes
+        // without ever looking at its subject.
+        const styled = Array.from(document.querySelectorAll("div"))
+            .find((d) => d.textContent.trim() === "styled div");
+        return {
+            img,
+            styledPresent: !!styled,
+            style: styled?.getAttribute("style") ?? null,
+            imgAltPresent: !!Array.from(document.querySelectorAll("img"))
+                .find((i) => i.getAttribute("alt") === "inline img"),
+        };
+    });
+    // The control: both elements still travel. Every removal check below would
+    // also pass if the export had simply dropped the inline HTML wholesale,
+    // which is a different behaviour and not the one being claimed.
+    check("the inline HTML itself still travels into the exported file",
+        inlineOut.styledPresent && inlineOut.imgAltPresent, JSON.stringify(inlineOut));
+    check("an inline <img> does not carry a remote src into the exported file",
+        inlineOut.img.length === 0, JSON.stringify(inlineOut));
+    check("an inline style does not carry a remote url() into the exported file",
+        inlineOut.style === null || !/tracker\.example/.test(inlineOut.style),
+        JSON.stringify(inlineOut));
     check("the exported file requested nothing off its own bytes",
         !outRequests.some((u) => /^https?:/.test(u)),
         outRequests.filter((u) => /^https?:/.test(u)).join(" | "));

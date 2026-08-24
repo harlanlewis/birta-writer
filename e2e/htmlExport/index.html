@@ -72,6 +72,11 @@
     "  <text x=\"10\" y=\"35\" fill=\"#ffffff\">svg fence</text>",
     "</svg>",
     "```", "",
+    // Inline HTML carrying the SAME hostile shape as the fence above, by the
+    // other door. The editor's CSP refuses all three, so like the fence this is
+    // only observable in the exported file, which has none.
+    "<div style=\"background: url(https://tracker.example/inline-style.png); position: fixed\">styled div</div>", "",
+    "<img src=\"https://tracker.example/inline-img.png\" alt=\"inline img\">", "",
     "$$", "\\int_0^1 x dx", "$$", "",
     "![a box](img/box.svg)", "",
     "Footnote[^1].", "", "[^1]: The note.", "",

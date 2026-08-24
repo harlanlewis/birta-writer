@@ -14,6 +14,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+    filterStyleAttribute,
     isRemoteReferenceAttribute,
     SVG_SANITIZE_CONFIG,
     sanitizeSvgMarkup,
@@ -31,8 +32,23 @@ const REMOTE_CASES: [tag: string, attr: string, value: string][] = [
     ["image", "src", "blob:https://evil.example/x"],
     ["rect", "fill", "url(https://evil.example/paint.png)"],
     ["rect", "filter", "url('//evil.example/f.svg#f')"],
-    ["rect", "style", "fill: url( \"https://evil.example/p.png\" )"],
     ["rect", "mask", "url(https://evil.example/m.svg#m)"],
+];
+
+/**
+ * `style` is answered by `filterStyleAttribute`, not by this predicate.
+ *
+ * The two share the job deliberately. This predicate removes a WHOLE
+ * attribute, which is right for `fill` or `href` (one value, one purpose) and
+ * wrong for `style`, where it would take an author's `color: red` away because
+ * a `background` beside it named a tracker. `filterStyleAttribute` drops the
+ * offending DECLARATION and keeps the rest, and it runs first
+ * (`uponSanitizeAttribute` fires before `afterSanitizeAttributes`), so by the
+ * time this predicate sees a style value there is no remote `url()` left in it.
+ */
+const STYLE_IS_ELSEWHERE: [tag: string, attr: string, value: string][] = [
+    ["rect", "style", "fill: url( \"https://evil.example/p.png\" )"],
+    ["a", "style", "fill: url(https://evil.example/p.png)"],
 ];
 
 /** Everything the strip must leave alone, because none of it fetches remotely. */
@@ -67,12 +83,27 @@ describe("isRemoteReferenceAttribute", () => {
         },
     );
 
-    it("an <a> carrying a remote url() should still be dropped", () => {
-        // The exemption is for NAVIGATION, not for paint: a `url()` inside a
-        // presentation or style attribute fetches on paint whatever element it
-        // sits on. A blanket per-element exemption would have missed this.
-        expect(isRemoteReferenceAttribute("a", "style", "fill: url(https://evil.example/p.png)"))
-            .toBe(true);
+    it.each(STYLE_IS_ELSEWHERE)(
+        "a %s with %s=%s should be left to filterStyleAttribute",
+        (tag, attr, value) => {
+            // Not a claim that it is safe: it is dropped one layer over, and
+            // the second assertion is what says so rather than assuming it.
+            expect(isRemoteReferenceAttribute(tag, attr, value)).toBe(false);
+            expect(filterStyleAttribute(value)).not.toContain("evil.example");
+        },
+    );
+
+    it("a remote url() in a style attribute should still be dropped, whatever carries it", () => {
+        // The exemption on the URL-attribute limb is for NAVIGATION, not for
+        // paint: a `url()` inside a style attribute fetches on paint whatever
+        // element it sits on, `<a>` included. A blanket per-element exemption
+        // would have missed this, and so would moving style out of the
+        // predicate without checking where it landed.
+        expect(filterStyleAttribute("fill: url(https://evil.example/p.png)")).toBe("");
+        // The declaration beside it survives, which is the whole reason style
+        // is filtered rather than removed.
+        expect(filterStyleAttribute("fill: url(https://evil.example/p.png); stroke: red"))
+            .toBe("stroke: red");
     });
 
     it("the case table should cover both verdicts (the instrument's own control)", () => {
@@ -175,16 +206,54 @@ describe("sanitizeSvgMarkup", () => {
 });
 
 describe("the html profile", () => {
-    it("should be untouched by the SVG remote-reference strip", async () => {
-        // The remote strip is one module-level hook shared with `htmlView`, so
-        // its gate is the thing to pin: inline HTML's images must still resolve.
+    /** Inline HTML in a markdown body, through the seam `htmlView` uses. */
+    const sanitizeHtml = async (markup: string): Promise<string> => {
         const { loadSanitizer } = await import("../utils/sanitizeLoader");
         const purify = await loadSanitizer();
-        const clean = purify.sanitize(
-            '<p><img src="https://example.com/a.png"><a href="https://example.com">x</a></p>',
-            { USE_PROFILES: { html: true } },
-        ) as string;
-        expect(clean).toContain("https://example.com/a.png");
+        return purify.sanitize(markup, { USE_PROFILES: { html: true } }) as string;
+    };
+
+    it("a remote image reference should be stripped here too", async () => {
+        // The remote strip is one module-level hook, and it deliberately is
+        // not gated on the svg profile. Inline HTML reaches the same sink by
+        // the other door: the editor's CSP refuses this, and an exported HTML
+        // file has no CSP, so before the gate was widened the exported file
+        // fetched it. Pinned end to end by `e2e/htmlExport`, which opens that
+        // file in a browser with nothing stopping it.
+        const clean = await sanitizeHtml('<p><img src="https://example.com/a.png"></p>');
+        expect(clean).not.toContain("https://example.com/a.png");
+    });
+
+    it("a remote url() in a style attribute should be stripped here too", async () => {
+        // The quiet one, and the reason this is not just about images: a
+        // background reference renders as nothing a reader would look at, so
+        // a tracking pixel in an exported file leaves no trace on screen.
+        // MAR-366's filter already dropped `position` and viewport units from
+        // this same attribute and said nothing about a URL.
+        const clean = await sanitizeHtml(
+            '<div style="background: url(https://example.com/px.png); color: red">x</div>',
+        );
+        expect(clean).not.toContain("example.com");
+        // The declaration beside it survives: this drops a reference, not CSS.
+        expect(clean).toContain("color: red");
+    });
+
+    it("a link should keep its remote href, in inline HTML as in an SVG", async () => {
+        // The discriminating case. A link navigates on a click the reader
+        // chooses to make, exactly as every markdown link in the document
+        // already does, so `<a>` is exempt on the URL-attribute limb. Without
+        // this the two cases above would also pass with a hook that simply
+        // stripped every remote value, which would break ordinary links.
+        const clean = await sanitizeHtml('<p><a href="https://example.com">x</a></p>');
         expect(clean).toContain('href="https://example.com"');
+    });
+
+    it("a local or embedded reference should survive", async () => {
+        // Neither leaves the machine, and dropping them is the over-broad
+        // failure: an embedded raster is how a bitmap ships inside markup.
+        const embedded = await sanitizeHtml('<p><img src="data:image/gif;base64,R0lGOD"></p>');
+        expect(embedded).toContain("data:image/gif");
+        const fragment = await sanitizeHtml('<p><a href="#section">x</a></p>');
+        expect(fragment).toContain('href="#section"');
     });
 });
