@@ -30,14 +30,35 @@ final class GlobalHotkey {
         }, 1, &spec, selfPtr, &handlerRef)
     }
 
+    /// The option `register` asks for, and the reason the status it returns is
+    /// worth reading at all.
+    ///
+    /// Without `kEventHotKeyExclusive`, `RegisterEventHotKey` answers `noErr`
+    /// when ANOTHER PROCESS already holds the combination: the registration
+    /// succeeds, the key goes on reaching whoever asked for it first, and the
+    /// status reports nothing wrong. That is the whole failure this app is
+    /// trying to tell people about, so a caller checking the status was
+    /// checking something that never fired outside its own process. Exclusive
+    /// asks for the combination outright, so a holder anywhere on the machine
+    /// comes back as `eventHotKeyExistsErr` and the caller has something to
+    /// say.
+    ///
+    /// Its reach stops at the Carbon registry, which is not everything macOS
+    /// binds: the app switcher and Mission Control are in it, Spotlight and
+    /// the screenshot keys are not. So a refusal is proof the summon will not
+    /// work, and a clean status is not proof that it will.
+    static let registrationOptions = OptionBits(kEventHotKeyExclusive)
+
     /// Bind (or rebind) the hotkey. Returns the OSStatus of the registration;
-    /// a non-zero value usually means another app owns the combination.
+    /// anything but `noErr` means the combination is spoken for and pressing
+    /// it will not summon the panel.
     @discardableResult
     func register(_ combo: HotkeyCombo) -> OSStatus {
         unregister()
         var ref: EventHotKeyRef?
         let id = EventHotKeyID(signature: fourCC("BJOT"), id: 1)
-        let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, id, GetEventDispatcherTarget(), 0, &ref)
+        let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, id, GetEventDispatcherTarget(),
+                                         Self.registrationOptions, &ref)
         if status == noErr {
             hotKeyRef = ref
             self.combo = combo

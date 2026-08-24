@@ -33,6 +33,12 @@ Versions are shared. Both files are stamped with the same release version, and a
 - Breaking: an already-installed `Birta Writer Jot.app` cannot update itself to this release. It looks inside the download for a bundle under its own old name and does not find one, so it stops rather than installing anything. Replace it by hand, and delete the old copy once you have: left alone it goes on claiming the summon hotkey, which is first come first served, and autosaving the note it was already bound to.
 - The Window menu carries Minimize, Zoom and Bring All to Front. It had Minimize alone, and macOS adds Fill, Center, Move & Resize and Full Screen Tile to any app's Window menu, so those arrived with nothing above or below them and read as being in a strange order. Those rows are still the system's, with the system's own keys: what changed is the rows around them.
 
+### Fixed
+
+- Birta Writer for Mac says so when macOS will not give it the summon hotkey. A global shortcut goes to whichever app asks for it first, and the app that loses has no Dock icon and no window, so the key did nothing at all and the only thing saying why was a caption in a Settings pane nobody had opened. A refused combination now opens a notice on the menu bar icon: it names the combination that was refused, says that clicking the icon opens the app every time, and carries the hotkey recorder so a new combination can be pressed there and then. It reports what macOS answered about that one too, so a replacement that is also taken reads as a second refusal rather than as success. Nothing retries behind you: a chord that started working while you were not watching would leave the same question this notice exists to answer.
+
+  The refusal was not being noticed in the first place, which is why none of this was reachable. macOS answers "registered" when another app already holds a combination, so the check meant to catch this only ever fired when Birta Writer collided with a second copy of itself in the same process. Birta Writer now asks for the combination exclusively, which is what makes another app's claim come back as a refusal. That does not reach every key macOS binds: the app switcher and Mission Control refuse, while Spotlight and the screenshot keys register cleanly and then never fire. A refusal is proof the key will not work; silence is not proof that it will.
+
 ---
 
 ## [2026.822.0] - 2026, August 22
