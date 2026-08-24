@@ -44,6 +44,13 @@
       }
       if (msg.type === "hostPrompt") {
         window.__promptsSeen.push(msg.step);
+        // TAKE THE FOCUS, the way every real renderer of this seam does: VS
+        // Code's input box and the Mac app's sheet both pull it off the
+        // `contenteditable`. Without this the harness answers without ever
+        // moving focus, and the caret arms at the end of checks.mjs would
+        // pass on a build that never gives it back. Focus is deliberately NOT
+        // handed back here, so restoring it is the page's job to prove.
+        document.getElementById("stub-prompt-field").focus();
         const answer = window.__promptScript[window.__promptsSeen.length - 1];
         // A real host answers asynchronously, after a person has read the
         // question. Answering synchronously here would let the page's own
@@ -63,5 +70,8 @@
 </script>
 <link rel="stylesheet" href="dist/webview.css">
 <div class="editor-topbar"></div>
+<!-- Stands in for whatever the host draws a prompt in. It only has to be
+     focusable: what it is for is taking focus off the editor. -->
+<input id="stub-prompt-field" aria-label="stub host prompt" style="position:fixed;top:0;left:0;opacity:0;">
 <div id="editor"></div>
 <script type="module" src="dist/webview.js"></script>
