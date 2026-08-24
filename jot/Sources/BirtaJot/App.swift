@@ -102,15 +102,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // After the panel exists, so the screen has a window to take over.
         // `FirstRunScreen` holds every arm of the decision and why, including
-        // the one this launch adds: a launch pointed at a file is not the
-        // launch this screen is for. `BIRTA_JOT_DEFAULTS_SUITE` gives a
-        // checking run its own domain, which is what `isUserStore` refuses,
-        // for the same reason the panel does not remember its frame.
+        // the one Open With adds: the screen is not put in front of a panel
+        // bound to somebody's own file. Asked of the BINDING rather than of
+        // `launchedWith`, so it holds on every later launch too, which is what
+        // keeps the tour from being spent on a note it may not write.
+        // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, which
+        // is what `isUserStore` refuses, for the same reason the panel does not
+        // remember its frame.
         if FirstRunScreen.shouldShow(
             forced: ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1",
             isUserStore: Prefs.isUserStore,
             hasSeenWelcome: Prefs.hasSeenWelcome,
-            launchedWithDocument: launchedWith != nil) {
+            documentBound: Prefs.documentURL != nil) {
             showWelcome()
         }
         // A settings window can otherwise only be opened by a person, which

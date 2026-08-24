@@ -83,20 +83,23 @@ describe("the first-run gates", () => {
     });
 
     /**
-     * And the one call site still asks the whole question, with the answer it
-     * holds rather than one written into the call. A constant there passes a
-     * check on the label alone while telling the screen the launch came from
-     * nowhere, which is the arm being added and the arm nothing else would
-     * catch: the app compiles, every rule test passes, and a first launch from
-     * the Finder is back to opening on the tour.
+     * And the one call site still asks the whole question, of the BINDING and
+     * with the answer it reads rather than one written into the call.
+     *
+     * Two ways to get this wrong and neither is visible to a rule test. A
+     * constant passes a check on the label alone while telling the screen no
+     * document is bound, and the app compiles. `launchedWith != nil` looks like
+     * the same question and is a launch-shaped one: it answers this case
+     * correctly once, then the wrong way on every later launch, which spends
+     * the tour on a note `shouldWrite` refuses.
      */
-    it("the launch should ask FirstRunScreen with the file it was pointed at", () => {
+    it("the launch should ask FirstRunScreen whether a document is bound", () => {
         const app = sources.find((s) => s.path === "jot/Sources/BirtaJot/App.swift")!.source;
         const call = /FirstRunScreen\.shouldShow\(([\s\S]*?)\)\s*\{/.exec(app);
         expect(call, "App.swift no longer asks FirstRunScreen").not.toBeNull();
         const args = call![1]!;
         expect(args).toMatch(/forced:/);
-        // The URL the delegate buffered, not `true` and not `false`.
-        expect(args).toMatch(/launchedWithDocument:\s*launchedWith\s*!=\s*nil/);
+        // The stored binding, not a constant and not the launch argument.
+        expect(args).toMatch(/documentBound:\s*Prefs\.documentURL\s*!=\s*nil/);
     });
 });

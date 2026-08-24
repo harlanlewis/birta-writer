@@ -12,18 +12,18 @@ final class FirstRunScreenTests: XCTestCase {
         for forced in [true, false] {
             for isUserStore in [true, false] {
                 for hasSeenWelcome in [true, false] {
-                    for launchedWithDocument in [true, false] {
+                    for documentBound in [true, false] {
                         let show = FirstRunScreen.shouldShow(forced: forced,
                                                              isUserStore: isUserStore,
                                                              hasSeenWelcome: hasSeenWelcome,
-                                                             launchedWithDocument: launchedWithDocument)
+                                                             documentBound: documentBound)
                         // The invariant, stated once and checked over
                         // everything: forced overrides, and otherwise all three
                         // have to permit it.
                         let permitted = forced
-                            || (isUserStore && !hasSeenWelcome && !launchedWithDocument)
+                            || (isUserStore && !hasSeenWelcome && !documentBound)
                         XCTAssertEqual(show, permitted,
-                                       "forced=\(forced) user store=\(isUserStore) seen=\(hasSeenWelcome) document=\(launchedWithDocument)")
+                                       "forced=\(forced) user store=\(isUserStore) seen=\(hasSeenWelcome) document=\(documentBound)")
                         if show { shown += 1 } else { refused += 1 }
                     }
                 }
@@ -38,30 +38,48 @@ final class FirstRunScreenTests: XCTestCase {
     /// visible as a named failure rather than as one row of the matrix.
     func testAnyOneRefusalShouldBeEnoughOnItsOwn() {
         XCTAssertTrue(FirstRunScreen.shouldShow(forced: false, isUserStore: true,
-                                                hasSeenWelcome: false, launchedWithDocument: false))
+                                                hasSeenWelcome: false, documentBound: false))
 
         XCTAssertFalse(FirstRunScreen.shouldShow(forced: false, isUserStore: false,
-                                                 hasSeenWelcome: false, launchedWithDocument: false),
+                                                 hasSeenWelcome: false, documentBound: false),
                        "a throwaway defaults domain would meet a first launch every run")
         XCTAssertFalse(FirstRunScreen.shouldShow(forced: false, isUserStore: true,
-                                                 hasSeenWelcome: true, launchedWithDocument: false),
+                                                 hasSeenWelcome: true, documentBound: false),
                        "the tour is offered once")
         XCTAssertFalse(FirstRunScreen.shouldShow(forced: false, isUserStore: true,
-                                                 hasSeenWelcome: false, launchedWithDocument: true),
-                       "somebody who asked for a file asked for that file")
+                                                 hasSeenWelcome: false, documentBound: true),
+                       "the screen is not put in front of somebody's own file")
     }
 
     /// The refusal has to leave the offer intact, or it is not a deferral, it
     /// is a first run somebody was skipped past. `hasSeenWelcome` is what the
-    /// screen's own Continue sets, so the next launch that did not come from a
-    /// file answers this the other way with nothing reset in between.
-    func testDecliningForADocumentShouldLeaveTheTourOfferedOnTheNextOrdinaryLaunch() {
-        let openWith = FirstRunScreen.shouldShow(forced: false, isUserStore: true,
-                                                 hasSeenWelcome: false, launchedWithDocument: true)
-        let nextLaunch = FirstRunScreen.shouldShow(forced: false, isUserStore: true,
-                                                   hasSeenWelcome: false, launchedWithDocument: false)
-        XCTAssertFalse(openWith)
-        XCTAssertTrue(nextLaunch)
+    /// screen's own Continue sets, so a launch back on the app's own notes
+    /// answers this the other way with nothing reset in between.
+    func testDecliningForADocumentShouldLeaveTheTourOfferedOnceTheDocumentIsLeft() {
+        let bound = FirstRunScreen.shouldShow(forced: false, isUserStore: true,
+                                              hasSeenWelcome: false, documentBound: true)
+        let left = FirstRunScreen.shouldShow(forced: false, isUserStore: true,
+                                             hasSeenWelcome: false, documentBound: false)
+        XCTAssertFalse(bound)
+        XCTAssertTrue(left)
+    }
+
+    /// The refusal asks about the BINDING, so it survives the launch that made
+    /// it. This is the whole reason it is not asked of `launchedWith`, and it
+    /// is not covered by the matrix passing: a gate on the launch answers this
+    /// case exactly the same way once and the wrong way every time after.
+    ///
+    /// What a launch-shaped gate costs is the tour itself, not just its timing.
+    /// `Coordinator.finishWelcome` spends `hasSeenWelcome` before it seeds, and
+    /// `FirstRunNote.shouldWrite` refuses the `document` slot, so a screen shown
+    /// over a still-bound document spends the one chance to offer the tour on a
+    /// note it is not allowed to write. `AppFlavor.showsWelcomeScreen` keeps
+    /// Show Welcome out of a release build, so nothing gives it back.
+    func testARelaunchWithTheDocumentStillBoundShouldStillRefuse() {
+        // Same stored state, a launch later: nothing about the second launch
+        // came from the Finder, and the panel is still on their file.
+        XCTAssertFalse(FirstRunScreen.shouldShow(forced: false, isUserStore: true,
+                                                 hasSeenWelcome: false, documentBound: true))
     }
 
     /// `BIRTA_JOT_OPEN_WELCOME=1` outranks every refusal, this one included.
@@ -71,6 +89,6 @@ final class FirstRunScreenTests: XCTestCase {
     /// only run that checks it constructs.
     func testForcingItShouldOutrankEveryRefusal() {
         XCTAssertTrue(FirstRunScreen.shouldShow(forced: true, isUserStore: false,
-                                                hasSeenWelcome: true, launchedWithDocument: true))
+                                                hasSeenWelcome: true, documentBound: true))
     }
 }
