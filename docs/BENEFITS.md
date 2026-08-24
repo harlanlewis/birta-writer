@@ -40,6 +40,8 @@ Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual
 
     - The answers are portable, because the equation stays plain text and any calculator can be handed it. Where notations disagree, Birta follows the overwhelming majority: `%` is modulo carrying the divisor's sign, `round` sends halves away from zero, trig is in radians, `-2 ^ 2` is `-4`. Where there is no majority, it declines to answer rather than guess. A bare `log(...)` is base 10 in spreadsheets and natural in Python, so it computes as neither. The menu offers both readings with their values, and picking one rewrites the equation to `log10` or `ln` so the meaning travels with the file.
 
+    - A unit name can be ambiguous the same way, and gets the same treatment. `ml` typed in a hurry as `ML` is the millilitre by this editor's own convention and the megalitre by the unit catalog, a factor of a billion apart, and neither reading is visible in the number that comes back. So the nine names where those two disagree, `ML`, `Mm`, `Mg` and the rest, hold their answer back and offer both, and the one you pick is written into the equation as `milliliter` or `megaliter`. Capitalisation that is merely convenient stays convenient: the hundred-odd spellings with only one possible reading, `KM` and `Gallons` among them, answer straight out.
+
 - It's private.
     - By default, it makes no network requests of any kind. Even rich link previews are opt-in.
     - No usage tracking to opt out of, because it doesn't exist.
