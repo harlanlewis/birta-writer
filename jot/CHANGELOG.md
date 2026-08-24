@@ -47,8 +47,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 - Breaking: an already-installed `Birta Writer Jot.app` cannot update itself to this release. It looks inside the download for a bundle under its own old name and does not find one, so it stops rather than installing anything. Replace it by hand, and delete the old copy once you have: left alone it goes on claiming the summon hotkey, which is first come first served, and autosaving the note it was already bound to.
 - The Window menu carries Minimize, Zoom and Bring All to Front. It had Minimize alone, and macOS adds Fill, Center, Move & Resize and Full Screen Tile to any app's Window menu, so those arrived with nothing above or below them and read as being in a strange order. Those rows are still the system's, with the system's own keys: what changed is the rows around them.
 
-### Fixed
-
 ---
 
 ## [2026.822.0] - 2026, August 22
