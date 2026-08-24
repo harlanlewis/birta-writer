@@ -16,9 +16,9 @@ import BirtaJotCore
 ///
 /// Anchored to the status item rather than raised as an alert, and the anchor
 /// is half the message. An alert would say the menu bar icon still works; a
-/// popover hanging off that icon shows the reader where it is, in the one
-/// moment they are looking for a way in. It also cannot appear over another
-/// app's window, which an app-modal alert from a menu-bar app can.
+/// card hanging off that icon shows the reader where it is, in the one moment
+/// they are looking for a way in. It also cannot appear over another app's
+/// window, which an app-modal alert from a menu-bar app can.
 ///
 /// The recorder is here rather than a button that opens Settings. The refusal
 /// is the one moment this app has a real question to ask about the hotkey, so
@@ -41,7 +41,7 @@ final class SummonNoticeView: NSViewController {
     /// only way to check a sentence that lives in two states.
     private(set) var notice: SummonNotice
 
-    /// Wide enough for the recorder plus its padding, and no wider: a popover
+    /// Wide enough for the recorder plus its padding, and no wider: the card
     /// is read at a glance and a long measure defeats that.
     private static let width: CGFloat = 300
     private static let pad: CGFloat = 14

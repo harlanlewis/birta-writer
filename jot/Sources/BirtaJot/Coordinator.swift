@@ -292,9 +292,10 @@ final class Coordinator {
 
     /// Raise the refused-hotkey notice on the menu bar item.
     ///
-    /// Deferred one turn of the run loop. `start()` runs inside
-    /// `applicationDidFinishLaunching`, and the status item has no window to
-    /// hang a popover from until that has returned.
+    /// Deferred one turn of the run loop, to keep building a window off the
+    /// launch path. Where the menu bar item is by then is `SummonNoticePresenter`'s
+    /// problem and not this one: a status item is not in the bar yet at this
+    /// point and the presenter waits for it.
     ///
     /// It does NOT retry when the owning app quits, and that is a decision
     /// rather than an omission. A silent retry means the chord begins working
