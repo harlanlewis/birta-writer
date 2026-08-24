@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.824.0] - 2026, August 24
+
 ### Added
 
 - A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math, and the card a link on its own line becomes once you turn the network on. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.

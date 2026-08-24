@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.824.0] - 2026, August 24
+
 ### Added
 
 - An ` ```svg ` fence renders as a picture, with the same source toggle, zoom, pan, fit and fullscreen every other diagram gets, and the same error card when the markup will not parse. The source stays in the document as an ordinary fenced code block, so it round-trips, diffs and edits like any other, and SVG is now in the code block language picker and reachable from the slash menu. Two things do not render, both because they sit outside the sanitizer's SVG profile: an icon sprite built on `<use>`, and text labels written as HTML inside a `<foreignObject>`, which is how Mermaid, Excalidraw and draw.io export theirs. Dragging or pasting an `.svg` file already worked and now has a test saying so.
