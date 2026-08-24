@@ -13,8 +13,13 @@
  */
 
 export async function run({ page, check, baseUrl }) {
+    // Which profile the page boots under. The Mac app declares its own
+    // (`HOST_PROFILES.jot`), and `/help` is ungated, which is a claim about
+    // `hostHasCommand` rather than something visible in the row's own data.
+    let hostQuery = "";
+
     async function mount(script) {
-        await page.goto(`${baseUrl}/index.html`);
+        await page.goto(`${baseUrl}/index.html${hostQuery}`);
         await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
         await page.waitForFunction(
             () => /Second line/.test(document.querySelector(".ProseMirror")?.textContent ?? ""),
@@ -239,5 +244,48 @@ export async function run({ page, check, baseUrl }) {
         after.some((p) => p.startsWith("Second line.") && p.endsWith("Q"))
             && after.some((p) => p === "First line."),
         JSON.stringify(after.slice(0, 3)),
+    );
+
+    // ── 7. The same, under the Mac app's declared profile ──────────────────
+    // The changelog says `/help` is there on both surfaces. Every arm above
+    // ran under the VS Code profile, which says nothing about the other one:
+    // a command carrying a `hostCapability` Jot does not declare is withdrawn
+    // by `hostHasCommand` from the slash menu, the palette and
+    // `runEditorCommand` at once, and it would be withdrawn silently. So the
+    // claim is driven rather than reasoned about.
+    hostQuery = "?host=jot";
+    await mount(["a summary from jot", "skip", "", "github"]);
+    check("the probe placed the caret, under the jot profile", await caretAtEndOf("First line."), "");
+    await page.keyboard.type(" /help", { delay: 40 });
+    await page.waitForTimeout(300);
+    const jotRows = await page.evaluate(() =>
+        [...document.querySelectorAll(".slash-menu-item .slash-menu-item-label")]
+            .map((el) => el.textContent?.trim() ?? ""));
+    check(
+        "the Help row is offered under the jot profile too, and still first",
+        /^Help\b/.test(jotRows[0] ?? ""),
+        JSON.stringify(jotRows.slice(0, 3)),
+    );
+    // The instrument reached the right page: under the Jot profile the editor
+    // withdraws commands VS Code has, so a row that IS gated must be gone. If
+    // this passes with the VS Code profile still loaded, the arm above proves
+    // nothing.
+    const gated = await page.evaluate(() => window.__i18n?.host?.capabilities ?? null);
+    check(
+        "the page really booted under the jot profile",
+        Array.isArray(gated) && !gated.includes("textEditor") && gated.includes("appPreferences"),
+        JSON.stringify(gated),
+    );
+
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(1200);
+    const jotSteps = await seen();
+    check("the flow runs under the jot profile", jotSteps.length === 4, `saw ${jotSteps.length}`);
+    const jotOpened = await posted("openUrl");
+    check(
+        "and hands the host the same prefilled issue",
+        jotOpened.length === 1
+            && (jotOpened[0]?.url ?? "").includes(encodeURIComponent("a summary from jot")),
+        (jotOpened[0]?.url ?? "").slice(0, 140),
     );
 }
