@@ -1223,7 +1223,7 @@ final class Coordinator {
         guard noteMissing, !latest.isBlank else { return }
         let directory = boundURL.deletingLastPathComponent()
         let stem = boundURL.deletingPathExtension().lastPathComponent
-        let ext = boundURL.pathExtension.isEmpty ? "md" : boundURL.pathExtension
+        let ext = boundURL.pathExtension.isEmpty ? DocumentTypes.written : boundURL.pathExtension
         let target = Coordinator.unusedURL(in: directory, stem: "\(stem) (recovered)", extension: ext)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -1471,7 +1471,7 @@ final class Coordinator {
     private func rescueAgentVersion(requestId: String, text: String) {
         let directory = boundURL.deletingLastPathComponent()
         let stem = boundURL.deletingPathExtension().lastPathComponent
-        let ext = boundURL.pathExtension.isEmpty ? "md" : boundURL.pathExtension
+        let ext = boundURL.pathExtension.isEmpty ? DocumentTypes.written : boundURL.pathExtension
         let target = Coordinator.unusedURL(in: directory, stem: "\(stem) (agent)", extension: ext)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -1527,6 +1527,52 @@ final class Coordinator {
         isEdited = false
         if state == .warm {
             host.send(.externalUpdate(content: onDisk, syncVersion: guardState.bumpVersion()))
+        }
+    }
+
+    /// Open a file the user pointed this app at: the Finder's Open With, a
+    /// drop on the Dock icon, or `open -a`.
+    ///
+    /// This is the only way INTO `ActiveBinding`'s `document` slot, the
+    /// highest of its three, and `backToNotes` below is the only way out.
+    ///
+    /// The file being LEFT is written first, whatever autosave says, for the
+    /// same reason New Note writes before it switches: being pointed at
+    /// another file is not a reason to lose what was typed into this one, and
+    /// a path the user started from another app has no sheet to ask on.
+    ///
+    /// The rebind then goes through a page load rather than `bindTo`, because
+    /// `bindTo` is for a caller that already HOLDS the bytes and this one has
+    /// a path nobody has read. `reloadFromDisk` makes the next `ready` adopt
+    /// the file, which is the one path that also settles `hasLoaded`,
+    /// `noteUnreadable` and `isEdited` for it; `hasLoaded` is dropped here so
+    /// that until it does, nothing can write the outgoing note's bytes into
+    /// the incoming file.
+    func openDocument(at url: URL) {
+        let target = url.standardizedFileURL
+        guard DocumentTypes.accepts(target) else {
+            show()
+            statusOverlay.flash("Birta Writer does not open \(target.lastPathComponent).")
+            return
+        }
+        // Already the bound file: summon it. Flushing and reloading would put
+        // the disk over a buffer that is legitimately ahead of it.
+        guard target != boundURL.standardizedFileURL else {
+            show()
+            return
+        }
+        flushThen { [weak self] in
+            guard let self else { return }
+            self.write(.explicitSave)
+            Prefs.documentURL = target
+            // `boundURL`'s `didSet` does the rest of the rebind in one step:
+            // the title, the folder the page may read images from, the
+            // watcher, and the per-path flags the outgoing file left set.
+            self.boundURL = target
+            self.hasLoaded = false
+            self.reloadFromDisk = true
+            self.loadPage()
+            self.show()
         }
     }
 
@@ -1931,9 +1977,12 @@ final class Coordinator {
     /// absence it is reporting.
     private func seedFirstRunNote(isFirstRun: Bool) {
         let url = boundURL
+        // Nil is the default scratchpad location, which no setting names.
+        let slot = Prefs.slot(holding: url) ?? .scratchpad
         guard FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
                                        bufferIsEmpty: latest.isEmpty,
-                                       isFirstRun: isFirstRun) else { return }
+                                       isFirstRun: isFirstRun,
+                                       slot: slot) else { return }
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -2577,7 +2626,7 @@ final class Coordinator {
             let panel = NSSavePanel()
             panel.title = "Save a Copy As"
             panel.nameFieldStringValue = Coordinator.suggestedFileName(for: self.latest)
-            panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+            panel.allowedContentTypes = DocumentTypes.writtenContentTypes
             panel.directoryURL = Prefs.saveAsDirectory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             panel.canCreateDirectories = true
             let respond: (NSApplication.ModalResponse) -> Void = { [weak self] resp in

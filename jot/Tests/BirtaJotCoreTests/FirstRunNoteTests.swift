@@ -5,46 +5,90 @@ final class FirstRunNoteTests: XCTestCase {
 
     // ── The rule ──────────────────────────────────────────────────────────
 
-    /// The whole space, derived from the type rather than listed here, so a
-    /// fourth `Existing` case joins this matrix the day it is added instead of
-    /// the day somebody remembers. The count is asserted because a sweep that
-    /// enumerated nothing passes every assertion inside it.
+    /// The whole space, derived from the two types rather than listed here, so
+    /// a fourth `Existing` case or a fourth `Slot` joins this matrix the day it
+    /// is added instead of the day somebody remembers. The count is asserted
+    /// because a sweep that enumerated nothing passes every assertion inside it.
     func testTheWholeSpaceShouldBeCoveredAndOnlyEmptyNotesShouldBeWritten() {
         var writes = 0
         var refusals = 0
         for existing in FirstRunNote.Existing.allCases {
-            for bufferIsEmpty in [true, false] {
-                for isFirstRun in [true, false] {
-                    let write = FirstRunNote.shouldWrite(existing: existing,
-                                                         bufferIsEmpty: bufferIsEmpty,
-                                                         isFirstRun: isFirstRun)
-                    // The invariant, stated once and checked over everything:
-                    // the tour is written exactly when all three permit it.
-                    let permitted = isFirstRun && bufferIsEmpty && existing != .hasContent
-                    XCTAssertEqual(write, permitted,
-                                   "existing=\(existing.rawValue) buffer empty=\(bufferIsEmpty) first run=\(isFirstRun)")
-                    if write { writes += 1 } else { refusals += 1 }
+            for slot in ActiveBinding.Slot.allCases {
+                for bufferIsEmpty in [true, false] {
+                    for isFirstRun in [true, false] {
+                        let write = FirstRunNote.shouldWrite(existing: existing,
+                                                             bufferIsEmpty: bufferIsEmpty,
+                                                             isFirstRun: isFirstRun,
+                                                             slot: slot)
+                        // The invariant, stated once and checked over
+                        // everything: the tour is written exactly when all four
+                        // permit it.
+                        let permitted = isFirstRun && bufferIsEmpty
+                            && existing != .hasContent && slot != .document
+                        XCTAssertEqual(write, permitted,
+                                       "existing=\(existing.rawValue) slot=\(slot.rawValue) buffer empty=\(bufferIsEmpty) first run=\(isFirstRun)")
+                        if write { writes += 1 } else { refusals += 1 }
+                    }
                 }
             }
         }
-        XCTAssertEqual(writes + refusals, FirstRunNote.Existing.allCases.count * 4)
+        XCTAssertEqual(writes + refusals,
+                       FirstRunNote.Existing.allCases.count * ActiveBinding.Slot.allCases.count * 4)
         // Both outcomes have to be reachable, or the assertion above is
         // agreeing with a function that always answers the same thing.
         XCTAssertGreaterThan(writes, 0)
         XCTAssertGreaterThan(refusals, 0)
+        // And the document slot has to be the one that never writes, over every
+        // file state and every buffer state. Stated as its own count so a rule
+        // that stopped being consulted cannot hide inside the invariant above,
+        // which would simply agree with whatever the function does.
+        let intoDocument = FirstRunNote.Existing.allCases.filter { existing in
+            FirstRunNote.shouldWrite(existing: existing, bufferIsEmpty: true,
+                                     isFirstRun: true, slot: .document)
+        }
+        XCTAssertEqual(intoDocument, [], "the tour is never written into a file the user pointed us at")
     }
 
     /// Each refusal on its own, so a rule that stopped being consulted is
     /// visible as a named failure rather than as one row of the matrix.
     func testAnyOneRefusalShouldBeEnoughOnItsOwn() {
-        XCTAssertTrue(FirstRunNote.shouldWrite(existing: .absent, bufferIsEmpty: true, isFirstRun: true))
+        XCTAssertTrue(FirstRunNote.shouldWrite(existing: .absent, bufferIsEmpty: true,
+                                               isFirstRun: true, slot: .scratchpad))
 
-        XCTAssertFalse(FirstRunNote.shouldWrite(existing: .hasContent, bufferIsEmpty: true, isFirstRun: true),
+        XCTAssertFalse(FirstRunNote.shouldWrite(existing: .hasContent, bufferIsEmpty: true,
+                                                isFirstRun: true, slot: .scratchpad),
                        "a note with writing in it is never written over")
-        XCTAssertFalse(FirstRunNote.shouldWrite(existing: .absent, bufferIsEmpty: false, isFirstRun: true),
+        XCTAssertFalse(FirstRunNote.shouldWrite(existing: .absent, bufferIsEmpty: false,
+                                                isFirstRun: true, slot: .scratchpad),
                        "bytes in the panel that the file has not been given yet are still bytes")
-        XCTAssertFalse(FirstRunNote.shouldWrite(existing: .absent, bufferIsEmpty: true, isFirstRun: false),
+        XCTAssertFalse(FirstRunNote.shouldWrite(existing: .absent, bufferIsEmpty: true,
+                                                isFirstRun: false, slot: .scratchpad),
                        "deleting the tour has to be final")
+        XCTAssertFalse(FirstRunNote.shouldWrite(existing: .absent, bufferIsEmpty: true,
+                                                isFirstRun: true, slot: .document),
+                       "a file the user pointed us at is theirs, at a path they chose")
+    }
+
+    /// The refusal the emptiness ones cannot make, stated as the case that
+    /// reaches it: Open With on a first launch, on a `.md` the user had made
+    /// and not yet written in.
+    ///
+    /// Every other refusal says yes here. The file reads `.empty`, which is the
+    /// state the tour is FOR in the app's own note, the buffer is empty because
+    /// nothing has been typed, and it is a genuine first run. The slot is the
+    /// only thing that tells the two files apart, which is why this is not
+    /// covered by the matrix passing.
+    func testAnEmptyFileOpenedFromTheFinderShouldNotBeSeeded() {
+        for existing in [FirstRunNote.Existing.absent, .empty] {
+            XCTAssertFalse(FirstRunNote.shouldWrite(existing: existing, bufferIsEmpty: true,
+                                                    isFirstRun: true, slot: .document),
+                           "\(existing.rawValue) in the document slot")
+            // The same file, reached the app's own way, is still seeded. Or the
+            // refusal above is the tour never being written at all.
+            XCTAssertTrue(FirstRunNote.shouldWrite(existing: existing, bufferIsEmpty: true,
+                                                   isFirstRun: true, slot: .scratchpad),
+                          "\(existing.rawValue) in the scratchpad slot")
+        }
     }
 
     /// An empty file is treated as an absent one. The new-file-each-session
@@ -52,7 +96,8 @@ final class FirstRunNoteTests: XCTestCase {
     /// tour could never reach that mode at all.
     func testAnEmptyFileShouldBeTreatedAsAnAbsentOne() {
         for existing in [FirstRunNote.Existing.absent, .empty] {
-            XCTAssertTrue(FirstRunNote.shouldWrite(existing: existing, bufferIsEmpty: true, isFirstRun: true),
+            XCTAssertTrue(FirstRunNote.shouldWrite(existing: existing, bufferIsEmpty: true,
+                                                   isFirstRun: true, slot: .scratchpad),
                           "\(existing.rawValue) should be writable")
         }
     }
@@ -121,7 +166,8 @@ final class FirstRunNoteTests: XCTestCase {
 
             let seeds = { (url: URL) in
                 FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
-                                         bufferIsEmpty: true, isFirstRun: true)
+                                         bufferIsEmpty: true, isFirstRun: true,
+                                         slot: .scratchpad)
             }
             XCTAssertTrue(seeds(absent), "a note that is not there yet")
             XCTAssertTrue(seeds(empty), "a note created empty by the session mode")
@@ -133,7 +179,8 @@ final class FirstRunNoteTests: XCTestCase {
             for url in [absent, empty, written] {
                 XCTAssertFalse(
                     FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
-                                             bufferIsEmpty: true, isFirstRun: false),
+                                             bufferIsEmpty: true, isFirstRun: false,
+                                             slot: .scratchpad),
                     "deleting the tour has to be final for \(url.lastPathComponent)")
             }
         }
@@ -150,7 +197,8 @@ final class FirstRunNoteTests: XCTestCase {
             try FileManager.default.createDirectory(at: note, withIntermediateDirectories: true)
             XCTAssertEqual(FirstRunNote.existing(at: note), .hasContent)
             XCTAssertFalse(FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: note),
-                                                    bufferIsEmpty: true, isFirstRun: true))
+                                                    bufferIsEmpty: true, isFirstRun: true,
+                                                    slot: .scratchpad))
         }
     }
 

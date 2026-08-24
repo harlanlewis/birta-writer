@@ -24,6 +24,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(Prefs.showInDock ? .regular : .accessory)
     }
 
+    /// A file the user pointed this app at, held until there is a Coordinator
+    /// to give it to.
+    ///
+    /// The buffer is required rather than defensive. A launch that came from
+    /// Open With delivers its Apple Event around `applicationWillFinishLaunching`,
+    /// and the Coordinator is not built until `applicationDidFinishLaunching`
+    /// below, so the URL can and does arrive before there is anything to open
+    /// it with. The order is AppKit's rather than ours, so this holds it
+    /// either way instead of depending on which one a given macOS picks.
+    private var pendingOpen: URL?
+
+    /// Open With in the Finder, a drop on the Dock icon, and `open -a` all
+    /// arrive here.
+    ///
+    /// ONE file, because this app has one buffer and one panel;
+    /// `DocumentTypes.firstToOpen` is which one and why. `Info.plist`'s
+    /// `CFBundleDocumentTypes` is what decides which files reach this at all,
+    /// and `Coordinator.openDocument` turns away anything else, since `open -a`
+    /// consults nothing.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = DocumentTypes.firstToOpen(from: urls) else { return }
+        guard let coordinator else {
+            pendingOpen = url
+            return
+        }
+        coordinator.openDocument(at: url)
+    }
+
     /// Clicking the Dock icon summons the panel. Without this the icon is a
     /// button that does nothing, which is worse than no icon at all.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
@@ -33,6 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
+        // Before the Coordinator exists, so a launch that came from Open With
+        // mounts against the file it was asked for rather than mounting the
+        // last note and swapping it out a moment later. `Coordinator.init`
+        // reads `Prefs.activeURL`, and `document` is the slot that outranks
+        // the other two.
+        let launchedWith = pendingOpen
+        pendingOpen = nil
+        if let launchedWith { Prefs.documentURL = launchedWith.standardizedFileURL }
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
@@ -64,18 +100,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updater.checkIfDue() }
         }
-        // First launch only, and after the panel exists, so the screen has a
-        // window to take over.
-        // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, so a
-        // run would meet this window every time; skipped there for the same
-        // reason the panel does not remember its frame.
-        //
-        // `BIRTA_JOT_OPEN_WELCOME=1` shows it regardless, which is how the
-        // screen is proven to construct without a person and without a first
-        // launch: the gate below deliberately never fires under a throwaway
-        // domain, so nothing else would ever build it.
-        if ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1"
-            || (Prefs.isUserStore && !Prefs.hasSeenWelcome) {
+        // After the panel exists, so the screen has a window to take over.
+        // `FirstRunScreen` holds every arm of the decision and why, including
+        // the one this launch adds: a launch pointed at a file is not the
+        // launch this screen is for. `BIRTA_JOT_DEFAULTS_SUITE` gives a
+        // checking run its own domain, which is what `isUserStore` refuses,
+        // for the same reason the panel does not remember its frame.
+        if FirstRunScreen.shouldShow(
+            forced: ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1",
+            isUserStore: Prefs.isUserStore,
+            hasSeenWelcome: Prefs.hasSeenWelcome,
+            launchedWithDocument: launchedWith != nil) {
             showWelcome()
         }
         // A settings window can otherwise only be opened by a person, which
@@ -97,6 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        // A launch prewarms the panel hidden, which is right for a
+        // hotkey-summoned app and wrong for one somebody just double-clicked a
+        // file in: the file has to appear. Last, so the panel comes up over
+        // whatever the settings hooks above built.
+        if launchedWith != nil { coordinator.show() }
         installTerminationSignal()
     }
 

@@ -237,6 +237,22 @@ enum Prefs {
                           scratchpad: stored(.scratchpadPath) ?? defaultScratchpadURL)
     }
 
+    /// WHICH stored setting names `url`, if any.
+    ///
+    /// Nil is the default scratchpad location, which no setting names, and a
+    /// caller asking whose file this is should read it as the scratchpad
+    /// rather than as an unknown.
+    ///
+    /// Against the STORED strings rather than through the accessors, which
+    /// filter on existence: a file that has just been moved or is not yet on
+    /// disk still belongs to the setting that names it.
+    static func slot(holding url: URL) -> ActiveBinding.Slot? {
+        ActiveBinding.slot(holding: url,
+                           document: stored(.documentPath),
+                           currentNote: stored(.currentNotePath),
+                           scratchpad: stored(.scratchpadPath))
+    }
+
     /// Write a moved file's new path back to the setting it came from.
     ///
     /// Asking which slot is in force cannot answer this: `currentNoteURL`'s
@@ -251,10 +267,7 @@ enum Prefs {
     /// Matched against the STORED strings rather than through the accessors,
     /// for the same reason: the accessors are what filter on existence.
     static func rebindActive(from old: URL, to url: URL) {
-        switch ActiveBinding.slot(holding: old,
-                                  document: stored(.documentPath),
-                                  currentNote: stored(.currentNotePath),
-                                  scratchpad: stored(.scratchpadPath)) {
+        switch slot(holding: old) {
         case .document: documentURL = url
         case .currentNote: currentNoteURL = url
         case .scratchpad: scratchpadURL = url

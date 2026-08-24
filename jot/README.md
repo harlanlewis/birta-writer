@@ -43,6 +43,20 @@ The app appears in the menu bar as the Birta Writer mark (see "Icons" below). Cl
 
 General holds every row the welcome screen asks, in the same order and the same words: the summon hotkey, where your notes live (iCloud Drive, and a Location row when that is off), whether Jot saves as you type, which note a summon opens and what a new one is called, and how Jot behaves as an application (the Dock icon, starting at login, updating itself, and link previews). That repetition is the point rather than duplication: a row somebody answered on first run is found again by looking where they answered it, which only works if the two screens are one layout. AI Agent holds the `/ai` switch and the command it runs, under three sentences saying what that needs and who might charge for it. Advanced holds the reset, and, in a development build only, the button that shows the welcome screen again. See "Network" below for what link previews turns on.
 
+## Opening a file
+
+The app offers itself in the Finder's Open With for the formats the editor opens: `.md`, `.markdown` and `.mdx`. It never takes the default away from whatever opens those files now, because every entry in `Info.plist`'s `CFBundleDocumentTypes` is ranked `Alternate` rather than `Owner`. Joining the list is the whole request; a fresh install quietly becoming what a double click opens is not. A development build registers an entry of its own, under its own name, because the plist is one file with the flavour stamped over it.
+
+Opening a file binds the panel to it, through the highest of `ActiveBinding`'s three slots, and File, Back to My Notes is the way out. The note being left is written first, whatever the autosave setting says, for the same reason New Note writes before it switches: being pointed at another file is not a reason to lose what was typed into this one. A Finder selection of several files hands over several, and the first the editor can read is opened, because there is one buffer and one panel.
+
+The list of formats is `shared/documentExtensions.ts`, which is where a new one is added. Three copies restate it and none can import another: the extension's `customEditors` selector in `package.json`, the imported type declarations in `Info.plist`, and `BirtaJotCore.DocumentTypes.opened`, which is what the app checks when a file arrives, since `open -a` consults no plist. `shared/__tests__/documentTypes.test.ts` is the only thing relating the last two to the list, and Swift and a property list were outside every copy-detector in the repository before it.
+
+A launch that was pointed at a file does not show the first-run screen, and `BirtaJotCore.FirstRunScreen` is where that arm and the rest of the decision live. The screen introduces this app's own note and asks a person to answer for the folder it keeps notes in, which is the wrong thing to put in front of somebody who asked for a particular file. Refusing it consumes nothing: `hasSeenWelcome` is set by the screen's own Continue, so the next launch that did not come from a file offers the tour.
+
+The tour is never written into a file the app was pointed at, whatever that file holds. `FirstRunNote.shouldWrite` refuses the `document` slot outright, and that refusal is the one the others cannot make: an empty `.md` somebody made themselves reads as `empty`, which is the state the tour is FOR in this app's own note, so the emptiness rules say yes to it. That path stays reachable after the screen is deferred, because a later launch still has the document bound.
+
+What the app WRITES is a separate list, one extension long, and `DocumentTypes` holds the two apart. Every file the app creates is a note it named itself, so a save panel offering three formats would be offering a name the note template cannot produce.
+
 ## Saving
 
 Jot edits one file. There is nothing to file away and nothing that empties the panel; the window names the file where macOS names a file, in the titlebar beside the traffic lights:
