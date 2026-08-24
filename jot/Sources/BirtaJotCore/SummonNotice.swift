@@ -46,16 +46,31 @@ public struct SummonNotice: Equatable, Sendable {
         )
     }
 
-    /// macOS gave us `combo`, after a refusal.
+    /// macOS accepted `combo`, after a refusal.
     ///
     /// Said out loud rather than left to a closing popover, because the whole
     /// complaint being answered is that a hotkey which does nothing and a
     /// hotkey that works look the same until you press one.
+    ///
+    /// It deliberately does NOT say the key works, and that is the whole
+    /// difficulty of this sentence. Accepting a registration is not evidence
+    /// the chord will arrive: `Hotkey.registrationOptions` carries the
+    /// measurements, and two of the four cases there answer `noErr` while
+    /// another app goes on receiving the key. Spotlight and the screenshot
+    /// keys do the same, being outside that registry altogether. A confirmation
+    /// promising the key works would therefore hand somebody the exact
+    /// complaint this notice exists to answer, one screen later and with more
+    /// authority.
+    ///
+    /// So it reports what IS known, names the gap, and asks for the one
+    /// gesture that settles it. Pressing the key is a second of work and it is
+    /// the only thing on this machine that can tell them.
     public static func accepted(_ combo: HotkeyCombo, appName: String) -> SummonNotice {
         SummonNotice(
-            title: "\(combo.symbols) is yours",
-            detail: "Pressing it opens \(appName) from wherever you are. "
-                + "Settings can change it again later."
+            title: "\(combo.symbols) is set",
+            detail: "Press it now to be sure: macOS accepted it, but a few combinations "
+                + "belong to macOS itself and would still not reach \(appName). If nothing "
+                + "happens, pick another here. The menu bar icon opens it either way."
         )
     }
 }

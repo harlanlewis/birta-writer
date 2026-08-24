@@ -52,6 +52,34 @@ final class SummonNoticeTests: XCTestCase {
         XCTAssertNotEqual(notice.detail, SummonNotice.refused(other, appName: "Birta Writer").detail)
     }
 
+    /// The confirmation must not claim the key WORKS, because nothing on this
+    /// machine knows that.
+    ///
+    /// `Hotkey.registrationOptions` carries the measurement: of the four
+    /// holder/contender combinations, two answer `noErr` while another app
+    /// goes on receiving the chord, and Spotlight and the screenshot keys sit
+    /// outside that registry entirely and swallow it the same way. So an
+    /// accepted registration is evidence that macOS took the request and
+    /// nothing more.
+    ///
+    /// This is a guard against a regression that would be invisible: the
+    /// wording here was "is yours" / "Pressing it opens Birta Writer from
+    /// wherever you are", which hands somebody the exact complaint this whole
+    /// notice exists to answer, one screen later and with more authority. It
+    /// passed every other test in this file.
+    func testAnAcceptedCombinationShouldNotPromiseTheKeyWorks() {
+        let notice = SummonNotice.accepted(other, appName: "Birta Writer")
+        let whole = "\(notice.title) \(notice.detail)".lowercased()
+
+        for promise in ["is yours", "will open", "opens it from", "from wherever you are"] {
+            XCTAssertFalse(whole.contains(promise),
+                           "the confirmation claims the chord works: \(promise)")
+        }
+        // And it asks for the one gesture that can actually settle it.
+        XCTAssertTrue(whole.contains("press it"),
+                      "the confirmation should ask them to try the key, which is the only thing that can tell them")
+    }
+
     /// The app names itself from its flavour, so a development build's notice
     /// must say what a development build is called.
     func testTheNoticeShouldUseTheNameItIsGiven() {

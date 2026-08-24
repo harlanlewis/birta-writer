@@ -37,28 +37,15 @@ enum HostPromptSheet {
         required: String?, maxLength: HostPromptStep.MaxLength?,
         on window: NSWindow, answer: @escaping (String?) -> Void
     ) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = prompt
-
+        // One field, reused, so an answer a rule refused is edited rather than
+        // retyped. A FRESH `NSAlert` per attempt, because an alert is built to
+        // be run once and re-presenting a dismissed one is not something
+        // AppKit promises; a second presentation that quietly did nothing
+        // would leave the page waiting out its whole timeout on a question
+        // nobody can see. Building another costs nothing and asks no favours.
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
         field.placeholderString = placeholder
-        // The field is what the user starts typing into. Without this the
-        // sheet opens with the default button focused and the first keystroke
-        // submits an empty answer.
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
 
-        let ok = alert.addButton(withTitle: "Continue")
-        let cancel = alert.addButton(withTitle: "Cancel")
-        cancel.keyEquivalent = "\u{1b}"
-
-        // Validation is the PAGE's rule, run here so a refusal is caught before
-        // the sheet closes rather than after: `HostPromptStep.validate` is a
-        // reading of `validateHostPromptInput`, so both surfaces refuse the
-        // same answers with the same words. Where VS Code validates on every
-        // keystroke and this validates on Continue, the difference is in when
-        // the sentence appears, never in which answers are accepted.
         var reported = false
         let finish: (String?) -> Void = { value in
             guard !reported else { return }
@@ -66,27 +53,41 @@ enum HostPromptSheet {
             answer(value)
         }
 
-        func ask() {
+        // Validation is the PAGE's rule, run here so a refusal is caught before
+        // the sheet closes rather than after: `HostPromptStep.validate` is a
+        // reading of `validateHostPromptInput`, so both surfaces refuse the
+        // same answers with the same words. Where VS Code validates on every
+        // keystroke and this validates on Continue, the difference is in when
+        // the sentence appears, never in which answers are accepted.
+        func ask(saying message: String?) {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = message.map { "\(prompt)\n\n\($0)" } ?? prompt
+            alert.accessoryView = field
+            // Without this the sheet opens with the default button focused and
+            // the first keystroke submits an empty answer.
+            alert.window.initialFirstResponder = field
+            alert.addButton(withTitle: "Continue")
+            let cancel = alert.addButton(withTitle: "Cancel")
+            cancel.keyEquivalent = "\u{1b}"
+
             alert.beginSheetModal(for: window) { response in
                 guard response == .alertFirstButtonReturn else {
                     finish(nil)
                     return
                 }
                 let value = field.stringValue
-                if let message = HostPromptStep.validate(value, required: required,
+                if let refusal = HostPromptStep.validate(value, required: required,
                                                          maxLength: maxLength) {
-                    // Say what is wrong and put the same question back, rather
-                    // than dropping the answer they typed: the field keeps its
-                    // text, so a too-long title is edited rather than retyped.
-                    alert.informativeText = "\(prompt)\n\n\(message)"
-                    DispatchQueue.main.async { ask() }
+                    // A turn of the run loop, so the sheet that is closing is
+                    // gone before the next one is begun on the same window.
+                    DispatchQueue.main.async { ask(saying: refusal) }
                     return
                 }
                 finish(value)
             }
         }
-        ask()
-        _ = ok
+        ask(saying: nil)
     }
 
     // MARK: - A choice between rows
