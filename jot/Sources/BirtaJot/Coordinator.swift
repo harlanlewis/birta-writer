@@ -83,6 +83,10 @@ final class Coordinator {
     var openPreferences: (() -> Void)?
     /// Closes it again, because the panel going away takes it along.
     var hidePreferences: (() -> Void)?
+    /// The menu bar button a notice hangs from. Owned by the app delegate,
+    /// which owns the status item; nil where there is no menu bar item, which
+    /// is every test and `swift run` before the item is built.
+    var noticeAnchor: (() -> NSStatusBarButton?)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
     /// In-flight `requestEditorContext` calls, by id. Bounded the same way the
     /// flushes are: a page that never answers must not leave a closure holding
@@ -274,11 +278,38 @@ final class Coordinator {
 
         hotkey.onPress = { [weak self] in self?.hotkeyPressed() }
         let status = hotkey.register(Prefs.hotkey)
-        if status != noErr {
+        // `BIRTA_JOT_HOTKEY_REFUSED=1` raises the notice on a machine where
+        // nothing is holding the combination, which is the only way to look at
+        // it: a real refusal needs another app to have asked first. Same seam
+        // as BIRTA_JOT_OPEN_WELCOME, and used the same way.
+        if status != noErr || ProcessInfo.processInfo.environment["BIRTA_JOT_HOTKEY_REFUSED"] == "1" {
             NSLog("Birta Writer: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
+            showSummonNotice(Prefs.hotkey)
         }
         installEscapeMonitor()
         if measure.enabled { installDebugSignals() }
+    }
+
+    /// Raise the refused-hotkey notice on the menu bar item.
+    ///
+    /// Deferred one turn of the run loop. `start()` runs inside
+    /// `applicationDidFinishLaunching`, and the status item has no window to
+    /// hang a popover from until that has returned.
+    ///
+    /// It does NOT retry when the owning app quits, and that is a decision
+    /// rather than an omission. A silent retry means the chord begins working
+    /// at a moment nobody is watching and with nothing said, which leaves the
+    /// same "did that do anything?" question this notice exists to answer,
+    /// pointed the other way. The recorder in the notice is the way back, and
+    /// it reports what macOS said about every combination tried.
+    private func showSummonNotice(_ combo: HotkeyCombo) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let anchor = self.noticeAnchor?() else { return }
+            SummonNoticePopover.show(refused: combo, from: anchor) { [weak self] chosen in
+                Prefs.hotkey = chosen
+                return self?.hotkeyChanged() ?? noErr
+            }
+        }
     }
 
     /// Measurement hooks, only under BIRTA_JOT_MEASURE=1: SIGUSR1 toggles the
