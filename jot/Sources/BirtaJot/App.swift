@@ -100,18 +100,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updater.checkIfDue() }
         }
-        // First launch only, and after the panel exists, so the screen has a
-        // window to take over.
-        // `BIRTA_JOT_DEFAULTS_SUITE` gives a checking run its own domain, so a
-        // run would meet this window every time; skipped there for the same
-        // reason the panel does not remember its frame.
-        //
-        // `BIRTA_JOT_OPEN_WELCOME=1` shows it regardless, which is how the
-        // screen is proven to construct without a person and without a first
-        // launch: the gate below deliberately never fires under a throwaway
-        // domain, so nothing else would ever build it.
-        if ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1"
-            || (Prefs.isUserStore && !Prefs.hasSeenWelcome) {
+        // After the panel exists, so the screen has a window to take over.
+        // `FirstRunScreen` holds every arm of the decision and why, including
+        // the one this launch adds: a launch pointed at a file is not the
+        // launch this screen is for. `BIRTA_JOT_DEFAULTS_SUITE` gives a
+        // checking run its own domain, which is what `isUserStore` refuses,
+        // for the same reason the panel does not remember its frame.
+        if FirstRunScreen.shouldShow(
+            forced: ProcessInfo.processInfo.environment["BIRTA_JOT_OPEN_WELCOME"] == "1",
+            isUserStore: Prefs.isUserStore,
+            hasSeenWelcome: Prefs.hasSeenWelcome,
+            launchedWithDocument: launchedWith != nil) {
             showWelcome()
         }
         // A settings window can otherwise only be opened by a person, which
@@ -136,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A launch prewarms the panel hidden, which is right for a
         // hotkey-summoned app and wrong for one somebody just double-clicked a
         // file in: the file has to appear. Last, so the panel comes up over
-        // whatever the first-run screen and the settings hooks above built.
+        // whatever the settings hooks above built.
         if launchedWith != nil { coordinator.show() }
         installTerminationSignal()
     }

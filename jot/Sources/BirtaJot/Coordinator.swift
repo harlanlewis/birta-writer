@@ -1977,9 +1977,12 @@ final class Coordinator {
     /// absence it is reporting.
     private func seedFirstRunNote(isFirstRun: Bool) {
         let url = boundURL
+        // Nil is the default scratchpad location, which no setting names.
+        let slot = Prefs.slot(holding: url) ?? .scratchpad
         guard FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
                                        bufferIsEmpty: latest.isEmpty,
-                                       isFirstRun: isFirstRun) else { return }
+                                       isFirstRun: isFirstRun,
+                                       slot: slot) else { return }
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -51,6 +51,10 @@ Opening a file binds the panel to it, through the highest of `ActiveBinding`'s t
 
 The list of formats is `shared/documentExtensions.ts`, which is where a new one is added. Three copies restate it and none can import another: the extension's `customEditors` selector in `package.json`, the imported type declarations in `Info.plist`, and `BirtaJotCore.DocumentTypes.opened`, which is what the app checks when a file arrives, since `open -a` consults no plist. `shared/__tests__/documentTypes.test.ts` is the only thing relating the last two to the list, and Swift and a property list were outside every copy-detector in the repository before it.
 
+A launch that was pointed at a file does not show the first-run screen, and `BirtaJotCore.FirstRunScreen` is where that arm and the rest of the decision live. The screen introduces this app's own note and asks a person to answer for the folder it keeps notes in, which is the wrong thing to put in front of somebody who asked for a particular file. Refusing it consumes nothing: `hasSeenWelcome` is set by the screen's own Continue, so the next launch that did not come from a file offers the tour.
+
+The tour is never written into a file the app was pointed at, whatever that file holds. `FirstRunNote.shouldWrite` refuses the `document` slot outright, and that refusal is the one the others cannot make: an empty `.md` somebody made themselves reads as `empty`, which is the state the tour is FOR in this app's own note, so the emptiness rules say yes to it. That path stays reachable after the screen is deferred, because a later launch still has the document bound.
+
 What the app WRITES is a separate list, one extension long, and `DocumentTypes` holds the two apart. Every file the app creates is a note it named itself, so a save panel offering three formats would be offering a name the note template cannot produce.
 
 ## Saving

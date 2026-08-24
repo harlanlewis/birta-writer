@@ -13,10 +13,11 @@ import Foundation
 /// removes it for good, and nothing has to be dismissed. That is also why the
 /// text is here rather than in a view: there is no view.
 ///
-/// The whole of the risk is that this writes over something. Two things keep
+/// The whole of the risk is that this writes over something. Three things keep
 /// it from doing so, and they are separate on purpose: `shouldWrite` refuses
-/// unless the note is provably empty, and the caller only asks on a real first
-/// run. Either alone would be enough for the case anybody thinks of; the pair
+/// unless the note is provably empty, it refuses a file the user pointed this
+/// app at whatever that file holds, and the caller only asks on a real first
+/// run. Any one alone would be enough for the case anybody thinks of; the set
 /// is what covers the case nobody does.
 public enum FirstRunNote {
     /// What the note already holds, as the only three answers that matter.
@@ -58,18 +59,28 @@ public enum FirstRunNote {
         return size.intValue == 0 ? .empty : .hasContent
     }
 
-    /// Whether the tour may be written into a note in state `existing`.
+    /// Whether the tour may be written into a note in state `existing`, bound
+    /// through `slot`.
     ///
     /// Every argument is a refusal. `isFirstRun` is the caller's, and it is
     /// what stops the tour reappearing for somebody who deleted it; the other
-    /// two are this type's own, and they are what stops it landing on top of
+    /// three are this type's own, and they are what stops it landing on top of
     /// writing. `bufferIsEmpty` is not implied by the file being empty: the
     /// panel can hold bytes the file has not been given yet, and writing here
     /// would put the tour underneath them and then lose one of the two.
+    ///
+    /// `slot` is the refusal the other two cannot make. They ask whether the
+    /// file holds anything; this one asks whose file it is. A file the user
+    /// pointed this app at through Open With is theirs at a path they chose,
+    /// and the emptiness refusals do not cover it: an empty `.md` reads as
+    /// `.empty`, which is the state the tour is FOR in the app's own note. So
+    /// the `document` slot is refused outright, and the tour is only ever
+    /// written into a note this app started.
     public static func shouldWrite(existing: Existing,
                                    bufferIsEmpty: Bool,
-                                   isFirstRun: Bool) -> Bool {
-        guard isFirstRun, bufferIsEmpty else { return false }
+                                   isFirstRun: Bool,
+                                   slot: ActiveBinding.Slot) -> Bool {
+        guard isFirstRun, bufferIsEmpty, slot != .document else { return false }
         return existing != .hasContent
     }
 
