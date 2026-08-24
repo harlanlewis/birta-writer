@@ -1269,7 +1269,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         panel.title = "Scratchpad location"
         panel.nameFieldStringValue = Prefs.scratchpadURL.lastPathComponent
         panel.directoryURL = Prefs.scratchpadURL.deletingLastPathComponent()
-        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+        panel.allowedContentTypes = DocumentTypes.writtenContentTypes
         panel.beginSheetModal(for: window!) { [weak self] resp in
             guard resp == .OK, let url = panel.url, let self else { return }
             let previous = Prefs.notesDirectory

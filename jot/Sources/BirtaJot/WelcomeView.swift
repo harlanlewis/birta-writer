@@ -427,7 +427,7 @@ final class WelcomeView: NSView {
         panel.title = "Where your notes live"
         panel.nameFieldStringValue = Prefs.scratchpadURL.lastPathComponent
         panel.directoryURL = Prefs.scratchpadURL.deletingLastPathComponent()
-        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+        panel.allowedContentTypes = DocumentTypes.writtenContentTypes
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
             let previous = Prefs.notesDirectory

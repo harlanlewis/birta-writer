@@ -97,7 +97,7 @@ public struct NoteMove: Equatable, Sendable {
         let taken: (URL) -> Bool = { url in claimed.contains(url.path) || exists(url) }
 
         for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard entry.pathExtension.lowercased() == "md" else {
+            guard entry.pathExtension.lowercased() == DocumentTypes.written else {
                 leftBehind.append(entry)
                 continue
             }

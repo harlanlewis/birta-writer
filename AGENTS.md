@@ -168,6 +168,7 @@ jot/Sources/BirtaJotCore/TitlebarBand.swift   Where that strip starts and stops,
 jot/Sources/BirtaJot/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
 jot/Sources/BirtaJot/StatusOverlay.swift      The transient status line: legible with no frame, so the ink is measured and the scrim is the page's own paper colour
 jot/Sources/BirtaJotCore/ActiveBinding.swift  WHICH of Jot's three file settings is in force, so a rename writes back to the one it was read from
+jot/Sources/BirtaJotCore/DocumentTypes.swift  The file types the Mac app OPENS against the one it WRITES, and why those are two lists; the Open With claim's Swift half
 jot/Sources/BirtaJotCore/DocumentName.swift   What a typed filename means: the extension kept, `/` and `:` refused, an unchanged field not a rename
 jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes, when it does not, and when it asks instead; what the autosave setting promises in both directions
 jot/Sources/BirtaJotCore/RowAvailability.swift Whether a settings row can do what it says, and what colour the sentence under it is; the two are independent and both surfaces read them here

@@ -69,13 +69,12 @@ public enum NotesMove {
 
     /// Extensions Jot treats as a note worth carrying.
     ///
-    /// `.md` alone, and the narrowness is the point rather than an oversight.
-    /// Jot writes `.md` and nothing else: the name template ends in it and
-    /// every panel that picks a note filters on it. The folder is one Jot
-    /// shares rather than owns, so carrying a `.txt` somebody else put there
-    /// would be moving a stranger's file on the strength of it looking like a
-    /// note.
-    public static let noteExtensions: Set<String> = ["md"]
+    /// What this app WRITES alone, and the narrowness is the point rather than
+    /// an oversight. It is deliberately not the wider set the editor OPENS:
+    /// the folder is one this app shares rather than owns, so carrying a
+    /// stranger's `.mdx` would be moving their file on the strength of it
+    /// looking like a note. `DocumentTypes` holds the two lists apart.
+    public static let noteExtensions: Set<String> = [DocumentTypes.written]
 
     /// Build the plan.
     ///
