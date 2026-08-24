@@ -38,15 +38,33 @@ final class GlobalHotkey {
     /// succeeds, the key goes on reaching whoever asked for it first, and the
     /// status reports nothing wrong. That is the whole failure this app is
     /// trying to tell people about, so a caller checking the status was
-    /// checking something that never fired outside its own process. Exclusive
-    /// asks for the combination outright, so a holder anywhere on the machine
-    /// comes back as `eventHotKeyExistsErr` and the caller has something to
-    /// say.
+    /// checking something that never fired outside its own process.
     ///
-    /// Its reach stops at the Carbon registry, which is not everything macOS
-    /// binds: the app switcher and Mission Control are in it, Spotlight and
-    /// the screenshot keys are not. So a refusal is proof the summon will not
-    /// work, and a clean status is not proof that it will.
+    /// **Exclusive narrows that gap rather than closing it, and the limit is
+    /// measured rather than assumed.** Two processes, one chord, four
+    /// combinations:
+    ///
+    /// | holder | this app | result |
+    /// | -- | -- | -- |
+    /// | plain | plain | `noErr` |
+    /// | plain | exclusive | `noErr` |
+    /// | exclusive | exclusive | `eventHotKeyExistsErr` |
+    /// | exclusive | plain | `noErr` |
+    ///
+    /// So a refusal arrives only when the app that got there first ALSO asked
+    /// exclusively, and most apps do not. Asking exclusively is still strictly
+    /// better than not asking, because it is the only way any cross-process
+    /// refusal reaches us at all, and it costs nothing: the last row shows an
+    /// exclusive holder does not block a later plain request, so this does not
+    /// take the chord away from anybody.
+    ///
+    /// Its reach stops at the Carbon registry besides, which is not everything
+    /// macOS binds: the app switcher and Mission Control are in it, Spotlight
+    /// and the screenshot keys are not.
+    ///
+    /// The asymmetry both limits produce is the thing to hold onto: a refusal
+    /// is proof the summon will not work, and a clean status is NOT proof that
+    /// it will. Nothing here can tell somebody their chord is live.
     static let registrationOptions = OptionBits(kEventHotKeyExclusive)
 
     /// Bind (or rebind) the hotkey. Returns the OSStatus of the registration;
