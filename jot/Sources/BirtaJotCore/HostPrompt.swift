@@ -113,6 +113,41 @@ public enum HostPromptStep: Equatable {
     }
 }
 
+/// What to do with one `hostPrompt` request.
+///
+/// A separate type because the answer is a decision rather than a drawing, and
+/// every arm of it has to reply: the page holds a pending request against the
+/// id, so an arm that returned nothing would leave a flow waiting out its own
+/// timeout. Keeping it here rather than inside the coordinator is what lets
+/// the arms be checked without an application, which is the same reason
+/// `RowAvailability` and `AutosavePolicy` are shaped this way.
+public enum HostPromptDisposition: Equatable {
+    /// Draw this step and report what the person answers.
+    case draw(HostPromptStep)
+    /// This build cannot draw this kind of step. Said out loud rather than
+    /// dropped, because an unhandled message here is silent (MAR-390) and the
+    /// page would not be able to tell the two apart.
+    case unsupported
+    /// There is nothing to draw on, so the question cannot be put. Answered
+    /// immediately as a cancel: a sheet begun on a window that is not up never
+    /// calls back, and `decideFinalWrite` guards the same thing for the same
+    /// reason, where the consequence is an app that cannot be quit.
+    case cancel
+}
+
+extension HostPromptStep {
+    /// Decide what one request gets, given what parsed and whether there is a
+    /// window to put a sheet on.
+    public static func disposition(step: HostPromptStep?,
+                                   windowIsVisible: Bool) -> HostPromptDisposition {
+        guard let step else { return .unsupported }
+        // Order matters: a step that did not parse is answered `unsupported`
+        // whatever the window is doing, because that is a fact about this
+        // build rather than about this moment.
+        return windowIsVisible ? .draw(step) : .cancel
+    }
+}
+
 /// What Birta Writer for Mac reports about itself when a feedback report asks.
 ///
 /// It names THIS host, which is why the page cannot gather it: the extension
