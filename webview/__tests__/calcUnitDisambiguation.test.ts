@@ -17,6 +17,7 @@ import {
     disambiguate,
     ensureCalcUnits,
     evaluateCalc,
+    isCalcStructurallyValid,
     isDisambiguation,
 } from "../utils/calc";
 
@@ -132,6 +133,26 @@ describe("ambiguous unit names, through the shared ambiguity seam", () => {
         expect(small).toBeCloseTo(0.5, 6);
         expect(large).toBeCloseTo(500_000_000, 0);
         expect(small).not.toBe(large);
+    });
+
+    it("an ambiguous conversion should still READ as a formula, so it can be cued", () => {
+        // Two consequences ride on this and both are user-facing.
+        //
+        // The `=>` caret detection fixes its span from structure alone, so a
+        // line that stopped reading as a formula would never be offered the
+        // readings this feature exists to offer: the offer would be refused
+        // before the menu could be built.
+        //
+        // And a document written before this change can already contain
+        // `500 ML in l => 0.5`. The refresh engine leaves an answer it cannot
+        // recompute exactly where it is, rather than withdrawing it, so what
+        // makes that honest rather than silent is the line still classifying
+        // as a formula-that-has-no-value, which is what the stale cue reads.
+        expect(isCalcStructurallyValid("500 ML in l")).toBe(true);
+        expect(isCalcStructurallyValid("1 Mg in T")).toBe(true);
+        // The contrast that says the predicate still discriminates: a genuine
+        // dimension mismatch does NOT read as a formula.
+        expect(isCalcStructurallyValid("3 km in kg")).toBe(false);
     });
 
     it("an unambiguous conversion should keep answering exactly as before", () => {
