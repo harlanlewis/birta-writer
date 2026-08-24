@@ -5,13 +5,22 @@ import Foundation
 /// The screen introduces the app's OWN note and the folder it keeps notes in,
 /// and it asks a person to answer for both. That is the right thing to put in
 /// front of somebody who launched the app, and the wrong thing to put in front
-/// of somebody who asked it to open a particular file: they made a request,
-/// and a tour is not an answer to it.
+/// of somebody whose panel is bound to a file they pointed it at.
 ///
-/// Refusing here consumes nothing. `hasSeenWelcome` is set by the screen's own
-/// Continue rather than by this decision, so a launch that skips it is offered
-/// the tour by the next launch that did not come from a file. There is no
-/// state to reset and no second gate to keep in step.
+/// The refusal is on whether a document is BOUND, not on how this launch
+/// started, and the difference is the whole of what it protects. A launch is
+/// one moment; the binding survives quitting, so a gate on the launch defers
+/// the screen exactly once and the next ordinary launch shows it over the same
+/// document. `Coordinator.finishWelcome` spends `hasSeenWelcome` before it
+/// seeds, and `FirstRunNote.shouldWrite` refuses the `document` slot, so that
+/// launch would spend the one chance to offer the tour on a note it is not
+/// allowed to write. `AppFlavor.showsWelcomeScreen` keeps Show Welcome out of
+/// a release build, so there is no route back.
+///
+/// Deferring costs the questions and keeps the note, which is the right way
+/// round: General holds every row this screen asks, in the same order and the
+/// same words, so a person who never sees the screen can still answer all of
+/// it, and nothing but this screen ever writes the tour.
 ///
 /// What the refusal does NOT undo is `Prefs.isFirstLaunch`, which is the
 /// absence of every stored key: binding the document stores one, so a person
@@ -31,9 +40,9 @@ public enum FirstRunScreen {
     public static func shouldShow(forced: Bool,
                                   isUserStore: Bool,
                                   hasSeenWelcome: Bool,
-                                  launchedWithDocument: Bool) -> Bool {
+                                  documentBound: Bool) -> Bool {
         if forced { return true }
         guard isUserStore, !hasSeenWelcome else { return false }
-        return !launchedWithDocument
+        return !documentBound
     }
 }
