@@ -37,9 +37,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         buildStatusItem()
-        // Built BEFORE `start()`, which is where a refused hotkey is found
-        // out about and where the notice announcing it needs somewhere to hang.
-        coordinator.noticeAnchor = { [weak self] in self?.statusItem.button }
         coordinator.start()
         // Asked once a launch, in the background, and silent unless there is
         // something. `Updater` refuses for a development build, when the

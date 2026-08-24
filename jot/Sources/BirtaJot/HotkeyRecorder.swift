@@ -142,15 +142,6 @@ final class HotkeyRecorderView: NSView {
     override var acceptsFirstResponder: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        // The field also appears in the notice hung off the menu bar item,
-        // where the app can be in the background: `LSUIElement` means the
-        // notice can be on screen with somebody else's window in front. The
-        // recording monitor refuses every keystroke while its window is not
-        // key, so a click that does not bring the app forward leaves a field
-        // that lights up and records nothing. Harmless in Settings and on the
-        // welcome screen, where clicking has already made the app active.
-        if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
-        window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(self)
         if !recording { startRecording() }
     }
