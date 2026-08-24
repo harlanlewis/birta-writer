@@ -89,4 +89,44 @@ final class AutosavePolicyTests: XCTestCase {
             AutosavePolicy.action(for: .explicitSave, autosaveEnabled: true),
             AutosavePolicy.action(for: .explicitSave, autosaveEnabled: false))
     }
+
+    /// The panel showing the first-run screen is on screen, which is why a
+    /// visibility check alone passes it through. It is still nowhere to put
+    /// the question: the write embargo that screen carries means the buffer
+    /// and the file can never come back into step behind it, so the answer
+    /// would be asked for and never given, and the quit waiting on it never
+    /// finishes (MAR-411, reproduced: an Apple Event quit that never returns,
+    /// a second one answered -128, and SIGTERM ignored).
+    func testTheFirstRunScreenShouldBeNowhereToPutTheQuitQuestion() {
+        XCTAssertFalse(AutosavePolicy.canAsk(panelIsUp: true, firstRunScreenIsUp: true))
+    }
+
+    /// A panel that never came up cannot answer either: a sheet begun on it
+    /// never calls back.
+    func testAPanelThatIsNotOnScreenShouldBeNowhereToPutTheQuitQuestion() {
+        XCTAssertFalse(AutosavePolicy.canAsk(panelIsUp: false, firstRunScreenIsUp: false))
+    }
+
+    /// And it must still ASK in the ordinary case, or the setting's whole
+    /// promise is gone: an answer of false everywhere would keep the bytes
+    /// every time and never put the question, which passes both arms above.
+    func testAPanelShowingTheDocumentShouldBeAskedTheQuitQuestion() {
+        XCTAssertTrue(AutosavePolicy.canAsk(panelIsUp: true, firstRunScreenIsUp: false))
+    }
+
+    /// Both inputs, enumerated, so a rule that stopped reading one of them is
+    /// a failure rather than a pass. Written as the count of states that can
+    /// be asked, which is one of the four and would move if either input
+    /// stopped mattering.
+    func testExactlyOneOfTheFourStatesShouldBeAskable() {
+        var askable = 0
+        for panelIsUp in [true, false] {
+            for firstRun in [true, false] {
+                if AutosavePolicy.canAsk(panelIsUp: panelIsUp, firstRunScreenIsUp: firstRun) {
+                    askable += 1
+                }
+            }
+        }
+        XCTAssertEqual(askable, 1, "the question is putable in exactly one of the four states")
+    }
 }

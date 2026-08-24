@@ -1103,7 +1103,40 @@ final class Coordinator {
     /// the self-update swap. Neither has anyone to answer a sheet, and both
     /// have something waiting on the process to go, so a question there is a
     /// hang rather than a choice. Those quits write the buffer instead.
-    var quitIsUnattended = false
+    ///
+    /// It can arrive LATE, which is the case the observer below is for: the
+    /// sheet is already on the panel from a quit somebody started by hand, and
+    /// then a signal arrives from an installer or a logout. `NSApp.terminate`
+    /// does nothing while a terminate is already pending, so setting this flag
+    /// is the whole of what that signal can do, and without the observer it
+    /// would do nothing at all: the app would sit behind the question with
+    /// something waiting on it to go (MAR-411).
+    var quitIsUnattended = false {
+        didSet {
+            guard quitIsUnattended, !oldValue else { return }
+            answerQuitPromptUnattended()
+        }
+    }
+
+    /// Whether the quit question is on the panel right now.
+    ///
+    /// It is what tells the sheet below apart from the other one this same
+    /// window hosts (`HostPromptSheet`), which asks about something else
+    /// entirely and must not be answered on somebody's behalf.
+    private var quitPromptIsUp = false
+
+    /// Answer the question the way an unattended quit would have, if one is up.
+    ///
+    /// Ended through `endSheet` with the Save button's code rather than by
+    /// deciding here, so the answer runs the completion the sheet already has:
+    /// there is one place that turns an answer into a write, and a second copy
+    /// of that decision beside the sheet is how the two drift apart. The code
+    /// names a POSITION, so `UnsavedChangesPromptTests` pins Save to the first
+    /// button as well as the mapping.
+    private func answerQuitPromptUnattended() {
+        guard quitPromptIsUp, let sheet = promptWindow.attachedSheet else { return }
+        promptWindow.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+    }
 
     /// Set once the way out has been decided, so the last-chance write on the
     /// way through `applicationWillTerminate` does not undo the answer.
@@ -1174,19 +1207,31 @@ final class Coordinator {
             // the honest thing to do, since the question names a document the
             // person cannot otherwise see.
             if !isOnScreen { show() }
-            // And if it still is not up, keep the bytes rather than asking a
-            // window that cannot answer. A sheet begun on a window that never
-            // appears never calls back, and this quit is waiting on that call
-            // (`applicationShouldTerminate` answered `.terminateLater`), so
-            // the failure would be an app that cannot be quit.
-            guard promptWindow.isVisible else {
+            // And if there is nowhere to put the question, keep the bytes
+            // rather than asking a panel that cannot answer. `canAsk` holds
+            // both ways that happens and the argument for each; what they
+            // share is that the answer never arrives, and this quit is waiting
+            // on it (`applicationShouldTerminate` answered `.terminateLater`),
+            // so the failure is an app that cannot be quit (MAR-411).
+            //
+            // The write is a no-op on the first-run arm, because `writeLatest`
+            // is embargoed while that screen is up, and it stays here rather
+            // than being branched around: this is the one funnel every write
+            // goes through, and the embargo is that funnel's decision to make.
+            // So nothing was going to reach disk on that arm either way, which
+            // is what the embargo already decided; asking added the hang and
+            // nothing else, since Save there could not write either.
+            guard AutosavePolicy.canAsk(panelIsUp: promptWindow.isVisible,
+                                        firstRunScreenIsUp: isWelcoming) else {
                 writeLatest()
                 keep(.save)
                 return
             }
+            quitPromptIsUp = true
             UnsavedChangesPrompt.present(document: boundURL.lastPathComponent,
                                          on: promptWindow) { [weak self] answer in
                 guard let self else { keep(answer); return }
+                self.quitPromptIsUp = false
                 if answer == .save { self.writeLatest() }
                 keep(answer)
             }
