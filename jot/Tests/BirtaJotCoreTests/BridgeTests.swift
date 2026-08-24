@@ -9,6 +9,26 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"flushResult","id":"f1","content":"x","baseSyncVersion":1,"seq":4}"#),
                        .flushResult(id: "f1", content: "x", baseSyncVersion: 1, seq: 4))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openUrl","url":"https://a.b"}"#), .openUrl("https://a.b"))
+        // The host-prompt seam (MAR-395). A step that parses arrives whole.
+        XCTAssertEqual(
+            WebviewMessage.parse(#"{"type":"hostPrompt","id":"p1","step":{"kind":"input","title":"t","prompt":"q"}}"#),
+            .hostPrompt(id: "p1", step: .input(title: "t", prompt: "q", placeholder: nil,
+                                               required: nil, maxLength: nil)))
+        // A step this build cannot draw is STILL a request, carried with a nil
+        // step so the coordinator can answer `unsupported`. Filing it under
+        // `.other` would drop it silently, and the page would then wait out
+        // its whole timeout for a question nobody was ever asked.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"hostPrompt","id":"p2","step":{"kind":"colourWheel","title":"t"}}"#),
+                       .hostPrompt(id: "p2", step: nil))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"hostPrompt","id":"p3"}"#),
+                       .hostPrompt(id: "p3", step: nil))
+        // No id means no way to answer, so it is not a request at all.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"hostPrompt","step":{"kind":"input","title":"t","prompt":"q"}}"#),
+                       .other(type: "hostPrompt"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"requestHostDiagnostics","id":"d1"}"#),
+                       .requestHostDiagnostics(id: "d1"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"requestHostDiagnostics"}"#),
+                       .other(type: "requestHostDiagnostics"))
         // The wire name the page actually posts (`notifyAgentCancel`). The
         // parse table used to say `stopAgentRun`, which nothing sends, so a
         // click on the gutter marker reached `.other` and cancelled nothing.

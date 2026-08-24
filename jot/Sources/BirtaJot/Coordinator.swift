@@ -820,6 +820,10 @@ final class Coordinator {
             saveAgentAttachment(id: id, name: name, bytes: bytes)
         case let .showDatePicker(id, left, top, bottom):
             showDatePicker(id: id, left: left, top: top, bottom: bottom)
+        case let .hostPrompt(id, step):
+            showHostPrompt(id: id, step: step)
+        case let .requestHostDiagnostics(id):
+            host.send(.hostDiagnosticsResult(id: id, diagnostics: hostDiagnostics()))
         case let .resolveLinkCard(id, url):
             resolveLinkCard(id: id, url: url)
         case let .unfurlUrl(id, url):
@@ -1716,6 +1720,51 @@ final class Coordinator {
             self?.host.send(.datePickerResult(id: id, date: day))
             self?.host.focusEditor()
         }
+    }
+
+    /// Draw one step of a flow the page is driving, as a sheet on the panel.
+    ///
+    /// Answered exactly once, and answered in every arm: the page holds a
+    /// pending request against this id, so a step this build cannot draw says
+    /// `unsupported` rather than going quiet. Silence here is indistinguishable
+    /// from a message correctly ignored (MAR-390), which would leave the flow
+    /// waiting out its own timeout for a question that was never asked.
+    private func showHostPrompt(id: String, step: HostPromptStep?) {
+        guard let step else {
+            host.send(.hostPromptResult(id: id, value: nil, unsupported: true))
+            return
+        }
+        HostPromptSheet.present(step, on: promptWindow) { [weak self] value in
+            self?.host.send(.hostPromptResult(id: id, value: value, unsupported: false))
+            self?.host.focusEditor()
+        }
+    }
+
+    /// What this app reports about itself when a feedback report asks.
+    ///
+    /// The app and macOS rather than an extension and a VS Code, because those
+    /// are what is actually running, and this app's own settings rather than
+    /// `birta.*` keys it does not have. Never the note, its path, or the folder
+    /// it is in: the composer is never given any of the three.
+    private func hostDiagnostics() -> HostDiagnostics {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        // Compile-time, so it names the slice actually running rather than the
+        // slices the binary was built with.
+        #if arch(arm64)
+        let architecture = "arm64"
+        #else
+        let architecture = "x86_64"
+        #endif
+        // The flavour belongs here because it changes what a reader can
+        // reproduce: a development build has its own settings, its own note
+        // and its own chord, so a report from one that omitted it would send
+        // somebody looking in the release copy's state.
+        let flavour = AppFlavor.current == .dev ? " (development build)" : ""
+        return HostDiagnostics(
+            appVersion: AboutInfo.current.versionLine,
+            systemVersion: "macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)",
+            platform: "darwin \(architecture)\(flavour)",
+            changedSettings: Prefs.changedSettingsDescription())
     }
 
     /// Say something along the bottom of the panel, from outside.

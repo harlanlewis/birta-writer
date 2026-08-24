@@ -1,4 +1,5 @@
 import type { ToExtensionMessage, ToWebviewMessage, ProjectImage, TextCount } from "../shared/messages";
+import type { HostPromptStep } from "../shared/hostPrompt";
 import { isReadOnly } from "./readOnly";
 
 export type { ProjectImage };
@@ -154,6 +155,23 @@ export function notifyShowDatePicker(
     rect: { left: number; top: number; bottom: number },
 ): void {
     vscode.postMessage({ type: "showDatePicker", id, ...rect });
+}
+
+/**
+ * Ask the host to draw one step of a flow in its own idiom (MAR-395). The
+ * reply arrives as `hostPromptResult` carrying the same `id`, exactly once.
+ */
+export function notifyHostPrompt(id: string, step: HostPromptStep): void {
+    vscode.postMessage({ type: "hostPrompt", id, step });
+}
+
+/**
+ * Ask the host for the environment facts a feedback report carries. They name
+ * the host, so only the host can gather them; the reply is
+ * `hostDiagnosticsResult` with the same `id`.
+ */
+export function notifyRequestHostDiagnostics(id: string): void {
+    vscode.postMessage({ type: "requestHostDiagnostics", id });
 }
 
 /**

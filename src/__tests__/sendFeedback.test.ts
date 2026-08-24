@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
 import { runSendFeedback, collectDiagnostics } from "../feedback/sendFeedback";
-import { composeFeedback } from "../feedback/compose";
+import { composeFeedback } from "../../shared/feedback/compose";
 
 const showQuickPick = vscode.window.showQuickPick as unknown as ReturnType<typeof vi.fn>;
 const showInputBox = vscode.window.showInputBox as unknown as ReturnType<typeof vi.fn>;
@@ -9,7 +9,16 @@ const openExternal = vscode.env.openExternal as unknown as ReturnType<typeof vi.
 const writeText = vscode.env.clipboard.writeText as unknown as ReturnType<typeof vi.fn>;
 const showErrorMessage = vscode.window.showErrorMessage as unknown as ReturnType<typeof vi.fn>;
 
-/** Answer the four prompts in order: summary, disappointment, detail, destination. */
+/**
+ * Answer the four prompts in order: summary, disappointment, detail,
+ * destination.
+ *
+ * A quick pick resolves with one of the items it was handed, so these mirror
+ * what `askViaPalette` puts in them. Since MAR-395 that is the step row's own
+ * `id`, where it used to be a `mood` / `channel` field named per prompt: the
+ * renderer draws any flow's rows now, so it cannot know a field name that only
+ * this flow has.
+ */
 function answer(options: {
     summary?: string;
     mood?: string;
@@ -17,8 +26,8 @@ function answer(options: {
     channel?: string;
 }): void {
     showQuickPick
-        .mockResolvedValueOnce({ mood: options.mood ?? "skip" })
-        .mockResolvedValueOnce({ channel: options.channel ?? "github" });
+        .mockResolvedValueOnce({ id: options.mood ?? "skip" })
+        .mockResolvedValueOnce({ id: options.channel ?? "github" });
     showInputBox
         .mockResolvedValueOnce("summary" in options ? options.summary : "a summary")
         .mockResolvedValueOnce("details" in options ? options.details : "some details");
@@ -131,25 +140,32 @@ describe("runSendFeedback", () => {
     it("every answer on the disappointment scale should name what it is about", async () => {
         answer({});
         await runSendFeedback("0.0.0");
-        const rows = showQuickPick.mock.calls[0][0] as Array<{ mood: string; label: string }>;
+        const rows = showQuickPick.mock.calls[0][0] as Array<{ id: string; label: string }>;
         // Asked at the end of a bug report, a bare "Not disappointed" reads as
         // a verdict on the issue rather than on the editor. The rows are what
         // people read, so the rows carry the subject.
-        for (const row of rows.filter((r) => r.mood !== "skip")) {
+        for (const row of rows.filter((r) => r.id !== "skip")) {
             expect(row.label).toMatch(/—/);
         }
-        expect(rows.at(-1)).toEqual({ mood: "skip", label: "Skip this question" });
+        expect(rows.at(-1)).toEqual({ id: "skip", label: "Skip this question" });
     });
 
     it("the destination step should say what each channel costs", async () => {
         answer({});
         await runSendFeedback("0.0.0");
-        const rows = showQuickPick.mock.calls[1][0] as Array<{ channel: string; detail: string }>;
-        expect(rows.map((r) => r.channel)).toEqual(["github", "mail", "clipboard"]);
+        const rows = showQuickPick.mock.calls[1][0] as Array<{ id: string; label: string; detail: string }>;
+        expect(rows.map((r) => r.id)).toEqual(["github", "mail", "clipboard"]);
         // The whole reason this step exists: someone without a GitHub account
         // must find out here, not at a login wall holding their report.
         expect(rows[0].detail).toMatch(/GitHub account/i);
         expect(rows[1].detail).toMatch(/no account/i);
+        // The codicon is applied by THIS renderer rather than carried in the
+        // step, so a host that is not VS Code never draws `$(github)` as text.
+        expect(rows.map((r) => r.label)).toEqual([
+            "$(github) Open a prefilled GitHub issue",
+            "$(mail) Open a prefilled email",
+            "$(clippy) Copy to the clipboard",
+        ]);
     });
 
     it("the mail channel should open a prefilled draft to the Birta Labs address", async () => {
@@ -169,7 +185,7 @@ describe("runSendFeedback", () => {
 
     it("cancelling the destination step should send nowhere", async () => {
         showInputBox.mockResolvedValueOnce("a summary").mockResolvedValueOnce("d");
-        showQuickPick.mockResolvedValueOnce({ mood: "skip" }).mockResolvedValueOnce(undefined);
+        showQuickPick.mockResolvedValueOnce({ id: "skip" }).mockResolvedValueOnce(undefined);
         await runSendFeedback("0.0.0");
         expect(openExternal).not.toHaveBeenCalled();
         expect(writeText).not.toHaveBeenCalled();
@@ -247,8 +263,14 @@ describe("runSendFeedback", () => {
     });
 
     it("escaping the optional detail step should abort, but an empty answer should continue", async () => {
+        // Exactly as many answers as this arm consumes, and no more. Escaping
+        // step 3 means step 4 is never asked, so a queued destination would sit
+        // unconsumed — and `vi.clearAllMocks()` below clears CALL HISTORY, not
+        // the `mockResolvedValueOnce` queue. A leftover therefore becomes the
+        // next flow's first quick-pick answer, silently, which is what this
+        // test used to do to the arm after it.
         showInputBox.mockResolvedValueOnce("a summary").mockResolvedValueOnce(undefined);
-        showQuickPick.mockResolvedValueOnce({ mood: "skip" }).mockResolvedValueOnce({ channel: "github" });
+        showQuickPick.mockResolvedValueOnce({ id: "skip" });
         await runSendFeedback("0.0.0");
         expect(openExternal).not.toHaveBeenCalled();
 
