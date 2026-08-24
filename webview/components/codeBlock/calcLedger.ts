@@ -20,7 +20,7 @@
  * in the NodeView and reaches this module as `isActive`.
  */
 import { t } from "@/i18n";
-import { ambiguousReadings, ensureCalcUnits, evaluateCalcBlock } from "@/utils/calc";
+import { ambiguousReadings, ensureCalcUnits, evaluateCalcBlock, isAmbiguousUnitName } from "@/utils/calc";
 
 /**
  * The error dash's tooltip. A line that merely failed says so; a line the
@@ -33,15 +33,30 @@ import { ambiguousReadings, ensureCalcUnits, evaluateCalcBlock } from "@/utils/c
  * second ambiguous name can never leave this sentence naming the wrong one.
  * (Asserted through the rendered row in calcBlock.test.ts — a hardcoded name
  * here is invisible to any test that only checks the row's `ambiguous` data.)
+ *
+ * Two sentences, because the engine now refuses two KINDS of name and they are
+ * not written the same way. A function is named with its call parens and a
+ * unit is named where it stands, so the sentence is picked per name rather
+ * than per line: a line can carry one of each.
  */
 function calcErrorTitle(ambiguous?: readonly string[]): string {
     if (!ambiguous?.length) { return t("This line looks like a formula but has no value"); }
     return ambiguous
-        .map((name) =>
-            t("{0} means different things in different calculators, so an answer here would not survive being pasted into one — write {1} instead")
+        .map((name) => {
+            const readings = ambiguousReadings(name);
+            // A UNIT is written where it stands; a FUNCTION is written with its
+            // call parens. Spelling both the same way would tell the reader of
+            // `500 ML in l` to write `milliliter(…)`, which names something the
+            // line does not contain and which no calculator takes.
+            if (isAmbiguousUnitName(name)) {
+                return t("{0} reads two ways here, so an answer would not say which was meant — write {1} instead")
+                    .replace("{0}", name)
+                    .replace("{1}", readings.join(" or "));
+            }
+            return t("{0} means different things in different calculators, so an answer here would not survive being pasted into one — write {1} instead")
                 .replace("{0}", `${name}(…)`)
-                .replace("{1}", ambiguousReadings(name).map((r) => `${r}(…)`).join(" or ")),
-        )
+                .replace("{1}", readings.map((r) => `${r}(…)`).join(" or "));
+        })
         .join(" ");
 }
 

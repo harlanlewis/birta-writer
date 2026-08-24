@@ -180,6 +180,23 @@ describe("calc code-block preview", () => {
         expect(titles[1]).toContain("no value");
     });
 
+    it("a line refused for an ambiguous UNIT should name the unit as written, not as a call", async () => {
+        // The engine refuses two kinds of name and they are not spelled the
+        // same way. Telling the reader of `500 ML in l` to write
+        // `milliliter(…)` would name something the line does not contain and
+        // that no calculator takes, which is what one sentence for both did.
+        const { nv } = await makeCodeBlockView("```calc\n500 ML in l\n```\n");
+        await wait();
+        const titles = Array.from(nv.dom.querySelectorAll(".calc-row-result--error"))
+            .map((el) => (el as HTMLElement).title);
+        expect(titles).toHaveLength(1);
+        expect(titles[0]).toContain("ML");
+        expect(titles[0]).toContain("milliliter");
+        expect(titles[0]).toContain("megaliter");
+        // The discriminating half: no call parens anywhere in a unit's sentence.
+        expect(titles[0]).not.toContain("(…)");
+    });
+
     it("a source line already ending in => should not double the = lead-in", async () => {
         const { nv } = await makeCodeBlockView("```calc\n2 + 3 =>\n```\n");
         await wait();

@@ -261,6 +261,18 @@ function unitSlots(input: string): [number, string][] {
 const TRAILING_ANSWER = /\s*-?\d(?:[\d,]*\d)?(?:\.\d+)?[ \t]*$/;
 
 /**
+ * Whether an ambiguous name is a UNIT rather than a function.
+ *
+ * A surface that speaks about the refusal has to know which: a unit is written
+ * where it stands and a function is written with its call parens, so one
+ * sentence for both would tell the reader of `500 ML in l` to write
+ * `milliliter(…)`.
+ */
+export function isAmbiguousUnitName(name: string): boolean {
+    return ambiguousUnitReadings(name).length > 0;
+}
+
+/**
  * Every ambiguous name in `input`, functions and units together — what a
  * surface asks when it has to speak about why a line refused to compute.
  */
