@@ -12,18 +12,18 @@ final class FirstRunScreenTests: XCTestCase {
         for forced in [true, false] {
             for isUserStore in [true, false] {
                 for hasSeenWelcome in [true, false] {
-                    for launchedWithDocument in [true, false] {
+                    for documentBound in [true, false] {
                         let show = FirstRunScreen.shouldShow(forced: forced,
                                                              isUserStore: isUserStore,
                                                              hasSeenWelcome: hasSeenWelcome,
-                                                             documentBound: launchedWithDocument)
+                                                             documentBound: documentBound)
                         // The invariant, stated once and checked over
                         // everything: forced overrides, and otherwise all three
                         // have to permit it.
                         let permitted = forced
-                            || (isUserStore && !hasSeenWelcome && !launchedWithDocument)
+                            || (isUserStore && !hasSeenWelcome && !documentBound)
                         XCTAssertEqual(show, permitted,
-                                       "forced=\(forced) user store=\(isUserStore) seen=\(hasSeenWelcome) document=\(launchedWithDocument)")
+                                       "forced=\(forced) user store=\(isUserStore) seen=\(hasSeenWelcome) document=\(documentBound)")
                         if show { shown += 1 } else { refused += 1 }
                     }
                 }
