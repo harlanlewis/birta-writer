@@ -35,7 +35,7 @@ import { createSuggestMenuFromRows } from "../components/pathLink/linkTargetComp
 import { CARET_CONTEXT_WINDOW, caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
 import {
     ARITHMETIC_CLASS,
-    ambiguousCallsIn,
+    ambiguousNamesIn,
     ambiguousReadings,
     buildScopeFromLines,
     detectArrowExpression,
@@ -265,7 +265,7 @@ interface ArrowRow {
  * value) or when no reading computes either — nothing is offered over a guess.
  */
 function readingRows(query: string, scope?: Map<string, number>): ArrowRow[] {
-    const names = ambiguousCallsIn(query);
+    const names = ambiguousNamesIn(query);
     if (names.length === 0) { return []; }
     const rows: ArrowRow[] = [];
     // One ambiguous name exists today; with two, only the reading's OWN name is

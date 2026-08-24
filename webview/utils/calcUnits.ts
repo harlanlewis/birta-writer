@@ -96,6 +96,97 @@ const LEGACY_UNITS = new Set([
     "pint", "pints", "quart", "quarts", "gal", "gallon", "gallons",
 ]);
 
+/**
+ * The two explicit spellings offered for a name the fold silently decides,
+ * as [what the fold picks, what exact case would have meant].
+ *
+ * A TABLE of spellings, not of ambiguity: which names are ambiguous is derived
+ * from the catalog by `ambiguousUnitReadings` and this is only consulted after
+ * that says yes. The split matters because the two rot in opposite directions.
+ * A mathjs bump that makes a tenth name ambiguous must not fall silently
+ * through the fold, which is what a hand-listed ambiguity set would let it do;
+ * `calcUnitAmbiguity.test.ts` derives the set and fails when an entry here is
+ * missing for it.
+ *
+ * Every spelling is one the fold does not own, so writing it into the document
+ * settles the question permanently — the same property that makes `log10` the
+ * answer to `log`, and the reason the reading is written back rather than
+ * remembered somewhere the text cannot carry.
+ */
+const AMBIGUOUS_UNIT_SPELLINGS: Record<string, readonly [string, string]> = {
+    Mm: ["millimeter", "megameter"],
+    Mg: ["milligram", "megagram"],
+    T: ["tonne", "tesla"],
+    MS: ["millisecond", "megasiemens"],
+    Ms: ["millisecond", "megasecond"],
+    S: ["second", "siemens"],
+    H: ["hour", "henry"],
+    ML: ["milliliter", "megaliter"],
+    Ml: ["milliliter", "megaliter"],
+};
+
+/** Every explicit spelling offered for some ambiguous unit name. */
+const UNIT_DISAMBIGUATIONS = new Set<string>(Object.values(AMBIGUOUS_UNIT_SPELLINGS).flat());
+
+/**
+ * Whether the fold CHANGES what `name` means, asked of the catalog rather than
+ * of a list.
+ *
+ * Three conditions, and each excludes a class that must keep working silently:
+ * the user typed a capital (a lowercase name is never a question), the fold
+ * owns the lowercase form, and the exact-case form resolves to something the
+ * folded one does not. That last one is the real test and it is why this is
+ * derived: of the 118 capitalized spellings of the legacy list, 109 have no
+ * competing exact-case reading at all (`KM`, `Gallons`, `Minute`) or resolve
+ * identically to it (`L` IS the litre in mathjs), and asking about any of them
+ * would be a question with one answer.
+ *
+ * Compared by CONVERSION rather than by spelling: `unit(1, exact).toNumber(
+ * lower)` is 1 when the two mean the same thing, some other ratio when they
+ * differ by a prefix, and throws when they are different dimensions entirely
+ * (tesla against tonne). Comparing the names themselves would be a tautology,
+ * since they differ in case by construction.
+ */
+function foldChangesMeaning(name: string): boolean {
+    if (!unitMath) { return false; }
+    const lower = name.toLowerCase();
+    if (name === lower || !LEGACY_UNITS.has(lower)) { return false; }
+    let exact: { toNumber(target: string): number };
+    try {
+        exact = unitMath.unit(1, name);
+    } catch {
+        return false; // no competing reading — the fold is the only one
+    }
+    try {
+        return exact.toNumber(lower) !== 1;
+    } catch {
+        return true; // different dimensions: as ambiguous as it gets
+    }
+}
+
+/**
+ * The explicit spellings that settle `name`, or `[]` when the fold is not
+ * deciding anything. Empty while the engine is cold, so a caller that has not
+ * awaited `ensureCalcUnits()` under-claims rather than guessing.
+ */
+export function ambiguousUnitReadings(name: string): readonly string[] {
+    return foldChangesMeaning(name) ? (AMBIGUOUS_UNIT_SPELLINGS[name] ?? []) : [];
+}
+
+/** Whether `name` is one of the explicit spellings offered for an ambiguous
+ * unit — the "the user picked a reading" test on the suggestion path. */
+export function isUnitDisambiguation(name: string): boolean {
+    return UNIT_DISAMBIGUATIONS.has(name);
+}
+
+/** The ambiguity table's keys, for the guard that derives the set against it. */
+export const AMBIGUOUS_UNIT_SPELLING_KEYS: readonly string[] = Object.keys(AMBIGUOUS_UNIT_SPELLINGS);
+
+/** Whether the fold would decide `name`'s meaning — the guard's derived half. */
+export function unitFoldIsAmbiguous(name: string): boolean {
+    return foldChangesMeaning(name);
+}
+
 /** Resolution candidates for a user-typed unit name, in priority order. */
 function candidates(name: string): string[] {
     const lower = name.toLowerCase();
@@ -131,6 +222,26 @@ function makeUnit(value: number, name: string): { toNumber(target: string): numb
  * ensureCalcUnits() first; detection paths treat null as "offer nothing").
  */
 export function convertUnit(value: number, from: string, to: string): number | null {
+    // A name the fold would decide has no value until the writer says which
+    // reading they meant. Refusing here is the whole point: the surfaces above
+    // then offer the two readings instead of printing one of them as fact,
+    // exactly as they already do for an ambiguous function name.
+    if (foldChangesMeaning(from) || foldChangesMeaning(to)) { return null; }
+    return convertResolved(value, from, to);
+}
+
+/**
+ * The conversion with the fold applied and no ambiguity check — the DIMENSION
+ * question, which is a different question from "what did they mean".
+ *
+ * `500 ML in L` is a well-formed conversion between two volumes whichever
+ * reading wins, so the classifier that decides whether a line is a formula at
+ * all must still see a compatible pair. Routing that through `convertUnit`
+ * would make an ambiguous line indistinguishable from `3 km in kg`, and a line
+ * that can never compute is refused outright rather than offered — so the
+ * suggestion this feature exists to show would never appear.
+ */
+function convertResolved(value: number, from: string, to: string): number | null {
     const unit = makeUnit(value, from);
     if (!unit) { return null; }
     for (const spelling of candidates(to)) {
@@ -156,5 +267,8 @@ export function isKnownUnit(name: string): boolean {
  * detection must under-claim, never guess.
  */
 export function unitsCompatible(from: string, to: string): boolean {
-    return convertUnit(1, from, to) !== null;
+    // convertResolved, not convertUnit: this asks whether the two are the same
+    // KIND of thing, which an unsettled reading does not change (see its
+    // header). An ambiguous pair is compatible and simply has no value yet.
+    return convertResolved(1, from, to) !== null;
 }

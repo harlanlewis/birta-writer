@@ -75,7 +75,14 @@
  *   primary := number | ident | fn '(' expr ')' | '(' expr ')'
  *              // ident/fn only on the identifier-allowing (`=>`/block) path
  */
-import { calcUnitsReady, convertUnit, isKnownUnit, unitsCompatible } from "./calcUnits";
+import {
+    ambiguousUnitReadings,
+    calcUnitsReady,
+    convertUnit,
+    isKnownUnit,
+    isUnitDisambiguation,
+    unitsCompatible,
+} from "./calcUnits";
 
 /**
  * Rounds halves AWAY FROM ZERO (`2.5` → 3, `-2.5` → -3), so `round(-x)` is
@@ -177,15 +184,88 @@ function isCallName(name: string): boolean {
     return FUNCTIONS.has(lower) || AMBIGUOUS_FUNCTIONS.has(lower);
 }
 
-/** The explicit spellings that settle `name`, or `[]` when it isn't ambiguous. */
+/**
+ * The explicit spellings that settle `name`, or `[]` when it isn't ambiguous.
+ *
+ * Two kinds of ambiguity answer here, deliberately through one function: a
+ * function the world cannot agree on (`log`), and a unit name whose meaning
+ * the legacy case-fold decides (`ML`). They are the same question to every
+ * surface above — refuse the value, offer the readings, write the pick into
+ * the text — so they resolve through one call and no surface branches on which
+ * kind it got.
+ *
+ * A function name is matched case-insensitively and a unit name exactly, which
+ * is not an inconsistency: `LOG(` and `log(` are the same call, whereas the
+ * case IS the question for a unit (`Ms` and `MS` mean different things, and
+ * `ms` means neither).
+ */
 export function ambiguousReadings(name: string): readonly string[] {
-    return AMBIGUOUS_FUNCTIONS.get(name.toLowerCase()) ?? [];
+    const fn = AMBIGUOUS_FUNCTIONS.get(name.toLowerCase());
+    return fn ?? ambiguousUnitReadings(name);
 }
 
 /** Whether `name` is one of the explicit spellings offered for an ambiguous
  * name — the "the user picked a reading" test on the suggestion path. */
 export function isDisambiguation(name: string): boolean {
-    return DISAMBIGUATIONS.has(name);
+    return DISAMBIGUATIONS.has(name) || isUnitDisambiguation(name);
+}
+
+/**
+ * The ambiguous UNIT names in `input`, in the order they are written.
+ *
+ * Structural, not a text scan, and that is the difference from
+ * `ambiguousCallsIn` above: a unit name is only a unit where the conversion
+ * SHAPE puts one, so `parseUnitForm` says which two words are units and this
+ * asks the catalog about exactly those. A scan would have to guess, and would
+ * fire on the `T` in prose.
+ *
+ * Empty while the lazy engine is cold, because the catalog is what makes a
+ * name ambiguous — a caller on a detection path treats that as "offer
+ * nothing", never as "not ambiguous".
+ */
+export function ambiguousUnitsIn(input: string): string[] {
+    return unitSlots(input)
+        .map(([, name]) => name)
+        .filter((n) => ambiguousUnitReadings(n).length > 0);
+}
+
+/**
+ * Where the unit names are in `input`, as `[offset, name]`, in written order.
+ *
+ * BOTH conversion shapes, which is the thing to keep in step: the numeric form
+ * (`500 ML in l`) has a source and a target, and the tagged form (`t in ML`,
+ * where `t` is a variable carrying a unit tag) has only a target — its first
+ * token is a variable name and must never be read as a unit.
+ */
+function unitSlots(input: string): [number, string][] {
+    // Callers do NOT hand this a clean expression, which is the same trap
+    // `ambiguousCallsIn` documents above and the reason that one is text-level.
+    // `applyArrowResult` rewrites the document REGION, which carries the
+    // trailing `=>` and any answer already written after it; both parsers here
+    // are end-anchored and match neither. Trimming only the TAIL is what keeps
+    // this structural: every offset is measured from the start, so it is
+    // unaffected by what was removed.
+    const text = input.replace(TRAILING_ANSWER, "").replace(CALC_TRAILING_EQ, "");
+    const form = parseUnitForm(text);
+    if (form) { return [[form.fromAt, form.fromUnit], [form.toAt, form.toUnit]]; }
+    const tagged = parseTaggedConversion(text);
+    if (!tagged) { return []; }
+    // Anchored at the end by TAGGED_CONVERSION, so the last word is the unit.
+    const at = text.lastIndexOf(tagged.toUnit);
+    return at < 0 ? [] : [[at, tagged.toUnit]];
+}
+
+/** An answer calc has already written after a `=>` — the shape
+ *  `staleResultLengthAfter` matches, so a re-pick reparses the equation
+ *  rather than reading the old number as part of the target unit. */
+const TRAILING_ANSWER = /\s*-?\d(?:[\d,]*\d)?(?:\.\d+)?[ \t]*$/;
+
+/**
+ * Every ambiguous name in `input`, functions and units together — what a
+ * surface asks when it has to speak about why a line refused to compute.
+ */
+export function ambiguousNamesIn(input: string): string[] {
+    return [...new Set([...ambiguousCallsIn(input), ...ambiguousUnitsIn(input)])];
 }
 
 /**
@@ -222,6 +302,31 @@ export function disambiguate(text: string, reading: string): string {
     let out = text;
     for (const [name, readings] of AMBIGUOUS_FUNCTIONS) {
         if (readings.includes(reading)) { out = out.replace(AMBIGUOUS_CALL.get(name)!.all, reading); }
+    }
+    return disambiguateUnit(out, reading);
+}
+
+/**
+ * `text` with the ambiguous unit name that `reading` settles rewritten to it
+ * (`disambiguateUnit("500 ML in L", "milliliter")` → `"500 milliliter in L"`).
+ *
+ * Rewritten BY POSITION rather than by a text replace, because a unit name can
+ * be a substring of the expression beside it and because only the name in the
+ * unit slot is a unit at all: in `T * 2 T in kg` the leading `T` is a variable
+ * and must not move.
+ *
+ * A reading that settles neither slot leaves the text alone, so the expression
+ * still refuses to compute — the same honest degradation the function path
+ * takes when a reading does not belong to the name it was offered for.
+ */
+function disambiguateUnit(text: string, reading: string): string {
+    // Right to left, so rewriting the target cannot shift the source's offset.
+    const slots = unitSlots(text).reverse();
+    let out = text;
+    for (const [at, name] of slots) {
+        if (ambiguousUnitReadings(name).includes(reading)) {
+            out = out.slice(0, at) + reading + out.slice(at + name.length);
+        }
     }
     return out;
 }
@@ -954,6 +1059,11 @@ interface UnitForm {
     numExpr: string;
     fromUnit: string;
     toUnit: string;
+    /** Where each unit name starts in the input, so a name can be rewritten in
+     *  place. Both units are single tokens, so the offset plus the name's own
+     *  length is the whole span. */
+    fromAt: number;
+    toAt: number;
 }
 
 /**
@@ -979,7 +1089,15 @@ function parseUnitForm(input: string): UnitForm | null {
     const fromUnit = unitMatch[1];
     const numExpr = left.slice(0, unitMatch.index).trim();
     if (!numExpr) { return null; }
-    return { numExpr, fromUnit, toUnit };
+    // `left` is a prefix of `input`, so an offset into it is already an offset
+    // into `input`; the target is the last token of the match.
+    return {
+        numExpr,
+        fromUnit,
+        toUnit,
+        fromAt: unitMatch.index,
+        toAt: sep.index + sep[0].length - toUnit.length,
+    };
 }
 
 /**
@@ -1544,7 +1662,7 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
     const scope: CalcScope = new Map<string, number>();
     /** An `error` row, naming the ambiguity when that is why it has no value. */
     const errorLine = (raw: string, inspect: string): CalcBlockLine => {
-        const ambiguous = ambiguousCallsIn(inspect);
+        const ambiguous = ambiguousNamesIn(inspect);
         return ambiguous.length > 0
             ? { raw, result: null, kind: "error", ambiguous }
             : { raw, result: null, kind: "error" };
