@@ -1,0 +1,67 @@
+<!doctype html>
+<!-- e2e harness page for e2e/helpFlow: a host that ANSWERS the host-prompt
+     seam (MAR-395), which is the only way to drive `/help` past its first
+     question. The stub stands in for what VS Code and Birta Writer for Mac
+     each draw natively; what it proves is the page's half, which is the half
+     both surfaces share.
+
+     Answers are scripted from `window.__promptScript`, one per step, in order.
+     A null entry is a cancel, so a check can walk the cancel matrix through
+     the real bundle rather than through a unit-test fake. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-light"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  // Overwritten per check. Each entry answers one step, in order.
+  window.__promptScript = [];
+  // The steps the page actually asked for, so a check can assert the questions
+  // rather than only the answer.
+  window.__promptsSeen = [];
+  const CONTENT = `# Journal\n\nFirst line.\n\nSecond line.\n`;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+      if (msg.type === "requestHostDiagnostics") {
+        window.postMessage({
+          type: "hostDiagnosticsResult",
+          id: msg.id,
+          diagnostics: {
+            extensionVersion: "9.9.9",
+            hostVersion: "a stub host",
+            platform: "the e2e harness",
+            changedSettings: [],
+          },
+        }, "*");
+      }
+      if (msg.type === "hostPrompt") {
+        window.__promptsSeen.push(msg.step);
+        const answer = window.__promptScript[window.__promptsSeen.length - 1];
+        // A real host answers asynchronously, after a person has read the
+        // question. Answering synchronously here would let the page's own
+        // pending table be right for the wrong reason.
+        setTimeout(() => {
+          window.postMessage({
+            type: "hostPromptResult",
+            id: msg.id,
+            value: answer === undefined ? null : answer,
+          }, "*");
+        }, 10);
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

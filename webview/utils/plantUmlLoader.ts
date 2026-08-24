@@ -75,7 +75,13 @@
  * the registry is not a runtime dependency), and verified end-to-end by
  * `e2e/plantUmlRender`. When an update IS wanted, the route is to build the
  * wasm from the crate or pick up a supramark package once one exists, not to
- * bump a version that will never move. Tracked in MAR-331.
+ * bump a version that will never move.
+ *
+ * This paragraph IS the record, and there is deliberately no ticket beside it.
+ * MAR-331 said all of the above and recommended waiting for a trigger, which
+ * is a thing to read at the moment somebody touches this loader rather than a
+ * thing to meet while ranking a backlog; and the trigger, a wrong render or
+ * somebody wanting post-1.2026.2 syntax, arrives as its own bug report.
  *
  * IF YOU ARE AUDITING THE BUNDLE AND FOUND `License GPL`: that string is in
  * `dist/`, and it is output data rather than a license grant. The engine can
