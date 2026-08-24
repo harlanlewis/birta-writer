@@ -1,8 +1,8 @@
 /**
- * src/feedback/channels.ts
+ * shared/feedback/channels.ts
  *
  * Where a composed feedback message can go, and the URLs that take it there.
- * Pure — it builds strings; `sendFeedback.ts` is what hands them to the host.
+ * Pure — it builds strings; `src/feedback/sendFeedback.ts` and the page's own flow are what hand them to the host.
  *
  * **This is why the feedback command is rung 0** (`docs/NETWORK_POSTURE.md`
  * §1): Birta never makes the request. It composes a URL and asks the host to

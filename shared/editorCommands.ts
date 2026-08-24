@@ -143,6 +143,16 @@ export const EDITOR_COMMANDS = [
     // lifts out, different-kind retypes in place, outside wraps. Not in the
     // palette — insertCallout is the plain insert everywhere else.
     { id: "toggleCallout", title: "Toggle Callout", palette: false, sections: [] },
+    // `/help` (MAR-395): the Send Feedback questions, put from inside the
+    // document rather than from a palette the editor's own surfaces cannot
+    // reach. Ungated, because what it needs is a host that can draw a prompt
+    // and both shipped surfaces can; a host that cannot says so explicitly
+    // (`hostPromptResult`'s `unsupported`) rather than going quiet.
+    //
+    // `birta.sendFeedback` keeps its own palette entry and its own keybinding.
+    // The two are one flow drawn by one renderer, so neither is an alias of
+    // the other and there is nothing to keep in step by hand.
+    { id: "openHelp", title: "Help and Feedback", palette: true, sections: [] },
     { id: "openFind", title: "Find", palette: true, sections: [] },
     { id: "openFindReplace", title: "Replace", palette: true, sections: [] },
     // Find navigation is contributed (rather than handled as hardcoded webview

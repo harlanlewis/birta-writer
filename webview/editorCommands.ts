@@ -996,6 +996,15 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
         }
     }),
     openShortcutsHelp: () => host.openShortcutsHelp?.(),
+    // No host hook: the flow is the page's, and what it needs from the host is
+    // the prompt seam rather than a UI of the editor's. Lazy on purpose — the
+    // questions, the composer and the URL builders must cost nothing at launch
+    // (webview/feedbackFlow.ts says why it is the page that composes).
+    openHelp: () => {
+        void import("@/feedbackFlow")
+            .then((m) => m.runFeedbackFlow())
+            .catch((e) => console.error("[birta] feedback flow failed to load", e));
+    },
     // Fold grammar (MAR-110): the same ProseMirror commands the gutter
     // chevrons and block menu drive, so every surface shares one fold state.
     fold: (getEditor) => runCommand(getEditor, foldAtCaret),

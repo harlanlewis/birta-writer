@@ -196,6 +196,9 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     openExtensionSettings: "reads",
     openKeyboardShortcuts: "reads",
     openShortcutsHelp: "reads",
+    // Asks four questions and composes a report from the answers. It never
+    // touches the document, so a locked one can still be reported on.
+    openHelp: "reads",
     openWhatsNew: "reads",
     openHostPreferences: "reads",
     contentWidthFull: "reads",

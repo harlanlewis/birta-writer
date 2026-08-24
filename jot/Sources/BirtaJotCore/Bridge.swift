@@ -86,6 +86,13 @@ public enum WebviewMessage: Equatable {
     /// The page asked for the app's own date picker, anchored at the caret
     /// rectangle (viewport coordinates, CSS pixels).
     case showDatePicker(id: String, left: Double, top: Double, bottom: Double)
+    /// One step of a flow the page is driving, to be drawn as a sheet. `step`
+    /// is nil for a kind this build cannot draw, which is answered explicitly
+    /// rather than dropped (MAR-395; the silence hazard is MAR-390).
+    case hostPrompt(id: String, step: HostPromptStep?)
+    /// The page is composing a feedback report and wants the facts only this
+    /// host has: the app's version, macOS, and this app's own settings.
+    case requestHostDiagnostics(id: String)
     case other(type: String)
 
     public static func parse(_ text: String) -> WebviewMessage? {
@@ -197,6 +204,16 @@ public enum WebviewMessage: Equatable {
                   let left = double("left"), let top = double("top"), let bottom = double("bottom")
             else { return .other(type: type) }
             return .showDatePicker(id: id, left: left, top: top, bottom: bottom)
+        case "hostPrompt":
+            // A request with no id cannot be answered, so it is not a request.
+            // A step that does not parse IS still a request: it is answered as
+            // unsupported, which is the whole reason the associated value is
+            // optional rather than the case being dropped.
+            guard let id = str("id") else { return .other(type: type) }
+            return .hostPrompt(id: id, step: HostPromptStep.parse(dict["step"]))
+        case "requestHostDiagnostics":
+            guard let id = str("id") else { return .other(type: type) }
+            return .requestHostDiagnostics(id: id)
         case "__perfMarks": return .perfMarks(json: json("marks") ?? "{}")
         default: return .other(type: type)
         }
@@ -243,6 +260,11 @@ public enum HostMessage: Equatable {
     /// writes it. That is what keeps the two surfaces from drifting into two
     /// formats of the same date.
     case datePickerResult(id: String, date: CalendarDay?)
+    /// The answer to one `hostPrompt`. `value` is the text typed or the row's
+    /// id; nil is a cancel. `unsupported` says this build cannot draw the step
+    /// at all, which the page reports rather than treating as a cancel.
+    case hostPromptResult(id: String, value: String?, unsupported: Bool)
+    case hostDiagnosticsResult(id: String, diagnostics: HostDiagnostics)
     /// Run one editor command by id (shared/editorCommands.ts), the way a
     /// contributed keybinding reaches the page.
     case editorCommand(String)
@@ -303,6 +325,16 @@ public enum HostMessage: Equatable {
         case let .datePickerResult(id, date):
             return ["type": "datePickerResult", "id": id,
                     "date": date.map { ["year": $0.year, "month": $0.month, "day": $0.day] } ?? NSNull()]
+        case let .hostPromptResult(id, value, unsupported):
+            var out: [String: Any] = ["type": "hostPromptResult", "id": id,
+                                      "value": value ?? NSNull()]
+            // Present only when true: the page's type has it optional, and an
+            // explicit `false` on every reply would be noise on the wire.
+            if unsupported { out["unsupported"] = true }
+            return out
+        case let .hostDiagnosticsResult(id, diagnostics):
+            return ["type": "hostDiagnosticsResult", "id": id,
+                    "diagnostics": diagnostics.jsonObject]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
         case let .editorCommand(command):

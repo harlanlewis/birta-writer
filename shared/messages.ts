@@ -12,6 +12,8 @@ import type { FoldingControlsMode } from "./foldingControls";
 import type { MermaidThemeMode } from "./mermaid";
 import type { PlantUmlThemeMode } from "./plantuml";
 import type { EmbedCardResult } from "./connectors";
+import type { HostPromptStep } from "./hostPrompt";
+import type { Diagnostics } from "./feedback/compose";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -242,6 +244,39 @@ export type ToExtensionMessage =
      * believing a picker is open forever.
      */
     | { type: "showDatePicker"; id: string; left: number; top: number; bottom: number }
+    /**
+     * Ask the host to put ONE step of a multi-step flow to the user, in its
+     * own idiom: VS Code draws the palette prompts it already draws, and Birta
+     * Writer for Mac draws a sheet on the window that asked (MAR-395).
+     *
+     * The step, not the flow. Batching would be fewer round trips and would
+     * lose the two things these flows rely on, both of which are per-step:
+     * validation that runs as the user types, and the difference between
+     * cancelling a step and submitting it empty.
+     *
+     * The host answers `hostPromptResult` with the same `id`, exactly once,
+     * and answers it on a cancel too: a request with no reply would leave the
+     * page believing a prompt is open forever. A host that cannot draw the
+     * step's `kind` answers `unsupported` rather than staying silent, because
+     * Jot files an unrecognised message under `.other` and drops it, which
+     * would make an unimplemented kind indistinguishable from one correctly
+     * ignored (MAR-390).
+     */
+    | { type: "hostPrompt"; id: string; step: HostPromptStep }
+    /**
+     * Ask the host for the environment facts a feedback report carries.
+     *
+     * Per host, because they name the host: the extension reports its own
+     * version, VS Code's, and the `birta.*` settings that differ from their
+     * defaults; the Mac app reports the app, macOS, and its own settings,
+     * which are not `birta.*` keys at all. `shared/feedback/compose.ts` stays
+     * pure by being handed them rather than gathering them.
+     *
+     * Answered as `hostDiagnosticsResult` with the same `id`. A host that
+     * never answers costs the report its diagnostics block and nothing else:
+     * the page bounds the wait and composes without one.
+     */
+    | { type: "requestHostDiagnostics"; id: string }
     /**
      * The settings dropdown was opened, so the installed release counts as
      * looked at. Opening the menu is the gesture, not clicking the What's-new
@@ -792,6 +827,25 @@ export type ToWebviewMessage =
         id: string;
         date: { year: number; month: number; day: number } | null;
     }
+    /**
+     * The answer to one `hostPrompt`, exactly once (MAR-395).
+     *
+     * `value` is the text typed, or the `id` of the row chosen, or **null for
+     * a cancel**. Null and the empty string are different answers: on an
+     * optional step, empty is a deliberate "nothing to add" and continues,
+     * where null abandons the flow. `unsupported` is a host saying it cannot
+     * draw this step's `kind` at all, which is a third outcome and not a
+     * cancel dressed up as one: the page can say so rather than looking like
+     * it ignored the user.
+     */
+    | { type: "hostPromptResult"; id: string; value: string | null; unsupported?: true }
+    /**
+     * The environment facts for one `requestHostDiagnostics`, from the host
+     * that has them. Never the document, the file path, or the workspace:
+     * `shared/feedback/compose.ts` is never given any of the three, and this
+     * message is the only thing that reaches it.
+     */
+    | { type: "hostDiagnosticsResult"; id: string; diagnostics: Diagnostics }
     // Disk-drift state for this document: "conflict" while the file on disk has
     // changed since the editor last agreed with it AND the editor has unsaved
     // edits (the toolbar shows a quiet advisory badge — a manual save would hit
