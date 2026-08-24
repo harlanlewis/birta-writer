@@ -6,6 +6,8 @@
 
 ### Added
 
+- An ` ```svg ` fence renders as a picture, with the same source toggle, zoom, pan, fit and fullscreen every other diagram gets, and the same error card when the markup will not parse. The source stays in the document as an ordinary fenced code block, so it round-trips, diffs and edits like any other, and SVG is now in the code block language picker and reachable from the slash menu. Two things do not render, both because they sit outside the sanitizer's SVG profile: an icon sprite built on `<use>`, and text labels written as HTML inside a `<foreignObject>`, which is how Mermaid, Excalidraw and draw.io export theirs. Dragging or pasting an `.svg` file already worked and now has a test saying so.
+
 - Actual Size, a command that puts the content font size back to its default. Increase Font Size and Decrease Font Size could walk it away from 100% and nothing walked it back in one step. It has no default keyboard shortcut, because the chord a Mac app would use for it is the editor window's own zoom inside VS Code and this editor does not take keys from the window around it; bind one in Keyboard Shortcuts if you want it.
 
 ### Changed
@@ -27,6 +29,12 @@
 - A task list now reports its ticks to assistive technology. Every task item carries a checkbox with a checked state, so a screen reader can tell a done task from an open one; the tick is drawn in CSS, which reaches nothing that reads a page, so the two were indistinguishable there. Nothing changes visually and the box adds no tab stop, with Cmd+Shift+D (Ctrl+Shift+D on Windows and Linux) and a click on the box toggling it as before. The state is there to be read rather than spoken, so a toggle is still not announced at the moment it happens.
 
 - A screen reader announced the toolbar's Bold, Italic, Strikethrough and Inline Code buttons by name and then read out the shortcut glyphs after it, so Bold was announced as "Bold ⌘B". The four buttons now announce their name alone; the shortcut stays in the tooltip, where it was always meant to be. This affected only the icon-only buttons that derive their name from their tooltip.
+
+### Security
+
+- Export as HTML could write a file that contacted a server when somebody opened it. If the document's inline HTML named a remote image, as an `<img src="https://…">` or a `background: url(https://…)` in a `style` attribute, that reference was copied into the exported file and fetched on open. Whoever the URL pointed at learned that the file had been opened, from which address and when. They could not read the document, could not run any code, and could reach nothing else: the exported file contains no script, and script and event handlers were already stripped from inline HTML. Both forms are now removed at export, and a remote `<a href>` is deliberately kept, because following a link is a click the reader chooses to make.
+
+  The editor itself was never affected, and that is why this went unnoticed: its content-security-policy already refused both, so the reference only ever came to life in the exported file, which carries no such policy. The document you export is the one that matters here, so a note written entirely by you was never a way to reach you; a document from somewhere else, pasted or shared or generated, is the case worth knowing about.
 
 ---
 
