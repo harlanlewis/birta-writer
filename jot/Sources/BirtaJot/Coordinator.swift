@@ -1222,7 +1222,8 @@ final class Coordinator {
             // is what the embargo already decided; asking added the hang and
             // nothing else, since Save there could not write either.
             guard AutosavePolicy.canAsk(panelIsUp: promptWindow.isVisible,
-                                        firstRunScreenIsUp: isWelcoming) else {
+                                        firstRunScreenIsUp: isWelcoming,
+                                        anotherSheetIsUp: promptWindow.attachedSheet != nil) else {
                 writeLatest()
                 keep(.save)
                 return

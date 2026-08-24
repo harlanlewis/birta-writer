@@ -83,8 +83,8 @@ public enum AutosavePolicy {
     /// keeps the bytes, which is the same direction `WriteAction.ask`'s own
     /// header takes for a quit nobody initiated.
     ///
-    /// Two ways to have nowhere to put it, and both are about the panel rather
-    /// than about the person:
+    /// Three ways to have nowhere to put it, and all three are about the panel
+    /// rather than about the person:
     ///
     ///   - the panel is not on screen. A sheet begun on a window that never
     ///     appears never calls back.
@@ -95,7 +95,16 @@ public enum AutosavePolicy {
     ///     carries means Save could not do what its label says. Nothing there
     ///     can bring the buffer and the file back into step, so this is the
     ///     one state where the question can never stop being asked.
-    public static func canAsk(panelIsUp: Bool, firstRunScreenIsUp: Bool) -> Bool {
-        panelIsUp && !firstRunScreenIsUp
+    ///   - the panel is ALREADY asking something else. A window shows one
+    ///     sheet at a time and queues the rest, so this question would wait
+    ///     behind the other one while the quit waits on it, and a person who
+    ///     pressed Quit would watch nothing happen. That became reachable when
+    ///     the host-prompt seam gave the page a way to put its own sheet on
+    ///     this window (MAR-395), and it is about the seam rather than about
+    ///     `/help`: every flow that ever moves onto it inherits the case.
+    public static func canAsk(panelIsUp: Bool,
+                              firstRunScreenIsUp: Bool,
+                              anotherSheetIsUp: Bool) -> Bool {
+        panelIsUp && !firstRunScreenIsUp && !anotherSheetIsUp
     }
 }

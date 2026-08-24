@@ -21,6 +21,14 @@
  * This is NOT a safety check. Callers gate the URL themselves
  * (`isSafeExternalUrl` for anything arriving from a webview), and VS Code
  * shows its own trusted-domains confirmation on top.
+ *
+ * **It takes an ALREADY-ENCODED URL, and that is the whole of when to reach
+ * for it.** Handed something raw, a filesystem path with a space in it say, it
+ * passes the space through and the result is not a URL. For that case the
+ * `Uri` route is the correct one and not a bug: `encodeURI` over an unencoded
+ * path is exactly right, and it is only over an already-encoded one that it
+ * escapes the `%` and doubles everything. `src/htmlExport.ts` opens the file
+ * it just wrote and keeps `openExternal(target)` for that reason.
  */
 import * as vscode from "vscode";
 
