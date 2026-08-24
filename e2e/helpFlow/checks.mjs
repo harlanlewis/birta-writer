@@ -203,4 +203,41 @@ export async function run({ page, check, baseUrl }) {
         !text.includes("/help"),
         text.slice(0, 120),
     );
+
+    // ── 6. The caret comes back ────────────────────────────────────────────
+    // The claim no message-level assertion can make, and the one the ticket
+    // asks for by name. Every renderer of a prompt takes focus off the
+    // `contenteditable`, so the test is not "is something focused" but the
+    // gesture itself: type, and see where the character lands. `e2e/enterCaret`
+    // exists for this class and this is the same question.
+    await page.keyboard.type("Z", { delay: 40 });
+    await page.waitForTimeout(200);
+    const landed = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror p")].map((p) => p.textContent ?? ""));
+    // The trigger the probe typed opens with a space, which the slash menu
+    // consumes as its own, so the block keeps that space and the character
+    // lands after it. Asserting the block ENDS with the character, and that
+    // the other block is untouched, says the caret came back to where it was
+    // without pinning that incidental space.
+    check(
+        "typing after an abandoned flow reaches the block the caret started in",
+        landed.some((p) => p.startsWith("First line.") && p.endsWith("Z"))
+            && landed.some((p) => p === "Second line."),
+        JSON.stringify(landed.slice(0, 3)),
+    );
+
+    // And after a flow that ran all the way through, which is the other exit.
+    await mount(["a summary", "skip", "", "clipboard"]);
+    await caretAtEndOf("Second line.");
+    await runHelp();
+    await page.keyboard.type("Q", { delay: 40 });
+    await page.waitForTimeout(200);
+    const after = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror p")].map((p) => p.textContent ?? ""));
+    check(
+        "typing after a completed flow reaches the block the caret started in",
+        after.some((p) => p.startsWith("Second line.") && p.endsWith("Q"))
+            && after.some((p) => p === "First line."),
+        JSON.stringify(after.slice(0, 3)),
+    );
 }

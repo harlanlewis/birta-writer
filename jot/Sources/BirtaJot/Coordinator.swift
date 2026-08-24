@@ -1775,14 +1775,22 @@ final class Coordinator {
     /// `unsupported` rather than going quiet. Silence here is indistinguishable
     /// from a message correctly ignored (MAR-390), which would leave the flow
     /// waiting out its own timeout for a question that was never asked.
+    /// Every arm replies. `HostPromptDisposition` is where the arms are chosen
+    /// and where they are tested; reaching `.cancel` needs the panel to go
+    /// away between the keystroke and the message, because `/help` is typed
+    /// into the document, so it is the arm existing rather than the case being
+    /// common that matters.
     private func showHostPrompt(id: String, step: HostPromptStep?) {
-        guard let step else {
+        switch HostPromptStep.disposition(step: step, windowIsVisible: promptWindow.isVisible) {
+        case .unsupported:
             host.send(.hostPromptResult(id: id, value: nil, unsupported: true))
-            return
-        }
-        HostPromptSheet.present(step, on: promptWindow) { [weak self] value in
-            self?.host.send(.hostPromptResult(id: id, value: value, unsupported: false))
-            self?.host.focusEditor()
+        case .cancel:
+            host.send(.hostPromptResult(id: id, value: nil, unsupported: false))
+        case let .draw(step):
+            HostPromptSheet.present(step, on: promptWindow) { [weak self] value in
+                self?.host.send(.hostPromptResult(id: id, value: value, unsupported: false))
+                self?.host.focusEditor()
+            }
         }
     }
 

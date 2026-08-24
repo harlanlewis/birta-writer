@@ -118,6 +118,45 @@ final class HostPromptTests: XCTestCase {
     }
 }
 
+/// Which arm one request gets, and the rule that every arm has one.
+final class HostPromptDispositionTests: XCTestCase {
+    private let step = HostPromptStep.input(title: "t", prompt: "p", placeholder: nil,
+                                            required: nil, maxLength: nil)
+
+    func testAStepAndAWindowIsDrawn() {
+        XCTAssertEqual(HostPromptStep.disposition(step: step, windowIsVisible: true), .draw(step))
+    }
+
+    /// The arm this was extracted for. A sheet begun on a window that is not
+    /// up never calls back, and the page would sit through its whole timeout
+    /// on a flow that looks alive.
+    func testAStepWithNoWindowToDrawOnIsCancelled() {
+        XCTAssertEqual(HostPromptStep.disposition(step: step, windowIsVisible: false), .cancel)
+    }
+
+    /// A kind this build cannot draw is a fact about the build, so it answers
+    /// the same either way rather than being reported as a cancel when the
+    /// panel happens to be down.
+    func testAnUndrawableStepIsUnsupportedWhateverTheWindowIsDoing() {
+        XCTAssertEqual(HostPromptStep.disposition(step: nil, windowIsVisible: true), .unsupported)
+        XCTAssertEqual(HostPromptStep.disposition(step: nil, windowIsVisible: false), .unsupported)
+    }
+
+    /// The predicate discriminates: the two inputs pick three different arms
+    /// between them, so neither input is ignored. Without this, a function
+    /// that returned one arm always would pass whichever single case a reader
+    /// happened to write down.
+    func testTheThreeArmsAreAllReachableAndDiffer() {
+        let drawn = HostPromptStep.disposition(step: step, windowIsVisible: true)
+        let cancelled = HostPromptStep.disposition(step: step, windowIsVisible: false)
+        let unsupported = HostPromptStep.disposition(step: nil, windowIsVisible: true)
+
+        XCTAssertNotEqual(drawn, cancelled)
+        XCTAssertNotEqual(cancelled, unsupported)
+        XCTAssertNotEqual(drawn, unsupported)
+    }
+}
+
 /// The reply, as it reaches the page.
 final class HostPromptResultTests: XCTestCase {
 

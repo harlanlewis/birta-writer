@@ -1000,10 +1000,23 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // the prompt seam rather than a UI of the editor's. Lazy on purpose — the
     // questions, the composer and the URL builders must cost nothing at launch
     // (webview/feedbackFlow.ts says why it is the page that composes).
-    openHelp: () => {
+    // No host hook: the flow is the page's, and what it needs from the host is
+    // the prompt seam rather than a UI of the editor's. Lazy on purpose — the
+    // questions, the composer and the URL builders must cost nothing at launch
+    // (webview/feedbackFlow.ts says why it is the page that composes).
+    //
+    // Giving the caret back is this call site's job, for `dateInsert.ts`'s
+    // reason: every renderer of a prompt takes focus off the `contenteditable`
+    // (a palette input box, an AppKit sheet), and a flow that ended, cancelled
+    // or timed out, must not leave the document unable to take a keystroke.
+    // `view.focus()` is the whole of it, because ProseMirror's selection lives
+    // in the editor STATE rather than in the DOM, so focusing writes back the
+    // selection it already holds.
+    openHelp: (getEditor) => {
         void import("@/feedbackFlow")
             .then((m) => m.runFeedbackFlow())
-            .catch((e) => console.error("[birta] feedback flow failed to load", e));
+            .catch((e) => console.error("[birta] feedback flow failed to load", e))
+            .finally(() => runProse(getEditor, (view) => view.focus()));
     },
     // Fold grammar (MAR-110): the same ProseMirror commands the gutter
     // chevrons and block menu drive, so every surface shares one fold state.
