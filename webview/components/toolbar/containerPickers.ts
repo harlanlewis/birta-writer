@@ -62,6 +62,12 @@ export interface FormatPicker {
 
 export function createFormatMenu(getEditor: GetEditor): FormatPicker {
     // ── Block-type dropdown (opens on hover, same style as the floating toolbar) ──
+    // Each heading row is a TOGGLE, like the Lists rows below: clicking the
+    // filled one demotes the block back to a paragraph. Nothing here implements
+    // that — the rows run `setHeading1..6` through `runEditorCommand`, and the
+    // toggle lives in that one registry entry, which is what keeps this menu,
+    // the chords, the slash menu and Jot's Paragraph Style submenu agreeing.
+    // Body stays unconditional: `setParagraph` means paragraph at any level.
     const fmtWrap = document.createElement("div");
     fmtWrap.className = "tb-fmt-wrap";
 

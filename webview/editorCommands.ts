@@ -273,12 +273,53 @@ function liftOutOfLists(view: EditorView, typeName: string): void {
     }
 }
 
-/** Set the current block's heading level, lifting a list line out first. */
+/**
+ * The heading level the cursor sits in, 0 for anything that is not a heading.
+ *
+ * Deliberately the same innermost-ancestor walk `computeToolbarActiveState`
+ * does to fill the Format picker's row, so the row a user sees lit and the
+ * level `setHeading` toggles against are one number rather than two walks that
+ * happen to agree.
+ */
+function headingLevelAtCursor(view: EditorView): number {
+    const { $from } = view.state.selection;
+    for (let depth = $from.depth; depth >= 0; depth--) {
+        const node = $from.node(depth);
+        if (node.type.name === "heading") {
+            return typeof node.attrs["level"] === "number" ? node.attrs["level"] : 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * Heading toggle: retype to the level, or demote back to a paragraph when the
+ * cursor's own block is already at it, lifting a list line out first.
+ *
+ * A toggle rather than a set because every other block-type family in the
+ * toolbar is one — `toggleBlockquote` below, and the three list kinds — and
+ * headings were the exception. The Format picker fills the row for the current
+ * level, so a lit row that did nothing when clicked was the visible half of it.
+ *
+ * DECIDED from the cursor's block, APPLIED to the selection. The read is the
+ * one the lit row comes from, so no surface can disagree about what a second
+ * press does; the demotion then covers every heading the selection spans, which
+ * is the range `wrapInHeadingCommand` retypes on the way in. A selection whose
+ * start is an H1 and whose end is an H2 demotes both, rather than leaving the
+ * H2 as the one block the gesture silently missed.
+ *
+ * `setParagraph` is untouched and stays the unconditional way to say paragraph.
+ */
 function setHeading(getEditor: GetEditor, level: number): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
         const view = getView(ctx);
+        if (headingLevelAtCursor(view) === level) {
+            demoteHeadingsInSelection(view);
+            view.focus();
+            return;
+        }
         liftOutOfLists(view, "heading");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ctx.get(commandsCtx).call(wrapInHeadingCommand.key as any, level);
@@ -955,6 +996,28 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
         }
     }),
     openShortcutsHelp: () => host.openShortcutsHelp?.(),
+    // No host hook: the flow is the page's, and what it needs from the host is
+    // the prompt seam rather than a UI of the editor's. Lazy on purpose — the
+    // questions, the composer and the URL builders must cost nothing at launch
+    // (webview/feedbackFlow.ts says why it is the page that composes).
+    // No host hook: the flow is the page's, and what it needs from the host is
+    // the prompt seam rather than a UI of the editor's. Lazy on purpose — the
+    // questions, the composer and the URL builders must cost nothing at launch
+    // (webview/feedbackFlow.ts says why it is the page that composes).
+    //
+    // Giving the caret back is this call site's job, for `dateInsert.ts`'s
+    // reason: every renderer of a prompt takes focus off the `contenteditable`
+    // (a palette input box, an AppKit sheet), and a flow that ended, cancelled
+    // or timed out, must not leave the document unable to take a keystroke.
+    // `view.focus()` is the whole of it, because ProseMirror's selection lives
+    // in the editor STATE rather than in the DOM, so focusing writes back the
+    // selection it already holds.
+    openHelp: (getEditor) => {
+        void import("@/feedbackFlow")
+            .then((m) => m.runFeedbackFlow())
+            .catch((e) => console.error("[birta] feedback flow failed to load", e))
+            .finally(() => runProse(getEditor, (view) => view.focus()));
+    },
     // Fold grammar (MAR-110): the same ProseMirror commands the gutter
     // chevrons and block menu drive, so every surface shares one fold state.
     fold: (getEditor) => runCommand(getEditor, foldAtCaret),

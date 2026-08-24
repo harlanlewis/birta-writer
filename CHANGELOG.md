@@ -6,9 +6,27 @@
 
 ### Added
 
+- `/help` in the slash menu opens Send Feedback from inside the document. It was reachable from the VS Code command palette and nowhere else, so reporting what just went wrong meant leaving the editor, knowing the command existed, and knowing it was called Feedback rather than Help. It asks the same four questions in the same order: a one-line summary, an optional question about how much you would miss the editor, optional detail, and where it should go. Typing `/help` reaches it ahead of Show Keyboard Shortcuts, which had carried the word until now. `Birta: Send Feedback` still works and any keyboard shortcut you bound to it is untouched, and the two are one flow rather than two that can drift. Nothing is sent by Birta Writer either way: it composes the text and hands your browser, your mail client or your clipboard the result, which you can still read and edit before you send it.
+
+### Fixed
+
+- A link whose address contains a percent-escape now opens at the address it names. Every `%` was being escaped a second time on the way to the browser, so a link to a page such as `.../C%2B%2B` arrived as `.../C%252B%252B` and landed on the wrong page or on nothing. It affected links you click in the document and any address the editor hands over with characters escaped in it; a plain address with nothing escaped was never affected, which is why this went unnoticed. The Send Feedback command had already met this and worked around it privately, and that workaround is now the one path every link takes.
+
+---
+
+## [2026.824.0] - 2026, August 24
+
+### Added
+
+- An ` ```svg ` fence renders as a picture, with the same source toggle, zoom, pan, fit and fullscreen every other diagram gets, and the same error card when the markup will not parse. The source stays in the document as an ordinary fenced code block, so it round-trips, diffs and edits like any other, and SVG is now in the code block language picker and reachable from the slash menu. Two things do not render, both because they sit outside the sanitizer's SVG profile: an icon sprite built on `<use>`, and text labels written as HTML inside a `<foreignObject>`, which is how Mermaid, Excalidraw and draw.io export theirs. Dragging or pasting an `.svg` file already worked and now has a test saying so.
+
 - Actual Size, a command that puts the content font size back to its default. Increase Font Size and Decrease Font Size could walk it away from 100% and nothing walked it back in one step. It has no default keyboard shortcut, because the chord a Mac app would use for it is the editor window's own zoom inside VS Code and this editor does not take keys from the window around it; bind one in Keyboard Shortcuts if you want it.
 
 ### Changed
+
+- A unit name that reads two ways now asks which you meant instead of quietly choosing. `ML` is the millilitre to this editor's own historical spellings and the megalitre to the unit catalog, a difference of a factor of a billion that looks like an ordinary answer either way, and the editor used to pick one without saying a question had been asked. A conversion using one of the nine such names holds its answer back and offers both readings, each showing the number it would give, and confirming one writes it into the equation: `500 milliliter in l` then means the same thing wherever it is pasted next. Which names those are is worked out from the catalog rather than listed, so the hundred-odd other capitalised spellings, `KM` and `Gallons` among them, have no second reading and answer straight out as before. This is the same offer an ambiguous function name such as `log` already got.
+
+- A heading shortcut pressed on a block already at that level turns it back into a paragraph. It used to apply the level again, which was nothing you could see, and headings were the one block-type family in the toolbar that did not undo itself on a second press: Quote and the three list kinds already did. A selection covering several headings demotes all of them. The Format menu's rows follow, so clicking the filled row clears it, and so do the slash menu and the Mac app's Paragraph Style menu, because all of them run the one command. Body is unchanged and still means paragraph whatever the current level.
 
 - Toolbar tooltips inside VS Code now name the key that actually runs the command, including one you rebound yourself in Keyboard Shortcuts. Four were named before, the four the editor binds outright, because there is no way to ask VS Code what a contributed keybinding is currently set to; the extension now reads your keybindings file, and it reads the right one under a profile, including a profile that takes its keyboard shortcuts from another. Where it cannot establish which file is in force, a tooltip shows the plain label rather than a key that might be wrong, which is what every one of them did before.
 
@@ -23,6 +41,12 @@
 - A task list now reports its ticks to assistive technology. Every task item carries a checkbox with a checked state, so a screen reader can tell a done task from an open one; the tick is drawn in CSS, which reaches nothing that reads a page, so the two were indistinguishable there. Nothing changes visually and the box adds no tab stop, with Cmd+Shift+D (Ctrl+Shift+D on Windows and Linux) and a click on the box toggling it as before. The state is there to be read rather than spoken, so a toggle is still not announced at the moment it happens.
 
 - A screen reader announced the toolbar's Bold, Italic, Strikethrough and Inline Code buttons by name and then read out the shortcut glyphs after it, so Bold was announced as "Bold ⌘B". The four buttons now announce their name alone; the shortcut stays in the tooltip, where it was always meant to be. This affected only the icon-only buttons that derive their name from their tooltip.
+
+### Security
+
+- Export as HTML could write a file that contacted a server when somebody opened it. If the document's inline HTML named a remote image, as an `<img src="https://…">` or a `background: url(https://…)` in a `style` attribute, that reference was copied into the exported file and fetched on open. Whoever the URL pointed at learned that the file had been opened, from which address and when. They could not read the document, could not run any code, and could reach nothing else: the exported file contains no script, and script and event handlers were already stripped from inline HTML. Both forms are now removed at export, and a remote `<a href>` is deliberately kept, because following a link is a click the reader chooses to make.
+
+  The editor itself was never affected, and that is why this went unnoticed: its content-security-policy already refused both, so the reference only ever came to life in the exported file, which carries no such policy. The document you export is the one that matters here, so a note written entirely by you was never a way to reach you; a document from somewhere else, pasted or shared or generated, is the case worth knowing about.
 
 ---
 

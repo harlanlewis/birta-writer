@@ -789,6 +789,10 @@ final class Coordinator {
             saveAgentAttachment(id: id, name: name, bytes: bytes)
         case let .showDatePicker(id, left, top, bottom):
             showDatePicker(id: id, left: left, top: top, bottom: bottom)
+        case let .hostPrompt(id, step):
+            showHostPrompt(id: id, step: step)
+        case let .requestHostDiagnostics(id):
+            host.send(.hostDiagnosticsResult(id: id, diagnostics: hostDiagnostics()))
         case let .resolveLinkCard(id, url):
             resolveLinkCard(id: id, url: url)
         case let .unfurlUrl(id, url):
@@ -1067,7 +1071,40 @@ final class Coordinator {
     /// the self-update swap. Neither has anyone to answer a sheet, and both
     /// have something waiting on the process to go, so a question there is a
     /// hang rather than a choice. Those quits write the buffer instead.
-    var quitIsUnattended = false
+    ///
+    /// It can arrive LATE, which is the case the observer below is for: the
+    /// sheet is already on the panel from a quit somebody started by hand, and
+    /// then a signal arrives from an installer or a logout. `NSApp.terminate`
+    /// does nothing while a terminate is already pending, so setting this flag
+    /// is the whole of what that signal can do, and without the observer it
+    /// would do nothing at all: the app would sit behind the question with
+    /// something waiting on it to go (MAR-411).
+    var quitIsUnattended = false {
+        didSet {
+            guard quitIsUnattended, !oldValue else { return }
+            answerQuitPromptUnattended()
+        }
+    }
+
+    /// Whether the quit question is on the panel right now.
+    ///
+    /// It is what tells the sheet below apart from the other one this same
+    /// window hosts (`HostPromptSheet`), which asks about something else
+    /// entirely and must not be answered on somebody's behalf.
+    private var quitPromptIsUp = false
+
+    /// Answer the question the way an unattended quit would have, if one is up.
+    ///
+    /// Ended through `endSheet` with the Save button's code rather than by
+    /// deciding here, so the answer runs the completion the sheet already has:
+    /// there is one place that turns an answer into a write, and a second copy
+    /// of that decision beside the sheet is how the two drift apart. The code
+    /// names a POSITION, so `UnsavedChangesPromptTests` pins Save to the first
+    /// button as well as the mapping.
+    private func answerQuitPromptUnattended() {
+        guard quitPromptIsUp, let sheet = promptWindow.attachedSheet else { return }
+        promptWindow.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+    }
 
     /// Set once the way out has been decided, so the last-chance write on the
     /// way through `applicationWillTerminate` does not undo the answer.
@@ -1138,19 +1175,32 @@ final class Coordinator {
             // the honest thing to do, since the question names a document the
             // person cannot otherwise see.
             if !isOnScreen { show() }
-            // And if it still is not up, keep the bytes rather than asking a
-            // window that cannot answer. A sheet begun on a window that never
-            // appears never calls back, and this quit is waiting on that call
-            // (`applicationShouldTerminate` answered `.terminateLater`), so
-            // the failure would be an app that cannot be quit.
-            guard promptWindow.isVisible else {
+            // And if there is nowhere to put the question, keep the bytes
+            // rather than asking a panel that cannot answer. `canAsk` holds
+            // both ways that happens and the argument for each; what they
+            // share is that the answer never arrives, and this quit is waiting
+            // on it (`applicationShouldTerminate` answered `.terminateLater`),
+            // so the failure is an app that cannot be quit (MAR-411).
+            //
+            // The write is a no-op on the first-run arm, because `writeLatest`
+            // is embargoed while that screen is up, and it stays here rather
+            // than being branched around: this is the one funnel every write
+            // goes through, and the embargo is that funnel's decision to make.
+            // So nothing was going to reach disk on that arm either way, which
+            // is what the embargo already decided; asking added the hang and
+            // nothing else, since Save there could not write either.
+            guard AutosavePolicy.canAsk(panelIsUp: promptWindow.isVisible,
+                                        firstRunScreenIsUp: isWelcoming,
+                                        anotherSheetIsUp: promptWindow.attachedSheet != nil) else {
                 writeLatest()
                 keep(.save)
                 return
             }
+            quitPromptIsUp = true
             UnsavedChangesPrompt.present(document: boundURL.lastPathComponent,
                                          on: promptWindow) { [weak self] answer in
                 guard let self else { keep(answer); return }
+                self.quitPromptIsUp = false
                 if answer == .save { self.writeLatest() }
                 keep(answer)
             }
@@ -1731,6 +1781,59 @@ final class Coordinator {
             self?.host.send(.datePickerResult(id: id, date: day))
             self?.host.focusEditor()
         }
+    }
+
+    /// Draw one step of a flow the page is driving, as a sheet on the panel.
+    ///
+    /// Answered exactly once, and answered in every arm: the page holds a
+    /// pending request against this id, so a step this build cannot draw says
+    /// `unsupported` rather than going quiet. Silence here is indistinguishable
+    /// from a message correctly ignored (MAR-390), which would leave the flow
+    /// waiting out its own timeout for a question that was never asked.
+    /// Every arm replies. `HostPromptDisposition` is where the arms are chosen
+    /// and where they are tested; reaching `.cancel` needs the panel to go
+    /// away between the keystroke and the message, because `/help` is typed
+    /// into the document, so it is the arm existing rather than the case being
+    /// common that matters.
+    private func showHostPrompt(id: String, step: HostPromptStep?) {
+        switch HostPromptStep.disposition(step: step, windowIsVisible: promptWindow.isVisible) {
+        case .unsupported:
+            host.send(.hostPromptResult(id: id, value: nil, unsupported: true))
+        case .cancel:
+            host.send(.hostPromptResult(id: id, value: nil, unsupported: false))
+        case let .draw(step):
+            HostPromptSheet.present(step, on: promptWindow) { [weak self] value in
+                self?.host.send(.hostPromptResult(id: id, value: value, unsupported: false))
+                self?.host.focusEditor()
+            }
+        }
+    }
+
+    /// What this app reports about itself when a feedback report asks.
+    ///
+    /// The app and macOS rather than an extension and a VS Code, because those
+    /// are what is actually running, and this app's own settings rather than
+    /// `birta.*` keys it does not have. Never the note, its path, or the folder
+    /// it is in: the composer is never given any of the three.
+    private func hostDiagnostics() -> HostDiagnostics {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        // Compile-time, so it names the slice actually running rather than the
+        // slices the binary was built with.
+        #if arch(arm64)
+        let architecture = "arm64"
+        #else
+        let architecture = "x86_64"
+        #endif
+        // The flavour belongs here because it changes what a reader can
+        // reproduce: a development build has its own settings, its own note
+        // and its own chord, so a report from one that omitted it would send
+        // somebody looking in the release copy's state.
+        let flavour = AppFlavor.current == .dev ? " (development build)" : ""
+        return HostDiagnostics(
+            appVersion: AboutInfo.current.versionLine,
+            systemVersion: "macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)",
+            platform: "darwin \(architecture)\(flavour)",
+            changedSettings: Prefs.changedSettingsDescription())
     }
 
     /// Say something along the bottom of the panel, from outside.

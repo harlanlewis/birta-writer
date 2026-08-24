@@ -16,6 +16,20 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - Birta Writer for Mac is in the Finder's Open With for Markdown files: `.md`, `.markdown` and `.mdx`. Choosing it binds the panel to that file, and File, Back to My Notes returns to your own note; the note you were on is written first, so nothing you typed into it is lost. It does not become what double-clicking a Markdown file opens and it changes nothing about whichever app does that now. Selecting several files and choosing Open With opens the first one it can read, since the panel holds one file at a time.
 
+- `/help` works in Birta Writer for Mac, and draws as a sheet on the window that asked. The feedback flow was reachable only from the VS Code command palette, which this app does not have, so there was no way to report anything from here at all. The four questions arrive one at a time, Escape at any of them leaves the note untouched, and the destinations are the same three: a prefilled GitHub issue, a prefilled mail draft, or the clipboard. What it reports about your setup is this app and macOS rather than an extension and a VS Code that was never running, and the settings it names are this app's own. It is never given the note, its filename, or the folder it is in.
+
+### Fixed
+
+- Birta Writer for Mac can be quit while the first-run screen is up. With Automatically save changes off, and only when the buffer had got ahead of the file behind that screen, a quit there put the Save, Discard Changes, Cancel question on a panel that was showing the first-run screen, and nothing behind that screen could ever answer it: the app writes nothing while it is up, so the buffer and the file could not be brought back into step, and the quit was left waiting on an answer that never came. An AppleScript quit never returned, a second one came back "User canceled", and a `kill` was ignored, which leaves Force Quit, and Force Quit is the one route that discards the buffer. The question is not asked there now, and the quit goes through.
+
+- Birta Writer for Mac takes down a question left on screen when a quit arrives that cannot be refused. With Automatically save changes off, an unsaved note and that question waiting on the panel, a signal from an installer replacing the app, or from a logout, did nothing at all: the app was already quitting, so the signal had nothing to add and the question stayed up. Such a quit now answers it the way it would have answered it in the first place, by writing the buffer, and the app goes.
+
+---
+
+## [2026.824.0] - 2026, August 24
+
+### Added
+
 - A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math, and the card a link on its own line becomes once you turn the network on. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.
 
 - Birta Writer for Mac has a Format menu, and everything the panel's formatting row can do is in it bar one gesture: bold, italic, strikethrough, inline code, highlight and clear formatting, then Paragraph Style for the body, the six heading levels, blockquote and code block, Lists for the three list kinds with Toggle Task Done and Uncheck All Tasks, Indent and Outdent, and an Insert submenu holding links, tables, images, callouts, math, footnotes, rules and dates. The exception is turning a block you already have into a callout of a particular kind, which stays on the quote button's own picker because the kind is part of the gesture and a menu row carries a command and nothing else; Insert, Callout puts a fresh one in. Nearly all of it was already in the panel and none of it was on the keyboard: the app bound seven keys in total, so the heading, list and indent chords the extension ships did nothing here. They work now, and they are the same chords, which is checked by a test rather than by memory.

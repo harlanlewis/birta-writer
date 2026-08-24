@@ -30,14 +30,53 @@ final class GlobalHotkey {
         }, 1, &spec, selfPtr, &handlerRef)
     }
 
+    /// The option `register` asks for, and the reason the status it returns is
+    /// worth reading at all.
+    ///
+    /// Without `kEventHotKeyExclusive`, `RegisterEventHotKey` answers `noErr`
+    /// when ANOTHER PROCESS already holds the combination: the registration
+    /// succeeds, the key goes on reaching whoever asked for it first, and the
+    /// status reports nothing wrong. That is the whole failure this app is
+    /// trying to tell people about, so a caller checking the status was
+    /// checking something that never fired outside its own process.
+    ///
+    /// **Exclusive narrows that gap rather than closing it, and the limit is
+    /// measured rather than assumed.** Two processes, one chord, four
+    /// combinations:
+    ///
+    /// | holder | this app | result |
+    /// | -- | -- | -- |
+    /// | plain | plain | `noErr` |
+    /// | plain | exclusive | `noErr` |
+    /// | exclusive | exclusive | `eventHotKeyExistsErr` |
+    /// | exclusive | plain | `noErr` |
+    ///
+    /// So a refusal arrives only when the app that got there first ALSO asked
+    /// exclusively, and most apps do not. Asking exclusively is still strictly
+    /// better than not asking, because it is the only way any cross-process
+    /// refusal reaches us at all, and it costs nothing: the last row shows an
+    /// exclusive holder does not block a later plain request, so this does not
+    /// take the chord away from anybody.
+    ///
+    /// Its reach stops at the Carbon registry besides, which is not everything
+    /// macOS binds: the app switcher and Mission Control are in it, Spotlight
+    /// and the screenshot keys are not.
+    ///
+    /// The asymmetry both limits produce is the thing to hold onto: a refusal
+    /// is proof the summon will not work, and a clean status is NOT proof that
+    /// it will. Nothing here can tell somebody their chord is live.
+    static let registrationOptions = OptionBits(kEventHotKeyExclusive)
+
     /// Bind (or rebind) the hotkey. Returns the OSStatus of the registration;
-    /// a non-zero value usually means another app owns the combination.
+    /// anything but `noErr` means the combination is spoken for and pressing
+    /// it will not summon the panel.
     @discardableResult
     func register(_ combo: HotkeyCombo) -> OSStatus {
         unregister()
         var ref: EventHotKeyRef?
         let id = EventHotKeyID(signature: fourCC("BJOT"), id: 1)
-        let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, id, GetEventDispatcherTarget(), 0, &ref)
+        let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, id, GetEventDispatcherTarget(),
+                                         Self.registrationOptions, &ref)
         if status == noErr {
             hotKeyRef = ref
             self.combo = combo

@@ -28,6 +28,7 @@ import {
     IconFileCode,
     IconFootnote,
     IconHash,
+    IconHelpCircle,
     IconHighlighter,
     IconImage,
     IconItalic,
@@ -220,6 +221,11 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "callout-warning", group: "insert", label: t("Warning"), icon: CALLOUT_ICONS.warning, keywords: ["warning", "attention", "callout", "admonition", "alert"], commandId: "insertCallout", args: "warning", searchOnly: true },
     { id: "callout-caution", group: "insert", label: t("Caution"), icon: CALLOUT_ICONS.caution, keywords: ["caution", "callout", "admonition", "alert"], commandId: "insertCallout", args: "caution", searchOnly: true },
     { id: "mermaid", group: "insert", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid", detail: t("empty diagram") },
+    // A ```svg fence: the picture IS the source, so unlike every other diagram
+    // row this one is a place to paste markup rather than a language to write.
+    // Search-revealed, like the parity rows above: someone reaching for it knows
+    // the word, and the browse list already carries a diagram row.
+    { id: "svgBlock", group: "insert", label: t("SVG"), icon: IconImage, keywords: ["svg", "vector", "graphic", "drawing", "diagram", "illustration"], commandId: "insertCodeBlock", args: "svg", detail: t("paste vector markup"), searchOnly: true },
     // Inline math is a real node; a math BLOCK is a LaTeX-language code block
     // (same mechanism as Mermaid), otherwise reachable only by typing "$$ ".
     { id: "math", group: "insert", label: t("Inline Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula", "inline"], commandId: "insertMath" },
@@ -294,6 +300,15 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "find", group: "actions", label: t("Find"), icon: IconSearch, keywords: ["find", "search"], commandId: "openFind", searchOnly: true },
     { id: "viewSource", group: "actions", label: t("Edit Raw Markdown"), icon: IconFileCode, keywords: ["source", "raw", "markdown", "text", "code"], commandId: "editRawMarkdown", searchOnly: true },
     { id: "customizeToolbar", group: "actions", label: t("Customize Toolbar"), icon: IconPencil, keywords: ["customize", "toolbar", "layout", "arrange"], commandId: "customizeToolbar", searchOnly: true },
+    // `/help` (MAR-395). It has to outrank the shortcuts cheatsheet, which
+    // already carries the keyword `help`: before this row existed, typing
+    // `/help` offered Show Keyboard Shortcuts and nothing else. What decides
+    // it is the filter's TIER rather than this position — a bare "Help" is a
+    // label prefix and the cheatsheet is only a keyword prefix — so the row
+    // would still win from anywhere in the list. It sits here because a reader
+    // of the file should see the pair together, and `slashMenuRegistry.test.ts`
+    // pins the ordering rather than leaving it to either fact.
+    { id: "help", group: "actions", label: t("Help"), icon: IconHelpCircle, keywords: ["help", "feedback", "bug", "report", "issue", "support", "problem", "contact"], commandId: "openHelp", searchOnly: true, detail: t("report a problem") },
     // Show (the in-editor cheatsheet overlay) before Edit (the native
     // Keyboard Shortcuts UI) — the gear-menu order (TOOLBAR_MENU_COMMANDS).
     { id: "keyboardShortcutsHelp", group: "actions", label: t("Show Keyboard Shortcuts"), icon: IconKeyboard, keywords: ["shortcuts", "keyboard", "help", "cheatsheet", "keys"], commandId: "openShortcutsHelp", searchOnly: true },

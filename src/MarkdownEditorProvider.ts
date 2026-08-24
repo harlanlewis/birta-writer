@@ -40,6 +40,8 @@ import { readCappedText } from "./utils/cappedRead";
 import { fetchEmbedTitle } from "./utils/embedMetaFetcher";
 import type { ConnectorService } from "./connectors/connectorService";
 import { asConnectorId, runConnectFlow } from "./connectors/commands";
+import { askViaPalette, collectDiagnostics } from "./feedback/sendFeedback";
+import { openExternalUrl } from "./utils/openExternalUrl";
 import { slugify } from "../shared/slug";
 import { lintBlocks } from "./utils/harperService";
 import type { ToExtensionMessage, ToWebviewMessage, LogseqReason } from "../shared/messages";
@@ -1101,10 +1103,56 @@ export class MarkdownEditorProvider
                     case "openUrl":
                         // Scheme allowlist only — VS Code itself shows the
                         // trusted-domains confirmation on openExternal.
+                        //
+                        // Handed on as a STRING, never as a `Uri`. VS Code
+                        // re-renders a `Uri` through `encodeURI`, which escapes
+                        // `%`, so every percent-escape in the URL arrives
+                        // doubled: a link to `…/C%2B%2B` opens `…/C%252B%252B`,
+                        // and a prefilled form shows the literal text `%3A`
+                        // where a colon belongs. `openExternalUrl` carries the
+                        // three-hop verification; the allowlist above is
+                        // unchanged and still the gate.
                         if (message.url && isSafeExternalUrl(message.url)) {
-                            void vscode.env.openExternal(vscode.Uri.parse(message.url));
+                            void openExternalUrl(message.url);
                         }
                         break;
+                    case "hostPrompt": {
+                        // The VS Code end of the host-prompt seam (MAR-395):
+                        // the page is driving a flow and wants this step drawn
+                        // the way this host draws one. `askViaPalette` is the
+                        // SAME renderer `birta.sendFeedback` uses from the
+                        // palette, so the two routes to a flow cannot diverge.
+                        //
+                        // Answered exactly once, a cancel included: the page
+                        // holds a pending request against this id.
+                        const { id, step } = message;
+                        void askViaPalette(step)
+                            .catch((error) => {
+                                reportError("host prompt", error);
+                                return null;
+                            })
+                            .then((value) => {
+                                postToWebview(webviewPanel.webview, {
+                                    type: "hostPromptResult", id, value,
+                                });
+                            });
+                        break;
+                    }
+                    case "requestHostDiagnostics": {
+                        // Environment facts for a feedback report. Gathered
+                        // here because they name THIS host; the composer is
+                        // handed them and is never given the document, the
+                        // path, or the workspace.
+                        const version =
+                            (this.context.extension?.packageJSON as { version?: string } | undefined)
+                                ?.version ?? "unknown";
+                        postToWebview(webviewPanel.webview, {
+                            type: "hostDiagnosticsResult",
+                            id: message.id,
+                            diagnostics: collectDiagnostics(version),
+                        });
+                        break;
+                    }
                     case "whatsNewSeen":
                         // Stamp the install and drop the dot everywhere at
                         // once: it is per-install state, so a second open

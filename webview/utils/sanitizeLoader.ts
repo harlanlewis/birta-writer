@@ -82,11 +82,125 @@ export function filterStyleAttribute(value: string): string {
             if (colon === -1) return false;
             const property = decl.slice(0, colon).trim().toLowerCase();
             if (ESCAPING_PROPERTIES.has(property)) return false;
-            return !VIEWPORT_UNIT_RE.test(decl.slice(colon + 1));
+            const declValue = decl.slice(colon + 1);
+            // A remote `url()` is dropped DECLARATION BY DECLARATION rather
+            // than by removing the whole attribute, which is what the
+            // afterSanitizeAttributes hook below would otherwise do to it.
+            // Same reason this is a blocklist at all: an author's inline CSS
+            // is mostly legitimate, and taking `color: red` away because a
+            // `background` beside it named a tracker is the over-broad failure
+            // the header above refuses.
+            if (hasRemoteCssUrl(declValue)) return false;
+            return !VIEWPORT_UNIT_RE.test(declValue);
         })
         .map((decl) => decl.trim())
         .filter(Boolean)
         .join("; ");
+}
+
+/**
+ * The ```svg fence's policy (MAR-402).
+ *
+ * A ```svg fence is the one construct that puts markup the DOCUMENT AUTHOR
+ * wrote into the live DOM: every other diagram engine renders its own output
+ * from a source language. So this is the sink, and it is the only one whose
+ * defence has to hold with no CSP behind it, because Export as HTML writes a
+ * plain file with no CSP at all (export/index.ts, `buildExportDocument`). An
+ * in-editor check of a `<script>` or an `onload=` passes either way, since the
+ * webview's CSP already makes both inert; the exported file is where the
+ * difference between a sanitizer that runs and one that does not is visible.
+ *
+ * The tag and attribute allowlist is DOMPurify's own `svg` and `svgFilters`
+ * profiles, taken as they come. That set already excludes `foreignObject` and
+ * `use` (its `svgDisallowed` list), which is the namespace-confusion surface,
+ * and following it rather than editing it is what keeps this policy from
+ * becoming a hand-maintained copy of a library internal that rots in silence.
+ * The two consequences worth knowing: an SVG whose text labels are HTML inside
+ * a `<foreignObject>` loses those labels, and an icon sprite built on `<use>`
+ * renders empty.
+ *
+ * `style` is the one addition. It is an ALLOWED svg tag, and a `<style>` inside
+ * an inline SVG is not scoped to that SVG: its selectors reach the whole
+ * document, which is the MAR-366 escape by another door. The element goes, and
+ * DOMPurify's default `FORBID_CONTENTS` already drops its text (and a
+ * `<script>`'s) so nothing leaks through as a stray text node. That default is
+ * deliberately not overridden here: passing `FORBID_CONTENTS` REPLACES the
+ * default set rather than adding to it, so naming one tag would silently
+ * un-forbid every other.
+ *
+ * The `style` ATTRIBUTE still arrives with the MAR-366 filter already on it,
+ * from the module-level hook below.
+ */
+export const SVG_SANITIZE_CONFIG: Parameters<DOMPurifyModule["sanitize"]>[1] = {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: ["style"],
+};
+
+/** Attributes whose whole value is a URL to fetch. */
+const URL_ATTRIBUTES = new Set(["href", "xlink:href", "src"]);
+
+/**
+ * A reference that leaves this machine: any scheme except `data:`, and the
+ * protocol-relative `//host/path` form.
+ *
+ * `data:` stays because an embedded raster is how every design tool ships a
+ * bitmap inside an SVG, and it fetches nothing. A bare `#fragment` has no
+ * scheme, so it falls through as local, which is what makes gradients, filters
+ * and clip paths keep working.
+ */
+const REMOTE_REFERENCE_RE = /^(?!data:)(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
+/** Every `url(...)` payload in an attribute value, quotes stripped. */
+const CSS_URL_RE = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+
+/**
+ * Whether any `url(...)` in `value` names something off this machine.
+ *
+ * Whitespace is collapsed first, since it is legal inside a `url()` and is the
+ * obvious way to hide a scheme from a matcher.
+ */
+function hasRemoteCssUrl(value: string): boolean {
+    const collapsed = value.replace(/\s+/g, "");
+    CSS_URL_RE.lastIndex = 0;
+    for (let m = CSS_URL_RE.exec(collapsed); m; m = CSS_URL_RE.exec(collapsed)) {
+        if (REMOTE_REFERENCE_RE.test(m[2]!)) return true;
+    }
+    return false;
+}
+
+/**
+ * Should this attribute be dropped for pointing off the machine?
+ *
+ * Two shapes, because a URL reaches an SVG two ways: as the whole value of
+ * `href`/`xlink:href`/`src`, and as a `url(...)` inside `fill`, `filter`,
+ * `mask`, `clip-path` or `style`. Whitespace is collapsed first, since it is
+ * legal inside both and is the obvious way to hide a scheme from a matcher.
+ *
+ * `<a>` is exempt on the URL-attribute limb and only there: a link navigates on
+ * a click the reader chooses to make, which is what every markdown link in the
+ * document already does, whereas an `<image href>` or a `<feImage href>` fetches
+ * the moment the picture paints. A `javascript:` href never reaches here;
+ * DOMPurify's own `ALLOWED_URI_REGEXP` has already refused it.
+ */
+export function isRemoteReferenceAttribute(
+    tagName: string,
+    attrName: string,
+    value: string,
+): boolean {
+    const collapsed = value.replace(/\s+/g, "");
+    if (
+        tagName.toLowerCase() !== "a" &&
+        URL_ATTRIBUTES.has(attrName.toLowerCase()) &&
+        REMOTE_REFERENCE_RE.test(collapsed)
+    ) {
+        return true;
+    }
+    // `style` is deliberately not answered here even though it can carry one:
+    // `filterStyleAttribute` has already run on it (uponSanitizeAttribute fires
+    // before this hook) and dropped the offending declaration on its own,
+    // leaving the rest of the author's CSS in place. Answering true for it
+    // would take the whole attribute instead.
+    return attrName.toLowerCase() !== "style" && hasRemoteCssUrl(value);
 }
 
 let purifyPromise: Promise<DOMPurifyModule> | null = null;
@@ -101,10 +215,46 @@ export function loadSanitizer(): Promise<DOMPurifyModule> {
                 data.attrValue = filterStyleAttribute(data.attrValue);
                 if (!data.attrValue) data.keepAttr = false;
             });
+            // Remote references, dropped for EVERY sink this loader serves.
+            // Installed with the module like the style policy above, so a
+            // future sink cannot write its own config without it.
+            //
+            // Not gated on the svg profile, though it was written for the
+            // ```svg fence (MAR-402). Inline HTML reaches the same sink by the
+            // other door: a `<img src="https://…">` or a
+            // `style="background:url(https://…)"` in a markdown body is refused
+            // by the CSP in the editor and LIVE in an exported HTML file, which
+            // has no CSP at all. Driven rather than reasoned: before this, the
+            // exported file issued both requests, and the `style` case is the
+            // quiet one, because it renders as nothing a reader would look at.
+            //
+            // Ordinary markdown constructs already behave this way, which is
+            // what makes inline HTML the outlier rather than this the new rule:
+            // a `![](https://…)` image does not reach the exported file at all.
+            purify.addHook("afterSanitizeAttributes", (node) => {
+                for (const attr of Array.from(node.attributes)) {
+                    if (isRemoteReferenceAttribute(node.localName, attr.name, attr.value)) {
+                        node.removeAttribute(attr.name);
+                    }
+                }
+            });
             return purify;
         });
     }
     return purifyPromise;
+}
+
+/**
+ * Sanitize a ```svg fence's source down to the markup that may be painted.
+ *
+ * Returns a string rather than writing into an element, because the shared
+ * diagram pane owns the write (`diagramPane.ts` assigns `innerHTML` and then
+ * stamps the natural size onto the root). That keeps ONE sink for a diagram's
+ * markup and leaves this function the only thing between the fence and it.
+ */
+export async function sanitizeSvgMarkup(raw: string): Promise<string> {
+    const purify = await loadSanitizer();
+    return purify.sanitize(raw, SVG_SANITIZE_CONFIG) as string;
 }
 
 /**

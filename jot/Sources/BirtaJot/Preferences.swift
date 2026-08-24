@@ -275,18 +275,25 @@ enum Prefs {
         set { d.set(newValue.json, forKey: Key.toolbarLayout.rawValue) }
     }
 
+    /// The three display defaults, named once rather than inlined in each
+    /// getter, so `changedSettingsDescription` can ask whether a value still
+    /// IS the default without a second copy of it to keep in step.
+    static let defaultFontPreset = "serif"
+    static let defaultFontSize = 100
+    static let defaultContentWidth = "full"
+
     static var fontPreset: String {
-        get { d.string(forKey: Key.fontPreset.rawValue) ?? "serif" }
+        get { d.string(forKey: Key.fontPreset.rawValue) ?? defaultFontPreset }
         set { d.set(newValue, forKey: Key.fontPreset.rawValue) }
     }
 
     static var fontSize: Int {
-        get { d.object(forKey: Key.fontSize.rawValue) == nil ? 100 : d.integer(forKey: Key.fontSize.rawValue) }
+        get { d.object(forKey: Key.fontSize.rawValue) == nil ? defaultFontSize : d.integer(forKey: Key.fontSize.rawValue) }
         set { d.set(newValue, forKey: Key.fontSize.rawValue) }
     }
 
     static var contentWidth: String {
-        get { d.string(forKey: Key.contentWidth.rawValue) ?? "full" }
+        get { d.string(forKey: Key.contentWidth.rawValue) ?? defaultContentWidth }
         set { d.set(newValue, forKey: Key.contentWidth.rawValue) }
     }
 
@@ -447,6 +454,44 @@ enum Prefs {
             return stored.isEmpty ? NoteNameTemplate.default : stored
         }
         set { d.set(newValue, forKey: Key.newNoteNameTemplate.rawValue) }
+    }
+
+    /// The settings that differ from their defaults, one safe line each, for a
+    /// feedback report to carry (MAR-395).
+    ///
+    /// The privacy rule is `shared/feedback/compose.ts`'s, and it is why this
+    /// is a hand-written list rather than a dump of the defaults domain: **a
+    /// setting's NAME is diagnostic, a setting's VALUE may be the user's
+    /// data.** A note path, an agent command line and a filename template can
+    /// each carry a directory name or a person's name, so those report only
+    /// that they differ. What is quoted is what cannot carry either: a
+    /// boolean, a number, a chord, or a value from a fixed set.
+    ///
+    /// Nothing here names the note, its path, or the folder it is in.
+    ///
+    /// Derived settings are reported and the facts they are derived FROM are
+    /// not, so one choice produces one line: `noteHome` already says whether a
+    /// path was chosen, and `openToBlankNote` is what `noteMode` reads.
+    static func changedSettingsDescription() -> [String] {
+        var lines: [String] = []
+        func report(_ name: String, _ changed: Bool, _ value: String? = nil) {
+            guard changed else { return }
+            lines.append(value.map { "\(name): \($0)" } ?? "\(name): customized")
+        }
+        report("hotkey", hotkey != AppFlavor.current.defaultHotkey, hotkey.spelling)
+        report("autosave", !autosave, "off")
+        report("network", !networkEnabled, "off")
+        report("automatic updates", !autoUpdate, "off")
+        report("show in Dock", showInDock, "on")
+        report("agent", !agentEnabled, "off")
+        report("agent command", agentEnabled && agentCommand != AgentPreset.fallback.template)
+        report("note home", noteHome != .iCloud, noteHome.rawValue)
+        report("open to a blank note", openToBlankNote, "on")
+        report("new note name", newNoteNameTemplate != NoteNameTemplate.default)
+        report("font", fontPreset != defaultFontPreset, fontPreset)
+        report("font size", fontSize != defaultFontSize, String(fontSize))
+        report("content width", contentWidth != defaultContentWidth, contentWidth)
+        return lines
     }
 
     /// When the app last ASKED the release host, successfully or not.

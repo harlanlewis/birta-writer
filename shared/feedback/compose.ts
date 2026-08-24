@@ -1,5 +1,5 @@
 /**
- * src/feedback/compose.ts
+ * shared/feedback/compose.ts
  *
  * The pure half of the feedback command: turning what the user chose and typed
  * into the exact Markdown that will appear in their browser or on their

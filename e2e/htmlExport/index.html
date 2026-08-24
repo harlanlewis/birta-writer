@@ -57,6 +57,26 @@
     "| a | b |", "|---|---|", "| 1 | 2 |", "",
     "```ts", "const x: number = 1;", "```", "",
     "```mermaid", "flowchart LR", "  A --> B", "```", "",
+    // A ```svg fence carrying every hostile construct at once (MAR-402). It is
+    // here rather than in a suite of its own because the EXPORTED FILE is the
+    // only place the sanitizer's absence is observable: the editor's CSP makes
+    // a <script> and an onload= inert either way, so an in-editor check passes
+    // whether or not the sanitizer ran. The exported file has no CSP at all.
+    // The <script> tag is split so it does not close this page's own.
+    "```svg",
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 60\" onload=\"window.__pwn = 1\">",
+    "  <" + "script>window.__pwn = 2;</" + "script>",
+    "  <style>body { background: red }</style>",
+    "  <image href=\"https://tracker.example/pixel.png\" width=\"1\" height=\"1\"/>",
+    "  <rect width=\"120\" height=\"60\" fill=\"#4a90d9\"/>",
+    "  <text x=\"10\" y=\"35\" fill=\"#ffffff\">svg fence</text>",
+    "</svg>",
+    "```", "",
+    // Inline HTML carrying the SAME hostile shape as the fence above, by the
+    // other door. The editor's CSP refuses all three, so like the fence this is
+    // only observable in the exported file, which has none.
+    "<div style=\"background: url(https://tracker.example/inline-style.png); position: fixed\">styled div</div>", "",
+    "<img src=\"https://tracker.example/inline-img.png\" alt=\"inline img\">", "",
     "$$", "\\int_0^1 x dx", "$$", "",
     "![a box](img/box.svg)", "",
     "Footnote[^1].", "", "[^1]: The note.", "",

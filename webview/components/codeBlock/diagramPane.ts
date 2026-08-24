@@ -111,7 +111,12 @@ export function createPanPad(opts: {
     const { classPrefix: px, onPan, onReset } = opts;
 
     const controls = document.createElement("div");
-    controls.className = `${px}-pan-controls`;
+    // `diagram-chrome` alongside the engine's own class, and it has to stay:
+    // the HTML export prunes chrome by selector and names this marker once
+    // (export/index.ts, CHROME_SELECTORS) rather than each engine's class. It
+    // is the same argument as `data-settled` below. Stamped where the element
+    // is built, so a new engine is covered without touching the export.
+    controls.className = `${px}-pan-controls diagram-chrome`;
     controls.contentEditable = "false";
 
     const resetBtn = document.createElement("button");
@@ -215,7 +220,7 @@ export function createDiagramPane(opts: {
 
     // ── Top-right zoom overlay: [-] [percentage] [+] ─────────────
     const zoomOverlay = document.createElement("div");
-    zoomOverlay.className = `${px}-zoom-overlay`;
+    zoomOverlay.className = `${px}-zoom-overlay diagram-chrome`;
     zoomOverlay.contentEditable = "false";
 
     const overlayZoomOut = makeDiagramBtn(IconZoomOut, t("Zoom Out"), "mermaid-overlay-btn");

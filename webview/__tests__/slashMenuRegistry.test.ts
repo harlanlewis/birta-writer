@@ -56,6 +56,42 @@ describe("slashContext", () => {
     });
 });
 
+describe("`/help` against the row that already owned the word (MAR-395)", () => {
+    /**
+     * `keyboardShortcutsHelp` carries the keyword `help`, so before the Help
+     * row existed, typing `/help` offered Show Keyboard Shortcuts and nothing
+     * else. Both rows still match, which is right; what matters is which one
+     * a person reaches first.
+     */
+    it("typing help should reach the Help row before the shortcuts cheatsheet", () => {
+        const ids = filterSlashItems(SLASH_MENU_ITEMS, "help").map((i) => i.id);
+
+        expect(ids).toContain("help");
+        expect(ids).toContain("keyboardShortcutsHelp");
+        expect(ids.indexOf("help")).toBeLessThan(ids.indexOf("keyboardShortcutsHelp"));
+    });
+
+    /**
+     * The ordering must not depend on where the row happens to sit in the
+     * registry, so assert the property that actually decides it: a label
+     * prefix outranks a keyword prefix. Moving the row would leave the test
+     * above passing for the wrong reason.
+     */
+    it("the Help row should win on the label-prefix tier, not on its position", () => {
+        const reversed = [...SLASH_MENU_ITEMS].reverse();
+        const ids = filterSlashItems(reversed, "help").map((i) => i.id);
+
+        expect(ids.indexOf("help")).toBeLessThan(ids.indexOf("keyboardShortcutsHelp"));
+    });
+
+    it("the feedback words should reach the Help row too", () => {
+        for (const query of ["feedback", "bug", "report", "problem"]) {
+            const ids = filterSlashItems(SLASH_MENU_ITEMS, query).map((i) => i.id);
+            expect(ids, `\`/${query}\` does not reach Help`).toContain("help");
+        }
+    });
+});
+
 describe("filterSlashItems", () => {
     const label = (items: SlashMenuItem[]): string[] => items.map((i) => i.id);
 

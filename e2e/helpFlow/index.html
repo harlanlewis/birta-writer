@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- e2e harness page for e2e/helpFlow: a host that ANSWERS the host-prompt
+     seam (MAR-395), which is the only way to drive `/help` past its first
+     question. The stub stands in for what VS Code and Birta Writer for Mac
+     each draw natively; what it proves is the page's half, which is the half
+     both surfaces share.
+
+     Answers are scripted from `window.__promptScript`, one per step, in order.
+     A null entry is a cancel, so a check can walk the cancel matrix through
+     the real bundle rather than through a unit-test fake. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-light"));
+  // `?host=jot` mounts under the Mac app's declared profile instead of the
+  // VS Code one. `/help` is ungated on purpose, and "ungated" is a claim about
+  // `hostHasCommand` that is worth driving rather than reading: the changelog
+  // says the row is there on both surfaces, and a suite that only ever mounted
+  // the default profile would say nothing about the other one.
+  //
+  // The capability list is Jot's real one (`HOST_PROFILES.jot`), so a
+  // capability added to the command later fails here rather than shipping.
+  const JOT_HOST = { capabilities: ["imageUpload", "appPreferences", "agent"],
+                     arrangements: ["typographyInGearMenu", "formattingInSecondRow",
+                                    "fixedToolbarLayout", "barMenusOnClick",
+                                    "nativeFindBar", "nativeDatePicker"],
+                     shortcuts: [] };
+  const asJot = new URLSearchParams(location.search).get("host") === "jot";
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
+                    ...(asJot && { host: JOT_HOST }) };
+  window.__posted = [];
+  // Overwritten per check. Each entry answers one step, in order.
+  window.__promptScript = [];
+  // The steps the page actually asked for, so a check can assert the questions
+  // rather than only the answer.
+  window.__promptsSeen = [];
+  const CONTENT = `# Journal\n\nFirst line.\n\nSecond line.\n`;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+      if (msg.type === "requestHostDiagnostics") {
+        window.postMessage({
+          type: "hostDiagnosticsResult",
+          id: msg.id,
+          diagnostics: {
+            extensionVersion: "9.9.9",
+            hostVersion: "a stub host",
+            platform: "the e2e harness",
+            changedSettings: [],
+          },
+        }, "*");
+      }
+      if (msg.type === "hostPrompt") {
+        window.__promptsSeen.push(msg.step);
+        // TAKE THE FOCUS, the way every real renderer of this seam does: VS
+        // Code's input box and the Mac app's sheet both pull it off the
+        // `contenteditable`. Without this the harness answers without ever
+        // moving focus, and the caret arms at the end of checks.mjs would
+        // pass on a build that never gives it back. Focus is deliberately NOT
+        // handed back here, so restoring it is the page's job to prove.
+        document.getElementById("stub-prompt-field").focus();
+        const answer = window.__promptScript[window.__promptsSeen.length - 1];
+        // A real host answers asynchronously, after a person has read the
+        // question. Answering synchronously here would let the page's own
+        // pending table be right for the wrong reason.
+        setTimeout(() => {
+          window.postMessage({
+            type: "hostPromptResult",
+            id: msg.id,
+            value: answer === undefined ? null : answer,
+          }, "*");
+        }, 10);
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<!-- Stands in for whatever the host draws a prompt in. It only has to be
+     focusable: what it is for is taking focus off the editor. -->
+<input id="stub-prompt-field" aria-label="stub host prompt" style="position:fixed;top:0;left:0;opacity:0;">
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

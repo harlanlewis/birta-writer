@@ -63,7 +63,12 @@
       // — the honest test of "drag order, not completion order".
       if (msg.type === "uploadImage") {
         const tag = msg.data[0];
-        const url = tag === 1 ? "img/dropped.jpeg" : `img/dropped-${tag}.jpeg`;
+        // The extension derives the extension from the MIME type
+        // (src/utils/imageService.ts, mimeToExt), so the stub does too — an
+        // SVG drop that saved as `.jpeg` here would pass a check the product
+        // fails.
+        const ext = msg.mimeType === "image/svg+xml" ? "svg" : "jpeg";
+        const url = tag === 1 ? `img/dropped.${ext}` : `img/dropped-${tag}.${ext}`;
         setTimeout(() => {
           window.postMessage({ type: "imageUploaded", id: msg.id, url }, "*");
         }, Math.max(0, 60 - tag * 10));

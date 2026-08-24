@@ -166,6 +166,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     showToolbar: NONE,
     toggleToolbar: NONE,
     openShortcutsHelp: NONE,
+    openHelp: NONE,
     openKeyboardShortcuts: NONE,
     openExtensionSettings: NONE,
     openWhatsNew: NONE,
