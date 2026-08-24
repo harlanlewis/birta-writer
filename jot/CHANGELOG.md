@@ -12,13 +12,25 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- `/help` works in Birta Writer for Mac, and draws as a sheet on the window that asked. The feedback flow was reachable only from the VS Code command palette, which this app does not have, so there was no way to report anything from here at all. The four questions arrive one at a time, Escape at any of them leaves the note untouched, and the destinations are the same three: a prefilled GitHub issue, a prefilled mail draft, or the clipboard. What it reports about your setup is this app and macOS rather than an extension and a VS Code that was never running, and the settings it names are this app's own. It is never given the note, its filename, or the folder it is in.
+
+### Fixed
+
+- Birta Writer for Mac can be quit while the first-run screen is up. With Automatically save changes off, and only when the buffer had got ahead of the file behind that screen, a quit there put the Save, Discard Changes, Cancel question on a panel that was showing the first-run screen, and nothing behind that screen could ever answer it: the app writes nothing while it is up, so the buffer and the file could not be brought back into step, and the quit was left waiting on an answer that never came. An AppleScript quit never returned, a second one came back "User canceled", and a `kill` was ignored, which leaves Force Quit, and Force Quit is the one route that discards the buffer. The question is not asked there now, and the quit goes through.
+
+- Birta Writer for Mac takes down a question left on screen when a quit arrives that cannot be refused. With Automatically save changes off, an unsaved note and that question waiting on the panel, a signal from an installer replacing the app, or from a logout, did nothing at all: the app was already quitting, so the signal had nothing to add and the question stayed up. Such a quit now answers it the way it would have answered it in the first place, by writing the buffer, and the app goes.
+
+- Birta Writer for Mac says so when macOS will not give it the summon hotkey. A global shortcut goes to whichever app asks for it first, and the app that loses has no Dock icon and no window, so the key did nothing at all and the only thing saying why was a caption in a Settings pane nobody had opened. A refused combination now opens a notice on the menu bar icon: it names the combination that was refused, says that clicking the icon opens the app every time, and carries the hotkey recorder so a new combination can be pressed there and then. It reports what macOS answered about that one too, so a replacement that is also taken reads as a second refusal rather than as success. Nothing retries behind you: a chord that started working while you were not watching would leave the same question this notice exists to answer.
+
+  The refusal was not being noticed in the first place, which is why none of this was reachable. macOS answers "registered" when another app already holds a combination, so the check meant to catch this only ever fired when Birta Writer collided with a second copy of itself in the same process. Birta Writer now asks for the combination exclusively, which is what lets any refusal reach it at all. Be careful what that buys: measured across two processes, a refusal comes back only when the app that got there first also asked exclusively, and most apps do not, so this narrows the silence rather than ending it. Nor does it reach every key macOS binds, since the app switcher and Mission Control are in the same registry while Spotlight and the screenshot keys are not and simply swallow the chord. What holds in every case is the asymmetry: a refusal is proof the key will not work, and silence is not proof that it will.
+
 ---
 
 ## [2026.824.0] - 2026, August 24
 
 ### Added
-
-- `/help` works in Birta Writer for Mac, and draws as a sheet on the window that asked. The feedback flow was reachable only from the VS Code command palette, which this app does not have, so there was no way to report anything from here at all. The four questions arrive one at a time, Escape at any of them leaves the note untouched, and the destinations are the same three: a prefilled GitHub issue, a prefilled mail draft, or the clipboard. What it reports about your setup is this app and macOS rather than an extension and a VS Code that was never running, and the settings it names are this app's own. It is never given the note, its filename, or the folder it is in.
 
 - A first launch opens on a short tour instead of an empty panel. It is a checklist that walks through ticking a box, the slash menu, a calculation that answers itself, a table, a diagram, some math, and the card a link on its own line becomes once you turn the network on. It is an ordinary note rather than a screen, so every gesture in it is the real one, nothing has to be dismissed, and selecting all and deleting is final.
 
@@ -40,14 +52,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 - The Window menu carries Minimize, Zoom and Bring All to Front. It had Minimize alone, and macOS adds Fill, Center, Move & Resize and Full Screen Tile to any app's Window menu, so those arrived with nothing above or below them and read as being in a strange order. Those rows are still the system's, with the system's own keys: what changed is the rows around them.
 
 ### Fixed
-
-- Birta Writer for Mac can be quit while the first-run screen is up. With Automatically save changes off, and only when the buffer had got ahead of the file behind that screen, a quit there put the Save, Discard Changes, Cancel question on a panel that was showing the first-run screen, and nothing behind that screen could ever answer it: the app writes nothing while it is up, so the buffer and the file could not be brought back into step, and the quit was left waiting on an answer that never came. An AppleScript quit never returned, a second one came back "User canceled", and a `kill` was ignored, which leaves Force Quit, and Force Quit is the one route that discards the buffer. The question is not asked there now, and the quit goes through.
-
-- Birta Writer for Mac takes down a question left on screen when a quit arrives that cannot be refused. With Automatically save changes off, an unsaved note and that question waiting on the panel, a signal from an installer replacing the app, or from a logout, did nothing at all: the app was already quitting, so the signal had nothing to add and the question stayed up. Such a quit now answers it the way it would have answered it in the first place, by writing the buffer, and the app goes.
-
-- Birta Writer for Mac says so when macOS will not give it the summon hotkey. A global shortcut goes to whichever app asks for it first, and the app that loses has no Dock icon and no window, so the key did nothing at all and the only thing saying why was a caption in a Settings pane nobody had opened. A refused combination now opens a notice on the menu bar icon: it names the combination that was refused, says that clicking the icon opens the app every time, and carries the hotkey recorder so a new combination can be pressed there and then. It reports what macOS answered about that one too, so a replacement that is also taken reads as a second refusal rather than as success. Nothing retries behind you: a chord that started working while you were not watching would leave the same question this notice exists to answer.
-
-  The refusal was not being noticed in the first place, which is why none of this was reachable. macOS answers "registered" when another app already holds a combination, so the check meant to catch this only ever fired when Birta Writer collided with a second copy of itself in the same process. Birta Writer now asks for the combination exclusively, which is what lets any refusal reach it at all. Be careful what that buys: measured across two processes, a refusal comes back only when the app that got there first also asked exclusively, and most apps do not, so this narrows the silence rather than ending it. Nor does it reach every key macOS binds, since the app switcher and Mission Control are in the same registry while Spotlight and the screenshot keys are not and simply swallow the chord. What holds in every case is the asymmetry: a refusal is proof the key will not work, and silence is not proof that it will.
 
 ---
 
