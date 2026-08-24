@@ -43,6 +43,7 @@ export async function run({ page, check, baseUrl }) {
     // math, the image.
     await page.waitForSelector(".mermaid-svg-container svg", { timeout: 20000 });
     await page.waitForSelector(".katex-display .katex", { timeout: 20000 });
+    await page.waitForSelector(".svg-preview[data-settled]", { timeout: 20000 });
     await page.waitForFunction(() => {
         const img = document.querySelector("img.image-node");
         return img && img.complete && img.naturalWidth > 0;
@@ -67,6 +68,10 @@ export async function run({ page, check, baseUrl }) {
     const out = await page.context().browser().newPage({ viewport: { width: 1000, height: 900 } });
     const outErrors = [];
     out.on("pageerror", (e) => outErrors.push(String(e)));
+    // Every URL the exported file asks for. The file carries no CSP, so this is
+    // the page that can actually make a request the document asked for.
+    const outRequests = [];
+    out.on("request", (r) => outRequests.push(r.url()));
     await out.setContent(html, { waitUntil: "load" });
     await out.waitForTimeout(300);
     const exported = await landmarks(out);
@@ -114,6 +119,49 @@ export async function run({ page, check, baseUrl }) {
     check("only the KaTeX faces the document uses travel", faces > 0 && faces < 10, String(faces));
     check("print rules travel", /@media print/.test(css));
     check("the export page has no script errors", outErrors.length === 0, outErrors.join(" | "));
+
+    // === The ```svg fence, in a file with no CSP (MAR-402) ===
+    // THE discriminating assertions of the whole feature. In the editor a
+    // <script> and an onload= are dead whatever the sanitizer does, because the
+    // webview CSP carries no 'unsafe-inline' and no nonce reaches injected
+    // markup, so an in-editor check of either passes with the sanitizer removed.
+    // Here there is no CSP, the page is opened for real, and the four hostile
+    // constructs in the fence get their chance.
+    //
+    // The picture is asserted alongside them, positively: a sanitizer that
+    // dropped the whole fence would pass every "it is gone" line below and ship
+    // a feature that renders nothing.
+    const svgOut = await out.evaluate(() => {
+        const svg = document.querySelector(".svg-svg-container > svg");
+        return {
+            pwn: window.__pwn ?? null,
+            present: !!svg,
+            rects: svg ? svg.querySelectorAll("rect").length : 0,
+            label: svg?.querySelector("text")?.textContent?.trim() ?? "",
+            onload: svg?.getAttribute("onload") ?? null,
+            scripts: svg ? svg.querySelectorAll("script").length : 0,
+            styles: svg ? svg.querySelectorAll("style").length : 0,
+            imageHref: svg?.querySelector("image")?.getAttribute("href") ?? null,
+        };
+    });
+    check("the fence's picture travels into the exported file",
+        svgOut.present && svgOut.rects === 1 && svgOut.label === "svg fence", JSON.stringify(svgOut));
+    check("no onload attribute survives into the exported file",
+        svgOut.onload === null && !/\bonload\s*=/i.test(html), JSON.stringify(svgOut));
+    check("no <script> survives into the exported file",
+        svgOut.scripts === 0 && !/<script/i.test(html), JSON.stringify(svgOut));
+    check("no <style> element survives into the exported SVG",
+        svgOut.styles === 0, JSON.stringify(svgOut));
+    check("the remote <image> reference is stripped, not merely refused",
+        svgOut.imageHref === null && !/tracker\.example/.test(html), JSON.stringify(svgOut));
+    // The strongest of the six: not "the markup is absent" but "the page, given
+    // its chance, did nothing". Both halves would have fired without the
+    // sanitizer, and neither can fire inside the editor's CSP.
+    check("nothing from the fence executed in the exported file",
+        svgOut.pwn === null, String(svgOut.pwn));
+    check("the exported file requested nothing off its own bytes",
+        !outRequests.some((u) => /^https?:/.test(u)),
+        outRequests.filter((u) => /^https?:/.test(u)).join(" | "));
     // Editor annotations are view state: the live view underlines the filler
     // "really" and chips the [TK] marker; the file must carry neither.
     const liveAnnotated = await page.evaluate(() => ({

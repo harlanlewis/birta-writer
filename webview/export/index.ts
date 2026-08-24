@@ -57,12 +57,12 @@ export const CHROME_SELECTORS: readonly string[] = [
     ".mw-table-overlay",            // table grips, insert bars, drag ghost
     ".code-float-rail",             // code block language picker + toggles
     ".code-block-resize-handle",
-    ".mermaid-zoom-overlay",        // diagram zoom and pan chrome
-    ".mermaid-pan-controls",
-    ".puml-zoom-overlay",
-    ".puml-pan-controls",
-    ".gv-zoom-overlay",
-    ".gv-pan-controls",
+    // Diagram zoom and pan chrome, EVERY engine's. One marker, stamped by the
+    // single place that builds them (codeBlock/diagramPane.ts), so a new engine
+    // is covered the day it lands. It must stay one: an engine-by-engine list
+    // here is one a new engine falls off with nothing going red, and the file
+    // would ship its zoom buttons.
+    ".diagram-chrome",
     ".image-toolbar",               // image path / title editors
     ".fold-ellipsis",               // the "…" shown on a folded block
     ".footnote-def-backlink",       // the ↩ button beside a footnote definition

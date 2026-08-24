@@ -68,6 +68,12 @@ export const CODE_LANGUAGES: CodeLanguage[] = [
     ["scss", "SCSS"],
     ["solidity", "Solidity", ["sol"]],
     ["sql", "SQL"],
+    // SVG. No aliases: `xml` is already an alias of `html` above, and a fence
+    // that renders a picture is a different promise from one that highlights
+    // markup, so the two must not converge on a spelling. The VALUE doubles as
+    // refractor's grammar name (`markup` registers `svg` among its aliases), so
+    // the code view highlights without a second mapping.
+    ["svg", "SVG"],
     ["swift", "Swift"],
     ["toml", "TOML"],
     ["typescript", "TypeScript", ["ts", "tsx"]],

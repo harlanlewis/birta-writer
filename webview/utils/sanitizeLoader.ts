@@ -89,6 +89,95 @@ export function filterStyleAttribute(value: string): string {
         .join("; ");
 }
 
+/**
+ * The ```svg fence's policy (MAR-402).
+ *
+ * A ```svg fence is the one construct that puts markup the DOCUMENT AUTHOR
+ * wrote into the live DOM: every other diagram engine renders its own output
+ * from a source language. So this is the sink, and it is the only one whose
+ * defence has to hold with no CSP behind it, because Export as HTML writes a
+ * plain file with no CSP at all (export/index.ts, `buildExportDocument`). An
+ * in-editor check of a `<script>` or an `onload=` passes either way, since the
+ * webview's CSP already makes both inert; the exported file is where the
+ * difference between a sanitizer that runs and one that does not is visible.
+ *
+ * The tag and attribute allowlist is DOMPurify's own `svg` and `svgFilters`
+ * profiles, taken as they come. That set already excludes `foreignObject` and
+ * `use` (its `svgDisallowed` list), which is the namespace-confusion surface,
+ * and following it rather than editing it is what keeps this policy from
+ * becoming a hand-maintained copy of a library internal that rots in silence.
+ * The two consequences worth knowing: an SVG whose text labels are HTML inside
+ * a `<foreignObject>` loses those labels, and an icon sprite built on `<use>`
+ * renders empty.
+ *
+ * `style` is the one addition. It is an ALLOWED svg tag, and a `<style>` inside
+ * an inline SVG is not scoped to that SVG: its selectors reach the whole
+ * document, which is the MAR-366 escape by another door. The element goes, and
+ * DOMPurify's default `FORBID_CONTENTS` already drops its text (and a
+ * `<script>`'s) so nothing leaks through as a stray text node. That default is
+ * deliberately not overridden here: passing `FORBID_CONTENTS` REPLACES the
+ * default set rather than adding to it, so naming one tag would silently
+ * un-forbid every other.
+ *
+ * The `style` ATTRIBUTE still arrives with the MAR-366 filter already on it,
+ * from the module-level hook below.
+ */
+export const SVG_SANITIZE_CONFIG: Parameters<DOMPurifyModule["sanitize"]>[1] = {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: ["style"],
+};
+
+/** Attributes whose whole value is a URL to fetch. */
+const URL_ATTRIBUTES = new Set(["href", "xlink:href", "src"]);
+
+/**
+ * A reference that leaves this machine: any scheme except `data:`, and the
+ * protocol-relative `//host/path` form.
+ *
+ * `data:` stays because an embedded raster is how every design tool ships a
+ * bitmap inside an SVG, and it fetches nothing. A bare `#fragment` has no
+ * scheme, so it falls through as local, which is what makes gradients, filters
+ * and clip paths keep working.
+ */
+const REMOTE_REFERENCE_RE = /^(?!data:)(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
+/** Every `url(...)` payload in an attribute value, quotes stripped. */
+const CSS_URL_RE = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+
+/**
+ * Should this attribute be dropped for pointing off the machine?
+ *
+ * Two shapes, because a URL reaches an SVG two ways: as the whole value of
+ * `href`/`xlink:href`/`src`, and as a `url(...)` inside `fill`, `filter`,
+ * `mask`, `clip-path` or `style`. Whitespace is collapsed first, since it is
+ * legal inside both and is the obvious way to hide a scheme from a matcher.
+ *
+ * `<a>` is exempt on the URL-attribute limb and only there: a link navigates on
+ * a click the reader chooses to make, which is what every markdown link in the
+ * document already does, whereas an `<image href>` or a `<feImage href>` fetches
+ * the moment the picture paints. A `javascript:` href never reaches here;
+ * DOMPurify's own `ALLOWED_URI_REGEXP` has already refused it.
+ */
+export function isRemoteReferenceAttribute(
+    tagName: string,
+    attrName: string,
+    value: string,
+): boolean {
+    const collapsed = value.replace(/\s+/g, "");
+    if (
+        tagName.toLowerCase() !== "a" &&
+        URL_ATTRIBUTES.has(attrName.toLowerCase()) &&
+        REMOTE_REFERENCE_RE.test(collapsed)
+    ) {
+        return true;
+    }
+    CSS_URL_RE.lastIndex = 0;
+    for (let m = CSS_URL_RE.exec(collapsed); m; m = CSS_URL_RE.exec(collapsed)) {
+        if (REMOTE_REFERENCE_RE.test(m[2])) return true;
+    }
+    return false;
+}
+
 let purifyPromise: Promise<DOMPurifyModule> | null = null;
 
 /** Load (and cache) the DOMPurify module, with the style policy installed. */
@@ -101,10 +190,36 @@ export function loadSanitizer(): Promise<DOMPurifyModule> {
                 data.attrValue = filterStyleAttribute(data.attrValue);
                 if (!data.attrValue) data.keepAttr = false;
             });
+            // Remote references, dropped for the svg profile only. Installed
+            // with the module like the style policy above, so a future SVG sink
+            // cannot write its own config without it; gated on the profile the
+            // CALL asked for, so inline HTML (`htmlView`, `{ html: true }`) is
+            // untouched and its images still resolve.
+            purify.addHook("afterSanitizeAttributes", (node, _event, config) => {
+                if (config.USE_PROFILES === false || config.USE_PROFILES?.svg !== true) return;
+                for (const attr of Array.from(node.attributes)) {
+                    if (isRemoteReferenceAttribute(node.localName, attr.name, attr.value)) {
+                        node.removeAttribute(attr.name);
+                    }
+                }
+            });
             return purify;
         });
     }
     return purifyPromise;
+}
+
+/**
+ * Sanitize a ```svg fence's source down to the markup that may be painted.
+ *
+ * Returns a string rather than writing into an element, because the shared
+ * diagram pane owns the write (`diagramPane.ts` assigns `innerHTML` and then
+ * stamps the natural size onto the root). That keeps ONE sink for a diagram's
+ * markup and leaves this function the only thing between the fence and it.
+ */
+export async function sanitizeSvgMarkup(raw: string): Promise<string> {
+    const purify = await loadSanitizer();
+    return purify.sanitize(raw, SVG_SANITIZE_CONFIG) as string;
 }
 
 /**

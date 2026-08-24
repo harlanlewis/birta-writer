@@ -44,7 +44,7 @@ async function latestDoc(page, matcher, tries = 30) {
 async function fireDrag(page, type, x, y, { mime = "image/png", intoSibling = false, tags = [1] } = {}) {
     return page.evaluate(({ type, x, y, mime, intoSibling, tags }) => {
         const dt = new DataTransfer();
-        const ext = mime.startsWith("image/") ? "png" : "md";
+        const ext = mime === "image/svg+xml" ? "svg" : mime.startsWith("image/") ? "png" : "md";
         for (const tag of tags) {
             dt.items.add(new File([new Uint8Array([tag, 2, 3])], `photo${tag}.${ext}`, { type: mime }));
         }
@@ -320,4 +320,32 @@ export async function run({ page, check, baseUrl }) {
         document.querySelectorAll(".ProseMirror img:not(.ProseMirror-separator)").length);
     check("one undo removes the whole three-image batch, leaving the earlier drop",
         undone === 1, `imgs after undo=${undone}`);
+
+    // ── 9. An .svg file drops like any other image (MAR-402) ──
+    // Nothing SVG-specific was ever written on this path: `image/svg+xml`
+    // simply satisfies the `image/*` filter and the extension's mimeToExt
+    // already maps it. That makes this the check the claim rests on, because
+    // the code reads as if it works whether or not it does — the payload has
+    // to be driven through a real drop to find out.
+    //
+    // Last, after the undo, so it disturbs none of the counts above.
+    bravo = await centerBravo();
+    await fireDrag(page, "dragenter", bravo.x, bravo.top + 4, { mime: "image/svg+xml" });
+    await fireDrag(page, "dragover", bravo.x, bravo.top + 4, { mime: "image/svg+xml" });
+    check("an .svg drag aims like any other image", (await indicator(page)) !== null);
+    await fireDrag(page, "drop", bravo.x, bravo.top + 4, { mime: "image/svg+xml" });
+
+    // The stub answers with the extension's own mime-derived extension, so a
+    // path ending `.svg` is the tell that the payload's type survived the trip.
+    const svgDoc = await latestDoc(page, (c) => c.includes("img/dropped.svg"));
+    check("a dropped .svg is saved and inserted at the drop point",
+        // Above bravo, below the earlier single drop that survived the undo.
+        svgDoc !== null
+            && /!\[\]\(img\/dropped\.jpeg\)\s+!\[\]\(img\/dropped\.svg\)\s+bravo/.test(svgDoc),
+        JSON.stringify(svgDoc?.slice(svgDoc.indexOf("alpha"), svgDoc.indexOf("charlie"))));
+    const svgImg = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror img:not(.ProseMirror-separator)")]
+            .map((i) => i.getAttribute("src") ?? "")
+            .filter((s) => s.endsWith(".svg")).length);
+    check("and it renders as an image node", svgImg === 1, `svg imgs=${svgImg}`);
 }
