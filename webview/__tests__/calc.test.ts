@@ -1227,20 +1227,42 @@ describe("unit conversion round-trips", () => {
         expect(evaluateCalc("100 hectare in acre")).toBeCloseTo(247.105, 2);
     });
 
-    it("historical spellings stay case-insensitive — never reinterpreted as SI prefixes", () => {
-        // To mathjs alone, `Ml`/`ML` is the MEGAlitre and `T` the tesla; the
-        // hand-rolled tables matched case-insensitively, and any casing of a
-        // historical spelling must keep its historical meaning (a silent
-        // 10^9 reinterpretation is the worst possible answer).
-        expect(convertUnit(500, "ML", "l")).toBeCloseTo(0.5, 9);
-        expect(convertUnit(1, "Ml", "l")).toBeCloseTo(0.001, 9);
-        expect(convertUnit(1, "Mm", "m")).toBeCloseTo(0.001, 9);
-        expect(convertUnit(5, "Mg", "g")).toBeCloseTo(0.005, 9);
-        expect(convertUnit(5, "T", "kg")).toBeCloseTo(5000, 9);
-        expect(convertUnit(3, "S", "ms")).toBeCloseTo(3000, 9);
-        expect(convertUnit(2, "H", "s")).toBeCloseTo(7200, 9);
-        // Catalog names stay exact-case: MB really is the megabyte.
+    it("a historical spelling the catalog also claims should be asked about, not decided", () => {
+        // These used to fold silently: `ML` meant the millilitre because the
+        // hand-rolled tables matched case-insensitively, even though to mathjs
+        // it is the MEGAlitre. Folding got the common case right and decided a
+        // 10^9 question the writer did not know was open, in the direction
+        // nothing on screen could show. Both readings are now offered instead,
+        // and the conversion refuses until one is picked (MAR-400).
+        //
+        // The offer itself, the rewrite, and the derivation of exactly which
+        // names are in this class live in calcUnitAmbiguity.test.ts and
+        // calcUnitDisambiguation.test.ts. What is pinned HERE is the refusal,
+        // because this is where the old fold was asserted.
+        expect(convertUnit(500, "ML", "l")).toBeNull();
+        expect(convertUnit(1, "Ml", "l")).toBeNull();
+        expect(convertUnit(1, "Mm", "m")).toBeNull();
+        expect(convertUnit(5, "Mg", "g")).toBeNull();
+        expect(convertUnit(5, "T", "kg")).toBeNull();
+        expect(convertUnit(3, "S", "ms")).toBeNull();
+        expect(convertUnit(2, "H", "s")).toBeNull();
+        // Catalog names stay exact-case: MB really is the megabyte, and it was
+        // never folded, so nothing about it is a question.
         expect(convertUnit(1000, "MB", "GB")).toBe(1);
+    });
+
+    it("a historical spelling the catalog does NOT claim should still fold silently", () => {
+        // The large majority of capitalised legacy spellings, and the reason
+        // the fold is kept rather than removed: `KM` and friends resolve to
+        // nothing at all without it, so there is no second reading to ask
+        // about and folding settles a question with one answer.
+        expect(convertUnit(3, "KM", "m")).toBeCloseTo(3000, 9);
+        expect(convertUnit(1, "MIN", "s")).toBeCloseTo(60, 9);
+        expect(convertUnit(1, "Cm", "mm")).toBeCloseTo(10, 9);
+        expect(convertUnit(2, "Cups", "ml")).not.toBeNull();
+        // `L` IS the litre in mathjs, identical to `l`, so the fold changes
+        // nothing and this must not become a question either.
+        expect(convertUnit(1, "L", "ml")).toBeCloseTo(1000, 6);
     });
 
     it("spoon plurals are US customary too (one kitchen system, not two)", () => {

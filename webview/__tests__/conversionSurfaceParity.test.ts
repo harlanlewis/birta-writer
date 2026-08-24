@@ -264,7 +264,7 @@ describe("what the probe hides, per context", () => {
         const CELL_HIDDEN = [
             "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
             "bulletList", "orderedList", "taskList",
-            "table", "codeBlock", "mermaid", "mathBlock", "calcBlock", "divider",
+            "table", "codeBlock", "mermaid", "svgBlock", "mathBlock", "calcBlock", "divider",
         ];
         expect(rows).toEqual([
             { container: "doc", hidden: [] },

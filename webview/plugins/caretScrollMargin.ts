@@ -17,6 +17,11 @@ import { getTopbarBottom } from "../utils/headingUtils";
 // ProseMirror reads `value[side]` on every scroll-into-view pass, so the
 // exported insets object uses getters to re-measure the DOM lazily at the
 // exact moment a scroll happens — no observers or stale caches involved.
+//
+// Whether these numbers reach the viewport is only answerable in a browser:
+// `e2e/caretScrollBand` measures the settled caret against the real chrome,
+// and `webview/__tests__/caretScrollMargin.test.ts` covers the arithmetic
+// alone. Changing computeInsets means running that suite (MAR-388).
 
 const CSS_VAR_TOP = "--caret-scroll-top-inset";
 const CSS_VAR_BOTTOM = "--caret-scroll-bottom-inset";
