@@ -7,8 +7,8 @@
  *
  *  - **The user initiates.** Nothing here ever runs on its own. There is no
  *    prompt, no nag, no after-N-days toast, no rating request. Solicitation is
- *    what turns opt-in back into telemetry, so the command is reachable only
- *    from the palette.
+ *    what turns opt-in back into telemetry, so the flow is only ever reached
+ *    by asking for it: the palette command here, or `/help` in the editor.
  *  - **Birta never sends anything.** It composes text and hands a URL to the
  *    host (`env.openExternal`) or a string to the clipboard. The outbound
  *    request, if any, is made by the user's browser or mail client under the
@@ -22,6 +22,17 @@
  *    given the document, the file path, or the workspace name; settings values
  *    are filtered by shape (`compose.ts`).
  *
+ * What this file is, since MAR-395 moved the questions out of it: the VS CODE
+ * RENDERER for the host-prompt seam, plus delivery. The questions, their order
+ * and their validation are `shared/feedback/flow.ts`, and the driver that puts
+ * them is `shared/hostPrompt.ts`. Both surfaces run those; only the drawing
+ * differs, which is the whole point of the seam.
+ *
+ * `askViaPalette` therefore has two callers and must keep behaving identically
+ * for both: this command, and a `hostPrompt` message from a webview running
+ * `/help`. A difference introduced for one of them is a difference between two
+ * routes to the same flow.
+ *
  * Extension-side on purpose: it contributes nothing to the webview bundle, so
  * it costs zero against the launch-performance gates.
  */
@@ -29,20 +40,24 @@ import * as vscode from "vscode";
 import { BIRTA_CONFIG_DEFAULTS, BIRTA_SETTING_KEYS } from "../../shared/config";
 import { readBirtaConfig } from "../config";
 import { reportError } from "../errorSink";
+import { openExternalUrl } from "../utils/openExternalUrl";
 import {
     composeFeedback,
     describeChangedSettings,
     type Diagnostics,
-    type Disappointment,
-} from "./compose";
+} from "../../shared/feedback/compose";
 import {
-    availableChannels,
     githubIssueUrl,
     mailtoUrl,
-    FEEDBACK_EMAIL,
     type FeedbackChannel,
     type Prefill,
-} from "./channels";
+} from "../../shared/feedback/channels";
+import { feedbackAnswers, feedbackSteps } from "../../shared/feedback/flow";
+import {
+    runPromptFlow,
+    validateHostPromptInput,
+    type HostPromptStep,
+} from "../../shared/hostPrompt";
 
 export const SEND_FEEDBACK_COMMAND = "birta.sendFeedback";
 
@@ -79,146 +94,59 @@ export function collectDiagnostics(extensionVersion: string): Diagnostics {
     };
 }
 
-interface MoodItem extends vscode.QuickPickItem {
-    mood: Disappointment | "skip";
-}
-interface ChannelItem extends vscode.QuickPickItem {
-    channel: FeedbackChannel;
-}
-
-/** GitHub's own ceiling on an issue title. */
-const TITLE_MAX = 256;
-
 /**
- * The disappointment scale, with each answer stating what it is an answer
- * *about*. The question is Vohra's product/market-fit instrument and it asks
- * about Birta Writer as a whole — but it is asked at the end of a bug report,
- * where "Not disappointed" reads naturally as a verdict on the bug. Someone
- * could be unbothered by the issue and devastated to lose the editor, and the
- * bare scale would record the opposite. A prompt cannot fix that: it is grey
- * placeholder text above three bold rows, and the rows are what people read.
- * So the rows carry the subject.
+ * The VS Code rendering of one step, and the `HostPromptAsk` both routes use.
+ *
+ * Returns null for a cancel, which is what `runPromptFlow` stops on. The
+ * distinction between null and `""` is load-bearing and comes straight from
+ * `showInputBox`: Escape gives `undefined`, an empty submission gives `""`, so
+ * an optional step can tell "nothing to add" from "never mind".
+ *
+ * Note that VS Code appends "(Press 'Enter' to confirm or 'Escape' to cancel)"
+ * to every `prompt` itself. Don't write it into a step; it arrives twice.
  */
-const MOOD_ROWS: ReadonlyArray<{ mood: Disappointment; label: string }> = [
-    { mood: "very", label: "Very disappointed — Birta Writer is part of how I work" },
-    { mood: "somewhat", label: "Somewhat disappointed — I'd miss parts of it" },
-    { mood: "not", label: "Not disappointed — I could switch without much trouble" },
-];
+export async function askViaPalette(step: HostPromptStep): Promise<string | null> {
+    if (step.kind === "input") {
+        const value = await vscode.window.showInputBox({
+            title: step.title,
+            prompt: step.prompt,
+            ...(step.placeholder !== undefined && { placeHolder: step.placeholder }),
+            ignoreFocusOut: true,
+            validateInput: (v) => validateHostPromptInput(step, v),
+        });
+        return value ?? null;
+    }
 
-const CHANNEL_ROWS: Record<FeedbackChannel, { label: string; detail: string }> = {
-    github: {
-        label: "$(github) Open a prefilled GitHub issue",
-        detail: "Needs a GitHub account. Public, and you can edit it before you press Submit.",
-    },
-    mail: {
-        label: "$(mail) Open a prefilled email",
-        detail: `No account needed. Opens a draft to ${FEEDBACK_EMAIL}; nothing is sent until you send it.`,
-    },
-    clipboard: {
-        label: "$(clippy) Copy to the clipboard",
-        detail: "No network of any kind. Paste it wherever you like.",
-    },
-};
+    // The codicon is applied HERE rather than carried in the label, because
+    // every other host would draw `$(github)` as those seven characters.
+    const picked = await vscode.window.showQuickPick(
+        step.rows.map((row) => ({
+            id: row.id,
+            label: row.icon ? `$(${row.icon}) ${row.label}` : row.label,
+            ...(row.detail !== undefined && { detail: row.detail }),
+        })),
+        {
+            title: step.title,
+            ...(step.placeholder !== undefined && { placeHolder: step.placeholder }),
+            ignoreFocusOut: true,
+        },
+    );
+    return picked?.id ?? null;
+}
 
 /**
  * Run the command. `extensionVersion` is injected rather than read from the
  * extension registry so the flow is testable without a real ExtensionContext.
- *
- * Four prompts, only the first of which is required. The destination for all
- * of this is a full Markdown textarea in the browser, which is a better place
- * to write than any modal VS Code can show — `showInputBox` cannot even accept
- * a newline — so the flow collects the one thing the URL needs (a title) and
- * gets out of the way.
- *
- * Note that VS Code appends "(Press 'Enter' to confirm or 'Escape' to cancel)"
- * to every `prompt` itself. Don't write it here; it arrives twice.
  */
 export async function runSendFeedback(extensionVersion: string): Promise<void> {
-    const summary = await vscode.window.showInputBox({
-        title: "Send Feedback (1 of 4)",
-        prompt: "What's the issue?",
-        placeHolder: "e.g. Moving a list item with a table inside it loses the table",
-        ignoreFocusOut: true,
-        validateInput: (value) => {
-            if (!value.trim()) return "A one-line summary is required";
-            return value.trim().length > TITLE_MAX
-                ? `A title is at most ${TITLE_MAX} characters — the rest belongs in the detail step`
-                : undefined;
-        },
-    });
-    if (!summary?.trim()) return;
+    const answers = await runPromptFlow(feedbackSteps(), askViaPalette);
+    if (!answers) return;
 
-    // Optional, and visibly so: this question exists to learn who Birta is
-    // actually for, and it must never stand between a user and a bug report —
-    // which is why it comes after the summary rather than before it.
-    const moodItem = await vscode.window.showQuickPick<MoodItem>(
-        [
-            ...MOOD_ROWS.map(({ mood, label }) => ({ mood, label }) as MoodItem),
-            { mood: "skip", label: "Skip this question" },
-        ],
-        {
-            title: "Send Feedback (2 of 4) — optional",
-            placeHolder: "How would you feel if you could no longer use Birta Writer?",
-            ignoreFocusOut: true,
-        },
-    );
-    if (!moodItem) return;
+    const named = feedbackAnswers(answers, collectDiagnostics(extensionVersion));
+    if (!named) return;
 
-    const details = await vscode.window.showInputBox({
-        title: "Send Feedback (3 of 4) — optional",
-        prompt: "Any additional details?",
-        placeHolder: "What you did, what you expected, what happened",
-        ignoreFocusOut: true,
-    });
-    // Escape at this step cancels; an empty submission is a deliberate "no
-    // further detail" and continues.
-    if (details === undefined) return;
-
-    const { title, body } = composeFeedback({
-        summary,
-        details,
-        ...(moodItem.mood !== "skip" && { disappointment: moodItem.mood }),
-        diagnostics: collectDiagnostics(extensionVersion),
-    });
-
-    // Last, and worth its step: this is where the user finds out that a
-    // browser is about to open, and — the reason it exists — that GitHub wants
-    // an account. Someone without one would otherwise meet a login wall
-    // holding the report they just finished writing. Each row says what it
-    // costs, so the answer is obvious without reading a paragraph.
-    const channelItem = await vscode.window.showQuickPick<ChannelItem>(
-        availableChannels().map((channel) => ({ channel, ...CHANNEL_ROWS[channel] })),
-        {
-            title: "Send Feedback (4 of 4) — where should this go?",
-            placeHolder: "Birta does not send anything itself; you do",
-            ignoreFocusOut: true,
-        },
-    );
-    if (!channelItem) return;
-
-    await deliver(channelItem.channel, title, body);
-}
-
-/**
- * Open a prefilled URL with its encoding intact.
- *
- * `env.openExternal` is typed for `Uri`, but a `Uri` is the one thing that
- * cannot carry a prefilled query. The opener renders it as
- * `encodeURI(uri.toString(true))`, and `encodeURI` escapes `%` — so every
- * `%3A` we wrote arrives as `%253A`, and GitHub shows the literal text
- * `Bug%3A%20hi` in its title field. `sendFeedback.test.ts` models that hop
- * directly.
- *
- * A **string** is passed through verbatim, verified across all three hops of
- * VS Code 1.130: `ExtHostWindow.openUri` keeps it as `uriAsString`,
- * `MainThreadWindow.$openUri` prefers it when it round-trips, and
- * `_doOpenExternal` opens it as-is (`typeof i === "string" && … → n = i`).
- * The cast is the price of a public signature narrower than the runtime it
- * fronts; `Uri` is simply lossy here and there is no encoding of the query
- * that survives it, because `%` itself is what gets escaped.
- */
-export function openPrefilledUrl(url: string): Thenable<boolean> {
-    return vscode.env.openExternal(url as unknown as vscode.Uri);
+    const { title, body } = composeFeedback(named.draft);
+    await deliver(named.channel, title, body);
 }
 
 async function deliver(channel: FeedbackChannel, title: string, body: string): Promise<void> {
@@ -257,7 +185,7 @@ async function deliver(channel: FeedbackChannel, title: string, body: string): P
 
     let opened = false;
     try {
-        opened = await openPrefilledUrl(prefill.url);
+        opened = await openExternalUrl(prefill.url);
     } catch (error) {
         reportError(`feedback delivery (${channel})`, error);
     }

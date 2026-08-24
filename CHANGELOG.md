@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `/help` in the slash menu opens Send Feedback from inside the document. It was reachable from the VS Code command palette and nowhere else, so reporting what just went wrong meant leaving the editor, knowing the command existed, and knowing it was called Feedback rather than Help. It asks the same four questions in the same order: a one-line summary, an optional question about how much you would miss the editor, optional detail, and where it should go. Typing `/help` reaches it ahead of Show Keyboard Shortcuts, which had carried the word until now. `Birta: Send Feedback` still works and any keyboard shortcut you bound to it is untouched, and the two are one flow rather than two that can drift. Nothing is sent by Birta Writer either way: it composes the text and hands your browser, your mail client or your clipboard the result, which you can still read and edit before you send it.
+
+### Fixed
+
+- A link whose address contains a percent-escape now opens at the address it names. Every `%` was being escaped a second time on the way to the browser, so a link to a page such as `.../C%2B%2B` arrived as `.../C%252B%252B` and landed on the wrong page or on nothing. It affected links you click in the document and any address the editor hands over with characters escaped in it; a plain address with nothing escaped was never affected, which is why this went unnoticed. The Send Feedback command had already met this and worked around it privately, and that workaround is now the one path every link takes.
+
 ---
 
 ## [2026.824.0] - 2026, August 24

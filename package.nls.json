@@ -227,6 +227,7 @@
   "command.editor.insertParagraphAfter.title": "Insert Paragraph Below",
   "command.editor.insertParagraphBefore.title": "Insert Paragraph Above",
   "command.editor.openBlockMenu.title": "Open Block Menu",
+  "command.editor.openHelp.title": "Help and Feedback",
   "command.editor.openShortcutsHelp.title": "Show Keyboard Shortcuts",
   "command.editor.fold.title": "Fold",
   "command.editor.unfold.title": "Unfold",

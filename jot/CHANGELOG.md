@@ -12,6 +12,16 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- `/help` works in Birta Writer for Mac, and draws as a sheet on the window that asked. The feedback flow was reachable only from the VS Code command palette, which this app does not have, so there was no way to report anything from here at all. The four questions arrive one at a time, Escape at any of them leaves the note untouched, and the destinations are the same three: a prefilled GitHub issue, a prefilled mail draft, or the clipboard. What it reports about your setup is this app and macOS rather than an extension and a VS Code that was never running, and the settings it names are this app's own. It is never given the note, its filename, or the folder it is in.
+
+### Fixed
+
+- Birta Writer for Mac can be quit while the first-run screen is up. With Automatically save changes off, and only when the buffer had got ahead of the file behind that screen, a quit there put the Save, Discard Changes, Cancel question on a panel that was showing the first-run screen, and nothing behind that screen could ever answer it: the app writes nothing while it is up, so the buffer and the file could not be brought back into step, and the quit was left waiting on an answer that never came. An AppleScript quit never returned, a second one came back "User canceled", and a `kill` was ignored, which leaves Force Quit, and Force Quit is the one route that discards the buffer. The question is not asked there now, and the quit goes through.
+
+- Birta Writer for Mac takes down a question left on screen when a quit arrives that cannot be refused. With Automatically save changes off, an unsaved note and that question waiting on the panel, a signal from an installer replacing the app, or from a logout, did nothing at all: the app was already quitting, so the signal had nothing to add and the question stayed up. Such a quit now answers it the way it would have answered it in the first place, by writing the buffer, and the app goes.
+
 ---
 
 ## [2026.824.0] - 2026, August 24

@@ -58,6 +58,7 @@ import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
 import { setAgentRoute } from "./agentRoute";
 import { resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
 import { resolveNativeDatePicker } from "./dateInsert";
+import { resolveHostDiagnostics, resolveHostPrompt } from "./hostPrompt";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -282,6 +283,18 @@ export function createMessageHandlers(
             // The host's own picker closed. A dismissal reports a null date
             // and still arrives, so the request is always retired.
             resolveNativeDatePicker(msg.id, msg.date);
+        },
+        hostPromptResult(msg) {
+            // One step of a flow, answered by the host. A cancel arrives as a
+            // null value rather than as silence, so the request is always
+            // retired; an id the table does not know is dropped.
+            resolveHostPrompt(msg.id, {
+                value: msg.value,
+                ...(msg.unsupported && { unsupported: msg.unsupported }),
+            });
+        },
+        hostDiagnosticsResult(msg) {
+            resolveHostDiagnostics(msg.id, msg.diagnostics);
         },
         requestEditorContext(msg) {
             // A coding-agent bridge (src/agentBridge/) asked for the live file

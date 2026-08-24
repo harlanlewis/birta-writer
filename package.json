@@ -699,6 +699,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.openHelp",
+                "title": "%command.editor.openHelp.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.openShortcutsHelp",
                 "title": "%command.editor.openShortcutsHelp.title%",
                 "category": "Birta Writer"
@@ -1414,6 +1419,10 @@
                 },
                 {
                     "command": "birta.editor.openBlockMenu",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.openHelp",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
