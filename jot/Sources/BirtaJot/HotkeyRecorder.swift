@@ -150,6 +150,7 @@ final class HotkeyRecorderView: NSView {
         // that lights up and records nothing. Harmless in Settings and on the
         // welcome screen, where clicking has already made the app active.
         if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
+        window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(self)
         if !recording { startRecording() }
     }

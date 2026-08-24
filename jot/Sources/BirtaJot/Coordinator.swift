@@ -305,7 +305,7 @@ final class Coordinator {
     private func showSummonNotice(_ combo: HotkeyCombo) {
         DispatchQueue.main.async { [weak self] in
             guard let self, let anchor = self.noticeAnchor?() else { return }
-            SummonNoticePopover.show(refused: combo, from: anchor) { [weak self] chosen in
+            SummonNoticePresenter.show(refused: combo, from: anchor) { [weak self] chosen in
                 Prefs.hotkey = chosen
                 return self?.hotkeyChanged() ?? noErr
             }
