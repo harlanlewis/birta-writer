@@ -61,6 +61,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
+        // BEFORE the Coordinator, and that ordering is the point rather than
+        // an arrangement. The notes folder is derived from the product name,
+        // so a rename moves it with no setting touched and the writing is left
+        // in a folder this launch has stopped using. This is the only path
+        // that can reach the offer for it, and it has to be answered while
+        // nothing is bound to a file: the binding is the new folder's
+        // scratchpad, and a note carried in afterwards can land on the path
+        // the panel is already editing. `StrandedNotes` holds the decision.
+        NotesMoveOffer.offerAtLaunch()
         // Before the Coordinator exists, so a launch that came from Open With
         // mounts against the file it was asked for rather than mounting the
         // last note and swapping it out a moment later. `Coordinator.init`
