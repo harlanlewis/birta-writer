@@ -55,7 +55,24 @@ enum Prefs {
         case newNoteNameTemplate
         case lastUpdateCheck
         case updateDeclinedTag
+        case lastNotesDirectory
     }
+
+    /// The keys a reset must NOT clear, each for a reason of its own.
+    ///
+    /// `hasSeenWelcome`: clearing it would make the next launch a first
+    /// launch, and a first launch writes the onboarding answers, so a reset
+    /// done to get back to a quiet, no-network state would put the network
+    /// switch back on one launch later. The sheet says every setting goes back
+    /// to its default, and that is what a default IS here; seeing the screen
+    /// again is its own button.
+    ///
+    /// `lastNotesDirectory`: not a setting at all, but the record a launch
+    /// compares against to notice that the notes folder moved. A reset can
+    /// itself move it, by putting the iCloud switch and the chosen path back
+    /// to their defaults, and clearing the record in the same breath is what
+    /// would make that move the silent one this record exists to catch.
+    private static let survivesReset: Set<Key> = [.hasSeenWelcome, .lastNotesDirectory]
 
     /// Put every setting back to its default, and touch no file on disk.
     ///
@@ -80,15 +97,9 @@ enum Prefs {
     /// before it is rebound. `SettingsWindowController.resetAllSettings` is
     /// the one place that sequence is written down.
     static func reset() {
-        for key in Key.allCases where key != .hasSeenWelcome {
+        for key in Key.allCases where !survivesReset.contains(key) {
             d.removeObject(forKey: key.rawValue)
         }
-        // `hasSeenWelcome` deliberately survives. Clearing it would make the
-        // next launch a first launch, and a first launch writes the onboarding
-        // answers, so a reset done to get back to a quiet, no-network state
-        // would put the network switch back on one launch later. The sheet
-        // says every setting goes back to its default, and that is what a
-        // default IS here; seeing the screen again is its own button.
         hasSeenWelcome = true
         UserDefaults.standard.removeObject(forKey: panelFrameAutosaveDefaultsKey)
         // Deliberately discarded: the caller re-reads `LoginItem.state` to
@@ -593,6 +604,45 @@ enum Prefs {
     /// "where does Jot keep things" and two answers would disagree.
     static var notesDirectory: URL {
         scratchpadURL.deletingLastPathComponent()
+    }
+
+    /// The notes folder the app DERIVES, whether or not it is the one in
+    /// force.
+    ///
+    /// Deliberately not `notesDirectory`, which answers to a path the user
+    /// chose and to `BIRTA_JOT_SCRATCHPAD`. This one is spelled from the
+    /// product name by `ScratchpadLocation`, which makes it the one a rename
+    /// can move, and the only one worth recording.
+    static var derivedNotesDirectory: URL {
+        defaultScratchpadURL.deletingLastPathComponent()
+    }
+
+    /// The derived notes folder the last launch used.
+    ///
+    /// A stored fact rather than a derived one, and that is the whole point:
+    /// after a rename the old spelling exists nowhere else, so without this
+    /// there is nothing to compare the new derivation against.
+    static var lastNotesDirectory: URL? {
+        get { stored(.lastNotesDirectory) }
+        set { d.set(newValue?.path ?? "", forKey: Key.lastNotesDirectory.rawValue) }
+    }
+
+    /// Bring that record up to date. Called by whatever has just resolved the
+    /// folder or changed where it is derived from.
+    static func recordNotesDerivation() { lastNotesDirectory = derivedNotesDirectory }
+
+    /// The folder a launch should offer to carry notes out of, if any.
+    /// `StrandedNotes` holds every arm of the decision and why.
+    static var strandedNotesDirectory: URL? {
+        StrandedNotes.directory(
+            recorded: lastNotesDirectory,
+            derived: derivedNotesDirectory,
+            hasChosenPath: hasExplicitScratchpadPath,
+            exists: { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            })
     }
 
     static func bootConfig() -> BootConfig {
