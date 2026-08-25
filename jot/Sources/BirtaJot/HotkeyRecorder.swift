@@ -124,9 +124,24 @@ final class HotkeyRecorderView: NSView {
         applyColors()
     }
 
+    /// The layer's two colours, resolved against the appearance this view is
+    /// drawn in.
+    ///
+    /// `performAsCurrentDrawingAppearance` is load-bearing rather than
+    /// decoration. A dynamic `NSColor` resolves through `.cgColor` against
+    /// whatever appearance is current on the thread, which outside a drawing
+    /// context is not this view's, so a bare `.cgColor` here freezes the ground
+    /// at whatever happened to be current when the field was built. The field
+    /// is built once, with the Settings window, and never rebuilt, so a wrong
+    /// ground taken then is a wrong ground for the life of the process, and
+    /// `viewDidChangeEffectiveAppearance` cannot rescue it: the view's own
+    /// appearance never changed. `StatusOverlay` resolves the same way and
+    /// `MissingFileBar` avoids the trap by drawing instead of filling a layer.
     private func applyColors() {
-        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
-        layer?.borderColor = (recording ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+            layer?.borderColor = (recording ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+        }
         layer?.borderWidth = recording ? 2 : 1
     }
 
