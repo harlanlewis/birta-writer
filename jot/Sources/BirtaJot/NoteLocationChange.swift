@@ -56,11 +56,30 @@ enum NoteLocationChange {
         panel.allowedContentTypes = DocumentTypes.writtenContentTypes
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            let previous = Prefs.notesDirectory
-            Prefs.scratchpadURL = url
-            redraw()
-            NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
-                                 in: window, apply: apply)
+            use(url, in: window, redraw: redraw, apply: apply)
         }
+    }
+
+    /// A folder was named. The panel is the only part of the gesture above
+    /// that a check cannot drive, so everything the choice MEANS is here.
+    ///
+    /// Setting the switch is the half that is easy to leave out and expensive
+    /// to leave out. Naming a folder IS choosing the off branch, and the row
+    /// is already drawn that way, because the branch in force is what it
+    /// reads. The preference underneath can still say iCloud, on the one Mac
+    /// where this row is reachable with the switch on: iCloud Drive off in
+    /// System Settings. Left saying it, the choice holds until somebody
+    /// switches iCloud Drive on there, and then the notes go back to the
+    /// derived folder with nothing asked and nothing said.
+    static func use(_ url: URL,
+                    in window: NSWindow?,
+                    redraw: () -> Void,
+                    apply: @escaping (BeforeReload?) -> Void) {
+        let previous = Prefs.notesDirectory
+        Prefs.scratchpadURL = url
+        Prefs.storeInICloud = false
+        redraw()
+        NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
+                             in: window, apply: apply)
     }
 }

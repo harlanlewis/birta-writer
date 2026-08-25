@@ -131,6 +131,29 @@ final class NoteLocationChangeTests: XCTestCase {
                        "coming back off iCloud lands on the folder they named, not the default")
     }
 
+    /// Naming a folder selects the branch that holds it, not just its value.
+    ///
+    /// The failure it exists for: the Location row is reachable with the
+    /// switch still ON, on a Mac with iCloud Drive off in System Settings,
+    /// where the switch decides nothing because there is no iCloud to store
+    /// in. Leaving the preference saying iCloud there holds until somebody
+    /// switches iCloud Drive on in System Settings, at which point the folder
+    /// they named stops being in force and the notes go back to the derived
+    /// one with nothing asked and nothing said.
+    func testNamingAFolderShouldSelectTheBranchThatHoldsItAndNotOnlyItsValue() {
+        let saved = save()
+        defer { restore(saved) }
+
+        Prefs.storeInICloud = true
+        NoteLocationChange.use(chosenNote, in: nil, redraw: {}, apply: { _ in })
+
+        XCTAssertFalse(Prefs.storeInICloud,
+                       "the preference still says iCloud, so switching iCloud Drive on in "
+                       + "System Settings would take this folder away silently")
+        XCTAssertEqual(Prefs.noteHome, .chosen)
+        XCTAssertEqual(Prefs.scratchpadURL.path, chosenNote.path)
+    }
+
     /// A location change always goes through the offer, whichever way it moves.
     ///
     /// The offer is what brings the notes along, and the record it keeps is
