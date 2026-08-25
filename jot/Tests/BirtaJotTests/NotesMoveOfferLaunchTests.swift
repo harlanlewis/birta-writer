@@ -342,6 +342,39 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
                        "and recording brings the file record up with the folder's")
     }
 
+    /// The launch's OWN record, driven through the production default rather
+    /// than an injected seam, because the seam is what hid this: a launch that
+    /// wrote the folder record and not the file's was correct for one rename
+    /// and wrong for anyone renamed twice. The second rename would find the
+    /// file record still pointing into the folder the first one emptied, fail
+    /// to tell which carried note was the scratchpad, and land it under its
+    /// old name again.
+    func testTheLaunchShouldRecordTheScratchpadFileAndNotOnlyTheFolder() {
+        let original = Prefs.lastNotesDirectory
+        let originalFile = Prefs.lastScratchpadFile
+        defer {
+            Prefs.lastNotesDirectory = original
+            Prefs.lastScratchpadFile = originalFile
+        }
+
+        // A record from a folder that is not the derived one, which is the
+        // state a rename leaves and the only one that reaches the offer.
+        Prefs.lastNotesDirectory = former
+        Prefs.lastScratchpadFile = former.appendingPathComponent(formerScratchpadName)
+
+        let answers = Answers()
+        answers.answer = false
+        NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: formerScratchpadName,
+                                     derivedScratchpadName: ScratchpadLocation.fileName,
+                                     ask: answers.ask, tell: answers.tell)
+
+        XCTAssertEqual(Prefs.lastScratchpadFile?.path, Prefs.defaultScratchpadURL.path,
+                       "the launch must move the file record on, not just the folder's")
+        XCTAssertNil(Prefs.strandedScratchpadName,
+                     "so the question is closed rather than reopened next launch")
+    }
+
     /// The derived folder is the one a rename can move, and it is not the one
     /// the user chose. A chosen path IN FORCE takes the question away
     /// entirely.

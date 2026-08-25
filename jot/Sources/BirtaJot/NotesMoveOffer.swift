@@ -114,7 +114,17 @@ enum NotesMoveOffer {
         derivedScratchpadName: String = Prefs.defaultScratchpadURL.lastPathComponent,
         ask: (_ from: URL, _ to: URL, _ plan: NotesMove.Plan) -> Bool = askModally,
         tell: ([String]) -> Void = tellModally,
-        record: (URL) -> Void = { Prefs.lastNotesDirectory = $0 }
+        // BOTH halves of the record, which is why this is the same call the
+        // settings path makes rather than a folder assignment of its own. A
+        // launch that recorded only the folder would leave the file record
+        // pointing into the folder just emptied, and the NEXT rename could no
+        // longer tell which of the carried notes was the scratchpad: correct
+        // once, then wrong for anyone renamed twice.
+        //
+        // The argument is what a test observes; production has no use for it,
+        // since `destination` is `derivedNotesDirectory` and this records that
+        // same derivation from its own source.
+        record: (URL) -> Void = { _ in Prefs.recordNotesDerivation() }
     ) {
         // On every arm, the ones that ask nothing included. What is recorded
         // is where the notes are derived NOW, and a launch that left it
