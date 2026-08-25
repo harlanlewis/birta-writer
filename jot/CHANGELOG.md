@@ -12,6 +12,26 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Birta Writer for Mac notices when the folder it keeps your notes in has moved because the app was renamed, and offers at the next launch to bring the notes and their images across. That folder's name is derived from the product's, so a rename moved it with you changing nothing, and your writing stayed in a folder under the old name with nothing on screen to say so: the app opened a fresh, empty home and looked as though it were working. Both folders are named in the question, declining moves nothing, and anything that could not be copied is listed. It compares against the folder the previous launch used, so it covers a rename from this version onward rather than one that has already happened.
+
+- The Checks menu is on the toolbar, beside Find, and View, Checks holds the same two settings the menu bar can offer. The style check draws its dotted underlines on this app exactly as it does in VS Code, and until now there was no control for it anywhere here: the whole menu was withheld because two of its rows, Check Spelling and Check Grammar, need a checker this app does not have. Those two are still absent. Check Style, its categories, the note-marker highlight and the master Proofreading switch are all present.
+
+### Changed
+
+- The Format menu carries the inserts itself. Link, Link to Section, Table, Image, Callout, Math, Footnote, Horizontal Rule and the four date rows were behind an Insert submenu and are now four groups on Format, in the order they were in. Paragraph Style and Lists stay submenus. Format is the longest menu the app has and this lengthens it, on the argument that putting something into a document is a different act from restyling what is already there.
+
+### Removed
+
+- View, Focus Mode, on this app only. It stays in Birta Writer for VS Code, where it collapses a workbench's worth of chrome. Here it had nothing to collapse: the panel's toolbar belongs to the app rather than to you and cannot be hidden, and there is no table of contents to close, so the whole of what it did was silence the style check's underlines. Those have their own switch now, in Checks.
+
+### Fixed
+
+- The keyboard shortcut field in Settings is drawn in the appearance the window is in. Opening Settings could leave it a black box in an otherwise light window, and it stayed that way for as long as the app was running, because the field took its background once when it was built rather than from the window it ended up in.
+
+- When notes move, an image that could not be copied is no longer reported as a note. A move that left one image behind said two notes could not be copied when it meant one note and one image.
+
 ---
 
 ## [2026.825.0] - 2026, August 25
