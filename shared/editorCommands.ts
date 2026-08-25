@@ -269,9 +269,13 @@ export const EDITOR_COMMANDS = [
     // way back. Named for what the reader sees rather than for the number it
     // writes, which is the vocabulary every macOS View menu uses.
     { id: "resetFontSize", title: "Actual Size", palette: true, sections: [] },
-    { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [], hostCapability: "proofreading" },
-    { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [], hostCapability: "proofreading" },
-    { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [], hostCapability: "proofreading" },
+    { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [], hostCapability: "spellAndGrammar" },
+    { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [], hostCapability: "spellAndGrammar" },
+    // Not gated, and its two neighbours are: style check is computed in the
+    // page from a table the bundle carries, so it works wherever the editor
+    // does. It was gated with them until a host with no lint engine was found
+    // drawing style underlines it had no control to turn off.
+    { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [] },
     // The in-text editor-note highlight (birta.notes.highlightMarkers). It sits
     // beside the three check toggles because it is the same kind of thing — an
     // advisory in-text annotation the user turns on and off — even though the
@@ -279,7 +283,7 @@ export const EDITOR_COMMANDS = [
     // Titled after the markers, not the notes: "Highlight" alone is already the
     // `==mark==` command two rows up, and a palette search for "highlight" must
     // not offer two entries that read the same.
-    { id: "toggleNoteHighlights", title: "Highlight Note Markers", palette: true, sections: [], hostCapability: "proofreading" },
+    { id: "toggleNoteHighlights", title: "Highlight Note Markers", palette: true, sections: [] },
     // A single toggle each for the toolbar and the TOC — the state is binary,
     // so two idempotent show/hide palette entries would always leave one that
     // does nothing. `toggleToc` (above) covers TOC visibility; these cover the
@@ -298,7 +302,16 @@ export const EDITOR_COMMANDS = [
     // for the same reason as the rows above, and no default chord: the
     // editor's chords are spoken for, and a user picks one in Keyboard
     // Shortcuts.
-    { id: "toggleFocusMode", title: "Toggle Focus Mode", palette: true, sections: [] },
+    //
+    // Withdrawn under `fixedToolbarLayout` (MAR-414), the same arrangement that
+    // withdraws Toggle Toolbar, and for the reason that already sits on that
+    // arrangement: the bar's visibility belongs to the surface rather than to
+    // the user. A surface that has settled that question has settled this one,
+    // because the bar is the chrome focus mode exists to take away. What was
+    // left on such a surface was a row that silenced the proofread underlines
+    // and moved nothing else, which reads as a command that did not fire; the
+    // underlines have a switch of their own in the Checks menu.
+    { id: "toggleFocusMode", title: "Toggle Focus Mode", palette: true, sections: [], absentUnder: "fixedToolbarLayout" },
     { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [], hostCapability: "toc" },
     // MAR-294: once focus is inside the review sidebar its keyboard model is
     // complete (Escape returns to the editor from every region), but no gesture

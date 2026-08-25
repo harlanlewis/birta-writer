@@ -33,11 +33,22 @@ public enum NoteMode: String, CaseIterable, Sendable {
 
 /// Where Birta Writer keeps its notes.
 ///
-/// Three answers, and the third outranks the other two: a folder of your own
-/// is where notes are whatever the iCloud preference says. The surfaces show
-/// that as a switch plus a Location row, and both of them clear the chosen
-/// path when the switch goes on, so the switch is never left deciding
-/// nothing.
+/// ONE two-way choice, and each side of it has a default. The iCloud switch
+/// picks the branch: on is the folder the app derives inside iCloud Drive, off
+/// is a folder of your own, which starts at the one under Documents and
+/// becomes whatever you name in the Location row.
+///
+/// Three cases for two branches, because `chosen` and `documents` are that one
+/// branch reported apart. Whether the folder was named or taken as given is
+/// worth knowing to a settings report and to the launch check that notices a
+/// derived folder moving, and it changes nothing about which of the two
+/// answers the switch gave.
+///
+/// The stored path is the OFF branch's own value rather than an override of
+/// the switch. That is what keeps the switch from ever deciding nothing
+/// without anything having to throw the path away to manage it: the path is
+/// read only while the branch that owns it is in force, so a folder somebody
+/// named survives a trip through iCloud and back.
 public enum NoteHome: String, CaseIterable, Sendable {
     case iCloud
     case documents
@@ -46,15 +57,17 @@ public enum NoteHome: String, CaseIterable, Sendable {
     /// Which home is in force, given the two things stored and what the
     /// machine can actually do.
     ///
-    /// A chosen path wins over everything, then the iCloud preference, and
-    /// iCloud falls back to Documents when iCloud Drive is switched off rather
-    /// than failing. The fallback is silent in behaviour and NOT in the
-    /// interface: the row says the service is off and the note is on this Mac.
+    /// The switch decides first, and iCloud needs iCloud Drive actually
+    /// switched on: without it the branch falls to the user's own folder
+    /// rather than failing, which is the one they last named if there is one
+    /// and the one under Documents otherwise. That fallback is silent in
+    /// behaviour and NOT in the interface: the row says the service is off and
+    /// the note is on this Mac.
     public static func inForce(preferICloud: Bool,
                                hasChosenPath: Bool,
                                iCloudAvailable: Bool) -> NoteHome {
-        if hasChosenPath { return .chosen }
-        return preferICloud && iCloudAvailable ? .iCloud : .documents
+        if preferICloud && iCloudAvailable { return .iCloud }
+        return hasChosenPath ? .chosen : .documents
     }
 }
 

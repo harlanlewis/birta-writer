@@ -35,9 +35,9 @@
  * same editor from the same bundle, and what differs between them is only the
  * chrome that names something the HOST provides. A capability is therefore
  * always a host-side thing (a text editor to switch to, a settings UI, a
- * proofreading engine with its review sidebar, an owner for read-only mode, a
- * TOC sidebar, an image store), never an editor feature. An editor feature is
- * gated by its own `birta.*` setting, not here.
+ * spelling and grammar engine, an owner for read-only mode, a TOC sidebar, an
+ * image store), never an editor feature. An editor feature is gated by its own
+ * `birta.*` setting, not here.
  *
  * The host declares one object, `window.__i18n.host`. ABSENT MEANS THE VS CODE
  * PROFILE rather than the literal union: VS Code is the base surface, the one
@@ -70,8 +70,23 @@ export type HostCapability =
     | "textEditor"
     /** A settings UI, a keybindings UI, and a release-notes page to open. */
     | "hostSettings"
-    /** A proofreading engine and the review sidebar that shows its findings. */
-    | "proofreading"
+    /**
+     * A spelling and grammar engine the host runs over the document's text.
+     *
+     * The narrow half of proofreading, and the split is load-bearing. Spelling
+     * and grammar are lints the page ASKS for: it posts the blocks out and
+     * draws whatever comes back, so a host with no engine answers nothing and
+     * those two rows are choices with no effect. Style check is not that. It is
+     * computed in the page, synchronously, from a table the bundle carries
+     * (`plugins/proofread.ts`), and so is the note-marker highlight beside it,
+     * which is why neither is gated on this and both work on every surface.
+     *
+     * Conflating them is the mistake this name records: one gate over all four
+     * rows withdrew the whole Checks menu from a host with no lint engine, and
+     * the style check went on drawing its underlines there with no control
+     * anywhere to turn them off.
+     */
+    | "spellAndGrammar"
     /** An owner for read-only mode (the `birta.readOnly` seed and its toggle). */
     | "readOnlyMode"
     /** The table-of-contents / review sidebar. */
@@ -139,7 +154,7 @@ export type HostCapability =
 export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "textEditor",
     "hostSettings",
-    "proofreading",
+    "spellAndGrammar",
     "readOnlyMode",
     "toc",
     "imageUpload",

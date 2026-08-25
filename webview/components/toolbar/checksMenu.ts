@@ -18,6 +18,7 @@ import { notifySetProofreadOption } from "@/messaging";
 import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
 import { createMenuTrigger, createSwitchItem, makeSep, type CheckItem } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
+import { hostHasCommand } from "../../../shared/hostProfile";
 import type { ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
 
 export interface ChecksControl {
@@ -242,9 +243,14 @@ export function createChecksMenu(onShowProofreading?: () => void): ChecksControl
 
         body.appendChild(makeSep());
 
-        // Domain masters
-        addRow(body, "spellCheck", t("Check spelling"));
-        addRow(body, "grammarCheck", t("Check grammar"));
+        // Domain masters. Two of the three are filtered rather than always
+        // drawn, which is what the item's own ungated place in the bar costs:
+        // spelling and grammar are lints the page posts OUT and draws whatever
+        // the host answers, so on a host with no engine the row would be a
+        // switch with nothing behind it. Style check is computed here, so it is
+        // unconditional and so is everything indented under it.
+        if (hostHasCommand("toggleSpellCheck")) { addRow(body, "spellCheck", t("Check spelling")); }
+        if (hostHasCommand("toggleGrammarCheck")) { addRow(body, "grammarCheck", t("Check grammar")); }
         addRow(body, "styleCheck", t("Check style"));
 
         // Style sub-checks live in their own indented container (a left rail ties

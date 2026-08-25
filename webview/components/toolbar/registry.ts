@@ -177,12 +177,19 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
  * from every zone, the customize tray's hidden set included, so the user is
  * never offered a control that posts to a host that cannot answer.
  *
- * Exhaustive by type like the two tables above, and tied to them the same
- * way: `toolbarRegistry.test.ts` asserts an item needs capability C exactly
- * when one of its `ITEM_COMMANDS` needs C. `settings` is the documented
- * exception: the gear mixes gated rows (Settings, Edit Keyboard Shortcuts,
- * What's New) with unconditional ones (Customize, Hide, Show Keyboard
- * Shortcuts), so it stays and its menu filters row by row.
+ * Exhaustive by type like the two tables above, and tied to them the same way:
+ * `toolbarRegistry.test.ts` asserts an item is gated on C exactly when ALL of
+ * its `ITEM_COMMANDS` need C. An item whose commands are mixed, some needing a
+ * host and some not, or two needing different hosts, must be null and must
+ * filter its own rows through `hostHasCommand`. The gear does that, the font
+ * menu does, and the Checks menu does.
+ *
+ * That rule is derived rather than a list, and the difference is what it
+ * catches. Its earlier form asked whether ANY command needed a capability,
+ * which a wholesale-gated mixed menu satisfies, and the Checks menu was
+ * withdrawn entire from a host with no lint engine while the style check,
+ * which the page computes for itself, went on underlining there with nothing
+ * to turn it off.
  */
 export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> = {
     format: null,
@@ -204,7 +211,10 @@ export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> 
     readOnly: "readOnlyMode",
     viewSource: "textEditor",
     find: null,
-    styleCheck: "proofreading",
+    // Mixed, and so null: Check Spelling and Check Grammar need a host lint
+    // engine, and Check Style, the style sub-checks and Highlight Note Markers
+    // are answered by the page. `checksMenu.ts` filters the two.
+    styleCheck: null,
     fontPreset: null,
     settings: null,
 };

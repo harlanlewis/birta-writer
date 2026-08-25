@@ -21,7 +21,7 @@
 export async function run({ page, check, baseUrl }) {
     // Jot declares `imageUpload`, so the Image item is NOT gated here: it is
     // in the list below, as one of the editor's own items that must survive.
-    const GATED_ITEMS = ["viewSource", "styleCheck", "readOnly"];
+    const GATED_ITEMS = ["viewSource", "readOnly"];
     const OPEN_WAIT = 220;
 
     async function mount(file) {
@@ -76,13 +76,39 @@ export async function run({ page, check, baseUrl }) {
         ["format", "bold", "link", "table", "find", "settings"].every((id) => jot.items.includes(id)),
         JSON.stringify(jot.items));
 
+    // ── The Checks menu, which mixes gated and unconditional rows ──────
+    //
+    // The item is NOT gated (MAR-414's neighbour): the style check is computed
+    // in the page, so a host with no lint engine keeps it and loses only the
+    // two rows that post out. Gating the item took the whole menu away from
+    // this surface while the style check went on underlining, which is a
+    // decoration nothing could turn off. Driven by opening the menu rather than
+    // read off the registry, because the filtering happens where the rows are
+    // built and a unit test of the table cannot see it.
+    const checksTrigger = await page.$('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn');
+    check("jot: the Checks item is on the bar", !!checksTrigger);
+    if (checksTrigger) {
+        await checksTrigger.hover();
+        await page.waitForTimeout(OPEN_WAIT);
+        const rows = await page.$$eval(".tb-checks-menu .tb-fmt-item, .tb-checks-menu .ui-menu-row",
+            (els) => els.map((el) => el.textContent.trim()).filter(Boolean));
+        check("jot: the Checks menu offers the style check the page computes itself",
+            rows.some((r) => /Check style/i.test(r)), JSON.stringify(rows));
+        check("jot: and the note-marker highlight beside it",
+            rows.some((r) => /note markers/i.test(r)), JSON.stringify(rows));
+        check("jot: and neither lint row, because the shell answers no lints",
+            !rows.some((r) => /Check spelling|Check grammar/i.test(r)), JSON.stringify(rows));
+        await page.mouse.move(5, 400);
+        await page.waitForTimeout(OPEN_WAIT);
+    }
+
     // ── formattingInSecondRow ─────────────────────────────────────────
     // The partition itself is unit-tested (toolbarRegistry.test.ts); what only
     // a real page can answer is whether the two holders actually received it.
     check("jot: the top bar's left zone is empty, leaving the titlebar row to the window",
         jot.leftZone.length === 0, JSON.stringify(jot.leftZone));
     check("jot: the top bar keeps only the controls that read the document",
-        JSON.stringify(jot.rightZone) === JSON.stringify(["find", "settings"]),
+        JSON.stringify(jot.rightZone) === JSON.stringify(["find", "styleCheck", "settings"]),
         JSON.stringify(jot.rightZone));
     check("jot: every editing control is in the dock instead",
         ["format", "bold", "italic", "link", "listMenu", "quote", "codeBlock", "table", "image"]
@@ -376,13 +402,23 @@ export async function run({ page, check, baseUrl }) {
     // Rows bound to a capability Jot's shell does NOT provide. "Ask Agent" is
     // deliberately absent from this list: the shell runs one now, so its row
     // belongs, and moving it to the offered set below is the point.
+    // "Check style" and "Highlight note markers" are deliberately NOT here any
+    // more: both are answered inside the page, so they are the editor's own
+    // rows and belong on every surface (they are asserted present below).
+    // "Toggle Focus Mode" joins the list from the other direction, withdrawn by
+    // an arrangement rather than by a missing capability.
     const GATED_LABELS = ["Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts", "Check spelling",
-        "Check grammar", "Check style", "Highlight note markers", "Lock Edits (Read-only)",
+        "Check grammar", "Lock Edits (Read-only)", "Toggle Focus Mode",
         "Editor Font", "Full Width", "Fixed Width"];
     check("jot: Show all commands lists no row bound to a capability the shell lacks",
         GATED_LABELS.every((l) => !labels.includes(l)), JSON.stringify(labels.filter((l) => GATED_LABELS.includes(l))));
     check("jot: Show all commands still lists the editor's own rows",
         ["Table", "Code Block", "Bold", "Find"].every((l) => labels.includes(l)), JSON.stringify(labels));
+    // The two rows that moved out of GATED_LABELS, asserted present rather than
+    // merely dropped: a build that withdrew them again would otherwise satisfy
+    // the list above by offering less.
+    check("jot: the checks the page computes for itself are offered here",
+        ["Check style", "Highlight note markers"].every((l) => labels.includes(l)), JSON.stringify(labels));
     // The other half of the gate: a capability the shell DOES declare has to
     // put its row back, or the check above would pass on a page that offers
     // nothing at all.

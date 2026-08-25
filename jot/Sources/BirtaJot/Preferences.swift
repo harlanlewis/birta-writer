@@ -55,7 +55,24 @@ enum Prefs {
         case newNoteNameTemplate
         case lastUpdateCheck
         case updateDeclinedTag
+        case lastNotesDirectory
     }
+
+    /// The keys a reset must NOT clear, each for a reason of its own.
+    ///
+    /// `hasSeenWelcome`: clearing it would make the next launch a first
+    /// launch, and a first launch writes the onboarding answers, so a reset
+    /// done to get back to a quiet, no-network state would put the network
+    /// switch back on one launch later. The sheet says every setting goes back
+    /// to its default, and that is what a default IS here; seeing the screen
+    /// again is its own button.
+    ///
+    /// `lastNotesDirectory`: not a setting at all, but the record a launch
+    /// compares against to notice that the notes folder moved. A reset can
+    /// itself move it, by putting the iCloud switch and the chosen path back
+    /// to their defaults, and clearing the record in the same breath is what
+    /// would make that move the silent one this record exists to catch.
+    private static let survivesReset: Set<Key> = [.hasSeenWelcome, .lastNotesDirectory]
 
     /// Put every setting back to its default, and touch no file on disk.
     ///
@@ -80,15 +97,9 @@ enum Prefs {
     /// before it is rebound. `SettingsWindowController.resetAllSettings` is
     /// the one place that sequence is written down.
     static func reset() {
-        for key in Key.allCases where key != .hasSeenWelcome {
+        for key in Key.allCases where !survivesReset.contains(key) {
             d.removeObject(forKey: key.rawValue)
         }
-        // `hasSeenWelcome` deliberately survives. Clearing it would make the
-        // next launch a first launch, and a first launch writes the onboarding
-        // answers, so a reset done to get back to a quiet, no-network state
-        // would put the network switch back on one launch later. The sheet
-        // says every setting goes back to its default, and that is what a
-        // default IS here; seeing the screen again is its own button.
         hasSeenWelcome = true
         UserDefaults.standard.removeObject(forKey: panelFrameAutosaveDefaultsKey)
         // Deliberately discarded: the caller re-reads `LoginItem.state` to
@@ -115,19 +126,37 @@ enum Prefs {
     static var scratchpadURL: URL! {
         get {
             if let env = ProcessInfo.processInfo.environment["BIRTA_JOT_SCRATCHPAD"], !env.isEmpty { return URL(fileURLWithPath: env) }
-            if let p = d.string(forKey: Key.scratchpadPath.rawValue), !p.isEmpty { return URL(fileURLWithPath: p) }
-            return defaultScratchpadURL
+            return storedScratchpadURL
         }
-        // Nil CLEARS the chosen path, which is how the home menu hands the
-        // decision back to the iCloud/Documents pair; a chosen path outranks
-        // both, so leaving one set would overrule that menu invisibly.
+        // Nil clears the stored path, which puts the off branch back on the
+        // folder under Documents. Nothing clears it to make the iCloud switch
+        // work: `storedScratchpadURL` reads it only under the branch that owns
+        // it, so a path left set overrules nothing.
         set { d.set(newValue?.path ?? "", forKey: Key.scratchpadPath.rawValue) }
     }
 
-    /// Whether the user has pointed the scratchpad at a path of their own,
-    /// which overrides both homes: `scratchpadURL` prefers the stored path, so
-    /// the iCloud switch decides nothing while this is true and the Settings
-    /// row says as much rather than offering a choice that does nothing.
+    /// The scratchpad the SETTINGS name: no environment override, no
+    /// existence filter, and the branch in force deciding.
+    ///
+    /// One rule with two readers, `scratchpadURL` and `storedActiveURL`, so
+    /// the two cannot come to disagree about which folder a stored path
+    /// belongs to.
+    private static var storedScratchpadURL: URL {
+        guard noteHome == .chosen,
+              let path = d.string(forKey: Key.scratchpadPath.rawValue), !path.isEmpty else {
+            return defaultScratchpadURL
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// Whether the user has named a folder of their own.
+    ///
+    /// The OFF branch's stored value rather than an override of the iCloud
+    /// switch: `NoteHome.inForce` reads it only once the switch has landed on
+    /// that branch, which is what lets the choice be remembered rather than
+    /// thrown away every time somebody tries iCloud. Whether it is in force is
+    /// a different question, and `noteHome == .chosen` is the one that answers
+    /// it.
     static var hasExplicitScratchpadPath: Bool {
         !(d.string(forKey: Key.scratchpadPath.rawValue) ?? "").isEmpty
     }
@@ -234,7 +263,7 @@ enum Prefs {
     static var storedActiveURL: URL {
         ActiveBinding.url(document: stored(.documentPath),
                           currentNote: stored(.currentNotePath),
-                          scratchpad: stored(.scratchpadPath) ?? defaultScratchpadURL)
+                          scratchpad: storedScratchpadURL)
     }
 
     /// WHICH stored setting names `url`, if any.
@@ -270,12 +299,29 @@ enum Prefs {
         switch slot(holding: old) {
         case .document: documentURL = url
         case .currentNote: currentNoteURL = url
-        case .scratchpad: scratchpadURL = url
+        case .scratchpad: adoptScratchpad(url)
         // Nothing stored names it, so it is the default scratchpad location,
         // and pointing the scratchpad setting at where it went is what keeps
         // the panel on it next launch.
-        case nil: scratchpadURL = url
+        case nil: adoptScratchpad(url)
         }
+    }
+
+    /// Point the scratchpad setting at a file that has just moved, and put the
+    /// location choice where that file now is.
+    ///
+    /// Writing the path alone would be a write nothing reads. The stored path
+    /// is the off branch's value (`NoteHome`), so under the iCloud branch the
+    /// scratchpad goes on being derived and the renamed file is abandoned at
+    /// the next resolve. Moving that file IS the choice of a folder of one's
+    /// own, so the switch has to name that branch rather than be left claiming
+    /// a note the app no longer opens.
+    private static func adoptScratchpad(_ url: URL) {
+        scratchpadURL = url
+        storeInICloud = false
+        // What is derived has just changed with it, and the record a launch
+        // compares against is only useful while it is in step.
+        recordNotesDerivation()
     }
 
     static var networkEnabled: Bool {
@@ -593,6 +639,45 @@ enum Prefs {
     /// "where does Jot keep things" and two answers would disagree.
     static var notesDirectory: URL {
         scratchpadURL.deletingLastPathComponent()
+    }
+
+    /// The notes folder the app DERIVES, whether or not it is the one in
+    /// force.
+    ///
+    /// Deliberately not `notesDirectory`, which answers to a path the user
+    /// chose and to `BIRTA_JOT_SCRATCHPAD`. This one is spelled from the
+    /// product name by `ScratchpadLocation`, which makes it the one a rename
+    /// can move, and the only one worth recording.
+    static var derivedNotesDirectory: URL {
+        defaultScratchpadURL.deletingLastPathComponent()
+    }
+
+    /// The derived notes folder the last launch used.
+    ///
+    /// A stored fact rather than a derived one, and that is the whole point:
+    /// after a rename the old spelling exists nowhere else, so without this
+    /// there is nothing to compare the new derivation against.
+    static var lastNotesDirectory: URL? {
+        get { stored(.lastNotesDirectory) }
+        set { d.set(newValue?.path ?? "", forKey: Key.lastNotesDirectory.rawValue) }
+    }
+
+    /// Bring that record up to date. Called by whatever has just resolved the
+    /// folder or changed where it is derived from.
+    static func recordNotesDerivation() { lastNotesDirectory = derivedNotesDirectory }
+
+    /// The folder a launch should offer to carry notes out of, if any.
+    /// `StrandedNotes` holds every arm of the decision and why.
+    static var strandedNotesDirectory: URL? {
+        StrandedNotes.directory(
+            recorded: lastNotesDirectory,
+            derived: derivedNotesDirectory,
+            usesChosenPath: noteHome == .chosen,
+            exists: { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            })
     }
 
     static func bootConfig() -> BootConfig {

@@ -384,23 +384,13 @@ final class WelcomeView: NSView {
             : .warning("That combination is taken by another app."))
     }
 
-    /// The same gesture Settings' row makes, and it has to stay the same one.
-    ///
-    /// Clearing a chosen path is what makes iCloud reachable at all: a path
-    /// the user picked outranks both homes, so leaving it set would put the
-    /// switch on while the notes stayed in their folder, with the Location row
-    /// now hidden and nothing on screen naming where they are.
+    /// The same gesture Settings' row makes, and `NoteLocationChange` is what
+    /// makes it the same one rather than a copy of it.
     @objc private func toggleICloud() {
-        let previous = Prefs.notesDirectory
-        if iCloudSwitch.state == .on {
-            Prefs.scratchpadURL = nil
-            Prefs.storeInICloud = true
-        } else {
-            Prefs.storeInICloud = false
-        }
-        showLocation()
-        NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
-                             in: window) { [weak self] work in self?.onChange?(work) }
+        NoteLocationChange.storeInICloud(
+            iCloudSwitch.state == .on, in: window,
+            redraw: { [weak self] in self?.showLocation() },
+            apply: { [weak self] work in self?.onChange?(work) })
     }
 
     @objc private func toggleDock() {
@@ -423,19 +413,10 @@ final class WelcomeView: NSView {
 
     @objc private func chooseLocation() {
         guard let window else { return }
-        let panel = NSSavePanel()
-        panel.title = "Where your notes live"
-        panel.nameFieldStringValue = Prefs.scratchpadURL.lastPathComponent
-        panel.directoryURL = Prefs.scratchpadURL.deletingLastPathComponent()
-        panel.allowedContentTypes = DocumentTypes.writtenContentTypes
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url, let self else { return }
-            let previous = Prefs.notesDirectory
-            Prefs.scratchpadURL = url
-            self.showLocation()
-            NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
-                                 in: self.window) { [weak self] work in self?.onChange?(work) }
-        }
+        NoteLocationChange.chooseLocation(
+            in: window,
+            redraw: { [weak self] in self?.showLocation() },
+            apply: { [weak self] work in self?.onChange?(work) })
     }
 
     @objc private func cont() { onContinue?() }

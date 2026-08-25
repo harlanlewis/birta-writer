@@ -9,6 +9,7 @@ import {
     ITEM_MUTATES,
     TOOLBAR_ITEM_IDS,
 } from "../components/toolbar/registry";
+import type { ToolbarItemId } from "../components/toolbar/registry";
 import type { ToolbarConfig, ToolbarPlacements } from "../../shared/messages";
 import { EDITOR_COMMANDS } from "../../shared/editorCommands";
 import type { HostCapability } from "../../shared/hostProfile";
@@ -244,37 +245,59 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
         (EDITOR_COMMANDS as readonly { id: string; hostCapability?: HostCapability }[])
             .find((m) => m.id === id)?.hostCapability;
 
-    it("every item should need a capability exactly when one of its commands needs it, settings excepted", () => {
+    /**
+     * Whether an item's commands agree on one requirement, and what that is.
+     *
+     * `uniform` means every command needs the SAME capability, which is the
+     * only shape where a single gate on the item says the truth. Anything else
+     * is a mixed menu: some rows need a host and some do not, or two rows need
+     * different hosts. Its gate belongs on the rows.
+     */
+    const requirement = (id: ToolbarItemId): { uniform: boolean; cap: HostCapability | null } => {
+        const caps = ITEM_COMMANDS[id].map(commandCapability);
+        const distinct = [...new Set(caps.filter((c) => c !== undefined))];
+        const uniform = distinct.length === 1 && caps.every((c) => c !== undefined);
+        return { uniform, cap: uniform ? distinct[0]! : null };
+    };
+
+    it("an item should be gated only when all of its commands need the same capability", () => {
         // Two tables classify the same gestures again: the per-item gate that
         // decides whether the control is built, and the per-command gate that
-        // decides whether it runs. Two items are documented exceptions, both
-        // for the same reason: they are MENUS that mix gated and unconditional
-        // rows, so they are always built and filter row by row. The gear is
-        // one; the font menu is the other, which carries the width segments
-        // (`contentMeasure`) and the Editor-font row (`editorFont`) beside a
-        // size stepper and three presets that every host can honour.
-        const ROW_FILTERING_MENUS = ["settings", "fontPreset"];
+        // decides whether it runs.
+        //
+        // The rule is DERIVED rather than a list of exceptions, and that is
+        // load-bearing. Its earlier form asked whether any command needed a
+        // capability, which meant a menu mixing gated and unconditional rows
+        // satisfied it by being gated wholesale, and the checked answer was the
+        // wrong one: the Checks menu was withdrawn entire from a host with no
+        // lint engine while the style check, which the page computes for
+        // itself, went on drawing underlines there with no control to stop it.
+        // A hand-kept exception list could not have caught that, because the
+        // menu would have had to be on the list before anyone noticed.
         expect(TOOLBAR_ITEM_IDS.length).toBeGreaterThan(0);
-        const disagreements = TOOLBAR_ITEM_IDS.filter((id) => {
-            if (ROW_FILTERING_MENUS.includes(id)) { return ITEM_HOST_CAPABILITY[id] !== null; }
-            const needed = new Set(ITEM_COMMANDS[id].map(commandCapability).filter((c) => c !== undefined));
-            const item = ITEM_HOST_CAPABILITY[id];
-            return item === null ? needed.size !== 0 : !(needed.size === 1 && needed.has(item));
-        });
+        const disagreements = TOOLBAR_ITEM_IDS.filter(
+            (id) => ITEM_HOST_CAPABILITY[id] !== requirement(id).cap);
         expect(disagreements).toEqual([]);
-        // The sweep reached the gated items, not only the null ones.
-        expect(TOOLBAR_ITEM_IDS.filter((id) => ITEM_HOST_CAPABILITY[id] !== null).length).toBeGreaterThanOrEqual(4);
     });
 
-    it("each row-filtering menu should mix gated and unconditional commands, or its exception is dead", () => {
-        for (const id of ["settings", "fontPreset"] as const) {
-            const caps = ITEM_COMMANDS[id].map(commandCapability);
-            expect(caps.some((c) => c === undefined), id).toBe(true);
-            expect(caps.some((c) => c !== undefined), id).toBe(true);
+    it("the rule should sort items into all three buckets, or it is not discriminating", () => {
+        // A floor per bucket rather than a sum, because every item leaves
+        // through exactly one of them and a sum is a tautology. Uniformly
+        // gated: image, readOnly, viewSource. Mixed, and therefore always
+        // built: the gear, the font menu (width segments and the Editor-font
+        // row beside a stepper every host can honour), and the Checks menu.
+        // Needing nothing at all: the marks and the block inserts.
+        const buckets = { gated: 0, mixed: 0, free: 0 };
+        for (const id of TOOLBAR_ITEM_IDS) {
+            const { uniform } = requirement(id);
+            const anyCap = ITEM_COMMANDS[id].some((c) => commandCapability(c) !== undefined);
+            if (uniform) { buckets.gated++; }
+            else if (anyCap) { buckets.mixed++; }
+            else { buckets.free++; }
         }
-        const caps = ITEM_COMMANDS.settings.map(commandCapability);
-        expect(caps.some((c) => c === undefined)).toBe(true);
-        expect(caps.some((c) => c !== undefined)).toBe(true);
+        expect(buckets.gated).toBeGreaterThanOrEqual(3);
+        expect(buckets.mixed).toBeGreaterThanOrEqual(3);
+        expect(buckets.free).toBeGreaterThanOrEqual(3);
     });
 });
 
@@ -312,7 +335,11 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
             expect(none.has("viewSource")).toBe(false);
             expect(none.has("image")).toBe(false);
             expect(none.has("readOnly")).toBe(false);
-            expect(none.has("styleCheck")).toBe(false);
+            // Present with a host that declares nothing, like the gear and the
+            // font menu: it is a row-filtering menu whose style half the page
+            // answers by itself, so the item survives and the two lint rows
+            // inside it are what a host without an engine loses.
+            expect(none.has("styleCheck")).toBe(true);
             expect(none.has("settings")).toBe(true);
             expect(none.has("bold")).toBe(true);
             // Absent means all.

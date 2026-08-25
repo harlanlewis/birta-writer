@@ -12,6 +12,32 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Birta Writer for Mac notices when the folder it keeps your notes in has moved because the app was renamed, and offers at the next launch to bring the notes and their images across. That folder's name is derived from the product's, so a rename moved it with you changing nothing, and your writing stayed in a folder under the old name with nothing on screen to say so: the app opened a fresh, empty home and looked as though it were working. Both folders are named in the question, declining moves nothing, and anything that could not be copied is listed. It compares against the folder the previous launch used, so it covers a rename from this version onward rather than one that has already happened.
+
+- The Checks menu is on the toolbar, between Find and the gear, and View, Checks carries Check Style and Highlight Note Markers for the keyboard. The style check draws its dotted underlines on this app exactly as it does in VS Code, and until now there was no control for it anywhere here: the whole menu was withheld because two of its rows, Check Spelling and Check Grammar, need a checker this app does not have. Those two are still absent. Check Style, each of its categories, the note-marker highlight and the master Proofreading switch are all in the toolbar's menu.
+
+### Changed
+
+- Store in iCloud Drive is now a choice between the folder Birta Writer for Mac picks inside iCloud Drive and a folder you name, and the folder you name is remembered. Switching iCloud on used to throw that choice away, so trying iCloud and changing your mind meant finding the folder again. Off, the Location row starts on the note in `~/Documents/Birta Writer` and you can point it anywhere, including somewhere inside iCloud Drive, which syncs like any other folder there; the row says so under it. Changing the location still offers to bring your notes and their images across before anything moves.
+
+- The Format menu carries the inserts itself. Link, Link to Section, Table, Image, Callout, Math, Footnote, Horizontal Rule and the four date rows were behind an Insert submenu and are now four groups on Format, in the order they were in. Paragraph Style and Lists stay submenus. Format is the longest menu the app has and this lengthens it, on the argument that putting something into a document is a different act from restyling what is already there.
+
+### Removed
+
+- View, Focus Mode, on this app only. It stays in Birta Writer for VS Code, where it collapses a workbench's worth of chrome. Here it had nothing to collapse: the panel's toolbar belongs to the app rather than to you and cannot be hidden, and there is no table of contents to close, so the whole of what it did was silence the style check's underlines. Those have their own switch now, in Checks.
+
+### Fixed
+
+- The keyboard shortcut field in Settings is drawn in the appearance the window is in. Opening Settings could leave it a black box in an otherwise light window, and it stayed that way for as long as the app was running, because the field took its background once when it was built rather than from the window it ended up in.
+
+- Naming a folder for your notes on a Mac with iCloud Drive switched off in System Settings now takes effect. The setting went on saying iCloud, so switching iCloud Drive on later moved the notes back to the folder the app derives, with nothing asked.
+
+- Renaming your note in the title popover, or moving it in the Finder, keeps working when the notes folder is the one Birta Writer for Mac derives. The app followed the file and wrote the new path somewhere that was no longer read, so the next launch went back to deriving the old one and opened an empty note beside your renamed file. A name you chose is a location you chose, so this switches Store in iCloud Drive off and fills the Location row in with where the file now is. Nothing moves and nothing stops syncing: a file that was in iCloud Drive is still in iCloud Drive, and the setting now describes it rather than a file that is no longer there.
+
+- When notes move, an image that could not be copied is no longer reported as a note. A move that left one image behind said two notes could not be copied when it meant one note and one image.
+
 ---
 
 ## [2026.825.0] - 2026, August 25

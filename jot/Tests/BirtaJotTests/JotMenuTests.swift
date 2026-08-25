@@ -53,9 +53,12 @@ final class JotMenuTests: XCTestCase {
             "-", "Clear Formatting",
             "-", "Paragraph Style", "Lists",
             "-", "Indent", "Outdent",
-            "-", "Insert",
+            "-", "Link…", "Link to Section…",
+            "-", "Table", "Image…", "Callout",
+            "-", "Math", "Footnote", "Horizontal Rule",
+            "-", "Date…", "Today", "Tomorrow", "Yesterday",
         ])
-        for title in ["Paragraph Style", "Lists", "Insert"] {
+        for title in ["Paragraph Style", "Lists"] {
             let item = format.items.first { $0.title == title }
             XCTAssertNotNil(item?.submenu, "\(title) has no submenu")
             XCTAssertFalse(item?.submenu?.items.isEmpty ?? true, "\(title)'s submenu is empty")
@@ -105,6 +108,29 @@ final class JotMenuTests: XCTestCase {
         XCTAssertEqual(zoomOut?.keyEquivalent, "-")
         XCTAssertEqual(zoomOut?.keyEquivalentModifierMask, NSEvent.ModifierFlags([.command]))
         XCTAssertEqual(view.items.first { $0.title == "Font" }?.submenu?.items.count, 3)
+    }
+
+    /// The View menu's tail, which is where a row the page cannot honour would
+    /// sit and look right.
+    ///
+    /// Checks holds only what the page answers by itself. Check Spelling and
+    /// Check Grammar go to a host lint engine this shell does not have, and
+    /// Focus Mode is withdrawn under `fixedToolbarLayout`; both would be rows
+    /// that light up and do nothing. `menuChordParity.test.ts` is what fails
+    /// when one of those is added back, by asking `hostHasCommand` under Jot's
+    /// own profile; this is the positive half, so a build that lost the whole
+    /// submenu cannot pass by having nothing dead in it.
+    func testTheViewMenuShouldOfferTheChecksThePageAnswersAndNotTheOthers() throws {
+        let view = build(.view)
+
+        let checks = try XCTUnwrap(view.items.first { $0.title == "Checks" }?.submenu)
+        XCTAssertEqual(titles(of: checks), ["Check Style", "Highlight Note Markers"])
+        XCTAssertNil(view.items.first { $0.title == "Focus Mode" },
+                     "Focus Mode is withdrawn on this surface")
+        for absent in ["Check Spelling", "Check Grammar"] {
+            XCTAssertNil(checks.items.first { $0.title == absent },
+                         "\(absent) needs a host lint engine this shell has none of")
+        }
     }
 
     func testEveryCommandRowShouldCarryItsCommandIdToOneRouter() {
