@@ -110,16 +110,34 @@ enum NotesMoveOffer {
     static func offerAtLaunch(
         stranded: URL? = Prefs.strandedNotesDirectory,
         destination: URL = Prefs.derivedNotesDirectory,
+        formerScratchpadName: String? = Prefs.strandedScratchpadName,
+        derivedScratchpadName: String = Prefs.defaultScratchpadURL.lastPathComponent,
         ask: (_ from: URL, _ to: URL, _ plan: NotesMove.Plan) -> Bool = askModally,
         tell: ([String]) -> Void = tellModally,
-        record: (URL) -> Void = { Prefs.lastNotesDirectory = $0 }
+        // BOTH halves of the record, which is why this is the same call the
+        // settings path makes rather than a folder assignment of its own. A
+        // launch that recorded only the folder would leave the file record
+        // pointing into the folder just emptied, and the NEXT rename could no
+        // longer tell which of the carried notes was the scratchpad: correct
+        // once, then wrong for anyone renamed twice.
+        //
+        // The argument is what a test observes; production has no use for it,
+        // since `destination` is `derivedNotesDirectory` and this records that
+        // same derivation from its own source.
+        record: (URL) -> Void = { _ in Prefs.recordNotesDerivation() }
     ) {
         // On every arm, the ones that ask nothing included. What is recorded
         // is where the notes are derived NOW, and a launch that left it
         // unwritten would put the same question again next time.
         defer { record(destination) }
         guard let stranded else { return }
-        let plan = buildPlan(from: stranded, to: destination)
+        // A rename renames the note as well as the folder, so the scratchpad
+        // is carried across under the name the app derives now. Without this
+        // the writing lands beside the empty note this launch made and the
+        // panel opens the empty one, which is the whole rescue failing on its
+        // last step.
+        let rename = formerScratchpadName.map { (from: $0, to: derivedScratchpadName) }
+        let plan = buildPlan(from: stranded, to: destination, scratchpadRename: rename)
         // Nothing of ours is in there. The folder itself is left alone: it is
         // the user's to see and to delete, and an empty one is clutter rather
         // than loss.
@@ -170,7 +188,9 @@ enum NotesMoveOffer {
 
     /// Everything `NotesMove.plan` needs, read off the disk here so the
     /// planning itself stays testable without one.
-    private static func buildPlan(from oldDirectory: URL, to newDirectory: URL) -> NotesMove.Plan {
+    private static func buildPlan(from oldDirectory: URL,
+                                  to newDirectory: URL,
+                                  scratchpadRename: (from: String, to: String)? = nil) -> NotesMove.Plan {
         let fileManager = FileManager.default
         let entries = (try? fileManager.contentsOfDirectory(
             at: oldDirectory, includingPropertiesForKeys: nil)) ?? []
@@ -191,7 +211,8 @@ enum NotesMoveOffer {
                 guard let a = try? Data(contentsOf: source),
                       let b = try? Data(contentsOf: target) else { return false }
                 return a == b
-            })
+            },
+            scratchpadRename: scratchpadRename)
     }
 
     /// Only speaks when something did NOT come along. A move that worked has

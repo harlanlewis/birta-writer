@@ -54,11 +54,17 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
         try Data([0x89, 0x50, 0x4E, 0x47]).write(
             to: former.appendingPathComponent(AttachmentStore.directoryName, isDirectory: true)
                 .appendingPathComponent("shot.png"))
-        // What the app made for itself in the folder the rename sent it to,
-        // which is the state that reads as working correctly.
-        try "# Welcome\n".write(to: derived.appendingPathComponent(ScratchpadLocation.fileName),
-                                atomically: true, encoding: .utf8)
+        // Nothing is put in the destination, and that is the reachable state
+        // rather than a simplification. `offerAtLaunch` runs BEFORE the
+        // Coordinator that makes the app's own note, so on the launch this
+        // path exists for the derived name is free. A destination scratchpad
+        // is its own case, and `testAScratchpadNameAlreadyTakenShouldNotBeClaimed`
+        // is where it is put.
     }
+
+    /// The name the rename moved FROM: what the scratchpad was called in the
+    /// folder the notes were left in.
+    private let formerScratchpadName = "Birta Writer Jot.md"
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: root)
@@ -71,6 +77,8 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
     func testMovingShouldCarryTheNotesAndTheirImagesIntoTheFolderInUse() throws {
         let answers = Answers()
         NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: formerScratchpadName,
+                                     derivedScratchpadName: ScratchpadLocation.fileName,
                                      ask: answers.ask, tell: answers.tell,
                                      record: answers.record)
 
@@ -79,18 +87,93 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
         XCTAssertEqual(answers.asked.first?.to.path, derived.path)
         XCTAssertEqual(answers.asked.first?.notes, 1)
 
-        let carried = derived.appendingPathComponent("Birta Writer Jot.md")
-        XCTAssertEqual(try String(contentsOf: carried, encoding: .utf8), noteBody)
+        // The scratchpad arrives under the name the app derives NOW, which is
+        // the name the panel opens. Landing it under its old name would put
+        // the writing beside the empty note this launch is about to make, one
+        // Cmd+O away and not on screen, which is the rescue failing on its
+        // last step.
+        let carried = derived.appendingPathComponent(ScratchpadLocation.fileName)
+        XCTAssertEqual(try String(contentsOf: carried, encoding: .utf8), noteBody,
+                       "the panel's file holds the writing, not an empty note")
+        XCTAssertFalse(exists(derived.appendingPathComponent(formerScratchpadName)),
+                       "and it is not also there under the name the rename left behind")
         XCTAssertTrue(exists(derived.appendingPathComponent(AttachmentStore.directoryName)
             .appendingPathComponent("shot.png")), "an image a note points at comes with it")
-        XCTAssertFalse(exists(former.appendingPathComponent("Birta Writer Jot.md")),
+        XCTAssertFalse(exists(former.appendingPathComponent(formerScratchpadName)),
                        "a carried note is not left in both places")
+        XCTAssertTrue(answers.told.isEmpty, "a move with nothing left behind says nothing")
+        XCTAssertEqual(answers.recorded, [derived])
+    }
+
+    /// The rename is bounded by what is already there. A destination that
+    /// already answers to the derived name keeps it: taking it would push a
+    /// file aside to make room, and the scratchpad under its own name is the
+    /// state this whole change improves on rather than one it may cost.
+    func testAScratchpadNameAlreadyTakenShouldNotBeClaimed() throws {
+        try "# Already here\n".write(
+            to: derived.appendingPathComponent(ScratchpadLocation.fileName),
+            atomically: true, encoding: .utf8)
+
+        let answers = Answers()
+        NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: formerScratchpadName,
+                                     derivedScratchpadName: ScratchpadLocation.fileName,
+                                     ask: answers.ask, tell: answers.tell,
+                                     record: answers.record)
+
         XCTAssertEqual(
             try String(contentsOf: derived.appendingPathComponent(ScratchpadLocation.fileName),
                        encoding: .utf8),
-            "# Welcome\n", "the file already in the destination is not written over")
-        XCTAssertTrue(answers.told.isEmpty, "a move with nothing left behind says nothing")
-        XCTAssertEqual(answers.recorded, [derived])
+            "# Already here\n", "the file already in the destination is not written over")
+        XCTAssertEqual(
+            try String(contentsOf: derived.appendingPathComponent(formerScratchpadName),
+                       encoding: .utf8),
+            noteBody, "and the scratchpad still comes across, under its own name")
+    }
+
+    /// The other way the name can be spoken for: a second note travelling
+    /// beside the scratchpad is already called it. Same answer, and it is the
+    /// case an order-dependent implementation gets wrong, since this one sorts
+    /// after the scratchpad.
+    func testANoteTravellingUnderTheDerivedNameShouldKeepIt() throws {
+        let travelling = "The note that was already called that.\n"
+        try travelling.write(to: former.appendingPathComponent(ScratchpadLocation.fileName),
+                             atomically: true, encoding: .utf8)
+
+        let answers = Answers()
+        NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: formerScratchpadName,
+                                     derivedScratchpadName: ScratchpadLocation.fileName,
+                                     ask: answers.ask, tell: answers.tell,
+                                     record: answers.record)
+
+        XCTAssertEqual(
+            try String(contentsOf: derived.appendingPathComponent(ScratchpadLocation.fileName),
+                       encoding: .utf8),
+            travelling, "the note that was already called that keeps the name")
+        XCTAssertEqual(
+            try String(contentsOf: derived.appendingPathComponent(formerScratchpadName),
+                       encoding: .utf8),
+            noteBody, "and neither note is written over by the other")
+    }
+
+    /// An install renamed before any launch recorded the scratchpad file has
+    /// nothing to rename FROM. It must still carry the notes across, under
+    /// their own names, exactly as it did before the file was recorded.
+    func testAnUnrecordedScratchpadShouldStillCarryTheNotes() throws {
+        let answers = Answers()
+        NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: nil,
+                                     derivedScratchpadName: ScratchpadLocation.fileName,
+                                     ask: answers.ask, tell: answers.tell,
+                                     record: answers.record)
+
+        XCTAssertEqual(
+            try String(contentsOf: derived.appendingPathComponent(formerScratchpadName),
+                       encoding: .utf8),
+            noteBody, "the writing still comes across")
+        XCTAssertFalse(exists(derived.appendingPathComponent(ScratchpadLocation.fileName)),
+                       "and nothing is renamed onto a name nobody recorded")
     }
 
     /// Leave Them is a real answer, and the sheet named the folder, which is
@@ -100,6 +183,7 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
         let answers = Answers()
         answers.answer = false
         NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: nil,
                                      ask: answers.ask, tell: answers.tell,
                                      record: answers.record)
 
@@ -118,6 +202,7 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
 
         let answers = Answers()
         NotesMoveOffer.offerAtLaunch(stranded: empty, destination: derived,
+                                     formerScratchpadName: nil,
                                      ask: answers.ask, tell: answers.tell,
                                      record: answers.record)
 
@@ -131,6 +216,7 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
     func testALaunchWithNothingStrandedShouldRecordAndAskNothing() {
         let answers = Answers()
         NotesMoveOffer.offerAtLaunch(stranded: nil, destination: derived,
+                                     formerScratchpadName: nil,
                                      ask: answers.ask, tell: answers.tell,
                                      record: answers.record)
 
@@ -148,6 +234,7 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
 
         let answers = Answers()
         NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: nil,
                                      ask: answers.ask, tell: answers.tell,
                                      record: answers.record)
 
@@ -205,7 +292,11 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
     /// every launch, which is its own way of being ignored.
     func testTheRecordShouldOpenTheQuestionAndCloseIt() {
         let original = Prefs.lastNotesDirectory
-        defer { Prefs.lastNotesDirectory = original }
+        let originalFile = Prefs.lastScratchpadFile
+        defer {
+            Prefs.lastNotesDirectory = original
+            Prefs.lastScratchpadFile = originalFile
+        }
 
         Prefs.lastNotesDirectory = former
         XCTAssertEqual(Prefs.strandedNotesDirectory?.standardizedFileURL.path,
@@ -215,6 +306,73 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
         Prefs.recordNotesDerivation()
         XCTAssertEqual(Prefs.lastNotesDirectory?.path, Prefs.derivedNotesDirectory.path)
         XCTAssertNil(Prefs.strandedNotesDirectory)
+    }
+
+    /// The folder record says where the writing was left; this one says which
+    /// file in it the panel was opening. A rename changes both, and without
+    /// the second the carried scratchpad cannot be told from the notes beside
+    /// it, so it lands under its old name and the panel opens an empty note.
+    ///
+    /// `offerAtLaunch()` takes this as a default argument, so the wiring is
+    /// the feature here exactly as it is for the folder above.
+    func testTheScratchpadFileShouldBeRecordedAndReadBackFromTheStrandedFolder() {
+        let original = Prefs.lastNotesDirectory
+        let originalFile = Prefs.lastScratchpadFile
+        defer {
+            Prefs.lastNotesDirectory = original
+            Prefs.lastScratchpadFile = originalFile
+        }
+
+        Prefs.lastNotesDirectory = former
+        Prefs.lastScratchpadFile = former.appendingPathComponent(formerScratchpadName)
+        XCTAssertEqual(Prefs.strandedScratchpadName, formerScratchpadName,
+                       "the name the panel was opening before the rename")
+
+        // Recorded against a DIFFERENT folder than the stranded one: the two
+        // records have come apart, and a name read out of the wrong folder
+        // would rename a file on the strength of a stale record.
+        Prefs.lastScratchpadFile = root
+            .appendingPathComponent("Somewhere Else", isDirectory: true)
+            .appendingPathComponent(formerScratchpadName)
+        XCTAssertNil(Prefs.strandedScratchpadName,
+                     "a record from another folder does not name this folder's scratchpad")
+
+        Prefs.recordNotesDerivation()
+        XCTAssertEqual(Prefs.lastScratchpadFile?.path, Prefs.defaultScratchpadURL.path,
+                       "and recording brings the file record up with the folder's")
+    }
+
+    /// The launch's OWN record, driven through the production default rather
+    /// than an injected seam, because the seam is what hid this: a launch that
+    /// wrote the folder record and not the file's was correct for one rename
+    /// and wrong for anyone renamed twice. The second rename would find the
+    /// file record still pointing into the folder the first one emptied, fail
+    /// to tell which carried note was the scratchpad, and land it under its
+    /// old name again.
+    func testTheLaunchShouldRecordTheScratchpadFileAndNotOnlyTheFolder() {
+        let original = Prefs.lastNotesDirectory
+        let originalFile = Prefs.lastScratchpadFile
+        defer {
+            Prefs.lastNotesDirectory = original
+            Prefs.lastScratchpadFile = originalFile
+        }
+
+        // A record from a folder that is not the derived one, which is the
+        // state a rename leaves and the only one that reaches the offer.
+        Prefs.lastNotesDirectory = former
+        Prefs.lastScratchpadFile = former.appendingPathComponent(formerScratchpadName)
+
+        let answers = Answers()
+        answers.answer = false
+        NotesMoveOffer.offerAtLaunch(stranded: former, destination: derived,
+                                     formerScratchpadName: formerScratchpadName,
+                                     derivedScratchpadName: ScratchpadLocation.fileName,
+                                     ask: answers.ask, tell: answers.tell)
+
+        XCTAssertEqual(Prefs.lastScratchpadFile?.path, Prefs.defaultScratchpadURL.path,
+                       "the launch must move the file record on, not just the folder's")
+        XCTAssertNil(Prefs.strandedScratchpadName,
+                     "so the question is closed rather than reopened next launch")
     }
 
     /// The derived folder is the one a rename can move, and it is not the one

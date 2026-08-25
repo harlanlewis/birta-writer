@@ -88,13 +88,22 @@ public enum NotesMove {
     ///   - identical: whether the destination file at that URL has the same
     ///     contents as the source. Only asked about attachments, and only when
     ///     the name is taken.
+    ///   - scratchpadRename: the former scratchpad's file name and the one the
+    ///     app derives now. A rename moves the FOLDER and the FILE inside it,
+    ///     so carrying the notes across under their own names lands the user's
+    ///     writing beside the empty note the app derives, and the panel opens
+    ///     the empty one. Naming it here rather than renaming afterwards keeps
+    ///     one code path: the file arrives correct rather than arriving wrong
+    ///     and being corrected, so `perform`'s copy-verify-remove is the only
+    ///     thing that ever touches it.
     public static func plan(
         from source: URL,
         to destination: URL,
         entries: [URL],
         attachments: [URL] = [],
         occupied: (URL) -> Bool,
-        identical: (URL, URL) -> Bool = { _, _ in false }
+        identical: (URL, URL) -> Bool = { _, _ in false },
+        scratchpadRename: (from: String, to: String)? = nil
     ) -> Plan {
         // A rename in place is not a move, and asking about one would be a
         // sheet in front of a gesture that changed no location. The title
@@ -112,6 +121,26 @@ public enum NotesMove {
             claimed.contains(url.standardizedFileURL.path) || occupied(url)
         }
 
+        // Whether the former scratchpad may take the derived name, decided
+        // once and before the loop so the answer cannot depend on the order
+        // the entries happen to sort in.
+        //
+        // Only when that name is FREE, in both senses: nothing at the
+        // destination answers to it, and no other note is coming along under
+        // it. A collision means some other file is already that name, and
+        // taking it would push a file the user named aside to make room for
+        // one the app named. Then the scratchpad keeps its own name, which is
+        // the state this parameter exists to improve on and is still no worse
+        // than it.
+        var renamedScratchpad: String?
+        if let rename = scratchpadRename, rename.from != rename.to {
+            let names = Set(entries.map(\.lastPathComponent))
+            if names.contains(rename.from), !names.contains(rename.to),
+               !occupied(destination.appendingPathComponent(rename.to)) {
+                renamedScratchpad = rename.to
+            }
+        }
+
         for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             let name = entry.lastPathComponent
             if name == AttachmentStore.directoryName { continue }
@@ -119,7 +148,8 @@ public enum NotesMove {
                 kept.append(.notOurs(entry))
                 continue
             }
-            let target = unused(in: destination, name: name, taken: taken)
+            let landsAs = name == scratchpadRename?.from ? (renamedScratchpad ?? name) : name
+            let target = unused(in: destination, name: landsAs, taken: taken)
             claimed.insert(target.standardizedFileURL.path)
             items.append(Item(source: entry, destination: target, renameable: true))
         }

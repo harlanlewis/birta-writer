@@ -56,6 +56,7 @@ enum Prefs {
         case lastUpdateCheck
         case updateDeclinedTag
         case lastNotesDirectory
+        case lastScratchpadFile
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -72,7 +73,13 @@ enum Prefs {
     /// itself move it, by putting the iCloud switch and the chosen path back
     /// to their defaults, and clearing the record in the same breath is what
     /// would make that move the silent one this record exists to catch.
-    private static let survivesReset: Set<Key> = [.hasSeenWelcome, .lastNotesDirectory]
+    ///
+    /// `lastScratchpadFile`: the same record, one level down. A rename moves
+    /// the folder and renames the note inside it, and the folder alone cannot
+    /// say which of the carried files was the scratchpad.
+    private static let survivesReset: Set<Key> = [
+        .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile,
+    ]
 
     /// Put every setting back to its default, and touch no file on disk.
     ///
@@ -662,9 +669,38 @@ enum Prefs {
         set { d.set(newValue?.path ?? "", forKey: Key.lastNotesDirectory.rawValue) }
     }
 
+    /// The derived scratchpad FILE the last launch used.
+    ///
+    /// The folder record answers where the writing was left; this answers
+    /// which file in it the panel was opening. A rename changes both, and
+    /// after one the old spelling of the file exists nowhere else either.
+    static var lastScratchpadFile: URL? {
+        get { stored(.lastScratchpadFile) }
+        set { d.set(newValue?.path ?? "", forKey: Key.lastScratchpadFile.rawValue) }
+    }
+
     /// Bring that record up to date. Called by whatever has just resolved the
     /// folder or changed where it is derived from.
-    static func recordNotesDerivation() { lastNotesDirectory = derivedNotesDirectory }
+    static func recordNotesDerivation() {
+        lastNotesDirectory = derivedNotesDirectory
+        lastScratchpadFile = defaultScratchpadURL
+    }
+
+    /// What the stranded folder's scratchpad was called, when that is known.
+    ///
+    /// Nil until a launch has recorded one, which is every launch from the
+    /// first that runs this code. An install that is renamed in the window
+    /// before then carries its notes across under their own names, exactly as
+    /// it did before the file was recorded: the same price `StrandedNotes`
+    /// already states for the folder, and stated rather than hidden.
+    static var strandedScratchpadName: String? {
+        guard let recorded = lastScratchpadFile, let stranded = strandedNotesDirectory else {
+            return nil
+        }
+        guard recorded.deletingLastPathComponent().standardizedFileURL
+            == stranded.standardizedFileURL else { return nil }
+        return recorded.lastPathComponent
+    }
 
     /// The folder a launch should offer to carry notes out of, if any.
     /// `StrandedNotes` holds every arm of the decision and why.
