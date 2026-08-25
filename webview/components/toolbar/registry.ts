@@ -204,7 +204,14 @@ export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> 
     readOnly: "readOnlyMode",
     viewSource: "textEditor",
     find: null,
-    styleCheck: "proofreading",
+    // The second documented exception, and the same shape as `settings`: the
+    // Checks menu mixes rows that need a host lint engine (Check Spelling,
+    // Check Grammar) with rows the page answers by itself (Check Style, the
+    // style sub-checks, Highlight Note Markers). Gating the ITEM on the engine
+    // took the whole menu away from a host without one while the style check
+    // went on drawing underlines there, so the item stays and the menu filters
+    // row by row through `hostHasCommand`.
+    styleCheck: null,
     fontPreset: null,
     settings: null,
 };

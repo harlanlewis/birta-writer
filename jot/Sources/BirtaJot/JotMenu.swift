@@ -335,7 +335,18 @@ enum JotMenu {
 
     /// What the window shows of the document, rather than what the document
     /// says: the zoom trio macOS puts at the top of every View menu, the
-    /// content font, folding, and Focus Mode.
+    /// content font, folding, and the advisory marks drawn over the text.
+    ///
+    /// Checks holds the two the page answers by itself. Check Spelling and
+    /// Check Grammar are absent because they are lints posted to a host engine
+    /// this shell does not have, and `hostHasCommand` withdraws them from the
+    /// toolbar's own menu for the same reason.
+    ///
+    /// Focus Mode is absent, and the withdrawal is declared on the command
+    /// rather than by leaving the row out here: `absentUnder` takes it from
+    /// this menu, the toolbar and the palette together. The panel's bar cannot
+    /// be hidden and it has no table of contents, so the row silenced the
+    /// proofread underlines and moved nothing a reader could see.
     ///
     /// The zoom chords are the one place Jot deliberately parts from the
     /// extension, and the reason is recorded in `menuChordParity.test.ts`:
@@ -370,8 +381,11 @@ enum JotMenu {
         .init(title: "Unfold All",
               action: .command("unfoldAll"), menu: .view, group: 2),
 
-        .init(title: "Focus Mode",
-              action: .command("toggleFocusMode"), menu: .view, group: 3),
+        .init(title: "Checks", action: .submenu, menu: .view, group: 3),
+        .init(title: "Check Style",
+              action: .command("toggleStyleCheck"), menu: .view, submenu: "Checks", group: 0),
+        .init(title: "Highlight Note Markers",
+              action: .command("toggleNoteHighlights"), menu: .view, submenu: "Checks", group: 0),
     ]
 
     // MARK: help

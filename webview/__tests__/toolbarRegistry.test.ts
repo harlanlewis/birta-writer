@@ -247,13 +247,16 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
     it("every item should need a capability exactly when one of its commands needs it, settings excepted", () => {
         // Two tables classify the same gestures again: the per-item gate that
         // decides whether the control is built, and the per-command gate that
-        // decides whether it runs. Two items are documented exceptions, both
+        // decides whether it runs. Three items are documented exceptions, all
         // for the same reason: they are MENUS that mix gated and unconditional
         // rows, so they are always built and filter row by row. The gear is
-        // one; the font menu is the other, which carries the width segments
+        // one; the font menu is the second, which carries the width segments
         // (`contentMeasure`) and the Editor-font row (`editorFont`) beside a
-        // size stepper and three presets that every host can honour.
-        const ROW_FILTERING_MENUS = ["settings", "fontPreset"];
+        // size stepper and three presets that every host can honour; the Checks
+        // menu is the third, where Check Spelling and Check Grammar need a host
+        // lint engine and Check Style and Highlight Note Markers are answered
+        // by the page.
+        const ROW_FILTERING_MENUS = ["settings", "fontPreset", "styleCheck"];
         expect(TOOLBAR_ITEM_IDS.length).toBeGreaterThan(0);
         const disagreements = TOOLBAR_ITEM_IDS.filter((id) => {
             if (ROW_FILTERING_MENUS.includes(id)) { return ITEM_HOST_CAPABILITY[id] !== null; }
@@ -263,18 +266,15 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
         });
         expect(disagreements).toEqual([]);
         // The sweep reached the gated items, not only the null ones.
-        expect(TOOLBAR_ITEM_IDS.filter((id) => ITEM_HOST_CAPABILITY[id] !== null).length).toBeGreaterThanOrEqual(4);
+        expect(TOOLBAR_ITEM_IDS.filter((id) => ITEM_HOST_CAPABILITY[id] !== null).length).toBeGreaterThanOrEqual(3);
     });
 
     it("each row-filtering menu should mix gated and unconditional commands, or its exception is dead", () => {
-        for (const id of ["settings", "fontPreset"] as const) {
+        for (const id of ["settings", "fontPreset", "styleCheck"] as const) {
             const caps = ITEM_COMMANDS[id].map(commandCapability);
             expect(caps.some((c) => c === undefined), id).toBe(true);
             expect(caps.some((c) => c !== undefined), id).toBe(true);
         }
-        const caps = ITEM_COMMANDS.settings.map(commandCapability);
-        expect(caps.some((c) => c === undefined)).toBe(true);
-        expect(caps.some((c) => c !== undefined)).toBe(true);
     });
 });
 
@@ -312,7 +312,11 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
             expect(none.has("viewSource")).toBe(false);
             expect(none.has("image")).toBe(false);
             expect(none.has("readOnly")).toBe(false);
-            expect(none.has("styleCheck")).toBe(false);
+            // Present with a host that declares nothing, like the gear and the
+            // font menu: it is a row-filtering menu whose style half the page
+            // answers by itself, so the item survives and the two lint rows
+            // inside it are what a host without an engine loses.
+            expect(none.has("styleCheck")).toBe(true);
             expect(none.has("settings")).toBe(true);
             expect(none.has("bold")).toBe(true);
             // Absent means all.
