@@ -4,9 +4,24 @@ import XCTest
 final class NoteModelTests: XCTestCase {
     // MARK: NoteHome
 
-    func testAChosenFolderShouldOutrankBothHomes() {
-        XCTAssertEqual(NoteHome.inForce(preferICloud: true, hasChosenPath: true, iCloudAvailable: true), .chosen)
+    /// The switch is the branch, and the stored path is what the OFF branch
+    /// holds rather than an override of the switch.
+    ///
+    /// The pair is the whole claim: the same stored path resolves two
+    /// different ways depending on the switch alone, which is what lets a
+    /// folder somebody named be remembered through a trip to iCloud and back
+    /// instead of being thrown away to keep the switch honest.
+    func testTheSwitchShouldDecideAndAChosenFolderShouldBeTheOffBranchsValue() {
+        XCTAssertEqual(NoteHome.inForce(preferICloud: true, hasChosenPath: true, iCloudAvailable: true), .iCloud)
+        XCTAssertEqual(NoteHome.inForce(preferICloud: false, hasChosenPath: true, iCloudAvailable: true), .chosen)
         XCTAssertEqual(NoteHome.inForce(preferICloud: false, hasChosenPath: true, iCloudAvailable: false), .chosen)
+    }
+
+    /// Asking for iCloud on a machine without it lands on the folder they last
+    /// named, not on the one under Documents. The branch that is left is the
+    /// user's own, and its value is the one they set.
+    func testPreferringICloudWithoutTheServiceShouldFallBackToTheChosenFolder() {
+        XCTAssertEqual(NoteHome.inForce(preferICloud: true, hasChosenPath: true, iCloudAvailable: false), .chosen)
     }
 
     func testPreferringICloudOnAMachineThatHasItShouldLandInICloud() {
