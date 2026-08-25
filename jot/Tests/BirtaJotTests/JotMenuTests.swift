@@ -53,9 +53,12 @@ final class JotMenuTests: XCTestCase {
             "-", "Clear Formatting",
             "-", "Paragraph Style", "Lists",
             "-", "Indent", "Outdent",
-            "-", "Insert",
+            "-", "Link…", "Link to Section…",
+            "-", "Table", "Image…", "Callout",
+            "-", "Math", "Footnote", "Horizontal Rule",
+            "-", "Date…", "Today", "Tomorrow", "Yesterday",
         ])
-        for title in ["Paragraph Style", "Lists", "Insert"] {
+        for title in ["Paragraph Style", "Lists"] {
             let item = format.items.first { $0.title == title }
             XCTAssertNotNil(item?.submenu, "\(title) has no submenu")
             XCTAssertFalse(item?.submenu?.items.isEmpty ?? true, "\(title)'s submenu is empty")

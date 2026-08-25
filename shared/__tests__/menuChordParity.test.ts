@@ -363,7 +363,7 @@ describe("the menus against the panel's formatting row", () => {
             "It takes the callout KIND as an argument, supplied by the control " +
             "that runs it (the quote picker's turn-into rows). A menu row carries " +
             "a command id and nothing else, so the row would have no kind to " +
-            "apply; Insert > Callout is `insertCallout`, the plain insert, which " +
+            "apply; Format's Callout row is `insertCallout`, the plain insert, which " +
             "is the whole of the gesture a menu can offer.",
     };
 

@@ -248,8 +248,12 @@ enum JotMenu {
 
     /// The formatting controls the panel's second toolbar row carries, in a
     /// menu. The marks sit on the menu itself, as they do in every macOS text
-    /// app; the block types, the lists and the inserts are submenus, because this
-    /// table gives Format more rows than a flat menu is read to the bottom of.
+    /// app, and so do the inserts: putting something in a document is a
+    /// different kind of act from restyling what is already there, and a
+    /// reader who wants a table should not have to know it was filed under
+    /// formatting first. Paragraph Style and Lists stay submenus because each
+    /// is one question with many answers, and a flat list of every heading
+    /// level is a menu nobody reads to the bottom of.
     private static let formatRows: [Row] = [
         .init(title: "Bold", key: "b", modifiers: [.command],
               action: .command("toggleBold"), menu: .format, group: 0),
@@ -301,31 +305,30 @@ enum JotMenu {
         .init(title: "Outdent", key: "[", modifiers: [.command],
               action: .command("outdentBlock"), menu: .format, group: 3),
 
-        .init(title: "Insert", action: .submenu, menu: .format, group: 4),
         .init(title: "Link…", key: "k", modifiers: [.command],
-              action: .command("insertLink"), menu: .format, submenu: "Insert", group: 0),
+              action: .command("insertLink"), menu: .format, group: 4),
         .init(title: "Link to Section…",
-              action: .command("insertSectionLink"), menu: .format, submenu: "Insert", group: 0),
+              action: .command("insertSectionLink"), menu: .format, group: 4),
         .init(title: "Table",
-              action: .command("insertTable"), menu: .format, submenu: "Insert", group: 1),
+              action: .command("insertTable"), menu: .format, group: 5),
         .init(title: "Image…",
-              action: .command("insertImage"), menu: .format, submenu: "Insert", group: 1),
+              action: .command("insertImage"), menu: .format, group: 5),
         .init(title: "Callout",
-              action: .command("insertCallout"), menu: .format, submenu: "Insert", group: 1),
+              action: .command("insertCallout"), menu: .format, group: 5),
         .init(title: "Math",
-              action: .command("insertMath"), menu: .format, submenu: "Insert", group: 2),
+              action: .command("insertMath"), menu: .format, group: 6),
         .init(title: "Footnote",
-              action: .command("insertFootnote"), menu: .format, submenu: "Insert", group: 2),
+              action: .command("insertFootnote"), menu: .format, group: 6),
         .init(title: "Horizontal Rule",
-              action: .command("insertHorizontalRule"), menu: .format, submenu: "Insert", group: 2),
+              action: .command("insertHorizontalRule"), menu: .format, group: 6),
         .init(title: "Date…",
-              action: .command("insertDate"), menu: .format, submenu: "Insert", group: 3),
+              action: .command("insertDate"), menu: .format, group: 7),
         .init(title: "Today",
-              action: .command("insertToday"), menu: .format, submenu: "Insert", group: 3),
+              action: .command("insertToday"), menu: .format, group: 7),
         .init(title: "Tomorrow",
-              action: .command("insertTomorrow"), menu: .format, submenu: "Insert", group: 3),
+              action: .command("insertTomorrow"), menu: .format, group: 7),
         .init(title: "Yesterday",
-              action: .command("insertYesterday"), menu: .format, submenu: "Insert", group: 3),
+              action: .command("insertYesterday"), menu: .format, group: 7),
     ]
 
     // MARK: view
