@@ -246,6 +246,20 @@ final class Coordinator {
         titleBar.titleView.onRelocate = { [weak self] target in
             MainActor.assumeIsolated { self?.relocateActiveFile(to: target) }
         }
+        // The two file actions, beside the name of the file they act on. Each
+        // is the menu row's own selector, sent up the responder chain, so the
+        // button IS the row rather than a second thing that agrees with it;
+        // `TitlebarActionsView` has that argument and the one for the two
+        // symbols.
+        titleBar.titleView.setActions([
+            .init(selector: #selector(AppDelegate.menuNewNote), symbol: "square.and.pencil"),
+            .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
+        ])
+        // The band is one strip to the eye, so pointing anywhere along it
+        // offers what the strip holds, rather than only the width of the name.
+        titlebarDrag.onHoverChange = { [weak self] hovering in
+            MainActor.assumeIsolated { self?.titleBar.titleView.setBandHovered(hovering) }
+        }
         // Title ink follows the window's key state, as every macOS title does.
         // Both notifications are needed: a panel loses key to another app's
         // window without any pointer event.
@@ -1576,6 +1590,43 @@ final class Coordinator {
         }
     }
 
+    /// Cmd+O. Ask for a file, then open it the way the Finder's Open With
+    /// does.
+    ///
+    /// Everything about the rebind is `openDocument(at:)`'s, including the
+    /// flush of the note being left, so this is only the chooser. That is the
+    /// point of the split: a file arriving from a panel and a file arriving
+    /// from the Finder must reach the buffer by one path, or the two acquire
+    /// different answers to what happens to the outgoing note.
+    ///
+    /// The panel starts in the folder of the file on screen, which is where a
+    /// second note usually is. `Prefs.saveAsDirectory` is deliberately not
+    /// reused: that is where copies are written OUT to, and starting a chooser
+    /// there points at a folder of exports rather than at the notes.
+    ///
+    /// A sheet when the panel is up and a modal when it is not, matching Save
+    /// a Copy As. An accessory app can have no window on screen at all, and a
+    /// sheet on a hidden window is a chooser nobody can see or dismiss.
+    func openDocumentPanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        let chooser = NSOpenPanel()
+        chooser.title = "Open"
+        chooser.allowedContentTypes = DocumentTypes.openedContentTypes
+        chooser.allowsMultipleSelection = false
+        chooser.canChooseDirectories = false
+        chooser.canChooseFiles = true
+        chooser.directoryURL = boundURL.deletingLastPathComponent()
+        let respond: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .OK, let url = chooser.url, let self else { return }
+            self.openDocument(at: url)
+        }
+        if panel.isVisible {
+            chooser.beginSheetModal(for: panel, completionHandler: respond)
+        } else {
+            respond(chooser.runModal())
+        }
+    }
+
     /// Leave a document Jot was pointed at, and go back to the notes.
     ///
     /// The `document` slot in `ActiveBinding` outranks the other two, so this
@@ -2350,6 +2401,9 @@ final class Coordinator {
                   leading: leading,
                   trailingControlsWidth: titlebarControlsWidth) else {
             titlebarDrag.isHidden = true
+            // A hidden view gets no `mouseExited`, so the hover it last
+            // reported would stand for as long as the window stayed narrow.
+            titleBar.titleView.setBandHovered(false)
             return
         }
         titlebarDrag.isHidden = false
@@ -2531,6 +2585,39 @@ final class Coordinator {
             // the title was shortened.
             view.drawnTitle))
         traceChevron()
+        traceTitleActions()
+    }
+
+    /// The two file buttons the titlebar draws, at rest and hovered.
+    ///
+    /// The same shape as `traceChevron` and for the same reasons, plus one
+    /// claim that view cannot make: the buttons' GEOMETRY has to be identical
+    /// in both states. The drag strip is laid out by the window and starts
+    /// where the accessory ends, so buttons that took their width on hover
+    /// would leave the strip lying over them, and the clicks would land on the
+    /// window drag. Both frames are reported rather than compared here,
+    /// because a probe that did its own comparison would report one boolean
+    /// and lose the two numbers that say which way it went.
+    ///
+    /// `symbols` is the arm that stops the rest reporting healthily about
+    /// nothing: `NSImage(systemSymbolName:)` answers nil for a name the system
+    /// does not carry, so a renamed or withdrawn SF Symbol gives two buttons
+    /// that are positioned, offered, and blank.
+    private func traceTitleActions() {
+        guard measure.enabled else { return }
+        let view = titleBar.titleView
+        let rest = view.actionsForMeasurement(hovered: false)
+        let over = view.actionsForMeasurement(hovered: true)
+        _ = view.actionsForMeasurement(hovered: false)   // leave it as we found it
+        let box = { (frames: [NSRect]) -> String in
+            frames.map { String(format: "%.1f:%.1f", $0.origin.x, $0.width) }.joined(separator: ",")
+        }
+        measure.trace(String(
+            format: "titleactions count=%d symbols=%d restShown=%@ overShown=%@ restBoxes=%@ overBoxes=%@ chevronMaxX=%.1f",
+            over.frames.count, over.symbols,
+            rest.shown ? "yes" : "no", over.shown ? "yes" : "no",
+            box(rest.frames), box(over.frames),
+            view.labelFrameInWindow().width + TitleBarView.chromeWidth - TitlebarActionsView.room))
     }
 
     /// The title's hover affordance, at rest and hovered.

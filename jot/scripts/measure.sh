@@ -585,6 +585,45 @@ else
     echo "$CHEV" >&2; exit 1
 fi
 
+# The two file buttons beside the title: New Note and Open.
+#
+# `symbols` against `count` is the arm that stops everything else here
+# reporting healthily about two blank boxes, for the reason `hasImage` exists
+# above: a withdrawn or renamed SF Symbol leaves buttons that are positioned,
+# offered and drawing nothing.
+#
+# `restShown` against `overShown` is the affordance appearing at all, and
+# `restBoxes` against `overBoxes` is the claim the chevron's arm cannot make:
+# the geometry must be IDENTICAL between the two. The drag strip is laid out by
+# the window and starts where this accessory ends, so a width taken on hover
+# would leave the strip over the buttons it made room for, and every click on
+# them would drag the window instead. That failure is invisible in a
+# screenshot, because both states look right on their own.
+#
+# Not covered, and the same gap as the chevron's: whether a real pointer
+# reaches the tracking areas. The state is set rather than performed.
+ACTS="$(grep "^jot-trace titleactions " "$LOG" | tail -1 || true)"
+AC_COUNT="$(echo "$ACTS" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+AC_SYMS="$(echo "$ACTS" | sed -n 's/.*symbols=\([0-9]*\).*/\1/p')"
+AC_REST="$(echo "$ACTS" | sed -n 's/.*restShown=\([a-z]*\).*/\1/p')"
+AC_OVER="$(echo "$ACTS" | sed -n 's/.*overShown=\([a-z]*\).*/\1/p')"
+AC_REST_BOX="$(echo "$ACTS" | sed -n 's/.*restBoxes=\([0-9.,:]*\).*/\1/p')"
+AC_OVER_BOX="$(echo "$ACTS" | sed -n 's/.*overBoxes=\([0-9.,:]*\).*/\1/p')"
+AC_CHEV_MAX="$(echo "$ACTS" | sed -n 's/.*chevronMaxX=\([0-9.-]*\).*/\1/p')"
+AC_FIRST_X="$(echo "$AC_OVER_BOX" | cut -d, -f1 | cut -d: -f1)"
+if [ -z "$ACTS" ]; then
+    echo "titlebar buttons     FAILED: the app reported no titleactions trace at all" >&2; exit 1
+fi
+if [ "$AC_COUNT" = "2" ] && [ "$AC_SYMS" = "2" ] \
+   && [ "$AC_REST" = "no" ] && [ "$AC_OVER" = "yes" ] \
+   && [ -n "$AC_REST_BOX" ] && [ "$AC_REST_BOX" = "$AC_OVER_BOX" ] \
+   && awk "BEGIN{exit !($AC_FIRST_X >= $AC_CHEV_MAX)}"; then
+    echo "titlebar buttons     ok: 2 symbols, hidden at rest and offered on hover, room held either way ($AC_OVER_BOX)"
+else
+    echo "titlebar buttons     FAILED: a symbol is missing, the buttons never appear, or the room moves on hover" >&2
+    echo "$ACTS" >&2; exit 1
+fi
+
 # WHERE the title sits vertically, which the check above says nothing about: it
 # reads the accessory's frame, and the accessory is the whole titlebar band, so
 # a title drawn 2pt low passed it exactly as a correct one did. It did, for a

@@ -162,6 +162,43 @@ final class JotMenuTests: XCTestCase {
         XCTAssertNil(JotMenu.shortcuts.first { $0.label == "Save" }?.command)
     }
 
+    // MARK: rows a button repeats
+
+    func testFileShouldOfferOpenOnTheConventionalChord() {
+        let open = JotMenu.rows.first { $0.title == "Open…" }
+        XCTAssertEqual(open?.menu, .file)
+        XCTAssertEqual(open?.chord, "Mod-o")
+        XCTAssertEqual(open?.action.selector, #selector(AppDelegate.menuOpenDocument))
+        // Between New Note and Save, which is where every macOS File menu puts
+        // it. Asserted on the built menu rather than on the table, because the
+        // order a person reads is the one `fill` produces.
+        XCTAssertEqual(Array(titles(of: build(.file))[0..<3]),
+                       ["New Note", "Open…", "Save"])
+    }
+
+    func testARowShouldBeReachableByItsSelectorAndPrintItsOwnChord() {
+        let new = JotMenu.row(for: #selector(AppDelegate.menuNewNote))
+        XCTAssertEqual(new?.title, "New Note")
+        XCTAssertEqual(new?.symbols, "⌘N")
+        XCTAssertEqual(JotMenu.row(for: #selector(AppDelegate.menuOpenDocument))?.symbols, "⌘O")
+        // Apple's modifier order, and every modifier drawn: a lookup that
+        // dropped one would print a chord that opens something else.
+        XCTAssertEqual(JotMenu.row(for: #selector(AppDelegate.menuSaveAs))?.symbols, "⇧⌘S")
+        // A row with no key offers nothing to draw rather than a bare modifier
+        // string, which reads like a chord and is not one.
+        XCTAssertEqual(JotMenu.Row(title: "x", action: .app(#selector(AppDelegate.menuNewNote)),
+                                   menu: .file).symbols, "")
+    }
+
+    func testTheSelectorLookupShouldRefuseTheCommandRowsSharedSelector() {
+        // Every `.command` row runs `menuRunEditorCommand`, so a lookup that
+        // admitted them would answer any editor command at all with whichever
+        // row happens to be first, and a button's tooltip would name a gesture
+        // that does something else.
+        XCTAssertNil(JotMenu.row(for: #selector(AppDelegate.menuRunEditorCommand(_:))))
+        XCTAssertNil(JotMenu.row(for: #selector(AppDelegate.menuOpenAbout)))
+    }
+
     // MARK: the Window menu
 
     func testTheWindowMenuShouldAuthorTheAppsOwnRowsAndNoneOfTheSystems() {

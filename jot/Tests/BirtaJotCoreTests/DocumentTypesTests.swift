@@ -76,4 +76,27 @@ final class DocumentTypesTests: XCTestCase {
             XCTAssertEqual(type.preferredFilenameExtension, DocumentTypes.written)
         }
     }
+
+    /// File > Open must offer what `accepts` will let through, or a person
+    /// meets a greyed-out file the app opens perfectly well from the Finder.
+    func testTheOpenPanelShouldOfferEveryExtensionTheEditorAccepts() {
+        let types = DocumentTypes.openedContentTypes
+        XCTAssertFalse(types.isEmpty)
+        // A floor on what the lookup REACHED, not a sum over what it returned:
+        // `compactMap` drops a type the machine has no registration for, so a
+        // count taken from the result alone would report a healthy panel that
+        // offers one format out of three.
+        XCTAssertGreaterThanOrEqual(types.count, DocumentTypes.opened.count,
+                                    "\(types.count) types for \(DocumentTypes.opened.count) extensions")
+        for ext in DocumentTypes.opened {
+            let type = UTType(filenameExtension: ext)
+            XCTAssertNotNil(type, "\(ext) resolves to no type, so the panel would grey it out")
+            guard let type else { continue }
+            XCTAssertTrue(types.contains(type), ext)
+            // And what the panel offers is what `accepts` admits, in both
+            // directions: the two answers are read one after the other by the
+            // person choosing a file, and they have to be the same answer.
+            XCTAssertTrue(DocumentTypes.accepts(URL(fileURLWithPath: "/a/note.\(ext)")))
+        }
+    }
 }

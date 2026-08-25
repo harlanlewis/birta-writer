@@ -397,6 +397,28 @@ public struct HostShortcut: Equatable, Sendable {
         parts.append(key)
         return parts.joined(separator: "-")
     }
+
+    /// The same chord as menu-bar symbols (⇧⌘S), in Apple's modifier order.
+    ///
+    /// For a control that DRAWS its own chord rather than handing one to the
+    /// page: the global hotkey's spelling in Settings, and the tooltips on the
+    /// titlebar's buttons. Here beside `chord` because both are one rule about
+    /// how a chord is written down, and the order is the half that a second
+    /// copy would eventually get wrong: ⌃⌥⇧⌘ is what AppKit draws a key
+    /// equivalent in, so a control spelling it any other way is a control
+    /// whose chord does not match the menu row printing the same gesture two
+    /// inches away.
+    public static func symbols(
+        key: String, command: Bool = false, shift: Bool = false,
+        option: Bool = false, control: Bool = false
+    ) -> String {
+        var out = ""
+        if control { out += "⌃" }
+        if option { out += "⌥" }
+        if shift { out += "⇧" }
+        if command { out += "⌘" }
+        return out + key.uppercased()
+    }
 }
 
 public struct BootConfig: Equatable {

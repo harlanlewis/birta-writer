@@ -386,6 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func copyEverything() { coordinator.copyEverything() }
     @objc func menuSaveNow() { coordinator.saveNow() }
     @objc func menuNewNote() { coordinator.newNote() }
+    @objc func menuOpenDocument() { coordinator.openDocumentPanel() }
     @objc func menuSaveAs() { coordinator.saveAs() }
     @objc private func revealLastSave() { coordinator.revealLastSave() }
     /// Run the editor command a menu row carries.
@@ -578,7 +579,8 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// Every menu command that reads or writes the note. Named once so the
     /// first-run gate above cannot drift out of step with the File menu.
     private static let documentCommands: Set<Selector> = [
-        #selector(menuNewNote), #selector(menuSaveNow), #selector(menuSaveAs),
+        #selector(menuNewNote), #selector(menuOpenDocument),
+        #selector(menuSaveNow), #selector(menuSaveAs),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
         #selector(menuBackToNotes), #selector(menuRunEditorCommand(_:)),
     ]
