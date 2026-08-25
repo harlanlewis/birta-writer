@@ -218,24 +218,67 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
     }
 
     /// The derived folder is the one a rename can move, and it is not the one
-    /// the user chose. A chosen path takes the question away entirely.
-    func testAFolderTheUserChoseShouldNotBeTakenForADerivedOne() throws {
+    /// the user chose. A chosen path IN FORCE takes the question away
+    /// entirely.
+    ///
+    /// In force is the whole of the second arm, and it is why the iCloud
+    /// preference is written here rather than left at whatever the machine
+    /// running this has. A stored path under the iCloud branch is a folder
+    /// waiting rather than a folder in use, the notes are in the derived one,
+    /// and a rename can still move it; reading the stored value alone would
+    /// switch this check off for exactly those people.
+    func testAFolderTheUserChoseAndIsUsingShouldNotBeTakenForADerivedOne() throws {
         let original = Prefs.lastNotesDirectory
         let chosen = Prefs.scratchpadURL
         let hadChosen = Prefs.hasExplicitScratchpadPath
+        let preferred = Prefs.storeInICloud
         defer {
             Prefs.lastNotesDirectory = original
             Prefs.scratchpadURL = hadChosen ? chosen : nil
+            Prefs.storeInICloud = preferred
         }
 
+        Prefs.storeInICloud = false
         let derivedBefore = Prefs.derivedNotesDirectory
         Prefs.lastNotesDirectory = former
         Prefs.scratchpadURL = former.appendingPathComponent("theirs.md")
 
+        XCTAssertEqual(Prefs.noteHome, .chosen, "the folder they named is the one in force")
         XCTAssertEqual(Prefs.derivedNotesDirectory.path, derivedBefore.path,
                        "a chosen path does not change what the app derives")
         XCTAssertNil(Prefs.strandedNotesDirectory,
                      "no rename can move a folder somebody named by hand")
+    }
+
+    /// The same stored path with the iCloud branch in force is a folder the
+    /// user is NOT in, so the launch check has to go on watching the derived
+    /// one.
+    ///
+    /// This is the arm that was lost when the guard asked whether a path was
+    /// stored rather than whether it was in use, and it is the one MAR-413
+    /// exists for: notes sitting in a folder under the old product spelling,
+    /// with nothing on screen to say so.
+    func testAPathStoredUnderTheICloudBranchShouldNotSilenceTheLaunchCheck() throws {
+        try XCTSkipUnless(Prefs.iCloudAvailable,
+                          "the iCloud branch cannot be in force on a Mac with iCloud Drive off")
+        let original = Prefs.lastNotesDirectory
+        let chosen = Prefs.scratchpadURL
+        let hadChosen = Prefs.hasExplicitScratchpadPath
+        let preferred = Prefs.storeInICloud
+        defer {
+            Prefs.lastNotesDirectory = original
+            Prefs.scratchpadURL = hadChosen ? chosen : nil
+            Prefs.storeInICloud = preferred
+        }
+
+        Prefs.storeInICloud = true
+        Prefs.scratchpadURL = former.appendingPathComponent("theirs.md")
+        Prefs.lastNotesDirectory = former
+
+        XCTAssertEqual(Prefs.noteHome, .iCloud, "the switch decides, the stored path waits")
+        XCTAssertEqual(Prefs.strandedNotesDirectory?.standardizedFileURL.path,
+                       former.standardizedFileURL.path,
+                       "a folder the user is not in must not take the question away")
     }
 
     // MARK: the caller

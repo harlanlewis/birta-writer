@@ -35,16 +35,23 @@ public enum StrandedNotes {
     ///   - recorded: the derived directory the last launch used, if one was
     ///     ever written down.
     ///   - derived: the derived directory in force now.
-    ///   - hasChosenPath: whether the user has named a folder of their own.
+    ///   - usesChosenPath: whether the folder in force is one the user named
+    ///     rather than one the app derives.
     ///   - exists: whether a directory is on disk.
     public static func directory(recorded: URL?,
                                  derived: URL,
-                                 hasChosenPath: Bool,
+                                 usesChosenPath: Bool,
                                  exists: (URL) -> Bool) -> URL? {
         // A folder somebody named by hand is derived from nothing, so no
         // rename can move it, and the derived folders are not where their
         // notes are. The settings that change that choice do their own asking.
-        guard !hasChosenPath else { return nil }
+        //
+        // Whether such a folder is IN FORCE, rather than merely stored: the
+        // iCloud branch derives its folder while a path the user chose sits
+        // remembered beside it (`NoteHome`), and asking the stored value there
+        // would switch this check off for exactly the people a rename can
+        // still move.
+        guard !usesChosenPath else { return nil }
         // Nothing was ever recorded, so nothing is known to have moved. The
         // caller records and asks nothing, which is also what a genuine first
         // launch looks like.

@@ -140,10 +140,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let dockSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
     /// The two questions the file settings ask: what a summon opens, and where
-    /// notes live. Popups rather than switches because neither is a yes or a
-    /// no: one has two named answers and the other has three, and the third
-    /// (a folder you pick) used to be a path row that silently outranked the
-    /// switch above it.
+    /// notes live.
+    ///
+    /// A popup for the first, which has two named answers and no yes in it. A
+    /// switch for the second, which is one two-way choice: the folder inside
+    /// iCloud Drive the app derives, or the folder named in the Location row
+    /// under it, which starts under Documents. `NoteHome` is the rule, and the
+    /// reason a stored path no longer has to be thrown away to keep this
+    /// switch honest.
     private let opensPopup = NSPopUpButton()
     private let iCloudSwitch = NSSwitch()
     private let iCloudCaption = Caption("")
@@ -743,7 +747,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .summon: return (hotkeyRecorder, [], hotkeyCaption)
         case .storeInICloud: return (iCloudSwitch, [], iCloudCaption)
         case .location:
-            return (Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad)), [], nil)
+            // The one thing the row cannot show. A folder is just a folder, so
+            // one inside iCloud Drive syncs like anything else there, and
+            // without this said out loud the only way to reach that is to try
+            // it and hope. It is the same sentence whatever is chosen: naming
+            // the folder somebody picked would be the path label again.
+            return (Self.pathControl(scratchpadPath, self, #selector(chooseScratchpad)), [],
+                    Caption("Choose a folder inside iCloud Drive and it syncs like any other."))
         // No caption. The label is the whole of it, and what OFF means is
         // what off means in every other Mac application: nothing is written
         // until you ask. `AutosavePolicy` is where that promise is kept.
@@ -1189,23 +1199,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         showNoteMode()
     }
 
-    /// Where notes live. Off hands the decision to the Location row below,
-    /// which is the folder chooser; on takes it back. Clearing the chosen path
-    /// is what makes iCloud reachable again, since a chosen path outranks both
-    /// homes and would otherwise overrule this switch invisibly.
+    /// Where notes live: the folder the app derives inside iCloud Drive, or
+    /// the one named in the Location row below. `NoteLocationChange` is the
+    /// gesture, shared with the first-run screen, which asks this in the same
+    /// words and must answer it the same way.
     @objc private func toggleICloud() {
-        // Read BEFORE the write: the old location is the thing being left, and
-        // once the pref moves there is nothing left to compute it from.
-        let previous = Prefs.notesDirectory
-        if iCloudSwitch.state == .on {
-            Prefs.scratchpadURL = nil
-            Prefs.storeInICloud = true
-        } else {
-            Prefs.storeInICloud = false
-        }
-        showFiles()
-        NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
-                             in: window) { [weak self] work in self?.onChange(work) }
+        NoteLocationChange.storeInICloud(
+            iCloudSwitch.state == .on, in: window,
+            redraw: { [weak self] in self?.showFiles() },
+            apply: { [weak self] work in self?.onChange(work) })
     }
 
     /// A template is a SHORTCUT INTO the field below, never a second place the
@@ -1265,21 +1267,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     @objc private func chooseScratchpad() {
-        let panel = NSSavePanel()
-        panel.title = "Scratchpad location"
-        panel.nameFieldStringValue = Prefs.scratchpadURL.lastPathComponent
-        panel.directoryURL = Prefs.scratchpadURL.deletingLastPathComponent()
-        panel.allowedContentTypes = DocumentTypes.writtenContentTypes
-        panel.beginSheetModal(for: window!) { [weak self] resp in
-            guard resp == .OK, let url = panel.url, let self else { return }
-            let previous = Prefs.notesDirectory
-            Prefs.scratchpadURL = url
-            // The iCloud row above stops deciding anything the moment a path
-            // is chosen here, and has to say so in the same gesture.
-            self.showFiles()
-            NotesMoveOffer.offer(movingFrom: previous, to: Prefs.notesDirectory,
-                                 in: self.window) { [weak self] work in self?.onChange(work) }
-        }
+        guard let window else { return }
+        NoteLocationChange.chooseLocation(
+            in: window,
+            redraw: { [weak self] in self?.showFiles() },
+            apply: { [weak self] work in self?.onChange(work) })
     }
 
 

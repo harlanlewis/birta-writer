@@ -43,14 +43,14 @@ final class StrandedNotesTests: XCTestCase {
                           "the two spellings must differ, or nothing here is being asked")
         XCTAssertEqual(
             StrandedNotes.directory(recorded: former, derived: derived,
-                                    hasChosenPath: false, exists: exists),
+                                    usesChosenPath: false, exists: exists),
             former)
     }
 
     /// The ordinary launch, which is every launch but one.
     func testTheFolderTheLastLaunchUsedShouldBeOfferedNowhere() {
         XCTAssertNil(StrandedNotes.directory(recorded: derived, derived: derived,
-                                             hasChosenPath: false, exists: exists))
+                                             usesChosenPath: false, exists: exists))
     }
 
     /// One directory, two spellings. A record is a string a launch wrote and a
@@ -66,7 +66,7 @@ final class StrandedNotesTests: XCTestCase {
             .appendingPathComponent(derived.lastPathComponent)
         XCTAssertNotEqual(roundabout.path, derived.path, "the two spellings must differ")
         XCTAssertNil(StrandedNotes.directory(recorded: roundabout, derived: derived,
-                                             hasChosenPath: false, exists: exists))
+                                             usesChosenPath: false, exists: exists))
     }
 
     /// The price of a recorded fact over a list of former spellings, stated as
@@ -77,16 +77,20 @@ final class StrandedNotesTests: XCTestCase {
     /// fabricated folder happening not to exist.
     func testALaunchWithNothingRecordedShouldAskNothing() {
         XCTAssertNil(StrandedNotes.directory(recorded: nil, derived: derived,
-                                             hasChosenPath: false, exists: { _ in true }))
+                                             usesChosenPath: false, exists: { _ in true }))
     }
 
     /// A folder somebody named by hand is derived from nothing, so no rename
     /// can move it. The derived folders are not where their notes are, and
     /// offering to carry notes into one would move files out of a folder the
     /// app is not using and into another folder it is not using either.
-    func testAChosenPathShouldTakeTheQuestionAway() {
+    ///
+    /// The question is whether such a folder is IN FORCE. A path stored while
+    /// the iCloud branch is in force is a folder waiting rather than a folder
+    /// in use, and `Prefs` is what tells the two apart.
+    func testAChosenPathInForceShouldTakeTheQuestionAway() {
         XCTAssertNil(StrandedNotes.directory(recorded: former, derived: derived,
-                                             hasChosenPath: true, exists: exists))
+                                             usesChosenPath: true, exists: exists))
     }
 
     /// The record outlives the folder it names: somebody moved or deleted it
@@ -94,7 +98,7 @@ final class StrandedNotesTests: XCTestCase {
     func testAFolderThatIsNoLongerThereShouldBeOfferedNowhere() throws {
         try FileManager.default.removeItem(at: former)
         XCTAssertNil(StrandedNotes.directory(recorded: former, derived: derived,
-                                             hasChosenPath: false, exists: exists))
+                                             usesChosenPath: false, exists: exists))
     }
 
     /// Each guard on its own says nothing about whether the others are still
@@ -108,7 +112,7 @@ final class StrandedNotesTests: XCTestCase {
                 for present in [true, false] {
                     offered.append(StrandedNotes.directory(
                         recorded: recorded, derived: derived,
-                        hasChosenPath: chosen, exists: { _ in present }))
+                        usesChosenPath: chosen, exists: { _ in present }))
                 }
             }
         }
