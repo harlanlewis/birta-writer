@@ -77,7 +77,23 @@ final class TitleBarView: NSView {
     /// edits one file from a panel and is not an `NSDocument` app, so the
     /// choice is to draw the affordance or to have none.
     private let chevron = NSImageView()
+    /// New Note and Open, drawn after the chevron on hover.
+    ///
+    /// Built empty and filled by `setActions`, because what the buttons DO is
+    /// the coordinator's and this view is the only thing that knows the
+    /// geometry they have to fit into. A view with no actions draws nothing and
+    /// still reserves the room, which is what keeps every measurement in this
+    /// file the same whether or not the app got round to wiring them.
+    private var actions = TitlebarActionsView(actions: [])
+    /// Hover over the title itself, and hover over the drag strip beside it.
+    ///
+    /// Two sources rather than one because the affordance is meant to be found:
+    /// the band reads as one strip, so pointing anywhere along it should offer
+    /// what the strip holds. Kept apart rather than collapsed into a single
+    /// flag, because each source has to be able to withdraw its own claim
+    /// without guessing at the other's.
     private var isHovered = false
+    private var isBandHovered = false
     /// A ceiling on the name, so a long one cannot push the title across the
     /// window and under the page's own toolbar. The label truncates instead.
     ///
@@ -145,7 +161,11 @@ final class TitleBarView: NSView {
     /// Everything inside this view that is NOT the text, which is what a
     /// ceiling on the text has to be computed net of. Published because the
     /// arithmetic lives in `TitlebarBand`, so the caller has to hand it over.
-    static var chromeWidth: CGFloat { leadingGap + chevronRoom }
+    ///
+    /// The buttons' room is in here for the same reason the chevron's is: it is
+    /// held whether or not they are drawn, so the ceiling must be net of it at
+    /// every window width and not only while the pointer is on the band.
+    static var chromeWidth: CGFloat { leadingGap + chevronRoom + TitlebarActionsView.room }
     /// The height this view is BUILT at, and nothing else.
     ///
     /// AppKit stretches a titlebar accessory to the titlebar's own height, so
@@ -255,22 +275,41 @@ final class TitleBarView: NSView {
         // front of the title for anyone reading the window by keyboard.
         chevron.setAccessibilityElement(false)
         addSubview(chevron)
+        addSubview(actions)
         resize()
     }
 
-    /// Show the chevron while the pointer is over the title, and keep it while
-    /// the popover it opened is still up, which is what macOS does: the
-    /// affordance stays as long as the thing it points at is open, even after
-    /// the pointer has left to use it.
-    /// `animated` is false only for the measurement below, and it exists so
-    /// that probe can read this decision rather than restate it. The fade is
+    /// Show the chevron and the buttons while the pointer is over the title or
+    /// the band, and keep them while the popover the chevron opened is still
+    /// up, which is what macOS does: the affordance stays as long as the thing
+    /// it points at is open, even after the pointer has left to use it.
+    ///
+    /// One decision for both, rather than two syncs that would have to agree:
+    /// they are one piece of hover chrome, and a chevron that appeared without
+    /// the buttons, or after them, would read as two unrelated things reacting
+    /// to the same gesture.
+    ///
+    /// `animated` is false only for the measurements below, and it exists so
+    /// those probes can read this decision rather than restate it. The fade is
     /// the only reason a caller would ever want the value late.
-    private func syncChevron(animated: Bool = true) {
+    private func syncHoverChrome(animated: Bool = true) {
         // Nothing to point at while the title names the application: the
-        // chevron is a picture of a click this view is not taking.
-        if plainTitle != nil { chevron.alphaValue = 0; return }
+        // chevron is a picture of a click this view is not taking, and the
+        // buttons beside it are two actions the app is refusing. That last is
+        // not a second rule: the title names the application exactly while the
+        // first-run screen is up (`Coordinator.presentWelcome` is the only
+        // caller of `showAppName`), and `AppDelegate.documentCommands` already
+        // withdraws New Note and Open there. Offering them here would be the
+        // one surface that had not been told.
+        if plainTitle != nil {
+            chevron.alphaValue = 0
+            actions.setShown(false, animated: animated)
+            return
+        }
         // No file, no affordance: an empty title has nothing to open.
-        let wanted: CGFloat = (url != nil && (isHovered || popover?.isShown == true)) ? 1 : 0
+        let offered = url != nil && (isHovered || isBandHovered || popover?.isShown == true)
+        actions.setShown(offered, animated: animated)
+        let wanted: CGFloat = offered ? 1 : 0
         guard chevron.alphaValue != wanted else { return }
         guard animated else {
             chevron.alphaValue = wanted
@@ -280,6 +319,24 @@ final class TitleBarView: NSView {
             context.duration = 0.12
             chevron.animator().alphaValue = wanted
         }
+    }
+
+    /// Give the buttons their actions. Called once, when the coordinator has
+    /// something for them to run.
+    func setActions(_ list: [TitlebarActionsView.Action]) {
+        actions.removeFromSuperview()
+        actions = TitlebarActionsView(actions: list)
+        actions.setWindowKey(isKey)
+        addSubview(actions)
+        needsLayout = true
+    }
+
+    /// Hover anywhere on the draggable stretch of the band, forwarded by the
+    /// coordinator. See `isBandHovered`.
+    func setBandHovered(_ hovered: Bool) {
+        guard hovered != isBandHovered else { return }
+        isBandHovered = hovered
+        syncHoverChrome()
     }
 
     override func updateTrackingAreas() {
@@ -292,12 +349,12 @@ final class TitleBarView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         isHovered = true
-        syncChevron()
+        syncHoverChrome()
     }
 
     override func mouseExited(with event: NSEvent) {
         isHovered = false
-        syncChevron()
+        syncHoverChrome()
     }
 
     /// Take a new ceiling from the window.
@@ -327,7 +384,7 @@ final class TitleBarView: NSView {
         // Nothing to open, nothing to point at: an empty title reserves no
         // room, which is also what keeps `hitTest` from claiming a strip of
         // window beside the traffic lights that answers a click with nothing.
-        let trailing = text > 0 ? Self.chevronRoom : 0
+        let trailing = text > 0 ? Self.chevronRoom + TitlebarActionsView.room : 0
         setFrameSize(NSSize(width: Self.leadingGap + text + trailing, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
@@ -357,7 +414,7 @@ final class TitleBarView: NSView {
         // a truncated title is indistinguishable from a file that is really
         // called that. Bounded here, the label truncates itself and says it
         // did.
-        let room = max(0, bounds.width - Self.leadingGap - Self.chevronRoom)
+        let room = max(0, bounds.width - Self.chromeWidth)
         let textWidth = min(drawnTextWidth(), textCeiling, room)
         label.frame = NSRect(x: Self.leadingGap,
                              y: ((bounds.height - size.height) / 2).rounded(),
@@ -367,6 +424,14 @@ final class TitleBarView: NSView {
                                y: ((bounds.height - Self.chevronWidth) / 2).rounded(),
                                width: Self.chevronWidth,
                                height: Self.chevronWidth)
+        // The full band height, not the chevron's box: a taller target is free
+        // here, because the strip above and below the symbol belongs to nothing
+        // else.
+        actions.frame = NSRect(x: chevron.frame.maxX,
+                               y: 0,
+                               width: TitlebarActionsView.room,
+                               height: bounds.height)
+        actions.layoutSubtreeIfNeeded()
     }
 
     // MARK: state
@@ -513,15 +578,43 @@ final class TitleBarView: NSView {
     /// What that does NOT cover is the tracking area actually firing, which
     /// only a real pointer can show.
     ///
-    /// It sets `isHovered` and then READS what `syncChevron` decided. Writing
+    /// It sets `isHovered` and then READS what `syncHoverChrome` decided. Writing
     /// the alpha here instead, to skip the fade, is a probe that reports its
     /// own argument: a chevron wired to ignore hover entirely passed this
     /// check, because the check was answering itself.
     func chevronForMeasurement(hovered: Bool) -> (hasImage: Bool, frame: NSRect, alpha: CGFloat, ink: CGFloat) {
-        isHovered = hovered
-        syncChevron(animated: false)
+        setHoverForMeasurement(hovered)
         layoutSubtreeIfNeeded()
         return (chevron.image != nil, chevron.frame, chevron.alphaValue, inkWidth(of: chevron))
+    }
+
+    /// Put BOTH hover sources where the caller asked and settle the chrome.
+    ///
+    /// Both, because either one alone leaves the other free to decide the
+    /// answer: a probe asking what happens at rest, with the band still
+    /// reporting a pointer on it, would be told the chrome is offered and
+    /// would have measured something it did not set.
+    private func setHoverForMeasurement(_ hovered: Bool) {
+        isHovered = hovered
+        isBandHovered = hovered
+        syncHoverChrome(animated: false)
+    }
+
+    /// The buttons, for `jot/scripts/measure.sh` and for the app tests. The
+    /// view rather than a summary of it, because what a check wants to ask
+    /// varies (are the symbols there, where are they, are they offered) and a
+    /// tuple per question is how a probe ends up describing itself.
+    var actionsView: TitlebarActionsView { actions }
+
+    /// Set the hover state and read back what it decided, the way
+    /// `chevronForMeasurement` does and for the same reason: a probe that wrote
+    /// the answer would be answering itself.
+    func actionsForMeasurement(hovered: Bool) -> (shown: Bool, frames: [NSRect], symbols: Int) {
+        setHoverForMeasurement(hovered)
+        layoutSubtreeIfNeeded()
+        return (actions.shown,
+                actions.buttons.map { $0.convert($0.bounds, to: self) },
+                actions.buttons.filter { $0.image != nil }.count)
     }
 
     /// How much of the LABEL survives its ancestors' clipping.
@@ -568,6 +661,7 @@ final class TitleBarView: NSView {
         // background window names itself quietly, and points at itself
         // quietly too.
         chevron.contentTintColor = key ? .secondaryLabelColor : .tertiaryLabelColor
+        actions.setWindowKey(key)
         paint()
     }
 
@@ -635,7 +729,7 @@ final class TitleBarView: NSView {
         lastRendered = rendered
         label.attributedStringValue = text
         label.toolTip = toolTip
-        syncChevron()
+        syncHoverChrome()
         // The WHOLE name, not the shortened one. Shortening is a fact about
         // how much room the window has, and a screen reader has all the room
         // there is; a sighted reader recovers the rest from the tooltip and
@@ -660,9 +754,18 @@ final class TitleBarView: NSView {
         // A title naming the application takes no clicks at all, so the band
         // it sits in stays draggable across its whole width. An empty title
         // claims nothing either.
-        guard plainTitle == nil else { return nil }
+        guard plainTitle == nil, label.frame.width > 0 else { return nil }
         let local = convert(point, from: superview)
-        return bounds.contains(local) && label.frame.width > 0 ? self : nil
+        guard bounds.contains(local) else { return nil }
+        if let button = actions.button(at: convert(local, to: actions)) { return button }
+        // The title's own click area is the NAME and the chevron that points at
+        // it, and stops there. The buttons' room is deliberately outside it:
+        // while they are not drawn it is a strip of empty titlebar, and a strip
+        // of empty titlebar that opened the document popover would be a click
+        // target nothing on screen accounts for. Falling through leaves it to
+        // the titlebar, which drags the window, which is what that strip looks
+        // like it should do.
+        return local.x <= chevron.frame.maxX ? self : nil
     }
 
     // MARK: gestures
@@ -700,7 +803,7 @@ final class TitleBarView: NSView {
         popover.delegate = self
         popover.show(relativeTo: label.frame, of: self, preferredEdge: .maxY)
         self.popover = popover
-        syncChevron()
+        syncHoverChrome()
     }
 
     /// The file, then each folder above it up to the volume, top to bottom,
@@ -754,6 +857,6 @@ final class TitleBarAccessory: NSTitlebarAccessoryViewController {
 /// had gone.
 extension TitleBarView: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
-        syncChevron()
+        syncHoverChrome()
     }
 }

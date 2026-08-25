@@ -148,10 +148,54 @@ enum JotMenu {
                 option: modifiers.contains(.option),
                 control: modifiers.contains(.control))
         }
+
+        /// The chord in menu-bar symbols (⇧⌘S), in Apple's modifier order.
+        ///
+        /// For a control that is NOT a menu row and therefore draws its own
+        /// chord: the titlebar's buttons put it in a tooltip. Same rule as
+        /// `chord` and the same reason, one level further out. A tooltip
+        /// naming a gesture is a claim about a binding, and the only chord a
+        /// surface may print is one it can derive from the binding itself
+        /// (`webview/commandChords.ts` states the rule for the page).
+        ///
+        /// Empty for a row with no key, so a caller gets nothing to draw
+        /// rather than a bare modifier string that reads like a chord.
+        var symbols: String {
+            guard !key.isEmpty else { return "" }
+            return HostShortcut.symbols(
+                key: key,
+                command: modifiers.contains(.command),
+                shift: modifiers.contains(.shift),
+                option: modifiers.contains(.option),
+                control: modifiers.contains(.control))
+        }
     }
 
     /// The rows, in menu order within each menu and submenu.
     static let rows: [Row] = appRows + fileRows + editRows + formatRows + viewRows + helpRows
+
+    /// The `.app` row that runs `selector`, for a control outside the menu bar
+    /// that performs the same action.
+    ///
+    /// The titlebar's buttons are the callers, and this is what keeps them
+    /// from restating a title or a chord: a button is a second way to reach a
+    /// row, so it takes its label and its key from that row rather than from a
+    /// literal beside it. Nil when nothing binds the selector, which a caller
+    /// must handle rather than force, because that is exactly the state a
+    /// deleted row leaves behind.
+    ///
+    /// `.app` rows ONLY, and the restriction is what makes the answer mean
+    /// anything: every `.command` row shares one selector
+    /// (`menuRunEditorCommand`), so a lookup that admitted them would answer
+    /// any command at all with whichever row happens to be first, confidently
+    /// and wrongly. An editor command's chord is `commandChords`' question on
+    /// the page side.
+    static func row(for selector: Selector) -> Row? {
+        rows.first { row in
+            guard case .app(let bound) = row.action else { return false }
+            return bound == selector
+        }
+    }
 
     // MARK: app
 
@@ -165,6 +209,8 @@ enum JotMenu {
     private static let fileRows: [Row] = [
         .init(title: "New Note", key: "n", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuNewNote)), menu: .file),
+        .init(title: "Open…", key: "o", modifiers: [.command],
+              action: .app(#selector(AppDelegate.menuOpenDocument)), menu: .file),
         .init(title: "Save", key: "s", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuSaveNow)), menu: .file),
         .init(title: "Save a Copy As…", key: "s", modifiers: [.command, .shift],

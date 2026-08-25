@@ -123,16 +123,22 @@ public struct HotkeyCombo: Equatable, Sendable {
         return try? parse(parts.joined(separator: "+")).get()
     }
 
-    /// The symbol form for menus: ⌃⌥⇧⌘J, Apple's order, which is what the code
-    /// below emits and what AppKit draws a key equivalent in.
+    /// The symbol form for menus: ⌃⌥⇧⌘J, Apple's order, which is what AppKit
+    /// draws a key equivalent in.
+    ///
+    /// The ORDER is `HostShortcut.symbols`', not this type's, because the
+    /// titlebar's buttons spell the same thing from a different source
+    /// (`JotMenu.Row`) and two copies of a modifier order drift silently: both
+    /// look like chords, and only a person who knows the convention can see
+    /// which one is wrong.
     public var symbols: String {
-        var s = ""
-        if modifiers & HotkeyCombo.controlKey != 0 { s += "⌃" }
-        if modifiers & HotkeyCombo.optionKey != 0 { s += "⌥" }
-        if modifiers & HotkeyCombo.shiftKey != 0 { s += "⇧" }
-        if modifiers & HotkeyCombo.cmdKey != 0 { s += "⌘" }
         let keyName = spelling.split(separator: "+").last.map(String.init) ?? "?"
-        return s + keyName.uppercased()
+        return HostShortcut.symbols(
+            key: keyName,
+            command: modifiers & HotkeyCombo.cmdKey != 0,
+            shift: modifiers & HotkeyCombo.shiftKey != 0,
+            option: modifiers & HotkeyCombo.optionKey != 0,
+            control: modifiers & HotkeyCombo.controlKey != 0)
     }
 
     private static let modifierBits: [String: UInt32] = [

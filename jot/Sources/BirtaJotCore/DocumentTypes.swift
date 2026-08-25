@@ -58,6 +58,25 @@ public enum DocumentTypes {
         urls.first(where: accepts) ?? urls.first
     }
 
+    /// What an open panel that CHOOSES a note to edit should allow.
+    ///
+    /// The other half of the two lists above, and the reason both exist: this
+    /// is derived from `opened`, so File > Open offers exactly what
+    /// `accepts` will let through. Deriving it from `written` instead would
+    /// give a panel that greys out two formats the editor renders perfectly,
+    /// and the person hitting that has no way to tell a refusal from a bug.
+    ///
+    /// A type that does not resolve is DROPPED rather than substituted, and
+    /// the list falls back whole only when nothing resolved. An extension with
+    /// no type registered on the machine still opens through the Finder, so
+    /// narrowing the panel to the ones that do resolve is a smaller lie than
+    /// widening it to every text file; `DocumentTypesTests` is what says which
+    /// of `opened` resolve here.
+    public static var openedContentTypes: [UTType] {
+        let types = opened.compactMap { UTType(filenameExtension: $0) }
+        return types.isEmpty ? [.plainText] : types
+    }
+
     /// What an open or save panel that writes a note should allow.
     ///
     /// The fallback is `.plainText` rather than nothing, and it matters:
