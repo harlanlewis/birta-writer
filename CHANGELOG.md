@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.825.0] - 2026, August 25
+
 ### Added
 
 - `/help` in the slash menu opens Send Feedback from inside the document. It was reachable from the VS Code command palette and nowhere else, so reporting what just went wrong meant leaving the editor, knowing the command existed, and knowing it was called Feedback rather than Help. It asks the same four questions in the same order: a one-line summary, an optional question about how much you would miss the editor, optional detail, and where it should go. Typing `/help` reaches it ahead of Show Keyboard Shortcuts, which had carried the word until now. `Birta: Send Feedback` still works and any keyboard shortcut you bound to it is untouched, and the two are one flow rather than two that can drift. Nothing is sent by Birta Writer either way: it composes the text and hands your browser, your mail client or your clipboard the result, which you can still read and edit before you send it.

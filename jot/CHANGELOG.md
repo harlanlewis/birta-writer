@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.825.0] - 2026, August 25
+
 ### Added
 
 - Birta Writer for Mac is in the Finder's Open With for Markdown files: `.md`, `.markdown` and `.mdx`. Choosing it binds the panel to that file, and File, Back to My Notes returns to your own note; the note you were on is written first, so nothing you typed into it is lost. It does not become what double-clicking a Markdown file opens and it changes nothing about whichever app does that now. Selecting several files and choosing Open With opens the first one it can read, since the panel holds one file at a time. If that is the first time you have opened the app, it opens on your file rather than on the short tour, and the tour waits for a launch that is back on your own notes.
