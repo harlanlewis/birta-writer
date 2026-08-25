@@ -173,6 +173,44 @@ final class NoteLocationChangeTests: XCTestCase {
                      "a folder the user just answered for is not raised again next launch")
     }
 
+    /// Neither screen writes the location settings itself.
+    ///
+    /// `NoteLocationChange`'s header says a gesture written twice is two
+    /// gestures that can come to disagree about what off means, and nothing
+    /// else in the suite holds that. `SettingsFormTests` compares the two row
+    /// LISTS, which is a different claim: two screens can draw the same rows
+    /// in the same words and write different settings behind them, and no
+    /// label or ordering check can see it.
+    ///
+    /// Read out of the sources, because what is ruled out is a second WRITER
+    /// rather than a wrong value. Setting a preference and reading it back
+    /// passes whichever file did the writing.
+    func testNeitherScreenShouldWriteTheLocationSettingsItself() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // BirtaJotTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // jot
+            .appendingPathComponent("Sources/BirtaJot", isDirectory: true)
+        for name in ["SettingsWindow", "WelcomeView"] {
+            let file = sources.appendingPathComponent("\(name).swift")
+            // Not a skip. A guard that cannot find its subject has stopped
+            // guarding, and that has to be a red rather than a silent pass.
+            guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+                return XCTFail("could not read \(file.path); if \(name).swift moved, "
+                               + "this guard must follow it")
+            }
+            XCTAssertTrue(source.contains("NoteLocationChange."),
+                          "\(name).swift no longer reaches the shared gesture at all, so this "
+                          + "guard is passing on a file that stopped having the question in it")
+            for write in ["Prefs.storeInICloud =", "Prefs.scratchpadURL ="] {
+                XCTAssertFalse(source.contains(write),
+                               "\(name).swift writes `\(write)` itself; the location gesture is "
+                               + "`NoteLocationChange`'s, or the two screens can come to "
+                               + "disagree about what off means")
+            }
+        }
+    }
+
     // MARK: a file that moves takes the choice with it
 
     /// A Finder rename or a rename from the title popover, made while the
