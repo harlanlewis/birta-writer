@@ -185,6 +185,49 @@ if (isWatch) {
     console.log('Watching for changes...');
 } else {
     const results = await Promise.all(BUNDLES.map(({ config }) => esbuild.build(config)));
+
+    // esbuild's own judgement, not a rule restated here. A CSS syntax error it
+    // can only warn about still COMPILES: `&--today` nested inside
+    // `.date-picker__day` becomes the type selector `--today`, matches no
+    // element, and the rule is dropped in silence, so nothing downstream can
+    // tell it was ever written. The token and colour guards read that same file
+    // and pass, because they judge values rather than whether a selector can
+    // match, and no test reads a build log.
+    //
+    // Scoped to our own source: a dependency's syntax is not ours to fix, and a
+    // version bump must not be able to break the build this way.
+    //
+    // Watch builds deliberately do not reach here. A watcher that exits on a
+    // warning is worse than one that prints it, and `pnpm build` and
+    // `pnpm run package` are the gates CI actually runs.
+    //
+    // This speaks only for what the build parses. The stylesheets that live in
+    // a `.ts` template literal never reach esbuild at all, and
+    // `webview/__tests__/cssParses.test.ts` puts those through the same parser.
+    // There is no third set: between them they are every stylesheet we author.
+    //
+    // A warning here has no escape hatch, unlike the perf gates. The fix for
+    // one is to fix it; if a future warning is ever genuinely correct to ship,
+    // that is the point to add a hatch rather than now.
+    const ourWarnings = results
+        .flatMap((r) => r.warnings)
+        .filter((w) => !w.location?.file.includes('node_modules'));
+    if (ourWarnings.length > 0) {
+        // Uncoloured on purpose: this string goes into a thrown Error, which
+        // is read as often from a captured log as from a terminal, and ANSI
+        // escapes in a log file are noise.
+        const rendered = await esbuild.formatMessages(ourWarnings, {
+            kind: 'warning',
+            color: false,
+            terminalWidth: 100,
+        });
+        throw new Error(
+            `esbuild reported ${ourWarnings.length} warning(s) in our own source, ` +
+            `and a warning here means shipped code that does not do what it says:\n\n` +
+            rendered.join('\n'),
+        );
+    }
+
     if (withMetafile) {
         const written = BUNDLES.map(({ name }, i) => {
             const { metafile } = results[i];

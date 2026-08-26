@@ -78,8 +78,13 @@
     }
 
     /* Today is a fact about the calendar, not a selection, so it is marked
-       with a ring rather than a fill and the two can coexist on one cell. */
-    &--today {
+       with a ring rather than a fill and the two can coexist on one cell.
+
+       The full class is restated after `&` because CSS nesting has no suffix
+       operator: `&--today` parses as a TYPE selector, which matches no element
+       and is dropped in silence. esbuild warns and compiles it anyway, so the
+       build must refuse a warning of its own for this to stay caught. */
+    &.date-picker__day--today {
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: -1px;
     }
@@ -91,7 +96,7 @@
        cell on an outside day, and a selection fill rendered at reduced opacity
        is the case chrome.css rules out: a state that sets a background keeps
        full ink, because the theme chose the fill and its knockout as a pair. */
-    &--outside:not([aria-selected="true"]) {
+    &.date-picker__day--outside:not([aria-selected="true"]) {
         color: var(--ui-menu-ink-dim);
         opacity: 0.55;
     }
