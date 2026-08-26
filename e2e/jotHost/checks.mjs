@@ -93,12 +93,13 @@ export async function run({ page, check, baseUrl }) {
     // ── The Checks menu, which mixes gated and unconditional rows ──────
     //
     // The item is NOT gated (MAR-414's neighbour): the style check is computed
-    // in the page, so a host with no lint engine keeps it and loses only the
-    // two rows that post out. Gating the item took the whole menu away from
-    // this surface while the style check went on underlining, which is a
-    // decoration nothing could turn off. Driven by opening the menu rather than
-    // read off the registry, because the filtering happens where the rows are
-    // built and a unit test of the table cannot see it.
+    // in the page, so a host without a lint engine keeps it and loses only the
+    // two rows that post out. Gating the whole item took the menu away from a
+    // surface that could run half of it. This shell answers lints now, so all
+    // four rows are here, and what the check still discriminates is that they
+    // are built from the capability rather than hardcoded. Driven by opening
+    // the menu rather than read off the registry, because the filtering happens
+    // where the rows are built and a unit test of the table cannot see it.
     const checksTrigger = await page.$('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn');
     check("jot: the Checks item is on the bar", !!checksTrigger);
     if (checksTrigger) {
@@ -110,8 +111,9 @@ export async function run({ page, check, baseUrl }) {
             rows.some((r) => /Check style/i.test(r)), JSON.stringify(rows));
         check("jot: and the note-marker highlight beside it",
             rows.some((r) => /note markers/i.test(r)), JSON.stringify(rows));
-        check("jot: and neither lint row, because the shell answers no lints",
-            !rows.some((r) => /Check spelling|Check grammar/i.test(r)), JSON.stringify(rows));
+        check("jot: and both lint rows, because this shell answers lints now",
+            rows.some((r) => /Check spelling/i.test(r)) && rows.some((r) => /Check grammar/i.test(r)),
+            JSON.stringify(rows));
         await page.mouse.move(5, 400);
         await page.waitForTimeout(OPEN_WAIT);
     }
@@ -500,8 +502,8 @@ export async function run({ page, check, baseUrl }) {
     // "Check style" and "Highlight note markers" are deliberately NOT here any
     // more: both are answered inside the page, so they are the editor's own
     // rows and belong on every surface (they are asserted present below).
-    const GATED_LABELS = ["Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts", "Check spelling",
-        "Check grammar", "Lock Edits (Read-only)",
+    const GATED_LABELS = ["Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts",
+        "Lock Edits (Read-only)",
         "Editor Font", "Full Width", "Fixed Width"];
     check("jot: Show all commands lists no row bound to a capability the shell lacks",
         GATED_LABELS.every((l) => !labels.includes(l)), JSON.stringify(labels.filter((l) => GATED_LABELS.includes(l))));
@@ -516,7 +518,8 @@ export async function run({ page, check, baseUrl }) {
     // put its row back, or the check above would pass on a page that offers
     // nothing at all.
     check("jot: Show all commands lists the rows the shell's own capabilities earn",
-        ["Image", "Ask Agent"].every((l) => labels.includes(l)), JSON.stringify(labels));
+        ["Image", "Ask Agent", "Check spelling", "Check grammar"].every((l) => labels.includes(l)),
+        JSON.stringify(labels));
     // The sidebar's rows, present because the shell now declares `toc`. The
     // labels are dynamic (Hide/Show, Move Left/Right), so this asks for the
     // subject rather than for a spelling of the state it happens to be in.
@@ -525,7 +528,11 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(labels.filter((l) => /Table of Contents/.test(l))));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
-    for (const [q, label] of [["raw", "Edit Raw Markdown"], ["setting", "Settings"], ["spell", "Check spelling"]]) {
+    // Search is the other way in, and a withdrawn row must not be reachable
+    // through it either. "spell" is deliberately NOT in this list any more:
+    // this shell answers spelling now, so Check spelling is a row it earns, and
+    // it is asserted PRESENT in the earned-rows check above.
+    for (const [q, label] of [["raw", "Edit Raw Markdown"], ["setting", "Settings"], ["lock", "Lock Edits (Read-only)"]]) {
         await openSlash(q, { expectRows: false });
         labels = await page.evaluate((sel) => {
             const menu = document.querySelector(sel);

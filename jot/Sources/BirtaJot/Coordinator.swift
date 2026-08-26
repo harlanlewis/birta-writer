@@ -89,6 +89,10 @@ final class Coordinator {
     /// the coordinator for the life of the app.
     private var pendingContexts: [String: (AgentReference.Selection?) -> Void] = [:]
     private let agent = AgentRunner()
+    /// Spelling and grammar for the page, from the system's own checker. Held
+    /// for the app's lifetime so its spell-document tag, and with it anything
+    /// ignored in this session, survives a page reload.
+    private let spell = SpellService()
     /// Per run, the file holding the agent's own version while the page's
     /// merge decides whether the document ended up with all of it.
     private var agentRescues: [String: URL] = [:]
@@ -799,6 +803,26 @@ final class Coordinator {
         // each, and handed back at the next page load, which the window does
         // on every file it opens: without this the sidebar would shut itself
         // the moment you opened a second note.
+        case let .lintBlocks(id, blocks):
+            spell.lint(blocks: blocks) { [weak self] results in
+                guard let self else { return }
+                // Traced because this is the one chain no other instrument
+                // reaches end to end: the Swift tests stop at the service and
+                // the browser harness cannot run `NSSpellChecker` at all, so
+                // `measure.sh` reads this line to say the round trip works in
+                // the real app.
+                self.measure.trace("lint blocks=\(blocks.count) "
+                    + "lints=\(results.reduce(0) { $0 + $1.lints.count })")
+                self.host.send(.lintResults(id: id, results: results))
+            }
+        case let .spellAddWord(word):
+            // Nothing is sent back, and nothing needs to be: the page holds its
+            // own set of learned words and stops drawing the hit the moment the
+            // row is picked (`webview/proofread/engine.ts`), exactly as it does
+            // in the extension, where this write is also one-way.
+            spell.learn(word)
+        case let .setProofreadOption(key, value):
+            Prefs.rememberProofreadOption(key: key, value: value)
         case let .setTocVisibility(v): Prefs.tocVisibility = v
         case let .setTocPosition(p): Prefs.tocOnRight = p == "right"
         case let .setTocWidth(w): Prefs.tocWidth = w

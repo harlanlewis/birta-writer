@@ -185,6 +185,32 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# Spelling, end to end, which is a chain no other instrument reaches: the page
+# posts its blocks out, the bridge carries them, `NSSpellChecker` answers, and
+# the reply goes back. The Swift tests stop at the service and the browser
+# harness cannot run the system checker at all, so this is the only place the
+# whole round trip runs.
+#
+# Typed rather than written to the file, because it is the page's own rescan
+# that posts the blocks, and that is what the round trip starts from.
+show_panel
+printf '{"type":"__jotKeys","keys":["End","Enter","t","e","h","c","i","e","f"," ","t","e","h","c","i","e","f"]}' \
+    > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 3
+hide_panel
+rm -f "$SCRATCH_DIR/.debug-message.json"
+LINT="$(grep "^jot-trace lint " "$LOG" | tail -1 || true)"
+LINT_COUNT="$(echo "$LINT" | sed -n 's/.*lints=\([0-9]*\).*/\1/p')"
+if [ -z "$LINT" ]; then
+    echo "spelling             FAILED: the page asked for no lints at all" >&2
+    echo "  (the capability may not be declared, or the rescan never ran)" >&2; exit 1
+elif [ "${LINT_COUNT:-0}" -lt 1 ]; then
+    echo "spelling             FAILED: the checker answered nothing for a misspelling" >&2
+    echo "  $LINT" >&2; exit 1
+else
+    echo "spelling             ok: the system checker answered the page ($LINT)"
+fi
+
 # A menu key equivalent, from the chord to the bytes.
 #
 # The half `typeKeys` says outright it does not cover, and the only check

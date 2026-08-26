@@ -98,15 +98,17 @@ describe("HOST_PROFILES", () => {
         // host declaring one would offer a row that opens nothing.
         expect([...HOST_PROFILES.vscode].sort()).toEqual(
             ALL_HOST_CAPABILITIES.filter((c) => !APP_ONLY_CAPABILITIES.includes(c)).sort());
-        // Jot's shell saves a pasted image beside the document and serves it
-        // back over its own scheme, so it owns an image store; its window has a
-        // sidebar to dock the outline in; it has a Settings window of its own;
-        // and it runs a coding agent as a child process. It provides none of
-        // the others: there is no text editor to switch to, no VS Code settings
-        // or keybindings UI, no proofreading engine, no read-only owner, no
-        // editor font of its own, and no pane wide enough for a reading measure
-        // to be a choice.
-        expect(HOST_PROFILES.jot).toEqual(["imageUpload", "toc", "appPreferences", "agent"]);
+        // Jot's shell answers spelling and grammar with the system's own
+        // checker (`SpellService`); it saves a pasted image beside the document
+        // and serves it back over its own scheme, so it owns an image store;
+        // its window has a sidebar to dock the outline in; it has a Settings
+        // window of its own; and it runs a coding agent as a child process. It
+        // provides none of the others: there is no text editor to switch to, no
+        // VS Code settings or keybindings UI, no read-only owner, no editor
+        // font of its own, and no pane wide enough for a reading measure to be
+        // a choice.
+        expect(HOST_PROFILES.jot).toEqual(
+            ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

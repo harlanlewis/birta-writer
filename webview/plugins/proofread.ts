@@ -195,9 +195,35 @@ const FLAG_CATEGORIES = new Set<StyleCategory>([
  * Exported for unit testing, as `computeDecorations` is.
  */
 export function initialConfig(): ProofreadConfig {
-    const declared: ProofreadConfig = { ...DEFAULT_CONFIG, ...(window.__i18n?.proofread ?? {}) };
+    const declared: ProofreadConfig = {
+        ...DEFAULT_CONFIG,
+        ...(window.__i18n?.proofread ?? {}),
+        ...fromOptionKeys(window.__i18n?.proofreadOptions),
+    };
     if (hostHas("spellAndGrammar")) { return declared; }
     return { ...declared, spellCheck: false, grammarCheck: false };
+}
+
+/**
+ * A host's stored Checks answers, keyed the way the MENU posts them, as config
+ * fields.
+ *
+ * One key differs between the two vocabularies and the rest are identical, so
+ * this is that alias plus a filter. The filter is the load-bearing half: a key
+ * the config has no field for is dropped rather than spread in, so a stale
+ * stored option from an older build cannot put a property on the config that
+ * every reader of it would then have to tolerate.
+ */
+function fromOptionKeys(options: Record<string, boolean> | undefined): Partial<ProofreadConfig> {
+    if (!options) { return {}; }
+    const out: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(options)) {
+        if (typeof value !== "boolean") { continue; }
+        // The master gate is the one whose option key and config field differ.
+        const field = key === "proofreading" ? "proofreadingEnabled" : key;
+        if (field in DEFAULT_CONFIG) { out[field] = value; }
+    }
+    return out as Partial<ProofreadConfig>;
 }
 
 /** Notify interested UI (toolbar buttons) that the config changed. */

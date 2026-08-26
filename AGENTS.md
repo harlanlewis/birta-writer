@@ -164,6 +164,8 @@ jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, wi
 jot/Sources/BirtaJot/JotMenu.swift            THE menu table: every menu built from it, the page's hostShortcuts declared from it, and why the chords are the extension's
 jot/Sources/BirtaJot/TitlebarActions.swift    New Note, Open and Open Recent as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
 jot/Sources/BirtaJot/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its two surfaces raised it
+jot/Sources/BirtaJot/SpellService.swift       Spelling and grammar from NSSpellChecker: why it is sliced across run-loop turns, and why requestChecking is not usable
+jot/Sources/BirtaJotCore/ProofreadFilter.swift  Which flagged spans are prose and which are paths or identifiers; a port of shared/proofreadFilter.ts, and why it counts in UTF-16
 jot/Sources/BirtaJotCore/RecentFiles.swift    What the recents list keeps, where the More boundary falls, and when a row says more than a file name
 jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory; why the label is sized from what its cell needs and centred on `bounds`, never on what it reports or was built at
 jot/Sources/BirtaJot/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit

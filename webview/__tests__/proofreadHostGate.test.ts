@@ -18,7 +18,13 @@ import type { ProofreadConfig } from "../../shared/messages";
  * style-check underlines at all on that surface, and a Checks menu that opened
  * with its body missing, for as long as the shell said so.
  */
-type Declared = { __i18n?: { host?: { capabilities?: readonly HostCapability[] }; proofread?: Partial<ProofreadConfig> } };
+type Declared = {
+    __i18n?: {
+        host?: { capabilities?: readonly HostCapability[] };
+        proofread?: Partial<ProofreadConfig>;
+        proofreadOptions?: Record<string, boolean>;
+    };
+};
 const g = globalThis as Declared;
 
 describe("initialConfig withdraws the checks a host cannot answer", () => {
@@ -78,17 +84,71 @@ describe("initialConfig withdraws the checks a host cannot answer", () => {
         expect(config.grammarCheck).toBe(true);
     });
 
+    it("a host's stored option keys should reach the config they name", () => {
+        // The shape a host stores when it keeps what the MENU posted rather
+        // than a config it computed. Every key but the gate is 1:1.
+        g.__i18n = {
+            host: { capabilities: ["spellAndGrammar"] },
+            proofreadOptions: { styleCheck: false, fillers: false },
+        };
+        const config = initialConfig();
+        expect(config.styleCheck).toBe(false);
+        expect(config.fillers).toBe(false);
+        expect(config.cliches).toBe(true);
+    });
+
+    it("the master gate's option key should reach the field it is named differently from", () => {
+        // The one key whose two vocabularies differ, and the reason this
+        // translation exists at all. Stored under the menu's name; read under
+        // the config's.
+        g.__i18n = {
+            host: { capabilities: ["spellAndGrammar"] },
+            proofreadOptions: { proofreading: false },
+        };
+        expect(initialConfig().proofreadingEnabled).toBe(false);
+        // And the option key must NOT land on the config verbatim, or every
+        // reader would have a stray property to tolerate.
+        expect((initialConfig() as Record<string, unknown>)["proofreading"]).toBeUndefined();
+    });
+
+    it("a stored key the config has no field for should be dropped", () => {
+        // An option from an older build, or a typo in a defaults domain
+        // somebody edited. Spreading it in would put a property on the config
+        // that nothing declares.
+        g.__i18n = {
+            host: { capabilities: ["spellAndGrammar"] },
+            proofreadOptions: { notARealCheck: false, fillers: false },
+        };
+        const config = initialConfig() as Record<string, unknown>;
+        expect(config["notARealCheck"]).toBeUndefined();
+        expect(config["fillers"]).toBe(false);
+    });
+
+    it("a non-boolean stored value should be ignored rather than trusted", () => {
+        g.__i18n = {
+            host: { capabilities: ["spellAndGrammar"] },
+            proofreadOptions: { fillers: "yes" as unknown as boolean },
+        };
+        expect(initialConfig().fillers).toBe(true);
+    });
+
     it("a host snapshot should not be able to switch on a lint its host cannot answer", () => {
         // The order the two are applied in, asserted as the property rather
         // than as a line of code: the capability is the last word, or a stale
         // stored setting would put the page back to posting lints nothing
-        // answers.
+        // answers. Asserted through BOTH shapes, because either could carry it.
         g.__i18n = {
             host: { capabilities: ["toc"] },
             proofread: { spellCheck: true, grammarCheck: true },
         };
-        const config = initialConfig();
-        expect(config.spellCheck).toBe(false);
-        expect(config.grammarCheck).toBe(false);
+        expect(initialConfig().spellCheck).toBe(false);
+        expect(initialConfig().grammarCheck).toBe(false);
+
+        g.__i18n = {
+            host: { capabilities: ["toc"] },
+            proofreadOptions: { spellCheck: true, grammarCheck: true },
+        };
+        expect(initialConfig().spellCheck).toBe(false);
+        expect(initialConfig().grammarCheck).toBe(false);
     });
 });

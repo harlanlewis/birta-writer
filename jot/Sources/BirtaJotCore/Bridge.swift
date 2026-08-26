@@ -76,6 +76,15 @@ public enum WebviewMessage: Equatable {
     /// reports each as the user settles it, and a fresh page is booted back
     /// into what it reported, so a panel the reader opened is open the next
     /// time the window loads a file.
+    /// Blocks of plain text for the host's spelling and grammar checker. The
+    /// page holds the request open until it is answered, so a host that
+    /// declares `spellAndGrammar` must reply with `lintResults` carrying the
+    /// same `id`, even when it found nothing.
+    case lintBlocks(id: Int, blocks: [LintBlock])
+    /// "Add to dictionary" on a spelling hit.
+    case spellAddWord(String)
+    /// One row of the Checks menu, by the page's own option key.
+    case setProofreadOption(key: String, value: Bool)
     case setTocVisibility(String)
     case setTocPosition(String)
     case setTocWidth(Int)
@@ -181,6 +190,22 @@ public enum WebviewMessage: Equatable {
         case "setFontPreset": return str("preset").map { .setFontPreset($0) } ?? .other(type: type)
         case "setFontSize": return int("size").map { .setFontSize($0) } ?? .other(type: type)
         case "setContentWidth": return str("mode").map { .setContentWidth($0) } ?? .other(type: type)
+        case "lintBlocks":
+            // A block the page could not describe is skipped rather than
+            // failing the batch: the rest of the document is still worth
+            // checking, and the reply carries only the keys it answers for.
+            guard let id = int("id") else { return .other(type: type) }
+            let blocks = (dict["blocks"] as? [Any] ?? []).compactMap { entry -> LintBlock? in
+                guard let row = entry as? [String: Any],
+                      let key = (row["key"] as? NSNumber)?.intValue,
+                      let text = row["text"] as? String else { return nil }
+                return LintBlock(key: key, text: text)
+            }
+            return .lintBlocks(id: id, blocks: blocks)
+        case "spellAddWord": return str("word").map { .spellAddWord($0) } ?? .other(type: type)
+        case "setProofreadOption":
+            guard let key = str("key"), let value = bool("value") else { return .other(type: type) }
+            return .setProofreadOption(key: key, value: value)
         // The page's own spellings, which are three rather than one because
         // these grew in the extension at different times: the panel reports
         // its visibility as `tocVisibility`, its width as `tocWidth`, and its
@@ -259,6 +284,10 @@ public enum HostMessage: Equatable {
     /// could not be written. Nil is a real answer; the panel marks that chip
     /// failed and stops waiting on it.
     case agentAttachmentSaved(id: String, path: String?)
+    /// Reply to `lintBlocks`, carrying the request's own `id` so a slow answer
+    /// that a newer request has already superseded is dropped by the page
+    /// rather than drawn over fresher text.
+    case lintResults(id: Int, results: [LintBlockResult])
     case toolbarConfig(json: String)
     case getPerfMarks(id: String)
     /// Ask the page where the selection is. Answered with
@@ -309,6 +338,8 @@ public enum HostMessage: Equatable {
             if let text { o["text"] = text }
             if let message { o["message"] = message }
             return o
+        case let .lintResults(id, results):
+            return ["type": "lintResults", "id": id, "results": results.map(\.json)]
         case let .flushSave(id):
             return ["type": "flushSave", "id": id]
         case let .flushAck(id, applied):
@@ -447,6 +478,10 @@ public struct BootConfig: Equatable {
     /// it is docked to, and its width in CSS pixels (nil for the page's
     /// default). The page CLAMPS the width it is given, so no bound is
     /// restated here.
+    /// The Checks menu's answers, by the page's own option key. Only what the
+    /// reader changed; an empty map sends nothing and the page keeps its
+    /// defaults.
+    public var proofreadOptions: [String: Bool]
     public var tocVisibility: String
     public var tocOnRight: Bool
     public var tocWidth: Int?
@@ -464,6 +499,7 @@ public struct BootConfig: Equatable {
                 fontPreset: String = "editor",
                 fontSize: Int = 100,
                 contentWidth: String = "full",
+                proofreadOptions: [String: Bool] = [:],
                 tocVisibility: String = "hidden",
                 tocOnRight: Bool = false,
                 tocWidth: Int? = nil,
@@ -476,6 +512,7 @@ public struct BootConfig: Equatable {
         self.fontPreset = fontPreset
         self.fontSize = fontSize
         self.contentWidth = contentWidth
+        self.proofreadOptions = proofreadOptions
         self.tocVisibility = tocVisibility
         self.tocOnRight = tocOnRight
         self.tocWidth = tocWidth
@@ -560,20 +597,19 @@ public struct BootConfig: Equatable {
             "pasteUnfurl": networkEnabled,
             "calcEnabled": true,
             "calcBlocksEnabled": true,
+            // The Checks answers, exactly as the menu posted them, and no
+            // `proofread` config beside them. Which of the checks can RUN is
+            // the page's to decide from the capabilities above, and a config
+            // computed here would be a second declarer of that: one is how the
+            // whole pass came to be switched off on this surface, by testing
+            // `hostCapabilities` for a name a rename had taken away.
+            "proofreadOptions": proofreadOptions,
             // The panel as the reader last left it. A first launch gets
             // "hidden" rather than "auto": the page's heuristic opens the
             // sidebar once a document has a few headings, which is right for an
             // editor pane and wrong for a window this size, where the outline
             // is something you ask for.
             "tocVisibility": tocVisibility,
-            // No `proofread` snapshot: this shell persists none of those
-            // options, and which of the four checks it can RUN is the page's to
-            // decide from the capabilities above (`initialConfig` in
-            // webview/plugins/proofread.ts). A blob here was a second declarer
-            // of that fact, and it is how the whole pass came to be switched
-            // off on this surface: it tested `hostCapabilities` for a
-            // capability name that had been renamed out from under it, so it
-            // was permanently false and no run could say so.
         ]
     }
 

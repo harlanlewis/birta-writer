@@ -61,6 +61,7 @@ enum Prefs {
         case tocOnRight
         case tocWidth
         case recentDocuments
+        case proofreadOptions
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -365,6 +366,29 @@ enum Prefs {
     static var contentWidth: String {
         get { d.string(forKey: Key.contentWidth.rawValue) ?? defaultContentWidth }
         set { d.set(newValue, forKey: Key.contentWidth.rawValue) }
+    }
+
+    /// The Checks menu's answers, by the page's own option key.
+    ///
+    /// Stored opaquely: the keys are the page's vocabulary
+    /// (`ProofreadOptionKey`), and the one of them whose name differs from its
+    /// config field is translated in the page, where that mapping already
+    /// lives. Nothing here knows what a key means, which is deliberate, because
+    /// a shell that thought it knew is what switched this whole feature off for
+    /// as long as it did (`initialConfig` in webview/plugins/proofread.ts).
+    ///
+    /// Only what the reader has CHANGED is kept, so a default that moves later
+    /// moves for everyone who never touched the row.
+    static var proofreadOptions: [String: Bool] {
+        get { (d.dictionary(forKey: Key.proofreadOptions.rawValue) as? [String: Bool]) ?? [:] }
+        set { d.set(newValue, forKey: Key.proofreadOptions.rawValue) }
+    }
+
+    /// Record one row of the Checks menu.
+    static func rememberProofreadOption(key: String, value: Bool) {
+        var options = proofreadOptions
+        options[key] = value
+        proofreadOptions = options
     }
 
     /// The files the app has been pointed at lately, newest first.
@@ -778,6 +802,7 @@ enum Prefs {
             fontPreset: fontPreset,
             fontSize: fontSize,
             contentWidth: contentWidth,
+            proofreadOptions: proofreadOptions,
             tocVisibility: tocVisibility,
             tocOnRight: tocOnRight,
             tocWidth: tocWidth,
@@ -797,7 +822,7 @@ enum Prefs {
             // provides, and with `/ai` switched off, or with no command to
             // run, this host provides no agent. `BootConfigTests` holds both
             // arms.
-            hostCapabilities: ["imageUpload", "toc", "appPreferences", "agent"]
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
                 .filter { $0 != "agent" || agentAvailable },
             viewStateJSON: viewStateJSON,
             hostShortcuts: JotMenu.shortcuts
