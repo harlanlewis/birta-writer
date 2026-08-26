@@ -85,7 +85,6 @@ import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
 import { notifyAskAgent, notifyClipboardWrite, notifyOpenUrl, notifyOpenHostPreferences } from "@/messaging";
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
-import { isFocusMode, setFocusMode } from "@/focusMode";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
 import { hostHasCommand } from "../shared/hostProfile";
@@ -959,7 +958,6 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // Same shape as read-only: straight to the mode's owner, no host hook of
     // its own. Focus owns no chrome — it drives the toolbar, TOC and proofread
     // toggles that already exist, through the surfaces `index.ts` wires.
-    toggleFocusMode: () => setFocusMode(!isFocusMode()),
     swapTocSide: () => host.swapTocSide?.(),
     focusReviewSidebar: () => host.focusReviewSidebar?.(),
     // Keyboard canon: same commands the hardcoded ProseMirror keymaps run

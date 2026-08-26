@@ -58,12 +58,6 @@ export interface ToolbarLayout {
     startCustomize: () => void;
     /** Show or hide the whole bar, writing the setting through. */
     setToolbarVisible: (visible: boolean) => void;
-    /**
-     * Show or hide the bar WITHOUT persisting `toolbar.visible`. Focus mode's
-     * half of the pair (MAR-72): it restores the prior state on exit, so a
-     * write here would make a temporary view into a preference change.
-     */
-    applyToolbarVisible: (visible: boolean) => void;
     isVisible: () => boolean;
     /** Show or hide the debug dropdown. */
     setDebugMode: (enabled: boolean) => void;
@@ -400,15 +394,6 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         toolbar,
         startCustomize,
         setToolbarVisible,
-        applyToolbarVisible: (visible: boolean) => {
-            // Focus mode's half of the pair, and inert under a fixed layout for
-            // a reason that is about the way BACK rather than about the way
-            // out: there is no reveal tab on this surface, because there is no
-            // hidden-toolbar state for one to answer, so a session-level hide
-            // would leave search and settings unreachable until the mode was
-            // toggled off from somewhere else.
-            if (!layoutIsFixed && visible !== toolbarVisible) { applyVisibility(visible); }
-        },
         isVisible: () => toolbarVisible,
         setDebugMode(enabled: boolean): void {
             debugVisible = enabled;

@@ -296,25 +296,6 @@ export const EDITOR_COMMANDS = [
     // re-seeds every open document. No default chord — the editor's own chords
     // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
     { id: "toggleReadOnly", title: "Toggle Read-only", palette: true, sections: [], hostCapability: "readOnlyMode" },
-    // Focus mode (MAR-72). One toggle down to the content: our toolbar and TOC
-    // hidden, proofreading silenced. The workbench chrome is VS Code's own Zen
-    // Mode, which stays a separate toggle with its own restore. A single entry
-    // for the same reason as the rows above, and no default chord: the
-    // editor's chords are spoken for, and a user picks one in Keyboard
-    // Shortcuts.
-    //
-    // Withdrawn under `fixedToolbarLayout` (MAR-414), the same arrangement that
-    // withdraws Toggle Toolbar, and for the reason that already sits on that
-    // arrangement: the bar's visibility belongs to the surface rather than to
-    // the user. A surface that has settled that question has settled this one,
-    // because the bar is the chrome focus mode exists to take away. What was
-    // left on such a surface was a row that silenced the proofread underlines
-    // and moved nothing else, which reads as a command that did not fire; the
-    // underlines have a switch of their own in the Checks menu. The sidebar
-    // such a surface may now have does not put this back: it is one press on
-    // the bar there, and a mode that closes a control already a press away is
-    // a second name for the press.
-    { id: "toggleFocusMode", title: "Toggle Focus Mode", palette: true, sections: [], absentUnder: "fixedToolbarLayout" },
     { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [], hostCapability: "toc" },
     // MAR-294: once focus is inside the review sidebar its keyboard model is
     // complete (Escape returns to the editor from every region), but no gesture

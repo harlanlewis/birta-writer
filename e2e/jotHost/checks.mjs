@@ -500,10 +500,8 @@ export async function run({ page, check, baseUrl }) {
     // "Check style" and "Highlight note markers" are deliberately NOT here any
     // more: both are answered inside the page, so they are the editor's own
     // rows and belong on every surface (they are asserted present below).
-    // "Toggle Focus Mode" joins the list from the other direction, withdrawn by
-    // an arrangement rather than by a missing capability.
     const GATED_LABELS = ["Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts", "Check spelling",
-        "Check grammar", "Lock Edits (Read-only)", "Toggle Focus Mode",
+        "Check grammar", "Lock Edits (Read-only)",
         "Editor Font", "Full Width", "Fixed Width"];
     check("jot: Show all commands lists no row bound to a capability the shell lacks",
         GATED_LABELS.every((l) => !labels.includes(l)), JSON.stringify(labels.filter((l) => GATED_LABELS.includes(l))));

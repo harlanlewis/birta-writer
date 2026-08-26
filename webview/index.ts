@@ -42,7 +42,6 @@ import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
-import { setFocusSurfaces, TOC_COLLAPSED } from "./focusMode";
 import { hostHas } from "../shared/hostProfile";
 import { isReadOnly } from "./readOnly";
 import { getProofreadConfig, setProofreadConfig } from "./plugins";
@@ -764,30 +763,6 @@ setSlashMenuHost({
     // it opens the composer where all of that is visible and changeable.
     argumentHint: (item) =>
         item.commandId === "askAgent" ? agentRouteHintParts() : undefined,
-});
-
-// Focus mode composes the toggles above rather than owning chrome (MAR-72).
-// Both halves of each pair go through the surface's OWN api, so focus is
-// exactly the gesture the user could have performed by hand.
-//
-// Proofreading is the one that must not persist: `setProofreadConfig` masks the
-// live plugin config, where the toolbar's Checks menu would also call
-// `notifySetProofreadOption` and write the setting. Silencing the document for
-// the length of a focus session is not a preference change.
-setFocusSurfaces({
-    toolbarVisible: () => topbarTb?.isVisible() ?? false,
-    setToolbarVisible: (visible) => topbarTb?.applyToolbarVisible(visible),
-    tocState: () => toc?.focusState() ?? TOC_COLLAPSED,
-    setTocState: (state) => toc?.setFocusState(state),
-    proofreadingOn: () => {
-        const view = getEditorView();
-        return view ? getProofreadConfig(view).proofreadingEnabled : false;
-    },
-    setProofreadingOn: (on) => {
-        const view = getEditorView();
-        if (!view) { return; }
-        setProofreadConfig(view, { ...getProofreadConfig(view), proofreadingEnabled: on });
-    },
 });
 
 if (topbar) {

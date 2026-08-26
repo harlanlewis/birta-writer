@@ -28,10 +28,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - The Format menu carries the inserts itself. Link, Link to Section, Table, Image, Callout, Math, Footnote, Horizontal Rule and the dates were behind an Insert submenu and are now four groups on Format, in the order they were in. The dates are one row of that four, opening a submenu named Date: Today, Tomorrow and Yesterday, with Choose Date under them for any other day. Four rows that answer one question is what Paragraph Style and Lists are, which is why those stay submenus too. Format is the longest menu the app has and this lengthens it, on the argument that putting something into a document is a different act from restyling what is already there.
 
-### Removed
-
-- View, Focus Mode, on this app only. It stays in Birta Writer for VS Code, where it collapses a workbench's worth of chrome. Here the panel's toolbar belongs to the app rather than to you and cannot be hidden, which is the chrome the mode exists to take away, so the whole of what it did was silence the style check's underlines. Those have their own switch now, in the toolbar's Checks menu and in View. The table of contents this version adds does not bring it back: that is one press on the toolbar, and a mode that closes a control already a press away is a second name for the press.
-
 ### Fixed
 
 - The keyboard shortcut field in Settings is drawn in the appearance the window is in. Opening Settings could leave it a black box in an otherwise light window, and it stayed that way for as long as the app was running, because the field took its background once when it was built rather than from the window it ended up in.

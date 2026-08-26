@@ -118,8 +118,6 @@ export function initToolbar(
     toggleProofread: (key: ProofreadOptionKey) => void;
     /** Whether the bar is currently shown (drives the slash toggle's label). */
     isVisible: () => boolean;
-    /** Show or hide the bar for this session, leaving `toolbar.visible` alone. */
-    applyToolbarVisible: (visible: boolean) => void;
     /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
     openLinkPrompt: () => void;
 } {
@@ -512,7 +510,6 @@ export function initToolbar(
         resetFontSize: typography.resetFontSize,
         toggleProofread: (key) => checks?.toggleProofread(key),
         isVisible: layout.isVisible,
-        applyToolbarVisible: layout.applyToolbarVisible,
         openLinkPrompt,
     };
 }

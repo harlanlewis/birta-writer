@@ -36,7 +36,6 @@ import { notifyAgentMergeResult } from "./messaging";
 import { t } from "./i18n";
 import { mark } from "./perf";
 import { setReadOnly } from "./readOnly";
-import { absorbTocVisibilityUnderFocus, maskProofreadConfigUnderFocus, maskToolbarConfigUnderFocus } from "./focusMode";
 import { applyLintResults } from "./plugins/proofread";
 import { withScrollAnchor } from "./utils/scrollAnchor";
 import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
@@ -564,7 +563,7 @@ export function createMessageHandlers(
                 // inbound write is the one thing that can un-silence a focused
                 // document. The mask keeps the live gate and takes the incoming
                 // value as what the exit restores (MAR-72).
-                setProofreadConfig(view, maskProofreadConfigUnderFocus(msg.config));
+                setProofreadConfig(view, msg.config);
             }
         },
         notesConfig(msg) {
@@ -584,9 +583,7 @@ export function createMessageHandlers(
             setReviewGroupByType(msg.groupByType);
         },
         toolbarConfig(msg) {
-            // Same seam as proofreadConfig: the echo carries `visible`, and
-            // focus mode hides the toolbar without writing it.
-            topbarTb?.applyConfig(maskToolbarConfigUnderFocus(msg.config));
+            topbarTb?.applyConfig(msg.config);
         },
         agentRoute(msg) {
             // Display only: it feeds the `/ai` caret hint and nothing else.
@@ -653,7 +650,6 @@ export function createMessageHandlers(
         setTocVisibility(msg) {
             // A focused editor records the echo for its exit and leaves the
             // collapsed panel alone.
-            if (absorbTocVisibilityUnderFocus(msg.visibility)) { return; }
             setTocVisibility(msg.visibility);
         },
         setTocWidth(msg) {
