@@ -42,7 +42,6 @@ final class Coordinator {
     /// height in its `dock` line, which is where to check it.
     private static let statusBaseline: CGFloat = 7
 
-    let hotkey: GlobalHotkey
     private let panel = JotPanel()
     private let contentView = AppearanceObservingView()
     /// The draggable middle of the titlebar band (TitlebarDrag.swift). Above
@@ -91,8 +90,21 @@ final class Coordinator {
     /// Opens the app's Settings window. Owned by the app delegate, which holds
     /// the window; the page asks for it through the gear menu.
     var openPreferences: (() -> Void)?
-    /// Closes it again, because the panel going away takes it along.
-    var hidePreferences: (() -> Void)?
+
+    /// Raised at the top of every `show`, so the app can note what it is about
+    /// to cover. Every path that brings a window forward passes through here,
+    /// Open With from the Finder included, which is the one worth keeping:
+    /// dismissing afterwards should put the user back in the Finder.
+    var onWillShow: (() -> Void)?
+
+    /// The close button, Cmd+W and a double Escape all mean "put this away",
+    /// and what that DOES is the app's to decide rather than this window's.
+    var onDismissRequest: (() -> Void)?
+
+    /// Re-register the summon key after the recorder on the first-run screen
+    /// has changed it. The key is one registration for the process, so this
+    /// window can only ask.
+    var onHotkeyChanged: (() -> OSStatus)?
     private var pendingFlushes: [String: (String?) -> Void] = [:]
     /// In-flight `requestEditorContext` calls, by id. Bounded the same way the
     /// flushes are: a page that never answers must not leave a closure holding
@@ -111,7 +123,6 @@ final class Coordinator {
     /// The typing pause that ends a burst, and the ceiling a burst cannot pass.
     private let autosaveDebounce: TimeInterval = 0.5
     private let autosaveMaxWait: TimeInterval = 2
-    private var previousApp: NSRunningApplication?
     /// The next `ready` reads the bound file (launch, a changed scratchpad or
     /// document path) rather than re-showing `latest` (a remount after the
     /// content process died).
@@ -208,12 +219,13 @@ final class Coordinator {
             startWatching()
         }
     }
-    private var escMonitor: Any?
-    private var lastEscape: TimeInterval = 0
     private let flushTimeout: TimeInterval = 1.0
     private let measure = Measure()
 
     var isVisible: Bool { panel.isVisible }
+
+    /// Whether this is the window the keyboard is talking to.
+    var isKey: Bool { panel.isKeyWindow }
 
     /// The file this window is on.
     ///
@@ -234,7 +246,6 @@ final class Coordinator {
         writer = CoalescingWriter(onError: { error in
             NSLog("Birta Writer: write failed: \(error)")
         })
-        hotkey = GlobalHotkey()
     }
 
     // MARK: lifecycle
@@ -379,7 +390,7 @@ final class Coordinator {
         titleBar.titleView.setWindowKey(panel.isKeyWindow)
         refreshTitle()
         panel.contentView = contentView
-        panel.onHideRequest = { [weak self] in self?.hide() }
+        panel.onHideRequest = { [weak self] in self?.onDismissRequest?() }
         applyTheme(initial: true)
 
         // The activation policy the Dock switch decides, as the app actually
@@ -391,49 +402,12 @@ final class Coordinator {
         measure.mark("launch")
         loadPage()
 
-        hotkey.onPress = { [weak self] in self?.hotkeyPressed() }
-        let status = hotkey.register(Prefs.hotkey)
-        if status != noErr {
-            NSLog("Birta Writer: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
-        }
-        installEscapeMonitor()
-        if measure.enabled { installDebugSignals() }
     }
 
-    /// Measurement hooks, only under BIRTA_JOT_MEASURE=1: SIGUSR1 toggles the
-    /// panel as the hotkey would (a shell cannot press a global hotkey without
-    /// an Accessibility grant); SIGURG posts a message file to the page.
-    /// jot/scripts/measure.sh drives both, and stages cold recovery itself by
-    /// killing the WebContent helper (the private `_killWebContentProcess`
-    /// selector does not reach `webViewWebContentProcessDidTerminate`).
-    private var debugSignals: [DispatchSourceSignal] = []
-    private func installDebugSignals() {
-        let actions: [(Int32, () -> Void)] = [
-            (SIGUSR1, { [weak self] in self?.hotkeyPressed() }),
-            (SIGURG, { [weak self] in self?.postDebugMessageFile() }),
-        ]
-        for (sig, action) in actions {
-            signal(sig, SIG_IGN)
-            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-            source.setEventHandler(handler: action)
-            source.resume()
-            debugSignals.append(source)
-        }
-        if ProcessInfo.processInfo.environment["BIRTA_JOT_SHOW_ON_LAUNCH"] == "1" {
-            DispatchQueue.main.async { [weak self] in self?.show() }
-        }
-    }
-
-    /// SIGURG: post the JSON object in `<scratchpad dir>/.debug-message.json`
-    /// to the page verbatim (the test-only `__testInsertText` is the use), or,
-    /// for `{"type":"__jotKeys","keys":[...]}` or `{"type":"__jotSave"}`,
-    /// synthesize those keystrokes
-    /// into the panel as NSEvents. The keys path is what makes real WebKit
-    /// typing reachable from a script without an Accessibility grant: the
-    /// events are the app's own, delivered through the same responder chain a
-    /// keyboard uses, so `Return` and the characters after it exercise the
-    /// engine the panel really renders in.
-    private func postDebugMessageFile() {
+    /// Deliver one `measure.sh` message to this window's page. Raised by
+    /// `WindowSet`, which owns the signal that asks for it, because a signal
+    /// is one per process and this is one per window.
+    func postDebugMessageFile() {
         let file = Prefs.scratchpadURL.deletingLastPathComponent().appendingPathComponent(".debug-message.json")
         guard let json = try? String(contentsOf: file, encoding: .utf8) else {
             measure.trace("no debug message at \(file.path)")
@@ -725,13 +699,10 @@ final class Coordinator {
 
     // MARK: summon / hide
 
-    private func hotkeyPressed() {
+    /// Note the summon for the harness. The gesture itself is the app's;
+    /// what is per-window is the clock the interval is measured against.
+    func markHotkeyPressed() {
         measure.mark("hotkey")
-        toggle()
-    }
-
-    func toggle() {
-        if panel.isVisible && NSApp.isActive { hide() } else { show() }
     }
 
     func show() {
@@ -740,9 +711,7 @@ final class Coordinator {
         let held = onNextShow
         onNextShow = nil
         defer { held?() }
-        if let front = NSWorkspace.shared.frontmostApplication, front != .current {
-            previousApp = front
-        }
+        onWillShow?()
         panel.placeIfUnplaced()
         if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.makeKeyAndOrderFront(nil)
@@ -791,38 +760,14 @@ final class Coordinator {
     /// that process was busy, which is the one moment the user is asking for
     /// the panel to be gone. The bytes are no less safe: the flush still runs,
     /// and quitting flushes again.
+    /// This window only. Returning the user to whatever they were in before
+    /// is the APP's move and happens once, in `WindowSet.dismissAll`, after
+    /// every window has gone: doing it here would send them away while other
+    /// windows were still on screen.
     func hide() {
         guard panel.isVisible else { return }
-        // Settings belongs to the panel, not to the app. Left behind it is a
-        // window with no editor to change the settings OF, floating over
-        // whatever the user went back to; and with the app hidden below it
-        // reads as a stray dialog from nowhere.
-        hidePreferences?()
         panel.orderOut(nil)
-        if let prev = previousApp, prev.isTerminated == false {
-            prev.activate()
-        } else {
-            NSApp.hide(nil)
-        }
-        previousApp = nil
         flushThen { [weak self] in self?.write(.panelHidden) }
-    }
-
-    /// Double-Esc hides: the first bare Escape belongs to the editor (block
-    /// selection, closing a menu); a second within the window hides the panel.
-    private func installEscapeMonitor() {
-        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.panel.isKeyWindow, event.keyCode == 53,
-                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty else { return event }
-            let now = ProcessInfo.processInfo.systemUptime
-            if now - self.lastEscape < 0.4 {
-                self.lastEscape = 0
-                self.hide()
-                return nil
-            }
-            self.lastEscape = now
-            return event
-        }
     }
 
     // MARK: bridge
@@ -1361,7 +1306,6 @@ final class Coordinator {
                     done(false)
                     return
                 }
-                self.hotkey.unregister()
                 // A child process outliving the app is litter nobody can
                 // attribute.
                 self.agent.stopAll()
@@ -2185,7 +2129,7 @@ final class Coordinator {
     }
 
     private func makeWelcome() -> WelcomeView {
-        let view = WelcomeView(onHotkeyChange: { [weak self] in self?.hotkeyChanged() ?? -1 })
+        let view = WelcomeView(onHotkeyChange: { [weak self] in self?.onHotkeyChanged?() ?? -1 })
         view.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(view)
         NSLayoutConstraint.activate([
@@ -3127,12 +3071,6 @@ final class Coordinator {
     }
 
     // MARK: preferences
-
-    /// The hotkey text changed: rebind, and say whether the system took it.
-    @discardableResult
-    func hotkeyChanged() -> OSStatus {
-        hotkey.register(Prefs.hotkey)
-    }
 
     /// - Parameter beforeReload: see `BeforeReload`. Moving the notes to a new
     ///   location is the only caller that needs it.

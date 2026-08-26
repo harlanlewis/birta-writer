@@ -1694,6 +1694,14 @@ if grep -q "$OFF_STAMP" "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null; then
     # anything else means the wait stopped working and this is again a red
     # about the probe.
     grep "^jot-trace writedecision " "$LOG" | tail -3 | sed 's/^/  /' >&2
+    # ...and every write that was ATTEMPTED, which is the half that names the
+    # culprit. A decision and a write are not the same event: `writeLatest` is
+    # reachable without going through `write(_:)` at all, from the quit path,
+    # from the missing-note rescue and from Save It Back, and none of those
+    # leaves a `writedecision` line. Printing only the decisions produced a
+    # failure saying the app had refused to write, next to a file it had
+    # plainly written, with nothing on screen to reconcile the two.
+    grep "^jot-trace writeattempt " "$LOG" | tail -3 | sed 's/^/  /' >&2
     cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
 # The typing has to have LANDED, or this passes on a probe that never reached

@@ -8,7 +8,16 @@ import BirtaJotCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu!
-    private var coordinator: Coordinator!
+    /// The app's windows, and the process-wide things that used to live in
+    /// the one window there was. `WindowSet` holds why.
+    private let windows = WindowSet()
+
+    /// The window a menu command acts on: the key one, or the only one.
+    ///
+    /// Optional because an accessory app can genuinely have no window to act
+    /// on. Every menu row and every titlebar button targets this object rather
+    /// than a coordinator, so this is the one place that question is answered.
+    private var front: Coordinator? { windows.key }
     private var settingsWindow: SettingsWindowController?
     private var showItem: NSMenuItem!
     private var terminationSignal: DispatchSourceSignal?
@@ -90,17 +99,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// consults nothing.
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = DocumentTypes.firstToOpen(from: urls) else { return }
-        guard let coordinator else {
+        guard let front else {
             pendingOpen = url
             return
         }
-        coordinator.openDocument(at: url)
+        front.openDocument(at: url)
     }
 
     /// Clicking the Dock icon summons the panel. Without this the icon is a
     /// button that does nothing, which is worse than no icon at all.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        coordinator.show()
+        windows.summonAll()
         return true
     }
 
@@ -128,16 +137,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let launchedWith = pendingOpen
         pendingOpen = nil
         if let launchedWith { Prefs.documentURL = launchedWith.standardizedFileURL }
-        coordinator = Coordinator(boundTo: Prefs.activeURL)
-        coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
-        coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
+        windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
+        windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
+        let first = windows.adopt(Coordinator(boundTo: Prefs.activeURL))
         buildStatusMenu()
         applyMenuBarPresence()
-        coordinator.start()
+        first.start()
+        // After the window, because the summon key and the measurement signals
+        // both act on a window and there has to be one to act on.
+        windows.start()
         // Asked once a launch, in the background, and silent unless there is
         // something. `Updater` refuses for a development build, when the
         // setting is off, and under a throwaway defaults domain.
-        updater.onStatus = { [weak self] message in self?.coordinator.flashStatus(message) }
+        updater.onStatus = { [weak self] message in self?.front?.flashStatus(message) }
         // Off the main-queue drain before anything modal. `onUpdateAvailable`
         // fires from inside `Updater`'s continuation, and an `NSAlert` spun
         // from there runs a nested run loop that libdispatch will not
@@ -199,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // hotkey-summoned app and wrong for one somebody just double-clicked a
         // file in: the file has to appear. Last, so the panel comes up over
         // whatever the settings hooks above built.
-        if launchedWith != nil { coordinator.show() }
+        if launchedWith != nil { windows.summonAll() }
         installTerminationSignal()
     }
 
@@ -224,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Nobody sent this by hand, and something is waiting on the
             // process to go: with autosave off the quit writes the buffer
             // rather than putting a sheet in front of an installer.
-            self?.coordinator.quitIsUnattended = true
+            self?.front?.quitIsUnattended = true
             NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
         }
         source.resume()
@@ -233,16 +245,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // The reply can be NO: with autosave off and unwritten bytes, the
-        // coordinator puts the Save / Discard Changes / Cancel sheet on the
-        // panel, and Cancel means the app stays up.
-        coordinator.prepareToTerminate { proceed in
+        // window puts the Save / Discard Changes / Cancel sheet on its panel,
+        // and Cancel means the app stays up.
+        //
+        // `NSApp.reply(toApplicationShouldTerminate:)` may be sent exactly
+        // once, so a window that is not there has to answer for itself rather
+        // than leave the reply unsent and the quit hung forever.
+        guard let front else { return .terminateNow }
+        front.prepareToTerminate { [weak self] proceed in
+            // Only once the quit is certain. Giving up the summon key before
+            // the window has answered would leave the app running for the rest
+            // of the session with no way to summon it, every time somebody
+            // pressed Cancel.
+            if proceed { self?.windows.releaseHotkey() }
             NSApp.reply(toApplicationShouldTerminate: proceed)
         }
         return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        coordinator.finalWrite()
+        front?.finalWrite()
     }
 
     // MARK: menus
@@ -413,7 +435,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let event = NSApp.currentEvent
         let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
         guard wantsMenu else {
-            coordinator.toggle()
+            windows.toggle()
             return
         }
         statusItem?.menu = statusMenu
@@ -440,12 +462,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: actions
 
-    @objc private func togglePanel() { coordinator.toggle() }
-    @objc private func hidePanel() { coordinator.hide() }
-    @objc private func copyEverything() { coordinator.copyEverything() }
-    @objc func menuSaveNow() { coordinator.saveNow() }
-    @objc func menuNewNote() { coordinator.newNote() }
-    @objc func menuOpenDocument() { coordinator.openDocumentPanel() }
+    @objc private func togglePanel() { windows.toggle() }
+    @objc private func hidePanel() { windows.dismissAll() }
+    @objc private func copyEverything() { front?.copyEverything() }
+    @objc func menuSaveNow() { front?.saveNow() }
+    @objc func menuNewNote() { front?.newNote() }
+    @objc func menuOpenDocument() { front?.openDocumentPanel() }
 
     /// Raise the recents list from a control that is not a menu row: the
     /// titlebar's button. The File menu reaches the same list as a submenu
@@ -470,7 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// one arriving from anywhere else.
     @objc func menuOpenRecentDocument(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        coordinator.openDocument(at: url)
+        front?.openDocument(at: url)
     }
 
     /// Forget the list. The files are untouched; this is the only control over
@@ -478,8 +500,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuClearRecentDocuments() {
         Prefs.recentDocuments = []
     }
-    @objc func menuSaveAs() { coordinator.saveAs() }
-    @objc private func revealLastSave() { coordinator.revealLastSave() }
+    @objc func menuSaveAs() { front?.saveAs() }
+    @objc private func revealLastSave() { front?.revealLastSave() }
     /// Run the editor command a menu row carries.
     ///
     /// ONE selector for every command row, with the id in `representedObject`,
@@ -488,7 +510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// this size.
     @objc func menuRunEditorCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else { return }
-        coordinator.runEditorCommand(command)
+        front?.runEditorCommand(command)
     }
 
     /// Open the destination a Help row carries, in the browser.
@@ -498,15 +520,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
 
-    @objc private func shareNote() { coordinator.shareNote() }
+    @objc private func shareNote() { front?.shareNote() }
 
     /// Show the first-run screen, which lives IN the panel rather than in a
     /// window of its own. The Advanced button that re-shows it comes here too.
     func showWelcome() {
-        coordinator.showWelcome()
+        front?.showWelcome()
     }
 
-    @objc func menuBackToNotes() { coordinator.backToNotes() }
+    @objc func menuBackToNotes() { front?.backToNotes() }
 
     /// Say a newer release exists, and let the user take it or leave it.
     ///
@@ -531,12 +553,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !offering else { return }
         guard UpdatePolicy.shouldOffer(tag: tag, declined: Prefs.updateDeclinedTag) else { return }
         guard let host = promptHost else {
-            coordinator.onNextShow = { [weak self] in self?.offerUpdate(tag) }
+            front?.onNextShow = { [weak self] in self?.offerUpdate(tag) }
             return
         }
         offering = true
         UpdatePrompt.present(tag: tag,
-                             hasUnwrittenBytes: coordinator.hasUnwrittenBytes,
+                             hasUnwrittenBytes: front?.hasUnwrittenBytes ?? false,
                              on: host) { [weak self] answer in
             guard let self else { return }
             self.offering = false
@@ -559,7 +581,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// summon and looking like a button that does nothing.
     private var promptHost: NSWindow? {
         if let key = NSApp.keyWindow, key.isVisible { return key }
-        return coordinator.isOnScreen ? coordinator.promptWindow : nil
+        guard let front, front.isOnScreen else { return nil }
+        return front.promptWindow
     }
 
     /// Download, verify and arm the swap, then quit so it can run.
@@ -585,7 +608,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard ok else { return }
             // The swap script is already staged and polling for this pid, so
             // this quit has nothing to ask and nobody waiting to answer.
-            self.coordinator.quitIsUnattended = true
+            self.front?.quitIsUnattended = true
             NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
         }
     }
@@ -615,8 +638,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuOpenSettings() {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
-                onHotkeyChange: { [weak self] in self?.coordinator.hotkeyChanged() ?? -1 },
-                onChange: { [weak self] work in self?.coordinator.preferencesChanged(beforeReload: work) },
+                onHotkeyChange: { [weak self] in self?.windows.registerHotkey() ?? -1 },
+                onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
                 onCheckForUpdates: { [weak self] in self?.updater.checkNow() })
         }
@@ -633,8 +656,8 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
         // aligned and dimmed. It binds nothing new, because a status item's
         // menu is not searched for key equivalents; the global hotkey is
         // registered with Carbon and works whatever has focus.
-        let combo = coordinator.hotkey.combo ?? Prefs.hotkey
-        showItem.title = coordinator.isVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
+        let combo = windows.hotkey.combo ?? Prefs.hotkey
+        showItem.title = windows.isAnyVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
         showItem.keyEquivalent = combo.menuKeyEquivalent
         showItem.keyEquivalentModifierMask = combo.menuModifierMask
 
@@ -650,14 +673,14 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
         // there would make a note in the folder the screen is still asking
         // about and bind to it, outranking the answer being given, and its
         // status message would be drawn behind the screen.
-        if coordinator.isWelcoming, let action = item.action, Self.documentCommands.contains(action) {
+        if front?.isWelcoming == true, let action = item.action, Self.documentCommands.contains(action) {
             return false
         }
         switch item.action {
         case #selector(copyEverything), #selector(menuSaveAs), #selector(shareNote):
-            return coordinator.hasContent
+            return front?.hasContent ?? false
         case #selector(revealLastSave):
-            return coordinator.lastSavedURL != nil
+            return front?.lastSavedURL != nil
         case #selector(menuClearRecentDocuments):
             return !Prefs.recentDocuments.isEmpty
         case #selector(menuBackToNotes):

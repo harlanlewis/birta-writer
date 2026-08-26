@@ -468,10 +468,15 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
         guard let offer = body.range(of: "NotesMoveOffer.offerAtLaunch(") else {
             return XCTFail("nothing on the launch path offers to carry stranded notes; MAR-413 is back")
         }
-        guard let coordinator = body.range(of: "coordinator = Coordinator(") else {
-            return XCTFail("App.swift no longer builds the Coordinator in launch; this guard needs rewriting")
+        // The moment a file is bound, which is what the offer has to precede.
+        // Anchored on the binding rather than on how the window is stored:
+        // this guard has already been broken once by the app being given a
+        // set of windows rather than one coordinator, which changed the
+        // spelling and nothing about the fact.
+        guard let binding = body.range(of: "Coordinator(boundTo") else {
+            return XCTFail("App.swift no longer binds a file during launch; this guard needs rewriting")
         }
-        XCTAssertTrue(offer.lowerBound < coordinator.lowerBound,
+        XCTAssertTrue(offer.lowerBound < binding.lowerBound,
                       "the offer must be answered before anything is bound to a file")
     }
 }
