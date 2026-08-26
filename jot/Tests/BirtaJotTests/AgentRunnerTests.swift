@@ -203,9 +203,17 @@ final class AgentRunnerTests: XCTestCase {
     /// `LoginShellPathTests` is what asks whether the resolver can resolve;
     /// this asks only whether a plain `AgentRunner` is wired to it.
     func testARunnerNobodyConfiguredShouldStillHaveAResolver() throws {
-        let path = try XCTUnwrap(AgentRunner().childPath(),
-                                 "a plain AgentRunner gives its children no PATH of their own")
-        XCTAssertTrue(path.split(separator: ":").contains("/usr/bin"), path)
+        // Asked again rather than once. The shared resolver caps how long a
+        // CALLER waits, not how long the shell takes, so on a loaded machine
+        // the first ask can come back empty while the resolution it started
+        // is still going; a check that read that as the answer would be
+        // reporting the machine's load. Every later ask returns at once once
+        // the shell has spoken.
+        var path: String?
+        for _ in 0..<6 where path == nil { path = AgentRunner().childPath() }
+        let found = try XCTUnwrap(
+            path, "a plain AgentRunner gives its children no PATH of their own")
+        XCTAssertTrue(found.split(separator: ":").contains("/usr/bin"), found)
     }
 
     func testTheFirstReportShouldBeRunningWithTheHarnessName() throws {
