@@ -193,10 +193,10 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
  *
  * That rule is derived rather than a list, and the difference is what it
  * catches. Its earlier form asked whether ANY command needed a capability,
- * which a wholesale-gated mixed menu satisfies, and the Checks menu was
- * withdrawn entire from a host with no lint engine while the style check,
- * which the page computes for itself, went on underlining there with nothing
- * to turn it off.
+ * which a wholesale-gated mixed menu satisfies, so the Checks menu was
+ * withdrawn entire from a host with no lint engine, taking with it the style
+ * check and its categories, which the page computes for itself and which that
+ * surface could have run all along.
  */
 export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> = {
     format: null,

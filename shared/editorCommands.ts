@@ -273,8 +273,8 @@ export const EDITOR_COMMANDS = [
     { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [], hostCapability: "spellAndGrammar" },
     // Not gated, and its two neighbours are: style check is computed in the
     // page from a table the bundle carries, so it works wherever the editor
-    // does. It was gated with them until a host with no lint engine was found
-    // drawing style underlines it had no control to turn off.
+    // does. It was gated with them until a host with no lint engine turned out
+    // to be losing a check it could have run.
     { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [] },
     // The in-text editor-note highlight (birta.notes.highlightMarkers). It sits
     // beside the three check toggles because it is the same kind of thing — an
