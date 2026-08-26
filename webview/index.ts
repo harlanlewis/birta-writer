@@ -642,8 +642,8 @@ const eventManager = createEventManager();
 
 // ── UI component initialization ────────────────────────────
 // The TOC / review sidebar exists only for a host that declares it
-// (shared/hostProfile.ts); a Jot window has none, and every use below is
-// null-safe so the toc-bound commands and echoes are quiet no-ops there.
+// (shared/hostProfile.ts). Every use below is null-safe, so on a host that
+// declares none the toc-bound commands and echoes are quiet no-ops.
 mark("toc-start");
 const toc = hostHas("toc") ? initToc(eventManager, () => getEditorView()) : null;
 if (toc) { document.body.appendChild(toc.panel); }

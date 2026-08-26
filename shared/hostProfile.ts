@@ -193,7 +193,7 @@ export const HOST_PROFILES = {
     // and the e2e Jot page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    jot: ["imageUpload", "appPreferences", "agent"] as readonly HostCapability[],
+    jot: ["imageUpload", "toc", "appPreferences", "agent"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

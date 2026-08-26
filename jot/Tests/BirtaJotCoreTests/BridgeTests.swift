@@ -227,6 +227,26 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(ToolbarLayout.fromJSON("{bad"), ToolbarLayout())
     }
 
+    /// The outline panel's three memories, which the page reads from three
+    /// different places: the visibility from `__i18n`, the width from a CSS
+    /// rule in the served HTML, and the side from a class on the body tag
+    /// (`BirtaSchemeHandler.renderPage`, checked in `WebHostPageTests`).
+    ///
+    /// The width is here rather than in the boot script deliberately, and the
+    /// negative case is the one that matters: a default install has never
+    /// dragged the panel's edge, so the rule must be ABSENT rather than a
+    /// number this side chose, or the page's own default is overridden by a
+    /// value nobody set.
+    func testTheOutlinePanelsMemoriesShouldReachThePageOnTheirOwnChannels() {
+        XCTAssertEqual(BootConfig().tocRootStyle, "", "an untouched panel gets no width rule")
+        XCTAssertEqual(BootConfig(tocWidth: 320).tocRootStyle, ":root { --toc-width: 320px; }")
+        XCTAssertEqual(BootConfig(tocVisibility: "shown").i18nObject()["tocVisibility"] as? String, "shown")
+        // The width does NOT travel in the boot script; a copy there would be a
+        // second source for one fact, and the one that loses is whichever runs
+        // last.
+        XCTAssertFalse(BootConfig(tocWidth: 320).userScript(themeClass: "vscode-dark").contains("--toc-width"))
+    }
+
     func testBootConfigCarriesJotDecisionsAndTheShim() {
         let cfg = BootConfig(toolbarJSON: #"{"placements":{"bold":"hidden"},"order":[],"visible":true}"#,
                              networkEnabled: false, hostCapabilities: [], viewStateJSON: #"{"scrollY":1}"#)

@@ -162,7 +162,9 @@ jot/scripts/install-app.sh                    Installs the built app to /Applica
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
 jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
 jot/Sources/BirtaJot/JotMenu.swift            THE menu table: every menu built from it, the page's hostShortcuts declared from it, and why the chords are the extension's
-jot/Sources/BirtaJot/TitlebarActions.swift    New Note and Open as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
+jot/Sources/BirtaJot/TitlebarActions.swift    New Note, Open and Open Recent as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
+jot/Sources/BirtaJot/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its two surfaces raised it
+jot/Sources/BirtaJotCore/RecentFiles.swift    What the recents list keeps, where the More boundary falls, and when a row says more than a file name
 jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar accessory; why the label is sized from what its cell needs and centred on `bounds`, never on what it reports or was built at
 jot/Sources/BirtaJot/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
 jot/Sources/BirtaJotCore/TitlebarBand.swift   Where that strip starts and stops, how wide the title may be drawn so a strip is still left, and what a double click on a titlebar is the user's setting to decide

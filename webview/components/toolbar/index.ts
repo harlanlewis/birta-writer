@@ -37,6 +37,7 @@ import {
     IconEraser,
     IconSearch,
     IconFileCode,
+    IconPanelLeft,
     IconAlertTriangle,
     IconPencil,
     IconEye,
@@ -122,8 +123,7 @@ export function initToolbar(
     /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
     openLinkPrompt: () => void;
 } {
-    // TOC toggling lives on the panel's edge tab; undo/redo stay on their
-    // keyboard shortcuts — neither needs a toolbar button.
+    // Undo/redo stay on their keyboard shortcuts; neither needs a button.
 
     // Every item is built exactly once and wrapped in a `.tb-item`; the layout
     // controller re-parents the wrappers into their zones, so button listeners
@@ -388,6 +388,32 @@ export function initToolbar(
         // same code from the palette and the slash menu whichever it is.
         typographyRows: (close) => typography.gearRows(close),
     }));
+
+    // ── Table of contents ─────────────────────────────
+    // The bar's trailing control, and the one that acts on the WINDOW rather
+    // than on the document or on the editor's own settings. A rule before it
+    // says so: everything to its left is about the file on screen, and this
+    // opens a panel beside it.
+    //
+    // The glyph is the panel's own hide button and its reveal tab, so the three
+    // read as one control as the sidebar comes and goes, and it carries no
+    // pressed state of its own: `body.toc-open` / `body.toc-overlay-open` are
+    // what the panel already sets to position itself, and the bar's active look
+    // is keyed off those in CSS. Nothing here can therefore say "open" while the
+    // panel is shut. The same body class flips the glyph for a right-hand dock.
+    //
+    // It runs the command its tooltip names rather than taking a handle to the
+    // panel, so the button, the slash row and the palette are one path; the
+    // panel is bound to that command in index.ts, and the item exists only on a
+    // host that has one (`ITEM_HOST_CAPABILITY`).
+    if (available.has("toc")) {
+        items.toc = wrap("toc", btn(
+            IconPanelLeft,
+            withChord(t("Toggle Table of Contents"), "toggleToc"),
+            () => runEditorCommand("toggleToc", getEditor),
+            "tb-toc-btn",
+        ));
+    }
 
     // ── Placement, overflow, customize mode, whole-bar visibility ──
     layout = createToolbarLayout({ topbar, items, dbgItem, syncConflictItem, logseqItem });

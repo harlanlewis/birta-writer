@@ -1,10 +1,10 @@
 /**
  * The host profile end-to-end (MAR-373): the same bundle mounted with the Jot
- * profile has no TOC panel and none of the toolbar items, gear rows or slash
- * rows that name something its shell does not provide, keeps a chord bound to
- * such a command inert, and still edits. What the shell DOES provide
- * (`imageUpload`) keeps its item and its row, which is the arm that stops a
- * build gating everything from passing.
+ * profile has none of the toolbar items, gear rows or slash rows that name
+ * something its shell does not provide, keeps a chord bound to such a command
+ * inert, and still edits. What the shell DOES provide (`imageUpload`, `toc`)
+ * keeps its item and its row, which is the arm that stops a build gating
+ * everything from passing.
  *
  * The two ARRANGEMENTS the profile also declares are checked here rather than
  * in jsdom, because both are claims about layout: `formattingInSecondRow`
@@ -56,7 +56,8 @@ export async function run({ page, check, baseUrl }) {
     await mount("index.html");
     const jot = await page.evaluate(() => ({
         toc: !!document.querySelector(".toc-panel"),
-        tocTab: !!document.querySelector(".toc-toggle-tab"),
+        tocOpen: document.body.classList.contains("toc-open")
+            || document.body.classList.contains("toc-overlay-open"),
         items: [...document.querySelectorAll(".tb-item")].map((el) => el.dataset.itemId),
         dock: [...document.querySelectorAll(".tb-dock-row .tb-item")].map((el) => el.dataset.itemId),
         leftZone: [...document.querySelectorAll(".tb-zone--left .tb-item")].map((el) => el.dataset.itemId),
@@ -68,8 +69,9 @@ export async function run({ page, check, baseUrl }) {
             .filter((id) => !["syncConflict", "logseq", "debug"].includes(id)),
         showTab: !!document.querySelector(".toolbar-toggle-tab"),
     }));
-    check("jot: no .toc-panel in the DOM", !jot.toc);
-    check("jot: no TOC reveal tab either", !jot.tocTab);
+    check("jot: the sidebar exists, because the shell declares it", jot.toc);
+    check("jot: and it starts put away, as the shell's boot config asks",
+        !jot.tocOpen, JSON.stringify({ open: jot.tocOpen }));
     check("jot: no host-bound .tb-item in any zone",
         GATED_ITEMS.every((id) => !jot.items.includes(id)), JSON.stringify(jot.items));
     check("jot: the editor's own items are all still built",
@@ -102,13 +104,87 @@ export async function run({ page, check, baseUrl }) {
         await page.waitForTimeout(OPEN_WAIT);
     }
 
+    // ── The sidebar's toolbar button ───────────────────────────────────
+    //
+    // The panel is put away on this surface, so the bar's own button is how it
+    // is reached. Two things only a real page answers: whether pressing it
+    // actually brings the panel out, and whether the button then LOOKS pressed.
+    // The second is not decoration: it holds no state of its own and takes its
+    // lit look from the classes the panel sets to position itself, so this is
+    // what fails if those two ever stop being the same fact.
+    const tocButton = await page.$('.tb-item[data-item-id="toc"] .tb-toc-btn');
+    check("jot: the sidebar's toggle is on the bar", !!tocButton);
+    if (tocButton) {
+        const tocState = () => page.evaluate(() => ({
+            open: document.body.classList.contains("toc-open")
+                || document.body.classList.contains("toc-overlay-open"),
+            // The panel's own box and its own visibility, not the body class:
+            // a class that moved nothing is the failure a class check cannot
+            // see. Visibility is in it because that is what the panel uses to
+            // take its focus stops out of reach, and it is the half that
+            // settles rather than animating.
+            panelOnScreen: (() => {
+                const el = document.querySelector(".toc-panel");
+                if (!el || getComputedStyle(el).visibility === "hidden") { return false; }
+                const box = el.getBoundingClientRect();
+                return box.width > 0 && box.right > 0 && box.left < window.innerWidth;
+            })(),
+            // The panel anchors itself to the bar's bottom edge, and on this
+            // surface that bar is TWO rows rather than the one every other host
+            // gives it. A panel that measured the single-row height would open
+            // with its first heading under the formatting controls, which is
+            // the arrangement-specific way this lands wrong.
+            clearsBar: (() => {
+                const panel = document.querySelector(".toc-panel");
+                const bar = document.querySelector(".editor-topbar");
+                if (!panel || !bar) { return false; }
+                return panel.getBoundingClientRect().top
+                    >= bar.getBoundingClientRect().bottom - 0.5;
+            })(),
+            lit: getComputedStyle(document.querySelector(".tb-toc-btn")).backgroundColor,
+        }));
+        // The panel slides, so every reading below waits for it to come to rest
+        // rather than for a number: a fixed pause sized to the transition is a
+        // check that goes red on a busy machine and says nothing about the
+        // code. It polls the SAME predicate the checks read, so it cannot
+        // settle on a half-open panel, and a timeout is swallowed because the
+        // check that reads the state next is what should report it.
+        const settled = async (wanted) => {
+            try {
+                await page.waitForFunction((shown) => {
+                    const el = document.querySelector(".toc-panel");
+                    if (!el) { return false; }
+                    const box = el.getBoundingClientRect();
+                    const out = getComputedStyle(el).visibility !== "hidden"
+                        && box.width > 0 && box.right > 0 && box.left < window.innerWidth;
+                    return out === shown;
+                }, wanted, { timeout: 4000 });
+            } catch { /* reported by the check that reads the state next */ }
+            return tocState();
+        };
+
+        const shut = await tocState();
+        await tocButton.click();
+        const open = await settled(true);
+        check("jot: pressing it brings the sidebar onto the screen",
+            open.open && open.panelOnScreen, JSON.stringify({ shut, open }));
+        check("jot: and it starts below the whole bar, both rows of it",
+            open.clearsBar, JSON.stringify(open));
+        check("jot: and the button says so, from the panel's own classes",
+            open.lit !== shut.lit, JSON.stringify({ shut: shut.lit, open: open.lit }));
+        await tocButton.click();
+        const shutAgain = await settled(false);
+        check("jot: pressing it again puts the sidebar away",
+            !shutAgain.open && !shutAgain.panelOnScreen, JSON.stringify(shutAgain));
+    }
+
     // ── formattingInSecondRow ─────────────────────────────────────────
     // The partition itself is unit-tested (toolbarRegistry.test.ts); what only
     // a real page can answer is whether the two holders actually received it.
     check("jot: the top bar's left zone is empty, leaving the titlebar row to the window",
         jot.leftZone.length === 0, JSON.stringify(jot.leftZone));
     check("jot: the top bar keeps only the controls that read the document",
-        JSON.stringify(jot.rightZone) === JSON.stringify(["find", "styleCheck", "settings"]),
+        JSON.stringify(jot.rightZone) === JSON.stringify(["styleCheck", "find", "settings", "toc"]),
         JSON.stringify(jot.rightZone));
     check("jot: every editing control is in the dock instead",
         ["format", "bold", "italic", "link", "listMenu", "quote", "codeBlock", "table", "image"]
@@ -141,11 +217,18 @@ export async function run({ page, check, baseUrl }) {
         const bar = document.querySelector(".editor-topbar");
         const row = document.querySelector(".tb-dock");
         const toggle = document.querySelector(".tb-dock-toggle");
-        const find = document.querySelector('[data-item-id="find"]');
+        const zone = document.querySelector(".tb-zone--right");
+        const placed = [...zone?.querySelectorAll(".tb-item") ?? []]
+            .find((el) => !["syncConflict", "logseq", "debug"].includes(el.dataset.itemId));
         return {
             rowInBar: row?.parentElement === bar,
             toggleInBar: !!toggle?.closest(".editor-topbar") && !toggle?.closest(".tb-dock"),
-            togglePrecedesFind: toggle?.nextElementSibling === find,
+            // Ahead of every PLACEABLE item. The two status badges are pinned
+            // to the front of the zone by the layout controller and are not
+            // the partition's, so the first `.tb-item` is not what this asks
+            // about: the first one the partition put there is.
+            toggleLeadsTopBar: !!toggle && !!placed
+                && (toggle.compareDocumentPosition(placed) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
             barHeight: bar?.getBoundingClientRect().height ?? 0,
         };
     });
@@ -165,8 +248,8 @@ export async function run({ page, check, baseUrl }) {
         rowGeometry.rowInBar, JSON.stringify(rowGeometry));
     check("jot: its toggle is in the bar itself, not in the row it opens",
         rowGeometry.toggleInBar, JSON.stringify(rowGeometry));
-    check("jot: the toggle sits immediately before Find",
-        rowGeometry.togglePrecedesFind, JSON.stringify(rowGeometry));
+    check("jot: the toggle leads the top bar, ahead of the items the partition placed",
+        rowGeometry.toggleLeadsTopBar, JSON.stringify(rowGeometry));
     check("jot: opening the row makes the bar taller, so everything that measures it follows",
         rowGeometry.expanded > rowGeometry.collapsed, JSON.stringify(rowGeometry));
 
@@ -424,7 +507,11 @@ export async function run({ page, check, baseUrl }) {
     // nothing at all.
     check("jot: Show all commands lists the rows the shell's own capabilities earn",
         ["Image", "Ask Agent"].every((l) => labels.includes(l)), JSON.stringify(labels));
-    check("jot: no TOC rows in the slash menu", !labels.some((l) => /Table of Contents/.test(l)),
+    // The sidebar's rows, present because the shell now declares `toc`. The
+    // labels are dynamic (Hide/Show, Move Left/Right), so this asks for the
+    // subject rather than for a spelling of the state it happens to be in.
+    check("jot: the sidebar's rows are in the slash menu",
+        labels.filter((l) => /Table of Contents/.test(l)).length === 2,
         JSON.stringify(labels.filter((l) => /Table of Contents/.test(l))));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);

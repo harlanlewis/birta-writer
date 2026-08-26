@@ -81,9 +81,6 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     const toolbar = document.createElement("div");
     toolbar.className = "toolbar";
 
-    // TOC toggling lives on the panel's edge tab; undo/redo stay on their
-    // keyboard shortcuts — neither needs a toolbar button.
-
     // ── Placement zones ──
     // Items are assigned to a zone (or hidden) by the per-item
     // `toolbar.items.*` settings and ordered within a zone by `toolbar.order`
@@ -328,15 +325,15 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             rightZone.replaceChildren();
             moreMenu.replaceChildren();
             dock.render(docked);
+            // The row's toggle leads the top bar, ahead of every item the
+            // partition placed. It is not one of them: it belongs to the row
+            // below rather than to the set of controls that read the document,
+            // so it sits at the head of the group instead of somewhere inside
+            // an order that is the partition's to decide.
+            rightZone.appendChild(dock.toggle);
             for (const id of topBar) {
                 const el = items[id];
                 if (el) { rightZone.appendChild(el); }
-                // The row's toggle rides directly in front of Find, so the two
-                // controls that open something sit together. Placed by the
-                // item it follows rather than at an index, because the zone's
-                // contents are the partition's to decide and an index would be
-                // a second, silent claim about that order.
-                if (id === "find") { rightZone.insertBefore(dock.toggle, el ?? null); }
             }
             renderPinned();
             return;

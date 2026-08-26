@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- A Table of Contents button on the toolbar, at the far right past the gear, with a rule before it because it opens a panel beside the document rather than changing the document. It shows the same sidebar the panel's own edge tab and `Toggle Table of Contents` already open, and it lights up while the sidebar is out. Hide it, or move it, with `birta.toolbar.items.toc`.
+
+### Changed
+
+- The Checks button on the toolbar no longer dims while proofreading is switched off. It was the one place on the bar that said the whole pass was off, which is a state you otherwise cannot see, since an absence of underlines reads exactly like clean text; the menu's first row says it instead, one hover away. A dimmed control in a row of live ones reads as unavailable rather than as off, and that is a different claim from the one it was making.
+
 ---
 
 ## [2026.825.0] - 2026, August 25

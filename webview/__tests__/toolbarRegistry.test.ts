@@ -39,7 +39,7 @@ describe("computeZones", () => {
             "table",
             "image",
         ]);
-        expect(zones.right).toEqual(["viewSource", "find", "styleCheck", "fontPreset", "settings"]);
+        expect(zones.right).toEqual(["viewSource", "styleCheck", "find", "fontPreset", "settings", "toc"]);
         // readOnly ships hidden (MAR-53): the Toggle Read-only command and
         // `birta.readOnly` cover it. Shown, it sits beside viewSource, the
         // two answering the same question about how you are working with
@@ -317,7 +317,7 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
             expect(zones[zone]).not.toContain("viewSource");
         }
         // Everything else is where it was.
-        expect(zones.right).toEqual(["find", "styleCheck", "fontPreset", "settings"]);
+        expect(zones.right).toEqual(["styleCheck", "find", "fontPreset", "settings", "toc"]);
         expect(zones.hidden).toContain("footnote");
     });
 

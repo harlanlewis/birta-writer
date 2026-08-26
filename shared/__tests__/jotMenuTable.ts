@@ -84,7 +84,7 @@ export function menuSections(repoRoot: string): Readonly<Record<string, string>>
 const ROW_RE = new RegExp(
     String.raw`\.init\(title: "([^"]+)"` +
         String.raw`(?:, key: "([^"]*)", modifiers: \[([^\]]*)\])?,\s*` +
-        String.raw`action: \.(app|command|link|submenu)\(?(.*?)\)?, menu: \.(\w+)` +
+        String.raw`action: \.(app|command|link|submenu|recents)\(?(.*?)\)?, menu: \.(\w+)` +
         String.raw`(?:, submenu: "([^"]*)")?`,
     "gs",
 );

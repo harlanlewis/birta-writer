@@ -611,16 +611,27 @@ AC_REST_BOX="$(echo "$ACTS" | sed -n 's/.*restBoxes=\([0-9.,:]*\).*/\1/p')"
 AC_OVER_BOX="$(echo "$ACTS" | sed -n 's/.*overBoxes=\([0-9.,:]*\).*/\1/p')"
 AC_CHEV_MAX="$(echo "$ACTS" | sed -n 's/.*chevronMaxX=\([0-9.-]*\).*/\1/p')"
 AC_FIRST_X="$(echo "$AC_OVER_BOX" | cut -d, -f1 | cut -d: -f1)"
+# How many buttons there SHOULD be, read from the one place that decides it
+# rather than written down here. A literal is a number a fourth button never
+# joins: it would draw correctly, resolve its symbol, and fail this line with a
+# message about a missing symbol.
+AC_WANT="$(awk '/titleView\.setActions\(\[/{f=1;next} f&&/^ *\]\)/{exit} f&&/\.init\(selector:/{n++} END{print n+0}' \
+    jot/Sources/BirtaJot/Coordinator.swift)"
 if [ -z "$ACTS" ]; then
     echo "titlebar buttons     FAILED: the app reported no titleactions trace at all" >&2; exit 1
 fi
-if [ "$AC_COUNT" = "2" ] && [ "$AC_SYMS" = "2" ] \
+# The instrument's own arm: a scrape that matched nothing would otherwise make
+# every comparison below trivially true of an app with no buttons at all.
+if [ "${AC_WANT:-0}" -lt 1 ]; then
+    echo "titlebar buttons     FAILED: found no setActions declaration to compare against" >&2; exit 1
+fi
+if [ "$AC_COUNT" = "$AC_WANT" ] && [ "$AC_SYMS" = "$AC_WANT" ] \
    && [ "$AC_REST" = "no" ] && [ "$AC_OVER" = "yes" ] \
    && [ -n "$AC_REST_BOX" ] && [ "$AC_REST_BOX" = "$AC_OVER_BOX" ] \
    && awk "BEGIN{exit !($AC_FIRST_X >= $AC_CHEV_MAX)}"; then
-    echo "titlebar buttons     ok: 2 symbols, hidden at rest and offered on hover, room held either way ($AC_OVER_BOX)"
+    echo "titlebar buttons     ok: $AC_WANT symbols, hidden at rest and offered on hover, room held either way ($AC_OVER_BOX)"
 else
-    echo "titlebar buttons     FAILED: a symbol is missing, the buttons never appear, or the room moves on hover" >&2
+    echo "titlebar buttons     FAILED: a button or a symbol is missing (wanted $AC_WANT), the buttons never appear, or the room moves on hover" >&2
     echo "$ACTS" >&2; exit 1
 fi
 

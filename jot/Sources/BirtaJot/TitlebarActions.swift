@@ -1,20 +1,20 @@
 import AppKit
 import BirtaJotCore
 
-/// The two file actions the titlebar draws, after the window's title.
+/// The file actions the titlebar draws, after the window's title.
 ///
-///     ◉ ◉ ◉   Jot 2026-08-25.md ⌄   ✎  📁
+///     ◉ ◉ ◉   Jot 2026-08-25.md ⌄   ✎  📁  🕐
 ///                                   └ this view ┘
 ///
-/// New Note and Open are the two things a person does to the DOCUMENT as a
-/// whole rather than to its text, and they are the two this app's menu bar is
+/// New Note, Open and Open Recent are what a person does to the DOCUMENT as a
+/// whole rather than to its text, and they are the ones this app's menu bar is
 /// worst at offering: it appears only once the app is frontmost, which a
 /// summoned panel does not always make it. There is a Dock icon to drop a file
 /// on only if `Prefs.showInDock` has been turned on, which it is not by
 /// default. So the panel that is already on screen carries them, beside the
 /// name of the file they act on.
 ///
-/// ## Why these two symbols
+/// ## Why these symbols
 ///
 /// `square.and.pencil` is the compose mark, which is what Mail and Notes put
 /// on the button that makes a new one; `doc.badge.plus` says the same thing
@@ -28,6 +28,18 @@ import BirtaJotCore
 /// which is not what this does to a file already on the disk; `arrow.up.doc`
 /// is export, pointing the wrong way entirely; `doc.text.magnifyingglass` is
 /// searching inside a document rather than choosing one.
+///
+/// `clock` is Open Recent, which is the mark the Finder's own Recents puts in
+/// its sidebar, so it is the one a reader has already been taught here.
+/// `clock.arrow.circlepath` says "history" more precisely and is three marks
+/// deep at this point size, which at eighteen points across is a smudge;
+/// `arrow.uturn.backward` is Undo everywhere else in this app's menus and
+/// would be a second meaning for a gesture that already has one.
+///
+/// It carries no disclosure chevron, though it opens a menu. There is no room
+/// for one that would not come out of the file's name, and every button in
+/// this strip is drawn as a bare symbol, so a chevron on one of the three
+/// would read as a difference in kind rather than as a promise of a menu.
 ///
 /// The one collision worth naming: a folder is also what this titlebar's path
 /// popup is a picture of (Cmd-click the title). They are different gestures in
@@ -58,7 +70,13 @@ final class TitlebarActionsView: NSView {
     /// target is easier to hit than this number suggests.
     private static let buttonWidth: CGFloat = 18
     /// What this view takes from the accessory, drawn or not.
-    static let room: CGFloat = leadingGap + buttonWidth * 2
+    ///
+    /// Derived from the buttons it was given rather than from a count written
+    /// down beside them, so adding one widens the reservation, the title's
+    /// ceiling and the drag strip's origin together. A constant here is the
+    /// version of this that goes wrong silently: the extra button draws fine
+    /// and the strip lies over it.
+    var room: CGFloat { Self.leadingGap + Self.buttonWidth * CGFloat(buttons.count) }
 
     /// The buttons, in the order they are drawn. Published so a check can walk
     /// them rather than reach for them by index.
@@ -88,7 +106,7 @@ final class TitlebarActionsView: NSView {
     }
 
     init(actions: [Action]) {
-        super.init(frame: NSRect(x: 0, y: 0, width: TitlebarActionsView.room, height: 0))
+        super.init(frame: .zero)
         for action in actions {
             let button = TitlebarActionButton(action: action)
             button.alphaValue = 0
@@ -96,6 +114,7 @@ final class TitlebarActionsView: NSView {
             addSubview(button)
             buttons.append(button)
         }
+        setFrameSize(NSSize(width: room, height: 0))
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

@@ -56,13 +56,21 @@ final class JotMenuTests: XCTestCase {
             "-", "Link…", "Link to Section…",
             "-", "Table", "Image…", "Callout",
             "-", "Math", "Footnote", "Horizontal Rule",
-            "-", "Date…", "Today", "Tomorrow", "Yesterday",
+            "-", "Date",
         ])
-        for title in ["Paragraph Style", "Lists"] {
+        for title in ["Paragraph Style", "Lists", "Date"] {
             let item = format.items.first { $0.title == title }
             XCTAssertNotNil(item?.submenu, "\(title) has no submenu")
             XCTAssertFalse(item?.submenu?.items.isEmpty ?? true, "\(title)'s submenu is empty")
         }
+    }
+
+    /// Every date the menu can insert is behind the one row that says Date, so
+    /// the Format menu names the subject once rather than four times.
+    func testTheDateSubmenuShouldHoldEveryDateRow() throws {
+        let date = try XCTUnwrap(build(.format).items.first { $0.title == "Date" }?.submenu)
+        XCTAssertEqual(titles(of: date),
+                       ["Today", "Tomorrow", "Yesterday", "-", "Choose Date…"])
     }
 
     func testASubmenuRowShouldOpenItsSubmenuAndRouteNothingElse() {
@@ -91,6 +99,42 @@ final class JotMenuTests: XCTestCase {
         XCTAssertGreaterThan(seen, 0)
     }
 
+    /// The sidebar's row, which exists at all only because the shell now
+    /// declares the `toc` capability. `menuChordParity.test.ts` is the arm that
+    /// fails if the capability is ever taken away and this row is left behind,
+    /// by asking `hostHasCommand` under Jot's own profile; this is the positive
+    /// half.
+    func testTheViewMenuShouldOfferTheTableOfContents() {
+        let item = build(.view).items.first { $0.title == "Table of Contents" }
+        XCTAssertNotNil(item)
+        XCTAssertEqual(item?.representedObject as? String, "toggleToc")
+        XCTAssertNil(item?.submenu, "one row, not a menu about the sidebar")
+    }
+
+    // MARK: open recent
+
+    func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
+        let file = build(.file)
+        XCTAssertEqual(titles(of: file), ["New Note", "Open…", "Open Recent", "Save", "Save a Copy As…"])
+        let item = file.items.first { $0.title == "Open Recent" }
+        // A submenu row and nothing else. The selector the table gives this
+        // row is for the titlebar's button; leaving it on the menu item would
+        // fire it as the reader navigated past the row into the submenu.
+        XCTAssertEqual(item?.submenu?.identifier, JotMenu.recentsMenuIdentifier)
+        XCTAssertEqual(item?.action, #selector(NSMenu.submenuAction(_:)))
+    }
+
+    func testTheRecentsRowShouldBeReachableBySelectorForTheTitlebarButton() {
+        // What the titlebar button asks for: the row it repeats, so its label
+        // and its tooltip are the menu's rather than literals beside it. The
+        // lookup admits `.app` and `.recents` rows and nothing else, so this
+        // also pins that it did not start answering command rows.
+        let row = JotMenu.row(for: #selector(AppDelegate.menuOpenRecent(_:)))
+        XCTAssertEqual(row?.title, "Open Recent")
+        XCTAssertNil(JotMenu.row(for: #selector(AppDelegate.menuRunEditorCommand(_:))),
+                     "every command row shares one selector, so none may be found this way")
+    }
+
     func testTheHeadingRowsShouldCarryTheirOwnChords() {
         let styles = build(.format).items.first { $0.title == "Paragraph Style" }?.submenu
         XCTAssertNotNil(styles)
@@ -110,26 +154,29 @@ final class JotMenuTests: XCTestCase {
         XCTAssertEqual(view.items.first { $0.title == "Font" }?.submenu?.items.count, 3)
     }
 
-    /// The View menu's tail, which is where a row the page cannot honour would
-    /// sit and look right.
-    ///
-    /// Checks holds only what the page answers by itself. Check Spelling and
-    /// Check Grammar go to a host lint engine this shell does not have, and
-    /// Focus Mode is withdrawn under `fixedToolbarLayout`; both would be rows
-    /// that light up and do nothing. `menuChordParity.test.ts` is what fails
-    /// when one of those is added back, by asking `hostHasCommand` under Jot's
-    /// own profile; this is the positive half, so a build that lost the whole
-    /// submenu cannot pass by having nothing dead in it.
+    /// The View menu carries only the checks the page answers by itself, on the
+    /// menu rather than behind a submenu. Check Spelling and Check Grammar go
+    /// to a host lint engine this shell does not have, and Focus Mode is
+    /// withdrawn under `fixedToolbarLayout`; all three would be rows that light
+    /// up and do nothing. `menuChordParity.test.ts` is what fails when one of
+    /// those is added back, by asking `hostHasCommand` under Jot's own profile;
+    /// this is the positive half, so a build that lost the rows entirely cannot
+    /// pass by having nothing dead in it.
     func testTheViewMenuShouldOfferTheChecksThePageAnswersAndNotTheOthers() throws {
         let view = build(.view)
 
-        let checks = try XCTUnwrap(view.items.first { $0.title == "Checks" }?.submenu)
-        XCTAssertEqual(titles(of: checks), ["Check Style", "Highlight Note Markers"])
-        XCTAssertNil(view.items.first { $0.title == "Focus Mode" },
-                     "Focus Mode is withdrawn on this surface")
-        for absent in ["Check Spelling", "Check Grammar"] {
-            XCTAssertNil(checks.items.first { $0.title == absent },
-                         "\(absent) needs a host lint engine this shell has none of")
+        let styleCheck = try XCTUnwrap(view.items.first { $0.title == "Check Style" })
+        XCTAssertNil(styleCheck.submenu, "the two check rows are the menu's own")
+        XCTAssertNotNil(view.items.first { $0.title == "Highlight Note Markers" })
+        // Where they sit is the point: directly after Font, which is the row
+        // above them once the separator between the two groups is drawn.
+        let rows = titles(of: view)
+        XCTAssertEqual(Array(rows.drop { $0 != "Font" }.prefix(6)),
+                       ["Font", "-", "Table of Contents", "-", "Check Style", "Highlight Note Markers"],
+                       rows.joined(separator: " "))
+        for absent in ["Focus Mode", "Checks", "Check Spelling", "Check Grammar"] {
+            XCTAssertNil(view.items.first { $0.title == absent },
+                         "\(absent) is not a row this surface can honour")
         }
     }
 
@@ -195,11 +242,12 @@ final class JotMenuTests: XCTestCase {
         XCTAssertEqual(open?.menu, .file)
         XCTAssertEqual(open?.chord, "Mod-o")
         XCTAssertEqual(open?.action.selector, #selector(AppDelegate.menuOpenDocument))
-        // Between New Note and Save, which is where every macOS File menu puts
-        // it. Asserted on the built menu rather than on the table, because the
-        // order a person reads is the one `fill` produces.
-        XCTAssertEqual(Array(titles(of: build(.file))[0..<3]),
-                       ["New Note", "Open…", "Save"])
+        // Between New Note and Open Recent, which is where every macOS File
+        // menu puts the pair, and above Save. Asserted on the built menu rather
+        // than on the table, because the order a person reads is the one `fill`
+        // produces.
+        XCTAssertEqual(Array(titles(of: build(.file))[0..<4]),
+                       ["New Note", "Open…", "Open Recent", "Save"])
     }
 
     func testARowShouldBeReachableByItsSelectorAndPrintItsOwnChord() {
@@ -257,10 +305,18 @@ final class JotMenuTests: XCTestCase {
         }
     }
 
+    /// Every item in a menu and its submenus, EXCEPT inside the recents menu.
+    ///
+    /// That one's rows are files rather than table rows, so descending into it
+    /// would make a sweep over what the table declares depend on how many notes
+    /// the machine running the tests happens to have opened, which is a check
+    /// that passes or fails for a reason that is not about the code. The row
+    /// that opens it is still returned, so the row itself is covered.
     private func allItems(of menu: NSMenu) -> [NSMenuItem] {
         menu.items.flatMap { item -> [NSMenuItem] in
-            if let submenu = item.submenu { return [item] + allItems(of: submenu) }
-            return [item]
+            guard let submenu = item.submenu else { return [item] }
+            if submenu.identifier == JotMenu.recentsMenuIdentifier { return [item] }
+            return [item] + allItems(of: submenu)
         }
     }
 }

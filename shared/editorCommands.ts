@@ -310,7 +310,10 @@ export const EDITOR_COMMANDS = [
     // because the bar is the chrome focus mode exists to take away. What was
     // left on such a surface was a row that silenced the proofread underlines
     // and moved nothing else, which reads as a command that did not fire; the
-    // underlines have a switch of their own in the Checks menu.
+    // underlines have a switch of their own in the Checks menu. The sidebar
+    // such a surface may now have does not put this back: it is one press on
+    // the bar there, and a mode that closes a control already a press away is
+    // a second name for the press.
     { id: "toggleFocusMode", title: "Toggle Focus Mode", palette: true, sections: [], absentUnder: "fixedToolbarLayout" },
     { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [], hostCapability: "toc" },
     // MAR-294: once focus is inside the review sidebar its keyboard model is

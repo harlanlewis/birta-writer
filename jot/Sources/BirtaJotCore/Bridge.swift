@@ -71,6 +71,14 @@ public enum WebviewMessage: Equatable {
     case setFontPreset(String)
     case setFontSize(Int)
     case setContentWidth(String)
+    /// The three things the table-of-contents panel remembers: whether it is
+    /// out, which edge it is docked to, and how wide it was dragged. The page
+    /// reports each as the user settles it, and a fresh page is booted back
+    /// into what it reported, so a panel the reader opened is open the next
+    /// time the window loads a file.
+    case setTocVisibility(String)
+    case setTocPosition(String)
+    case setTocWidth(Int)
     case focusState(Bool)
     case crash(message: String, source: String)
     case uploadImage(id: String, data: Data, mimeType: String, altText: String)
@@ -173,6 +181,13 @@ public enum WebviewMessage: Equatable {
         case "setFontPreset": return str("preset").map { .setFontPreset($0) } ?? .other(type: type)
         case "setFontSize": return int("size").map { .setFontSize($0) } ?? .other(type: type)
         case "setContentWidth": return str("mode").map { .setContentWidth($0) } ?? .other(type: type)
+        // The page's own spellings, which are three rather than one because
+        // these grew in the extension at different times: the panel reports
+        // its visibility as `tocVisibility`, its width as `tocWidth`, and its
+        // side as `setTocPosition`.
+        case "tocVisibility": return str("visibility").map { .setTocVisibility($0) } ?? .other(type: type)
+        case "setTocPosition": return str("position").map { .setTocPosition($0) } ?? .other(type: type)
+        case "tocWidth": return int("width").map { .setTocWidth($0) } ?? .other(type: type)
         case "focusState": return bool("focused").map { .focusState($0) } ?? .other(type: type)
         case "crash": return .crash(message: str("message") ?? "", source: str("source") ?? "")
         case "uploadImage":
@@ -427,6 +442,14 @@ public struct BootConfig: Equatable {
     public var fontPreset: String
     public var fontSize: Int
     public var contentWidth: String
+    /// The table-of-contents panel as the reader last left it: "shown",
+    /// "hidden" or "auto" for the page's own heading-count heuristic, the side
+    /// it is docked to, and its width in CSS pixels (nil for the page's
+    /// default). The page CLAMPS the width it is given, so no bound is
+    /// restated here.
+    public var tocVisibility: String
+    public var tocOnRight: Bool
+    public var tocWidth: Int?
     public var networkEnabled: Bool
     public var hostCapabilities: [String]
     /// Persisted `viewState` bag, JSON object text, or nil.
@@ -441,6 +464,9 @@ public struct BootConfig: Equatable {
                 fontPreset: String = "editor",
                 fontSize: Int = 100,
                 contentWidth: String = "full",
+                tocVisibility: String = "hidden",
+                tocOnRight: Bool = false,
+                tocWidth: Int? = nil,
                 networkEnabled: Bool = false,
                 hostCapabilities: [String] = [],
                 viewStateJSON: String? = nil,
@@ -450,9 +476,26 @@ public struct BootConfig: Equatable {
         self.fontPreset = fontPreset
         self.fontSize = fontSize
         self.contentWidth = contentWidth
+        self.tocVisibility = tocVisibility
+        self.tocOnRight = tocOnRight
+        self.tocWidth = tocWidth
         self.networkEnabled = networkEnabled
         self.hostCapabilities = hostCapabilities
         self.viewStateJSON = viewStateJSON
+    }
+
+    /// The outline panel's width, as the rule the page reads it from.
+    ///
+    /// It rides the SERVED HTML rather than the boot script, and so does the
+    /// side (`BirtaSchemeHandler.tocOnRight`), because the page reads both
+    /// while it mounts: the panel is built by the module script, which runs
+    /// after the document is parsed and before `DOMContentLoaded`, so a boot
+    /// script has no moment that is both late enough to have a document and
+    /// early enough to be read. Empty when nothing has been stored, so the page
+    /// keeps its own default rather than being handed a number this side
+    /// invented.
+    public var tocRootStyle: String {
+        tocWidth.map { ":root { --toc-width: \($0)px; }" } ?? ""
     }
 
     /// The `__i18n` object. Every consumer in the page reads it with a
@@ -517,8 +560,12 @@ public struct BootConfig: Equatable {
             "pasteUnfurl": networkEnabled,
             "calcEnabled": true,
             "calcBlocksEnabled": true,
-            // No sidebar in Jot: belt to the `toc` capability's braces.
-            "tocVisibility": "hidden",
+            // The panel as the reader last left it. A first launch gets
+            // "hidden" rather than "auto": the page's heuristic opens the
+            // sidebar once a document has a few headings, which is right for an
+            // editor pane and wrong for a window this size, where the outline
+            // is something you ask for.
+            "tocVisibility": tocVisibility,
             // Proofreading is a host capability Jot does not declare, and the
             // engine defaults ON when the snapshot is absent; the capability
             // gates the chrome, this gates the work (webview/plugins/proofread.ts).

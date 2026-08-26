@@ -3,8 +3,8 @@ import XCTest
 @testable import BirtaJot
 @testable import BirtaJotCore
 
-/// The two file buttons the titlebar draws, against a real view that has been
-/// laid out.
+/// The file buttons the titlebar draws, against a real view that has been laid
+/// out.
 ///
 /// Three things here can only be asked of the built view, and each is a way
 /// the feature fails while every model-side number stays healthy. The symbols
@@ -25,10 +25,7 @@ final class TitlebarActionsTests: XCTestCase {
     /// A title bound to a file, laid out, with the real actions wired.
     private func boundTitle(name: String = "Note.md") -> TitleBarView {
         let view = TitleBarView()
-        view.setActions([
-            .init(selector: #selector(AppDelegate.menuNewNote), symbol: "square.and.pencil"),
-            .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
-        ])
+        view.setActions(Self.shippedActions)
         view.setTextCeiling(400)
         view.show(url: URL(fileURLWithPath: "/tmp/\(name)"), edited: false)
         view.setFrameSize(NSSize(width: view.frame.width, height: TitleBarView.height))
@@ -36,27 +33,55 @@ final class TitlebarActionsTests: XCTestCase {
         return view
     }
 
+    /// The set the app actually ships, named once so every check below is
+    /// about the real strip rather than about a pair invented here.
+    private static let shippedActions: [TitlebarActionsView.Action] = [
+        .init(selector: #selector(AppDelegate.menuNewNote), symbol: "square.and.pencil"),
+        .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
+        .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
+    ]
+
     // MARK: the symbols exist
 
-    func testBothButtonsShouldResolveASystemSymbol() {
+    func testEveryButtonShouldResolveASystemSymbol() {
         let view = boundTitle()
-        XCTAssertEqual(view.actionsView.buttons.count, 2)
+        XCTAssertEqual(view.actionsView.buttons.count, Self.shippedActions.count)
         // The arm that stops everything below reporting healthily about
         // buttons that draw nothing.
-        XCTAssertEqual(view.actionsForMeasurement(hovered: true).symbols, 2,
+        XCTAssertEqual(view.actionsForMeasurement(hovered: true).symbols,
+                       Self.shippedActions.count,
                        "a system symbol name did not resolve")
     }
 
     func testEachButtonShouldTakeItsLabelAndChordFromTheMenuRowItRepeats() {
         let view = boundTitle()
         let labels = view.actionsView.buttons.map { $0.accessibilityLabel() ?? "" }
-        XCTAssertEqual(labels, ["New Note", "Open…"])
+        XCTAssertEqual(labels, ["New Note", "Open…", "Open Recent"])
         // The chord is the menu's, not a literal: a tooltip is a claim about a
-        // binding, and this is the only thing holding the two together.
+        // binding, and this is the only thing holding the two together. Open
+        // Recent binds no key, so its tooltip is the title alone rather than a
+        // title with a bare modifier string after it.
         let tips = view.actionsView.buttons.compactMap { $0.toolTip }
-        XCTAssertEqual(tips.count, 2)
+        XCTAssertEqual(tips.count, 3)
         XCTAssertTrue(tips[0].hasSuffix("⌘N"), tips[0])
         XCTAssertTrue(tips[1].hasSuffix("⌘O"), tips[1])
+        XCTAssertEqual(tips[2], "Open Recent")
+    }
+
+    // MARK: the reservation follows the buttons
+
+    func testTheRoomHeldShouldGrowWithTheNumberOfButtons() {
+        // The constant this replaced was a literal `* 2`, which drew a third
+        // button correctly and left the drag strip lying over it, because the
+        // strip's origin is the accessory's trailing edge. Asserted as the
+        // difference one button makes, so it stays true when the box is tuned.
+        let two = TitlebarActionsView(actions: Array(Self.shippedActions.prefix(2)))
+        let three = TitlebarActionsView(actions: Self.shippedActions)
+        XCTAssertGreaterThan(three.room, two.room)
+        XCTAssertEqual(three.room - two.room, two.room - TitlebarActionsView(actions: [Self.shippedActions[0]]).room)
+        // And the view is BUILT at the room it reports, or its own layout and
+        // the window's measurement of it start from different numbers.
+        XCTAssertEqual(three.frame.width, three.room)
     }
 
     // MARK: geometry does not move under the pointer
@@ -100,7 +125,7 @@ final class TitlebarActionsTests: XCTestCase {
             let ceiling = TitlebarBand.titleTextCeiling(
                 windowWidth: windowWidth,
                 titleOriginX: originX,
-                titleChromeWidth: TitleBarView.chromeWidth,
+                titleChromeWidth: boundTitle().chromeWidth,
                 trailingControlsWidth: controls)
             let view = boundTitle(name: "A deliberately long note name to run past the ceiling.md")
             view.setTextCeiling(ceiling)
@@ -128,7 +153,8 @@ final class TitlebarActionsTests: XCTestCase {
             XCTAssertLessThanOrEqual(frame.maxX, view.bounds.width + 0.5,
                                      "a button is drawn outside the accessory")
         }
-        XCTAssertLessThan(frames[0].minX, frames[1].minX, "New Note should come first, as it does in the File menu")
+        XCTAssertEqual(frames.map(\.minX), frames.map(\.minX).sorted(),
+                       "the buttons should be drawn in the order the File menu lists them")
     }
 
     // MARK: clicks
@@ -169,7 +195,7 @@ final class TitlebarActionsTests: XCTestCase {
             XCTAssertNil(button.target, "a target pins the click to one object and leaves the chain")
             button.performClick(nil)
         }
-        XCTAssertEqual(spy.received, ["menuNewNote", "menuOpenDocument"])
+        XCTAssertEqual(spy.received, ["menuNewNote", "menuOpenDocument", "menuOpenRecent"])
     }
 
     func testTheNameShouldStillTakeItsOwnClick() {
@@ -188,10 +214,7 @@ final class TitlebarActionsTests: XCTestCase {
         // Note and Open are both refused there (`AppDelegate.documentCommands`),
         // and this is the surface that would otherwise still be offering them.
         let view = TitleBarView()
-        view.setActions([
-            .init(selector: #selector(AppDelegate.menuNewNote), symbol: "square.and.pencil"),
-            .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
-        ])
+        view.setActions(Self.shippedActions)
         view.setTextCeiling(400)
         view.showAppName("Birta Writer")
         view.layoutSubtreeIfNeeded()
@@ -246,4 +269,5 @@ private final class ActionSpy: NSObject, NSApplicationDelegate {
     var received: [String] = []
     @objc func menuNewNote() { received.append("menuNewNote") }
     @objc func menuOpenDocument() { received.append("menuOpenDocument") }
+    @objc func menuOpenRecent(_ sender: Any?) { received.append("menuOpenRecent") }
 }

@@ -33,10 +33,11 @@ export const TOOLBAR_ITEM_IDS = [
     "clearFormatting",
     "readOnly",
     "viewSource",
-    "find",
     "styleCheck",
+    "find",
     "fontPreset",
     "settings",
+    "toc",
 ] as const;
 
 export type ToolbarItemId = (typeof TOOLBAR_ITEM_IDS)[number];
@@ -89,10 +90,14 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     // with this file right now").
     readOnly: "hidden",
     viewSource: "right",
-    find: "right",
     styleCheck: "right",
+    find: "right",
     fontPreset: "right",
     settings: "right",
+    // Last in canonical order, so it is the bar's trailing control on every
+    // surface: the sidebar is not one of the document's own controls, and the
+    // outer edge is where a window puts the thing that opens a panel beside it.
+    toc: "right",
 };
 
 /**
@@ -128,10 +133,11 @@ export const ITEM_MUTATES: Record<ToolbarItemId, boolean> = {
     // gear all leave the document alone.
     readOnly: false,
     viewSource: false,
-    find: false,
     styleCheck: false,
+    find: false,
     fontPreset: false,
     settings: false,
+    toc: false,
 };
 
 /**
@@ -164,10 +170,11 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
     clearFormatting: ["clearFormatting"],
     readOnly: ["toggleReadOnly"],
     viewSource: ["editRawMarkdown"],
-    find: ["openFind"],
     styleCheck: ["toggleSpellCheck", "toggleGrammarCheck", "toggleStyleCheck", "toggleNoteHighlights"],
+    find: ["openFind"],
     fontPreset: ["contentWidthFull", "contentWidthFixed", "fontEditor", "fontSans", "fontSerif", "fontMono", "increaseFontSize", "decreaseFontSize"],
     settings: ["openExtensionSettings", "openHostPreferences", "customizeToolbar", "hideToolbar", "openKeyboardShortcuts", "openWhatsNew"],
+    toc: ["toggleToc"],
 };
 
 /**
@@ -210,13 +217,14 @@ export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> 
     clearFormatting: null,
     readOnly: "readOnlyMode",
     viewSource: "textEditor",
-    find: null,
     // Mixed, and so null: Check Spelling and Check Grammar need a host lint
     // engine, and Check Style, the style sub-checks and Highlight Note Markers
     // are answered by the page. `checksMenu.ts` filters the two.
     styleCheck: null,
+    find: null,
     fontPreset: null,
     settings: null,
+    toc: "toc",
 };
 
 /**

@@ -77,12 +77,25 @@ enum JotMenu {
         case link(AboutLink)
         /// A row that opens a submenu holding the rows that name it.
         case submenu
+        /// A row that opens a submenu whose CONTENTS are not in this table,
+        /// because they are not fixed: the files opened lately.
+        ///
+        /// The table still owns the row, its title and its place in the menu,
+        /// which is what keeps this from being a menu built somewhere else.
+        /// `RecentsMenu` fills itself, so neither this table nor the surface
+        /// that raised it has to remember to. The selector below is what a
+        /// control OUTSIDE the menu bar sends to raise the same list: the
+        /// titlebar's recents button is that control, and it finds this row
+        /// through `row(for:)` for its label exactly as the other two buttons
+        /// find theirs.
+        case recents
 
         var selector: Selector? {
             switch self {
             case let .app(selector): return selector
             case .command: return #selector(AppDelegate.menuRunEditorCommand(_:))
             case .link: return #selector(AppDelegate.menuOpenLink(_:))
+            case .recents: return #selector(AppDelegate.menuOpenRecent(_:))
             case .submenu: return nil
             }
         }
@@ -93,7 +106,7 @@ enum JotMenu {
             switch self {
             case let .command(id): return id
             case let .link(link): return link.url
-            case .app, .submenu: return nil
+            case .app, .submenu, .recents: return nil
             }
         }
 
@@ -103,11 +116,15 @@ enum JotMenu {
             return nil
         }
 
-        /// Whether this row only opens a submenu, so the count of them can be
-        /// derived from the table rather than written down beside it.
+        /// Whether this row opens a submenu, so the count of them can be
+        /// derived from the table rather than written down beside it. True of
+        /// `.recents` as well: what differs there is where the ROWS come from,
+        /// not whether the item is a disclosure.
         var opensSubmenu: Bool {
-            if case .submenu = self { return true }
-            return false
+            switch self {
+            case .submenu, .recents: return true
+            case .app, .command, .link: return false
+            }
         }
     }
 
@@ -174,6 +191,10 @@ enum JotMenu {
     /// The rows, in menu order within each menu and submenu.
     static let rows: [Row] = appRows + fileRows + editRows + formatRows + viewRows + helpRows
 
+    /// What the recents submenu answers to, so a check can find it in a built
+    /// menu without matching on a title a translation could change.
+    static let recentsMenuIdentifier = NSUserInterfaceItemIdentifier("com.birtalabs.jot.openRecent")
+
     /// The `.app` row that runs `selector`, for a control outside the menu bar
     /// that performs the same action.
     ///
@@ -184,16 +205,19 @@ enum JotMenu {
     /// must handle rather than force, because that is exactly the state a
     /// deleted row leaves behind.
     ///
-    /// `.app` rows ONLY, and the restriction is what makes the answer mean
-    /// anything: every `.command` row shares one selector
-    /// (`menuRunEditorCommand`), so a lookup that admitted them would answer
-    /// any command at all with whichever row happens to be first, confidently
-    /// and wrongly. An editor command's chord is `commandChords`' question on
-    /// the page side.
+    /// Rows with a selector OF THEIR OWN, which is `.app` and `.recents`, and
+    /// the restriction is what makes the answer mean anything: every
+    /// `.command` row shares one selector (`menuRunEditorCommand`), so a lookup
+    /// that admitted them would answer any command at all with whichever row
+    /// happens to be first, confidently and wrongly. An editor command's chord
+    /// is `commandChords`' question on the page side.
     static func row(for selector: Selector) -> Row? {
         rows.first { row in
-            guard case .app(let bound) = row.action else { return false }
-            return bound == selector
+            switch row.action {
+            case let .app(bound): return bound == selector
+            case .recents: return row.action.selector == selector
+            case .command, .link, .submenu: return false
+            }
         }
     }
 
@@ -211,6 +235,7 @@ enum JotMenu {
               action: .app(#selector(AppDelegate.menuNewNote)), menu: .file),
         .init(title: "Open…", key: "o", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuOpenDocument)), menu: .file),
+        .init(title: "Open Recent", action: .recents, menu: .file),
         .init(title: "Save", key: "s", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuSaveNow)), menu: .file),
         .init(title: "Save a Copy As…", key: "s", modifiers: [.command, .shift],
@@ -253,7 +278,9 @@ enum JotMenu {
     /// reader who wants a table should not have to know it was filed under
     /// formatting first. Paragraph Style and Lists stay submenus because each
     /// is one question with many answers, and a flat list of every heading
-    /// level is a menu nobody reads to the bottom of.
+    /// level is a menu nobody reads to the bottom of. Date is the third of
+    /// them: four rows that answer "which date", one of which opens a picker
+    /// for the dates the other three do not name.
     private static let formatRows: [Row] = [
         .init(title: "Bold", key: "b", modifiers: [.command],
               action: .command("toggleBold"), menu: .format, group: 0),
@@ -321,14 +348,15 @@ enum JotMenu {
               action: .command("insertFootnote"), menu: .format, group: 6),
         .init(title: "Horizontal Rule",
               action: .command("insertHorizontalRule"), menu: .format, group: 6),
-        .init(title: "Date…",
-              action: .command("insertDate"), menu: .format, group: 7),
+        .init(title: "Date", action: .submenu, menu: .format, group: 7),
         .init(title: "Today",
-              action: .command("insertToday"), menu: .format, group: 7),
+              action: .command("insertToday"), menu: .format, submenu: "Date", group: 0),
         .init(title: "Tomorrow",
-              action: .command("insertTomorrow"), menu: .format, group: 7),
+              action: .command("insertTomorrow"), menu: .format, submenu: "Date", group: 0),
         .init(title: "Yesterday",
-              action: .command("insertYesterday"), menu: .format, group: 7),
+              action: .command("insertYesterday"), menu: .format, submenu: "Date", group: 0),
+        .init(title: "Choose Date…",
+              action: .command("insertDate"), menu: .format, submenu: "Date", group: 1),
     ]
 
     // MARK: view
@@ -337,16 +365,24 @@ enum JotMenu {
     /// says: the zoom trio macOS puts at the top of every View menu, the
     /// content font, folding, and the advisory marks drawn over the text.
     ///
-    /// Checks holds the two the page answers by itself. Check Spelling and
-    /// Check Grammar are absent because they are lints posted to a host engine
-    /// this shell does not have, and `hostHasCommand` withdraws them from the
-    /// toolbar's own menu for the same reason.
+    /// The two check rows are the ones the page answers by itself, and they sit
+    /// on the menu rather than in a submenu of their own: a submenu is a
+    /// promise of more than fits, and two rows behind a disclosure cost a
+    /// gesture to reach and a second to read. Check Spelling and Check Grammar
+    /// are absent because they are lints posted to a host engine this shell
+    /// does not have, and `hostHasCommand` withdraws them from the toolbar's
+    /// own menu for the same reason.
+    ///
+    /// Table of Contents is one row rather than a Show/Hide pair, because this
+    /// table has no way to retitle a row from what the page currently shows;
+    /// the toolbar's own button carries the state, by the classes the panel
+    /// sets on itself.
     ///
     /// Focus Mode is absent, and the withdrawal is declared on the command
     /// rather than by leaving the row out here: `absentUnder` takes it from
     /// this menu, the toolbar and the palette together. The panel's bar cannot
-    /// be hidden and it has no table of contents, so the row silenced the
-    /// proofread underlines and moved nothing a reader could see.
+    /// be hidden, so what the mode moved here was the proofread underlines and
+    /// nothing else a reader could see.
     ///
     /// The zoom chords are the one place Jot deliberately parts from the
     /// extension, and the reason is recorded in `menuChordParity.test.ts`:
@@ -372,20 +408,22 @@ enum JotMenu {
         .init(title: "Monospace",
               action: .command("fontMono"), menu: .view, submenu: "Font", group: 0),
 
-        .init(title: "Fold", key: "[", modifiers: [.command, .option],
-              action: .command("fold"), menu: .view, group: 2),
-        .init(title: "Unfold", key: "]", modifiers: [.command, .option],
-              action: .command("unfold"), menu: .view, group: 2),
-        .init(title: "Fold All",
-              action: .command("foldAll"), menu: .view, group: 2),
-        .init(title: "Unfold All",
-              action: .command("unfoldAll"), menu: .view, group: 2),
+        .init(title: "Table of Contents",
+              action: .command("toggleToc"), menu: .view, group: 2),
 
-        .init(title: "Checks", action: .submenu, menu: .view, group: 3),
         .init(title: "Check Style",
-              action: .command("toggleStyleCheck"), menu: .view, submenu: "Checks", group: 0),
+              action: .command("toggleStyleCheck"), menu: .view, group: 3),
         .init(title: "Highlight Note Markers",
-              action: .command("toggleNoteHighlights"), menu: .view, submenu: "Checks", group: 0),
+              action: .command("toggleNoteHighlights"), menu: .view, group: 3),
+
+        .init(title: "Fold", key: "[", modifiers: [.command, .option],
+              action: .command("fold"), menu: .view, group: 4),
+        .init(title: "Unfold", key: "]", modifiers: [.command, .option],
+              action: .command("unfold"), menu: .view, group: 4),
+        .init(title: "Fold All",
+              action: .command("foldAll"), menu: .view, group: 4),
+        .init(title: "Unfold All",
+              action: .command("unfoldAll"), menu: .view, group: 4),
     ]
 
     // MARK: help
@@ -475,7 +513,17 @@ enum JotMenu {
             let item = nsMenu.addItem(withTitle: row.title, action: row.action.selector,
                                       keyEquivalent: row.key)
             item.keyEquivalentModifierMask = row.modifiers
-            if case .submenu = row.action {
+            if case .recents = row.action {
+                // A menu that fills itself, rather than rows built from this
+                // table: the list changes as files are opened, and a submenu
+                // filled once here would be the list as it stood when the menu
+                // bar was created. The action is cleared because the row's job
+                // in a MENU is to open its submenu; the selector it carries is
+                // for the titlebar button, which has no submenu to open.
+                item.action = nil
+                item.target = nil
+                item.submenu = RecentsMenu()
+            } else if case .submenu = row.action {
                 let sub = NSMenu(title: row.title)
                 fill(sub, with: Self.rows.filter { $0.menu == menu && $0.submenu == row.title },
                      menu: menu, target: target)
