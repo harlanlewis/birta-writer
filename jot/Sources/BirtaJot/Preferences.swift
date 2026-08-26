@@ -57,6 +57,12 @@ enum Prefs {
         case updateDeclinedTag
         case lastNotesDirectory
         case lastScratchpadFile
+        case tocVisibility
+        case tocOnRight
+        case tocWidth
+        case recentDocuments
+        case proofreadOptions
+        case styleExceptions
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -361,6 +367,97 @@ enum Prefs {
     static var contentWidth: String {
         get { d.string(forKey: Key.contentWidth.rawValue) ?? defaultContentWidth }
         set { d.set(newValue, forKey: Key.contentWidth.rawValue) }
+    }
+
+    /// The Checks menu's answers, by the page's own option key.
+    ///
+    /// Stored opaquely: the keys are the page's vocabulary
+    /// (`ProofreadOptionKey`), and the one of them whose name differs from its
+    /// config field is translated in the page, where that mapping already
+    /// lives. Nothing here knows what a key means, which is deliberate, because
+    /// a shell that thought it knew is what switched this whole feature off for
+    /// as long as it did (`initialConfig` in webview/plugins/proofread.ts).
+    ///
+    /// Only what the reader has CHANGED is kept, so a default that moves later
+    /// moves for everyone who never touched the row.
+    static var proofreadOptions: [String: Bool] {
+        get { (d.dictionary(forKey: Key.proofreadOptions.rawValue) as? [String: Bool]) ?? [:] }
+        set { d.set(newValue, forKey: Key.proofreadOptions.rawValue) }
+    }
+
+    /// Phrases the reader has claimed as their own, in the order they claimed
+    /// them. No cap: a person adds these one at a time, by hand, on a phrase
+    /// they wrote, so the list is bounded by how much writing they have done.
+    static var styleExceptions: [String] {
+        get { (d.array(forKey: Key.styleExceptions.rawValue) as? [String]) ?? [] }
+        set { d.set(newValue, forKey: Key.styleExceptions.rawValue) }
+    }
+
+    /// Keep one phrase, unless it is already kept.
+    static func rememberStyleException(_ phrase: String) {
+        var kept = styleExceptions
+        guard !kept.contains(phrase) else { return }
+        kept.append(phrase)
+        styleExceptions = kept
+    }
+
+    /// Record one row of the Checks menu.
+    static func rememberProofreadOption(key: String, value: Bool) {
+        var options = proofreadOptions
+        options[key] = value
+        proofreadOptions = options
+    }
+
+    /// The files the app has been pointed at lately, newest first.
+    ///
+    /// Paths rather than bookmarks, matching every other file this app
+    /// remembers (`documentPath`, `currentNotePath`, `scratchpadPath`). A
+    /// bookmark would follow a file that moved, which is the better answer and
+    /// a different one from the rest of this file's; a row whose file has gone
+    /// is simply not drawn (`RecentFiles.rows`).
+    ///
+    /// Bounded on the way IN rather than on the way out, so nothing here can
+    /// grow without limit whatever a later reader does with it.
+    static var recentDocuments: [URL] {
+        get { (d.array(forKey: Key.recentDocuments.rawValue) as? [String] ?? []).map { URL(fileURLWithPath: $0) } }
+        set {
+            d.set(Array(newValue.prefix(RecentFiles.capacity)).map(\.path),
+                  forKey: Key.recentDocuments.rawValue)
+        }
+    }
+
+    /// Put `url` at the front of the list.
+    static func rememberRecent(_ url: URL) {
+        recentDocuments = RecentFiles.recording(url, into: recentDocuments)
+    }
+
+    /// The outline panel as the reader last left it, so a page load puts it
+    /// back rather than starting from a rule of this app's own.
+    ///
+    /// A memory of the window rather than a setting, which is why none of the
+    /// three is in Settings: each has a control on the panel itself (the hide
+    /// button, the flip arrows, the drag handle), and a control whose result
+    /// the next launch throws away is a control that half works.
+    ///
+    /// "hidden" is the first-launch answer. The page's other value, "auto",
+    /// opens the sidebar once a document has enough headings, which is a good
+    /// rule for an editor pane and the wrong one for a window this size.
+    static var tocVisibility: String {
+        get { d.string(forKey: Key.tocVisibility.rawValue) ?? "hidden" }
+        set { d.set(newValue, forKey: Key.tocVisibility.rawValue) }
+    }
+
+    static var tocOnRight: Bool {
+        get { d.bool(forKey: Key.tocOnRight.rawValue) }
+        set { d.set(newValue, forKey: Key.tocOnRight.rawValue) }
+    }
+
+    /// Nil until the reader has dragged the panel's edge, so the page keeps its
+    /// own default width until then. The page clamps whatever it is given, so
+    /// its bounds are not restated here.
+    static var tocWidth: Int? {
+        get { d.object(forKey: Key.tocWidth.rawValue) == nil ? nil : d.integer(forKey: Key.tocWidth.rawValue) }
+        set { d.set(newValue, forKey: Key.tocWidth.rawValue) }
     }
 
     static var viewStateJSON: String? {
@@ -722,6 +819,11 @@ enum Prefs {
             fontPreset: fontPreset,
             fontSize: fontSize,
             contentWidth: contentWidth,
+            proofreadOptions: proofreadOptions,
+            styleExceptions: styleExceptions,
+            tocVisibility: tocVisibility,
+            tocOnRight: tocOnRight,
+            tocWidth: tocWidth,
             networkEnabled: networkEnabled,
             // HOST_PROFILES.jot in shared/hostProfile.ts is the source;
             // Swift cannot import it, so this literal restates it and
@@ -738,7 +840,7 @@ enum Prefs {
             // provides, and with `/ai` switched off, or with no command to
             // run, this host provides no agent. `BootConfigTests` holds both
             // arms.
-            hostCapabilities: ["imageUpload", "appPreferences", "agent"]
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
                 .filter { $0 != "agent" || agentAvailable },
             viewStateJSON: viewStateJSON,
             hostShortcuts: JotMenu.shortcuts

@@ -394,12 +394,6 @@
     color: var(--vscode-foreground);
 }
 
-/* Gate off: dim the Checks toolbar button so a globally-disabled proofreading
-   pass is visible at a glance (no underlines otherwise reads as clean text). */
-.tb-checks-btn--off {
-    opacity: 0.5;
-}
-
 /* Disk-drift badge: the file on disk changed while you have unsaved edits.
    Rendered in the editor's warning color — the one state on this bar that
    genuinely warns (a manual save would hit VS Code's "newer on disk" dialog);
@@ -998,4 +992,40 @@ body.toolbar-hidden .toolbar-toggle-tab {
     background: var(--vscode-list-hoverBackground);
     border-color: var(--vscode-panel-border);
     border-top: none;
+}
+
+/* ─── Table of contents toggle ─── */
+/* The bar's trailing control, and the only one that acts on the window rather
+   than on the file. The rule before it is what says so, drawn on the item
+   itself rather than as a node of its own so it travels with the button when a
+   zone is re-rendered or the item is dragged elsewhere.
+
+   Scoped to the right zone, which is where the claim it makes is true: among
+   the editing controls in the left zone there is nothing for a divider to
+   divide, and in the customize tray and the ⋯ panel the item is a chip in a
+   list rather than the end of a bar.
+
+   A structural `:first-child` guard is deliberately NOT here, because it would
+   never fire and would read as though it did: the layout controller pins the
+   two status badges into the front of this zone on every render, hidden or
+   not, so no placed item is ever this zone's first child. */
+.tb-zone--right > .tb-item[data-item-id="toc"] {
+    padding-left: 5px;
+    margin-left: 3px;
+    border-left: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border) 55%, transparent);
+}
+
+/* Pressed WHILE the panel is out, keyed off the classes the panel itself sets
+   to position (see components/toc). The button holds no copy of that state, so
+   it cannot come to disagree with the panel it opens. */
+body:is(.toc-open, .toc-overlay-open) .tb-toc-btn {
+    background: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
+}
+
+/* One glyph for both docks: the sidebar mark is symmetric about its own centre,
+   so the right-hand dock is the left-hand one mirrored. Drawing it this way
+   keeps the button's side and the panel's side reading from a single fact. */
+body.toc-right .tb-toc-btn svg {
+    transform: scaleX(-1);
 }

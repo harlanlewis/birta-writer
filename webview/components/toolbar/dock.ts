@@ -30,7 +30,7 @@
  *     collapsed   [T] in the top bar, no second row
  *     expanded    [T] in the top bar, and P⌄ B I ⋯ below it
  *
- * The toggle sits in the TOP BAR, beside Find, rather than at the head of the
+ * The toggle sits at the head of the TOP BAR, rather than at the head of the
  * row it opens. A control that opens a row cannot live in that row: collapsed,
  * it would be the only thing on it, so the bar would keep a row's worth of
  * height to hold one button and the row would never really be gone.

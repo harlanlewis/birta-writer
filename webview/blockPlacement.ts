@@ -174,7 +174,6 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     contentWidthFull: NONE,
     contentWidthFixed: NONE,
     toggleReadOnly: NONE,
-    toggleFocusMode: NONE,
 
     // ── Typography preferences ──────────────────────────────────────────────
     fontEditor: NONE,

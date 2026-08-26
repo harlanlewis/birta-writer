@@ -227,6 +227,58 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(ToolbarLayout.fromJSON("{bad"), ToolbarLayout())
     }
 
+    /// The outline panel's three memories, which the page reads from three
+    /// different places: the visibility from `__i18n`, the width from a CSS
+    /// rule in the served HTML, and the side from a class on the body tag
+    /// (`BirtaSchemeHandler.renderPage`, checked in `WebHostPageTests`).
+    ///
+    /// The width is here rather than in the boot script deliberately, and the
+    /// negative case is the one that matters: a default install has never
+    /// dragged the panel's edge, so the rule must be ABSENT rather than a
+    /// number this side chose, or the page's own default is overridden by a
+    /// value nobody set.
+    func testTheOutlinePanelsMemoriesShouldReachThePageOnTheirOwnChannels() {
+        XCTAssertEqual(BootConfig().tocRootStyle, "", "an untouched panel gets no width rule")
+        XCTAssertEqual(BootConfig(tocWidth: 320).tocRootStyle, ":root { --toc-width: 320px; }")
+        XCTAssertEqual(BootConfig(tocVisibility: "shown").i18nObject()["tocVisibility"] as? String, "shown")
+        // The width does NOT travel in the boot script; a copy there would be a
+        // second source for one fact, and the one that loses is whichever runs
+        // last.
+        XCTAssertFalse(BootConfig(tocWidth: 320).userScript(themeClass: "vscode-dark").contains("--toc-width"))
+    }
+
+    /// What the reader has said about the Checks, handed back at the next page
+    /// load, which this window does on every file it opens.
+    ///
+    /// The shape is the point. The OPTIONS go back under the page's own option
+    /// keys, untranslated, because the one key whose name differs from its
+    /// config field is the page's to translate and a copy of that mapping here
+    /// is what went stale before. The EXCEPTIONS go back as a config field,
+    /// because they are a list the reader built rather than a decision about
+    /// which checks this surface can run.
+    func testBootConfigShouldHandBackTheChecksAnswersAndNothingElseAboutThem() {
+        let cfg = BootConfig(proofreadOptions: ["proofreading": false, "fillers": true],
+                             styleExceptions: ["ours to keep"])
+        let i18n = cfg.i18nObject()
+        XCTAssertEqual(i18n["proofreadOptions"] as? [String: Bool],
+                       ["proofreading": false, "fillers": true])
+        XCTAssertEqual((i18n["proofread"] as? [String: [String]])?["styleExceptions"],
+                       ["ours to keep"])
+        // No computed config beside them, and `proofreadingEnabled` above all:
+        // sending one is what held the whole pass off on this surface.
+        let proofread = i18n["proofread"] as? [String: Any]
+        XCTAssertEqual(proofread?.keys.sorted(), ["styleExceptions"])
+        XCTAssertNil(proofread?["proofreadingEnabled"])
+    }
+
+    func testAnUntouchedInstallShouldHandBackNoChecksAnswersAtAll() {
+        // Empty rather than absent is fine for both, and the page treats them
+        // the same; what must not appear is a value this side invented.
+        let i18n = BootConfig().i18nObject()
+        XCTAssertEqual((i18n["proofreadOptions"] as? [String: Bool])?.isEmpty, true)
+        XCTAssertEqual((i18n["proofread"] as? [String: [String]])?["styleExceptions"], [])
+    }
+
     func testBootConfigCarriesJotDecisionsAndTheShim() {
         let cfg = BootConfig(toolbarJSON: #"{"placements":{"bold":"hidden"},"order":[],"visible":true}"#,
                              networkEnabled: false, hostCapabilities: [], viewStateJSON: #"{"scrollY":1}"#)
@@ -236,7 +288,12 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(i18n["embedsEnabled"] as? Bool, false)
         XCTAssertEqual(i18n["calcEnabled"] as? Bool, true)
         XCTAssertEqual(i18n["tocVisibility"] as? String, "hidden")
-        XCTAssertEqual((i18n["proofread"] as? [String: Bool])?["proofreadingEnabled"], false)
+        // The proofread blob carries the kept phrases and NOTHING about which
+        // checks can run: that is decided by the page from the capabilities
+        // above. A computed config here would be a second declarer of it, which
+        // is what held the whole pass off on this surface for as long as it
+        // existed, by testing a capability name that had been renamed away.
+        XCTAssertNil((i18n["proofread"] as? [String: Any])?["proofreadingEnabled"])
         // The host's own facts live under one key, not scattered among the
         // user's settings beside them (shared/hostProfile.ts).
         let host = i18n["host"] as? [String: Any]

@@ -82,9 +82,18 @@ export type HostCapability =
      * which is why neither is gated on this and both work on every surface.
      *
      * Conflating them is the mistake this name records: one gate over all four
-     * rows withdrew the whole Checks menu from a host with no lint engine, and
-     * the style check went on drawing its underlines there with no control
-     * anywhere to turn them off.
+     * rows withdrew the whole Checks menu from a host with no lint engine, so
+     * a surface that could run the style check perfectly well was offered no
+     * control over it.
+     *
+     * The rename that split them left a second copy of the old name behind, in
+     * Swift, where nothing compares a string to this union: the shell went on
+     * testing its capabilities for `proofreading` and getting false forever
+     * after. That held the master gate off, so on that surface the style check
+     * drew nothing at all and the Checks menu opened with its body missing.
+     * `initialConfig` in webview/plugins/proofread.ts owns the decision now,
+     * because `hostHas` is the one reader, and `hostProfile.test.ts` fails on a
+     * capability name spelled in Swift that is not in this union.
      */
     | "spellAndGrammar"
     /** An owner for read-only mode (the `birta.readOnly` seed and its toggle). */
@@ -193,7 +202,7 @@ export const HOST_PROFILES = {
     // and the e2e Jot page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    jot: ["imageUpload", "appPreferences", "agent"] as readonly HostCapability[],
+    jot: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

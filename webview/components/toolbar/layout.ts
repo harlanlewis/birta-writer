@@ -58,12 +58,6 @@ export interface ToolbarLayout {
     startCustomize: () => void;
     /** Show or hide the whole bar, writing the setting through. */
     setToolbarVisible: (visible: boolean) => void;
-    /**
-     * Show or hide the bar WITHOUT persisting `toolbar.visible`. Focus mode's
-     * half of the pair (MAR-72): it restores the prior state on exit, so a
-     * write here would make a temporary view into a preference change.
-     */
-    applyToolbarVisible: (visible: boolean) => void;
     isVisible: () => boolean;
     /** Show or hide the debug dropdown. */
     setDebugMode: (enabled: boolean) => void;
@@ -80,9 +74,6 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
 
     const toolbar = document.createElement("div");
     toolbar.className = "toolbar";
-
-    // TOC toggling lives on the panel's edge tab; undo/redo stay on their
-    // keyboard shortcuts — neither needs a toolbar button.
 
     // ── Placement zones ──
     // Items are assigned to a zone (or hidden) by the per-item
@@ -328,15 +319,15 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             rightZone.replaceChildren();
             moreMenu.replaceChildren();
             dock.render(docked);
+            // The row's toggle leads the top bar, ahead of every item the
+            // partition placed. It is not one of them: it belongs to the row
+            // below rather than to the set of controls that read the document,
+            // so it sits at the head of the group instead of somewhere inside
+            // an order that is the partition's to decide.
+            rightZone.appendChild(dock.toggle);
             for (const id of topBar) {
                 const el = items[id];
                 if (el) { rightZone.appendChild(el); }
-                // The row's toggle rides directly in front of Find, so the two
-                // controls that open something sit together. Placed by the
-                // item it follows rather than at an index, because the zone's
-                // contents are the partition's to decide and an index would be
-                // a second, silent claim about that order.
-                if (id === "find") { rightZone.insertBefore(dock.toggle, el ?? null); }
             }
             renderPinned();
             return;
@@ -403,15 +394,6 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         toolbar,
         startCustomize,
         setToolbarVisible,
-        applyToolbarVisible: (visible: boolean) => {
-            // Focus mode's half of the pair, and inert under a fixed layout for
-            // a reason that is about the way BACK rather than about the way
-            // out: there is no reveal tab on this surface, because there is no
-            // hidden-toolbar state for one to answer, so a session-level hide
-            // would leave search and settings unreachable until the mode was
-            // toggled off from somewhere else.
-            if (!layoutIsFixed && visible !== toolbarVisible) { applyVisibility(visible); }
-        },
         isVisible: () => toolbarVisible,
         setDebugMode(enabled: boolean): void {
             debugVisible = enabled;

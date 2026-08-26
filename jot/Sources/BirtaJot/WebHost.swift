@@ -27,6 +27,14 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     }
     /// The theme class for the initial paint; the host updates it before every reload.
     var themeClass = "vscode-light"
+    /// The outline panel's side, as a body class, and its width, as a rule.
+    ///
+    /// Both ride the served HTML rather than the boot script, for the reason
+    /// `BootConfig.tocRootStyle` gives: the page reads them while it mounts,
+    /// and no moment a document-start script has is both late enough to have a
+    /// document and early enough to be read.
+    var tocOnRight = false
+    var tocRootStyle = ""
     /// Whether the page may reach the network (Preferences opt-in).
     var networkEnabled = false
 
@@ -127,7 +135,9 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     func renderPage(_ template: String) -> String {
         template
             .replacingOccurrences(of: "{{CSP}}", with: csp())
-            .replacingOccurrences(of: "{{THEME_CLASS}}", with: themeClass)
+            .replacingOccurrences(of: "{{THEME_CLASS}}",
+                                  with: tocOnRight ? "\(themeClass) toc-right" : themeClass)
+            .replacingOccurrences(of: "{{ROOT_STYLE}}", with: tocRootStyle)
     }
 }
 
@@ -159,9 +169,14 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
 
     /// (Re)load the page with a fresh boot script.
     func load(themeClass: String) {
+        // One read of the boot config, because two would let the body tag and
+        // the boot script describe different panels.
+        let boot = bootConfig()
         schemeHandler.themeClass = themeClass
+        schemeHandler.tocOnRight = boot.tocOnRight
+        schemeHandler.tocRootStyle = boot.tocRootStyle
         controller.removeAllUserScripts()
-        let script = WKUserScript(source: bootConfig().userScript(themeClass: themeClass),
+        let script = WKUserScript(source: boot.userScript(themeClass: themeClass),
                                   injectionTime: .atDocumentStart, forMainFrameOnly: true)
         controller.addUserScript(script)
         webView.load(URLRequest(url: BirtaSchemeHandler.pageURL))

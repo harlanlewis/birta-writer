@@ -1,0 +1,68 @@
+import AppKit
+import XCTest
+@testable import BirtaJot
+@testable import BirtaJotCore
+
+/// The page as it is SERVED, which is the only place three of the panel's boot
+/// facts exist.
+///
+/// The CSP, the outline panel's width and its side are template placeholders
+/// rather than anything the boot script sets, because the page reads all three
+/// while it mounts. That makes the template the seam, and a placeholder is the
+/// kind of thing that fails silently: an unfilled `{{ROOT_STYLE}}` is not an
+/// error anywhere, it is a line of nonsense in the page's stylesheet that the
+/// browser drops, and everything downstream goes on looking correct.
+@MainActor
+final class WebHostPageTests: XCTestCase {
+    /// The real template, so this is about the page that ships rather than a
+    /// string written here. A stub would pass with the placeholder deleted from
+    /// the file, which is exactly the change this exists to catch.
+    private func template() throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // BirtaJotTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // jot
+            .appendingPathComponent("Resources/index.html")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func handler() -> BirtaSchemeHandler {
+        BirtaSchemeHandler(webRoot: URL(fileURLWithPath: "/tmp"), documentDirectory: nil)
+    }
+
+    func testTheServedPageShouldCarryNoUnfilledPlaceholder() throws {
+        let source = try template()
+        // The template really does have placeholders left to fill, or the
+        // assertion below is about a string with nothing in it.
+        XCTAssertTrue(source.contains("{{"), "the template has no placeholders; this checks nothing")
+        let page = handler().renderPage(source)
+        XCTAssertFalse(page.contains("{{"), "a placeholder reached the page unfilled")
+    }
+
+    func testAnUntouchedPanelShouldLeaveTheWidthRuleOutRatherThanWriteADefault() throws {
+        let page = handler().renderPage(try template())
+        XCTAssertFalse(page.contains("--toc-width"),
+                       "a width nobody set would override the page's own default")
+    }
+
+    func testARememberedWidthShouldReachThePageAsARuleOnTheRootElement() throws {
+        let subject = handler()
+        subject.tocRootStyle = BootConfig(tocWidth: 320).tocRootStyle
+        let page = subject.renderPage(try template())
+        XCTAssertTrue(page.contains(":root { --toc-width: 320px; }"), page)
+    }
+
+    func testTheDockSideShouldRideTheBodyTagBesideTheThemeClass() throws {
+        let source = try template()
+        let left = handler()
+        left.themeClass = "vscode-dark"
+        XCTAssertTrue(left.renderPage(source).contains(#"<body class="vscode-dark">"#))
+
+        let right = handler()
+        right.themeClass = "vscode-dark"
+        right.tocOnRight = true
+        // Both classes, in one attribute: the theme is still applied, which is
+        // what a naive replacement of the whole attribute would lose.
+        XCTAssertTrue(right.renderPage(source).contains(#"<body class="vscode-dark toc-right">"#))
+    }
+}

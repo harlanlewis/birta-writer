@@ -89,6 +89,10 @@ final class Coordinator {
     /// the coordinator for the life of the app.
     private var pendingContexts: [String: (AgentReference.Selection?) -> Void] = [:]
     private let agent = AgentRunner()
+    /// Spelling and grammar for the page, from the system's own checker. Held
+    /// for the app's lifetime so its spell-document tag, and with it anything
+    /// ignored in this session, survives a page reload.
+    private let spell = SpellService()
     /// Per run, the file holding the agent's own version while the page's
     /// merge decides whether the document ended up with all of it.
     private var agentRescues: [String: URL] = [:]
@@ -246,14 +250,16 @@ final class Coordinator {
         titleBar.titleView.onRelocate = { [weak self] target in
             MainActor.assumeIsolated { self?.relocateActiveFile(to: target) }
         }
-        // The two file actions, beside the name of the file they act on. Each
-        // is the menu row's own selector, sent up the responder chain, so the
+        // The file actions, beside the name of the file they act on. Each is
+        // the menu row's own selector, sent up the responder chain, so the
         // button IS the row rather than a second thing that agrees with it;
-        // `TitlebarActionsView` has that argument and the one for the two
-        // symbols.
+        // `TitlebarActionsView` has that argument and the one for the symbols.
+        // Open Recent sits after Open because it is the same verb reached a
+        // shorter way, and the two read as a pair.
         titleBar.titleView.setActions([
             .init(selector: #selector(AppDelegate.menuNewNote), symbol: "square.and.pencil"),
             .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
+            .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
         ])
         // The band is one strip to the eye, so pointing anywhere along it
         // offers what the strip holds, rather than only the width of the name.
@@ -793,6 +799,38 @@ final class Coordinator {
         case let .setFontPreset(p): Prefs.fontPreset = p
         case let .setFontSize(s): Prefs.fontSize = s
         case let .setContentWidth(m): Prefs.contentWidth = m
+        // The outline panel's three memories. Recorded as the page settles
+        // each, and handed back at the next page load, which the window does
+        // on every file it opens: without this the sidebar would shut itself
+        // the moment you opened a second note.
+        case let .lintBlocks(id, blocks):
+            spell.lint(blocks: blocks) { [weak self] results in
+                guard let self else { return }
+                // Traced because this is the one chain no other instrument
+                // reaches end to end: the Swift tests stop at the service and
+                // the browser harness cannot run `NSSpellChecker` at all, so
+                // `measure.sh` reads this line to say the round trip works in
+                // the real app.
+                self.measure.trace("lint blocks=\(blocks.count) "
+                    + "lints=\(results.reduce(0) { $0 + $1.lints.count })")
+                self.host.send(.lintResults(id: id, results: results))
+            }
+        case let .spellAddWord(word):
+            // Nothing is sent back, and nothing needs to be: the page holds its
+            // own set of learned words and stops drawing the hit the moment the
+            // row is picked (`webview/proofread/engine.ts`), exactly as it does
+            // in the extension, where this write is also one-way.
+            spell.learn(word)
+        case let .setProofreadOption(key, value):
+            Prefs.rememberProofreadOption(key: key, value: value)
+        case let .styleAddException(phrase):
+            // One-way, like `spellAddWord`: the page has already stopped
+            // drawing the hit from its own set, and this is what makes it
+            // stick past the next page load.
+            Prefs.rememberStyleException(phrase)
+        case let .setTocVisibility(v): Prefs.tocVisibility = v
+        case let .setTocPosition(p): Prefs.tocOnRight = p == "right"
+        case let .setTocWidth(w): Prefs.tocWidth = w
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
@@ -1579,6 +1617,13 @@ final class Coordinator {
             guard let self else { return }
             self.write(.explicitSave)
             Prefs.documentURL = target
+            // Recorded HERE rather than at the chooser, so every way in counts
+            // the same way: the Finder's Open With, a drop on the Dock icon,
+            // `open -a`, the recents menu itself, and Cmd+O all arrive through
+            // this one method (that is what the split with `openDocumentPanel`
+            // is for), and a file that reaches the buffer without joining the
+            // list is a file the menu forgets you ever opened.
+            Prefs.rememberRecent(target)
             // `boundURL`'s `didSet` does the rest of the rebind in one step:
             // the title, the folder the page may read images from, the
             // watcher, and the per-path flags the outgoing file left set.
@@ -2392,7 +2437,7 @@ final class Coordinator {
         titleView.setTextCeiling(TitlebarBand.titleTextCeiling(
             windowWidth: contentView.bounds.width,
             titleOriginX: titleView.convert(titleView.bounds, to: contentView).minX,
-            titleChromeWidth: TitleBarView.chromeWidth,
+            titleChromeWidth: titleView.chromeWidth,
             trailingControlsWidth: titlebarControlsWidth))
         let leading = titleView.convert(titleView.bounds, to: contentView).maxX
         guard bandHeight > 0,
@@ -2617,7 +2662,7 @@ final class Coordinator {
             over.frames.count, over.symbols,
             rest.shown ? "yes" : "no", over.shown ? "yes" : "no",
             box(rest.frames), box(over.frames),
-            view.labelFrameInWindow().width + TitleBarView.chromeWidth - TitlebarActionsView.room))
+            view.labelFrameInWindow().width + view.chromeWidth - view.actionsView.room))
     }
 
     /// The title's hover affordance, at rest and hovered.

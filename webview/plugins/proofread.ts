@@ -21,6 +21,7 @@ import type { Node as ProseNode } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { HarperLint, LintBlock, LintBlockResult, ProofreadConfig } from "../../shared/messages";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
+import { hostHas } from "../../shared/hostProfile";
 import { compileStyleMatcher, isPhraseCategory, type StyleCategory, type StyleMatcher } from "../utils/styleMatcher";
 import { styleCategoryLabel } from "../utils/styleCategories";
 import {
@@ -170,8 +171,65 @@ const FLAG_CATEGORIES = new Set<StyleCategory>([
     "absolutePerf", "rhythm",
 ]);
 
-function initialConfig(): ProofreadConfig {
-    return { ...DEFAULT_CONFIG, ...(window.__i18n?.proofread ?? {}) };
+/**
+ * The config the plugin starts on: the defaults, the host's snapshot over
+ * them, and then the two domains withdrawn that no host here can answer.
+ *
+ * The withdrawal is the page's and not the host's, and that is the whole point.
+ * Spelling and grammar are lints the page POSTS OUT for a host engine to
+ * answer; style check and the repeated-word check are computed here, from a
+ * table the bundle carries. So which of the four can run is decided by
+ * `spellAndGrammar`, and it is decided HERE because `hostHas` is the one reader
+ * of the declaration (AGENTS.md, "One declaration, one reader").
+ *
+ * A host that decided this for itself, by sending its own booleans, is what
+ * this replaces, and it failed in the way a second declarer always can: the
+ * capability was renamed in TypeScript, the shell went on testing its old
+ * spelling, and the answer became a constant that no run could see. It had
+ * held the whole pass off on that surface, so the style check drew nothing and
+ * the Checks menu opened with its body missing.
+ *
+ * Left ON, the cost is not only a dead row: the scan posts `lintBlocks` on
+ * every typing pause, walking the document to build a request nothing answers.
+ *
+ * Exported for unit testing, as `computeDecorations` is.
+ */
+export function initialConfig(): ProofreadConfig {
+    const declared: ProofreadConfig = {
+        ...DEFAULT_CONFIG,
+        ...(window.__i18n?.proofread ?? {}),
+        ...fromOptionKeys(window.__i18n?.proofreadOptions),
+    };
+    if (hostHas("spellAndGrammar")) { return declared; }
+    return { ...declared, spellCheck: false, grammarCheck: false };
+}
+
+/**
+ * A host's stored Checks answers, keyed the way the MENU posts them, as config
+ * fields.
+ *
+ * One key differs between the two vocabularies and the rest are identical, so
+ * this is that alias plus a filter. The filter is the load-bearing half: a key
+ * the config has no field for is dropped rather than spread in, so a stale
+ * stored option from an older build cannot put a property on the config that
+ * every reader of it would then have to tolerate.
+ */
+function fromOptionKeys(options: Record<string, boolean> | undefined): Partial<ProofreadConfig> {
+    if (!options) { return {}; }
+    const out: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(options)) {
+        if (typeof value !== "boolean") { continue; }
+        // The master gate is the one whose option key and config field differ.
+        const field = key === "proofreading" ? "proofreadingEnabled" : key;
+        // A BOOLEAN field, not merely a field that exists: `userWords` and
+        // `styleExceptions` are in the config too and are arrays, and a stored
+        // `userWords: true` would otherwise reach `setUserWords`, which
+        // iterates it. The store is a defaults domain somebody can edit.
+        if (typeof (DEFAULT_CONFIG as Record<string, unknown>)[field] === "boolean") {
+            out[field] = value;
+        }
+    }
+    return out as Partial<ProofreadConfig>;
 }
 
 /** Notify interested UI (toolbar buttons) that the config changed. */

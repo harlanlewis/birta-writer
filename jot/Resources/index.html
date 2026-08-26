@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- The Jot page. A template: the shell fills {{CSP}} and {{THEME_CLASS}} at
+<!-- The Jot page. A template: the shell fills {{CSP}}, {{ROOT_STYLE}} and {{THEME_CLASS}} at
      serve time (jot/Sources/BirtaJot/WebHost.swift, BirtaSchemeHandler). It
      mirrors src/webviewHtml.ts in shape and e2e/perf/index.html in spirit: the
      same dist/webview.js the extension ships, the host palette in place of the
@@ -16,6 +16,12 @@
 <link rel="stylesheet" href="dist/hostPalette.css">
 <link rel="stylesheet" href="dist/webview.css">
 <style>
+  /* Filled at serve time, with what the outline panel remembers about its own
+     width. Here rather than in the boot script because the page reads it while
+     it mounts; `BootConfig.tocRootStyle` has the whole reason. Empty until the
+     panel's edge has been dragged. */
+  {{ROOT_STYLE}}
+
   html, body { margin: 0; height: 100%; background: var(--vscode-editor-background); }
 
   /* No elastic overscroll. The toolbar is `position: fixed`, and WebKit

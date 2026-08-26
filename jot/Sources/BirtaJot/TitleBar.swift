@@ -165,7 +165,11 @@ final class TitleBarView: NSView {
     /// The buttons' room is in here for the same reason the chevron's is: it is
     /// held whether or not they are drawn, so the ceiling must be net of it at
     /// every window width and not only while the pointer is on the band.
-    static var chromeWidth: CGFloat { leadingGap + chevronRoom + TitlebarActionsView.room }
+    ///
+    /// An instance property rather than a static one, because the buttons'
+    /// room is theirs to report: the actions arrive after this view is built
+    /// (`setActions`), so how many there are is not something a type can know.
+    var chromeWidth: CGFloat { Self.leadingGap + Self.chevronRoom + actions.room }
     /// The height this view is BUILT at, and nothing else.
     ///
     /// AppKit stretches a titlebar accessory to the titlebar's own height, so
@@ -384,7 +388,7 @@ final class TitleBarView: NSView {
         // Nothing to open, nothing to point at: an empty title reserves no
         // room, which is also what keeps `hitTest` from claiming a strip of
         // window beside the traffic lights that answers a click with nothing.
-        let trailing = text > 0 ? Self.chevronRoom + TitlebarActionsView.room : 0
+        let trailing = text > 0 ? Self.chevronRoom + actions.room : 0
         setFrameSize(NSSize(width: Self.leadingGap + text + trailing, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
@@ -414,7 +418,7 @@ final class TitleBarView: NSView {
         // a truncated title is indistinguishable from a file that is really
         // called that. Bounded here, the label truncates itself and says it
         // did.
-        let room = max(0, bounds.width - Self.chromeWidth)
+        let room = max(0, bounds.width - chromeWidth)
         let textWidth = min(drawnTextWidth(), textCeiling, room)
         label.frame = NSRect(x: Self.leadingGap,
                              y: ((bounds.height - size.height) / 2).rounded(),
@@ -429,7 +433,7 @@ final class TitleBarView: NSView {
         // else.
         actions.frame = NSRect(x: chevron.frame.maxX,
                                y: 0,
-                               width: TitlebarActionsView.room,
+                               width: actions.room,
                                height: bounds.height)
         actions.layoutSubtreeIfNeeded()
     }

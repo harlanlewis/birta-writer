@@ -396,6 +396,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuSaveNow() { coordinator.saveNow() }
     @objc func menuNewNote() { coordinator.newNote() }
     @objc func menuOpenDocument() { coordinator.openDocumentPanel() }
+
+    /// Raise the recents list from a control that is not a menu row: the
+    /// titlebar's button. The File menu reaches the same list as a submenu
+    /// (`JotMenu.Action.recents`), so this builds the same menu rather than a
+    /// second one, and pops it under the button that sent it.
+    ///
+    /// The sender is the button, which is why the selector takes one: a menu
+    /// has to be popped IN a view, and the only view that knows where this one
+    /// belongs is the one that was pressed.
+    @objc func menuOpenRecent(_ sender: Any?) {
+        guard let view = sender as? NSView else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        // The view's own bottom-left corner, so the menu hangs below the button
+        // the way a menu-bar menu hangs below its title.
+        RecentsMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: view)
+    }
+
+    /// One row of that list. The file travels in `representedObject`, and the
+    /// open goes through the same method the Finder's Open With reaches, so a
+    /// file arriving from this menu is flushed, rebound and watched exactly as
+    /// one arriving from anywhere else.
+    @objc func menuOpenRecentDocument(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        coordinator.openDocument(at: url)
+    }
+
+    /// Forget the list. The files are untouched; this is the only control over
+    /// what the menu remembers, which is why it is offered at all.
+    @objc func menuClearRecentDocuments() {
+        Prefs.recentDocuments = []
+    }
     @objc func menuSaveAs() { coordinator.saveAs() }
     @objc private func revealLastSave() { coordinator.revealLastSave() }
     /// Run the editor command a menu row carries.
@@ -576,6 +607,8 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             return coordinator.hasContent
         case #selector(revealLastSave):
             return coordinator.lastSavedURL != nil
+        case #selector(menuClearRecentDocuments):
+            return !Prefs.recentDocuments.isEmpty
         case #selector(menuBackToNotes):
             // Dead unless Jot is actually on a document, which today only an
             // install carrying an older `documentPath` can be.
@@ -589,6 +622,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// first-run gate above cannot drift out of step with the File menu.
     private static let documentCommands: Set<Selector> = [
         #selector(menuNewNote), #selector(menuOpenDocument),
+        #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
         #selector(menuSaveNow), #selector(menuSaveAs),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
         #selector(menuBackToNotes), #selector(menuRunEditorCommand(_:)),

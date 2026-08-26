@@ -83,11 +83,11 @@ export function createChecksMenu(onShowProofreading?: () => void): ChecksControl
             item.setChecked(Boolean(cfg[key]));
         }
         masterItem?.setChecked(cfg.proofreadingEnabled);
-        // Signal a globally-off gate on the toolbar button itself: with the gate
-        // off there are simply no underlines, which looks identical to clean
-        // text, so dim the button to say "proofreading is off" without opening
-        // the menu. (A domain being off is a per-check choice, not shown here.)
-        checksBtn.classList.toggle("tb-checks-btn--off", !cfg.proofreadingEnabled);
+        // The button carries no state of its own. It is an anchor for a menu
+        // whose first row already says whether the gate is on, and a dimmed
+        // control in a bar of live ones reads as unavailable rather than as
+        // off, which is a different claim from the one it would be making.
+        //
         // Gate: the whole body shows only while the master switch is on. It is
         // the menu's last child, so a re-attach appends it straight back.
         if (checksMenuEl && bodyEl) {

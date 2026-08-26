@@ -75,6 +75,19 @@ declare global {
             /** Native-paste text flavor: parsed as Markdown (default) or inserted literally (birta.pasteFormat). */
             pasteFormat?: "markdown" | "plainText";
             proofread?: ProofreadConfig;
+            /**
+             * The Checks menu's answers by OPTION KEY, for a host that stores
+             * what the reader changed rather than a whole config.
+             *
+             * A second shape for the same fact, and the split is deliberate:
+             * `proofread` is a config a host computed, and this is the raw
+             * key-value the page's own menu posted, handed straight back. A
+             * shell that translated it would be holding a copy of the page's
+             * vocabulary, which is exactly what went stale and switched this
+             * feature off before. `initialConfig` does the translation, and
+             * drops any key it does not recognise.
+             */
+            proofreadOptions?: Record<string, boolean>;
             /** Per-item toolbar placement config (see the toolbar registry). */
             toolbar?: ToolbarConfig;
             /**
