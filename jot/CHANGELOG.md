@@ -14,9 +14,11 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- The titlebar's Open Recent list opens below the button rather than across the titlebar. It was positioned at the button's bottom-left corner in coordinates that grow the other way, so it came up over the name of the file it was offering to replace.
+
 - The titlebar's New Note, Open and Open Recent buttons name themselves when you rest on them, in the same tooltip the rest of that band uses. Each had a label and none of them ever appeared, because macOS delivers a tooltip through a tracking region it installs when the label is set and these buttons were clearing every region they had on each layout pass. They also use the editor's own tooltip now rather than the system one: they sit in the same strip as Checks, Find, Settings and the table of contents, which have always named themselves with a dark chip that appears as soon as you point at them, so a macOS tooltip there was one row of controls labelling itself two ways, in two shapes, on two delays.
 
-- Open Recent lists the notes you have had open, and not only the files you opened through Open. A note made with New Note, the note the app launches on, and the scratchpad it returns to all reach the panel without a file chooser, and none of them was being recorded, so the menu could say No Recent Files to somebody who had just switched away from a note. Every file the panel leaves and every file it moves to now joins the list, whichever gesture put it there. The file currently on screen is the one thing still absent, deliberately, and it joins the list the moment you go somewhere else.
+- Open Recent lists the notes you have had open, and not only the files you opened through Open. A note made with New Note, the note the app launches on, and the scratchpad it returns to all reach the panel without a file chooser, and none of them was being recorded, so the menu could say No Recent Files to somebody who had just switched away from a note. Every file the panel leaves and every file it moves to now joins the list, whichever gesture put it there. The file you are in is on the list too, with a checkmark beside it.
 
 - Every button in the titlebar names itself when you rest on it. Checks and Settings open their menus on a click here rather than on hover, which is what a Mac does, so resting on one promised nothing and said nothing either, and the only way to find out what a glyph did was to press it and see. Both now show their name, and the name goes away when the menu opens. Birta Writer for VS Code is unchanged: its menus open on hover, so a label would appear where the menu is about to and be covered by it.
 
@@ -31,6 +33,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 - The Test button's result reads as a sheet rather than an empty box beside the text. What the tool printed was drawn in a panel with no size, so macOS placed it over the sentence above it and showed nothing inside it, which on a failure hid the tool's own error, the only part of that sheet worth reading.
 
 ### Changed
+
+- A file that has gone missing is said properly, on the panel, instead of in a strip along the bottom edge. When the note you are editing is deleted or moved out from under the app, it now says so in the middle of the window, names the file, and offers the ways out: save what is on screen back to that file, start a new note, or open a recent one. The strip it replaces said the same thing in the smallest type in the window, furthest from where you were looking, beside two buttons that both read as ways of making a file. What is offered depends on what is at stake: with unsaved writing on screen, saving it back comes first and the button that throws it away says so; with an empty note neither is offered, because there is nothing to save and nothing to lose.
 
 - New Note is a plus in a square rather than a pencil over one. The three file buttons sit in a row and are read together, and the compose mark puts its pencil through the top-right corner, so the square gives way and the whole glyph reads low beside a folder and a clock that are drawn around their own centres. What changed is where the ink sits; the button, its place and its shortcut are the same.
 

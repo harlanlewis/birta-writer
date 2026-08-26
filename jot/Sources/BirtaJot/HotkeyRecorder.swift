@@ -136,7 +136,7 @@ final class HotkeyRecorderView: NSView {
     /// ground taken then is a wrong ground for the life of the process, and
     /// `viewDidChangeEffectiveAppearance` cannot rescue it: the view's own
     /// appearance never changed. `StatusOverlay` resolves the same way and
-    /// `MissingFileBar` avoids the trap by drawing instead of filling a layer.
+    /// `MissingFileScreen` avoids the trap by drawing instead of filling a layer.
     private func applyColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor = NSColor.textBackgroundColor.cgColor

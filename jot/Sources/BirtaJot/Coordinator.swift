@@ -129,7 +129,7 @@ final class Coordinator {
     private var welcome: WelcomeView?
 
     private let watcher = NoteWatcher()
-    private let missingFileBar = MissingFileBar()
+    private let missingFileScreen = MissingFileScreen()
     /// Whether this path has ever been observed to hold the note.
     ///
     /// Read alongside a live `fileExists` to tell a DELETION from a note that
@@ -149,8 +149,7 @@ final class Coordinator {
     private var noteMissing = false {
         didSet {
             guard noteMissing != oldValue else { return }
-            missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
-            layoutMissingFileBar()
+            showMissingFileScreen()
         }
     }
 
@@ -244,9 +243,16 @@ final class Coordinator {
         // Above the web view for the same reason the drag strip is, and laid
         // out by frame for the same reason: it spans the window's own bottom
         // edge and the page knows nothing about it.
-        contentView.addSubview(missingFileBar)
-        missingFileBar.onSaveItBack = { [weak self] in self?.saveMissingNoteBack() }
-        missingFileBar.onDiscardAndStartNew = { [weak self] in
+        contentView.addSubview(missingFileScreen)
+        missingFileScreen.onSaveItBack = { [weak self] in self?.saveMissingNoteBack() }
+        missingFileScreen.onOpenRecent = { [weak self] anchor in
+            guard self != nil else { return }
+            RecentsMenu().popUp(
+                positioning: nil,
+                at: RecentsMenu.popUpOrigin(in: anchor.bounds, isFlipped: anchor.isFlipped),
+                in: anchor)
+        }
+        missingFileScreen.onDiscardAndStartNew = { [weak self] in
             // Clearing the flag first is what lets the new note be created and
             // written at all; the bytes of the old one are what the button
             // says it is discarding.
@@ -278,7 +284,7 @@ final class Coordinator {
         contentView.onLayout = { [weak self] in
             MainActor.assumeIsolated {
                 self?.layoutTitlebarDrag()
-                self?.layoutMissingFileBar()
+                self?.layoutMissingFileScreen()
             }
         }
         panel.addTitlebarAccessoryViewController(titleBar)
@@ -627,10 +633,26 @@ final class Coordinator {
                     // would deliver for the chord and is not the bare letter;
                     // AppKit routes a key equivalent by
                     // `charactersIgnoringModifiers`, so that one carries it.
-                    let typed = heldFlags.contains(.command) ? "" : chars
+                    //
+                    // Shift is APPLIED to that one, which is the part this got
+                    // wrong. "Ignoring modifiers" means ignoring Command and
+                    // Option; a keyboard producing ⇧⌘O reports "O", never "o".
+                    // Sending the bare letter made an event no keyboard makes,
+                    // so every shifted LETTER chord driven from here was
+                    // delivered as something the system never sees. It went
+                    // unnoticed because the only shifted chord under test is
+                    // ⇧⌘8, and a digit has no case to get wrong.
+                    //
+                    // What this does NOT establish is how AppKit matches such
+                    // a chord against a menu that also holds the unshifted
+                    // one. That question was asked here and the answers did not
+                    // agree between runs, so nothing in this repository claims
+                    // it either way.
+                    let ignoring = heldFlags.contains(.shift) ? chars.uppercased() : chars
+                    let typed = heldFlags.contains(.command) ? "" : ignoring
                     if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: heldFlags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                  windowNumber: self.panel.windowNumber, context: nil, characters: typed,
-                                                 charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                                                 charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: code) {
                         if heldFlags.contains(.command), type == .keyDown {
                             // A chord goes through the main menu, and the menu
                             // needs a key window to send its action to. An
@@ -2116,7 +2138,7 @@ final class Coordinator {
         view.sync()
         view.isHidden = false
         host.webView.isHidden = true
-        missingFileBar.isHidden = true
+        missingFileScreen.isHidden = true
         titleBar.titleView.showAppName(Self.appName)
         show()
         sizePanelForWelcome(view)
@@ -2170,8 +2192,7 @@ final class Coordinator {
         restorePanelAfterWelcome()
         host.webView.isHidden = false
         seedFirstRunNote(isFirstRun: wasFirstRun)
-        missingFileBar.show(noteMissing, name: boundURL.lastPathComponent)
-        layoutMissingFileBar()
+        showMissingFileScreen()
         refreshTitle()
         panel.makeFirstResponder(host.webView)
         host.focusEditor()
@@ -2283,12 +2304,29 @@ final class Coordinator {
     /// somebody uses.
     static var appName: String { AppFlavor.current.displayName }
 
-    /// The missing-note bar spans the window's bottom edge, above the page's
-    /// own formatting dock rather than over it.
-    private func layoutMissingFileBar() {
-        guard !missingFileBar.isHidden else { return }
+    /// Put the screen up, or take it down, and say which of its two shapes.
+    ///
+    /// `latest` is what decides the shape: the file is gone either way, so the
+    /// question is whether anything on screen exists nowhere else. A buffer
+    /// with nothing in it has nothing to save and nothing to discard, and
+    /// offering either would be offering a choice about nothing.
+    ///
+    /// The editor is hidden while it is up. The strip this replaced left the
+    /// text showing on the argument that covering what is at risk would be
+    /// perverse; what actually protects the text is the offer to write it,
+    /// which is on the screen doing the covering.
+    private func showMissingFileScreen() {
+        missingFileScreen.show(noteMissing,
+                               name: boundURL.lastPathComponent,
+                               hasUnsavedText: !latest.isBlank)
+        host.webView.isHidden = noteMissing
+        layoutMissingFileScreen()
+    }
+
+    private func layoutMissingFileScreen() {
+        guard !missingFileScreen.isHidden else { return }
         let bounds = contentView.bounds
-        missingFileBar.frame = NSRect(x: 0, y: 0, width: bounds.width, height: MissingFileBar.height)
+        missingFileScreen.frame = bounds
     }
 
     /// Watch whatever the panel is bound to now.

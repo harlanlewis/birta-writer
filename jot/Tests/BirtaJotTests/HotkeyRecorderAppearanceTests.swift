@@ -11,7 +11,7 @@ import XCTest
 /// appearance of its own keeps the wrong ground: the reported symptom was a
 /// black field in a light Settings window.
 ///
-/// `MissingFileBar` records the same trap and answers it by drawing rather than
+/// `MissingFileScreen` records the same trap and answers it by drawing rather than
 /// filling a layer; `StatusOverlay` answers it by resolving inside
 /// `performAsCurrentDrawingAppearance`. This holds the third site to one of
 /// those answers.

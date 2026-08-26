@@ -22,8 +22,11 @@ final class RecentsMenuTests: XCTestCase {
     private func many(_ n: Int) -> [URL] { (0..<n).map { url("/notes/note\($0).md") } }
 
     /// A menu over a list this test controls, with every file present.
-    private func menu(_ list: [URL]) -> RecentsMenu {
-        RecentsMenu(source: { list }, exists: { _ in true })
+    ///
+    /// `current` defaults to nothing, so a check that is not about the
+    /// checkmark cannot have one appear in it by accident.
+    private func menu(_ list: [URL], current: URL? = nil) -> RecentsMenu {
+        RecentsMenu(source: { list }, exists: { _ in true }, current: { current })
     }
 
     private func titles(of menu: NSMenu) -> [String] {
@@ -133,6 +136,62 @@ final class RecentsMenuTests: XCTestCase {
         JotMenu.add(.file, to: nsMenu, target: self)
         let attached = nsMenu.items.first { $0.title == "Open Recent" }?.submenu
         XCTAssertTrue(attached is RecentsMenu)
+    }
+
+    // MARK: which row is the one you are in
+
+    func testTheFileOnScreenShouldBeTickedAndNothingElseShouldBe() {
+        // The list holds the current file, because every rebind records the
+        // file it moves TO. Without the tick, the row a reader is already in
+        // is offered back to them as though it were somewhere else to go.
+        let here = url("/notes/here.md")
+        let m = menu([here, url("/notes/other.md")], current: here)
+        let ticked = m.items.filter { $0.state == .on }.map(\.title)
+        XCTAssertEqual(ticked, ["here.md"])
+    }
+
+    func testARowShouldBeTickedThroughAPathThatNeedsStandardizing() {
+        // The tick compares standardized paths, which is the SAME rule
+        // `RecentFiles.recording` dedupes the list with. That is the property
+        // worth pinning: a file the list treats as one file ticks as one file.
+        //
+        // Standardizing removes `.` and `..`; it does not resolve symlinks, so
+        // `/tmp` and `/private/tmp` stay two paths to both of them. That is a
+        // limit shared with the list itself rather than a gap here, which is
+        // why the case is not written as though it should tick.
+        let stored = URL(fileURLWithPath: "/notes/./sub/../here.md")
+        let bound = URL(fileURLWithPath: "/notes/here.md")
+        XCTAssertEqual(stored.standardizedFileURL, bound.standardizedFileURL,
+                       "the two spellings are not the same path, so nothing below is compared")
+        let m = menu([stored], current: bound)
+        XCTAssertEqual(m.items.filter { $0.state == .on }.count, 1)
+    }
+
+    func testNoRowShouldBeTickedWhenNothingIsOpen() {
+        let m = menu([url("/notes/a.md"), url("/notes/b.md")])
+        XCTAssertTrue(m.items.allSatisfy { $0.state == .off })
+    }
+
+    // MARK: where it opens
+
+    func testTheMenuShouldHangBelowTheControlItOpensFrom() {
+        // `popUp(positioning:at:in:)` puts the menu's TOP-left at the point it
+        // is given, so the point wanted is the view's BOTTOM-left, and which
+        // edge that is depends on the view's own convention. A point written
+        // for one lands the menu over the button under the other, which is
+        // what it did: the list came up across the titlebar rather than under
+        // the clock it belongs to.
+        let box = NSRect(x: 10, y: 4, width: 26, height: 24)
+        let up = RecentsMenu.popUpOrigin(in: box, isFlipped: false, gap: 4)
+        let down = RecentsMenu.popUpOrigin(in: box, isFlipped: true, gap: 4)
+        XCTAssertEqual(up.x, box.minX)
+        XCTAssertEqual(down.x, box.minX)
+        // Below, in each convention's own direction, and by the same air.
+        XCTAssertEqual(up.y, box.minY - 4, "unflipped: below is the low end of y")
+        XCTAssertEqual(down.y, box.maxY + 4, "flipped: below is the high end of y")
+        // And the two are not the same number, or one of the arms above is
+        // passing because the convention was never consulted.
+        XCTAssertNotEqual(up.y, down.y)
     }
 }
 

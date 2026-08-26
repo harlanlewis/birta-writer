@@ -33,16 +33,41 @@ import BirtaJotCore
 /// end at one implementation instead of two that happen to agree.
 @MainActor
 final class RecentsMenu: NSMenu, NSMenuDelegate {
+    /// Where to pop this menu up so it hangs BELOW `bounds`, in that view's own
+    /// coordinates.
+    ///
+    /// `NSMenu.popUp(positioning:at:in:)` puts the menu's top-left at the point
+    /// it is given, so the point wanted is the view's BOTTOM-left. Which edge
+    /// that is depends on the view: AppKit's default coordinates grow upward,
+    /// so the bottom is `minY`, and a flipped view's grow downward, so the
+    /// bottom is `maxY`. A point written for one convention lands the menu on
+    /// top of the button under the other, which is what it did.
+    ///
+    /// The gap is the same air the page's own menus leave under the bar they
+    /// open from, so a menu opened from either half of this band sits the same
+    /// distance below it.
+    static func popUpOrigin(in bounds: NSRect, isFlipped: Bool, gap: CGFloat = 4) -> NSPoint {
+        NSPoint(x: bounds.minX,
+                y: isFlipped ? bounds.maxY + gap : bounds.minY - gap)
+    }
+
     /// Where the list comes from, and how a file's presence is decided. Both
     /// injected so a check can put a fixed list in front of the menu without a
     /// defaults domain or a disk.
     private let source: () -> [URL]
     private let exists: (URL) -> Bool
 
+    /// The file the panel is on right now, so its row can say so. Injected for
+    /// the same reason the other two are: a check can put a list and a current
+    /// file in front of this menu with no defaults domain and no disk.
+    private let current: () -> URL?
+
     init(source: @escaping () -> [URL] = { Prefs.recentDocuments },
-         exists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) {
+         exists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
+         current: @escaping () -> URL? = { Prefs.activeURL }) {
         self.source = source
         self.exists = exists
+        self.current = current
         super.init(title: "Open Recent")
         identifier = JotMenu.recentsMenuIdentifier
         delegate = self
@@ -97,6 +122,22 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
                               keyEquivalent: "")
         item.target = nil
         item.representedObject = row.url
+        // A checkmark on the file already open, which is what a macOS menu
+        // does for the one of its rows you are looking at. The list holds the
+        // current file because every rebind records the file it moves TO, so
+        // without this the row a reader is already in is offered back to them
+        // as though it were somewhere else to go.
+        //
+        // Compared by standardized path, which is the SAME rule
+        // `RecentFiles.recording` dedupes the list with, so a file the list
+        // treats as one file ticks as one file. Standardizing removes `.` and
+        // `..` and does not resolve symlinks; that limit is the list's as much
+        // as this row's, which is the reason to share the rule rather than
+        // pick a stricter one here.
+        if let current = current(),
+           current.standardizedFileURL.path == row.url.standardizedFileURL.path {
+            item.state = .on
+        }
         // The path, for the case the title cannot answer: two files with the
         // same name in two folders that are also named the same.
         item.toolTip = (row.url.path as NSString).abbreviatingWithTildeInPath
