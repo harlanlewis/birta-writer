@@ -361,6 +361,56 @@ describe("the Jot profile's copies", () => {
         expect(declaredIn(swift.slice(swift.indexOf("func bootConfig()")))).toEqual([...HOST_PROFILES.jot]);
     });
 
+    /**
+     * Every capability name the Swift spells, not only the ones in the list.
+     *
+     * The list itself is already compared above, so a rename that landed in
+     * `HOST_PROFILES.jot` and not in the shell fails there. What had NO guard is
+     * a capability name spelled anywhere ELSE in Swift: the `agent` in the
+     * filter beside the list is one, and `Bridge.swift` used to carry another,
+     * a `hostCapabilities.contains("proofreading")` written when that WAS a
+     * capability. `spellAndGrammar` replaced it, the Swift kept the old
+     * spelling, and the expression became permanently false rather than wrong
+     * in any way a run could see. It held the whole proofreading pass off on
+     * that surface: no style-check underlines at all, and a Checks menu that
+     * opened with its body missing, both of which the app shipped looking
+     * deliberate.
+     *
+     * So the rule is the string, not the list: a capability name in Swift must
+     * be a capability. The arm below is what stops this passing on a scrape
+     * that found only the list it was already checking.
+     */
+    it("every capability name the Swift spells should be a real capability", () => {
+        const swift = read("jot/Sources/BirtaJot/Preferences.swift");
+        const body = swift.slice(swift.indexOf("func bootConfig()"));
+        const expr = /hostCapabilities:([\s\S]*?)viewStateJSON:/.exec(body);
+        expect(expr, "no hostCapabilities argument found; fix the parser").not.toBeNull();
+        const names = [...expr![1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+        for (const name of names) {
+            expect(ALL_HOST_CAPABILITIES, `${name} is not a capability`).toContain(name);
+        }
+        // The sweep reached PAST the list, or it is the check above respelled:
+        // the filter's own literal is the one with no other reader.
+        expect(names.length,
+            "the scrape found only the declared list, so the filter's name went unchecked")
+            .toBeGreaterThan(HOST_PROFILES.jot.length);
+    });
+
+    /**
+     * The same rule one file over. `Bridge.swift` carries no capability name
+     * today, which is the state this holds: the boot blob decides nothing about
+     * WHICH checks can run any more, because the page decides that from the
+     * capabilities (`initialConfig` in webview/plugins/proofread.ts). A name
+     * reappearing here is either a real second declarer or the old mistake
+     * coming back, and both want reading before they land.
+     */
+    it("the bridge should test no capability name of its own", () => {
+        const bridge = read("jot/Sources/BirtaJotCore/Bridge.swift");
+        const tested = [...bridge.matchAll(/hostCapabilities\.contains\(\s*"([^"]+)"/g)]
+            .map((m) => m[1]!);
+        expect(tested).toEqual([]);
+    });
+
     it("the e2e Jot page should declare exactly the profile", () => {
         expect(declaredIn(bootstrapLine(read("e2e/jotHost/index.html")))).toEqual([...HOST_PROFILES.jot]);
     });

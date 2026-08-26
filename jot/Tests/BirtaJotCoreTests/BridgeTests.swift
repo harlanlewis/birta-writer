@@ -256,7 +256,13 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(i18n["embedsEnabled"] as? Bool, false)
         XCTAssertEqual(i18n["calcEnabled"] as? Bool, true)
         XCTAssertEqual(i18n["tocVisibility"] as? String, "hidden")
-        XCTAssertEqual((i18n["proofread"] as? [String: Bool])?["proofreadingEnabled"], false)
+        // No proofread snapshot at all. This shell persists none of those
+        // options, and which of the four checks can RUN is decided by the page
+        // from the capabilities above. A blob here would be a second declarer
+        // of that, which is what held the whole pass off on this surface for as
+        // long as it existed: it tested a capability name that had been renamed
+        // away, so it was permanently false.
+        XCTAssertNil(i18n["proofread"])
         // The host's own facts live under one key, not scattered among the
         // user's settings beside them (shared/hostProfile.ts).
         let host = i18n["host"] as? [String: Any]

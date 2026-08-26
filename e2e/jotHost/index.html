@@ -30,7 +30,11 @@
   // that boots FROM that bag, so it is seeded the same way here.
   window.__state = window.__seedState;
   window.__posted = [];
-  const CONTENT = "# One\n\nSome text.\n\n## Two\n\ntext\n\n## Three\n\ntext\n\n## Four\n\ntext\n\n## Five\n\ntext\n";
+  // The trailing paragraph carries a filler ("really"), which is a style-check
+  // hit the page computes for itself. It is here so the suite can ask whether
+  // the underlines actually DRAW on this surface, which is the half no check
+  // over the Checks menu can answer.
+  const CONTENT = "# One\n\nSome text.\n\n## Two\n\ntext\n\n## Three\n\ntext\n\n## Four\n\ntext\n\n## Five\n\ntext\n\nThis is really important.\n";
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);

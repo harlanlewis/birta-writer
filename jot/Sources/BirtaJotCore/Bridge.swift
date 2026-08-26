@@ -566,10 +566,14 @@ public struct BootConfig: Equatable {
             // editor pane and wrong for a window this size, where the outline
             // is something you ask for.
             "tocVisibility": tocVisibility,
-            // Proofreading is a host capability Jot does not declare, and the
-            // engine defaults ON when the snapshot is absent; the capability
-            // gates the chrome, this gates the work (webview/plugins/proofread.ts).
-            "proofread": ["proofreadingEnabled": hostCapabilities.contains("proofreading")],
+            // No `proofread` snapshot: this shell persists none of those
+            // options, and which of the four checks it can RUN is the page's to
+            // decide from the capabilities above (`initialConfig` in
+            // webview/plugins/proofread.ts). A blob here was a second declarer
+            // of that fact, and it is how the whole pass came to be switched
+            // off on this surface: it tested `hostCapabilities` for a
+            // capability name that had been renamed out from under it, so it
+            // was permanently false and no run could say so.
         ]
     }
 

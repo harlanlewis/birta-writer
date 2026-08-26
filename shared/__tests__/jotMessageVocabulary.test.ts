@@ -119,9 +119,21 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     // that nothing asks.
     requestAgentCapabilities: "the panel renders no model or effort control when capabilities are absent, which is what `shared/messages.ts` says absent means, and is correct for a host that runs no harness probe: `openAgentPanel` does not wait on the reply, so nothing is blocked by it never coming",
 
-    // Editor state the extension persists into workspace/global storage. Jot
-    // persists what it wants through its own `viewState` and `setToolbar*`
-    // messages, and drops the rest rather than growing a store per setting.
+    // Editor state the extension persists into workspace/global storage, and
+    // Jot does not.
+    //
+    // The line Jot draws, now that three of these have crossed it: it remembers
+    // how the WINDOW is arranged and how the text is drawn, and forgets the
+    // editing and annotation preferences. Toolbar layout and visibility,
+    // typography, the `viewState` bag and the outline panel's visibility, side
+    // and width are all on the first side and each has a control in the window
+    // whose result would otherwise be thrown away on the next file opened,
+    // which for this app is often. The rows below are on the second, where the
+    // default is a fine answer to arrive at every launch.
+    //
+    // `reviewGroupByType` is the closest call and sits here on purpose: it is
+    // a sort order inside one of the sidebar's tabs rather than a fact about
+    // where the window's furniture is.
     setBlockHandles: "editor state Jot does not persist; the default stands each launch",
     setCalcAutoInsert: "editor state Jot does not persist",
     setChecklistSink: "editor state Jot does not persist",

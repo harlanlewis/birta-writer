@@ -78,6 +78,18 @@ export async function run({ page, check, baseUrl }) {
         ["format", "bold", "link", "table", "find", "settings"].every((id) => jot.items.includes(id)),
         JSON.stringify(jot.items));
 
+    // ── The style check actually DRAWS here ────────────────────────────
+    //
+    // The half every check over the Checks menu stops short of. The menu can
+    // offer Check style, and every row can be present and checkmarked, while
+    // the master gate the SHELL sends in its boot config holds the whole pass
+    // off and not one underline is drawn. That is a state the menu looks
+    // correct in, which is why this asks the document rather than the chrome.
+    const styleHits = await page.evaluate(() =>
+        document.querySelectorAll(".ProseMirror .pf-style-hit").length);
+    check("jot: the style check the page computes for itself draws its underlines",
+        styleHits > 0, JSON.stringify({ hits: styleHits }));
+
     // ── The Checks menu, which mixes gated and unconditional rows ──────
     //
     // The item is NOT gated (MAR-414's neighbour): the style check is computed
