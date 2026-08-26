@@ -229,13 +229,50 @@ final class NoteLocationChangeTests: XCTestCase {
         let before = Prefs.scratchpadURL!
         let moved = folder.appendingPathComponent("Journal.md")
 
-        Prefs.rebindActive(from: before, to: moved)
+        // `.scratchpad` because that is what a window on the derived note is
+        // bound THROUGH. It used to reach the same behaviour by falling
+        // through the nil case, which was sound while one window meant "named
+        // by no setting" and "on the default scratchpad" were the same state.
+        Prefs.rebind(from: before, to: moved, slot: .scratchpad)
 
         XCTAssertEqual(Prefs.scratchpadURL.path, moved.path,
                        "the panel would open the derived note again next launch")
         XCTAssertFalse(Prefs.storeInICloud,
                        "a note carried out of the derived folder is a folder of one's own")
         XCTAssertEqual(Prefs.noteHome, .chosen)
+    }
+
+    /// The hazard multiple windows introduce, and the reason the write-back
+    /// takes the window's slot rather than deriving one from the old path.
+    ///
+    /// A window can be on a file that no setting names: the slots are app-wide
+    /// and only one window holds each, so a second window that opened a
+    /// document keeps editing it after a third window claims `document`.
+    /// Renaming from that window must write back nowhere. Deriving the slot
+    /// from the path would find no match and, under the rule that used to be
+    /// right, adopt the file as the scratchpad, moving a setting the person
+    /// never touched onto a file they merely renamed.
+    func testRenamingFromAWindowNoSettingNamesShouldMoveNoSetting() {
+        let saved = save()
+        // `save` does not cover the document slot, and these tests run against
+        // the runner's own standard defaults, so leaving one set would reach
+        // the person's real app and not merely the next test in this file.
+        let savedDocument = Prefs.documentURL
+        defer { restore(saved); Prefs.documentURL = savedDocument }
+
+        Prefs.scratchpadURL = nil
+        Prefs.storeInICloud = true
+        Prefs.documentURL = folder.appendingPathComponent("Claimed.md")
+        let scratchpadBefore = Prefs.scratchpadURL!
+        let stranger = folder.appendingPathComponent("Stranger.md")
+
+        Prefs.rebind(from: stranger, to: folder.appendingPathComponent("Renamed.md"), slot: nil)
+
+        XCTAssertEqual(Prefs.scratchpadURL.path, scratchpadBefore.path,
+                       "renaming an unrelated file moved the scratchpad setting")
+        XCTAssertTrue(Prefs.storeInICloud, "and took the notes out of iCloud with it")
+        XCTAssertEqual(Prefs.documentURL?.lastPathComponent, "Claimed.md",
+                       "the window that does hold a slot should keep it")
     }
 
     // MARK: the sentence that makes the folder an offer

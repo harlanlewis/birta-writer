@@ -27,7 +27,7 @@ final class WindowBindingTests: XCTestCase {
     private let sanctioned = "rebindFromSettings"
 
     /// Reading the app's single active-file answer, in any spelling.
-    private let globalReads = ["Prefs.activeURL", "Prefs.storedActiveURL"]
+    private let globalReads = ["Prefs.activeURL", "Prefs.activeSlot", "Prefs.storedActiveURL"]
 
     private func coordinatorSource() throws -> [String] {
         let url = URL(fileURLWithPath: #filePath)

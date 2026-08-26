@@ -139,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let launchedWith { Prefs.documentURL = launchedWith.standardizedFileURL }
         windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
         windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
-        let first = windows.adopt(Coordinator(boundTo: Prefs.activeURL))
+        let first = windows.adopt(Coordinator(boundTo: Prefs.activeURL, slot: Prefs.activeSlot))
         buildStatusMenu()
         applyMenuBarPresence()
         first.start()

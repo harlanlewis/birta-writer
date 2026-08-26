@@ -237,10 +237,20 @@ final class Coordinator {
     /// notice.
     var boundFile: URL { boundURL }
 
+    /// WHICH app-wide setting this window's file was reached through, so a
+    /// rename writes back to the same one.
+    ///
+    /// Nil is a real answer and not an absence: a window can be on a file no
+    /// setting names, because the slots are app-wide and only one window can
+    /// hold each. `WindowSet` is what hands them out and takes them away, so
+    /// two windows never both believe they own `.document`.
+    var bindingSlot: ActiveBinding.Slot?
+
     /// A window on `url`, which is the only thing that distinguishes one of
     /// these from another and so is required rather than defaulted.
-    init(boundTo url: URL) {
+    init(boundTo url: URL, slot: ActiveBinding.Slot?) {
         boundURL = url
+        bindingSlot = slot
         let webRoot = Coordinator.locateWebRoot()
         host = WebHost(webRoot: webRoot, documentDirectory: url.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
@@ -1132,9 +1142,11 @@ final class Coordinator {
     private func rebindFromSettings() {
         if !noteMissing {
             boundURL = Prefs.activeURL
+            bindingSlot = Prefs.activeSlot
         } else if Prefs.storedActiveURL.standardizedFileURL != boundURL.standardizedFileURL {
             rescueMissingNote()
             boundURL = Prefs.activeURL
+            bindingSlot = Prefs.activeSlot
         }
     }
 
@@ -2335,7 +2347,7 @@ final class Coordinator {
     /// whichever of the three settings supplied the old one.
     private func noteMovedOnDisk(to url: URL) {
         guard url.standardizedFileURL != boundURL.standardizedFileURL else { return }
-        Prefs.rebindActive(from: boundURL, to: url)
+        Prefs.rebind(from: boundURL, to: url, slot: bindingSlot)
         // `boundURL`'s `didSet` re-titles and re-watches; a move is the one
         // case where those are already exactly right.
         boundURL = url
@@ -2399,10 +2411,11 @@ final class Coordinator {
     ///      has never been typed into has no file yet, and a rename that
     ///      failed for that reason would be a rename that silently did not
     ///      happen.
-    ///   4. point the setting the panel is bound THROUGH at the new path
-    ///      (`Prefs.rebindActive`), which is the one that was read to get
-    ///      here. Writing any of the other two would leave the next launch
-    ///      opening a file that never moved.
+    ///   4. point the setting this WINDOW is bound through at the new path
+    ///      (`Prefs.rebind`, with this window's `bindingSlot`), which is the
+    ///      one that was read to get here. Writing any of the others would
+    ///      leave the next launch opening a file that never moved, and with
+    ///      several windows would move another window's binding.
     ///   5. rebind, which re-roots the attachment scheme handler and renames
     ///      the title, both through `boundURL`'s `didSet`.
     ///
@@ -2442,7 +2455,7 @@ final class Coordinator {
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
             }
-            Prefs.rebindActive(from: source, to: target)
+            Prefs.rebind(from: source, to: target, slot: bindingSlot)
             self.boundURL = target
             if self.lastSavedURL == source { self.lastSavedURL = target }
             let moved = target.deletingLastPathComponent().standardizedFileURL

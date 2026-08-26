@@ -260,6 +260,19 @@ enum Prefs {
         ActiveBinding.url(document: documentURL, currentNote: currentNoteURL, scratchpad: scratchpadURL)
     }
 
+    /// WHICH of the three settings supplies `activeURL`.
+    ///
+    /// The pair a window is opened with: the file, and the slot it came
+    /// through, so a rename later writes back to the same one. Both derive
+    /// from `ActiveBinding`, which is written so the two cannot disagree.
+    ///
+    /// Never nil, unlike a window's own `bindingSlot`: this answers what the
+    /// app would open right now, and something always supplies that, down to
+    /// the default scratchpad location.
+    static var activeSlot: ActiveBinding.Slot {
+        ActiveBinding.slot(hasDocument: documentURL != nil, hasCurrentNote: currentNoteURL != nil)
+    }
+
     /// One stored path, with no existence filter on it.
     private static func stored(_ key: Key) -> URL? {
         guard let path = d.string(forKey: key.rawValue), !path.isEmpty else { return nil }
@@ -308,15 +321,32 @@ enum Prefs {
     ///
     /// Matched against the STORED strings rather than through the accessors,
     /// for the same reason: the accessors are what filter on existence.
-    static func rebindActive(from old: URL, to url: URL) {
-        switch slot(holding: old) {
+    /// Write a moved file back to the slot the WINDOW holding it was bound
+    /// through.
+    ///
+    /// The slot is the window's rather than something derived here from the
+    /// old path, and that difference is the whole point. Matching a path
+    /// against the stored settings answers "which setting names this file",
+    /// which was the same question while there was one window and is a
+    /// different one once there are several: a window can be on a file that no
+    /// setting names, because another window has since claimed the slot it was
+    /// opened through.
+    ///
+    /// `nil` therefore means what it says: nothing to write back. It used to
+    /// mean "the default scratchpad location", and adopting the scratchpad was
+    /// right for that, because with one window the only way to be named by no
+    /// setting was to be the default. Keeping that fallback here would take a
+    /// person's scratchpad setting and point it at whatever unrelated file they
+    /// happened to rename in a second window. The default-scratchpad case is
+    /// still handled, one level up: a window on it is bound through
+    /// `.scratchpad` and says so.
+    static func rebind(from old: URL, to url: URL, slot: ActiveBinding.Slot?) {
+        _ = old
+        switch slot {
         case .document: documentURL = url
         case .currentNote: currentNoteURL = url
         case .scratchpad: adoptScratchpad(url)
-        // Nothing stored names it, so it is the default scratchpad location,
-        // and pointing the scratchpad setting at where it went is what keeps
-        // the panel on it next launch.
-        case nil: adoptScratchpad(url)
+        case nil: break
         }
     }
 
