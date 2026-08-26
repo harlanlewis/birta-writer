@@ -122,13 +122,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotesMoveOffer.offerAtLaunch()
         // Before the Coordinator exists, so a launch that came from Open With
         // mounts against the file it was asked for rather than mounting the
-        // last note and swapping it out a moment later. `Coordinator.init`
-        // reads `Prefs.activeURL`, and `document` is the slot that outranks
-        // the other two.
+        // last note and swapping it out a moment later. `document` is the slot
+        // that outranks the other two, so writing it here is what decides the
+        // URL handed to the Coordinator on the next line.
         let launchedWith = pendingOpen
         pendingOpen = nil
         if let launchedWith { Prefs.documentURL = launchedWith.standardizedFileURL }
-        coordinator = Coordinator()
+        coordinator = Coordinator(boundTo: Prefs.activeURL)
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         buildStatusMenu()

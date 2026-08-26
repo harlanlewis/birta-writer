@@ -160,7 +160,14 @@ final class Coordinator {
     /// the user just chose to open. Its folder is also what the page may read
     /// images from, so the two move together by construction rather than by
     /// two call sites remembering to.
-    private var boundURL: URL = Prefs.activeURL {
+    ///
+    /// Handed in at init and never re-derived from a global afterwards. This
+    /// is the property that decides WHICH file a window is, so a default of
+    /// `Prefs.activeURL` would make every window the same window, and a
+    /// re-read on any later path would let one window's rebind move another's.
+    /// `rebindFromSettings` is the single deliberate exception and names its
+    /// two callers.
+    private var boundURL: URL {
         didSet {
             guard boundURL != oldValue else { return }
             host.schemeHandler.roots =
@@ -208,9 +215,22 @@ final class Coordinator {
 
     var isVisible: Bool { panel.isVisible }
 
-    init() {
+    /// The file this window is on.
+    ///
+    /// Published because the question "is this file already open" belongs to
+    /// whoever owns the set of windows rather than to any one of them, and
+    /// `BirtaJotCore.FileIdentity.sameFile` is how it is answered: two buffers
+    /// over one path both write the whole file and the later write wins
+    /// silently, and there is no watcher anywhere in this app that would
+    /// notice.
+    var boundFile: URL { boundURL }
+
+    /// A window on `url`, which is the only thing that distinguishes one of
+    /// these from another and so is required rather than defaulted.
+    init(boundTo url: URL) {
+        boundURL = url
         let webRoot = Coordinator.locateWebRoot()
-        host = WebHost(webRoot: webRoot, documentDirectory: Prefs.activeURL.deletingLastPathComponent())
+        host = WebHost(webRoot: webRoot, documentDirectory: url.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
             NSLog("Birta Writer: write failed: \(error)")
         })
@@ -817,27 +837,13 @@ final class Coordinator {
             // the disk can be (a write may still be in flight), and it is what
             // the remount must show.
             if reloadFromDisk {
-                // While the note is missing, rebind only for a setting the
-                // user actually changed.
+                // The binding is NOT re-derived here. It used to be, on every
+                // page load, which was indistinguishable from correct while
+                // there was one window: the two gestures that move a window by
+                // writing a setting now ask for it by name, through
+                // `rebindFromSettings`, and every other reload keeps the file
+                // it was already on.
                 //
-                // `Prefs.activeURL` re-derives the binding through accessors
-                // that filter on existence, so a deleted New Note falls back
-                // to the scratchpad on its own: the binding changes,
-                // `startWatching` clears `noteMissing`, and the read that
-                // follows lands another file's contents on the only copy of
-                // the deleted one, past the guard in `adopt`, which by then
-                // has nothing to see. `storedActiveURL` reads the same
-                // settings without that filter, so it moves when somebody
-                // moves it and not when a file disappears.
-                //
-                // The buffer is rescued before a deliberate rebind, because it
-                // is still the only copy of a note nobody has answered for.
-                if !noteMissing {
-                    boundURL = Prefs.activeURL
-                } else if Prefs.storedActiveURL.standardizedFileURL != boundURL.standardizedFileURL {
-                    rescueMissingNote()
-                    boundURL = Prefs.activeURL
-                }
                 // The disk is the truth on this arm, so nothing is unwritten
                 // (`adopt` clears `isEdited`). The other arm keeps it: after a
                 // content-process death `latest` can be ahead of the file, and
@@ -1147,6 +1153,39 @@ final class Coordinator {
     ///
     /// Asks iCloud for the file on the way past, so the state resolves itself
     /// rather than needing the user to know what to do about it.
+    /// Take the binding from the app's stored settings.
+    ///
+    /// The two gestures that change which file a window is on by writing a
+    /// SETTING rather than by naming a path: leaving a bound document, and a
+    /// settings change that moved the notes. Both write the slot and then ask
+    /// for this, before the page is reloaded against it.
+    ///
+    /// By name, because `ready` used to do it implicitly on every load. With
+    /// one window that was invisible; with several it is the sharpest hazard
+    /// in the file, since a reload for any reason at all, a settings change or
+    /// a content-process death, would take whichever file another window had
+    /// bound last.
+    ///
+    /// While the note is missing, rebind only for a setting the user actually
+    /// changed. `Prefs.activeURL` re-derives through accessors that filter on
+    /// existence, so a deleted New Note falls back to the scratchpad on its
+    /// own: the binding changes, `startWatching` clears `noteMissing`, and the
+    /// read that follows lands another file's contents on the only copy of the
+    /// deleted one, past the guard in `adopt`, which by then has nothing to
+    /// see. `storedActiveURL` reads the same settings without that filter, so
+    /// it moves when somebody moves it and not when a file disappears.
+    ///
+    /// The buffer is rescued before a deliberate rebind, because it is still
+    /// the only copy of a note nobody has answered for.
+    private func rebindFromSettings() {
+        if !noteMissing {
+            boundURL = Prefs.activeURL
+        } else if Prefs.storedActiveURL.standardizedFileURL != boundURL.standardizedFileURL {
+            rescueMissingNote()
+            boundURL = Prefs.activeURL
+        }
+    }
+
     private func readActiveNote() -> NoteRead {
         let result = NoteRead.read(at: boundURL)
         if case .unreadable(.notDownloaded) = result {
@@ -1830,6 +1869,7 @@ final class Coordinator {
             guard let self else { return }
             self.write(.explicitSave)
             Prefs.documentURL = nil
+            self.rebindFromSettings()
             self.reloadFromDisk = true
             self.loadPage()
             self.refreshTitle()
@@ -3104,6 +3144,10 @@ final class Coordinator {
             guard let self else { return }
             let reload: () -> Void = { [weak self] in
                 guard let self else { return }
+                // A settings change can have moved the notes under this
+                // window, which is one of the two gestures that rebind by
+                // writing a slot rather than by naming a path.
+                self.rebindFromSettings()
                 self.reloadFromDisk = true
                 self.loadPage()
                 // The bound file may have changed; the titlebar names it.
