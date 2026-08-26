@@ -263,18 +263,33 @@ final class Coordinator {
         ])
         // The band is one strip to the eye, so pointing anywhere along it
         // offers what the strip holds, rather than only the width of the name.
-        titlebarDrag.onHoverChange = { [weak self] hovering in
-            MainActor.assumeIsolated { self?.titleBar.titleView.setBandHovered(hovering) }
-        }
-        // Title ink follows the window's key state, as every macOS title does.
-        // Both notifications are needed: a panel loses key to another app's
-        // window without any pointer event.
+        // That hover now arrives from the WINDOW rather than from the strip
+        // (`applyChromeVisibility`), because the page's own chrome answers to
+        // the window and the two halves of the band have to agree: a pointer in
+        // the middle of the document would otherwise light one end and not the
+        // other. The strip is a subview of the content view, so its hover is a
+        // strict subset of the window's and nothing is lost; wiring it as a
+        // second writer of the same flag is what would be wrong, since leaving
+        // the strip for the document would report false while the window still
+        // had the pointer.
+        // Title ink follows the window's key state, as every macOS title does,
+        // and so does whether the page draws its own chrome at all: key is one
+        // of the two halves of "awake" (`applyChromeVisibility`), and the only
+        // half that has a notification rather than a tracking area. Both
+        // notifications are needed: a panel loses key to another app's window
+        // without any pointer event, which is exactly the case where the
+        // pointer half would report nothing and the chrome would stay lit on a
+        // window in the background.
         for (name, key) in [(NSWindow.didBecomeKeyNotification, true),
                             (NSWindow.didResignKeyNotification, false)] {
             NotificationCenter.default.addObserver(
                 forName: name, object: panel, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.titleBar.titleView.setWindowKey(key) }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.titleBar.titleView.setWindowKey(key)
+                    self.applyChromeVisibility(self.contentView.isHovering)
+                }
             }
         }
         titleBar.titleView.setWindowKey(panel.isKeyWindow)
@@ -731,7 +746,7 @@ final class Coordinator {
             // then pull back. Prewarm mounts the page before the panel is ever
             // shown, so on that path the answer is in hand first.
             refreshTitlebarControlsWidth()
-            host.setChromeResting(!contentView.isHovering)
+            applyChromeVisibility(contentView.isHovering)
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
@@ -829,7 +844,13 @@ final class Coordinator {
             // stick past the next page load.
             Prefs.rememberStyleException(phrase)
         case let .setTocVisibility(v): Prefs.tocVisibility = v
-        case let .setTocPosition(p): Prefs.tocOnRight = p == "right"
+        case .setTocPosition:
+            // Nothing to remember: the side is this app's rather than the
+            // reader's (`fixedTocSide`, and `BirtaSchemeHandler.renderPage`
+            // writes `toc-right` on every page). Ignored rather than removed
+            // from the vocabulary, because the vocabulary is the extension's
+            // and a message a host declines is the protocol working.
+            break
         case let .setTocWidth(w): Prefs.tocWidth = w
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
@@ -2732,13 +2753,37 @@ final class Coordinator {
         if measure.enabled { measure.trace("titletext \(titleBar.titleView.currentText)") }
     }
 
-    /// Chrome follows the pointer: everything on while it is over the window,
-    /// and a page with a caret in it when it is not. Wholly the page's now,
-    /// as a body class its own stylesheet reads; the window's own title is not
-    /// part of it, because macOS titles a window whether or not you are
-    /// pointing at it.
+    /// Chrome follows attention: everything on while the window has the
+    /// pointer OR the keyboard, and a page with a caret in it when it has
+    /// neither. Wholly the page's, as a body class its own stylesheet reads;
+    /// the window's own title is not part of it, because macOS titles a window
+    /// whether or not you are looking at it.
+    ///
+    /// BOTH, and the pointer alone was the bug. A window you are typing in,
+    /// with the pointer parked somewhere else on the screen, is not at rest,
+    /// and hiding its controls mid-sentence is the version of this idea that
+    /// makes people turn it off. What is left is the case it was for: a window
+    /// in the background that nobody is pointing at.
+    ///
+    /// What is pinned and what is not, because the two halves are not equally
+    /// covered. The native half's rule is a property of `TitleBarView` and
+    /// `TitlebarActionsTests` asks it directly, both ways. The page half is
+    /// this line, and the thing most likely to break it is not the condition
+    /// but the WIRING: it has to be called from the pointer's tracking area,
+    /// from BOTH key notifications, and once at boot, and a missing one of
+    /// those is silent. Nothing checks that, because what it writes is
+    /// JavaScript into a live WKWebView. If this file grows a spy for the host,
+    /// that is the check to add.
     private func applyChromeVisibility(_ hovering: Bool) {
-        host.setChromeResting(!hovering)
+        host.setChromeResting(!hovering && !panel.isKeyWindow)
+        // The native half of the same band takes the same answer. It has its
+        // own two hover sources, the title view's tracking area and the drag
+        // strip's, and both are strips of the titlebar: without this, a pointer
+        // resting in the middle of the document on a window that is not key
+        // would light the page's buttons and leave the file buttons dark, and a
+        // titlebar that fills from one end reads as a fault rather than as a
+        // window waking up.
+        titleBar.titleView.setBandHovered(hovering)
     }
 
     private func focusEditorIfVisible() {

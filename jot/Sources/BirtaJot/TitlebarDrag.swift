@@ -41,33 +41,10 @@ import BirtaJotCore
 /// `performDrag` keeps both, and keeps them native.
 @MainActor
 final class TitlebarDragView: NSView {
-    /// Pointer in or out of the strip.
-    ///
-    /// The strip is most of the band, so this is how the titlebar as a whole
-    /// answers "is the pointer on me" for the buttons the title accessory
-    /// draws (`TitleBarView.setBandHovered`). Tracking is all this adds: a
-    /// tracking area observes, it does not consume, so nothing about the drag
-    /// or the double click above changes.
-    var onHoverChange: ((Bool) -> Void)?
-
     /// Overridden to false so `mouseDown` is delivered to us. See the note
     /// above: the two mechanisms are exclusive and this one keeps both
     /// gestures.
     override var mouseDownCanMoveWindow: Bool { false }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        // `.inVisibleRect` because this view is laid out by frame on every
-        // window resize (`Coordinator.layoutTitlebarDrag`), so a tracking area
-        // pinned to a rect would describe the strip's last size.
-        addTrackingArea(NSTrackingArea(rect: .zero,
-                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                                       owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { onHoverChange?(true) }
-    override func mouseExited(with event: NSEvent) { onHoverChange?(false) }
 
     /// A click that also brings the window forward should still drag it, which
     /// is how every native titlebar behaves.

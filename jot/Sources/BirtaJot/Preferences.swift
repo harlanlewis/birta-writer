@@ -58,7 +58,6 @@ enum Prefs {
         case lastNotesDirectory
         case lastScratchpadFile
         case tocVisibility
-        case tocOnRight
         case tocWidth
         case recentDocuments
         case proofreadOptions
@@ -447,11 +446,6 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.tocVisibility.rawValue) }
     }
 
-    static var tocOnRight: Bool {
-        get { d.bool(forKey: Key.tocOnRight.rawValue) }
-        set { d.set(newValue, forKey: Key.tocOnRight.rawValue) }
-    }
-
     /// Nil until the reader has dragged the panel's edge, so the page keeps its
     /// own default width until then. The page clamps whatever it is given, so
     /// its bounds are not restated here.
@@ -822,7 +816,6 @@ enum Prefs {
             proofreadOptions: proofreadOptions,
             styleExceptions: styleExceptions,
             tocVisibility: tocVisibility,
-            tocOnRight: tocOnRight,
             tocWidth: tocWidth,
             networkEnabled: networkEnabled,
             // HOST_PROFILES.jot in shared/hostProfile.ts is the source;

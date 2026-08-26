@@ -27,13 +27,21 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     }
     /// The theme class for the initial paint; the host updates it before every reload.
     var themeClass = "vscode-light"
-    /// The outline panel's side, as a body class, and its width, as a rule.
+    /// The outline panel's width, as a rule.
     ///
-    /// Both ride the served HTML rather than the boot script, for the reason
-    /// `BootConfig.tocRootStyle` gives: the page reads them while it mounts,
-    /// and no moment a document-start script has is both late enough to have a
+    /// It rides the served HTML rather than the boot script, for the reason
+    /// `BootConfig.tocRootStyle` gives: the page reads it while it mounts, and
+    /// no moment a document-start script has is both late enough to have a
     /// document and early enough to be read.
-    var tocOnRight = false
+    ///
+    /// Its SIDE rides the same HTML and is not a variable: `toc-right` is
+    /// written on every page. A macOS sidebar is on the trailing edge, and this
+    /// window has no reason to be the exception. The page is told the reader
+    /// cannot move it by the `fixedTocSide` arrangement
+    /// (`Bridge.i18nObject`), which is what withdraws the panel's flip button
+    /// and the Swap Sides command; this is the other half, and the two have to
+    /// agree or the control would be gone while the side still came back left
+    /// from a stored preference.
     var tocRootStyle = ""
     /// Whether the page may reach the network (Preferences opt-in).
     var networkEnabled = false
@@ -136,7 +144,7 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
         template
             .replacingOccurrences(of: "{{CSP}}", with: csp())
             .replacingOccurrences(of: "{{THEME_CLASS}}",
-                                  with: tocOnRight ? "\(themeClass) toc-right" : themeClass)
+                                  with: "\(themeClass) toc-right")
             .replacingOccurrences(of: "{{ROOT_STYLE}}", with: tocRootStyle)
     }
 }
@@ -173,7 +181,6 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         // the boot script describe different panels.
         let boot = bootConfig()
         schemeHandler.themeClass = themeClass
-        schemeHandler.tocOnRight = boot.tocOnRight
         schemeHandler.tocRootStyle = boot.tocRootStyle
         controller.removeAllUserScripts()
         let script = WKUserScript(source: boot.userScript(themeClass: themeClass),

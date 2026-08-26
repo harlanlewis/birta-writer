@@ -17,7 +17,14 @@ import {
     type HostArrangement, APP_ONLY_CAPABILITIES, ALL_HOST_ARRANGEMENTS } from "../hostProfile";
 import { EDITOR_COMMANDS, TOOLBAR_MENU_COMMANDS } from "../editorCommands";
 
-type Declared = { __i18n?: { host?: { capabilities?: readonly HostCapability[] } } };
+type Declared = {
+    __i18n?: {
+        host?: {
+            capabilities?: readonly HostCapability[];
+            arrangements?: readonly HostArrangement[];
+        };
+    };
+};
 const g = globalThis as Declared;
 
 /** Declare a profile carrying `caps`, or one with no profile at all. */
@@ -292,11 +299,29 @@ describe("hostHasCommand", () => {
         }
     });
 
-    it("an arrangement should withdraw nothing a capability already gates", () => {
-        // The two reasons must stay separable: a command carrying both would
-        // make "why is this absent" unanswerable from the declaration.
-        for (const m of WITHDRAWN) {
-            expect("hostCapability" in m && m.hostCapability, m.id).toBeFalsy();
+    it("a command carrying both gates should be withdrawn by each of them alone", () => {
+        // A command may carry both — `swapTocSide` needs both, because there
+        // is no side to swap without a sidebar and nothing to ask on a surface
+        // that fixes the side. What the two must not become is one reason
+        // wearing two names, so each is asked with the other satisfied. Read
+        // one way this is a precedence check; read the other it is what stops
+        // an arrangement being declared only by hosts that also lack the
+        // capability, where it would withdraw nothing and no surface could
+        // show which gate was doing the work.
+        const both = WITHDRAWN.filter(
+            (m): m is typeof m & { hostCapability: HostCapability } =>
+                "hostCapability" in m && !!m.hostCapability);
+        expect(both.length, "no command carries both, so this checks nothing").toBeGreaterThan(0);
+        for (const m of both) {
+            // Capability present, arrangement absent: available.
+            g.__i18n = { host: { capabilities: [m.hostCapability], arrangements: [] } };
+            expect(hostHasCommand(m.id), `${m.id} with the capability and no arrangement`).toBe(true);
+            // Capability present, arrangement declared: the ARRANGEMENT withdraws it.
+            g.__i18n = { host: { capabilities: [m.hostCapability], arrangements: [m.absentUnder] } };
+            expect(hostHasCommand(m.id), `${m.id} under ${m.absentUnder}`).toBe(false);
+            // Capability absent, arrangement absent: the CAPABILITY withdraws it.
+            g.__i18n = { host: { capabilities: [], arrangements: [] } };
+            expect(hostHasCommand(m.id), `${m.id} without ${m.hostCapability}`).toBe(false);
         }
     });
 

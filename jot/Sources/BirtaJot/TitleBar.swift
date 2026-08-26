@@ -311,7 +311,19 @@ final class TitleBarView: NSView {
             return
         }
         // No file, no affordance: an empty title has nothing to open.
-        let offered = url != nil && (isHovered || isBandHovered || popover?.isShown == true)
+        //
+        // AWAKE, not hovered. The window being key is enough on its own, and
+        // that is the whole answer to a complaint these buttons earned while
+        // they were hover-only: a control nobody can see is a control nobody
+        // learns, and its tooltip never gets read because resting on a blank
+        // stretch of titlebar is not a thing anyone does. Hover still counts,
+        // so the buttons come back for a pointer on a background window, and
+        // the popover being up holds them while the window gives up key to it.
+        //
+        // What this does NOT do is change any geometry: the room is reserved
+        // either way (`TitlebarActionsView.room`), so the title's ceiling and
+        // the drag strip's origin are the same numbers they were.
+        let offered = url != nil && (isKey || isHovered || isBandHovered || popover?.isShown == true)
         actions.setShown(offered, animated: animated)
         let wanted: CGFloat = offered ? 1 : 0
         guard chevron.alphaValue != wanted else { return }
@@ -592,15 +604,23 @@ final class TitleBarView: NSView {
         return (chevron.image != nil, chevron.frame, chevron.alphaValue, inkWidth(of: chevron))
     }
 
-    /// Put BOTH hover sources where the caller asked and settle the chrome.
+    /// Put EVERY source of "awake" where the caller asked and settle the chrome.
     ///
-    /// Both, because either one alone leaves the other free to decide the
-    /// answer: a probe asking what happens at rest, with the band still
-    /// reporting a pointer on it, would be told the chrome is offered and
-    /// would have measured something it did not set.
-    private func setHoverForMeasurement(_ hovered: Bool) {
-        isHovered = hovered
-        isBandHovered = hovered
+    /// All of them, because any one left alone is free to decide the answer: a
+    /// probe asking what happens at rest, with the band still reporting a
+    /// pointer on it, would be told the chrome is offered and would have
+    /// measured something it did not set. Key state joined the list when the
+    /// buttons stopped being hover-only, and a probe that had gone on setting
+    /// only the two hover flags would have reported the chrome offered at rest
+    /// forever after, which is a green check over the exact state it exists to
+    /// look at.
+    private func setHoverForMeasurement(_ awake: Bool) {
+        isHovered = awake
+        isBandHovered = awake
+        // Through the real setter, so the ink the key state owns cannot drift
+        // from the state a probe put it in. It early-returns when the value has
+        // not moved, which is why the settle below is unconditional.
+        setWindowKey(awake, animated: false)
         syncHoverChrome(animated: false)
     }
 
@@ -658,7 +678,11 @@ final class TitleBarView: NSView {
 
     /// Title ink follows the window's key state, the way every macOS title
     /// does: a background window names itself quietly.
-    func setWindowKey(_ key: Bool) {
+    /// `animated` is false only for the measurement path, and not for looks: an
+    /// animated settle defers `isHidden` to a completion handler, and a probe
+    /// that never spins the run loop would read the state the fade started from
+    /// rather than the one it is asking about.
+    func setWindowKey(_ key: Bool, animated: Bool = true) {
         guard key != isKey else { return }
         isKey = key
         // The chevron is part of the title, so it takes the title's rule: a
@@ -666,6 +690,11 @@ final class TitleBarView: NSView {
         // quietly too.
         chevron.contentTintColor = key ? .secondaryLabelColor : .tertiaryLabelColor
         actions.setWindowKey(key)
+        // Key state is one of the two things that offer the buttons at all, so
+        // it settles the chrome as well as inking it. Without this the ink
+        // followed the window and the buttons did not, which is the shape of a
+        // background window quietly drawing controls it had decided to withdraw.
+        syncHoverChrome(animated: animated)
         paint()
     }
 

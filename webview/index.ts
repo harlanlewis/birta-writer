@@ -691,6 +691,15 @@ const topbarTb = topbar
 mark("toolbar-end");
 measure("initToolbar", "toolbar-start", "toolbar-end");
 
+// Where the surface withdrew the sidebar's own reveal tab (`tocToggleInBar`),
+// the bar's button inherits the hover preview the tab used to give. Wired here
+// rather than inside either component because this is the only place that has
+// both: the sidebar is built before the bar, and the bar knows nothing about a
+// panel it toggles through a command id. `setFlyoutTrigger` is a no-op on every
+// other surface, so no branch is needed around it.
+const barTocBtn = topbar?.querySelector<HTMLElement>(".tb-toc-btn");
+if (toc && barTocBtn) { toc.setFlyoutTrigger(barTocBtn); }
+
 // Floating selection palette (birta.floatingToolbar): a formatting bar above a
 // text selection, and move/duplicate/delete above a whole-block (multi-block)
 // selection. Gated on the master setting; per-item button visibility comes from

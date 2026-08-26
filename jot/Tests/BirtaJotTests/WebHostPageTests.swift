@@ -53,16 +53,28 @@ final class WebHostPageTests: XCTestCase {
     }
 
     func testTheDockSideShouldRideTheBodyTagBesideTheThemeClass() throws {
-        let source = try template()
-        let left = handler()
-        left.themeClass = "vscode-dark"
-        XCTAssertTrue(left.renderPage(source).contains(#"<body class="vscode-dark">"#))
-
-        let right = handler()
-        right.themeClass = "vscode-dark"
-        right.tocOnRight = true
         // Both classes, in one attribute: the theme is still applied, which is
         // what a naive replacement of the whole attribute would lose.
-        XCTAssertTrue(right.renderPage(source).contains(#"<body class="vscode-dark toc-right">"#))
+        let source = try template()
+        let subject = handler()
+        subject.themeClass = "vscode-dark"
+        XCTAssertTrue(subject.renderPage(source).contains(#"<body class="vscode-dark toc-right">"#))
+    }
+
+    func testTheDockSideShouldBeTheTrailingEdgeWhateverTheTheme() throws {
+        // A macOS sidebar is on the trailing edge, and nothing here may put it
+        // anywhere else: the page's flip button and the Swap Sides command are
+        // both withdrawn (`fixedTocSide`), so a side that could still come back
+        // left would leave the reader with a sidebar on the wrong edge and no
+        // control to move it. Asked of BOTH themes, because the side rides the
+        // same attribute the theme does, and a replacement that dropped one of
+        // them would be visible in only one theme.
+        let source = try template()
+        for theme in ["vscode-light", "vscode-dark"] {
+            let subject = handler()
+            subject.themeClass = theme
+            let page = subject.renderPage(source)
+            XCTAssertTrue(page.contains("<body class=\"\(theme) toc-right\">"), page)
+        }
     }
 }

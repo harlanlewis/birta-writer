@@ -12,6 +12,12 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- The table of contents docks on the right and no longer offers to move, and the toolbar button is the only control that shows and hides it. Resting on that button flies the outline out over the text without opening it; pressing opens it for good, and pressing again puts it away. The panel used to carry a hide button and a swap-sides button of its own, and a reveal tab on the window's edge when it was shut, so there were three controls for two questions and one of them sat a few pixels from the button that already did the same thing. A Mac puts a sidebar on the trailing edge, so the side is the app's answer rather than a question, and Swap Table of Contents Side is gone from the command list with it. Birta Writer for VS Code is unchanged: it keeps both controls and the reader keeps the side.
+
+- The titlebar's buttons go away when you are neither pointing at the window nor typing in it, and are there the whole time you are. Checks, Find, Settings and the table of contents used to sit in the titlebar at every moment, including on a window in the background you were not using; New Note, Open and Open Recent had the opposite problem and appeared only while the pointer was on the band, which is a hard place to discover a button and an impossible place to read its tooltip. Both halves of the band now follow one rule, so a window you are working in shows its controls and a window at rest is a page and a cursor. Nothing moves when they come and go: the room they take is held either way, so the file's name never changes width. The three file buttons are also drawn at the size the toolbar's own icons are, which they were not.
+
 ---
 
 ## [2026.826.0] - 2026, August 26

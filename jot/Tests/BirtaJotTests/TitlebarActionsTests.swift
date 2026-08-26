@@ -238,13 +238,48 @@ final class TitlebarActionsTests: XCTestCase {
 
     func testHoverOnTheBandShouldOfferTheSameButtonsTheNameDoes() {
         // The band reads as one strip, so pointing anywhere along it offers
-        // what the strip holds. Both sources withdraw independently: this is
-        // the arm that fails if the two are collapsed into one flag.
+        // what the strip holds. Asked of a BACKGROUND window, because a key one
+        // offers them anyway and the check would pass without the band ever
+        // being consulted. Both sources withdraw independently: this is the arm
+        // that fails if they are collapsed into one flag.
         let view = boundTitle()
+        view.setWindowKey(false, animated: false)
+        XCTAssertFalse(view.actionsView.shown, "a background window at rest should offer nothing")
         view.setBandHovered(true)
         XCTAssertTrue(view.actionsView.shown)
         view.setBandHovered(false)
         XCTAssertFalse(view.actionsView.shown)
+    }
+
+    func testAKeyWindowShouldOfferTheButtonsWithNoPointerOnItAtAll() {
+        // The complaint these earned while they were hover-only: a control
+        // nobody can see is a control nobody learns, and its tooltip is never
+        // read because resting on a blank stretch of titlebar is not a gesture.
+        // A key window offers them; a background window with no pointer on it
+        // is the one state that takes them away.
+        //
+        // The pair is asserted together rather than the first alone, or this
+        // passes on a strip that simply never hides.
+        let view = boundTitle()
+        view.setWindowKey(true, animated: false)
+        XCTAssertTrue(view.actionsView.shown, "a key window should draw them with no pointer on it")
+        view.setWindowKey(false, animated: false)
+        XCTAssertFalse(view.actionsView.shown, "and a background window at rest should not")
+    }
+
+    func testTheButtonsShouldTakeNoRoomFromTheNameForBeingDrawnMoreOften() {
+        // Showing them whenever the window is key changes WHEN they are drawn
+        // and nothing about the geometry, which is the whole reason that change
+        // was cheap: the room is reserved either way, so the title's ceiling and
+        // the drag strip's origin are the same numbers at rest as awake.
+        let view = boundTitle(name: "A rather long note name.md")
+        view.setWindowKey(false, animated: false)
+        let restingWidth = view.frame.width
+        let restingLabel = view.labelFrameInWindow()
+        view.setWindowKey(true, animated: false)
+        XCTAssertTrue(view.actionsView.shown, "the awake arm never drew anything")
+        XCTAssertEqual(view.frame.width, restingWidth)
+        XCTAssertEqual(view.labelFrameInWindow(), restingLabel)
     }
 
     // MARK: ink

@@ -220,6 +220,22 @@
     border-color: transparent;
 }
 
+/* `display` on a class beats the UA's `[hidden] { display: none }`, so every
+   composed button that anything sets `hidden` on would go on drawing and go on
+   taking its width. It belongs in the primitive rather than at each surface:
+   the composer is the one who writes `el.hidden = true` and the one who cannot
+   see that a rule three files away is what makes it work.
+
+   The failure it exists for is quiet in both halves. The review sidebar's tab
+   strip hides the Links and Notes tabs when the document has neither, and all
+   four went on being drawn; the strip then wrapped to two rows and its own
+   overflow logic collapsed the tabs to a select button, on a panel with two
+   tabs and room for four. The logic was right and was reading a row that had
+   four items in it. */
+.ui-btn[hidden] {
+    display: none;
+}
+
 .ui-btn--icon {
     width: var(--ui-btn-size, 22px);
     height: var(--ui-btn-size, 22px);

@@ -42,8 +42,16 @@ export async function run({ page, check, baseUrl }) {
         items: [...document.querySelectorAll(".tb-item")].map((el) => el.dataset.itemId),
         dock: !!document.querySelector(".tb-dock"),
         leftZone: [...document.querySelectorAll(".tb-zone--left .tb-item")].map((el) => el.dataset.itemId),
+        // The three controls the Jot profile withdraws from the sidebar. Read
+        // here so the absence checks further down are a DIFFERENCE rather than
+        // three selectors that might match nothing in any build.
+        flip: !!document.querySelector(".toc-flip-btn"),
+        hide: !!document.querySelector(".toc-hide-btn"),
+        revealTab: !!document.querySelector(".toc-toggle-tab"),
     }));
     check("control: the TOC panel exists when hostCapabilities is absent", ctl.toc);
+    check("control: and it keeps its own flip, hide and reveal-tab controls",
+        ctl.flip && ctl.hide && ctl.revealTab, JSON.stringify(ctl));
     check("control: no formatting dock, because the arrangement is not declared", !ctl.dock);
     check("control: the editing controls are in the top bar's left zone",
         ctl.leftZone.includes("bold") && ctl.leftZone.includes("format"),
@@ -156,6 +164,12 @@ export async function run({ page, check, baseUrl }) {
                     >= bar.getBoundingClientRect().bottom - 0.5;
             })(),
             lit: getComputedStyle(document.querySelector(".tb-toc-btn")).backgroundColor,
+            // The numbers behind `clearsBar`, in the payload rather than left
+            // to be re-derived: a bare false there says the panel is under the
+            // bar and not whether it is six pixels short (still sliding) or
+            // three hundred (measuring the wrong bar).
+            panelTop: Math.round(document.querySelector(".toc-panel")?.getBoundingClientRect().top ?? -1),
+            barBottom: Math.round(document.querySelector(".editor-topbar")?.getBoundingClientRect().bottom ?? -1),
         }));
         // The panel slides, so every reading below waits for it to come to rest
         // rather than for a number: a fixed pause sized to the transition is a
@@ -167,11 +181,22 @@ export async function run({ page, check, baseUrl }) {
             try {
                 await page.waitForFunction((shown) => {
                     const el = document.querySelector(".toc-panel");
-                    if (!el) { return false; }
+                    const bar = document.querySelector(".editor-topbar");
+                    if (!el || !bar) { return false; }
                     const box = el.getBoundingClientRect();
                     const out = getComputedStyle(el).visibility !== "hidden"
                         && box.width > 0 && box.right > 0 && box.left < window.innerWidth;
-                    return out === shown;
+                    if (out !== shown) { return false; }
+                    // On screen is not AT REST. The panel slides, and every
+                    // measurement above is already true a few frames in, so a
+                    // reading taken here was of a panel still moving: it sat
+                    // six pixels above the bar's bottom edge and its button was
+                    // mid-transition, both of which read as product faults. So
+                    // the shown case waits for the geometry the checks below
+                    // actually assert, which is what this poll claimed to do
+                    // and did not.
+                    return !shown
+                        || box.top >= bar.getBoundingClientRect().bottom - 0.5;
                 }, wanted, { timeout: 4000 });
             } catch { /* reported by the check that reads the state next */ }
             return tocState();
@@ -186,10 +211,109 @@ export async function run({ page, check, baseUrl }) {
             open.clearsBar, JSON.stringify(open));
         check("jot: and the button says so, from the panel's own classes",
             open.lit !== shut.lit, JSON.stringify({ shut: shut.lit, open: open.lit }));
+
+        // A tab the strip has HIDDEN must take no width, or the row it is
+        // measured in has more items in it than the measurement is told about.
+        // This fixture is the case: one heading list and one style finding, so
+        // Links and Notes carry nothing and the strip hides both. They went on
+        // drawing anyway, because `.toc-tab` composes `.ui-btn`, whose `display`
+        // beat the UA's `[hidden] { display: none }`. Four tabs then wrapped to
+        // two rows and the strip's own overflow logic collapsed them all to a
+        // select button, on a panel with two tabs and room for four.
+        //
+        // `hiddenCount` is the arm: with nothing hidden every claim below is
+        // true of a strip this could never have been asked of.
+        const strip = await page.evaluate(() => {
+            const tabs = [...document.querySelectorAll(".toc-tab")];
+            const drawn = (el) => el.getClientRects().length > 0;
+            return {
+                hidden: tabs.filter((t) => t.hidden).map((t) => t.textContent),
+                drawnHidden: tabs.filter((t) => t.hidden && drawn(t)).map((t) => t.textContent),
+                rows: new Set(tabs.filter(drawn).map((t) => t.offsetTop)).size,
+                selectMode: document.querySelector(".toc-tabs").classList.contains("toc-tabs--select"),
+            };
+        });
+        check("jot: the fixture really does hide some of the review tabs",
+            strip.hidden.length > 0, JSON.stringify(strip));
+        check("jot: a hidden review tab is not drawn",
+            strip.drawnHidden.length === 0, JSON.stringify(strip));
+        check("jot: so the tab strip stays one row and keeps its tabs",
+            strip.rows === 1 && !strip.selectMode, JSON.stringify(strip));
+
+        // ── fixedTocSide ──────────────────────────────────────────────
+        // The side is the app's, and it is the trailing edge. Asserted as the
+        // panel's own box against the viewport, not as the body class that is
+        // supposed to place it: the class is what this page was handed, and a
+        // panel that ignored it would leave the class reading correctly on a
+        // sidebar sitting on the wrong edge.
+        const side = await page.evaluate(() => {
+            const box = document.querySelector(".toc-panel").getBoundingClientRect();
+            return {
+                declared: document.body.classList.contains("toc-right"),
+                gapRight: Math.round(window.innerWidth - box.right),
+                gapLeft: Math.round(box.left),
+            };
+        });
+        check("jot: the sidebar docks on the trailing edge",
+            side.declared && side.gapRight <= 1 && side.gapLeft > 1, JSON.stringify(side));
+        check("jot: and it carries no control offering to move it",
+            !(await page.$(".toc-flip-btn")), "the flip button is still on the panel");
+
+        // ── tocToggleInBar ────────────────────────────────────────────
+        // One control, not two a few pixels apart. Both of the panel's own are
+        // gone, and the arm is the control page below, where all three exist.
+        check("jot: the panel carries no hide button of its own",
+            !(await page.$(".toc-hide-btn")), "the panel's hide button is still there");
+
         await tocButton.click();
         const shutAgain = await settled(false);
         check("jot: pressing it again puts the sidebar away",
             !shutAgain.open && !shutAgain.panelOnScreen, JSON.stringify(shutAgain));
+        check("jot: and no reveal tab appears where the panel was",
+            !(await page.$(".toc-toggle-tab")), "the reveal tab is still on the page");
+
+        // The hover preview is the half that must SURVIVE the withdrawal: the
+        // reveal tab is what used to carry it, so a build that simply deleted
+        // the tab would leave the bar's button with a click and nothing else.
+        // Real pointer events (`hover`), because this is a handler race between
+        // the button and the panel and a dispatched mouseenter would prove
+        // nothing about which one wins. The pointer is moved AWAY first: the
+        // click above left it on the button, and hovering where it already is
+        // fires no mouseenter, so the check would be reading a flyout that was
+        // never asked for.
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(150);
+        await tocButton.hover();
+        await page.waitForTimeout(400);
+        const flown = await page.evaluate(() => {
+            const panel = document.querySelector(".toc-panel");
+            const bar = document.querySelector(".editor-topbar");
+            const box = panel.getBoundingClientRect();
+            return {
+                flyout: panel.classList.contains("toc-panel--flyout"),
+                onScreen: getComputedStyle(panel).visibility !== "hidden"
+                    && box.width > 0 && box.left < window.innerWidth,
+                // Transient, not docked: the body classes that make room for a
+                // docked panel must stay off, or this "preview" has quietly
+                // reflowed the document.
+                docked: document.body.classList.contains("toc-open")
+                    || document.body.classList.contains("toc-overlay-open"),
+                // Under the trigger it hangs off, not parked where the reveal
+                // tab used to be.
+                belowBar: box.top >= bar.getBoundingClientRect().bottom - 0.5,
+            };
+        });
+        check("jot: resting on the bar's button flies the sidebar out",
+            flown.flyout && flown.onScreen, JSON.stringify(flown));
+        check("jot: as a preview, without docking it",
+            !flown.docked && flown.belowBar, JSON.stringify(flown));
+
+        // And it retracts, or the preview is a panel that never goes away.
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(600);
+        check("jot: and it retracts when the pointer leaves",
+            !(await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--flyout"))),
+            "the flyout stayed up");
     }
 
     // ── formattingInSecondRow ─────────────────────────────────────────
@@ -520,12 +644,20 @@ export async function run({ page, check, baseUrl }) {
     check("jot: Show all commands lists the rows the shell's own capabilities earn",
         ["Image", "Ask Agent", "Check spelling", "Check grammar"].every((l) => labels.includes(l)),
         JSON.stringify(labels));
-    // The sidebar's rows, present because the shell now declares `toc`. The
-    // labels are dynamic (Hide/Show, Move Left/Right), so this asks for the
-    // subject rather than for a spelling of the state it happens to be in.
-    check("jot: the sidebar's rows are in the slash menu",
-        labels.filter((l) => /Table of Contents/.test(l)).length === 2,
-        JSON.stringify(labels.filter((l) => /Table of Contents/.test(l))));
+    // The sidebar's row, present because the shell declares `toc`. Its label is
+    // dynamic (Hide/Show), so this asks for the subject rather than for a
+    // spelling of the state it happens to be in.
+    //
+    // ONE row, not the two every other surface gets: Swap Table of Contents
+    // Side is withdrawn here (`fixedTocSide`), and the pair is asserted
+    // together because "the sidebar has rows" and "the side is not offered" are
+    // separate claims and a count of two satisfies neither.
+    const tocRows = labels.filter((l) => /Table of Contents/.test(l));
+    check("jot: the sidebar's row is in the slash menu",
+        tocRows.length === 1 && !/Side|Move/.test(tocRows[0] ?? ""), JSON.stringify(tocRows));
+    check("jot: and the side is not offered anywhere in it",
+        !labels.some((l) => /Move Table of Contents|Swap Table of Contents/.test(l)),
+        JSON.stringify(tocRows));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
     // Search is the other way in, and a withdrawn row must not be reachable

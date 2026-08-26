@@ -7,6 +7,7 @@ import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/mes
 import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
+import { hostArranges } from "../../../shared/hostProfile";
 import type { EventManager } from "@/eventManager";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
@@ -85,12 +86,22 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /** Reveal the sidebar (if hidden) and move keyboard focus into it — the
      *  `Focus Review Sidebar` command's entry point (MAR-294). */
     focusPanel: () => void;
+    /** Hand the hover/focus preview to a button outside the panel, for the
+     *  surface whose own reveal tab is withdrawn (`tocToggleInBar`). A no-op
+     *  on every other surface, where the tab is still the trigger. */
+    setFlyoutTrigger: (el: HTMLElement) => void;
     /** Unregister the panel's drop-zone provider (teardown/tests). */
     dispose: () => void;
 } {
     // Initial side comes from the birta.tocPosition setting via a
     // server-rendered body class; the header flip button mutates it live.
     let tocRight = document.body.classList.contains("toc-right");
+
+    // What the SURFACE has settled, read once: which edge the panel docks on,
+    // and who is allowed to show and hide it. Both withdraw a control the
+    // panel would otherwise carry, and neither changes what the panel does.
+    const fixedSide = hostArranges("fixedTocSide");
+    const toggleInBar = hostArranges("tocToggleInBar");
 
     const panel = document.createElement("div");
     panel.className = "toc-panel";
@@ -112,30 +123,48 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     controls.setAttribute("aria-label", t("Sidebar controls"));
 
     // Side-switch: moves the panel to the opposite edge. Two-way arrows read as
-    // "swap sides"; the tooltip names the destination.
+    // "swap sides"; the tooltip names the destination. Absent where the surface
+    // has settled the side (`fixedTocSide`), which is the same declaration that
+    // withdraws `swapTocSide` from the palette and the slash menu, so the panel
+    // and the command lists agree without either knowing about the other.
     const flipBtn = document.createElement("button");
     flipBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-flip-btn";
     flipBtn.innerHTML = IconArrowLeftRight;
-    controls.appendChild(flipBtn);
+    if (!fixedSide) { controls.appendChild(flipBtn); }
 
     // Hide button: collapses the panel. Carries the VS Code side-bar glyph (the
     // filled edge marks the docked side) — the same icon the reveal tab uses, so
     // the two read as one persistent control as the panel slides away.
+    //
+    // Absent under `tocToggleInBar`, where the bar's button is the only control
+    // that shows and hides the panel. Both are built either way: everything
+    // below wires them, and appending is the one decision, so a withdrawn
+    // control cannot half-exist with a stale glyph or a stale tooltip.
     const hideBtn = document.createElement("button");
     hideBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-hide-btn";
-    controls.appendChild(hideBtn);
+    if (!toggleInBar) { controls.appendChild(hideBtn); }
+
+    // A surface may withdraw both, and then the strip has no control group at
+    // all: an empty `role="toolbar"` is a landmark a screen reader announces
+    // and a Tab stop that lands on nothing, so it is left out rather than
+    // emptied. The class is what tells the tab row it no longer has to reserve
+    // the trailing room those buttons took (toc.css).
+    const hasPanelControls = controls.childElementCount > 0;
+    panel.classList.toggle("toc-panel--bare-tabs", !hasPanelControls);
 
     // MAR-295: the flip/hide pair used to sit at tabIndex -1 outside every
     // group — mouse-only. It is now the sidebar's standard shape in miniature:
     // one roving group, one Tab stop, arrows along its own (horizontal) axis.
     // wireRoving seeds the single tabbable slot, so the buttons no longer set
     // tabIndex themselves.
-    wireRoving({
-        container: controls,
-        items: () => [...controls.querySelectorAll<HTMLElement>("button")],
-        orientation: "horizontal",
-        onEscape: () => getEditorView()?.focus(),
-    });
+    if (hasPanelControls) {
+        wireRoving({
+            container: controls,
+            items: () => [...controls.querySelectorAll<HTMLElement>("button")],
+            orientation: "horizontal",
+            onEscape: () => getEditorView()?.focus(),
+        });
+    }
 
     const list = document.createElement("div");
     list.className = "toc-list";
@@ -213,7 +242,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabsMenu.hidden = true;
     tabsMenu.setAttribute("role", "menu");
 
-    tabStrip.append(tabsList, tabsSelect, tabsMenu, controls);
+    tabStrip.append(tabsList, tabsSelect, tabsMenu);
+    if (hasPanelControls) { tabStrip.appendChild(controls); }
 
     const ALL_TABS: Array<[HTMLButtonElement, ReviewTab]> = [
         [tabContents, "contents"], [tabLinks, "links"], [tabNotes, "notes"], [tabProofread, "proofreading"],
@@ -586,6 +616,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // only while the panel is closed. It carries the same side-bar glyph as the
     // header's hide button and sits at the same corner, so hiding the panel
     // reads as the control staying put while the panel slides away behind it.
+    //
+    // Under `tocToggleInBar` it is never put on the page: the bar already
+    // carries a button that does exactly this, and two of them a few pixels
+    // apart is one control drawn twice. It is still BUILT, because it is the
+    // flyout's default anchor and the code below reads its box; the surface
+    // that withdraws it registers the bar's button in its place
+    // (`setFlyoutTrigger`), so the hover preview survives the withdrawal
+    // rather than being the price of it.
     const tabEl = document.createElement("button");
     tabEl.className = "ui-btn ui-btn--icon toc-toggle-tab";
     // Keyboard-reachable: Tab focuses it (flying the panel out as a preview via
@@ -593,8 +631,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // and because the mousedown handler preventDefaults click-focus — the focus
     // path would be dead and the flyout pointer-only.
     tabEl.tabIndex = 0;
-    document.body.appendChild(tabEl);
-    applyTooltip(tabEl, t("Show table of contents"), { placement: "below" });
+    if (!toggleInBar) {
+        document.body.appendChild(tabEl);
+        applyTooltip(tabEl, t("Show table of contents"), { placement: "below" });
+    }
 
     let tocMode: TocMode = "overlay";
     let isOpen = false;
@@ -1230,6 +1270,17 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     function toggle(): void {
+        // Drop any preview first. A flown-out panel carries its own classes and
+        // its own inline position, and docking it open on top of that leaves a
+        // panel that is `toc-open` and still drawn as a floating card halfway
+        // down the window.
+        //
+        // Here rather than at the gesture, and that is the whole fix: the reveal
+        // tab's own click path did this, so while the tab was the only trigger
+        // the bug did not exist. Give the preview to a button that runs the
+        // COMMAND instead (`tocToggleInBar`) and every other route to the same
+        // command — the palette, a chord, the slash row — arrives without it.
+        hideFlyoutImmediate();
         const next = !isOpen;
         applyVisiblePreference(next);
         // Report the explicit choice; the extension writes birta.tocVisibility and
@@ -1295,11 +1346,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     function cancelFlyoutCleanup(): void {
         if (flyoutCleanupTimer) { clearTimeout(flyoutCleanupTimer); flyoutCleanupTimer = null; }
     }
-    /** Anchor the flyout as a dropdown directly BELOW the reveal tab, aligned to
-     *  the tab's docked side — the tab itself never moves, so the cursor stays
-     *  over it (no moving target). Positioned inline; CSS gives it card chrome. */
+    /** Whatever the pointer rests on to preview the panel: the reveal tab, or
+     *  the bar button that replaced it under `tocToggleInBar`. Read at flyout
+     *  time rather than captured, so `setFlyoutTrigger` can arrive later than
+     *  this module does (the bar is built after the sidebar). */
+    let flyoutAnchor: HTMLElement = tabEl;
+
+    /** Anchor the flyout as a dropdown directly BELOW its trigger, aligned to
+     *  the panel's docked side — the trigger itself never moves, so the cursor
+     *  stays over it (no moving target). Positioned inline; CSS gives it card
+     *  chrome. */
     function positionFlyout(): void {
-        const r = tabEl.getBoundingClientRect();
+        const r = flyoutAnchor.getBoundingClientRect();
         const flyoutTop = Math.round(r.bottom + FLYOUT_GAP);
         panel.style.top = `${flyoutTop}px`;
         panel.style.left = tocRight
@@ -1411,10 +1469,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         flyoutHideTimer = setTimeout(hideFlyout, 220);
     }
 
-    tabEl.addEventListener("mouseenter", showFlyout);
-    tabEl.addEventListener("mouseleave", scheduleFlyoutHide);
-    tabEl.addEventListener("focus", showFlyout);
-    tabEl.addEventListener("blur", scheduleFlyoutHide);
+    /** Wire one element as the hover/focus preview trigger. */
+    function armFlyoutTrigger(el: HTMLElement): void {
+        el.addEventListener("mouseenter", showFlyout);
+        el.addEventListener("mouseleave", scheduleFlyoutHide);
+        el.addEventListener("focus", showFlyout);
+        el.addEventListener("blur", scheduleFlyoutHide);
+    }
+    if (!toggleInBar) { armFlyoutTrigger(tabEl); }
     // Moving onto the flown-out panel keeps it; leaving it retracts (unless a
     // click already promoted it to a persistent open, when flyoutOpen is false).
     panel.addEventListener("mouseenter", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
@@ -1439,7 +1501,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     document.addEventListener("mouseup", () => {
         if (!flyoutOpen) { return; }
         requestAnimationFrame(() => {
-            if (flyoutOpen && !panel.matches(":hover") && !tabEl.matches(":hover")) {
+            if (flyoutOpen && !panel.matches(":hover") && !flyoutAnchor.matches(":hover")) {
                 scheduleFlyoutHide();
             }
         });
@@ -1638,6 +1700,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             focusActiveRegion();
         },
         focusPanel,
+        setFlyoutTrigger: (el: HTMLElement) => {
+            // Only where the surface withdrew the reveal tab. Called on any
+            // other surface this would arm a SECOND trigger and leave the tab's
+            // own listeners in place, so the guard is here rather than at the
+            // call site: the caller knows which button it has, not which
+            // triggers are already live.
+            if (!toggleInBar) { return; }
+            flyoutAnchor = el;
+            armFlyoutTrigger(el);
+        },
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
             window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);

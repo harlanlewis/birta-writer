@@ -468,7 +468,17 @@ export async function run({ page, check, baseUrl }) {
     // running untested: the height clamp, its own scroller, and the scrolling
     // that has to bring an arrowed-to day into view inside it. jsdom cannot see
     // any of it, since every offset there is 0.
-    await page.setViewportSize({ width: 1000, height: 240 });
+    // 200, not 240 (MAR-419). At 240 the clamped popup had between four and
+    // twelve pixels of slack below the arrowed-to cell, and the scroll that put
+    // it there was coming up thirty-seven pixels short of where it belonged.
+    // Whether the cell landed inside the box was therefore decided by the
+    // clamp, which moves by several pixels between runs, so this check passed
+    // alone and failed in a sweep for a year without either outcome being about
+    // the code. A height where the shortfall cannot be absorbed is what makes
+    // the reading mean something: the arm below asserts the popup really is
+    // squeezed here, so a future layout change that stops squeezing it fails
+    // loudly rather than passing on a picker with room to spare.
+    await page.setViewportSize({ width: 1000, height: 200 });
     await mount();
     check("the probe placed the caret in a short window", await caretAtEndOf("First line."), "");
     await openPicker();
@@ -500,13 +510,45 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
     await page.waitForTimeout(200);
+    // The GEOMETRY, not the boolean (MAR-419). This check has a history of
+    // failing in a full sweep and passing when the suite is run alone, with a
+    // payload of `{visible:false, scrollTop:20}` that says the scroll ran and
+    // moved the expected distance and tells you nothing about why the cell then
+    // sat outside the box. Two fields, both coarse, is also why "the payload is
+    // byte-identical every time" looked like strong evidence of determinism: a
+    // boolean and a round number agree with themselves across a wide range of
+    // real states.
+    //
+    // What is worth having when it next goes red: how far short the cell fell,
+    // what the popup's scroller measured at the moment of the reading, and what
+    // `focusActiveCell` would have computed from those. `place()` releases and
+    // re-applies the clamp on every scroll event, so a clientHeight that is not
+    // the one the scroll was computed against is the shape to look for.
     const revealed = await page.evaluate(() => {
         const el = document.querySelector(".date-picker");
         const cell = document.activeElement;
         if (!el || !cell || cell.getAttribute("role") !== "gridcell") { return null; }
         const c = cell.getBoundingClientRect();
         const r = el.getBoundingClientRect();
-        return { visible: c.top >= r.top - 1 && c.bottom <= r.bottom + 1, scrollTop: el.scrollTop };
+        return {
+            visible: c.top >= r.top - 1 && c.bottom <= r.bottom + 1,
+            scrollTop: el.scrollTop,
+            shortBy: Math.round(c.bottom - r.bottom),
+            cell: { top: Math.round(c.top), bottom: Math.round(c.bottom), offsetTop: cell.offsetTop, h: cell.offsetHeight },
+            popup: { top: Math.round(r.top), bottom: Math.round(r.bottom), clientH: el.clientHeight, scrollH: el.scrollHeight },
+            // What the scroll should be, computed here the way it has to be
+            // computed: `cell.offsetTop` is relative to the GRID, because a
+            // `<td>`'s offsetParent is its table, so the distance to the
+            // scroller is the sum up the chain. A payload that used the bare
+            // `offsetTop` would restate the bug and agree with it.
+            wantedScrollTop: (() => {
+                let top = 0;
+                for (let n = cell; n && n !== el; n = n.offsetParent) { top += n.offsetTop; }
+                return top + cell.offsetHeight - el.clientHeight;
+            })(),
+            maxHeight: el.style.maxHeight,
+            fonts: document.fonts.status,
+        };
     });
     // Honest about its reach, like the resize arm above: this pins that the
     // focused cell ends up visible inside the scroller, not the coordinate-space
