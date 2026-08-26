@@ -173,6 +173,11 @@ final class TitlebarActionsView: NSView {
         let symbol: String
     }
 
+    /// A button was entered or left: its label, and its box, or nil to take
+    /// the label away. Set by the coordinator, which is the only thing that
+    /// can turn a view's frame into the page's coordinates.
+    var onTooltip: ((String?, NSRect) -> Void)?
+
     init(actions: [Action]) {
         super.init(frame: .zero)
         for action in actions {
@@ -181,6 +186,18 @@ final class TitlebarActionsView: NSView {
             button.isHidden = true
             addSubview(button)
             buttons.append(button)
+        }
+        for button in buttons {
+            button.onHover = { [weak self] button, hovered in
+                guard let self else { return }
+                // The label goes away with the pointer, and ALSO whenever the
+                // buttons stop being offered: `setShown(false)` reports the
+                // same way, because a button that is fading out gets no
+                // `mouseExited` and its label would otherwise stay on screen
+                // naming a control that is no longer there.
+                self.onTooltip?(hovered ? button.label : nil,
+                                button.convert(button.bounds, to: nil))
+            }
         }
         setFrameSize(NSSize(width: room, height: 0))
     }
@@ -226,6 +243,11 @@ final class TitlebarActionsView: NSView {
         // animation, because a hidden view animates nothing, and on the way
         // out after it, guarded on the decision not having changed again
         // while the fade ran.
+        if !wanted {
+            // Withdrawn, so nothing is left naming them. A hidden button never
+            // reports a pointer leaving it.
+            onTooltip?(nil, .zero)
+        }
         if wanted { buttons.forEach { $0.isHidden = false } }
         guard animated else {
             buttons.forEach { $0.alphaValue = alpha; $0.isHidden = !wanted }
@@ -299,6 +321,20 @@ final class TitlebarActionButton: NSButton {
     private var isKey = true
     private var hoverFill: NSColor?
 
+    /// What this button calls itself, with its chord.
+    ///
+    /// NOT `toolTip`. That property draws the system tooltip, and this button
+    /// sits in a row whose other half is HTML with a tooltip of its own, so
+    /// the system one puts two different labels in one strip. The page draws
+    /// this instead (`TitlebarActionsView.onTooltip`), and the string is still
+    /// the menu row's, so nothing about what it SAYS has moved.
+    private(set) var label: String?
+
+    /// Report a pointer arriving or leaving, so the page can draw the label.
+    /// Set by the view that owns this button; nil until then, and a button
+    /// with no reporter simply has no tooltip rather than a broken one.
+    var onHover: ((TitlebarActionButton, Bool) -> Void)?
+
     /// The menu row this button repeats. Nil only if the row has been deleted,
     /// which is a state to be visible rather than papered over: the button
     /// then carries no label and no tooltip instead of an invented one.
@@ -334,7 +370,7 @@ final class TitlebarActionButton: NSButton {
             // right, unlike the chevron beside it, because it DOES something
             // rather than pointing at something the title already does.
             setAccessibilityLabel(row.title)
-            toolTip = row.symbols.isEmpty ? row.title : "\(row.title)  \(row.symbols)"
+            label = row.symbols.isEmpty ? row.title : "\(row.title)  \(row.symbols)"
         }
     }
 
@@ -361,8 +397,15 @@ final class TitlebarActionButton: NSButton {
         hoverArea = area
     }
 
-    override func mouseEntered(with event: NSEvent) { isHovered = true; syncInk() }
-    override func mouseExited(with event: NSEvent) { isHovered = false; syncInk() }
+    override func mouseEntered(with event: NSEvent) { setHovered(true) }
+    override func mouseExited(with event: NSEvent) { setHovered(false) }
+
+    private func setHovered(_ hovered: Bool) {
+        guard hovered != isHovered else { return }
+        isHovered = hovered
+        syncInk()
+        onHover?(self, hovered)
+    }
 
     func setWindowKey(_ key: Bool) {
         guard key != isKey else { return }
@@ -408,8 +451,7 @@ final class TitlebarActionButton: NSButton {
     /// there. The colour rather than a flag, so a fill that resolved to
     /// nothing is not reported as a fill.
     func hoverFillForMeasurement(_ hovered: Bool) -> CGColor? {
-        isHovered = hovered
-        syncInk()
+        setHovered(hovered)
         return layer?.backgroundColor
     }
 
@@ -417,8 +459,7 @@ final class TitlebarActionButton: NSButton {
     /// no pointer. Same shape and same reason as
     /// `TitleBarView.chevronForMeasurement`.
     func hoverForMeasurement(_ hovered: Bool) -> NSColor? {
-        isHovered = hovered
-        syncInk()
+        setHovered(hovered)
         return contentTintColor
     }
 }

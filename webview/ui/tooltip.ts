@@ -43,15 +43,40 @@ export interface TooltipHandle {
     dispose(): void;
 }
 
+/** A box in viewport coordinates: what an element reports, or what a host says. */
+export interface TooltipAnchor {
+    readonly left: number;
+    readonly top: number;
+    readonly right: number;
+    readonly bottom: number;
+    readonly width: number;
+    readonly height: number;
+}
+
+/**
+ * Place the chip against `elRect`.
+ *
+ * A RECT rather than an element, because the anchor is not always one: the Mac
+ * app's titlebar buttons are AppKit views drawn over this page, and they name
+ * themselves with this same chip so the two halves of that band say things the
+ * same way. Everything about how the tooltip looks and where it goes stays
+ * here, which is the only reason those buttons can borrow it without a second
+ * implementation growing in Swift.
+ *
+ * `safeTop` is the floor the chip may not go above, and it is the caller's
+ * because only the caller knows what the anchor is: chrome inside the top bar
+ * is floored at the viewport, and a document anchor is floored under the bar
+ * that paints over it.
+ */
 function position(
     tip: HTMLElement,
-    el: HTMLElement,
+    elRect: TooltipAnchor,
     placement: TooltipPlacement,
+    safeTop: number,
 ): void {
     tip.style.visibility = "hidden";
     tip.style.display = "block";
 
-    const elRect = el.getBoundingClientRect();
     const tipRect = tip.getBoundingClientRect();
 
     let x = elRect.left + elRect.width / 2 - tipRect.width / 2;
@@ -63,15 +88,6 @@ function position(
     // the sticky heading, and a floor that counted it would push a toolbar
     // button's own tip down past the sticky title.
     //
-    // An anchor INSIDE the bar is the one case that floor gets backwards. A
-    // tip named after a control cannot clear the chrome the control lives in
-    // without leaving the control: under the formattingInSecondRow
-    // arrangement the bar is two rows tall, so a top-row button's tip landed
-    // below the row it opens, adrift from the button and over the document.
-    // Such a tip is floored by its own anchor and paints ABOVE the bar
-    // instead, which is what .custom-tooltip's z-index buys.
-    const safeTop = isInTopbar(el) ? 0 : getTopbarBottom();
-
     if (placement === "left") {
         x = elRect.left - tipRect.width - 6;
         y = elRect.top + elRect.height / 2 - tipRect.height / 2;
@@ -123,6 +139,21 @@ export function hideTooltip(): void {
 }
 
 /** Imperative: show a tooltip next to the given element right away, no event binding needed */
+/**
+ * The floor for an anchor that IS an element.
+ *
+ * An anchor inside the bar is the case a naive floor gets backwards. A tip
+ * named after a control cannot clear the chrome the control lives in without
+ * leaving the control: under the `formattingInSecondRow` arrangement the bar
+ * is two rows tall, so a top-row button's tip landed below the row it opens,
+ * adrift from the button and over the document. Such a tip is floored by its
+ * own anchor and paints ABOVE the bar instead, which is what
+ * `.custom-tooltip`'s z-index buys.
+ */
+function safeTopFor(el: HTMLElement): number {
+    return isInTopbar(el) ? 0 : getTopbarBottom();
+}
+
 export function showTooltipAt(
     el: Element,
     text: string,
@@ -130,8 +161,36 @@ export function showTooltipAt(
 ): void {
     const tip = getTooltip();
     tip.textContent = text;
-    position(tip, el as HTMLElement, placement);
+    position(tip, (el as HTMLElement).getBoundingClientRect(), placement, safeTopFor(el as HTMLElement));
     ownerEl = el as HTMLElement;
+}
+
+/**
+ * Draw the chip against a box the HOST gave us, in viewport coordinates.
+ *
+ * For chrome this page does not own and cannot see. The Mac app's titlebar
+ * band is half AppKit and half this toolbar, and the two are meant to read as
+ * one strip; a system tooltip on one half and this chip on the other is the
+ * same strip saying things two ways. The shell sends the button's box and its
+ * label, and the tooltip that appears is literally this one.
+ *
+ * The floor is the viewport, because such an anchor is by definition in the
+ * window's own chrome, above anything this page paints.
+ *
+ * `ownerEl` is cleared rather than set, and that is what keeps the two kinds
+ * of anchor from fighting: nothing in the page owns this chip while a host
+ * holds it, so a stale `mouseleave` from whatever last owned it cannot take
+ * it away. The host takes it away by asking (`hideTooltip`).
+ */
+export function showTooltipForRect(
+    rect: TooltipAnchor,
+    text: string,
+    placement: TooltipPlacement = "below",
+): void {
+    const tip = getTooltip();
+    tip.textContent = text;
+    position(tip, rect, placement, 0);
+    ownerEl = null;
 }
 
 // True when focus should surface hover affordances, i.e. keyboard focus.
@@ -197,7 +256,7 @@ export function applyTooltip(
         }
         const tip = getTooltip();
         tip.textContent = currentText;
-        position(tip, el, placement);
+        position(tip, el.getBoundingClientRect(), placement, safeTopFor(el));
         ownerEl = el;
     };
     const hideIfOwner = () => {
@@ -236,7 +295,7 @@ export function applyTooltip(
             }
             const tip = getTooltip();
             tip.textContent = currentText;
-            position(tip, el, placement);
+            position(tip, el.getBoundingClientRect(), placement, safeTopFor(el));
             ownerEl = el;
         },
         dispose() {

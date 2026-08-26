@@ -379,6 +379,30 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
+    /// What the page's tooltip chip is showing, for `jot/scripts/measure.sh`.
+    ///
+    /// The one question that could not be asked at all while these buttons
+    /// used `NSView.toolTip`: a system tooltip is drawn by the window server
+    /// out of any view this app can read, so "does the label appear" needed a
+    /// real pointer and a screenshot. Drawn by the page it is just an element,
+    /// and the whole chain from a pointer on an AppKit button to a chip on
+    /// screen becomes answerable in the running window.
+    func reportTooltip(_ report: @escaping (String) -> Void) {
+        let js = """
+        (function () {
+          var tip = document.querySelector('.custom-tooltip');
+          if (!tip || tip.style.display === 'none') { return 'none'; }
+          var r = tip.getBoundingClientRect();
+          return ['text=' + JSON.stringify(tip.textContent || ''),
+                  'x=' + Math.round(r.left), 'y=' + Math.round(r.top),
+                  'w=' + Math.round(r.width), 'h=' + Math.round(r.height)].join(' ');
+        })()
+        """
+        webView.evaluateJavaScript(js) { value, _ in
+            report(value as? String ?? "unavailable")
+        }
+    }
+
     func reportTitlebarControls(_ report: @escaping (TitlebarControls?) -> Void) {
         let js = """
         (function () {

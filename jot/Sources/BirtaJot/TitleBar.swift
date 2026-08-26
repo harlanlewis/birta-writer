@@ -39,6 +39,13 @@ final class TitleBarView: NSView {
     /// Move the bound file to this URL, keeping the editor on it. Handles both
     /// the popover's rows: a rename is a move within the same folder.
     var onRelocate: ((URL) -> Void)?
+    /// A file button was pointed at, or stopped being: its label and its box
+    /// in WINDOW coordinates, or nil to take the label away. Forwarded from
+    /// the actions view so the coordinator has one thing to set.
+    var onTooltip: ((String?, NSRect) -> Void)? {
+        get { actions.onTooltip }
+        set { actions.onTooltip = newValue }
+    }
 
     /// Built once and refilled on every open, never per click: a popover whose
     /// controller is rebuilt loses the field being edited if the same one is

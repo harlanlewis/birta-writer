@@ -59,38 +59,56 @@ final class TitlebarActionsTests: XCTestCase {
         // binding, and this is the only thing holding the two together. Open
         // Recent binds no key, so its tooltip is the title alone rather than a
         // title with a bare modifier string after it.
-        let tips = view.actionsView.buttons.compactMap { $0.toolTip }
+        let tips = view.actionsView.buttons.compactMap { $0.label }
         XCTAssertEqual(tips.count, 3)
         XCTAssertTrue(tips[0].hasSuffix("⌘N"), tips[0])
         XCTAssertTrue(tips[1].hasSuffix("⌘O"), tips[1])
         XCTAssertEqual(tips[2], "Open Recent")
     }
 
-    func testATooltipShouldSurviveTheLayoutPassesThatFollowIt() {
-        // The half the assertion above cannot make, and the half that was
-        // wrong for as long as these buttons have existed. `toolTip` is a
-        // string this view hands back whatever else happens to it; what
-        // DELIVERS the tooltip is a tracking area AppKit installs when the
-        // string is set, and `updateTrackingAreas` runs on every layout pass.
-        // Sweeping `trackingAreas` there takes that area away with the hover
-        // area, and nothing puts it back, so every button had a tooltip and
-        // none of them ever showed one.
+    func testPointingAtAButtonShouldAskThePageToLabelIt() {
+        // The tooltip is the PAGE'S, and this is the seam that reaches it.
         //
-        // Asserted as a count rather than by reaching for AppKit's own area,
-        // which is not identifiable through public API. It pins both
-        // directions: the count must not fall (the tooltip was swept) and must
-        // not climb (a hover area leaked on every pass).
+        // `NSView.toolTip` is what this replaces, and it was the wrong answer
+        // in a way no assertion about the string could see: it draws the
+        // SYSTEM tooltip, a different ground and a different shape from the
+        // chip the page's buttons in the same band use, after a delay theirs
+        // does not have. So what is asserted is the report, not a property.
+        //
+        // The box goes with the label because the page cannot work it out: it
+        // is drawn under the titlebar and has no idea where AppKit put an
+        // accessory view.
         let view = boundTitle()
+        var reports: [(String?, NSRect)] = []
+        view.onTooltip = { reports.append(($0, $1)) }
         let button = view.actionsView.buttons[0]
-        XCTAssertNotNil(button.toolTip)
-        button.updateTrackingAreas()
-        let settled = button.trackingAreas.count
-        XCTAssertGreaterThan(settled, 1,
-                             "only this view's own tracking area is left, so the tooltip's is gone")
-        for _ in 0..<3 { button.updateTrackingAreas() }
-        XCTAssertEqual(button.trackingAreas.count, settled,
-                       "a layout pass changed how many tracking areas the button has")
-        XCTAssertNotNil(button.toolTip, "the label itself went missing")
+
+        _ = button.hoverForMeasurement(true)
+        XCTAssertEqual(reports.count, 1)
+        XCTAssertEqual(reports.last?.0, button.label)
+        XCTAssertNotNil(button.label)
+        XCTAssertEqual(reports.last?.1, button.convert(button.bounds, to: nil))
+        XCTAssertGreaterThan(reports.last?.1.width ?? 0, 0, "a box with no width labels nothing")
+
+        _ = button.hoverForMeasurement(false)
+        XCTAssertEqual(reports.count, 2)
+        XCTAssertNil(reports.last?.0, "the label outlived the pointer")
+    }
+
+    func testWithdrawingTheButtonsShouldTakeTheLabelWithThem() {
+        // A hidden button never reports a pointer leaving it, so without this
+        // the label stays on screen naming a control that is no longer there.
+        // Reachable in a second: the buttons go away whenever the window stops
+        // being key, which is what happens when you click into another app
+        // with the pointer still resting on one of them.
+        let view = boundTitle()
+        var reports: [String?] = []
+        let button = view.actionsView.buttons[0]
+        _ = button.hoverForMeasurement(true)
+        view.onTooltip = { label, _ in reports.append(label) }
+
+        view.actionsView.setShown(false, animated: false)
+        XCTAssertEqual(reports, [nil], "withdrawing the buttons left their label up")
     }
 
     // MARK: the reservation follows the buttons
