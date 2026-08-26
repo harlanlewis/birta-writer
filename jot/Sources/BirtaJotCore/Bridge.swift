@@ -85,6 +85,9 @@ public enum WebviewMessage: Equatable {
     case spellAddWord(String)
     /// One row of the Checks menu, by the page's own option key.
     case setProofreadOption(key: String, value: Bool)
+    /// "Keep this phrase" on a style hit: the flagged text is the writer's own
+    /// and no check may flag it again.
+    case styleAddException(String)
     case setTocVisibility(String)
     case setTocPosition(String)
     case setTocWidth(Int)
@@ -206,6 +209,7 @@ public enum WebviewMessage: Equatable {
         case "setProofreadOption":
             guard let key = str("key"), let value = bool("value") else { return .other(type: type) }
             return .setProofreadOption(key: key, value: value)
+        case "styleAddException": return str("phrase").map { .styleAddException($0) } ?? .other(type: type)
         // The page's own spellings, which are three rather than one because
         // these grew in the extension at different times: the panel reports
         // its visibility as `tocVisibility`, its width as `tocWidth`, and its
@@ -482,6 +486,11 @@ public struct BootConfig: Equatable {
     /// reader changed; an empty map sends nothing and the page keeps its
     /// defaults.
     public var proofreadOptions: [String: Bool]
+    /// Phrases the reader has claimed as their own, which no style check may
+    /// flag again. A `ProofreadConfig` field rather than an option key, so it
+    /// travels in `proofread` beside nothing else: it is stored user DATA, not
+    /// a decision about which checks a host can run, which is the page's.
+    public var styleExceptions: [String]
     public var tocVisibility: String
     public var tocOnRight: Bool
     public var tocWidth: Int?
@@ -500,6 +509,7 @@ public struct BootConfig: Equatable {
                 fontSize: Int = 100,
                 contentWidth: String = "full",
                 proofreadOptions: [String: Bool] = [:],
+                styleExceptions: [String] = [],
                 tocVisibility: String = "hidden",
                 tocOnRight: Bool = false,
                 tocWidth: Int? = nil,
@@ -513,6 +523,7 @@ public struct BootConfig: Equatable {
         self.fontSize = fontSize
         self.contentWidth = contentWidth
         self.proofreadOptions = proofreadOptions
+        self.styleExceptions = styleExceptions
         self.tocVisibility = tocVisibility
         self.tocOnRight = tocOnRight
         self.tocWidth = tocWidth
@@ -604,6 +615,10 @@ public struct BootConfig: Equatable {
             // whole pass came to be switched off on this surface, by testing
             // `hostCapabilities` for a name a rename had taken away.
             "proofreadOptions": proofreadOptions,
+            // The kept phrases, and ONLY them. Still no config computed here:
+            // this is a list the reader built, where `proofreadingEnabled` and
+            // its siblings are decisions about what a surface can run.
+            "proofread": ["styleExceptions": styleExceptions],
             // The panel as the reader last left it. A first launch gets
             // "hidden" rather than "auto": the page's heuristic opens the
             // sidebar once a document has a few headings, which is right for an

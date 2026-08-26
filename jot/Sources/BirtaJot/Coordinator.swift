@@ -823,6 +823,11 @@ final class Coordinator {
             spell.learn(word)
         case let .setProofreadOption(key, value):
             Prefs.rememberProofreadOption(key: key, value: value)
+        case let .styleAddException(phrase):
+            // One-way, like `spellAddWord`: the page has already stopped
+            // drawing the hit from its own set, and this is what makes it
+            // stick past the next page load.
+            Prefs.rememberStyleException(phrase)
         case let .setTocVisibility(v): Prefs.tocVisibility = v
         case let .setTocPosition(p): Prefs.tocOnRight = p == "right"
         case let .setTocWidth(w): Prefs.tocWidth = w

@@ -62,6 +62,7 @@ enum Prefs {
         case tocWidth
         case recentDocuments
         case proofreadOptions
+        case styleExceptions
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -382,6 +383,22 @@ enum Prefs {
     static var proofreadOptions: [String: Bool] {
         get { (d.dictionary(forKey: Key.proofreadOptions.rawValue) as? [String: Bool]) ?? [:] }
         set { d.set(newValue, forKey: Key.proofreadOptions.rawValue) }
+    }
+
+    /// Phrases the reader has claimed as their own, in the order they claimed
+    /// them. No cap: a person adds these one at a time, by hand, on a phrase
+    /// they wrote, so the list is bounded by how much writing they have done.
+    static var styleExceptions: [String] {
+        get { (d.array(forKey: Key.styleExceptions.rawValue) as? [String]) ?? [] }
+        set { d.set(newValue, forKey: Key.styleExceptions.rawValue) }
+    }
+
+    /// Keep one phrase, unless it is already kept.
+    static func rememberStyleException(_ phrase: String) {
+        var kept = styleExceptions
+        guard !kept.contains(phrase) else { return }
+        kept.append(phrase)
+        styleExceptions = kept
     }
 
     /// Record one row of the Checks menu.
@@ -803,6 +820,7 @@ enum Prefs {
             fontSize: fontSize,
             contentWidth: contentWidth,
             proofreadOptions: proofreadOptions,
+            styleExceptions: styleExceptions,
             tocVisibility: tocVisibility,
             tocOnRight: tocOnRight,
             tocWidth: tocWidth,

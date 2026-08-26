@@ -124,6 +124,23 @@ describe("initialConfig withdraws the checks a host cannot answer", () => {
         expect(config["fillers"]).toBe(false);
     });
 
+    it("a stored boolean should not be able to land on a field that is not one", () => {
+        // `userWords` and `styleExceptions` are config fields too, and are
+        // ARRAYS. A boolean stored under one of them would reach
+        // `setUserWords`, which iterates it, so "the field exists" is not the
+        // test; "the field is a boolean" is.
+        g.__i18n = {
+            host: { capabilities: ["spellAndGrammar"] },
+            proofreadOptions: { userWords: true, fillers: false },
+        };
+        const config = initialConfig();
+        expect(Array.isArray(config.userWords)).toBe(true);
+        expect(config.fillers).toBe(false);
+        // The fixture has to name a real non-boolean field, or it is the
+        // unknown-key case above wearing a different name.
+        expect(Array.isArray(DEFAULT_CONFIG.userWords)).toBe(true);
+    });
+
     it("a non-boolean stored value should be ignored rather than trusted", () => {
         g.__i18n = {
             host: { capabilities: ["spellAndGrammar"] },

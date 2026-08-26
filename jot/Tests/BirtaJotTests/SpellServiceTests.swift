@@ -109,6 +109,25 @@ final class SpellServiceTests: XCTestCase {
         }
     }
 
+    func testAGrammarFindingShouldUnderlineTheWordRatherThanTheSentence() throws {
+        // The one piece of arithmetic in this service, and it is invisible when
+        // wrong in the only way that matters: the checker returns a grammar
+        // result spanning the WHOLE SENTENCE, and puts the offending word in a
+        // detail whose range is RELATIVE to it. Take the result's range and the
+        // reader gets the entire sentence underlined; take the detail's range
+        // as absolute and the underline lands somewhere else entirely.
+        let text = "This are a test of grammar."
+        let lints = try XCTUnwrap(lint([LintBlock(key: 0, text: text)]).first).lints
+        let grammar = lints.filter { $0.kind == "Grammar" }
+        try XCTSkipIf(grammar.isEmpty,
+                      "this machine's checker offered no grammar finding; nothing to narrow")
+        let sentence = (text as NSString).length
+        for hit in grammar {
+            XCTAssertLessThan(hit.end - hit.start, sentence / 2,
+                              "the whole sentence was underlined instead of the word")
+        }
+    }
+
     func testEveryOfferedSpanShouldBeInsideItsBlock() throws {
         // The page slices with these. A range past the end is a crash there
         // rather than a bad underline here.

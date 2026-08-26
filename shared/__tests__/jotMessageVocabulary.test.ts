@@ -133,10 +133,10 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     //
     // `reviewGroupByType` is the closest call and sits here on purpose: it is
     // a sort order inside one of the sidebar's tabs rather than a fact about
-    // where the window's furniture is. `setProofreadOption` used to sit here
-    // too and has crossed: the Checks menu is a window control like the
-    // others, and a menu whose answers are thrown away on the next file opened
-    // is a menu that half works.
+    // where the window's furniture is. `setProofreadOption` and
+    // `styleAddException` used to sit here too and have crossed: proofreading
+    // runs on this surface now, so both are live controls, and a control whose
+    // result is thrown away on the next file opened is one that half works.
     setBlockHandles: "editor state Jot does not persist; the default stands each launch",
     setCalcAutoInsert: "editor state Jot does not persist",
     setChecklistSink: "editor state Jot does not persist",
@@ -144,7 +144,6 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     setPasteUnfurlAutoApply: "editor state Jot does not persist",
     setNetworkEnabled: "Jot owns the network switch in its own Settings, not from the page",
     reviewGroupByType: "editor state Jot does not persist",
-    styleAddException: "no style-exception store",
     frontmatterUpdate: "the extension mirrors frontmatter into its own state; Jot has no mirror",
     wordCount: "the extension's status bar; Jot has no status bar to put it in",
     fatalParse: "the extension's error sink; Jot reports a crash through its own path",

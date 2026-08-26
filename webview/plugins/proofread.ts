@@ -221,7 +221,13 @@ function fromOptionKeys(options: Record<string, boolean> | undefined): Partial<P
         if (typeof value !== "boolean") { continue; }
         // The master gate is the one whose option key and config field differ.
         const field = key === "proofreading" ? "proofreadingEnabled" : key;
-        if (field in DEFAULT_CONFIG) { out[field] = value; }
+        // A BOOLEAN field, not merely a field that exists: `userWords` and
+        // `styleExceptions` are in the config too and are arrays, and a stored
+        // `userWords: true` would otherwise reach `setUserWords`, which
+        // iterates it. The store is a defaults domain somebody can edit.
+        if (typeof (DEFAULT_CONFIG as Record<string, unknown>)[field] === "boolean") {
+            out[field] = value;
+        }
     }
     return out as Partial<ProofreadConfig>;
 }
