@@ -233,7 +233,7 @@ final class Coordinator {
                                                   constant: -Coordinator.statusBaseline),
             statusOverlay.heightAnchor.constraint(equalToConstant: StatusOverlay.height),
         ])
-        contentView.onHoverChange = { [weak self] hovering in self?.applyChromeVisibility(hovering) }
+        contentView.onHoverChange = { [weak self] _ in self?.applyChromeVisibility() }
         watcher.onMoved = { [weak self] url in self?.noteMovedOnDisk(to: url) }
         watcher.onDeleted = { [weak self] in self?.noteDeletedOnDisk() }
         startWatching()
@@ -288,7 +288,7 @@ final class Coordinator {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.titleBar.titleView.setWindowKey(key)
-                    self.applyChromeVisibility(self.contentView.isHovering)
+                    self.applyChromeVisibility()
                 }
             }
         }
@@ -746,7 +746,7 @@ final class Coordinator {
             // then pull back. Prewarm mounts the page before the panel is ever
             // shown, so on that path the answer is in hand first.
             refreshTitlebarControlsWidth()
-            applyChromeVisibility(contentView.isHovering)
+            applyChromeVisibility()
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
@@ -2765,17 +2765,26 @@ final class Coordinator {
     /// makes people turn it off. What is left is the case it was for: a window
     /// in the background that nobody is pointing at.
     ///
+    /// Takes NOTHING and reads both inputs itself, which is the whole reason it
+    /// can be called from anywhere. `NoteContentView.isHovering` is assigned
+    /// before `onHoverChange` fires, so a caller holding the new value has
+    /// nothing the callee cannot read, and a parameter would only offer each
+    /// site a way to pass a different answer than the one in force.
+    ///
     /// What is pinned and what is not, because the two halves are not equally
     /// covered. The native half's rule is a property of `TitleBarView` and
     /// `TitlebarActionsTests` asks it directly, both ways. The page half is
-    /// this line, and the thing most likely to break it is not the condition
-    /// but the WIRING: it has to be called from the pointer's tracking area,
-    /// from BOTH key notifications, and once at boot, and a missing one of
-    /// those is silent. Nothing checks that, because what it writes is
-    /// JavaScript into a live WKWebView. If this file grows a spy for the host,
-    /// that is the check to add.
-    private func applyChromeVisibility(_ hovering: Bool) {
-        host.setChromeResting(!hovering && !panel.isKeyWindow)
+    /// this line, and the thing most likely to break it is the WIRING: it has
+    /// to be called from the pointer's tracking area, from BOTH key
+    /// notifications, and once at boot, and a missing one of those is silent.
+    /// Nothing checks that, because what it writes is JavaScript into a live
+    /// WKWebView. If this file grows a spy for the host, that is the check to
+    /// add. Until then, every call site being the same bare call is the cheap
+    /// half of the protection: what is left to get wrong is whether a site
+    /// calls it, not what it passes.
+    private func applyChromeVisibility() {
+        let awake = contentView.isHovering || panel.isKeyWindow
+        host.setChromeResting(!awake)
         // The native half of the same band takes the same answer. It has its
         // own two hover sources, the title view's tracking area and the drag
         // strip's, and both are strips of the titlebar: without this, a pointer
@@ -2783,7 +2792,12 @@ final class Coordinator {
         // would light the page's buttons and leave the file buttons dark, and a
         // titlebar that fills from one end reads as a fault rather than as a
         // window waking up.
-        titleBar.titleView.setBandHovered(hovering)
+        //
+        // The POINTER, not `awake`: the native side reads key state itself
+        // (`TitleBarView.isKey`), so handing it the combined answer would tell
+        // it the pointer is on the band whenever the window is key, and the
+        // band would stop being able to tell those two apart.
+        titleBar.titleView.setBandHovered(contentView.isHovering)
     }
 
     private func focusEditorIfVisible() {

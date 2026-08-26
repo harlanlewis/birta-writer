@@ -147,11 +147,6 @@
     height: 14px;
 }
 
-/* The `hidden` attribute must actually hide (our explicit display would
-   otherwise beat the UA default — the embed stop button's lesson). */
-.bc-btn[hidden] {
-    display: none;
-}
 
 .bc-btn--danger {
     color: var(--vscode-errorForeground);

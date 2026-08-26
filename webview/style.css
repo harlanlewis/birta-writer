@@ -1830,9 +1830,6 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
     pointer-events: auto;
 }
 
-.heading-sticky-title[hidden] {
-    display: none;
-}
 
 /* The title row is the gutter's containing block, so the chevron and badge
    stay level with the title whether or not the ancestor trail sits above. */

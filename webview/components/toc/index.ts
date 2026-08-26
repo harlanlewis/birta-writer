@@ -7,7 +7,7 @@ import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/mes
 import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
-import { hostArranges } from "../../../shared/hostProfile";
+import { hostArranges, hostHasCommand } from "../../../shared/hostProfile";
 import type { EventManager } from "@/eventManager";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
@@ -69,6 +69,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  heading walk, and touches the DOM only when the outline really moved. */
     refreshContent: () => void;
     setPosition: (position: "left" | "right") => void;
+    /** Flip to the other edge and persist it — what `swapTocSide` runs, and
+     *  what the panel's own flip button runs, so there is one implementation
+     *  of the gesture rather than one per surface. */
+    swapSide: () => void;
     /** Apply a birta.tocVisibility change without re-persisting (keeps every open
      *  editor in sync with the setting). */
     applyVisibility: (visibility: TocVisibility) => void;
@@ -97,10 +101,20 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // server-rendered body class; the header flip button mutates it live.
     let tocRight = document.body.classList.contains("toc-right");
 
-    // What the SURFACE has settled, read once: which edge the panel docks on,
-    // and who is allowed to show and hide it. Both withdraw a control the
-    // panel would otherwise carry, and neither changes what the panel does.
-    const fixedSide = hostArranges("fixedTocSide");
+    // What the SURFACE has settled, read once. The two are asked differently on
+    // purpose, and the difference is which question the surface answered.
+    //
+    // The flip button IS `swapTocSide`, so it asks the command predicate rather
+    // than the arrangement behind it. `fixedTocSide` is declared on that
+    // command's own metadata and read by `hostHasCommand`, which is what makes
+    // the palette, the slash row and this button withdraw together; reading the
+    // arrangement here instead would put a second reader on one declaration and
+    // let the panel and the command lists drift.
+    //
+    // The hide button is not a command being withdrawn: `toggleToc` still runs,
+    // from the bar, the palette and the slash row. What the surface settled is
+    // WHICH control carries it, and that has no command to ask.
+    const offerFlip = hostHasCommand("swapTocSide");
     const toggleInBar = hostArranges("tocToggleInBar");
 
     const panel = document.createElement("div");
@@ -123,14 +137,13 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     controls.setAttribute("aria-label", t("Sidebar controls"));
 
     // Side-switch: moves the panel to the opposite edge. Two-way arrows read as
-    // "swap sides"; the tooltip names the destination. Absent where the surface
-    // has settled the side (`fixedTocSide`), which is the same declaration that
-    // withdraws `swapTocSide` from the palette and the slash menu, so the panel
-    // and the command lists agree without either knowing about the other.
+    // "swap sides"; the tooltip names the destination. Absent wherever
+    // `swapTocSide` is withdrawn, so the panel and the command lists agree
+    // without either knowing why.
     const flipBtn = document.createElement("button");
     flipBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-flip-btn";
     flipBtn.innerHTML = IconArrowLeftRight;
-    if (!fixedSide) { controls.appendChild(flipBtn); }
+    if (offerFlip) { controls.appendChild(flipBtn); }
 
     // Hide button: collapses the panel. Carries the VS Code side-bar glyph (the
     // filled edge marks the docked side) — the same icon the reveal tab uses, so
@@ -530,13 +543,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     updateHideButton();
     applyTooltip(hideBtn, t("Hide table of contents"), { placement: "below" });
 
-    bindActivate(flipBtn, () => {
-        const next: "left" | "right" = tocRight ? "left" : "right";
-        // Apply optimistically for instant feedback; the setting echo re-applies
-        // the same value (idempotent) once persisted.
-        setPosition(next);
-        notifySetTocPosition(next);
-    });
+    bindActivate(flipBtn, swapSide);
 
     bindActivate(hideBtn, () => {
         // Only visible while open, so this always collapses the panel.
@@ -1307,11 +1314,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
 
-    // Tab click: always call toggle
-    bindActivate(tabEl, () => {
-        hideFlyoutImmediate(); // a click opens persistently; drop the flyout now
-        toggle();
-    });
+    // Tab click: always call toggle, which drops the flyout itself. Dropping it
+    // here as well would read as this gesture being the one responsible, and
+    // the whole point of moving it into `toggle` is that it is not.
+    bindActivate(tabEl, toggle);
 
     // Keyboard activation: Enter/Space docks the panel open (the mousedown
     // handler above never fires for the keyboard, since a button synthesizes a
@@ -1319,7 +1325,6 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            hideFlyoutImmediate();
             toggle();
         }
     });
@@ -1539,6 +1544,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     // ── Flip the panel to the opposite edge (header button + setting echo) ──
+    /** Move the panel to the other edge and persist the choice. THE one
+     *  implementation: the panel's flip button and the `swapTocSide` command
+     *  both call this, so the two cannot drift and the button is the command
+     *  rather than a copy of it. */
+    function swapSide(): void {
+        const next: "left" | "right" = tocRight ? "left" : "right";
+        // Apply optimistically for instant feedback; the setting echo re-applies
+        // the same value (idempotent) once persisted.
+        setPosition(next);
+        notifySetTocPosition(next);
+    }
+
     function setPosition(position: "left" | "right"): void {
         const nextRight = position === "right";
         if (nextRight === tocRight) {
@@ -1661,6 +1678,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         refresh,
         refreshContent,
         setPosition,
+        swapSide,
         applyVisibility,
         // A one-shot width change (settings edit echoed here) must also
         // re-evaluate docked↔overlay, which a new width can flip — the drag path

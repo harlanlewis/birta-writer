@@ -19,6 +19,38 @@
  * new values.
  */
 
+/* The `hidden` attribute must actually hide, everywhere, once.
+ *
+ * `[hidden] { display: none }` is a UA rule, so any author-level `display` on
+ * the element beats it and a node set `hidden` in JavaScript goes on drawing
+ * and goes on taking its width. Nothing about that is visible from the code
+ * that writes `el.hidden = true`: the rule that defeats it is a different file
+ * with a different subject, and the symptom is never "it is still there", it
+ * is whatever downstream measurement counted it.
+ *
+ * This tree paid for that lesson at nine separate elements before it was paid
+ * for at a tenth, where the review sidebar's tab strip measured four tabs in a
+ * row that was showing two, wrapped, and collapsed every tab into a select
+ * button on a panel with room for all of them. Each of the nine carried its own
+ * restatement and its own comment explaining the same mechanism, which is a tax
+ * per element rather than an answer, and the tenth is the proof it does not
+ * hold: the element that broke was one nobody thought to restate it on.
+ *
+ * `!important` because that is the only thing that wins against an arbitrary
+ * author `display` from one selector. It is safe to be this blunt because the
+ * attribute has exactly one meaning: every one of the nine local rules said
+ * `display: none` and nothing in the tree styles `[hidden]` to be visible.
+ * The one thing it would break is `hidden="until-found"`, which needs the
+ * element laid out so find-in-page can reveal it; nothing here uses that
+ * value, and anything that wants it needs its own rule and a note saying why.
+ *
+ * chrome.css is the first stylesheet in the entry's import graph
+ * (cssImportOrder.test.ts), so this is in force before any surface is styled.
+ */
+[hidden] {
+    display: none !important;
+}
+
 :root {
     /* Radius scale — chosen by ROLE, not per surface:
        s   inline details nested inside a control or row (badges, marks,
@@ -218,22 +250,6 @@
 .ui-btn:disabled:hover {
     background: transparent;
     border-color: transparent;
-}
-
-/* `display` on a class beats the UA's `[hidden] { display: none }`, so every
-   composed button that anything sets `hidden` on would go on drawing and go on
-   taking its width. It belongs in the primitive rather than at each surface:
-   the composer is the one who writes `el.hidden = true` and the one who cannot
-   see that a rule three files away is what makes it work.
-
-   The failure it exists for is quiet in both halves. The review sidebar's tab
-   strip hides the Links and Notes tabs when the document has neither, and all
-   four went on being drawn; the strip then wrapped to two rows and its own
-   overflow logic collapsed the tabs to a select button, on a panel with two
-   tabs and room for four. The logic was right and was reading a row that had
-   four items in it. */
-.ui-btn[hidden] {
-    display: none;
 }
 
 .ui-btn--icon {

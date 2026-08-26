@@ -292,8 +292,6 @@ body.toc-resizing {
     align-items: center;
     padding: 5px 8px 5px;
     font-size: var(--ui-fs-s);
-
-    &[hidden] { display: none; }
 }
 
 /* ── Tab overflow: the strip collapses to a single select button ──────────
@@ -357,8 +355,6 @@ body.toc-resizing {
     border: 1px solid var(--vscode-panel-border);
     border-radius: var(--ui-radius-l);
     box-shadow: var(--ui-card-shadow);
-
-    &[hidden] { display: none; }
 }
 /* Composes .ui-menu-row; local: compact rhythm + rounded rows (this menu
    is a padded card, so rows are inset chips rather than edge-to-edge). */
@@ -654,11 +650,6 @@ body.toc-resizing {
     border-radius: var(--ui-radius-s);
     margin: 1px 4px;
     user-select: none;
-}
-/* Hidden by an accordion collapse. An explicit rule is needed because the
-   author-level `.toc-item { display: flex }` outranks the UA `[hidden]`. */
-.toc-item[hidden] {
-    display: none;
 }
 .toc-item__text {
     min-width: 0;

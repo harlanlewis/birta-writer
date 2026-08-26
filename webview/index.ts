@@ -41,7 +41,7 @@ import {
 import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifyFocusState, onMessage } from "./messaging";
 import { hostHas } from "../shared/hostProfile";
 import { isReadOnly } from "./readOnly";
 import { getProofreadConfig, setProofreadConfig } from "./plugins";
@@ -735,14 +735,10 @@ setEditorCommandHost({
     // replace input.
     selectAllOccurrences: () => findBar.selectAllOccurrences(),
     toggleToc: () => toc?.toggle(),
-    // Side-switch: flip to the opposite edge, mirroring the panel's own flip
-    // button (optimistic apply + persist the tocPosition setting).
-    swapTocSide: () => {
-        if (!toc) { return; }
-        const next = toc.isRight() ? "left" : "right";
-        toc.setPosition(next);
-        notifySetTocPosition(next);
-    },
+    // Side-switch: the same call the panel's own flip button makes, rather than
+    // a second copy of the gesture beside it (optimistic apply + persist the
+    // tocPosition setting, both inside `swapSide`).
+    swapTocSide: () => toc?.swapSide(),
     // The deliberate keyboard gesture INTO the review sidebar (MAR-294);
     // Escape inside any of its regions is the gesture back.
     focusReviewSidebar: () => toc?.focusPanel(),
