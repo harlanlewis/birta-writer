@@ -43,6 +43,22 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     /// agree or the control would be gone while the side still came back left
     /// from a stored preference.
     var tocRootStyle = ""
+    /// How tall the titlebar band is, in points, or 0 before the window has
+    /// been laid out.
+    ///
+    /// Served with the page rather than pushed into it afterwards, and that is
+    /// the whole of why it lives here. The page's first row takes this height
+    /// and centres its controls in it, which is what puts the two halves of
+    /// the band on one axis; a document that has to be told separately is a
+    /// document that is wrong until it is, and one that RELOADS is wrong again
+    /// with nothing to notice. Every reload re-requests this template, so a
+    /// number here reaches every document there will ever be, including the
+    /// ones WebKit decides to make.
+    ///
+    /// The band is the system's rather than ours: it is not the same under
+    /// every macOS titlebar style, which is why the page carries a fallback
+    /// and not a literal.
+    var titlebarBandHeight: CGFloat = 0
     /// Whether the page may reach the network (Preferences opt-in).
     var networkEnabled = false
 
@@ -141,11 +157,19 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     func renderPage(_ template: String) -> String {
-        template
+        // One slot, two declarations, because both are the same kind of fact:
+        // a number the page needs while it mounts and cannot work out for
+        // itself. Nothing is written for a height of zero, so a page served
+        // before the window has been laid out keeps its own fallback rather
+        // than being handed a zero to centre on.
+        let band = titlebarBandHeight > 0
+            ? ":root { --jot-titlebar-height: \(titlebarBandHeight)px; }"
+            : ""
+        return template
             .replacingOccurrences(of: "{{CSP}}", with: csp())
             .replacingOccurrences(of: "{{THEME_CLASS}}",
                                   with: "\(themeClass) toc-right")
-            .replacingOccurrences(of: "{{ROOT_STYLE}}", with: tocRootStyle)
+            .replacingOccurrences(of: "{{ROOT_STYLE}}", with: tocRootStyle + band)
     }
 }
 
@@ -182,6 +206,9 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         let boot = bootConfig()
         schemeHandler.themeClass = themeClass
         schemeHandler.tocRootStyle = boot.tocRootStyle
+        // The document about to be served carries the band height in its own
+        // stylesheet, so that is the baseline the next push measures against.
+        reportedBandHeight = schemeHandler.titlebarBandHeight
         controller.removeAllUserScripts()
         let script = WKUserScript(source: boot.userScript(themeClass: themeClass),
                                   injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -268,42 +295,181 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         }
     }
 
-    /// How much of the titlebar band's trailing edge the page's own controls
-    /// occupy, in CSS points, or nil when the page cannot say yet.
+    /// The band half the page draws: how much of the trailing edge it takes,
+    /// and how it draws what it puts there.
     ///
-    /// A WIDTH rather than a position, and that is the point: the cluster is
-    /// right-aligned, so its width changes only when the set of controls does,
-    /// while its x moves with every window resize. Reporting the width lets the
-    /// shell recompute the drag strip locally on resize instead of waiting on a
+    /// `width` is what the layout needs and every other field is what a check
+    /// needs, and they are one query because they are one fact. A WIDTH rather
+    /// than a position, and that is the point: the cluster is right-aligned,
+    /// so its width changes only when the set of controls does, while its x
+    /// moves with every window resize. Reporting the width lets the shell
+    /// recompute the drag strip locally on resize instead of waiting on a
     /// round trip to the page, which during a live drag-resize would leave the
     /// strip a frame or more behind the window it is in.
     ///
     /// The first row only. The formatting row below it is not in the band, and
     /// including it would shrink the strip by the width of a row that is not
     /// there.
-    func reportTitlebarControlsWidth(_ report: @escaping (CGFloat?) -> Void) {
+    ///
+    /// The rest is there because the two halves of this band have to read as a
+    /// single strip of controls, and every way that goes wrong is a number
+    /// here disagreeing with the native strip's: buttons on a different
+    /// vertical axis, in a different box, with a different width of air
+    /// between them. None of it is answerable from a screenshot, and none of
+    /// it is answerable in a browser either, because only this window puts the
+    /// two halves in one band.
+    struct TitlebarControls {
+        /// From the leading edge of the cluster to the window's trailing edge.
+        let width: CGFloat
+        /// The buttons' shared vertical centre, from the top of the window.
+        let midY: CGFloat
+        /// The NARROWEST button's box. Narrowest because that is the one drawn
+        /// around a single glyph, which is the shape every button on the
+        /// native half is; the wider ones in this cluster are menu triggers
+        /// carrying a chevron as well, and comparing against one of those
+        /// would ask the native side to match a control it does not have.
+        let boxWidth: CGFloat
+        let boxHeight: CGFloat
+        /// The smallest air between two adjacent buttons, which is the row's
+        /// own rhythm. The largest is the deliberate inset before the sidebar
+        /// toggle, a divider rather than spacing.
+        let gap: CGFloat
+        /// How many buttons the numbers above were taken from. A gap needs
+        /// two, and nothing at all agrees with nothing at all, so a reader has
+        /// to be able to tell a measurement from an absence.
+        let count: Int
+        /// What a button wears under the pointer, and how round it is:
+        /// `--vscode-toolbar-hoverBackground` and `--ui-radius-m`, resolved
+        /// against the theme in force. Nil when the palette did not parse,
+        /// which the native side treats as "no wash" rather than as black.
+        let hoverFill: NSColor?
+        let cornerRadius: CGFloat
+        /// The first row's own box and the number it was told to take, so a
+        /// misaligned axis says WHICH half failed. The two ways this goes
+        /// wrong look identical from the midY alone: the height never reached
+        /// the page, or it did and something else is padding the row.
+        let rowHeight: CGFloat
+        let rowPadTop: CGFloat
+        let bandVar: String
+    }
+
+    /// Follow a band that has CHANGED height while the app runs: full screen,
+    /// or a titlebar style the system swaps under us. Every document is served
+    /// with the height in force when it loaded
+    /// (`BirtaSchemeHandler.titlebarBandHeight`), so this is the delta and not
+    /// the delivery, which is what keeps a reload from needing one.
+    ///
+    /// The baseline is therefore whatever was SERVED, set on load rather than
+    /// reset to a sentinel: a page that already carries the right number must
+    /// not be sent it again on every layout pass, and a page that carries an
+    /// old one must be.
+    private var reportedBandHeight: CGFloat = 0
+
+    func setTitlebarBandHeight(_ height: CGFloat) {
+        // Zero is "not laid out yet" rather than a band with no height, and
+        // the difference matters because this is also what the NEXT page will
+        // be served: taking a zero here would strip the rule out of a document
+        // loaded while the panel happened to be hidden, and send it back to
+        // its fallback for the life of that page.
+        guard height > 0 else { return }
+        schemeHandler.titlebarBandHeight = height
+        guard abs(height - reportedBandHeight) > 0.01 else { return }
+        reportedBandHeight = height
+        let js = "document.documentElement.style.setProperty('--jot-titlebar-height', '\(height)px')"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    func reportTitlebarControls(_ report: @escaping (TitlebarControls?) -> Void) {
         let js = """
         (function () {
           var bar = document.querySelector('.editor-topbar .toolbar');
           if (!bar) { return null; }
           var items = bar.querySelectorAll('.tb-zone--right > *');
-          var left = null, right = null;
+          var left = null;
           for (var i = 0; i < items.length; i++) {
             var r = items[i].getBoundingClientRect();
             if (r.width === 0 && r.height === 0) { continue; }
             left = left === null ? r.left : Math.min(left, r.left);
-            right = right === null ? r.right : Math.max(right, r.right);
           }
-          if (left === null) { return 0; }
-          // To the window's edge, not the cluster's own box: the gap between
-          // the last control and the edge is padding nobody should be able to
-          // grab the window by either, and treating it as draggable would put
-          // a drag target under the pointer that is aiming for the gear.
-          return Math.round(window.innerWidth - left);
+          // The BUTTONS, not their wrappers: a wrapper is transparent to
+          // layout and stretches to the zone's height, so its centre answers
+          // where the row is rather than where the control is drawn.
+          var buttons = [];
+          var candidates = bar.querySelectorAll('.tb-zone--right button');
+          for (var j = 0; j < candidates.length; j++) {
+            var b = candidates[j].getBoundingClientRect();
+            if (b.width === 0 && b.height === 0) { continue; }
+            buttons.push(b);
+          }
+          buttons.sort(function (a, b) { return a.left - b.left; });
+          var midY = 0, gap = null, boxW = null, boxH = 0;
+          for (var k = 0; k < buttons.length; k++) {
+            midY += (buttons[k].top + buttons[k].bottom) / 2;
+            if (boxW === null || buttons[k].width < boxW) {
+              boxW = buttons[k].width;
+              boxH = buttons[k].height;
+            }
+            if (k > 0) {
+              var air = buttons[k].left - buttons[k - 1].right;
+              if (gap === null || air < gap) { gap = air; }
+            }
+          }
+          if (buttons.length > 0) { midY = midY / buttons.length; }
+          // The palette, resolved. Read off the root's computed style rather
+          // than copied into Swift: it flips with the theme, it is tuned in
+          // one file for two products, and a second copy is one nothing
+          // compares to the first. A custom property computes with its own
+          // `var()` references already substituted, so one read is enough
+          // however the palette is spelled.
+          var root = getComputedStyle(document.documentElement);
+          var parts = (root.getPropertyValue('--vscode-toolbar-hoverBackground') || '').match(/-?[0-9.]+/g);
+          var radius = parseFloat(root.getPropertyValue('--ui-radius-m'));
+          var barBox = bar.getBoundingClientRect();
+          var barStyle = getComputedStyle(bar);
+          return {
+            // To the window's edge, not the cluster's own box: the gap between
+            // the last control and the edge is padding nobody should be able to
+            // grab the window by either, and treating it as draggable would put
+            // a drag target under the pointer that is aiming for the gear.
+            width: left === null ? 0 : Math.round(window.innerWidth - left),
+            midY: midY,
+            boxWidth: boxW === null ? 0 : boxW,
+            boxHeight: boxH,
+            gap: gap === null ? 0 : gap,
+            count: buttons.length,
+            hover: parts && parts.length >= 3 ? parts.slice(0, 4).map(Number) : null,
+            radius: isNaN(radius) ? 0 : radius,
+            rowHeight: barBox.height,
+            rowPadTop: parseFloat(barStyle.paddingTop) || 0,
+            bandVar: (root.getPropertyValue('--jot-titlebar-height') || 'unset').trim()
+          };
         })()
         """
         webView.evaluateJavaScript(js) { value, _ in
-            report((value as? NSNumber).map { CGFloat($0.doubleValue) })
+            guard let dict = value as? [String: Any],
+                  let width = (dict["width"] as? NSNumber).map({ CGFloat($0.doubleValue) }) else {
+                report(nil)
+                return
+            }
+            let number: (String) -> CGFloat = { key in (dict[key] as? NSNumber).map { CGFloat($0.doubleValue) } ?? 0 }
+            let hover = (dict["hover"] as? [NSNumber]).flatMap { parts -> NSColor? in
+                guard parts.count >= 3 else { return nil }
+                return NSColor(srgbRed: CGFloat(parts[0].doubleValue) / 255,
+                               green: CGFloat(parts[1].doubleValue) / 255,
+                               blue: CGFloat(parts[2].doubleValue) / 255,
+                               alpha: parts.count > 3 ? CGFloat(parts[3].doubleValue) : 1)
+            }
+            report(TitlebarControls(width: width,
+                                    midY: number("midY"),
+                                    boxWidth: number("boxWidth"),
+                                    boxHeight: number("boxHeight"),
+                                    gap: number("gap"),
+                                    count: Int(number("count")),
+                                    hoverFill: hover,
+                                    cornerRadius: number("radius"),
+                                    rowHeight: number("rowHeight"),
+                                    rowPadTop: number("rowPadTop"),
+                                    bandVar: dict["bandVar"] as? String ?? "?"))
         }
     }
 

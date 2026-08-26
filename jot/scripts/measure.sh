@@ -690,6 +690,78 @@ else
     echo "$TITLEBAR" >&2; exit 1
 fi
 
+# The band as ONE strip. The check above puts the native half where macOS would
+# put it; this one asks whether the page's half is drawn to meet it.
+#
+# The two halves are built by different toolkits out of different numbers, and
+# each is defensible on its own, which is why nothing caught them disagreeing:
+# the native buttons are AppKit views centred on the titlebar band, and the
+# page's are HTML in a row with its own padding. A screenshot shows both and
+# says nothing about the pair, and no browser can be asked, because only this
+# window puts the two in one band.
+#
+# Four claims, each a way the pair has actually been wrong: the glyphs sit on
+# one axis, in one size of box, with one width of air between them, and hover
+# is said the same way on both halves.
+#
+# HALF a point of tolerance, and the number is load-bearing rather than picked
+# to look careful. A whole point of difference between the two axes is a real
+# misalignment and is plainly visible in the band, so a tolerance of a whole
+# point would report the two halves as agreeing in exactly the case this check
+# exists to catch: slack the size of the defect is slack that hides it.
+# Everything compared here is a box on a whole-pixel grid rather than a glyph
+# on a baseline, so half a point is still room for what rounding can leave.
+#
+# The wash is a yes/no rather than a colour comparison, and deliberately: the
+# native half takes that colour FROM the page, so comparing the two would be
+# asking a value whether it equals itself. What can actually go wrong is that
+# it never arrives, and a button that says nothing under the pointer is what
+# that looks like.
+STRIP="$(grep "^jot-trace titlebarstrip " "$LOG" | tail -1 || true)"
+strip_field() { echo "$STRIP" | sed -n "s/.*$1=\([0-9.-]*\).*/\1/p"; }
+ST_N_COUNT="$(strip_field nativeCount)"
+ST_N_MID="$(strip_field nativeMidY)"
+ST_N_BW="$(strip_field nativeBoxW)"
+ST_N_BH="$(strip_field nativeBoxH)"
+ST_N_GAP="$(strip_field nativeGap)"
+ST_N_WASH="$(echo "$STRIP" | sed -n 's/.*nativeWash=\([a-z]*\).*/\1/p')"
+ST_P_COUNT="$(strip_field pageCount)"
+ST_P_MID="$(strip_field pageMidY)"
+ST_P_BW="$(strip_field pageBoxW)"
+ST_P_BH="$(strip_field pageBoxH)"
+ST_P_GAP="$(strip_field pageGap)"
+ST_P_ROWH="$(strip_field pageRowH)"
+ST_P_PAD="$(strip_field pageRowPadTop)"
+ST_P_VAR="$(echo "$STRIP" | sed -n 's/.*pageBandVar=\([^ ]*\).*/\1/p')"
+if [ -z "$STRIP" ]; then
+    echo "titlebar strip       FAILED: the app reported no titlebarstrip trace at all" >&2; exit 1
+fi
+# The instrument's own arm, and it is not decoration: two empty halves agree
+# with each other on every number below. A gap needs two buttons on each side,
+# so that is what is demanded rather than one.
+if ! awk "BEGIN{exit !(${ST_N_COUNT:-0} > 1 && ${ST_P_COUNT:-0} > 1)}"; then
+    echo "titlebar strip       FAILED: one half of the band reported no buttons, so the comparison is empty" >&2
+    echo "$STRIP" >&2; exit 1
+fi
+near() { awk -v a="$1" -v b="$2" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= 0.5) }'; }
+if near "$ST_N_MID" "$ST_P_MID" \
+   && near "$ST_N_BW" "$ST_P_BW" \
+   && near "$ST_N_BH" "$ST_P_BH" \
+   && near "$ST_N_GAP" "$ST_P_GAP" \
+   && [ "$ST_N_WASH" = "yes" ]; then
+    echo "titlebar strip       ok: native y=$ST_N_MID page y=$ST_P_MID, ${ST_N_BW}x${ST_N_BH} boxes ${ST_N_GAP}pt apart, hover washed"
+else
+    echo "titlebar strip       FAILED: the two halves of the band are not drawn as one strip" >&2
+    echo "  native midY=$ST_N_MID box=${ST_N_BW}x${ST_N_BH} gap=$ST_N_GAP wash=$ST_N_WASH" >&2
+    echo "  page   midY=$ST_P_MID box=${ST_P_BW}x${ST_P_BH} gap=$ST_P_GAP" >&2
+    # WHICH half failed, for the axis, which the midYs alone cannot say. The
+    # page's row is centred by taking the band's height; the two ways that goes
+    # wrong are the height never arriving (the row keeps its fallback) and the
+    # height arriving into a row something else is still padding.
+    echo "  page   row=${ST_P_ROWH}pt padTop=${ST_P_PAD}pt bandVar=$ST_P_VAR" >&2
+    exit 1
+fi
+
 # The formatting row, in THIS window rather than in a browser. The panel's own
 # page carries CSS the harness does not (the titlebar carve-out, the at-rest
 # fade), so "it renders in WebKit" and "it renders here" are separate claims,
@@ -1134,6 +1206,41 @@ rm -f "$SCRATCH_DIR/.debug-message.json"
 if [ ! -f "$SCRATCH_DIR/Scratch pad.md" ]; then
     echo "title ceiling        FAILED: could not rename back, so the checks below would read the wrong file" >&2
     ls -l "$SCRATCH_DIR" >&2; exit 1
+fi
+
+# Open Recent, which by now has something to remember.
+#
+# Read off the stored list rather than off the menu, because the menu is built
+# from it and a menu row is not evidence that anything was recorded: the list
+# was empty for every note this app ever opened, and the menu said "No Recent
+# Files" perfectly correctly the whole time. The bug was one call site, in the
+# one gesture that goes through a file chooser, so a document opened with Cmd+O
+# joined the list and a note made with Cmd+N did not.
+#
+# Two files, and the two are the two halves of the claim. The long ceiling name
+# is a file the panel was rebound TO, so it is there only if an ARRIVING file
+# is recorded, which is the half that was missing. `Scratch pad.md` is the file
+# this run launched on, which no rebind ever arrives at, so it is there only if
+# the file being LEFT is recorded too, which is how a launch binding ever
+# reaches the list without a preference being written at launch (see the
+# `boundURL` comment for why that matters). Neither arm can pass on the
+# other's account, and before the fix neither passed at all.
+#
+# The renames above are what makes this reachable from a script: a rebind needs
+# a second file, and `__jotRename` is the one way a shell has to give the app
+# one without a file chooser or an Accessibility grant.
+RECENTS="$(defaults read "$BIRTA_JOT_DEFAULTS_SUITE" recentDocuments 2>/dev/null || true)"
+REC_LEFT=0
+REC_REBIND=0
+case "$RECENTS" in *"$SCRATCH_DIR/Scratch pad.md"*) REC_LEFT=1 ;; esac
+case "$RECENTS" in *"$CEIL_NAME"*) REC_REBIND=1 ;; esac
+if [ "$REC_LEFT" = 1 ] && [ "$REC_REBIND" = 1 ]; then
+    echo "open recent          ok: the file this run launched on and a file it rebound to are both on the list"
+else
+    echo "open recent          FAILED: a file the panel has had open is missing from the recents list" >&2
+    echo "  file left recorded=$REC_LEFT  file arrived-at recorded=$REC_REBIND" >&2
+    echo "  stored list: $RECENTS" >&2
+    exit 1
 fi
 
 # The document popover, and the rename it exists for.

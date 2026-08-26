@@ -282,17 +282,87 @@ final class TitlebarActionsTests: XCTestCase {
         XCTAssertEqual(view.labelFrameInWindow(), restingLabel)
     }
 
+    // MARK: one strip with the page's half
+
+    func testTheButtonsShouldBeOneSizeEvenlySpacedAndCentredOnTheBand() {
+        // The SHAPE of the row, which is what has to match the page's; the
+        // numbers themselves are compared against the live page by
+        // jot/scripts/measure.sh, and asserting them here would only restate
+        // the constants two lines away.
+        //
+        // Centred rather than filling the band is the part worth pinning. A
+        // button that takes the whole band looks identical while nothing is
+        // drawn behind it, so the height was free to be anything until the
+        // hover fill made the box visible; nothing here would have said so.
+        let view = boundTitle()
+        // A band taller than the view was built at, which is what AppKit
+        // actually hands a titlebar accessory. Built-height and given-height
+        // agreeing is how a centring bug hides.
+        view.setFrameSize(NSSize(width: view.frame.width, height: TitleBarView.height + 8))
+        view.layoutSubtreeIfNeeded()
+        let frames = view.actionsForMeasurement(hovered: true).frames
+        XCTAssertGreaterThan(frames.count, 1, "one button cannot show a gap")
+        XCTAssertEqual(Set(frames.map(\.width)).count, 1, "the buttons are not one width")
+        XCTAssertEqual(Set(frames.map(\.height)).count, 1, "the buttons are not one height")
+        XCTAssertLessThan(frames[0].height, view.bounds.height,
+                          "the box is still the whole band, so it cannot match the page's")
+        let ordered = frames.sorted { $0.minX < $1.minX }
+        let gaps = zip(ordered.dropFirst(), ordered).map { $0.minX - $1.maxX }
+        XCTAssertEqual(Set(gaps).count, 1, "the air between the buttons is not even")
+        XCTAssertGreaterThan(gaps[0], 0, "the buttons sit against each other with nothing between them")
+        for frame in ordered {
+            XCTAssertEqual(frame.midY, view.bounds.midY, accuracy: 0.5,
+                           "a button is not centred on the band")
+        }
+    }
+
+    func testTheRoomHeldShouldCoverTheAirBetweenTheButtonsToo() {
+        // The gap is inside the reservation or it is taken out of the drag
+        // strip, which then lies over the last button. The property, not the
+        // number: what has to hold is that the buttons END inside the room the
+        // view reports, whatever the box and the gap are tuned to.
+        let view = TitlebarActionsView(actions: Self.shippedActions)
+        view.setFrameSize(NSSize(width: view.room, height: TitleBarView.height))
+        view.layoutSubtreeIfNeeded()
+        let maxX = view.buttons.map { $0.frame.maxX }.max() ?? 0
+        XCTAssertLessThanOrEqual(maxX, view.room + 0.5, "the row runs past the room held for it")
+    }
+
     // MARK: ink
 
-    func testAButtonShouldBrightenUnderThePointerAndDimInABackgroundWindow() {
+    func testAButtonWithNoWashToDrawShouldBrightenUnderThePointer() {
+        // The floor: with the page's palette not yet in hand there is no fill,
+        // so the ink is the only channel left and has to carry hover on its
+        // own. A control that says nothing under the pointer is what this
+        // branch exists to avoid.
         let view = boundTitle()
         let button = view.actionsView.buttons[0]
+        XCTAssertNil(button.hoverFillForMeasurement(true), "there is a wash, so this arm tested nothing")
         let resting = button.hoverForMeasurement(false)
         let hovered = button.hoverForMeasurement(true)
         XCTAssertNotEqual(resting, hovered, "the button says nothing when the pointer is on it")
         view.setWindowKey(false)
         XCTAssertEqual(button.hoverForMeasurement(true), NSColor.tertiaryLabelColor,
                        "a background window should draw its chrome quietly")
+    }
+
+    func testAButtonGivenThePagesWashShouldWearItAndHoldItsInkStill() {
+        // How the page says hover: a rounded fill appears and the ink does not
+        // move. Both halves, because a fill that arrived AND an ink that still
+        // brightened would be this button saying it twice where the page says
+        // it once.
+        let view = boundTitle()
+        let wash = NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.06)
+        view.actionsView.setBandChrome(hoverFill: wash, cornerRadius: 4)
+        let button = view.actionsView.buttons[0]
+        XCTAssertNil(button.hoverFillForMeasurement(false), "a resting button is wearing a fill")
+        XCTAssertNotNil(button.hoverFillForMeasurement(true), "the pointer drew no fill")
+        XCTAssertEqual(button.layer?.cornerRadius, 4)
+        XCTAssertEqual(button.hoverForMeasurement(false), button.hoverForMeasurement(true),
+                       "the ink moved as well as the fill")
+        view.setWindowKey(false)
+        XCTAssertNil(button.hoverFillForMeasurement(true),
+                     "a background window drew a fill for a pointer it does not have")
     }
 }
 

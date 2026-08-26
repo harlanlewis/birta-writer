@@ -35,6 +35,39 @@ describe("applyTooltip", () => {
         expect(tip()!.textContent).toBe("Hover text");
     });
 
+    it("a control whose own popup is out should show no tooltip", () => {
+        // A tooltip opens where a menu opens, so the label would sit over the
+        // first row the press just revealed. This is the rule that lets a menu
+        // trigger carry a tooltip at all.
+        const btn = makeButton("a");
+        btn.setAttribute("aria-haspopup", "menu");
+        applyTooltip(btn, "Settings");
+        btn.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(tipVisible()).toBe(true);
+        hideTooltip();
+        btn.setAttribute("aria-expanded", "true");
+        btn.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(tipVisible()).toBe(false);
+        btn.setAttribute("aria-expanded", "false");
+        btn.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(tipVisible()).toBe(true);
+    });
+
+    it("an expanded disclosure control should still show its tooltip", () => {
+        // `aria-expanded` means two things in this webview and only one of them
+        // is a popup. A heading's fold button, the sticky crumb's, the
+        // frontmatter toggle and the outline's rows all use it for "what is
+        // under me is showing", and every one of those carries a tooltip that
+        // has to keep working while it is true. `aria-haspopup` is the half
+        // that separates them, so this is the arm that fails if the rule above
+        // is written on `aria-expanded` alone.
+        const btn = makeButton("a");
+        btn.setAttribute("aria-expanded", "true");
+        applyTooltip(btn, "Fold");
+        btn.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(tipVisible()).toBe(true);
+    });
+
     it("mouseleave should hide the tooltip it owns", () => {
         const btn = makeButton("a");
         applyTooltip(btn, "Hover text");

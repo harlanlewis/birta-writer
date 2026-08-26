@@ -51,6 +51,16 @@ final class Coordinator {
     /// What the page's trailing controls take from the band, as last reported.
     /// Held so a resize can resize the strip without asking the page again.
     private var titlebarControlsWidth: CGFloat = 0
+
+    /// How tall the titlebar band is right now.
+    ///
+    /// Asked of the window rather than written down: `contentLayoutRect` is
+    /// the part of the frame BELOW the titlebar, so the difference is the
+    /// band, whatever height the system is using today. Zero before the window
+    /// has been laid out, which every reader here treats as "not known yet".
+    private var titlebarBandHeight: CGFloat {
+        panel.frame.height - panel.contentLayoutRect.height
+    }
     private let statusOverlay = StatusOverlay()
     private let titleBar = TitleBarAccessory()
     private let host: WebHost
@@ -157,6 +167,34 @@ final class Coordinator {
             host.schemeHandler.roots =
                 host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
             refreshTitle()
+            // Both files join the recents list: the one being left and the one
+            // arriving, oldest first.
+            //
+            // Recording the arriving file is the fix for what the menu was:
+            // only `openDocument` recorded anything, so a document chosen
+            // through a file chooser joined the list and a note made with
+            // Cmd+N did not, and somebody who had just switched away from a
+            // note found a menu saying "No Recent Files". Here rather than at
+            // the gestures, because this is the one slot every rebind passes
+            // through, so a way in added later joins by construction.
+            //
+            // Recording the file being LEFT is how the one this launch opened
+            // on ever reaches the list, and it is deliberately this rather
+            // than a write at launch. `didSet` does not fire for a property's
+            // own initializer, so the launch binding has to be recorded
+            // somewhere, and the obvious place is `start()`: that is a
+            // preference WRITTEN AT LAUNCH, and `Prefs.isFirstLaunch` asks
+            // whether any key is stored at all. Writing one before
+            // `applyOnboardingDefaults` has read it turns a first launch into
+            // an existing one, and the onboarding defaults silently stop
+            // applying. `Prefs.applyOnboardingDefaults` names that trap; this
+            // is what walking into it looks like.
+            //
+            // Nothing is lost by waiting. The file you have not left yet is
+            // the one on screen, which is the one thing Open Recent is not
+            // for, and it joins the list the moment you go anywhere else.
+            Prefs.rememberRecent(oldValue)
+            Prefs.rememberRecent(boundURL)
             // The watcher follows the binding, or it goes on reporting moves
             // of a file the panel is no longer editing and misses the one it
             // is. `noteMovedOnDisk` rebinds and re-watches in one step, so it
@@ -1638,13 +1676,6 @@ final class Coordinator {
             guard let self else { return }
             self.write(.explicitSave)
             Prefs.documentURL = target
-            // Recorded HERE rather than at the chooser, so every way in counts
-            // the same way: the Finder's Open With, a drop on the Dock icon,
-            // `open -a`, the recents menu itself, and Cmd+O all arrive through
-            // this one method (that is what the split with `openDocumentPanel`
-            // is for), and a file that reaches the buffer without joining the
-            // list is a file the menu forgets you ever opened.
-            Prefs.rememberRecent(target)
             // `boundURL`'s `didSet` does the rest of the rebind in one step:
             // the title, the folder the page may read images from, the
             // watcher, and the per-path flags the outgoing file left set.
@@ -2434,16 +2465,11 @@ final class Coordinator {
     /// Fit the drag strip to what neither the window's chrome nor the page's
     /// is using.
     ///
-    /// The band's height is asked of the window rather than written down:
-    /// `contentLayoutRect` is the part of the frame BELOW the titlebar, so the
-    /// difference is the band, whatever height the system is using today.
-    ///
     /// `titleBar.titleView.frame.maxX` is where the window's own furniture
     /// ends. It already accounts for the traffic lights, because AppKit places
     /// a leading accessory after them, so nothing here repeats a number the
     /// system owns.
     func layoutTitlebarDrag() {
-        let bandHeight = panel.frame.height - panel.contentLayoutRect.height
         let titleView = titleBar.titleView
         // The title's ceiling and the strip's span are two answers to one
         // question, so they are taken from one place and in this order: the
@@ -2461,6 +2487,7 @@ final class Coordinator {
             titleChromeWidth: titleView.chromeWidth,
             trailingControlsWidth: titlebarControlsWidth))
         let leading = titleView.convert(titleView.bounds, to: contentView).maxX
+        let bandHeight = titlebarBandHeight
         guard bandHeight > 0,
               let span = TitlebarBand.draggableSpan(
                   windowWidth: contentView.bounds.width,
@@ -2473,6 +2500,12 @@ final class Coordinator {
             return
         }
         titlebarDrag.isHidden = false
+        // And again here, because this is where a band that has CHANGED height
+        // is noticed (full screen, a titlebar style the system swaps under us),
+        // and nothing else asks. `refreshTitlebarControlsWidth` sends it too,
+        // for an ordering reason of its own; the send is guarded on the value
+        // having moved, so whichever of the two is second costs nothing.
+        host.setTitlebarBandHeight(bandHeight)
         // The content view is flipped-free AppKit geometry, so the band is at
         // the TOP, which is the high end of y.
         titlebarDrag.frame = NSRect(x: span.x,
@@ -2499,14 +2532,70 @@ final class Coordinator {
     /// since grown, and it will cover the badge it grew for. That is the day
     /// this needs the page to push its width rather than be asked.
     func refreshTitlebarControlsWidth() {
-        host.reportTitlebarControlsWidth { [weak self] width in
+        // Bring the page's band height up to date BEFORE the measuring query,
+        // and the order is the whole reason this line is here rather than only
+        // in the layout pass. The page's first row takes that height and
+        // centres its controls in it, so a row measured before it arrives is a
+        // row still on its fallback, and every number that comes back
+        // describes a layout that is about to change. Two evaluations on one
+        // web view run in the order they were made.
+        host.setTitlebarBandHeight(titlebarBandHeight)
+        host.reportTitlebarControls { [weak self] controls in
             MainActor.assumeIsolated {
-                guard let self, let width else { return }
-                self.titlebarControlsWidth = width
+                guard let self, let controls else { return }
+                self.titlebarControlsWidth = controls.width
+                self.titleBar.titleView.actionsView.setBandChrome(
+                    hoverFill: controls.hoverFill, cornerRadius: controls.cornerRadius)
                 self.layoutTitlebarDrag()
                 self.traceTitlebarDrag()
+                self.traceTitlebarStrip(controls)
             }
         }
+    }
+
+    /// The two halves of the band, side by side, for `jot/scripts/measure.sh`.
+    ///
+    /// The claim is that they read as ONE strip of controls, and it is a claim
+    /// about a pair: each half is defensible alone and no screenshot of either
+    /// says whether they agree. Four things carry it, and each names a way the
+    /// pair has been visibly wrong.
+    ///
+    ///   midY    the axis the glyphs sit on. macOS centres a window title on
+    ///           the close button, and the native strip follows the title, so
+    ///           this is the number the page has to meet rather than the other
+    ///           way round.
+    ///   box     the target a pointer has to find.
+    ///   gap     the air between two buttons, which is what the eye reads as
+    ///           the rhythm of a row.
+    ///   wash    whether hover is said the same way at all. The colour itself
+    ///           is not compared, because the native half takes it FROM the
+    ///           page and a comparison would be asking a value whether it
+    ///           equals itself. What can go wrong is that it never arrives,
+    ///           and that is what this reports.
+    ///
+    /// Reported in the page's coordinates for both halves: y down from the top
+    /// of the window, which is what the page measures in and what the native
+    /// side has to be converted into. Mixing the two conventions here would
+    /// produce a difference that looks like a misalignment and is an inversion.
+    private func traceTitlebarStrip(_ controls: WebHost.TitlebarControls) {
+        guard measure.enabled else { return }
+        let buttons = titleBar.titleView.actionsView.buttons
+        let boxes = buttons.map { $0.convert($0.bounds, to: nil) }
+        // AppKit window coordinates are y-up from the bottom; the page is
+        // y-down from the top.
+        let height = panel.frame.height
+        let mids = boxes.map { height - $0.midY }
+        let nativeMidY = mids.isEmpty ? 0 : mids.reduce(0, +) / CGFloat(mids.count)
+        let ordered = boxes.sorted { $0.minX < $1.minX }
+        let gaps = zip(ordered.dropFirst(), ordered).map { $0.minX - $1.maxX }
+        measure.trace(String(
+            format: "titlebarstrip nativeCount=%d nativeMidY=%.1f nativeBoxW=%.1f nativeBoxH=%.1f nativeGap=%.1f " +
+                    "nativeWash=%@ pageCount=%d pageMidY=%.1f pageBoxW=%.1f pageBoxH=%.1f pageGap=%.1f " +
+                    "pageRowH=%.1f pageRowPadTop=%.1f pageBandVar=%@",
+            boxes.count, nativeMidY, boxes.first?.width ?? 0, boxes.first?.height ?? 0, gaps.min() ?? 0,
+            buttons.first?.hasHoverFill == true ? "yes" : "none",
+            controls.count, controls.midY, controls.boxWidth, controls.boxHeight, controls.gap,
+            controls.rowHeight, controls.rowPadTop, controls.bandVar))
     }
 
     /// The drag strip's live frame, for `jot/scripts/measure.sh`.
@@ -2933,7 +3022,15 @@ final class Coordinator {
         let bg = NSColor.textBackgroundColor
         panel.backgroundColor = bg
         host.webView.underPageBackgroundColor = bg
-        if !initial { host.setThemeClass(cls) }
+        if !initial {
+            host.setThemeClass(cls)
+            // The page's palette has just flipped, and half this band's chrome
+            // is taken from it (`refreshTitlebarControlsWidth` reads the hover
+            // wash). Nothing else re-asks: a theme change swaps a class on the
+            // live page rather than reloading it, so without this the native
+            // buttons keep washing in the colour of the theme you left.
+            refreshTitlebarControlsWidth()
+        }
     }
 
     // MARK: resources

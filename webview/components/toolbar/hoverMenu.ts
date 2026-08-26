@@ -13,6 +13,7 @@
  * leaving does it, so `ui/outsidePress.ts` stands in for the mouseleave.
  */
 import { placeMenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
+import { hideTooltip } from "@/ui/tooltip";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { watchOutsidePress } from "@/ui/outsidePress";
 import { hostArranges } from "../../../shared/hostProfile";
@@ -126,6 +127,13 @@ export function wireHoverMenu(
         options.onOpen?.();
         menu.style.display = "flex";
         placeMenu(button, menu);
+        // A trigger that carries a tooltip (`createMenuTrigger` under
+        // `barMenusOnClick`) has already shown it by the time the press
+        // arrives, and the label sits exactly where the first row is about to
+        // be. The `aria-haspopup` and `aria-expanded` this function sets are
+        // what keep it from coming BACK while the menu is out; this is what
+        // takes down the one already on screen.
+        hideTooltip();
         button.setAttribute("aria-expanded", "true");
         // Marks the wrap so its ::after gap-bridge is live only while open.
         wrap.classList.add("tb-menu-open");

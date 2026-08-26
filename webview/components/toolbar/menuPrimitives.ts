@@ -13,6 +13,8 @@
 import { createButton } from "@/ui/dom";
 import { commandChord } from "@/commandChords";
 import { kbd } from "@/i18n";
+import { applyTooltip } from "@/ui/tooltip";
+import { hostArranges } from "../../../shared/hostProfile";
 import type { EditorCommandId } from "../../../shared/editorCommands";
 
 /**
@@ -56,8 +58,19 @@ export function btn(
  * A dropdown trigger button — the shared shape behind every hover-menu opener
  * (Format, Font, Settings, Checks, ⋯). Its mousedown is swallowed:
  * preventDefault so it never fires an action or starts a text selection,
- * stopPropagation so it never reaches the editor. Deliberately carries no
- * tooltip — a tooltip would open in the same spot as the menu and overlap it.
+ * stopPropagation so it never reaches the editor.
+ *
+ * Whether it names itself is the SURFACE'S question, and it turns on whether
+ * hovering the trigger already answers what the button is. Where the menu
+ * opens on hover it does, and a tooltip would appear in the same spot a moment
+ * before the menu and be covered by it. Under `barMenusOnClick`
+ * (shared/hostProfile.ts) hovering promises nothing at all, so a trigger with
+ * no tooltip is a glyph with no way to learn it short of pressing it and
+ * finding out. Asked here rather than at each call site, so a trigger added
+ * later is covered by construction.
+ *
+ * Overlap is not the reason to withhold one, because `applyTooltip` already
+ * refuses for any anchor whose own popup is showing. Hover is.
  */
 export function createMenuTrigger(opts: {
     html?: string;
@@ -70,6 +83,11 @@ export function createMenuTrigger(opts: {
     if (opts.html !== undefined) { el.innerHTML = opts.html; }
     if (opts.text !== undefined) { el.textContent = opts.text; }
     if (opts.ariaLabel) { el.setAttribute("aria-label", opts.ariaLabel); }
+    // The accessible name, again, as a visible one. A trigger that named
+    // itself only to assistive tech named itself to nobody looking at it.
+    if (opts.ariaLabel && hostArranges("barMenusOnClick")) {
+        applyTooltip(el, opts.ariaLabel, { placement: "below" });
+    }
     el.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
