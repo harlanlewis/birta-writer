@@ -59,27 +59,57 @@
     padding-left: 78px;
   }
 
-  /* At rest (the pointer is off the window, `jot-resting` set by the shell)
-     the panel is a page and a cursor.
+  /* At rest the panel is a page and a cursor.
 
-     The formatting row is NOT what settles down any more, and the move is what
-     changed the answer. It used to be a strip fixed to the window's bottom
-     edge, outside the layout entirely, so fading it to `opacity: 0` cost
-     nothing and left nothing: the page below was never displaced by it. It is
-     a row of the bar now, and its height is part of the bar's, so fading it
-     leaves the text pushed down around a strip with nothing drawn in it, which
-     is a worse resting state than the one this rule was written to reach.
+     At rest means the window has neither the pointer nor the keyboard;
+     `Coordinator.applyChromeVisibility` sets `jot-resting` from both, and one
+     alone is the wrong rule. A window you are typing in, with the pointer
+     parked elsewhere on the screen, is not resting, and taking its controls
+     away mid-sentence is how a good idea gets switched off.
 
-     The alternative, removing the row at rest, reflows the document every time
-     the pointer leaves the window, which is the thing the original rule chose
-     opacity to avoid.
+     What fades is the top row's utility block: the checks, find, settings and
+     sidebar buttons that sit in the titlebar band. They cost NOTHING to fade,
+     which is the constraint this whole treatment runs under. `opacity` and
+     `visibility` both leave the box where it is, so the zone keeps its width
+     and the bar keeps its height, and nothing under either moves. The width in
+     particular is load-bearing off the page: the shell measures this block and
+     the title's ceiling is computed against it (`TitlebarBand`), so a fade that
+     collapsed it would pull the file's name wider every time you looked away.
+     The native buttons on the other half of
+     that band follow the same rule for the same reason, in Swift
+     (`TitleBarView.syncHoverChrome`), and the pair reading as one strip is
+     most of the point: a titlebar that empties from one end only reads as a
+     rendering fault rather than as a window at rest.
 
-     So the row stays, on the same reasoning the utility block already stays
-     on: it is part of the bar, and the bar does not fade. Whether the row is
-     open is the one piece of this chrome the reader has said something about,
-     and taking it away when they look elsewhere answers a question they have
-     already answered. The window's own title stays too: it is native chrome,
-     and macOS does not fade a title when you look away from it. */
+     `visibility` rides along with the opacity so a faded button is not a click
+     target sitting invisibly over the band, and the transition is on opacity
+     alone with visibility stepped at the end, or the button would vanish
+     before the fade it is meant to be doing.
+
+     The formatting row is NOT what settles down, and the move is what changed
+     the answer. It used to be a strip fixed to the window's bottom edge,
+     outside the layout entirely, so fading it to `opacity: 0` cost nothing and
+     left nothing: the page below was never displaced by it. It is a row of the
+     bar now, and its height is part of the bar's, so fading it leaves the text
+     pushed down around a strip with nothing drawn in it, which is a worse
+     resting state than the one this rule was written to reach. Removing the
+     row instead reflows the document every time attention leaves the window,
+     which is the thing the original rule chose opacity to avoid.
+
+     Whether that row is open is also the one piece of this chrome the reader
+     has said something about, and taking it away when they look elsewhere
+     answers a question they have already answered. The window's own title
+     stays too: it is native chrome, and macOS does not fade a title when you
+     look away from it. */
+  body.jot-resting .editor-topbar .tb-zone--right {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.18s ease, visibility 0s linear 0.18s;
+  }
+
+  .editor-topbar .tb-zone--right {
+    transition: opacity 0.12s ease, visibility 0s;
+  }
 </style>
 </head>
 <body class="{{THEME_CLASS}}">

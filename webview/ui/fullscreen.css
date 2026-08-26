@@ -156,11 +156,6 @@
     gap: 1px;
 }
 
-/* `display: flex` above outranks the UA's `[hidden] { display: none }`, so a
-   group set hidden stayed on screen while every other signal said it was gone. */
-.fs-actions__group[hidden] {
-    display: none;
-}
 
 /* The divider belongs to the group on its right, and only when a visible
    group precedes it — `data-divided` is recomputed on every show/hide, so a

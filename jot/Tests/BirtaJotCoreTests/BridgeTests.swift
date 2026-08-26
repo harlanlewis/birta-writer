@@ -306,7 +306,8 @@ final class BridgeTests: XCTestCase {
         // first, in a commit that added it to the bridge and ran no Swift.
         XCTAssertEqual(host?["arrangements"] as? [String],
                        ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout",
-                        "barMenusOnClick", "nativeFindBar", "nativeDatePicker"])
+                        "barMenusOnClick", "nativeFindBar", "nativeDatePicker",
+                        "fixedTocSide", "tocToggleInBar"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

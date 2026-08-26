@@ -68,7 +68,26 @@ final class TitlebarActionsView: NSView {
     /// The box one button holds. Small, because every point here is a point
     /// the file's name does not get; the HEIGHT is the whole band, so the
     /// target is easier to hit than this number suggests.
-    private static let buttonWidth: CGFloat = 18
+    ///
+    /// Two points of air around the widest of the three at `symbolPointSize`,
+    /// which is `square.and.pencil` at eighteen points across. It was the same
+    /// eighteen as the glyph, so that one button was flush to its box on both
+    /// sides and sat against its neighbour with nothing between them.
+    fileprivate static let buttonWidth: CGFloat = 22
+    /// The size the symbols are drawn at, chosen to MATCH the page's own icons
+    /// rather than picked for this strip alone: `webview/ui/icons.ts` draws a
+    /// 16-point glyph, and thirteen points is where the tallest of these three
+    /// measures sixteen. The two halves of this band are one strip to the eye
+    /// and were visibly not one strip to the ruler, the native side reading
+    /// smaller and lighter than the page's controls a few inches away.
+    ///
+    /// `.medium` for the same reason and at no cost: the page's icons are a
+    /// two-point stroke, which is heavier than SF Symbols' regular, and the
+    /// weight changes no measurement at this size. The other way round is
+    /// defensible too, since regular is what macOS titlebar chrome usually
+    /// wears, but the page's icons are shared with the extension and this side
+    /// is the half that can move.
+    fileprivate static let symbolPointSize: CGFloat = 13
     /// What this view takes from the accessory, drawn or not.
     ///
     /// Derived from the buttons it was given rather than from a count written
@@ -209,7 +228,7 @@ final class TitlebarActionButton: NSButton {
         // have to keep in step with the title's.
         image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: row?.title)
         image?.isTemplate = true
-        symbolConfiguration = .init(pointSize: 12, weight: .regular)
+        symbolConfiguration = .init(pointSize: TitlebarActionsView.symbolPointSize, weight: .medium)
         imagePosition = .imageOnly
         isBordered = false
         bezelStyle = .shadowlessSquare

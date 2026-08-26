@@ -360,10 +360,6 @@
     border: 1px solid var(--ui-card-border);
     border-radius: var(--ui-radius-l);
     box-shadow: var(--ui-card-shadow);
-
-    &[hidden] {
-        display: none;
-    }
 }
 
 /* The mnemonic in the icon column. `.tb-list-item-icon` is sized for a 14px

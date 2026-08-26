@@ -54,6 +54,16 @@ export interface EditorCommandMeta {
      * withdrawn command is absent from the toolbar, the gear, the slash menu
      * and the palette, and `runEditorCommand` ignores it, exactly as a
      * capability-gated one is.
+     *
+     * A command may carry BOTH, and `swapTocSide` is why: with no sidebar
+     * there is no side to swap, and on a surface that fixes the side there is
+     * nothing to ask. The two are read in that order and the answer to "why is
+     * this absent" is the first one that fires, so the reasons stay separable
+     * even on a command that has both. What is still refused is a pair that
+     * cannot be told apart, which is an arrangement declared only by hosts
+     * that also lack the capability: it would withdraw nothing the capability
+     * had not already withdrawn, and no surface could show which reason was
+     * doing the work (`hostProfile.test.ts`).
      */
     readonly absentUnder?: HostArrangement;
 }
@@ -296,7 +306,11 @@ export const EDITOR_COMMANDS = [
     // re-seeds every open document. No default chord — the editor's own chords
     // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
     { id: "toggleReadOnly", title: "Toggle Read-only", palette: true, sections: [], hostCapability: "readOnlyMode" },
-    { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [], hostCapability: "toc" },
+    // The one command carrying both gates: no sidebar means no side to swap,
+    // and a surface that fixes the side has already answered the question.
+    // Without the second, "the sidebar is always on the right" would hold for
+    // the panel's chrome and not for the palette row beside it.
+    { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [], hostCapability: "toc", absentUnder: "fixedTocSide" },
     // MAR-294: once focus is inside the review sidebar its keyboard model is
     // complete (Escape returns to the editor from every region), but no gesture
     // moved focus there in the first place — Tab is the editor's indent key and

@@ -292,8 +292,6 @@ body.toc-resizing {
     align-items: center;
     padding: 5px 8px 5px;
     font-size: var(--ui-fs-s);
-
-    &[hidden] { display: none; }
 }
 
 /* ── Tab overflow: the strip collapses to a single select button ──────────
@@ -322,8 +320,18 @@ body.toc-resizing {
     visibility: hidden;
     pointer-events: none;
     left: 6px;
-    right: 64px;
+    /* The trailing room the flip/hide pair takes. It has to be reserved here
+       because the list is out of flow and no longer sized by the strip, and it
+       has to come off when a surface withdraws that pair (`tocToggleInBar`,
+       `fixedTocSide`): the measurement below decides whether the tabs fit, so
+       room held for controls that are not there is a strip that collapses to a
+       select button while it still had space for its tabs. */
+    right: var(--toc-controls-reserve, 64px);
     top: 4px;
+}
+
+.toc-panel--bare-tabs .toc-tabs__list {
+    --toc-controls-reserve: 6px;
 }
 .toc-tabs-select__caret {
     width: 0;
@@ -347,8 +355,6 @@ body.toc-resizing {
     border: 1px solid var(--vscode-panel-border);
     border-radius: var(--ui-radius-l);
     box-shadow: var(--ui-card-shadow);
-
-    &[hidden] { display: none; }
 }
 /* Composes .ui-menu-row; local: compact rhythm + rounded rows (this menu
    is a padded card, so rows are inset chips rather than edge-to-edge). */
@@ -644,11 +650,6 @@ body.toc-resizing {
     border-radius: var(--ui-radius-s);
     margin: 1px 4px;
     user-select: none;
-}
-/* Hidden by an accordion collapse. An explicit rule is needed because the
-   author-level `.toc-item { display: flex }` outranks the UA `[hidden]`. */
-.toc-item[hidden] {
-    display: none;
 }
 .toc-item__text {
     min-width: 0;

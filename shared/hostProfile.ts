@@ -301,7 +301,36 @@ export type HostArrangement =
      * gates none, because VS Code must keep `/date`. A capability that
      * withdraws nothing names nothing.
      */
-    | "nativeDatePicker";
+    | "nativeDatePicker"
+    /**
+     * The sidebar docks on one edge and the reader may not move it.
+     *
+     * Which edge is the host's, not this flag's: the page reads the side off
+     * `body.toc-right`, which the host template writes, so a surface declaring
+     * this is saying only that the answer is settled. On macOS a sidebar is on
+     * the trailing edge, and a control offering to move it is offering to make
+     * the window less like every other window.
+     *
+     * An arrangement rather than a capability, by the usual test: both surfaces
+     * can dock either way and the same `swapTocSide` runs the same code on
+     * both. What differs is whose choice it is.
+     */
+    | "fixedTocSide"
+    /**
+     * Showing and hiding the sidebar is the BAR's control alone. The panel
+     * carries no hide button of its own, and no reveal tab when it is shut;
+     * the bar's button is what the hover flyout hangs off instead.
+     *
+     * Separate from `fixedTocSide`, and the pair is worth keeping apart for
+     * the reason `formattingInSecondRow` and `fixedToolbarLayout` are: that
+     * one settles WHERE the panel goes, this settles WHO shows it. A surface
+     * could reasonably want either alone.
+     *
+     * Not a capability: every host can draw a hide button on the panel, and on
+     * the surface that declines it the same `toggleToc` still runs from the
+     * bar, the palette and the slash menu.
+     */
+    | "tocToggleInBar";
 
 export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "typographyInGearMenu",
@@ -310,6 +339,8 @@ export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "barMenusOnClick",
     "nativeFindBar",
     "nativeDatePicker",
+    "fixedTocSide",
+    "tocToggleInBar",
 ];
 
 /** One key the host binds itself, for the keyboard cheatsheet to print. */

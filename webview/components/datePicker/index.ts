@@ -109,6 +109,28 @@ export interface DatePickerOptions {
  */
 let active: { close: () => void } | null = null;
 
+/**
+ * How far `el` sits below `ancestor`'s padding box, which is the origin
+ * `ancestor.scrollTop` measures from.
+ *
+ * `el.offsetTop` alone answers this only when `ancestor` is the offsetParent,
+ * and a caller cannot assume that from the outside: any positioned element in
+ * between takes the role, and so does a `<table>` for the cells inside it,
+ * whether or not anything is positioned at all.
+ *
+ * Returns what it summed even if the chain leaves the subtree without reaching
+ * `ancestor`, which is the honest answer for an element that is not inside it.
+ */
+function offsetTopWithin(el: HTMLElement, ancestor: HTMLElement): number {
+    let total = 0;
+    let node: HTMLElement | null = el;
+    while (node && node !== ancestor) {
+        total += node.offsetTop;
+        node = node.offsetParent as HTMLElement | null;
+    }
+    return total;
+}
+
 export function openDatePicker(opts: DatePickerOptions): void {
     active?.close();
 
@@ -284,12 +306,24 @@ export function openDatePicker(opts: DatePickerOptions): void {
         // short for the calendar gets `overflow-y: auto` above, and a day
         // arrowed to below the fold would otherwise be focused off screen.
         if (root.scrollHeight > root.clientHeight) {
-            // `cell.offsetTop` is already relative to `root`, which is the
-            // offsetParent because the popup is positioned, and that is the
-            // same origin `scrollTop` uses. Subtracting the popup's own
-            // placement coordinate would mix two coordinate spaces and drive
-            // every cell to the top (`langPicker.ts` is the same idiom).
-            const cellTop = cell.offsetTop;
+            // Summed up the offsetParent chain, because `cell.offsetTop` alone
+            // is NOT relative to `root` here (MAR-419). A `<td>`'s offsetParent
+            // is its `<table>`, so a bare `offsetTop` measures from the top of
+            // the grid and leaves out everything above it inside the scroller:
+            // the month header and the weekday row. The scroll therefore came
+            // up short by exactly that height, every time, on every cell.
+            //
+            // `langPicker.ts` is cited as this idiom and is not the same case:
+            // its rows are direct children of the element that scrolls, with
+            // nothing above them in it, so there is no chain to walk and the
+            // bare `offsetTop` is the whole distance.
+            //
+            // Rects would be the other way to write it, and are worse here:
+            // `getBoundingClientRect()` is a border-box measure and `scrollTop`
+            // is a padding-box one, so mixing them needs a `clientTop`
+            // correction that is invisible until a border changes. The chain
+            // ends at `root` and is exact.
+            const cellTop = offsetTopWithin(cell, root);
             const cellBottom = cellTop + cell.offsetHeight;
             if (cellTop < root.scrollTop) {
                 root.scrollTop = cellTop;

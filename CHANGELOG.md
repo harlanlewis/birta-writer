@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Arrowing through the `/date` calendar in a short window brings the day you land on into view. In a window too short to hold the whole month, the calendar gets its own scroller, and the scroll that follows the keyboard was coming up short by the height of the month header and the weekday row above the grid. Whether that mattered depended on how much room happened to be left below the day you moved to, so on some window heights it looked fine and on others the day you were on was hidden below the edge while still taking your keystrokes.
+
+- The review sidebar keeps its tabs instead of collapsing them into a dropdown. Links and Notes are only offered when the document has either, and a tab that was not being offered went on being drawn and went on taking its width. The strip then measured itself as too narrow for the tabs it was showing, wrapped onto a second row, and folded every tab into a single button you had to open a menu from. It was worst on a narrow sidebar and on a document with no links and no note markers, which is where all four tabs were present and two of them were not supposed to be. Every control in the editor that is hidden this way was affected in principle; the tab strip is where it showed.
+
 ---
 
 ## [2026.826.0] - 2026, August 26

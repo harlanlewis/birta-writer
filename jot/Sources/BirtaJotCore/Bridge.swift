@@ -492,7 +492,6 @@ public struct BootConfig: Equatable {
     /// a decision about which checks a host can run, which is the page's.
     public var styleExceptions: [String]
     public var tocVisibility: String
-    public var tocOnRight: Bool
     public var tocWidth: Int?
     public var networkEnabled: Bool
     public var hostCapabilities: [String]
@@ -511,7 +510,6 @@ public struct BootConfig: Equatable {
                 proofreadOptions: [String: Bool] = [:],
                 styleExceptions: [String] = [],
                 tocVisibility: String = "hidden",
-                tocOnRight: Bool = false,
                 tocWidth: Int? = nil,
                 networkEnabled: Bool = false,
                 hostCapabilities: [String] = [],
@@ -525,7 +523,6 @@ public struct BootConfig: Equatable {
         self.proofreadOptions = proofreadOptions
         self.styleExceptions = styleExceptions
         self.tocVisibility = tocVisibility
-        self.tocOnRight = tocOnRight
         self.tocWidth = tocWidth
         self.networkEnabled = networkEnabled
         self.hostCapabilities = hostCapabilities
@@ -535,8 +532,9 @@ public struct BootConfig: Equatable {
     /// The outline panel's width, as the rule the page reads it from.
     ///
     /// It rides the SERVED HTML rather than the boot script, and so does the
-    /// side (`BirtaSchemeHandler.tocOnRight`), because the page reads both
-    /// while it mounts: the panel is built by the module script, which runs
+    /// side (`BirtaSchemeHandler.renderPage`, which writes `toc-right` on every
+    /// page), because the page reads both while it mounts: the panel is built
+    /// by the module script, which runs
     /// after the document is parsed and before `DOMContentLoaded`, so a boot
     /// script has no moment that is both late enough to have a document and
     /// early enough to be read. Empty when nothing has been stored, so the page
@@ -575,9 +573,22 @@ public struct BootConfig: Equatable {
             //   nativeFindBar             every other control in this window is
             //     a native one, so the search field is drawn as macOS draws
             //     one and its four options move behind a ⋯ button.
+            //   nativeDatePicker          this is an application, so `/date`
+            //     shows the picker macOS already has.
+            //   fixedTocSide              a macOS sidebar is on the trailing
+            //     edge. The page is told which edge by `body.toc-right`, which
+            //     `WebHost` writes unconditionally; this says the reader is not
+            //     offered the other one, so the panel drops its flip button and
+            //     Swap Sides leaves the palette and the slash menu with it.
+            //   tocToggleInBar            the bar already carries a button that
+            //     shows and hides the sidebar, at the corner the panel's own
+            //     hide button and reveal tab would sit in. One of the two has
+            //     to go, and the one that stays is the one that is on screen
+            //     whether the sidebar is open or shut; it inherits the reveal
+            //     tab's hover preview rather than replacing it with nothing.
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"],
                 "shortcuts": hostShortcuts.map { shortcut -> [String: Any] in
                 // The optional halves are omitted rather than sent as null: an
                 // absent `command` is the claim "this key runs no editor
