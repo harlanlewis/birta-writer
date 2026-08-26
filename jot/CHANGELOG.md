@@ -14,6 +14,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- The titlebar's New Note, Open and Open Recent buttons show their tooltips. Each had one and none of them ever appeared: macOS delivers a tooltip through a tracking region it installs when the label is set, and these buttons were clearing every region they had on each layout pass, which took the tooltip with it. They now say what they do and which key does it, as the buttons at the other end of the band already did.
+
 - Open Recent lists the notes you have had open, and not only the files you opened through Open. A note made with New Note, the note the app launches on, and the scratchpad it returns to all reach the panel without a file chooser, and none of them was being recorded, so the menu could say No Recent Files to somebody who had just switched away from a note. Every file the panel leaves and every file it moves to now joins the list, whichever gesture put it there. The file currently on screen is the one thing still absent, deliberately, and it joins the list the moment you go somewhere else.
 
 - Every button in the titlebar names itself when you rest on it. Checks and Settings open their menus on a click here rather than on hover, which is what a Mac does, so resting on one promised nothing and said nothing either, and the only way to find out what a glyph did was to press it and see. Both now show their name, and the name goes away when the menu opens. Birta Writer for VS Code is unchanged: its menus open on hover, so a label would appear where the menu is about to and be covered by it.
@@ -29,6 +31,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 - The Test button's result reads as a sheet rather than an empty box beside the text. What the tool printed was drawn in a panel with no size, so macOS placed it over the sentence above it and showed nothing inside it, which on a failure hid the tool's own error, the only part of that sheet worth reading.
 
 ### Changed
+
+- New Note is a plus in a square rather than a pencil over one. The three file buttons sit in a row and are read together, and the compose mark puts its pencil through the top-right corner, so the square gives way and the whole glyph reads low beside a folder and a clock that are drawn around their own centres. What changed is where the ink sits; the button, its place and its shortcut are the same.
 
 - The titlebar's two halves are drawn as one strip of controls. New Note, Open and Open Recent sit beside the file's name at one end of the band and Checks, Find, Settings and the table of contents sit at the other, and they were a different size, a different shape and a different distance apart, sitting a point lower than the three beside the name. One set is drawn by macOS and the other is the same HTML Birta Writer for VS Code draws, and each had been laid out to its own numbers. The file buttons now take the box, the spacing and the hover treatment the toolbar's own buttons use, and the toolbar's first row takes the titlebar's height so that both sets sit where macOS puts a window's title. The three are also drawn at full strength rather than dimmed, and resting on one shades it the way resting on Find or Settings does, instead of brightening the glyph and nothing else. They are wider than they were, so a long file name has a little less room before it is shortened.
 

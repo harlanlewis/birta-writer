@@ -16,10 +16,24 @@ import BirtaJotCore
 ///
 /// ## Why these symbols
 ///
-/// `square.and.pencil` is the compose mark, which is what Mail and Notes put
-/// on the button that makes a new one; `doc.badge.plus` says the same thing
-/// more literally and says it in a badge too small to read at this size, and a
-/// bare `plus` says "add" without saying what to.
+/// The three are read together, in one short row, which makes how a glyph
+/// SITS as much a part of the choice as what it means. A mark whose weight
+/// hangs off centre reads as misaligned beside two that do not, and no amount
+/// of correct positioning fixes it, because the box is centred and the ink
+/// inside the box is not. `TitlebarSymbolsTests` measures that and fails the
+/// set when one of them drifts out of line with the others.
+///
+/// `plus.square` is New Note: a plus at full size, in the sheet it makes. The
+/// alternatives each cost something this one does not. `square.and.pencil` is
+/// the compose mark Mail and Notes use and is the better MEANING, but the
+/// pencil rides the top-right corner and the square gives way to it, so the
+/// weight of the glyph sits low while a folder's and a clock's sit centred.
+/// `doc.badge.plus` says it most literally and says it in a badge too small to
+/// read at this size. A bare `plus` balances, and is a thin pair of strokes
+/// where its neighbours are closed shapes, so it reads lighter than the row it
+/// is in; it also says "add" without saying what to. Every figure behind those
+/// sentences is in `TitlebarSymbolsTests`, which measures them rather than
+/// recording them.
 ///
 /// `folder` is Open. macOS has no dedicated Open glyph, because Open is a menu
 /// verb everywhere else, and a folder is what every toolbar that has needed
@@ -86,9 +100,9 @@ final class TitlebarActionsView: NSView {
     /// else and a taller target would be free. It stops being free the moment
     /// the box is drawn: a hover fill the height of the band is half again the
     /// height of the one beside it.
-    fileprivate static let buttonWidth: CGFloat = 26
-    fileprivate static let buttonGap: CGFloat = 2
-    fileprivate static let buttonHeight: CGFloat = 24
+    static let buttonWidth: CGFloat = 26
+    static let buttonGap: CGFloat = 2
+    static let buttonHeight: CGFloat = 24
     /// The size the symbols are drawn at, chosen to MATCH the page's own icons
     /// rather than picked for this strip alone: `webview/ui/icons.ts` draws a
     /// 16-point glyph, and thirteen points is where the tallest of these three
@@ -102,7 +116,7 @@ final class TitlebarActionsView: NSView {
     /// defensible too, since regular is what macOS titlebar chrome usually
     /// wears, but the page's icons are shared with the extension and this side
     /// is the half that can move.
-    fileprivate static let symbolPointSize: CGFloat = 13
+    static let symbolPointSize: CGFloat = 13
     /// What this view takes from the accessory, drawn or not.
     ///
     /// Derived from the buttons it was given rather than from a count written
@@ -125,6 +139,22 @@ final class TitlebarActionsView: NSView {
     /// make a button unclickable for the length of its own fade in and
     /// clickable for the length of its fade out.
     private(set) var shown = false
+
+    /// The set the titlebar ships, in the order it draws them.
+    ///
+    /// Here rather than at the one call site, so the app and every check read
+    /// ONE declaration. The mirror this replaces was a copy in the test file:
+    /// it kept the count honest by accident, because a separate scrape
+    /// compared the counts, and said nothing at all about the symbols, which
+    /// is the half that decides what these buttons look like.
+    ///
+    /// Open Recent sits after Open because it is the same verb reached a
+    /// shorter way, and the two read as a pair.
+    static let shipped: [Action] = [
+        .init(selector: #selector(AppDelegate.menuNewNote), symbol: "plus.square"),
+        .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
+        .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
+    ]
 
     /// One entry per button: the menu row it repeats, and the symbol it draws.
     ///
@@ -310,12 +340,25 @@ final class TitlebarActionButton: NSButton {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// The hover area, remembered so this view can take back ITS OWN and
+    /// nothing else.
+    ///
+    /// `trackingAreas` is not a list of the ones we added. Setting `toolTip`
+    /// installs a tracking area too, which is the whole of how a tooltip is
+    /// delivered, so a sweep over that array removes the tooltip along with
+    /// the hover and nothing puts it back. The failure is silent in the worst
+    /// way: `toolTip` still reads back the string it was given, so the model
+    /// side stays healthy and the label simply never appears.
+    private var hoverArea: NSTrackingArea?
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero,
-                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                                       owner: self))
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero,
+                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        hoverArea = area
     }
 
     override func mouseEntered(with event: NSEvent) { isHovered = true; syncInk() }

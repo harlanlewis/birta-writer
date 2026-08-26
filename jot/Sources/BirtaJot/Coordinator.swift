@@ -290,15 +290,10 @@ final class Coordinator {
         }
         // The file actions, beside the name of the file they act on. Each is
         // the menu row's own selector, sent up the responder chain, so the
-        // button IS the row rather than a second thing that agrees with it;
-        // `TitlebarActionsView` has that argument and the one for the symbols.
-        // Open Recent sits after Open because it is the same verb reached a
-        // shorter way, and the two read as a pair.
-        titleBar.titleView.setActions([
-            .init(selector: #selector(AppDelegate.menuNewNote), symbol: "square.and.pencil"),
-            .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
-            .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
-        ])
+        // button IS the row rather than a second thing that agrees with it.
+        // What the set IS, and the argument for every symbol in it, is
+        // `TitlebarActionsView.shipped`.
+        titleBar.titleView.setActions(TitlebarActionsView.shipped)
         // The band is one strip to the eye, so pointing anywhere along it
         // offers what the strip holds, rather than only the width of the name.
         // That hover now arrives from the WINDOW rather than from the strip
@@ -462,6 +457,19 @@ final class Coordinator {
             if obj["type"] as? String == "__jotReload" {
                 measure.mark("debug-reload")
                 preferencesChanged()
+                return
+            }
+            // What the app currently believes a setting is, and NOTHING else.
+            //
+            // A script sets a preference from outside the process, and a
+            // running `UserDefaults` learns about that when the system tells
+            // it, so "has the app been told yet" is a real question with no
+            // other way to ask it. Every other way of provoking an answer acts
+            // as well as reports: `__jotSave` was tried here and it writes the
+            // buffer, which is the file the autosave check then inspects, so
+            // the instrument was changing the thing it measured.
+            if obj["type"] as? String == "__jotPrefs" {
+                measure.trace("prefs autosave=\(Prefs.autosave ? "yes" : "no")")
                 return
             }
             // An explicit save, exactly as Cmd+S makes one.
@@ -1410,7 +1418,19 @@ final class Coordinator {
     /// still reaches disk. That ceiling is the whole crash-safety story: it is
     /// how far the file is ever allowed to trail the editor.
     private func write(_ trigger: WriteTrigger) {
-        switch AutosavePolicy.action(for: trigger, autosaveEnabled: Prefs.autosave) {
+        let autosave = Prefs.autosave
+        // What the app BELIEVED when it decided, for `jot/scripts/measure.sh`.
+        //
+        // The rule itself is a pure function with its own tests, so the arm
+        // that script owns is the wiring: did the setting reach this decision.
+        // Without this line a failure there has two causes that look
+        // identical, and only one of them is a defect. The script sets the
+        // preference from OUTSIDE the process, and an external write reaches a
+        // running `UserDefaults` when the system gets round to it, so a probe
+        // that hides the panel too soon measures an app that has not been told
+        // yet and reports the product as ignoring a setting it never saw.
+        measure.trace("writedecision trigger=\(trigger) autosave=\(autosave ? "yes" : "no")")
+        switch AutosavePolicy.action(for: trigger, autosaveEnabled: autosave) {
         case .now:
             cancelPendingAutosave()
             writeLatest()

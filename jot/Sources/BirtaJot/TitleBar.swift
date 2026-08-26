@@ -355,12 +355,24 @@ final class TitleBarView: NSView {
         syncHoverChrome()
     }
 
+    /// The hover area, remembered so this view takes back ITS OWN and nothing
+    /// else. `trackingAreas` is not a list of what this file added: AppKit
+    /// puts its own in there, and a tooltip is delivered by one of them, so a
+    /// sweep over that array is how a control ends up with a `toolTip` that
+    /// reads back correctly and never appears. That is what it did to the
+    /// buttons in `TitlebarActions.swift`. Nothing sets a tooltip on THIS view
+    /// today (the name's path tooltip belongs to the label, a subview with its
+    /// own areas), so this is the hazard removed rather than a bug fixed.
+    private var hoverArea: NSTrackingArea?
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero,
-                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                                       owner: self))
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero,
+                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        hoverArea = area
     }
 
     override func mouseEntered(with event: NSEvent) {

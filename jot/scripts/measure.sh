@@ -641,8 +641,13 @@ AC_FIRST_X="$(echo "$AC_OVER_BOX" | cut -d, -f1 | cut -d: -f1)"
 # rather than written down here. A literal is a number a fourth button never
 # joins: it would draw correctly, resolve its symbol, and fail this line with a
 # message about a missing symbol.
-AC_WANT="$(awk '/titleView\.setActions\(\[/{f=1;next} f&&/^ *\]\)/{exit} f&&/\.init\(selector:/{n++} END{print n+0}' \
-    jot/Sources/BirtaJot/Coordinator.swift)"
+#
+# It reads `TitlebarActionsView.shipped`, which is where the set is declared.
+# A scrape names a file, so MOVING the declaration empties it silently unless
+# the scrape moves too; this one is loud rather than silent, because a count of
+# zero is refused below, and that is the only reason the move was safe.
+AC_WANT="$(awk '/static let shipped: \[Action\] = \[/{f=1;next} f&&/^ *\]/{exit} f&&/\.init\(selector:/{n++} END{print n+0}' \
+    jot/Sources/BirtaJot/TitlebarActions.swift)"
 if [ -z "$ACTS" ]; then
     echo "titlebar buttons     FAILED: the app reported no titleactions trace at all" >&2; exit 1
 fi
@@ -1586,6 +1591,35 @@ echo "onboarding           ok: no network switched on, and no login item taken, 
 # in that block.
 defaults write "$BIRTA_JOT_DEFAULTS_SUITE" autosave -bool NO
 show_panel
+# Wait until the APP has seen it, rather than assuming it has.
+#
+# The write above is made from outside the process, and a running
+# `UserDefaults` learns about an external change when the system tells it,
+# which is not on any schedule this script controls. Hiding the panel before
+# that lands measures an app that was never told the setting changed, and the
+# check below then reports the product as ignoring a preference it had not
+# received: a red with a true message and a false subject, which is worse than
+# no check at all, because the honest reading of it is to re-run.
+#
+# `__jotPrefs` reports and does nothing else, which is the whole reason it
+# exists. Provoking a real decision was tried first and is a trap: the cheapest
+# one to provoke is an explicit save, and an explicit save WRITES THE BUFFER to
+# the file this check is about to inspect, so the instrument was putting the
+# bytes there that it then blamed the product for.
+OFF_SEEN=0
+for _ in $(seq 1 40); do
+    printf '{"type":"__jotPrefs"}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 0.25
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    case "$(grep "^jot-trace prefs " "$LOG" | tail -1)" in
+        *autosave=no) OFF_SEEN=1; break ;;
+    esac
+done
+if [ "$OFF_SEEN" != 1 ]; then
+    echo "autosave off         FAILED: the app never saw the setting, so nothing below is about the product" >&2
+    grep "^jot-trace prefs " "$LOG" | tail -3 | sed 's/^/  /' >&2
+    exit 1
+fi
 OFF_STAMP="offprobe-$(date +%s)"
 printf '{"type":"__testInsertText","text":"%s\\n"}' "$OFF_STAMP" > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 0.5
@@ -1594,6 +1628,11 @@ sleep 1.5
 rm -f "$SCRATCH_DIR/.debug-message.json"
 if grep -q "$OFF_STAMP" "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null; then
     echo "autosave off         FAILED: hiding the panel wrote '$OFF_STAMP' to the note" >&2
+    # What the app believed at the decision that wrote it. With the wait above
+    # this should always say `autosave=no`, which makes the failure a real one;
+    # anything else means the wait stopped working and this is again a red
+    # about the probe.
+    grep "^jot-trace writedecision " "$LOG" | tail -3 | sed 's/^/  /' >&2
     cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
 # The typing has to have LANDED, or this passes on a probe that never reached
