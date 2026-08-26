@@ -6,7 +6,7 @@ import BirtaJotCore
 /// the panel, the web host and the store together.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu!
     private var coordinator: Coordinator!
     private var settingsWindow: SettingsWindowController?
@@ -22,6 +22,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// never flashes an icon it is about to take away.
     static func applyActivationPolicy() {
         NSApp.setActivationPolicy(Prefs.showInDock ? .regular : .accessory)
+    }
+
+    /// The running delegate.
+    ///
+    /// For the settings that act on app-level chrome this object owns, which
+    /// `applyActivationPolicy` above does not need because it reaches nothing
+    /// but `NSApp`. Derived rather than stored: AppKit already holds exactly
+    /// one delegate, and a second reference to it is a second thing that can
+    /// be stale.
+    static var shared: AppDelegate? { NSApp.delegate as? AppDelegate }
+
+    /// THE menu-bar rule, mirroring `applyActivationPolicy` above, with the
+    /// same callers: launch, the Settings switch, and a reset.
+    ///
+    /// The item is CREATED and DESTROYED rather than hidden, because a status
+    /// item holds its slot in the bar for as long as it exists and there is no
+    /// state in it worth keeping: the menu it shows is built once, separately,
+    /// and outlives every item this makes.
+    ///
+    /// Turning it off cannot make the app unreachable, and that is not this
+    /// method's business to check. `AppPresence` holds the rule and the two
+    /// settings rows enforce it between them, which is where a user can be
+    /// told why rather than simply prevented.
+    ///
+    /// Deliberately not covered by `BirtaJotTests`, which is the one place in
+    /// this app where that suite's convention cannot hold: it builds windows
+    /// and never shows them, and there is no equivalent for a status item.
+    /// Asking for one puts an icon in the menu bar of whoever is running the
+    /// tests. The decidable half is `AppPresence`'s and is swept there.
+    func applyMenuBarPresence() {
+        guard Prefs.showInMenuBar else {
+            if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
+            statusItem = nil
+            return
+        }
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            button.image = Self.statusItemImage()
+            button.toolTip = AppFlavor.current.displayName
+            button.target = self
+            button.action = #selector(statusItemClicked)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        statusItem = item
     }
 
     /// A file the user pointed this app at, held until there is a Coordinator
@@ -86,7 +131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator = Coordinator()
         coordinator.openPreferences = { [weak self] in self?.menuOpenSettings() }
         coordinator.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
-        buildStatusItem()
+        buildStatusMenu()
+        applyMenuBarPresence()
         coordinator.start()
         // Asked once a launch, in the background, and silent unless there is
         // something. `Updater` refuses for a development build, when the
@@ -293,22 +339,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = main
     }
 
-    /// The menu-bar item. A click toggles the panel, which is what the item is
-    /// for; the menu is on Control-click and right-click, where a menu belongs.
+    /// The menu-bar item's menu, on Control-click and right-click, where a
+    /// menu belongs. A plain click toggles the panel, which is what the item
+    /// is for; `statusItemClicked` holds how the two are told apart.
     ///
-    /// `statusItem.menu` stays nil for that to work: an item with a menu shows
-    /// it on every click and never sends its action, so the menu is attached
-    /// for the length of one `performClick` and taken off again.
-    private func buildStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = statusItem.button {
-            button.image = Self.statusItemImage()
-            button.toolTip = AppFlavor.current.displayName
-            button.target = self
-            button.action = #selector(statusItemClicked)
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        }
-
+    /// Built ONCE, and separately from the item, because the item comes and
+    /// goes with `Prefs.showInMenuBar` while this does not change at all.
+    /// `showItem` is retitled on every opening rather than rebuilt, so it has
+    /// to outlive any particular item.
+    private func buildStatusMenu() {
         let menu = NSMenu()
         // The panel toggle, and nothing about where files live: that belongs in
         // the window, next to the note it would act on.
@@ -364,6 +403,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return image
     }
 
+    /// A click toggles the panel, which is what the item is for; the menu is
+    /// on Control-click and right-click, where a menu belongs.
+    ///
+    /// `statusItem.menu` stays nil for that to work: an item with a menu shows
+    /// it on every click and never sends its action, so the menu is attached
+    /// for the length of one `performClick` and taken off again.
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
         let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
@@ -371,9 +416,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             coordinator.toggle()
             return
         }
-        statusItem.menu = statusMenu
-        statusItem.button?.performClick(nil) // blocks while the menu tracks
-        statusItem.menu = nil
+        statusItem?.menu = statusMenu
+        statusItem?.button?.performClick(nil) // blocks while the menu tracks
+        statusItem?.menu = nil
     }
 
     /// Jot's menus carry no icons.

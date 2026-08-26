@@ -143,6 +143,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private var agentCapabilityInPage = Prefs.agentAvailable
     private let newNoteField = NSTextField(string: Prefs.newNoteNameTemplate)
     private let dockSwitch = NSSwitch()
+    private let menuBarSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
     /// The two questions the file settings ask: what a summon opens, and where
     /// notes live.
@@ -527,6 +528,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (agentEnabledSwitch, Prefs.agentEnabled, #selector(toggleAgentEnabled)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
+            (menuBarSwitch, Prefs.showInMenuBar, #selector(toggleShowInMenuBar)),
             (loginSwitch, false, #selector(toggleLoginItem)),
         ] {
             // The size a settings row uses. A regular NSSwitch is drawn for a
@@ -562,6 +564,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                            + "access.", bad: false)
         autosaveSwitch.state = Prefs.autosave ? .on : .off
         dockSwitch.state = Prefs.showInDock ? .on : .off
+        menuBarSwitch.state = Prefs.showInMenuBar ? .on : .off
         hotkeyRecorder.setCombo(Prefs.hotkey)
         agentField.stringValue = Prefs.agentCommand
         newNoteField.stringValue = Prefs.newNoteNameTemplate
@@ -588,6 +591,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private func showRowAvailability() {
         showAutoUpdate()
         showLoginItem(LoginItem.state)
+        showPresence()
+    }
+
+    /// The two rows saying where the app can be reached from.
+    ///
+    /// Drawn together because the rule binding them is ONE rule and it is
+    /// symmetric: whichever surface is currently the last way in says so and
+    /// cannot be switched off, and moving EITHER switch can change the other
+    /// row's answer. Redrawing only the row that was clicked would leave the
+    /// other one blocked after the move that unblocked it.
+    private func showPresence() {
+        let (menuBar, dock) = (Prefs.showInMenuBar, Prefs.showInDock)
+        for (surface, control, row) in [
+            (AppPresence.Surface.menuBar, menuBarSwitch, SettingsRow.showInMenuBar),
+            (AppPresence.Surface.dock, dockSwitch, SettingsRow.showInDock),
+        ] {
+            let availability = RowAvailability.appPresence(surface, menuBar: menuBar, dock: dock)
+            control.isEnabled = availability.isEnabled
+            rowViews[row]?.apply(availability)
+        }
     }
 
     /// The agent command exists only when the switch above it is on.
@@ -769,6 +792,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // until you ask. `AutosavePolicy` is where that promise is kept.
         case .autosave: return (autosaveSwitch, [], nil)
         case .showInDock: return (dockSwitch, [], nil)
+        case .showInMenuBar: return (menuBarSwitch, [], nil)
         case .startAtLogin:
             return (Self.trailingControls([loginSettingsButton, loginSwitch]), [], loginCaption)
         case .autoUpdate:
@@ -1280,6 +1304,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             guard response == .alertFirstButtonReturn, let self else { return }
             Prefs.reset()
             AppDelegate.applyActivationPolicy()
+            AppDelegate.shared?.applyMenuBarPresence()
             _ = self.onHotkeyChange()
             self.syncControlsFromPrefs()
             self.onChange(nil)
@@ -1512,6 +1537,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     @objc private func toggleShowInDock() {
         Prefs.showInDock = dockSwitch.state == .on
         AppDelegate.applyActivationPolicy()
+        showPresence()
+    }
+
+    /// The menu-bar icon. Applied here and now for the same reason the Dock
+    /// icon is, and followed by `showPresence` for a reason the Dock switch
+    /// did not have until today: turning one surface on or off decides whether
+    /// the OTHER one may still be turned off.
+    @objc private func toggleShowInMenuBar() {
+        Prefs.showInMenuBar = menuBarSwitch.state == .on
+        AppDelegate.shared?.applyMenuBarPresence()
+        showPresence()
     }
 
     @objc private func toggleNetwork() {

@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- A Show in menu bar setting, on by default, under Settings > General. Turning it off leaves the app with no menu-bar icon, which suits anybody who summons it by hotkey or keeps it in the Dock. It is bound to Show in Dock by one rule: whichever of the two is the last one on cannot be switched off, so there is always a way to open the app without its hotkey. The row that is currently the last one says so rather than simply refusing.
+
 ### Fixed
 
 - The titlebar's Open Recent list opens below the button rather than across the titlebar. It was positioned at the button's bottom-left corner in coordinates that grow the other way, so it came up over the name of the file it was offering to replace.
