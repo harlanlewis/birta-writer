@@ -627,10 +627,26 @@ final class Coordinator {
                     // would deliver for the chord and is not the bare letter;
                     // AppKit routes a key equivalent by
                     // `charactersIgnoringModifiers`, so that one carries it.
-                    let typed = heldFlags.contains(.command) ? "" : chars
+                    //
+                    // Shift is APPLIED to that one, which is the part this got
+                    // wrong. "Ignoring modifiers" means ignoring Command and
+                    // Option; a keyboard producing ⇧⌘O reports "O", never "o".
+                    // Sending the bare letter made an event no keyboard makes,
+                    // so every shifted LETTER chord driven from here was
+                    // delivered as something the system never sees. It went
+                    // unnoticed because the only shifted chord under test is
+                    // ⇧⌘8, and a digit has no case to get wrong.
+                    //
+                    // What this does NOT establish is how AppKit matches such
+                    // a chord against a menu that also holds the unshifted
+                    // one. That question was asked here and the answers did not
+                    // agree between runs, so nothing in this repository claims
+                    // it either way.
+                    let ignoring = heldFlags.contains(.shift) ? chars.uppercased() : chars
+                    let typed = heldFlags.contains(.command) ? "" : ignoring
                     if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: heldFlags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                  windowNumber: self.panel.windowNumber, context: nil, characters: typed,
-                                                 charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                                                 charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: code) {
                         if heldFlags.contains(.command), type == .keyDown {
                             // A chord goes through the main menu, and the menu
                             // needs a key window to send its action to. An

@@ -413,9 +413,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuOpenRecent(_ sender: Any?) {
         guard let view = sender as? NSView else { return }
         NSApp.activate(ignoringOtherApps: true)
-        // The view's own bottom-left corner, so the menu hangs below the button
-        // the way a menu-bar menu hangs below its title.
-        RecentsMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: view)
+        RecentsMenu().popUp(
+            positioning: nil,
+            at: RecentsMenu.popUpOrigin(in: view.bounds, isFlipped: view.isFlipped),
+            in: view)
     }
 
     /// One row of that list. The file travels in `representedObject`, and the
