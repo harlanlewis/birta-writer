@@ -49,8 +49,8 @@ import BirtaJotCore
 /// ## Geometry, which is not negotiable here
 ///
 /// The room is reserved WHETHER OR NOT the buttons are drawn, and hover
-/// changes opacity and never width. `TitleBarView` states the rule and the
-/// reason; one level out it is worse rather than better, because this view
+/// changes what is painted and never a frame. `TitleBarView` states the rule
+/// and the reason; one level out it is worse rather than better, because this view
 /// sits at the accessory's trailing edge and the drag strip starts where the
 /// accessory ends (`Coordinator.layoutTitlebarDrag`). Buttons that took their
 /// width on hover would move the strip's origin without a layout pass to
@@ -65,15 +65,30 @@ final class TitlebarActionsView: NSView {
     /// Air between the title's chevron and the first button, which is what
     /// makes the pair read as its own group rather than as more title.
     private static let leadingGap: CGFloat = 6
-    /// The box one button holds. Small, because every point here is a point
-    /// the file's name does not get; the HEIGHT is the whole band, so the
-    /// target is easier to hit than this number suggests.
+    /// The box one button holds, and the air between two of them.
     ///
-    /// Two points of air around the widest of the three at `symbolPointSize`,
-    /// which is `square.and.pencil` at eighteen points across. It was the same
-    /// eighteen as the glyph, so that one button was flush to its box on both
-    /// sides and sat against its neighbour with nothing between them.
-    fileprivate static let buttonWidth: CGFloat = 22
+    /// All three are the PAGE'S, and that is the whole of why they are these
+    /// numbers rather than any others: the other half of this band is HTML a
+    /// few inches away (`.tb-btn` and `.tb-zone` in webview/), and the two have
+    /// to read as one strip of controls rather than as two toolbars that met
+    /// in the middle. The page is the half that cannot move, because those
+    /// rules are shared with the VS Code extension, where there is no titlebar
+    /// to match; this side follows, exactly as `symbolPointSize` below already
+    /// follows the page's icon size.
+    ///
+    /// `jot/scripts/measure.sh` reads both halves out of the live window and
+    /// fails when they disagree, which is the only place the pair is checkable
+    /// at all: each half is defensible on its own, in a toolkit that knows
+    /// nothing about the other.
+    ///
+    /// The height in particular has to be the box rather than the whole band,
+    /// even though the strip above and below the symbol belongs to nothing
+    /// else and a taller target would be free. It stops being free the moment
+    /// the box is drawn: a hover fill the height of the band is half again the
+    /// height of the one beside it.
+    fileprivate static let buttonWidth: CGFloat = 26
+    fileprivate static let buttonGap: CGFloat = 2
+    fileprivate static let buttonHeight: CGFloat = 24
     /// The size the symbols are drawn at, chosen to MATCH the page's own icons
     /// rather than picked for this strip alone: `webview/ui/icons.ts` draws a
     /// 16-point glyph, and thirteen points is where the tallest of these three
@@ -95,7 +110,11 @@ final class TitlebarActionsView: NSView {
     /// ceiling and the drag strip's origin together. A constant here is the
     /// version of this that goes wrong silently: the extra button draws fine
     /// and the strip lies over it.
-    var room: CGFloat { Self.leadingGap + Self.buttonWidth * CGFloat(buttons.count) }
+    var room: CGFloat {
+        Self.leadingGap
+            + Self.buttonWidth * CGFloat(buttons.count)
+            + Self.buttonGap * CGFloat(max(0, buttons.count - 1))
+    }
 
     /// The buttons, in the order they are drawn. Published so a check can walk
     /// them rather than reach for them by index.
@@ -138,13 +157,22 @@ final class TitlebarActionsView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// The buttons, in a row, centred on the band.
+    ///
+    /// Centred rather than filling it, for the same reason the title beside
+    /// them is centred rather than stretched: macOS puts a window title's
+    /// vertical centre on the close button's, this view is given the whole
+    /// band, and the page's own controls are centred on that same axis by
+    /// taking the band's height as their row's. Three surfaces, one axis.
     override func layout() {
         super.layout()
+        let y = ((bounds.height - Self.buttonHeight) / 2).rounded()
         for (index, button) in buttons.enumerated() {
-            button.frame = NSRect(x: Self.leadingGap + CGFloat(index) * Self.buttonWidth,
-                                  y: 0,
+            button.frame = NSRect(x: Self.leadingGap
+                                     + CGFloat(index) * (Self.buttonWidth + Self.buttonGap),
+                                  y: y,
                                   width: Self.buttonWidth,
-                                  height: bounds.height)
+                                  height: Self.buttonHeight)
         }
     }
 
@@ -200,20 +228,46 @@ final class TitlebarActionsView: NSView {
     func setWindowKey(_ key: Bool) {
         buttons.forEach { $0.setWindowKey(key) }
     }
+
+    /// What the page's buttons wear on hover, so these can wear the same.
+    ///
+    /// Handed over rather than written down here, and the difference is what
+    /// makes it stay true: the wash and the radius are the page's palette
+    /// (`--vscode-toolbar-hoverBackground`, `--ui-radius-m`), which flips with
+    /// the theme and is tuned in one file for two products. A copy in Swift
+    /// would be a second declaration nothing compares to the first, and the
+    /// day it drifted the only symptom would be one half of a band looking
+    /// slightly wrong beside the other, which is a thing nobody reports and
+    /// no check here could see.
+    func setBandChrome(hoverFill: NSColor?, cornerRadius: CGFloat) {
+        buttons.forEach { $0.setBandChrome(hoverFill: hoverFill, cornerRadius: cornerRadius) }
+    }
 }
 
-/// One borderless titlebar button: a template symbol, and nothing else until
-/// the pointer is on it.
+/// One borderless titlebar button: a template symbol over a hover fill.
 ///
-/// No bezel, because the band it sits in has no ground of its own: the page is
-/// drawn under a transparent titlebar, so a button with a fill would be a card
-/// floating over whatever text happens to be beneath it. What says the control
-/// is live is the ink going from secondary to full, which is the same channel
-/// the title and the chevron already use for the same claim.
+/// The band has a ground, and knowing whose it is settles what a fill here
+/// means. The page's toolbar is `position: fixed` at the top of a window with
+/// `fullSizeContentView` and paints `--vscode-editor-background` from edge to
+/// edge, so the paper under these buttons is the page's own paper rather than
+/// whatever text happens to be beneath a transparent titlebar. A fill here
+/// sits on the same ground the page's buttons' fills sit on, a few inches to
+/// the right.
+///
+/// So hover is said the way the page says it: a rounded wash behind the glyph,
+/// in the page's own colour and at the page's own radius (`setBandChrome`).
+/// The ink stays put, because the page's does.
+///
+/// With no wash to draw, which is the page not having answered yet or its
+/// palette no longer parsing, the ink carries hover instead and goes from
+/// secondary to full. That is a floor rather than an alternative: a control
+/// that says nothing at all under the pointer is the one outcome worth a
+/// branch to avoid.
 @MainActor
 final class TitlebarActionButton: NSButton {
     private var isHovered = false
     private var isKey = true
+    private var hoverFill: NSColor?
 
     /// The menu row this button repeats. Nil only if the row has been deleted,
     /// which is a state to be visible rather than papered over: the button
@@ -238,7 +292,13 @@ final class TitlebarActionButton: NSButton {
         // own selector is implemented. See `Action`.
         target = nil
         self.action = action.selector
-        contentTintColor = .secondaryLabelColor
+        // A layer, because the hover fill is drawn as one. Deliberately NOT
+        // `masksToBounds`: a rounded background colour is clipped to the
+        // corner radius on its own, and the flag would additionally clip
+        // anything drawn OUTSIDE the box, which under Full Keyboard Access is
+        // the focus ring.
+        wantsLayer = true
+        syncInk()
         if let row {
             // Label AND chord from the row. The button is an element in its own
             // right, unlike the chevron beside it, because it DOES something
@@ -267,10 +327,47 @@ final class TitlebarActionButton: NSButton {
         syncInk()
     }
 
+    func setBandChrome(hoverFill: NSColor?, cornerRadius: CGFloat) {
+        self.hoverFill = hoverFill
+        layer?.cornerRadius = cornerRadius
+        syncInk()
+    }
+
     private func syncInk() {
-        contentTintColor = isKey
-            ? (isHovered ? .labelColor : .secondaryLabelColor)
-            : .tertiaryLabelColor
+        guard isKey else {
+            contentTintColor = .tertiaryLabelColor
+            layer?.backgroundColor = nil
+            return
+        }
+        // With a wash to draw, the ink is the page's: full strength, hovered
+        // or not, because that is what `.tb-btn` does. Without one it is the
+        // only channel left, so it carries hover on its own.
+        contentTintColor = (hoverFill != nil || isHovered) ? .labelColor : .secondaryLabelColor
+        // A plain `cgColor`, with no appearance context taken around it, and
+        // that is correct here rather than an omission: the fill is a fixed
+        // sRGB value the page resolved against the theme in force, not a
+        // dynamic system colour with a branch left in it. What keeps it right
+        // across a flip to dark is the page being asked again
+        // (`Coordinator.applyTheme`), which is also the only thing that could
+        // keep it right, since a layer would not re-resolve a dynamic colour
+        // either.
+        layer?.backgroundColor = isHovered ? hoverFill?.cgColor : nil
+    }
+
+    /// Whether this button has a wash to draw at all, for a check with no
+    /// pointer. Asked without setting the hover state, so reading it disturbs
+    /// nothing: a probe that had to hover the button first would be a probe
+    /// that leaves it hovered, or one that has to guess where the pointer
+    /// really was to put it back.
+    var hasHoverFill: Bool { hoverFill != nil }
+
+    /// What is actually drawn behind the glyph under a pointer that is not
+    /// there. The colour rather than a flag, so a fill that resolved to
+    /// nothing is not reported as a fill.
+    func hoverFillForMeasurement(_ hovered: Bool) -> CGColor? {
+        isHovered = hovered
+        syncInk()
+        return layer?.backgroundColor
     }
 
     /// Set the hover state and read back what it decided, for a check that has

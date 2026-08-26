@@ -1411,6 +1411,64 @@ export async function run({ page, check, baseUrl }) {
     check("control: hovering a bar trigger still opens its menu where the arrangement is absent",
         ctlHover.after, JSON.stringify(ctlHover));
 
+    // Whether a menu trigger NAMES itself, which is the same arrangement asked
+    // about a different affordance, and the two answers are opposite.
+    //
+    // On the control page the menu is what appears under the pointer, so a
+    // label appearing first, in the spot the menu is about to take, is noise
+    // covered a moment later. Here the pointer opens nothing, so a trigger
+    // with no tooltip is a glyph with no way to learn it short of pressing it.
+    //
+    // Both surfaces are asked, and the control arm is not a formality: a
+    // tooltip applied unconditionally passes the Jot arm perfectly.
+    const tipText = () => page.evaluate(() => {
+        const tip = document.querySelector(".custom-tooltip");
+        return tip && tip.style.display !== "none" ? tip.textContent : null;
+    });
+    await page.locator('.tb-item[data-item-id="format"] .tb-fmt-btn').first().hover();
+    await page.waitForTimeout(OPEN_WAIT);
+    const ctlTip = await tipText();
+    check("control: a bar trigger carries no tooltip where hovering opens the menu",
+        ctlTip === null, JSON.stringify(ctlTip));
+
+    await mount("index.html");
+    const tipMenuSel = '.tb-zone--right [data-item-id="settings"] .tb-settings-menu';
+    const tipTrigger = page.locator('.tb-zone--right [data-item-id="settings"] .tb-fmt-btn').first();
+    await tipTrigger.hover();
+    await page.waitForTimeout(OPEN_WAIT);
+    const jotTip = await tipText();
+    check("jot: resting on a bar trigger names it, because pressing is what opens the menu",
+        typeof jotTip === "string" && jotTip.length > 0, JSON.stringify(jotTip));
+    // And the label goes when the menu it names arrives, or it sits over the
+    // first row the press just revealed. TWO mechanisms hold that, and they
+    // are asked separately because either alone passes the other's question:
+    // the open path takes down the label already on screen, and the anchor's
+    // own `aria-haspopup` and `aria-expanded` stop a fresh hover putting it
+    // back. The pointer is already resting on the trigger when the press
+    // lands, so the second one is only reachable by leaving and returning.
+    await tipTrigger.click();
+    await page.waitForTimeout(OPEN_WAIT);
+    const openedMenu = await page.evaluate((sel) =>
+        !!document.querySelector(sel)?.getClientRects().length, tipMenuSel);
+    const tipWhileOpen = await tipText();
+    check("jot: the menu really opened, so the tooltip checks below are about an open menu",
+        openedMenu);
+    check("jot: and the tooltip goes away once the menu it names is out",
+        tipWhileOpen === null, JSON.stringify(tipWhileOpen));
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(60);
+    await tipTrigger.hover();
+    await page.waitForTimeout(OPEN_WAIT);
+    const stillOpen = await page.evaluate((sel) =>
+        !!document.querySelector(sel)?.getClientRects().length, tipMenuSel);
+    const tipOnReturn = await tipText();
+    check("jot: the menu is still out, so the return-hover check is about an open menu",
+        stillOpen);
+    check("jot: and resting on the trigger again does not put the label back over the menu",
+        tipOnReturn === null, JSON.stringify(tipOnReturn));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(OPEN_WAIT);
+
     // ── A failed /ai run, on a host that cannot raise a notification ──
     //
     // Jot's shell has no notification surface for the page's own failures, so

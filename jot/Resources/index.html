@@ -57,6 +57,28 @@
      in, lined up against nothing, with the window's own left edge empty. */
   .editor-topbar .toolbar {
     padding-left: 78px;
+    /* The first row IS the titlebar band, so it takes the band's height and
+       centres its controls in it (`.toolbar` is already `align-items:
+       center`), instead of padding its own way to a height of its own.
+
+       That is what puts these buttons on the same axis as the native ones
+       beside the title, and the axis is not negotiable: macOS centres a window
+       title on the close button, and the native accessory is given the whole
+       band and centres on it. A row padded to any other height centres its
+       glyphs somewhere else, and the two halves of what reads as one strip of
+       buttons are then drawn on two lines. `jot/scripts/measure.sh` compares
+       the two out of the live window, which is the only place the pair can be
+       asked about at all.
+
+       The height rides the served page (`BirtaSchemeHandler.titlebarBandHeight`
+       fills it in beside {{ROOT_STYLE}} above), because it is the system's
+       number rather than ours: it is not the same under every macOS titlebar
+       style, so a literal here would be right until it was not, with nothing
+       on this side able to tell. The fallback stands only for a page served
+       before the window has been laid out. */
+    min-height: var(--jot-titlebar-height, 34px);
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   /* At rest the panel is a page and a cursor.

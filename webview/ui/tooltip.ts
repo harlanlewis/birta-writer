@@ -176,6 +176,22 @@ export function applyTooltip(
         ) {
             return;
         }
+        // Nor while the control's own POPUP is out. A tooltip opens where a
+        // menu opens, so a label naming the trigger would sit over the first
+        // row it just revealed; this is what lets a menu trigger carry a
+        // tooltip at all.
+        //
+        // Both attributes, and the pair is the whole of it. `aria-expanded`
+        // alone means two different things in this webview, and only one of
+        // them is a popup: a heading's fold button, the sticky crumb's, the
+        // frontmatter toggle and the outline's rows all use it for "the
+        // content under me is showing", and every one of those carries a
+        // tooltip that has to keep working while it is true. `aria-haspopup`
+        // is what separates them, since it says activating this opens
+        // something over the page, and the disclosure controls do not set it.
+        if (el.hasAttribute("aria-haspopup") && el.getAttribute("aria-expanded") === "true") {
+            return;
+        }
         if (truncatedOnly && el.scrollWidth <= el.offsetWidth) {
             return;
         }
