@@ -7,10 +7,11 @@
  * value set from TypeScript passed untouched: `el.style.borderRadius = "7px"`,
  * `el.style.fontSize = "11px"` and `el.style.color = "#ff0000"` were all green
  * while each fails immediately in a stylesheet. That is a scan-scope gap, not a
- * threshold one, and it is not hypothetical — two whole stylesheets already live
- * in template literals (`components/findBar/highlightStyles.ts`,
- * `components/lineNumbers/styles.ts`), moved there for measured launch-cost
- * reasons, and moving them silently took them out of both guards. Each grew a
+ * threshold one, and it is not hypothetical — whole stylesheets live in template
+ * literals (`components/findBar/highlightStyles.ts` and others; `cssParses.test.ts`
+ * enumerates them rather than listing them here), moved there for measured
+ * launch-cost reasons, and moving them silently took them out of both guards.
+ * Each grew a
  * bespoke per-file re-imposition test instead, every one a fresh hand-rolled
  * regex weaker than the rule it stood in for. The third one would not have.
  *

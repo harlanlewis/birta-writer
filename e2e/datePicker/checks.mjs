@@ -137,6 +137,73 @@ export async function run({ page, check, baseUrl }) {
     const roundTrip = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
     check("ArrowDown is exactly seven days, so a right-down-eight-left loop returns", roundTrip === before, `${before} vs ${roundTrip}`);
 
+    // ── 2b. The two calendar marks are actually drawn ──────────────────────
+    // The `--today` ring and the `--outside` dim are the only things in this
+    // component that no other arm can see: the CLASSES are on the elements
+    // whatever the stylesheet does, so every structural arm above passes on a
+    // build where neither rule reaches an element. What has to be read is the
+    // computed style.
+    //
+    // Focus is moved off today first, and that is load bearing rather than
+    // tidy. `&:focus-visible` sets an outline of its own, so reading the roving
+    // cell reports a ring whether the today rule matches anything or not.
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(150);
+    const marks = await page.evaluate(() => {
+        const cells = [...document.querySelectorAll(".date-picker__day")];
+        const restingPlain = cells.filter((c) =>
+            !c.classList.contains("date-picker__day--today")
+            && !c.classList.contains("date-picker__day--outside")
+            && c.getAttribute("aria-selected") !== "true"
+            && c !== document.activeElement);
+        const restingOutside = cells.filter((c) =>
+            c.classList.contains("date-picker__day--outside")
+            && c.getAttribute("aria-selected") !== "true"
+            && c !== document.activeElement);
+        const today = cells.find((c) => c.classList.contains("date-picker__day--today")) ?? null;
+        const read = (el) => {
+            const s = getComputedStyle(el);
+            return { outline: s.outlineStyle, opacity: Number(s.opacity) };
+        };
+        return {
+            cellCount: cells.length,
+            plainCount: restingPlain.length,
+            outsideCount: restingOutside.length,
+            todayFocused: today !== null && today === document.activeElement,
+            todaySelected: today?.getAttribute("aria-selected") === "true",
+            today: today ? read(today) : null,
+            plain: restingPlain.length ? read(restingPlain[0]) : null,
+            outside: restingOutside.length ? read(restingOutside[0]) : null,
+        };
+    });
+
+    // The instrument before what it found: with any of these empty the three
+    // arms below are comparisons between nothing and nothing, and pass.
+    check("the mark probe reached a today cell, a resting plain day and a resting outside day",
+        marks.cellCount === 42 && marks.today !== null
+        && marks.plainCount > 0 && marks.outsideCount > 0,
+        JSON.stringify(marks));
+    check("today is read at rest, so no focus or selection ring is being counted",
+        !marks.todayFocused && !marks.todaySelected,
+        JSON.stringify({ focused: marks.todayFocused, selected: marks.todaySelected }));
+    // Against a plain day rather than a named width: the arm says the ring is
+    // SPECIFIC to today, which restating `1px solid` would not.
+    check("today is drawn with a ring a plain day does not have",
+        marks.today !== null && marks.plain !== null
+        && marks.today.outline !== "none" && marks.plain.outline === "none",
+        JSON.stringify({ today: marks.today?.outline, plain: marks.plain?.outline }));
+    check("a neighbouring month's day is drawn dimmer than one in this month",
+        marks.outside !== null && marks.plain !== null
+        && marks.outside.opacity < marks.plain.opacity,
+        JSON.stringify({ outside: marks.outside?.opacity, plain: marks.plain?.opacity }));
+
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForTimeout(150);
+    const backOnToday = await page.evaluate(() =>
+        document.activeElement?.getAttribute("aria-current") === "date");
+    check("focus is back on today, so the month arms below start where they did",
+        backOnToday, String(backOnToday));
+
     // ── 3. PageUp changes the month, and the heading announces it ───────────
     const monthBefore = await page.evaluate(() => document.querySelector(".date-picker__month")?.textContent);
     await page.keyboard.press("PageUp");
