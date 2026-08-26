@@ -33,13 +33,11 @@ final class TitlebarActionsTests: XCTestCase {
         return view
     }
 
-    /// The set the app actually ships, named once so every check below is
-    /// about the real strip rather than about a pair invented here.
-    private static let shippedActions: [TitlebarActionsView.Action] = [
-        .init(selector: #selector(AppDelegate.menuNewNote), symbol: "square.and.pencil"),
-        .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
-        .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
-    ]
+    /// The set the app actually ships, read from the declaration the app reads,
+    /// so every check below is about the real strip. It used to be a copy of
+    /// that list kept here, which is a corpus that can quietly stop matching
+    /// the one under test while every assertion goes on passing.
+    private static let shippedActions = TitlebarActionsView.shipped
 
     // MARK: the symbols exist
 
@@ -66,6 +64,33 @@ final class TitlebarActionsTests: XCTestCase {
         XCTAssertTrue(tips[0].hasSuffix("⌘N"), tips[0])
         XCTAssertTrue(tips[1].hasSuffix("⌘O"), tips[1])
         XCTAssertEqual(tips[2], "Open Recent")
+    }
+
+    func testATooltipShouldSurviveTheLayoutPassesThatFollowIt() {
+        // The half the assertion above cannot make, and the half that was
+        // wrong for as long as these buttons have existed. `toolTip` is a
+        // string this view hands back whatever else happens to it; what
+        // DELIVERS the tooltip is a tracking area AppKit installs when the
+        // string is set, and `updateTrackingAreas` runs on every layout pass.
+        // Sweeping `trackingAreas` there takes that area away with the hover
+        // area, and nothing puts it back, so every button had a tooltip and
+        // none of them ever showed one.
+        //
+        // Asserted as a count rather than by reaching for AppKit's own area,
+        // which is not identifiable through public API. It pins both
+        // directions: the count must not fall (the tooltip was swept) and must
+        // not climb (a hover area leaked on every pass).
+        let view = boundTitle()
+        let button = view.actionsView.buttons[0]
+        XCTAssertNotNil(button.toolTip)
+        button.updateTrackingAreas()
+        let settled = button.trackingAreas.count
+        XCTAssertGreaterThan(settled, 1,
+                             "only this view's own tracking area is left, so the tooltip's is gone")
+        for _ in 0..<3 { button.updateTrackingAreas() }
+        XCTAssertEqual(button.trackingAreas.count, settled,
+                       "a layout pass changed how many tracking areas the button has")
+        XCTAssertNotNil(button.toolTip, "the label itself went missing")
     }
 
     // MARK: the reservation follows the buttons
