@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.826.0] - 2026, August 26
+
 ### Added
 
 - Birta Writer for Mac notices when the folder it keeps your notes in has moved because the app was renamed, and offers at the next launch to bring the notes and their images across. That folder's name is derived from the product's, so a rename moved it with you changing nothing, and your writing stayed in a folder under the old name with nothing on screen to say so: the app opened a fresh, empty home and looked as though it were working. Both folders are named in the question, declining moves nothing, and anything that could not be copied is listed. A rename changes the note's name as well as the folder's, so your scratchpad arrives under the name this version opens and the panel has your writing in it rather than an empty note beside it; where some other note already answers to that name, it keeps it and yours comes across under its own. It compares against the folder the previous launch used, so it covers a rename from this version onward rather than one that has already happened.

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.826.0] - 2026, August 26
+
 ### Added
 
 - A Table of Contents button on the toolbar, at the far right past the gear, with a rule before it because it opens a panel beside the document rather than changing the document. It shows the same sidebar the panel's own edge tab and `Toggle Table of Contents` already open, and it lights up while the sidebar is out. Hide it, or move it, with `birta.toolbar.items.toc`.
