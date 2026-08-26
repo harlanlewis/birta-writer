@@ -79,7 +79,44 @@ final class AgentTestSheetTests: XCTestCase {
         XCTAssertFalse(view.isEditable)
         XCTAssertTrue(scroll.hasVerticalScroller)
         scroll.layoutSubtreeIfNeeded()
-        XCTAssertLessThan(scroll.fittingSize.height, 400,
+        XCTAssertLessThan(scroll.frame.height, 400,
                           "a long answer must not size the sheet to itself")
+    }
+
+    /// `NSAlert` lays its accessory view out from that view's FRAME. A box
+    /// described only by constraints has none until something puts it in a
+    /// window, and the alert is not that something: it reads a zero rect,
+    /// places the box over the text it belongs under, and draws an empty
+    /// bezel beside a failure whose only useful content is inside it.
+    func testTheTranscriptShouldCarryTheFrameTheAlertLaysItOutFrom() throws {
+        let alert = SettingsWindowController.agentTestAlert(
+            name: "Amp", result: AgentProbeResult(succeeded: true, transcript: "Hello!", failure: nil))
+
+        let scroll = try XCTUnwrap(alert.accessoryView as? NSScrollView)
+        XCTAssertGreaterThan(scroll.frame.width, 100, "the alert has no width to place it at")
+        XCTAssertGreaterThan(scroll.frame.height, 40, "the alert has no height to place it at")
+    }
+
+    /// The text has to be laid out to the box's own width, or a wrapped answer
+    /// is drawn at a width of nothing and the box reads as empty.
+    ///
+    /// Asserted as an OVERFLOW rather than as a fit: a document view sized to
+    /// its own content is what makes the scroller real, and a zero-frame text
+    /// view passes every bound you can write about a size it does not have.
+    func testALongAnswerShouldBeLaidOutInsideTheBoxAndOverflowIt() throws {
+        let long = String(repeating: "a line of an agent's answer\n", count: 400)
+        let alert = SettingsWindowController.agentTestAlert(
+            name: "Amp", result: AgentProbeResult(succeeded: true, transcript: long, failure: nil))
+
+        let scroll = try XCTUnwrap(alert.accessoryView as? NSScrollView)
+        let view = try XCTUnwrap(scroll.documentView as? NSTextView)
+        view.layoutManager?.ensureLayout(for: try XCTUnwrap(view.textContainer))
+        // Both halves, and the first is what stops this passing on a text view
+        // that was never laid out: a zero-width one matches a zero-width box.
+        XCTAssertGreaterThan(view.frame.width, 100, "the text was never laid out to any width")
+        XCTAssertEqual(view.frame.width, scroll.contentSize.width, accuracy: 1,
+                       "the text is laid out to a width that is not the box's")
+        XCTAssertGreaterThan(view.frame.height, scroll.contentSize.height,
+                             "400 lines have to overflow the box, or nothing was laid out")
     }
 }

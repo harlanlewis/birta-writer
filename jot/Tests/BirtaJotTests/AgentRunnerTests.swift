@@ -72,8 +72,9 @@ final class AgentRunnerTests: XCTestCase {
     }
 
     /// Runs one probe to completion and returns what it found.
-    private func probe(template: String) -> AgentProbeResult? {
+    private func probe(template: String, childPath: (() -> String?)? = nil) -> AgentProbeResult? {
         let runner = AgentRunner()
+        if let childPath { runner.childPath = childPath }
         var result: AgentProbeResult?
         let finished = expectation(description: "the probe reports")
         runner.probe(template: template) {
@@ -153,6 +154,66 @@ final class AgentRunnerTests: XCTestCase {
             template: "true {prompt} ; read line ; printf 'read returned\\n'"))
 
         XCTAssertTrue(result.transcript.contains("read returned"), result.transcript)
+    }
+
+    // MARK: the PATH a child runs with
+
+    /// The defect this is here for: an app opened from the Finder inherits
+    /// `launchd`'s four system directories, every agent CLI installs somewhere
+    /// else, and the Test button therefore calls a tool somebody uses daily
+    /// not installed.
+    ///
+    /// Injected rather than read off this machine. Comparing the child's
+    /// `PATH` against what the resolver would have said is two readings of one
+    /// machine, and they agree with each other whether or not anything was
+    /// ever applied.
+    func testAChildShouldRunWithThePathTheRunnerWasGiven() throws {
+        let result = try XCTUnwrap(probe(template: "true {prompt} ; printenv PATH",
+                                         childPath: { "/birta-test-bin:/usr/bin:/bin" }))
+
+        XCTAssertTrue(result.succeeded, result.transcript)
+        XCTAssertEqual(result.transcript.trimmingCharacters(in: .whitespacesAndNewlines),
+                       "/birta-test-bin:/usr/bin:/bin")
+    }
+
+    /// The rest of the environment is the app's own. A child given only a
+    /// `PATH` loses `HOME`, and `HOME` is where every one of these tools keeps
+    /// the credentials that decide whether it can answer at all.
+    func testAChildShouldKeepTheRestOfTheEnvironment() throws {
+        let result = try XCTUnwrap(probe(template: "true {prompt} ; printenv HOME",
+                                         childPath: { "/usr/bin:/bin" }))
+
+        XCTAssertEqual(result.transcript.trimmingCharacters(in: .whitespacesAndNewlines),
+                       ProcessInfo.processInfo.environment["HOME"])
+    }
+
+    /// A resolver with no answer leaves the environment as it found it, rather
+    /// than handing a child an empty `PATH` and taking away what it had.
+    func testAResolverWithNoAnswerShouldLeaveTheInheritedPathAlone() throws {
+        let result = try XCTUnwrap(probe(template: "true {prompt} ; printenv PATH",
+                                         childPath: { nil }))
+
+        XCTAssertEqual(result.transcript.trimmingCharacters(in: .whitespacesAndNewlines),
+                       ProcessInfo.processInfo.environment["PATH"])
+    }
+
+    /// And a runner nobody handed a resolver to still has one, or every check
+    /// above is about a seam that is empty in the app.
+    ///
+    /// `LoginShellPathTests` is what asks whether the resolver can resolve;
+    /// this asks only whether a plain `AgentRunner` is wired to it.
+    func testARunnerNobodyConfiguredShouldStillHaveAResolver() throws {
+        // Asked again rather than once. The shared resolver caps how long a
+        // CALLER waits, not how long the shell takes, so on a loaded machine
+        // the first ask can come back empty while the resolution it started
+        // is still going; a check that read that as the answer would be
+        // reporting the machine's load. Every later ask returns at once once
+        // the shell has spoken.
+        var path: String?
+        for _ in 0..<6 where path == nil { path = AgentRunner().childPath() }
+        let found = try XCTUnwrap(
+            path, "a plain AgentRunner gives its children no PATH of their own")
+        XCTAssertTrue(found.split(separator: ":").contains("/usr/bin"), found)
     }
 
     func testTheFirstReportShouldBeRunningWithTheHarnessName() throws {

@@ -136,6 +136,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// layout entirely rather than left as a blank line.
     private var agentDocLinkHolder: NSView?
     private let agentEnabledSwitch = NSSwitch()
+    /// Whether the page currently running was booted with the agent
+    /// capability. Compared against `Prefs.agentAvailable` after every write
+    /// on this pane, so the editor is reloaded when the answer changed and
+    /// left alone when it did not.
+    private var agentCapabilityInPage = Prefs.agentAvailable
     private let newNoteField = NSTextField(string: Prefs.newNoteNameTemplate)
     private let dockSwitch = NSSwitch()
     private let autosaveSwitch = NSSwitch()
@@ -561,6 +566,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         agentField.stringValue = Prefs.agentCommand
         newNoteField.stringValue = Prefs.newNoteNameTemplate
         agentEnabledSwitch.state = Prefs.agentEnabled ? .on : .off
+        // The two callers of this both leave the page holding whatever
+        // `Prefs` says: the build, which runs before anything is offered, and
+        // Reset, which reloads unconditionally afterwards. Either way the
+        // mirror is true again from here.
+        agentCapabilityInPage = Prefs.agentAvailable
         showAgentPreset()
         showAgent()
         showRowAvailability()
@@ -1219,15 +1229,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.agentCommand = preset.template
         agentField.stringValue = preset.template
         showAgentPreset()
-        onChange(nil)
+        syncAgentCapability()
     }
 
     @objc private func toggleAgentEnabled() {
         Prefs.agentEnabled = agentEnabledSwitch.state == .on
         showAgent()
-        // The page is reloaded because this withdraws a host CAPABILITY rather
-        // than flipping an editor setting: the slash row and the command are
-        // built from the profile at boot, so the panel has to be told again.
+        syncAgentCapability()
+    }
+
+    /// Reload the page only when the agent CAPABILITY has actually changed.
+    ///
+    /// The page is built from the host profile at boot, so a change to what
+    /// this host PROVIDES has to be handed to it again, and the only way to
+    /// do that is a reload. A reload is not free to watch: the editor is torn
+    /// down and rebuilt under whoever is looking at it, which is why it has
+    /// to be asked for by something that changed rather than by something
+    /// that was touched.
+    ///
+    /// Swapping one working command for another does not change what this
+    /// host provides. `AgentAvailability` is the same rule `Prefs.bootConfig`
+    /// filters the capability with, asked here rather than restated, so the
+    /// two cannot drift apart and answer differently.
+    private func syncAgentCapability() {
+        let available = Prefs.agentAvailable
+        guard available != agentCapabilityInPage else { return }
+        agentCapabilityInPage = available
         onChange(nil)
     }
 
@@ -1321,6 +1348,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         switch notification.object as? NSTextField {
         case let field where field === agentField:
             Prefs.agentCommand = agentField.stringValue
+            // While typing, not on blur. The pull-down and the link are a
+            // reading of the field, so leaving them on the last tool through
+            // a whole edit shows somebody a name and a documentation page for
+            // a command they have already replaced.
+            showAgentPreset(for: agentField.stringValue)
+            syncAgentCapability()
         case let field where field === newNoteField:
             // Stored as typed, including a half-finished token: expansion is
             // `NoteNameTemplate`'s and it falls back rather than failing, so a
@@ -1423,28 +1456,48 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         return alert
     }
 
+    /// How big the transcript box is: wide enough for a wrapped shell line,
+    /// tall enough for a short answer without becoming a window of its own.
+    private static let transcriptSize = NSSize(width: 380, height: 140)
+
     /// A scrollable, selectable, monospaced block of whatever a command
     /// printed.
+    ///
+    /// Sized by its FRAME, and this is the part that is easy to get wrong.
+    /// `NSAlert` places an accessory view by reading that view's frame; it
+    /// does not run a layout pass over it, so a box described by constraints
+    /// alone hands the alert a zero rect. What that draws is the sheet in the
+    /// screenshot this was found from: an empty bezel sitting over the text it
+    /// belongs under, on a failure whose only useful content was inside it.
+    ///
+    /// The text view is sized the same way and told to track the box's width,
+    /// because the same absent layout pass leaves a bare `NSTextView` with no
+    /// width to wrap to and nothing drawn at all.
     static func transcript(_ text: String) -> NSView {
-        let view = NSTextView()
-        view.string = text
+        let scroll = NSScrollView(frame: NSRect(origin: .zero, size: transcriptSize))
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .bezelBorder
+
+        let content = scroll.contentSize
+        let view = NSTextView(frame: NSRect(origin: .zero, size: content))
+        view.minSize = NSSize(width: 0, height: content.height)
+        view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                              height: CGFloat.greatestFiniteMagnitude)
+        view.isVerticallyResizable = true
+        view.isHorizontallyResizable = false
+        view.autoresizingMask = [.width]
+        view.textContainer?.containerSize = NSSize(width: content.width,
+                                                   height: CGFloat.greatestFiniteMagnitude)
+        view.textContainer?.widthTracksTextView = true
         view.isEditable = false
         view.isSelectable = true
         view.drawsBackground = false
         view.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         view.textContainerInset = NSSize(width: 4, height: 4)
-        let scroll = NSScrollView()
+        view.string = text
         scroll.documentView = view
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        scroll.borderType = .bezelBorder
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            // Wide enough for a wrapped shell line, tall enough for a short
-            // answer without becoming a window of its own.
-            scroll.widthAnchor.constraint(equalToConstant: 380),
-            scroll.heightAnchor.constraint(equalToConstant: 140),
-        ])
         return scroll
     }
 

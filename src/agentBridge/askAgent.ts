@@ -264,7 +264,7 @@ async function pickRoute(): Promise<{ command: string; mode: AgentMode } | undef
     const picks: RoutePick[] = [
         { label: "Claude Code, in the background", description: "claude -p {prompt} --permission-mode acceptEdits", detail: vscode.l10n.t("No terminal; a marker in the gutter while it runs, the edit arrives when it finishes"), value: "claude -p {prompt} --permission-mode acceptEdits", mode: "background" },
         { label: "Claude Code, in a terminal", description: "claude {prompt}", detail: vscode.l10n.t("One reused Birta AI terminal you can watch and answer"), value: "claude {prompt}", mode: "terminal" },
-        { label: "Codex CLI, in the background", description: "codex exec --full-auto {prompt}", detail: vscode.l10n.t("No terminal; a marker in the gutter while it runs"), value: "codex exec --full-auto {prompt}", mode: "background" },
+        { label: "Codex CLI, in the background", description: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}", detail: vscode.l10n.t("No terminal; a marker in the gutter while it runs"), value: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}", mode: "background" },
         { label: "Codex CLI, in a terminal", description: "codex {prompt}", detail: vscode.l10n.t("One reused Birta AI terminal you can watch and answer"), value: "codex {prompt}", mode: "terminal" },
         { label: vscode.l10n.t("VS Code Chat view"), description: AGENT_ROUTE_CHAT, detail: vscode.l10n.t("Copilot Chat or any chat participant, with the request filled in"), value: AGENT_ROUTE_CHAT },
         { label: vscode.l10n.t("Copy to clipboard"), description: AGENT_ROUTE_CLIPBOARD, detail: vscode.l10n.t("Paste the request into any agent yourself"), value: AGENT_ROUTE_CLIPBOARD },

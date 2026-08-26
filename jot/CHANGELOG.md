@@ -12,7 +12,21 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- `/ai` and its Test button find the agent tool you actually have installed. An app opened from the Finder or the Dock is given four system directories to look in and nothing else, and none of the CLIs the AI Agent pane offers installs into any of them, so Test reported Claude Code, Codex and the rest as not working on machines where they run fine from a terminal, and `/ai` failed the same way. Birta Writer for Mac now asks your login shell where your tools are, once at launch, and runs the command with the same `PATH` Terminal would have given it. The AI Agent pane always promised a tool installed and runnable from Terminal would work; this is that promise being kept.
+
+- Choosing Codex CLI from the AI Agent pull-down writes a command that runs. It wrote `codex exec --full-auto {prompt}`, and current Codex has no `--full-auto`, so both `/ai` and Test got a usage error rather than an answer. It writes `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` now: the sandbox is what lets the agent edit the note, and the second flag is needed because `codex exec` otherwise refuses to run in a folder that is not a git repository, which a notes folder is not. A command you have already got is left alone; choose Codex CLI again to take the new one.
+
+- The AI Agent pane follows the command as you type it. Typing `claude` over another tool's command left the pull-down naming the old tool and the link under the field pointing at the old tool's documentation until focus left the field. Both now move on each keystroke, and a command naming no tool this build knows leaves no name and no link rather than the last one.
+
+- Choosing a tool from the AI Agent pull-down no longer reloads the note you were reading. The editor was torn down and rebuilt on every use of that menu, which was visible as the page blinking out and coming back. It is reloaded now only when `/ai` becomes available or stops being available, which is what the editor is actually told at boot. Emptying the command field now reloads for the same reason, and used to reload for none: `/ai` stayed on the slash menu with nothing left to run.
+
+- The Test button's result reads as a sheet rather than an empty box beside the text. What the tool printed was drawn in a panel with no size, so macOS placed it over the sentence above it and showed nothing inside it, which on a failure hid the tool's own error, the only part of that sheet worth reading.
+
 ### Changed
+
+- The update offer says how long its buttons are held and why. Both buttons are dead for the first few seconds so that a keystroke already on its way to your note cannot answer an offer that arrived mid-sentence, and until now nothing said so: a dialog whose buttons do nothing reads as a dialog that is broken. The confirming button counts the seconds down in parentheses, and the offer says what the wait is for.
 
 - The table of contents docks on the right and no longer offers to move, and the toolbar button is the only control that shows and hides it. Resting on that button flies the outline out over the text without opening it; pressing opens it for good, and pressing again puts it away. The panel used to carry a hide button and a swap-sides button of its own, and a reveal tab on the window's edge when it was shut, so there were three controls for two questions and one of them sat a few pixels from the button that already did the same thing. A Mac puts a sidebar on the trailing edge, so the side is the app's answer rather than a question, and Swap Table of Contents Side is gone from the command list with it. Birta Writer for VS Code is unchanged: it keeps both controls and the reader keeps the side.
 

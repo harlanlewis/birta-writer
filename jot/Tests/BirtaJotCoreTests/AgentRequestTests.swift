@@ -51,9 +51,10 @@ final class AgentRequestTests: XCTestCase {
     /// arguments following the prompt rather than as its options.
     func testAFlagShouldGoBeforeATrailingPromptPlaceholder() {
         XCTAssertEqual(
-            AgentRequest.adding(flag: "--model", value: "opus",
-                                to: "codex exec --full-auto {prompt}"),
-            "codex exec --full-auto --model 'opus' {prompt}")
+            AgentRequest.adding(
+                flag: "--model", value: "opus",
+                to: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}"),
+            "codex exec --sandbox workspace-write --skip-git-repo-check --model 'opus' {prompt}")
     }
 
     func testAFlagShouldBeAppendedWhenThePlaceholderIsNotLast() {
@@ -80,7 +81,10 @@ final class AgentRequestTests: XCTestCase {
 
     func testTheHarnessNameShouldBeTheCommandsFirstWordWithoutItsDirectory() {
         XCTAssertEqual(AgentRequest.harnessName(from: "claude -p {prompt}"), "claude")
-        XCTAssertEqual(AgentRequest.harnessName(from: "codex exec --full-auto {prompt}"), "codex")
+        XCTAssertEqual(
+            AgentRequest.harnessName(
+                from: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}"),
+            "codex")
         XCTAssertEqual(AgentRequest.harnessName(from: "/usr/local/bin/claude {prompt}"), "claude")
         XCTAssertNil(AgentRequest.harnessName(from: "   "))
     }

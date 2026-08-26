@@ -71,6 +71,78 @@ final class UpdatePolicyTests: XCTestCase {
                        "Birta Writer v2026.821.0 is available.")
     }
 
+    // MARK: saying what the wait is
+
+    /// A dead button with nothing said about it is indistinguishable from one
+    /// that does not work, and the reading somebody makes is the second.
+    func testTheConfirmButtonShouldCarryTheWaitStillToGo() {
+        XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: false, secondsRemaining: 3),
+                       "Restart Birta Writer (3)")
+        XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: true, secondsRemaining: 1),
+                       "Save and Restart Birta Writer (1)")
+    }
+
+    /// Nothing left to say once the button works, and nothing said about a
+    /// wait that has already gone negative.
+    func testAnArmedButtonShouldReadExactlyAsItDidBeforeThereWasACount() {
+        for seconds in [0, -1] {
+            XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: false,
+                                                     secondsRemaining: seconds),
+                           UpdatePolicy.confirmTitle(hasUnwrittenBytes: false))
+            XCTAssertEqual(UpdatePolicy.confirmTitle(hasUnwrittenBytes: true,
+                                                     secondsRemaining: seconds),
+                           UpdatePolicy.confirmTitle(hasUnwrittenBytes: true))
+        }
+    }
+
+    /// The armed title is a PREFIX of every counting one, which is what makes
+    /// the widest form the one the offer opens with: a button laid out for the
+    /// first title it is given has room for all of them.
+    func testACountingTitleShouldOnlyEverAddToTheArmedOne() {
+        for hasUnwritten in [true, false] {
+            let armed = UpdatePolicy.confirmTitle(hasUnwrittenBytes: hasUnwritten)
+            for seconds in 1...9 {
+                let counting = UpdatePolicy.confirmTitle(hasUnwrittenBytes: hasUnwritten,
+                                                         secondsRemaining: seconds)
+                XCTAssertTrue(counting.hasPrefix(armed), counting)
+                XCTAssertGreaterThan(counting.count, armed.count)
+            }
+        }
+    }
+
+    func testTheCountdownShouldRunFromTheWholeDelayDownToOne() {
+        XCTAssertEqual(UpdatePolicy.countdownSteps(for: 3), [3, 2, 1])
+        XCTAssertEqual(UpdatePolicy.countdownSteps(for: 1), [1])
+    }
+
+    /// Rounded UP. A button reading (1) with a fraction of a second to go is a
+    /// moment's wait; one reading (0) that still cannot be clicked is the
+    /// broken dialog the count exists to stop somebody seeing.
+    func testAFractionOfASecondShouldStillBeASecondOnTheButton() {
+        XCTAssertEqual(UpdatePolicy.countdownSteps(for: 2.4), [3, 2, 1])
+        XCTAssertEqual(UpdatePolicy.countdownSteps(for: 0.2), [1])
+        XCTAssertFalse(UpdatePolicy.countdownSteps(for: 3).contains(0))
+    }
+
+    /// No wait, nothing to count. This is the arm every check that arms
+    /// immediately goes through, so a count of [1] here would put a number on
+    /// a button that was live the whole time.
+    func testADelayOfNothingShouldCountNothing() {
+        XCTAssertEqual(UpdatePolicy.countdownSteps(for: 0), [])
+        XCTAssertEqual(UpdatePolicy.countdownSteps(for: -1), [])
+    }
+
+    /// And the count answers how long, never why. The sentence is what says
+    /// whose side the wait is on, and it must not undo what the detail above
+    /// it promises: no talk of losing anything, and no claim about the other
+    /// button.
+    func testTheArmingNoteShouldSayWhoTheWaitIsForWithoutContradictingTheDetail() {
+        let note = UpdatePolicy.armingNote
+        XCTAssertTrue(note.lowercased().contains("keystroke"), note)
+        XCTAssertFalse(note.lowercased().contains("cancel"), note)
+        XCTAssertFalse(note.lowercased().contains("lose"), note)
+    }
+
     func testTheArmingDelayShouldBeLongEnoughToOutlastAKeystrokeAndShortEnoughToWaitOut() {
         // The number itself is a judgement, so what is pinned is the range it
         // has to be in to do its job at all: shorter than a second and a

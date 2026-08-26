@@ -29,6 +29,39 @@ public enum UpdatePolicy {
     /// enough that somebody who came to read it is not kept waiting.
     public static let armingDelay: TimeInterval = 3
 
+    /// The seconds a countdown counts through, largest first.
+    ///
+    /// A dead button with nothing to say about it reads as a broken dialog,
+    /// and the reading is reasonable: from the outside there is no difference
+    /// between a control that is not ready and one that does not work. The
+    /// count is what turns the wait into something with a visible end, and
+    /// `armingNote` is what says why there is a wait at all.
+    ///
+    /// Rounded UP, so the last number shown is never a lie in the direction
+    /// that costs: a button reading (1) with a fraction of a second still to
+    /// go is a moment's wait, and one reading (0) that cannot be clicked is
+    /// the broken dialog this exists to avoid. Empty for a delay of nothing,
+    /// which is the case where there is no wait to explain.
+    public static func countdownSteps(for delay: TimeInterval) -> [Int] {
+        guard delay > 0 else { return [] }
+        return Array((1...max(1, Int(delay.rounded(.up)))).reversed())
+    }
+
+    /// Why the buttons are not live yet.
+    ///
+    /// Says what is happening and whose side it is on, in one line. It names
+    /// the keystroke rather than the delay because the delay is the mechanism
+    /// and the keystroke is the reason: somebody mid-sentence needs to know
+    /// this was not answered for them, and the count on the button below is
+    /// already saying how long.
+    ///
+    /// Worded as a rule the sheet keeps rather than as a state it is in, so it
+    /// is still true once the wait is over. The sheet cannot take a line away
+    /// after it is laid out without leaving the gap where the line was.
+    public static let armingNote =
+        "Its buttons wait a moment before they work, so a keystroke already on its way to "
+            + "your note cannot answer for you."
+
     /// Whether enough time has passed to ask again.
     ///
     /// Never asked before means yes: a first launch should find out.
@@ -64,6 +97,22 @@ public enum UpdatePolicy {
     /// be.
     public static func confirmTitle(hasUnwrittenBytes: Bool) -> String {
         hasUnwrittenBytes ? "Save and Restart Birta Writer" : "Restart Birta Writer"
+    }
+
+    /// The same title with the wait still to go in parentheses after it.
+    ///
+    /// On the confirming button rather than beside the pair, because that is
+    /// the button somebody reaches for and a count anywhere else is a count
+    /// they have to go looking for. Zero, and anything under it, is the armed
+    /// title unchanged: there is nothing left to say once the button works.
+    ///
+    /// The count is a SUFFIX, and the widest form is the one the offer opens
+    /// with, so the button is laid out for the longest string it will ever
+    /// hold and every later title fits the frame it was given.
+    public static func confirmTitle(hasUnwrittenBytes: Bool, secondsRemaining: Int) -> String {
+        let armed = confirmTitle(hasUnwrittenBytes: hasUnwrittenBytes)
+        guard secondsRemaining > 0 else { return armed }
+        return "\(armed) (\(secondsRemaining))"
     }
 
     /// The sentence under the offer.
